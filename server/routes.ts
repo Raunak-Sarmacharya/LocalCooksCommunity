@@ -402,10 +402,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ? '/admin'
           : '/dashboard';
 
+      // INDUSTRY STANDARD: Encode the email into continueUrl as a HINT (not an authority)
+      // for cross-device magic link UX. EmailAction.tsx uses this to avoid prompting the
+      // user when localStorage isn't available (e.g., they requested the link on their
+      // laptop but open it on their phone). The email is NOT trusted for auth —
+      // signInWithEmailLink() validates the email/oobCode pair server-side.
+      const continueUrlObj = new URL(`${baseUrl}${postSignInPath}`);
+      continueUrlObj.searchParams.set('email', email);
+      const continueUrlWithEmail = continueUrlObj.toString();
+
       // Action code settings: handleCodeInApp=true sends mode=signIn to /email-action
       // (instead of Firebase's default auth handler URL), which we process in EmailAction.tsx
       const actionCodeSettings = {
-        url: `${baseUrl}${postSignInPath}`,
+        url: continueUrlWithEmail,
         handleCodeInApp: true,
       };
 
@@ -421,37 +430,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // EmailAction page (which doesn't have our latest fixes) instead of
       // the localhost dev server.
       //
-      // Fix: When running locally, rewrite the scheme/host/port of the
-      // generated action URL to point to the correct localhost subdomain
-      // for the user's role, preserving all query params (mode, oobCode,
-      // apiKey, continueUrl, etc.) intact.
+      // Fix strategy for local dev:
+      //   Rewrite the origin of the Firebase-generated URL to match BASE_URL
+      //   exactly (the dev server origin actually reachable in the browser).
+      //   Role/subdomain correctness is then handled CLIENT-SIDE by the
+      //   EmailAction page via `redirectIfWrongSubdomain()`, which bounces
+      //   users to the correct role-based subdomain while preserving all
+      //   query params (mode, oobCode, apiKey, etc.). This avoids ALL the
+      //   bugs that come from trying to strip/re-add subdomain prefixes
+      //   with localhost/port variants.
       // -------------------------------------------------------------------
       const isLocalDev = process.env.NODE_ENV === 'development' && !process.env.VERCEL_ENV;
       if (isLocalDev) {
         try {
           const generatedUrl = new URL(signInUrl);
-          let targetOrigin: string;
-          try {
-            targetOrigin = getSubdomainUrl(userType); // e.g., 'http://chef.localhost:5001'
-            // Sanity-check origin is parseable (defense in depth against malformed helper output)
-            new URL(targetOrigin);
-          } catch (helperErr) {
-            logger.error('⚠️ getSubdomainUrl returned unusable value, falling back to BASE_URL:', helperErr);
-            targetOrigin = process.env.BASE_URL || 'http://localhost:5001';
-          }
+
+          // For local dev, use BASE_URL directly — it's guaranteed to be
+          // reachable (the user's dev server is running there). We don't
+          // even call getSubdomainUrl() for the rewrite target because the
+          // role-based subdomain logic there is what caused chef.chef.localhost.
+          const targetOrigin = process.env.BASE_URL || 'http://localhost:5001';
           const targetUrlObj = new URL(targetOrigin);
 
           logger.info(`🔧 LOCAL DEV REWRITE CONTEXT:`, {
+            userRole,
+            userType,
             firebaseGeneratedOrigin: generatedUrl.origin,
             targetOrigin,
-            parsedTargetScheme: targetUrlObj.protocol,
-            parsedTargetHost: targetUrlObj.hostname,
-            parsedTargetPort: targetUrlObj.port || '(default)',
+            targetScheme: targetUrlObj.protocol,
+            targetHost: targetUrlObj.hostname,
+            targetPort: targetUrlObj.port || '(default)',
             generatedPathname: generatedUrl.pathname,
             generatedQueryPreview: generatedUrl.search.length > 80 ? generatedUrl.search.slice(0, 80) + '...' : generatedUrl.search,
           });
 
-          // Rewrite if origins differ (Firebase almost always returns production domain in local dev)
           if (generatedUrl.origin !== targetUrlObj.origin) {
             const path = generatedUrl.pathname; // e.g., '/email-action'
             const query = generatedUrl.search; // e.g., '?apiKey=...&mode=signIn&...'

@@ -50,9 +50,11 @@ function isStagingEnvironment(): boolean {
 
 /**
  * Gets the base domain from the current hostname
- * e.g., 'chef.localcooks.ca' → 'localcooks.ca'
- *       'dev-chef.localcooks.ca' → 'localcooks.ca'
- *       'chef.localhost' → 'localhost'
+ * e.g., 'chef.localcooks.ca'        → 'localcooks.ca'
+ *       'dev-chef.localcooks.ca'    → 'localcooks.ca'
+ *       'chef.localhost'             → 'localhost'   (BUG FIX previously returned 'chef.localhost')
+ *       'kitchen.chef.localhost'    → 'localhost'
+ *       'admin.127.0.0.1'           → '127.0.0.1'
  */
 function getBaseDomain(): string {
   const hostname = window.location.hostname.toLowerCase();
@@ -63,6 +65,13 @@ function getBaseDomain(): string {
     return 'localhost';
   }
 
+  // FIX: any hostname that terminates in .localhost or .127.0.0.1 is a dev host;
+  // strip all prefix labels and return localhost as the base domain.
+  // Without this, chef.localhost → parts.length=2 → falls through to return 'chef.localhost',
+  // causing getSubdomainForRole to build chef.chef.localhost (double prefix).
+  if (hostWithoutPort.endsWith('.localhost')) return 'localhost';
+  if (hostWithoutPort.endsWith('.127.0.0.1')) return '127.0.0.1';
+
   if (parts.length >= 3) {
     return parts.slice(-2).join('.');
   }
@@ -71,13 +80,14 @@ function getBaseDomain(): string {
 }
 
 /**
- * Production/staging subdomain configuration for role-based routing
- * Automatically applies dev- prefix when on staging environment
+ * Production/staging subdomain configuration for role-based routing.
+ * - Localhost: preserves the CURRENT page protocol/port to avoid mismatches.
+ * - Production: applies staging dev- prefix when appropriate.
  */
 function getSubdomainForRole(role: 'manager' | 'chef' | 'admin'): string {
   const baseDomain = getBaseDomain();
-  const isLocalhost = baseDomain === 'localhost';
-  const isStaging = !isLocalhost && isStagingEnvironment();
+  const isLocalhostLike = baseDomain === 'localhost' || baseDomain === '127.0.0.1';
+  const isStaging = !isLocalhostLike && isStagingEnvironment();
   const prefix = isStaging ? 'dev-' : '';
 
   const subdomainMap = {
@@ -86,9 +96,12 @@ function getSubdomainForRole(role: 'manager' | 'chef' | 'admin'): string {
     admin: 'admin',
   } as const;
 
-  if (isLocalhost) {
+  if (isLocalhostLike) {
+    // Preserve current page protocol + port — avoids forcing http when user is on
+    // a proxied https dev setup, and keeps the port we actually listened on.
+    const protocol = window.location.protocol; // 'http:' or 'https:'
     const port = window.location.port ? `:${window.location.port}` : '';
-    return `http://${subdomainMap[role]}.localhost${port}`;
+    return `${protocol}//${subdomainMap[role]}.${baseDomain}${port}`;
   }
 
   return `https://${prefix}${subdomainMap[role]}.${baseDomain}`;
@@ -562,13 +575,21 @@ export default function EmailAction() {
     /**
      * Handle passwordless magic link sign-in (mode=signIn)
      * 
-     * ENTERPRISE-GRADE FLOW:
-     * 1. Decode oobCode to get the user's email
-     * 2. Look up the user's actual role from the database
-     * 3. If NOT on the correct subdomain for that role → redirect to the correct subdomain
-     *    (preserving all query params) so Firebase auth state is set on the CORRECT origin.
-     *    This prevents cross-subdomain auth issues where sessions don't carry over.
-     * 4. If ALREADY on the correct subdomain → complete sign-in and redirect to dashboard.
+     * FIREBASE INDUSTRY-STANDARD FLOW (per firebase.google.com/docs/auth/web/email-link-auth):
+     * - checkActionCode() / applyActionCode() are NOT used for sign-in links
+     *   They only support: verifyEmail | resetPassword | recoverEmail
+     *   Using them with mode=signIn throws "unknown mode signIn"
+     * - isSignInWithEmailLink() is the SDK authority to validate the link
+     * - signInWithEmailLink() requires the EXPLICIT email for anti-phishing security:
+     *   1. localStorage  → same-device flow (set when user requested the link)
+     *   2. continueUrl  → server-encoded email hint for cross-device UX
+     *   3. user prompt  → cross-device fallback (standard Firebase UX)
+     * 
+     * ADDITIONAL ENTERPRISE STEPS:
+     * - Look up the user's actual role from the database
+     * - If NOT on the correct subdomain for that role → redirect to the correct subdomain
+     *   (preserving all query params) so Firebase auth state is set on the CORRECT origin.
+     * - If ALREADY on the correct subdomain → complete sign-in and redirect to dashboard.
      */
     const handleSignInLink = async (
       oobCode: string,
@@ -578,52 +599,81 @@ export default function EmailAction() {
       try {
         logger.info('🔐 Magic link sign-in detected');
 
-        // Step 1: Decode the oobCode to get the email (safe to call on any origin)
-        const { checkActionCode } = await import('firebase/auth');
-        let email: string | null = null;
-        try {
-          const actionCodeInfo = await checkActionCode(auth, oobCode);
-          email = actionCodeInfo.data.email ?? null;
-          logger.info('📧 Magic link target email:', email);
-        } catch (decodeError: any) {
-          logger.error('❌ Failed to decode oobCode:', decodeError);
-          const isInvalidOrExpired =
-            decodeError.code === 'auth/invalid-action-code' ||
-            decodeError.code === 'auth/expired-action-code';
-          throw new Error(
-            isInvalidOrExpired
-              ? 'This sign-in link has expired or is invalid. Please request a new one.'
-              : 'Failed to process sign-in link.'
-          );
+        // ---------------------------------------------------------------------
+        // STEP 1 — Use SDK authority to validate this is a sign-in link
+        // NOTE: checkActionCode() is NOT called here — it does not support
+        // mode=signIn and throws "unknown mode signIn". This was the bug.
+        // ---------------------------------------------------------------------
+        const { isSignInWithEmailLink } = await import('firebase/auth');
+        const signInHref = window.location.href;
+        if (!isSignInWithEmailLink(auth, signInHref)) {
+          throw new Error('This link is not a valid sign-in link. It may have been tampered with.');
         }
 
-        // Step 2: Look up the user's role from the database
-        let databaseRole: 'manager' | 'chef' | 'admin' | null = null;
-        if (email) {
-          try {
-            logger.info('🔍 Looking up user role from database...');
-            const roleResponse = await fetch('/api/user/lookup-role', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email })
-            });
+        // ---------------------------------------------------------------------
+        // STEP 2 — Resolve the email required by signInWithEmailLink()
+        // Priority (industry best practice):
+        //   a) localStorage  — same-device, set by sendEmailLink() on request
+        //   b) continueUrl   — server-encoded hint for convenient cross-device UX
+        //   c) user prompt   — cross-device anti-phishing confirmation
+        // ---------------------------------------------------------------------
+        let email: string | null = window.localStorage.getItem('emailForSignIn');
+        logger.info('📧 Email resolution step 1 (localStorage): ' + (email ? `HIT → ${email}` : 'MISS'));
 
-            if (roleResponse.ok) {
-              const roleData = await roleResponse.json();
-              const r = roleData.role;
-              if (r === 'manager' || r === 'chef' || r === 'admin') {
-                databaseRole = r;
-              }
-              logger.info(`✅ Resolved role from DB: ${databaseRole}`);
-            } else {
-              logger.warn('⚠️ Role lookup failed, falling back to continueUrl/hostname detection');
+        if (!email && continueUrl) {
+          try {
+            const cu = new URL(decodeURIComponent(continueUrl));
+            const fromContinue = cu.searchParams.get('email');
+            if (fromContinue) {
+              email = fromContinue;
+              logger.info(`📧 Email resolution step 2 (continueUrl): HIT → ${email}`);
             }
-          } catch (lookupError) {
-            logger.error('❌ Role lookup error (continuing with fallback):', lookupError);
+          } catch (parseErr) {
+            logger.warn('⚠️ Step 2 continueUrl parse failed (non-fatal):', parseErr instanceof Error ? parseErr.message : String(parseErr));
           }
         }
 
-        // Step 3: Determine target subdomain based on role
+        if (!email) {
+          logger.info('📧 Email resolution step 3: prompting user (cross-device / standard Firebase UX)');
+          const userProvided = window.prompt(
+            'To complete sign-in, enter the email address you used to request this magic link.\n\nThis confirmation protects your account from phishing.'
+          );
+          email = userProvided ? userProvided.trim() : null;
+          if (!email) {
+            throw new Error('Email confirmation is required to sign in with a magic link. Please request a new link and try again.');
+          }
+          logger.info(`📧 Email resolution step 3 (prompt): user provided → ${email}`);
+        }
+
+        // ---------------------------------------------------------------------
+        // STEP 3 — Look up the user's role from the database (lightweight public API)
+        // ---------------------------------------------------------------------
+        let databaseRole: 'manager' | 'chef' | 'admin' | null = null;
+        try {
+          logger.info('🔍 Looking up user role from database for:', email);
+          const roleResponse = await fetch('/api/user/lookup-role', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+          });
+
+          if (roleResponse.ok) {
+            const roleData = await roleResponse.json();
+            const r = roleData.role;
+            if (r === 'manager' || r === 'chef' || r === 'admin') {
+              databaseRole = r;
+            }
+            logger.info(`✅ Resolved role from DB: ${databaseRole}`);
+          } else {
+            logger.warn('⚠️ Role lookup failed, falling back to continueUrl/hostname detection');
+          }
+        } catch (lookupError) {
+          logger.error('❌ Role lookup error (continuing with fallback):', lookupError);
+        }
+
+        // ---------------------------------------------------------------------
+        // STEP 4 — Determine target subdomain based on role
+        // ---------------------------------------------------------------------
         const detectedFromContinueUrl = continueUrl ? detectRoleFromContinueUrl(continueUrl) : null;
         const detectedFromHostname = detectRoleFromCurrentHostname();
         const finalRole: 'manager' | 'chef' | 'admin' =
@@ -638,35 +688,39 @@ export default function EmailAction() {
 
         logger.info(`📍 Origin check: current=${currentOrigin}, target=${targetOrigin}, match=${onCorrectSubdomain}`);
 
-        // Step 4: If on wrong subdomain → redirect to correct subdomain with all params preserved
+        // ---------------------------------------------------------------------
+        // STEP 5 — If on wrong subdomain → redirect preserving params + email
+        // ---------------------------------------------------------------------
         if (!onCorrectSubdomain) {
           logger.info(`🔀 Redirecting to correct subdomain: ${targetOrigin}`);
-          const preservedParams = new URLSearchParams(allParams).toString();
+          const params = new URLSearchParams(allParams);
+          // Inject resolved email into continueUrl so the target subdomain page
+          // can resolve it without needing localStorage or another prompt
+          if (email && continueUrl) {
+            try {
+              const cu = new URL(decodeURIComponent(continueUrl));
+              if (!cu.searchParams.has('email')) {
+                cu.searchParams.set('email', email);
+                params.set('continueUrl', encodeURIComponent(cu.toString()));
+              }
+            } catch { /* ignore, continue without injection */ }
+          }
+          const preservedParams = params.toString();
           const redirectTo = `${targetOrigin}/email-action?${preservedParams}`;
-          logger.info(`🔗 Final redirect URL: ${redirectTo}`);
-          // Use full page redirect (cross-origin)
+          logger.info(`🔗 Final subdomain redirect URL: ${redirectTo}`);
           window.location.href = redirectTo;
           return;
         }
 
-        // Step 5: On correct subdomain → complete the sign-in
-        logger.info('✅ On correct subdomain, completing sign-in...');
-        const { signInWithEmailLink, isSignInWithEmailLink } = await import('firebase/auth');
+        // ---------------------------------------------------------------------
+        // STEP 6 — On correct subdomain → complete sign-in with SDK
+        // ---------------------------------------------------------------------
+        logger.info('✅ On correct subdomain, completing sign-in as:', email);
+        const { signInWithEmailLink } = await import('firebase/auth');
 
-        const signInHref = window.location.href;
-        if (!isSignInWithEmailLink(auth, signInHref)) {
-          throw new Error('Invalid sign-in link format');
-        }
-
-        let emailForSignIn = email || window.localStorage.getItem('emailForSignIn');
-        if (!emailForSignIn) {
-          // Should not happen since we decoded it above, but just in case
-          emailForSignIn = window.prompt('Please provide your email for confirmation') || '';
-        }
-
-        await signInWithEmailLink(auth, emailForSignIn, signInHref);
+        await signInWithEmailLink(auth, email, signInHref);
         window.localStorage.removeItem('emailForSignIn');
-        logger.info('✅ Magic link sign-in successful');
+        logger.info('✅ Magic link sign-in successful (email verified implicitly)');
 
         setStatus('success');
         setMessage('Sign-in successful! Redirecting you to your dashboard...');
@@ -680,14 +734,17 @@ export default function EmailAction() {
         logger.error('❌ Magic link sign-in failed:', signInError);
         const isInvalidOrExpired =
           signInError.code === 'auth/invalid-action-code' ||
-          signInError.code === 'auth/expired-action-code';
-        throw new Error(
-          signInError.message && !isInvalidOrExpired
-            ? signInError.message
+          signInError.code === 'auth/expired-action-code' ||
+          signInError.code === 'auth/invalid-email';
+        const friendlyMessage =
+          signInError.code === 'auth/invalid-email'
+            ? 'The email address provided does not match this sign-in link. Please request a new link or verify the email you entered.'
             : isInvalidOrExpired
-              ? 'This sign-in link has expired or is invalid. Please request a new one.'
-              : 'Failed to complete sign-in. Please try again.'
-        );
+              ? 'This sign-in link has expired or is invalid. Magic links expire after 10 minutes for your security — please request a new one.'
+              : signInError.message && !signInError.message.includes('prompt')
+                ? signInError.message
+                : 'Failed to complete sign-in. Please try again or request a new link.';
+        throw new Error(friendlyMessage);
       }
     };
 

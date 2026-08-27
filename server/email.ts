@@ -2032,70 +2032,25 @@ export const getSubdomainUrl = (userType: 'chef' | 'kitchen' | 'admin' | 'main' 
   const dbUrl = process.env.DATABASE_URL || '';
   const isPreProd = dbUrl.includes('supabase') || process.env.VERCEL_ENV === 'preview';
 
-  // In development, use localhost with role-based subdomains (chef.localhost, kitchen.localhost, etc.)
+  // In development, use the configured BASE_URL directly.
+  //
+  // Rationale (why we do NOT try to apply role-based subdomain prefixes in local dev):
+  // 1. BASE_URL already points to a dev server that's reachable in the user's browser
+  //    (e.g., http://localhost:5001, http://chef.localhost:5001 — whatever the user configured).
+  // 2. Trying to strip/re-add subdomain labels is error-prone:
+  //      chef.localhost  →  chef.chef.localhost  (double prefix)
+  //    and scheme/port get dropped easily.
+  // 3. The client-side EmailAction page already implements `redirectIfWrongSubdomain`,
+  //    which corrects role/subdomain mismatches AFTER the page loads. So even if the
+  //    magic link opens e.g. plain localhost:5001, the client immediately bounces the
+  //    user to the correct role-based subdomain while preserving mode/oobCode/etc.
+  //
+  // This makes the local-dev branch maximally robust against all BASE_URL variants.
   if (isLocalDev) {
     const devBase = process.env.BASE_URL || 'http://localhost:5001';
-    // If BASE_URL is a localhost URL, preserve port and apply role-based subdomain prefix
     if (devBase.includes('localhost') || devBase.includes('127.0.0.1')) {
-      try {
-        const devUrl = new URL(devBase);
-        const host = devUrl.hostname; // e.g., 'localhost', 'chef.localhost'
-        const port = devUrl.port; // e.g., '5001'
-        const scheme = devUrl.protocol; // e.g., 'http:'
-
-        // If main type, just return base URL without role subdomain prefix
-        if (userType === 'main') {
-          const portStr = port ? `:${port}` : '';
-          if (host === '127.0.0.1') {
-            return `${scheme}//127.0.0.1${portStr}`;
-          }
-          // Strip any known role subdomain prefix from host, keep bare localhost
-          const knownPrefixes: string[] = ['chef', 'kitchen', 'admin'];
-          const parts = host.split('.');
-          const bareMain = (parts.length >= 2 && parts[parts.length - 1] === 'localhost' && knownPrefixes.includes(parts[0]))
-            ? parts.slice(1).join('.')
-            : host;
-          return `${scheme}//${bareMain}${portStr}`;
-        }
-
-        // For role types, enforce role-based subdomain
-        const portStr = port ? `:${port}` : '';
-
-        // Known role subdomain prefixes that might already be applied to host
-        const knownPrefixes: string[] = ['chef', 'kitchen', 'admin'];
-        const parts = host.split('.');
-
-        // Strip any existing KNOWN role subdomain prefix from host
-        // e.g., 'chef.localhost' → 'localhost'   (strips chef.)
-        // e.g., 'kitchen.chef.localhost' → 'chef.localhost' would be wrong but unlikely
-        // Only strip a prefix if:
-        //   - hostname ends with '.localhost' or is localhost
-        //   - the leftmost label is exactly one of chef/kitchen/admin
-        let bareHost = host;
-        if (parts.length >= 2 && parts[parts.length - 1] === 'localhost') {
-          // This is a *.localhost hostname — check if first label is known role prefix
-          if (knownPrefixes.includes(parts[0])) {
-            bareHost = parts.slice(1).join('.');
-          }
-        }
-        // else: bareHost remains as-is (e.g., '127.0.0.1' stays '127.0.0.1')
-
-        if (bareHost === '127.0.0.1') {
-          // Can't do subdomains on 127.0.0.1, just use the base
-          return `${scheme}//127.0.0.1${portStr}`;
-        }
-
-        const finalUrl = `${scheme}//${userType}.${bareHost}${portStr}`;
-        logger.info(`🔧 getSubdomainUrl(${userType}) local dev: baseHost=${host} → bareHost=${bareHost} → final=${finalUrl}`);
-        return finalUrl;
-      } catch (e) {
-        // Fallback if URL parsing fails
-        logger.error('⚠️ getSubdomainUrl URL parse failed, falling back to raw BASE_URL:', {
-          baseUrl: devBase,
-          error: e instanceof Error ? e.message : String(e)
-        });
-        return devBase;
-      }
+      logger.info(`🔧 getSubdomainUrl(${userType}) local dev: using raw BASE_URL = ${devBase} (client-side subdomain redirect handles role correctness)`);
+      return devBase;
     }
     // If BASE_URL is a real domain in dev mode, fall through to production logic
   }
