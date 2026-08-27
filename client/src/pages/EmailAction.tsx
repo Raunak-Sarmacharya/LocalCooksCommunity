@@ -684,9 +684,32 @@ export default function EmailAction() {
 
         const targetOrigin = getSubdomainForRole(finalRole);
         const currentOrigin = window.location.origin;
-        const onCorrectSubdomain = targetOrigin === currentOrigin;
+        const exactMatch = targetOrigin === currentOrigin;
 
-        logger.info(`📍 Origin check: current=${currentOrigin}, target=${targetOrigin}, match=${onCorrectSubdomain}`);
+        // Loose "on correct subdomain" check — avoids bouncing when we already
+        // host a matching role-prefix. Covers:
+        //   chef.localhost:5001       → correct for role=chef
+        //   dev-chef.localcooks.ca    → correct for role=chef  (staging prefix)
+        //   kitchen.localcooks.ca     → correct for role=manager
+        //   admin.localcooks.ca       → correct for role=admin
+        // Without this loose check, a staging proxy that terminates TLS and sets
+        // X-Forwarded-Host but leaves window.location.origin different from the
+        // string we build here would cause an infinite redirect / wrong-origin bounce
+        // (e.g. https://dev-chef.localcooks.ca → https://chef.localcooks.ca).
+        const currentHost = window.location.hostname.toLowerCase();
+        const looseMatch = (() => {
+          const roleToExpected = new Map<string, string[]>([
+            ['chef',    ['chef.']],
+            ['manager', ['kitchen.', 'manager.']],
+            ['admin',   ['admin.']],
+          ]);
+          const prefixes = roleToExpected.get(finalRole) ?? [];
+          return prefixes.some(p => currentHost.startsWith(p) || currentHost.startsWith(`dev-${p}`));
+        })();
+
+        const onCorrectSubdomain = exactMatch || looseMatch;
+
+        logger.info(`📍 Origin check: current=${currentOrigin}, target=${targetOrigin}, exact=${exactMatch}, loose=${looseMatch}, skipRedirect=${onCorrectSubdomain}`);
 
         // ---------------------------------------------------------------------
         // STEP 5 — If on wrong subdomain → redirect preserving params + email
