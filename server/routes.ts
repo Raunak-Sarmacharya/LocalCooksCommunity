@@ -422,37 +422,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let signInUrl = await getAuth(firebaseApp).generateSignInWithEmailLink(email, actionCodeSettings);
 
       // -------------------------------------------------------------------
-      // LOCAL DEVELOPMENT URL REWRITE
+      // MAGIC LINK URL REWRITE (Local Dev + Vercel Preview)
       //
       // Firebase Admin SDK uses the project-level Action URL (configured in
-      // Firebase Console) which is typically the production domain, even in
-      // local development. This causes magic links to open the PRODUCTION
-      // EmailAction page (which doesn't have our latest fixes) instead of
-      // the localhost dev server.
+      // Firebase Console) which is typically the production domain. This
+      // causes magic links to open Firebase's DEFAULT auth handler page
+      // (e.g. formauth-9e620.firebaseapp.com/__/auth/action) which does
+      // NOT support mode=signIn — it shows "unknown action: signIn".
       //
-      // Fix strategy for local dev:
-      //   Rewrite the origin of the Firebase-generated URL to match BASE_URL
-      //   exactly (the dev server origin actually reachable in the browser).
+      // Fix strategy:
+      //   Rewrite the origin of the Firebase-generated URL so the magic
+      //   link opens OUR app's /email-action page (which handles signIn).
+      //   - Local dev:      rewrite to BASE_URL (e.g. http://localhost:5001)
+      //   - Vercel preview:  rewrite to the role-based dev subdomain
+      //                      (e.g. https://dev-chef.localcooks.ca)
+      //   - Production:     rewrite to the role-based prod subdomain
+      //                      (e.g. https://chef.localcooks.ca)
+      //
       //   Role/subdomain correctness is then handled CLIENT-SIDE by the
       //   EmailAction page via `redirectIfWrongSubdomain()`, which bounces
       //   users to the correct role-based subdomain while preserving all
-      //   query params (mode, oobCode, apiKey, etc.). This avoids ALL the
-      //   bugs that come from trying to strip/re-add subdomain prefixes
-      //   with localhost/port variants.
+      //   query params (mode, oobCode, apiKey, etc.).
       // -------------------------------------------------------------------
       const isLocalDev = process.env.NODE_ENV === 'development' && !process.env.VERCEL_ENV;
-      if (isLocalDev) {
+      const isVercelPreview = process.env.VERCEL_ENV === 'preview';
+
+      // Always rewrite: local dev, Vercel preview (dev-*), AND production.
+      // Firebase's default handler never supports mode=signIn, so we must
+      // always redirect to our own /email-action page.
+      {
         try {
           const generatedUrl = new URL(signInUrl);
 
-          // For local dev, use BASE_URL directly — it's guaranteed to be
-          // reachable (the user's dev server is running there). We don't
-          // even call getSubdomainUrl() for the rewrite target because the
-          // role-based subdomain logic there is what caused chef.chef.localhost.
-          const targetOrigin = process.env.BASE_URL || 'http://localhost:5001';
+          // Determine the target origin based on environment:
+          //   - Local dev: BASE_URL (localhost)
+          //   - Vercel preview: role-based dev subdomain (dev-chef.localcooks.ca)
+          //   - Production: role-based prod subdomain (chef.localcooks.ca)
+          let targetOrigin: string;
+          let envLabel: string;
+          if (isLocalDev) {
+            targetOrigin = process.env.BASE_URL || 'http://localhost:5001';
+            envLabel = 'LOCAL DEV';
+          } else {
+            // baseUrl is already computed above via getSubdomainUrl(userType),
+            // which correctly applies dev- prefix for Vercel preview and
+            // no prefix for production.
+            targetOrigin = baseUrl;
+            envLabel = isVercelPreview ? 'VERCEL PREVIEW' : 'PRODUCTION';
+          }
+
           const targetUrlObj = new URL(targetOrigin);
 
-          logger.info(`🔧 LOCAL DEV REWRITE CONTEXT:`, {
+          logger.info(`🔧 ${envLabel} REWRITE CONTEXT:`, {
             userRole,
             userType,
             firebaseGeneratedOrigin: generatedUrl.origin,
@@ -464,21 +485,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
             generatedQueryPreview: generatedUrl.search.length > 80 ? generatedUrl.search.slice(0, 80) + '...' : generatedUrl.search,
           });
 
-          if (generatedUrl.origin !== targetUrlObj.origin) {
-            const path = generatedUrl.pathname; // e.g., '/email-action'
-            const query = generatedUrl.search; // e.g., '?apiKey=...&mode=signIn&...'
-            signInUrl = `${targetOrigin}${path}${query}`;
-            logger.info(`🔧 LOCAL DEV: Rewrote magic link ORIGIN ${generatedUrl.origin} → ${targetOrigin}`);
+          // Firebase always generates path as /__/auth/action — our SPA route is /email-action.
+          // Rewrite the path unconditionally. Also rewrite origin if it doesn't match.
+          const query = generatedUrl.search; // e.g., '?apiKey=...&mode=signIn&...'
+          const finalOrigin = (generatedUrl.origin !== targetUrlObj.origin) ? targetOrigin : generatedUrl.origin;
+          const originalPath = generatedUrl.pathname;
+          const rewrittenPath = '/email-action';
+          signInUrl = `${finalOrigin}${rewrittenPath}${query}`;
+
+          if (generatedUrl.origin !== targetUrlObj.origin || originalPath !== rewrittenPath) {
+            logger.info(`🔧 ${envLabel}: Rewrote magic link — ORIGIN: ${generatedUrl.origin} → ${finalOrigin}, PATH: ${originalPath} → ${rewrittenPath}`);
             logger.info(`🔗 FINAL magic link URL (after rewrite): ${signInUrl}`);
           } else {
-            logger.info('🔧 LOCAL DEV: Origins already match, no rewrite needed.');
+            logger.info(`🔧 ${envLabel}: URL already correct, no rewrite needed.`);
           }
         } catch (rewriteError) {
-          logger.error('⚠️ Failed to rewrite magic link for local dev, USING ORIGINAL Firebase URL:', rewriteError instanceof Error ? rewriteError.message : String(rewriteError));
+          logger.error('⚠️ Failed to rewrite magic link URL, USING ORIGINAL Firebase URL:', rewriteError instanceof Error ? rewriteError.message : String(rewriteError));
           logger.info('🔗 ORIGINAL (unrewritten) magic link URL: ', signInUrl);
         }
-      } else {
-        logger.info(`🔗 Generated magic link URL for ${email} (role: ${userRole}): ${signInUrl}`);
       }
 
       // Import email functions
