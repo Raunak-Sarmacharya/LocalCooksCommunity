@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { mt } from "@/i18n/manager";
 /**
  * Stripe Connect Setup Component
  * 
@@ -15,8 +16,10 @@ import { Loader2, CreditCard, CheckCircle2, AlertCircle, ExternalLink, Clock, Sh
 import { toast } from '@/hooks/use-toast';
 import { useFirebaseAuth } from '@/hooks/use-auth';
 import { auth } from '@/lib/firebase';
+import { tt } from "@/i18n/common-ns";
 
 export default function StripeConnectSetup() {
+  
   const { user: firebaseUser } = useFirebaseAuth();
   const queryClient = useQueryClient();
 
@@ -24,7 +27,7 @@ export default function StripeConnectSetup() {
   const { data: stripeStatus, isLoading } = useQuery({
     queryKey: ['/api/manager/stripe-connect/status', firebaseUser?.uid],
     queryFn: async () => {
-      if (!firebaseUser) throw new Error('Not authenticated');
+      if (!firebaseUser) throw new Error(tt("notAuthenticated"));
       const token = await auth.currentUser?.getIdToken();
       const response = await fetch('/api/manager/stripe-connect/status', {
         headers: {
@@ -33,7 +36,7 @@ export default function StripeConnectSetup() {
         },
       });
       if (!response.ok) {
-        throw new Error('Failed to fetch Stripe status');
+        throw new Error(tt("failedToFetchStripeStatus"));
       }
       return response.json();
     },
@@ -45,7 +48,7 @@ export default function StripeConnectSetup() {
   const { data: userProfile } = useQuery({
     queryKey: ['/api/user/profile', firebaseUser?.uid],
     queryFn: async () => {
-      if (!firebaseUser) throw new Error('Not authenticated');
+      if (!firebaseUser) throw new Error(tt("notAuthenticated"));
       const token = await auth.currentUser?.getIdToken();
       const response = await fetch('/api/user/profile', {
         headers: {
@@ -54,7 +57,7 @@ export default function StripeConnectSetup() {
         },
       });
       if (!response.ok) {
-        throw new Error('Failed to fetch profile');
+        throw new Error(tt("failedToFetchProfile"));
       }
       return response.json();
     },
@@ -111,16 +114,16 @@ export default function StripeConnectSetup() {
         
         // Show toast based on actual refetched status
         if (updatedStatus?.chargesEnabled && updatedStatus?.payoutsEnabled) {
-          toast.success("Stripe Setup Complete", {
-            description: "Your account is ready to receive payments."
+          toast.success(mt("stripeSetupCompleteTitle"), {
+            description: mt("yourAccountIsNowReadyToReceivePayments")
           });
         } else if (updatedStatus?.detailsSubmitted) {
-          toast.info("Setup Progress Saved", {
-            description: "Additional verification may be required. Check your Stripe dashboard."
+          toast.info(mt("setupProgressSavedTitle"), {
+            description: mt("setupProgressSavedDesc")
           });
         } else {
-          toast.info("Status Updated", {
-            description: "Your Stripe setup status has been refreshed."
+          toast.info(mt("statusUpdated"), {
+            description: mt("stripeStatusRefreshedDesc")
           });
         }
       }
@@ -161,7 +164,7 @@ export default function StripeConnectSetup() {
   // Create Connect account mutation
   const createAccountMutation = useMutation({
     mutationFn: async () => {
-      if (!firebaseUser) throw new Error('Not authenticated');
+      if (!firebaseUser) throw new Error(tt("notAuthenticated"));
       const token = await auth.currentUser?.getIdToken();
       // Check if we're in the setup flow to pass to server for proper return URLs
       const isSetupFlow = window.location.pathname.includes('/manager/setup');
@@ -189,7 +192,7 @@ export default function StripeConnectSetup() {
       
       // If account already existed, don't try to start onboarding
       if (data.alreadyExists) {
-        toast.info('Account Already Connected', {
+        toast.info(tt("accountAlreadyConnected"), {
           description: 'Your Stripe account is already connected. You can access your dashboard below.'
         });
         return;
@@ -199,8 +202,7 @@ export default function StripeConnectSetup() {
       await startOnboardingMutation.mutateAsync();
     },
     onError: (error: Error) => {
-      toast({
-        title: 'Error',
+      toast({ title: mt("error"),
         description: error.message,
         variant: 'destructive',
       });
@@ -210,7 +212,7 @@ export default function StripeConnectSetup() {
   // Get onboarding link mutation
   const startOnboardingMutation = useMutation({
     mutationFn: async () => {
-      if (!firebaseUser) throw new Error('Not authenticated');
+      if (!firebaseUser) throw new Error(tt("notAuthenticated"));
       const token = await auth.currentUser?.getIdToken();
       // Check if we're in the setup flow
       const isSetupFlow = window.location.pathname.includes('/manager/setup');
@@ -233,8 +235,7 @@ export default function StripeConnectSetup() {
       window.open(url, '_blank');
     },
     onError: (error: Error) => {
-      toast({
-        title: 'Error',
+      toast({ title: mt("error"),
         description: error.message,
         variant: 'destructive',
       });
@@ -253,7 +254,7 @@ export default function StripeConnectSetup() {
   // Also handles onboarding redirect if not complete
   const getDashboardLinkMutation = useMutation({
     mutationFn: async () => {
-      if (!firebaseUser) throw new Error('Not authenticated');
+      if (!firebaseUser) throw new Error(tt("notAuthenticated"));
       const token = await auth.currentUser?.getIdToken();
       // Check if we're in the setup flow
       const isSetupFlow = window.location.pathname.includes('/manager/setup');
@@ -270,7 +271,7 @@ export default function StripeConnectSetup() {
       }
       const data = await response.json();
       if (!data.url) {
-        throw new Error('Dashboard link URL not provided');
+        throw new Error(tt("dashboardLinkNotProvided"));
       }
       // Return both URL and whether onboarding is required
       return { url: data.url, requiresOnboarding: data.requiresOnboarding || false };
@@ -282,22 +283,19 @@ export default function StripeConnectSetup() {
       window.open(data.url, '_blank', 'noopener,noreferrer');
       
       if (data.requiresOnboarding) {
-        toast({
-          title: 'Opening Stripe Setup',
-          description: 'Complete your Stripe Connect setup to start receiving payments.',
+        toast({ title: mt("openingStripeSetup"),
+          description: mt("completeYourStripeConnectSetupToStartReceivingPayments"),
         });
         // Refresh user profile to update onboarding status after completion
         queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
       } else {
-        toast({
-          title: 'Opening Dashboard',
-          description: 'Your Stripe Connected Account Dashboard is opening in a new tab.',
+        toast({ title: mt("openingDashboard"),
+          description: mt("yourStripeConnectedAccountDashboardIsOpeningInANewTab"),
         });
       }
     },
     onError: (error: Error) => {
-      toast({
-        title: 'Error',
+      toast({ title: mt("error"),
         description: error.message || 'Failed to open Stripe. Please try again.',
         variant: 'destructive',
       });
@@ -306,7 +304,7 @@ export default function StripeConnectSetup() {
 
   const checkStatusMutation = useMutation({
     mutationFn: async () => {
-      if (!firebaseUser) throw new Error('Not authenticated');
+      if (!firebaseUser) throw new Error(tt("notAuthenticated"));
       const token = await auth.currentUser?.getIdToken();
       const response = await fetch('/api/manager/stripe-connect/sync', {
         method: 'POST',
@@ -315,7 +313,7 @@ export default function StripeConnectSetup() {
           'Content-Type': 'application/json',
         },
       });
-      if (!response.ok) throw new Error('Failed to sync status');
+      if (!response.ok) throw new Error(tt("failedToSyncStatus"));
       return response.json();
     },
     onSuccess: (data) => {
@@ -327,26 +325,22 @@ export default function StripeConnectSetup() {
       // Don't rely on status field alone as it can be misleading
       const isFullyReady = data.details?.chargesEnabled === true && data.details?.payoutsEnabled === true;
       if (isFullyReady) {
-        toast({
-          title: "Setup Complete",
-          description: "Your Stripe account is now fully connected and ready to receive payments.",
+        toast({ title: mt("setupComplete"),
+          description: mt("yourStripeAccountIsNowFullyConnectedAndReadyToReceivePayment"),
         });
       } else if (data.details?.detailsSubmitted) {
-        toast({
-          title: "Verification Pending",
-          description: "Your details have been submitted. Stripe is verifying your identity - this may take a few minutes.",
+        toast({ title: mt("verificationPending"),
+          description: mt("yourDetailsHaveBeenSubmittedStripeIsVerifyingYourIdentityThi"),
         });
       } else {
-         toast({
-          title: "Setup Incomplete",
-          description: "Please complete all required steps in Stripe to start receiving payments.",
+         toast({ title: mt("setupIncomplete"),
+          description: mt("pleaseCompleteAllRequiredStepsInStripeToStartReceivingPaymen"),
           variant: "destructive"
         });
       }
     },
     onError: (error: Error) => {
-      toast({
-        title: "Sync Failed",
+      toast({ title: mt("syncFailed"),
         description: error.message,
         variant: "destructive"
       });
@@ -356,6 +350,22 @@ export default function StripeConnectSetup() {
   const handleAccessDashboard = () => {
     getDashboardLinkMutation.mutate();
   };
+
+  // Managers need to know up front that Stripe's processing fee comes out of each
+  // booking before the transfer lands in their account (see stripe-transfer-service).
+  const payoutFeeNote = (
+    <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 px-3 py-2.5 space-y-1">
+      <p className="text-xs font-medium text-slate-700 dark:text-slate-200">How payouts work</p>
+      <p className="text-xs text-slate-500 dark:text-slate-400">
+        Stripe's payment-processing fee is deducted from each booking before the
+        transfer reaches your Stripe account, so your payout is your rate plus the HST
+        you charge, minus that fee.
+        {serviceFeePercentage
+          ? ` The Local Cooks service fee (${serviceFeePercentage}%) is paid by the chef on top of your rate — it is not taken from your payout.`
+          : ""}
+      </p>
+    </div>
+  );
 
   if (isLoading) {
     return (
@@ -379,8 +389,8 @@ export default function StripeConnectSetup() {
               <CreditCard className="h-5 w-5 text-slate-600 dark:text-slate-400" />
             </div>
             <div>
-              <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Connect Payments</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Receive payments directly to your bank</p>
+              <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{mt("connectPayments")}</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400">{mt("receivePaymentsDirectlyToYourBank")}</p>
             </div>
           </div>
           <img src="/stripe-logo.png" alt="Stripe" className="h-6" />
@@ -393,19 +403,16 @@ export default function StripeConnectSetup() {
         >
           {createAccountMutation.isPending ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Creating Account...
-            </>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />{mt("creatingAccount")}</>
           ) : (
             <>
-              <CreditCard className="mr-2 h-4 w-4" />
-              Connect with Stripe
-            </>
+              <CreditCard className="mr-2 h-4 w-4" />{mt("connectWithStripe")}</>
           )}
         </Button>
         <p className="text-xs text-slate-400 text-center">
           Secure setup opens in a new tab (~5 min)
         </p>
+        {payoutFeeNote}
       </div>
     );
   }
@@ -423,8 +430,8 @@ export default function StripeConnectSetup() {
                 <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
               </div>
               <div>
-                <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Payments Connected</h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400">Ready to receive payments</p>
+                <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{mt("paymentsConnected")}</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400">{mt("readyToReceivePayments")}</p>
               </div>
             </div>
             <img src="/stripe-logo.png" alt="Stripe" className="h-6" />
@@ -438,16 +445,13 @@ export default function StripeConnectSetup() {
           >
             {getDashboardLinkMutation.isPending ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Opening...
-              </>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />{mt("opening")}</>
             ) : (
               <>
-                <ExternalLink className="mr-2 h-4 w-4" />
-                View Stripe Dashboard
-              </>
+                <ExternalLink className="mr-2 h-4 w-4" />{mt("viewStripeDashboard")}</>
             )}
           </Button>
+          {payoutFeeNote}
         </div>
       );
     } else {
@@ -587,18 +591,14 @@ export default function StripeConnectSetup() {
           {stage === 'pending_verification' && (
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
               <Clock className="h-4 w-4 text-blue-500 animate-pulse" />
-              <p className="text-xs text-blue-700 dark:text-blue-300">
-                Stripe is reviewing your submitted information. This usually takes a few minutes.
-              </p>
+              <p className="text-xs text-blue-700 dark:text-blue-300">{mt("stripeIsReviewingYourSubmittedInformationThisUsuallyTakesAFe")}</p>
             </div>
           )}
 
           {stage === 'past_due' && (
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800">
               <ShieldAlert className="h-4 w-4 text-red-500" />
-              <p className="text-xs text-red-700 dark:text-red-300">
-                Some required information is overdue. Please update it to keep your account active.
-              </p>
+              <p className="text-xs text-red-700 dark:text-red-300">{mt("someRequiredInformationIsOverduePleaseUpdateItToKeepYourAcco")}</p>
             </div>
           )}
 
@@ -632,9 +632,7 @@ export default function StripeConnectSetup() {
           >
             {checkStatusMutation.isPending ? (
               <>
-                <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-                Checking...
-              </>
+                <Loader2 className="mr-2 h-3 w-3 animate-spin" />{mt("checking")}</>
             ) : (
               "Already completed? Refresh status"
             )}

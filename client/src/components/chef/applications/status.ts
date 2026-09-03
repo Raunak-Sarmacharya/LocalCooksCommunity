@@ -46,7 +46,7 @@ export function applicationStatusVariant(status: string): StatusVariant {
     case "pending":
     case "inreview":
     case "new":
-      return "outline";
+      return "warning";
     case "rejected":
       return "destructive";
     default:
@@ -102,7 +102,7 @@ export function getKitchenDisplayStatus(
       tone: "danger",
       step: Math.min(tier, 3),
       stepCaption: tr("kdNotApproved", "Not approved"),
-      actionLabel: tr("kdFindAnotherKitchen", "Find another kitchen"),
+      actionLabel: tr("kdApplyAgain", "Apply again"),
       actionKind: "discover",
     };
   }
@@ -113,18 +113,31 @@ export function getKitchenDisplayStatus(
       tone: "neutral",
       step: 0,
       stepCaption: tr("kdCancelled", "Cancelled"),
-      actionLabel: tr("kdFindAKitchen", "Find a kitchen"),
+      actionLabel: tr("kdApplyAgain", "Apply again"),
       actionKind: "discover",
     };
   }
 
   if (status === "inreview" || status === "pending") {
+    // Legacy/buggy path: admin approval used to leave status=inReview while bumping tier ≥ 2.
+    // Treat that as Step 2 unlocked so chefs aren't stuck behind a "waiting" screen.
+    if (tier >= 2 && !step2Submitted) {
+      return {
+        label: tr("ksActionNeeded", "Action needed"),
+        tone: "warning",
+        step: 2,
+        stepCaption: tr("kdCompleteStep2", "Complete Step 2 of 3"),
+        actionLabel: tr("kdContinue", "Continue"),
+        actionKind: "complete-step",
+      };
+    }
+
     return {
       label: tr("kdInReview", "In review"),
       tone: "progress",
       step: 1,
-      stepCaption: tr("kdStep1Of3", "Step 1 of 3"),
-      actionLabel: null,
+      stepCaption: tr("kdStep1Of3", "Request to apply"),
+      actionLabel: tr("kdApplicationInProgress", "Application in progress"),
       actionKind: "wait",
     };
   }
@@ -146,7 +159,7 @@ export function getKitchenDisplayStatus(
       tone: "progress",
       step: 2,
       stepCaption: tr("kdStep2Of3Submitted", "Step 2 of 3 · submitted"),
-      actionLabel: null,
+      actionLabel: tr("kdApplicationInProgress", "Application in progress"),
       actionKind: "wait",
     };
   }
@@ -164,7 +177,7 @@ export function getKitchenDisplayStatus(
 
   if (status === "approved") {
     return {
-      label: tr("kdStep1Approved", "Step 1 approved"),
+      label: tr("kdStep1Approved", "Request to apply approved"),
       tone: "progress",
       step: 1,
       stepCaption: tr("kdContinueToStep2", "Continue to Step 2"),
@@ -178,7 +191,7 @@ export function getKitchenDisplayStatus(
     tone: "neutral",
     step: 0,
     stepCaption: "",
-    actionLabel: null,
+    actionLabel: tr("kdApplicationInProgress", "Application in progress"),
     actionKind: "wait",
   };
 }

@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { auth } from "@/lib/firebase";
 import { logger } from "@/lib/logger";
+import { ct } from "@/i18n/chef-ns";
 
 interface PendingPenalty {
   overstayId: number;
@@ -48,7 +49,7 @@ export function useChefResolutionCenter() {
         headers,
         credentials: "include",
       });
-      if (!response.ok) throw new Error("Failed to fetch penalties");
+      if (!response.ok) throw new Error(ct("failedToFetchPenalties"));
       return response.json();
     },
     refetchInterval: 30000,

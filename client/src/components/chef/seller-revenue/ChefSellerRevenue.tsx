@@ -107,6 +107,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { ChefPageHeader, QuietNotice, StatTile } from "@/components/chef/ui";
 import { TruncatedText } from "@/components/common/TruncatedText";
+import { tt } from "@/i18n/common-ns";
+import { ct } from "@/i18n/chef-ns";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // HELPERS
@@ -726,10 +728,10 @@ function OrderDetailSheet({
                 try {
                   setIsDownloading(true);
                   const d = parsePhpDateToDate(order.order_time);
-                  if (!d) throw new Error("Invalid order date");
+                  if (!d) throw new Error(tt("invalidOrderDate"));
                   
                   const currentFirebaseUser = auth.currentUser;
-                  if (!currentFirebaseUser) throw new Error("Not authenticated");
+                  if (!currentFirebaseUser) throw new Error(tt("notAuthenticated"));
                   const token = await currentFirebaseUser.getIdToken();
                   
                   const dateParam = `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
@@ -1232,7 +1234,7 @@ function ExportReportModal({ orders }: { orders: SellerOrder[] }) {
     try {
       setIsDownloading(true);
       const token = await auth.currentUser?.getIdToken();
-      if (!token) throw new Error("Not authenticated");
+      if (!token) throw new Error(tt("notAuthenticated"));
       
       const response = await fetch(`/api/chef/seller/reports/export?period=custom&format=${format}&startDate=${startDate}&endDate=${endDate}`, {
         headers: {
@@ -1241,7 +1243,7 @@ function ExportReportModal({ orders }: { orders: SellerOrder[] }) {
       });
       
       if (!response.ok) {
-        throw new Error("Failed to download report");
+        throw new Error(ct("failedToDownloadReport"));
       }
       
       const blob = await response.blob();
@@ -1262,7 +1264,7 @@ function ExportReportModal({ orders }: { orders: SellerOrder[] }) {
     } catch (error) {
       console.error("Download error:", error);
       toast({
-        title: "Download Failed",
+        title: tt("downloadFailed"),
         description: (error as Error).message,
         variant: "destructive",
       });

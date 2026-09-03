@@ -110,6 +110,19 @@ export function formatTime(time: string, locale: string = DEFAULT_LOCALE): strin
 }
 
 /**
+ * One kitchen session = 1 hour. Formats "10:00" → "10:00 AM – 11:00 AM".
+ */
+export function formatHourSlotRange(slotStartTime: string, locale: string = DEFAULT_LOCALE): string {
+    const [hoursRaw, minutesRaw] = slotStartTime.split(":");
+    const hours = parseInt(hoursRaw, 10);
+    const minutes = parseInt(minutesRaw || "0", 10);
+    if (Number.isNaN(hours)) return slotStartTime;
+    const endHour = hours + 1;
+    const endTimeStr = `${String(endHour).padStart(2, "0")}:${String(minutes || 0).padStart(2, "0")}`;
+    return `${formatTime(slotStartTime, locale)} – ${formatTime(endTimeStr, locale)}`;
+}
+
+/**
  * Format percentage with sign
  * @param value - Percentage value
  * @param decimals - Number of decimal places

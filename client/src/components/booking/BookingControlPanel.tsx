@@ -14,6 +14,8 @@ import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { format, differenceInDays, startOfToday, isToday, isTomorrow, isThisWeek, startOfDay, parseISO, startOfWeek, addWeeks, isSameWeek } from "date-fns";
 import { useTranslation } from "react-i18next";
+import { tt } from "@/i18n/common-ns";
+import { bt } from "@/i18n/booking-ns";
 
 interface Booking {
   id: number;
@@ -72,6 +74,19 @@ export default function BookingControlPanel({
   kitchens = [],
 }: BookingControlPanelProps) {
   const { t, i18n } = useTranslation("chef");
+
+  const translateGroupLabel = (groupKey: string): string => {
+    const map: Record<string, string> = {
+      "All Bookings": t("bkAllBookings"),
+      Today: t("bkGroupToday"),
+      Tomorrow: t("bkGroupTomorrow"),
+      "This Week": t("bkGroupThisWeek"),
+      "Next Week": t("bkGroupNextWeek"),
+      Past: t("bkGroupPast"),
+      Other: t("bkGroupOther"),
+    };
+    return map[groupKey] ?? groupKey;
+  };
   const [statusFilter, setStatusFilter] = useState<FilterType>("all");
   const [viewType, setViewType] = useState<ViewType>("upcoming");
   const [expandedBookings, setExpandedBookings] = useState<Set<number>>(new Set());
@@ -106,7 +121,7 @@ export default function BookingControlPanel({
         headers,
         credentials: 'include',
       });
-      if (!response.ok) throw new Error('Failed to fetch storage bookings');
+      if (!response.ok) throw new Error(tt("failedToFetchStorageBookings"));
       return response.json();
     },
   });
@@ -271,7 +286,7 @@ export default function BookingControlPanel({
       filteredBookings.forEach((booking) => {
         const kitchen = kitchens.find((k) => k.id === booking.kitchenId);
         const kitchenName = kitchen?.name || booking.kitchenName || `Kitchen #${booking.kitchenId}`;
-        const locationName = kitchen?.locationName || booking.locationName || "Unknown Location";
+        const locationName = kitchen?.locationName || booking.locationName || t("bkUnknownLocation");
         const key = `${kitchenName} - ${locationName}`;
         if (!groups[key]) {
           groups[key] = [];
@@ -371,7 +386,7 @@ export default function BookingControlPanel({
       
       if (isNaN(date.getTime())) {
         logger.warn('Invalid date string:', dateStr);
-        return 'Invalid Date';
+        return t("bkInvalidDate");
       }
       
       return date.toLocaleDateString("en-US", {
@@ -395,7 +410,7 @@ export default function BookingControlPanel({
       
       if (isNaN(date.getTime())) {
         logger.warn('Invalid date/time combination:', dateStr, timeStr);
-        return 'Invalid Date';
+        return t("bkInvalidDate");
       }
       
       return date.toLocaleString("en-US", {
@@ -418,14 +433,14 @@ export default function BookingControlPanel({
         text: "text-yellow-800",
         border: "border-yellow-300",
         icon: <Clock className="h-3 w-3" />,
-        label: "Pending",
+        label: t("bkStatusPendingLabel"),
       },
       confirmed: {
         bg: "bg-green-100",
         text: "text-green-800",
         border: "border-green-300",
         icon: <CheckCircle className="h-3 w-3" />,
-        label: "Confirmed",
+        label: t("bkStatusConfirmedLabel"),
       },
       cancelled: {
         bg: "bg-red-100",
@@ -466,8 +481,8 @@ export default function BookingControlPanel({
       
       if (!currentUser) {
         logger.error('No current user found for invoice download');
-        toast.error("Authentication Required", {
-          description: "Please log in to download invoice"
+        toast.error(tt("authenticationRequired"), {
+          description: bt("logInToDownloadInvoice")
         });
         setDownloadingInvoiceId(null);
         return;
@@ -478,8 +493,8 @@ export default function BookingControlPanel({
       
       if (!token) {
         logger.error('Failed to get Firebase token');
-        toast.error("Authentication Error", {
-          description: "Failed to get authentication token. Please try again."
+        toast.error(tt("authenticationError"), {
+          description: bt("failedToGetAuthToken")
         });
         setDownloadingInvoiceId(null);
         return;
@@ -528,7 +543,7 @@ export default function BookingControlPanel({
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/pdf')) {
         logger.error('Unexpected content type:', contentType);
-        throw new Error('Server did not return a PDF file');
+        throw new Error(tt("serverDidNotReturnPdf"));
       }
 
       // Handle PDF download
@@ -546,13 +561,13 @@ export default function BookingControlPanel({
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
 
-      toast.success("Invoice Downloaded", {
-        description: "Your invoice has been downloaded successfully!"
+      toast.success(tt("invoiceDownloaded"), {
+        description: bt("invoiceDownloadSuccessDesc")
       });
     } catch (err: any) {
       logger.error('Error downloading invoice:', err);
-      toast.error("Download Failed", {
-        description: err.message || "Failed to download invoice. Please try again."
+      toast.error(tt("downloadFailed"), {
+        description: err.message || bt("failedToDownloadInvoiceRetry")
       });
     } finally {
       setDownloadingInvoiceId(null);
@@ -568,8 +583,8 @@ export default function BookingControlPanel({
       const bookingDateTime = createBookingDateTime(dateStr, startTime, timezone);
 
       if (isNaN(bookingDateTime.getTime())) {
-        toast.error("Error", {
-          description: "Invalid booking date format."
+        toast.error(tt("errorTitle"), {
+          description: bt("invalidBookingDateFormat")
         });
         return;
       }
@@ -584,8 +599,8 @@ export default function BookingControlPanel({
 
       // Don't allow cancellation if booking time has passed
       if (hoursUntilBooking < 0) {
-        toast.error("Cannot Cancel", {
-          description: "This booking has already started or passed. Cancellation is no longer available."
+        toast.error(tt("cannotCancel"), {
+          description: bt("cannotCancelPastBooking")
         });
         return;
       }
@@ -593,19 +608,19 @@ export default function BookingControlPanel({
       // Only apply cancellation policy to future bookings
       // Past bookings cannot be cancelled - only upcoming bookings outside cancellation window can be cancelled
       if (hoursUntilBooking >= 0 && hoursUntilBooking < cancellationHours) {
-        toast.error("Cancellation Policy", {
+        toast.error(tt("cancellationPolicy"), {
           description: policyMessage
         });
         return;
       }
 
-      if (window.confirm("Are you sure you want to cancel this booking? This action cannot be undone.")) {
+      if (window.confirm(bt("confirmCancelBooking"))) {
         onCancelBooking(bookingId);
       }
     } catch (error) {
       logger.error('Error in handleCancel:', error);
-      toast.error("Error", {
-        description: "Failed to process cancellation. Please try again."
+      toast.error(tt("errorTitle"), {
+        description: bt("failedToProcessCancellation")
       });
     }
   };
@@ -747,7 +762,7 @@ export default function BookingControlPanel({
                   <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200 py-2 px-3 -mx-2">
                     <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
                       <Calendar className="h-4 w-4" />
-                      {groupKey}
+                      {translateGroupLabel(groupKey)}
                       <span className="text-xs font-normal text-gray-500 ml-1">
                         ({groupBookings.length})
                       </span>
@@ -886,8 +901,8 @@ export default function BookingControlPanel({
                           }}
                           disabled={downloadingInvoiceId === booking.id}
                           className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          aria-label="Download invoice"
-                          title="Download invoice"
+                          aria-label={tt("downloadInvoice")}
+                          title={tt("downloadInvoice")}
                         >
                           {downloadingInvoiceId === booking.id ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
@@ -903,8 +918,8 @@ export default function BookingControlPanel({
                             handleCancel(booking.id, booking.bookingDate, booking.startTime, booking);
                           }}
                           className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          aria-label="Cancel booking"
-                          title="Cancel booking"
+                          aria-label={tt("cancelBooking")}
+                          title={tt("cancelBooking")}
                         >
                           <X className="h-4 w-4" />
                         </button>

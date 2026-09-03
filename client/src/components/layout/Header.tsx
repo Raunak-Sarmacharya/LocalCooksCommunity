@@ -14,9 +14,10 @@ import {
 import { Building2, Check, ChevronDown, CookingPot, GraduationCap, LogOut, Menu, User, Warehouse, X } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { getSubdomainFromHostname } from "@shared/subdomain-utils";
+import { getSubdomainFromHostname, getSubdomainOriginForEnvironment } from "@shared/subdomain-utils";
 import { parseLocationLocale } from "@/i18n/routing";
 import { useTranslation } from "react-i18next";
+import { cn } from "@/lib/utils";
 
 // Helper to check if an application is active (not cancelled, rejected)
 const isApplicationActive = (app: Application) => {
@@ -29,7 +30,7 @@ const hasActiveApplication = (applications?: Application[]) => {
   return applications.some(isApplicationActive);
 };
 
-export default function Header() {
+export default function Header({ position = "fixed" }: { position?: "fixed" | "static" }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [location, setLocation] = useLocation();
   const firebaseAuth = useFirebaseAuth();
@@ -49,25 +50,19 @@ export default function Header() {
   }, [currentSubdomain]);
 
   // Services: cross-subdomain audience links (full URLs — subdomain hops are hard navigations)
-  // Derive sibling subdomains from the current origin so preview/staging environments keep working.
+  // Preview → https://dev-chef.localcooks.ca ; production → https://chef.localcooks.ca
   const serviceUrls = useMemo(() => {
-    try {
-      const url = new URL(window.location.origin);
-      let labels = url.hostname.split('.');
-      // Strip a leading "www" so www.localcooks.ca maps to chef.localcooks.ca
-      if (labels[0] === 'www') labels = labels.slice(1);
-      const isLocalhost = labels[labels.length - 1] === 'localhost';
-      const baseLabelCount = isLocalhost ? 1 : 2; // "localhost" vs "localcooks.ca"
-      const apex = labels.length > baseLabelCount ? labels.slice(1).join('.') : labels.join('.');
-      // Keep the port for local dev (e.g. localhost:5001 → chef.localhost:5001)
-      const port = url.port ? `:${url.port}` : '';
-      return {
-        chef: `${url.protocol}//chef.${apex}${port}`,
-        kitchen: `${url.protocol}//kitchen.${apex}${port}`,
-      };
-    } catch {
-      return { chef: 'https://chef.localcooks.ca', kitchen: 'https://kitchen.localcooks.ca' };
-    }
+    const hostname =
+      typeof window !== "undefined" ? window.location.hostname : "localcooks.ca";
+    const opts = {
+      port: typeof window !== "undefined" ? window.location.port : "",
+      protocol: typeof window !== "undefined" ? window.location.protocol : "https:",
+      vercelEnv: import.meta.env.VITE_VERCEL_ENV as string | undefined,
+    };
+    return {
+      chef: getSubdomainOriginForEnvironment("chef", hostname, opts),
+      kitchen: getSubdomainOriginForEnvironment("kitchen", hostname, opts),
+    };
   }, []);
 
   // Use Firebase auth (session auth removed)
@@ -274,8 +269,13 @@ export default function Header() {
   };
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 mobile-safe-area transition-all duration-300 shadow-md border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex justify-between items-center">
+    <header
+      className={cn(
+        "z-50 mobile-safe-area transition-all duration-300 shadow-md border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60",
+        position === "fixed" ? "fixed top-0 left-0 right-0" : "relative"
+      )}
+    >
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 h-[var(--header-height)] flex justify-between items-center">
         <Link href="/" className="flex items-center gap-2 sm:gap-3 md:gap-4 transition-all duration-300 hover:scale-[1.02] group">
           <Logo variant="brand" className="h-8 sm:h-10 md:h-12 lg:h-14 w-auto transition-transform duration-300 group-hover:scale-110 flex-shrink-0" />
           <div className="flex flex-col justify-center min-w-0">

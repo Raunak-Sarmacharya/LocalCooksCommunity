@@ -48,15 +48,13 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin, onRegist
 
   const onSubmit = async (data: RegisterFormData) => {
     // Note: do NOT call setHasAttemptedLogin(true) here at the start.
-    // The signup flow signs the user out at the end, which causes auth-page.tsx
-    // to unmount RegisterForm via a loading spinner, losing local state.
-    // We set it only on error (or not at all for registration).
+    // The signup flow signs the user out at the end, which can remount auth UI
+    // via a loading spinner and wipe local state. Set it only on error.
     setFormError(null);
 
     // Signal parent that registration is starting so it can block userMeta navigation.
-    // signup() creates the Firebase user (which triggers onAuthStateChanged in auth-page.tsx)
-    // BEFORE it signs the user out. Without this guard, auth-page.tsx would navigate to
-    // /accept-terms because the new user has no terms accepted yet.
+    // signup() creates the Firebase user (onAuthStateChanged) BEFORE it signs them out;
+    // without this guard the parent would navigate to /accept-terms too early.
     onRegistrationStart?.();
 
     try {

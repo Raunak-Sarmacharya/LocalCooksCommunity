@@ -1,5 +1,9 @@
 import { formatCurrency, formatDate } from "@/lib/formatters";
 import type { PaymentStatus, Transaction } from "./types";
+import {
+  buildKitchenPayoutStatementBreakdown,
+  aggregateKitchenPayoutTotals,
+} from "@shared/booking-pricing-breakdown";
 
 const REVENUE_ELIGIBLE_STATUSES = new Set<PaymentStatus>([
     "paid",
@@ -23,24 +27,36 @@ export function isRevenueEligibleTransaction(transaction: Pick<Transaction, "pay
         && !REVENUE_EXCLUDED_BOOKING_STATUSES.has(String(transaction.status || "").toLowerCase());
 }
 
+/**
+ * Manager-facing breakdown.
+ *
+ * Money model (chef pays → platform → manager):
+ *   chefTotal = subtotal + tax + serviceFee
+ *   platform keeps serviceFee
+ *   manager keeps tax; Stripe fee is deducted from manager
+ *   managerNet = subtotal + tax − stripeFee  (= managerRevenue when synced)
+ *
+ * `transaction.totalPrice` is the manager-facing booking subtotal (not chef charge).
+ */
 export function getTransactionRevenueBreakdown(transaction: Transaction) {
     const totalPrice = transaction.totalPrice || 0;
     const refundAmount = transaction.refundAmount || 0;
     const taxRate = transaction.taxRatePercent || 0;
     const managerRevenue = transaction.managerRevenue || 0;
+    const serviceFee = transaction.serviceFee || 0;
 
-    const taxAmount = taxRate > 0
-        ? totalPrice - Math.round(totalPrice / (1 + taxRate / 100))
+    const taxAmount = transaction.taxAmount > 0
+        ? transaction.taxAmount
+        : (taxRate > 0 ? Math.round((totalPrice * taxRate) / 100) : 0);
+
+    const stripeFee = transaction.stripeFee > 0
+        ? transaction.stripeFee
         : 0;
 
-    let stripeFee = transaction.stripeFee || 0;
-    if (stripeFee === 0 && managerRevenue > 0 && totalPrice > 0) {
-        stripeFee = Math.max(0, totalPrice - taxAmount - managerRevenue);
-    }
-
+    // Prefer Stripe-synced payout; else subtotal + tax − stripe (managers keep tax).
     const grossNetRevenue = managerRevenue > 0
         ? managerRevenue
-        : totalPrice - taxAmount - stripeFee;
+        : Math.max(0, totalPrice + taxAmount - stripeFee);
 
     const isRevenueEligible = isRevenueEligibleTransaction(transaction);
     const netRevenue = isRevenueEligible
@@ -51,6 +67,7 @@ export function getTransactionRevenueBreakdown(transaction: Transaction) {
         isRevenueEligible,
         totalPrice,
         taxAmount,
+        serviceFee,
         stripeFee,
         refundAmount,
         grossNetRevenue,
@@ -58,11 +75,33 @@ export function getTransactionRevenueBreakdown(transaction: Transaction) {
     };
 }
 
+/** Build kitchen payout statement row from a revenue transaction */
+export function transactionToPayoutBreakdown(transaction: Transaction) {
+    const breakdown = getTransactionRevenueBreakdown(transaction);
+    const subtotal = breakdown.totalPrice;
+    const platformFee = breakdown.serviceFee;
+    return buildKitchenPayoutStatementBreakdown({
+        kitchenBaseSubtotalCents: subtotal,
+        kitchenHstRatePercent: transaction.taxRatePercent,
+        platformFeeRate: subtotal > 0 ? platformFee / subtotal : 0,
+        platformFeeAmountCents: platformFee,
+        paymentProcessorFeeCents: breakdown.stripeFee,
+        kitchenNetPayoutCents: breakdown.netRevenue,
+        refundAmountCents: breakdown.refundAmount,
+        showPaymentProcessorFee: breakdown.stripeFee > 0,
+    });
+}
+
+export function aggregateTransactionPayoutTotals(transactions: Transaction[]) {
+    const eligible = transactions.filter(isRevenueEligibleTransaction);
+    return aggregateKitchenPayoutTotals(eligible.map(transactionToPayoutBreakdown));
+}
+
 export function transactionsToManagerRevenueCSV(
     transactions: Transaction[],
     includeHeaders: boolean = true
 ): string {
-    const headers = ["Date", "Chef", "Kitchen", "Location", "Total", "Tax", "Tax Rate", "Stripe Fee", "Refunded", "Net Revenue", "Status"];
+    const headers = ["Date", "Chef", "Kitchen", "Location", "Subtotal", "Tax", "Tax Rate", "Service Fee", "Stripe Fee", "Refunded", "Net Revenue", "Status"];
 
     const rows = transactions.map(transaction => {
         const breakdown = getTransactionRevenueBreakdown(transaction);
@@ -75,6 +114,7 @@ export function transactionsToManagerRevenueCSV(
             formatCurrency(breakdown.totalPrice),
             formatCurrency(breakdown.taxAmount),
             `${transaction.taxRatePercent ?? 0}%`,
+            formatCurrency(breakdown.serviceFee),
             formatCurrency(breakdown.stripeFee),
             breakdown.refundAmount > 0 ? `-${formatCurrency(breakdown.refundAmount)}` : "",
             formatCurrency(breakdown.netRevenue),

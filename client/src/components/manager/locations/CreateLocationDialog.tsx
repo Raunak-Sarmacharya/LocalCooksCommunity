@@ -1,5 +1,7 @@
 
 import { useState } from "react";
+import { mt } from "@/i18n/manager";
+import { tt } from "@/i18n/common-ns";
 import { useQueryClient } from "@tanstack/react-query";
 import { FileText, Loader2, Plus, Upload, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -42,6 +44,7 @@ export function CreateLocationDialog({
     onLocationCreated,
     hasExistingLocations
 }: CreateLocationDialogProps) {
+  
     const { toast } = useToast();
     const queryClient = useQueryClient();
 
@@ -71,15 +74,14 @@ export function CreateLocationDialog({
         setIsCreating(true);
         try {
             const currentFirebaseUser = auth.currentUser;
-            if (!currentFirebaseUser) throw new Error("Firebase user not available");
+            if (!currentFirebaseUser) throw new Error(tt("firebaseUserNotAvailable"));
 
             const token = await currentFirebaseUser.getIdToken();
 
             // License is now required, validation happens before this block/API call
             if (!licenseFile) {
-                toast({
-                    title: "License Required",
-                    description: "Please upload a kitchen license to create a location.",
+                toast({ title: mt("licenseRequired"),
+                    description: mt("pleaseUploadAKitchenLicenseToCreateALocation"),
                     variant: "destructive",
                 });
                 setIsCreating(false);
@@ -88,9 +90,8 @@ export function CreateLocationDialog({
 
             // Terms & Policies are also required
             if (!termsFile) {
-                toast({
-                    title: "Terms & Policies Required",
-                    description: "Please upload your kitchen terms and policies document.",
+                toast({ title: mt("termsPoliciesRequired"),
+                    description: mt("pleaseUploadYourKitchenTermsAndPoliciesDocument"),
                     variant: "destructive",
                 });
                 setIsCreating(false);
@@ -115,7 +116,7 @@ export function CreateLocationDialog({
 
             if (!response.ok) {
                 const error = await response.json();
-                throw new Error(error.error || "Failed to create location");
+                throw new Error(error.error || tt("failedToCreateLocation"));
             }
 
             const newLocation = await response.json();
@@ -134,7 +135,7 @@ export function CreateLocationDialog({
                 body: formData,
             });
 
-            if (!uploadResponse.ok) throw new Error("Failed to upload license file"); // or handle gracefully but we require it
+            if (!uploadResponse.ok) throw new Error(tt("failedToUploadLicense")); // or handle gracefully but we require it
 
             const uploadResult = await uploadResponse.json();
             const licenseUrl = uploadResult.url;
@@ -154,7 +155,7 @@ export function CreateLocationDialog({
                 body: termsFormData,
             });
 
-            if (!termsUploadResponse.ok) throw new Error("Failed to upload terms file");
+            if (!termsUploadResponse.ok) throw new Error(tt("failedToUploadTerms"));
 
             const termsUploadResult = await termsUploadResponse.json();
             const termsUrl = termsUploadResult.url;
@@ -177,8 +178,7 @@ export function CreateLocationDialog({
 
             queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
 
-            toast({
-                title: "Location Created",
+            toast({ title: mt("locationCreated"),
                 description: `${newLocation.name} has been created. License and terms submitted.`,
             });
 
@@ -187,9 +187,8 @@ export function CreateLocationDialog({
             resetForm();
 
         } catch (error: any) {
-            toast({
-                title: "Error",
-                description: error.message || "Failed to create location",
+            toast({ title: mt("error"),
+                description: error.message || tt("failedToCreateLocation"),
                 variant: "destructive",
             });
         } finally {
@@ -209,19 +208,13 @@ export function CreateLocationDialog({
                     <DialogTitle>
                         {hasExistingLocations ? 'Add New Location' : 'Create Your First Location'}
                     </DialogTitle>
-                    <DialogDescription>
-                        Enter the details for your new kitchen location.
-                    </DialogDescription>
+                    <DialogDescription>{mt("enterTheDetailsForYourNewKitchenLocation")}</DialogDescription>
                 </DialogHeader>
 
                 <Alert className="bg-amber-50 border-amber-200">
                     <AlertTitle className="text-amber-800 flex items-center gap-2">
-                        <FileText className="h-4 w-4" />
-                        Required Documents
-                    </AlertTitle>
-                    <AlertDescription className="text-amber-700 text-xs mt-1">
-                        A valid kitchen license and your kitchen terms & policies document are required to create a location.
-                    </AlertDescription>
+                        <FileText className="h-4 w-4" />{mt("requiredDocuments")}</AlertTitle>
+                    <AlertDescription className="text-amber-700 text-xs mt-1">{mt("aValidKitchenLicenseAndYourKitchenTermsPoliciesDocumentAreRe")}</AlertDescription>
                 </Alert>
 
                 <Form {...form}>
@@ -231,9 +224,9 @@ export function CreateLocationDialog({
                             name="name"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Location Name <span className="text-destructive">*</span></FormLabel>
+                                    <FormLabel>{mt("locationName")}<span className="text-destructive">*</span></FormLabel>
                                     <FormControl>
-                                        <Input placeholder="e.g., Downtown Kitchen" {...field} />
+                                        <Input placeholder={mt("eGDowntownKitchen2")} {...field} />
                                     </FormControl>
                                     <FormMessage />
                                 </FormItem>
@@ -245,9 +238,9 @@ export function CreateLocationDialog({
                             name="address"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Address <span className="text-destructive">*</span></FormLabel>
+                                    <FormLabel>{mt("address")}<span className="text-destructive">*</span></FormLabel>
                                     <FormControl>
-                                        <Input placeholder="e.g., 123 Main St, St. John's, NL" {...field} />
+                                        <Input placeholder={mt("placeholderAddressExample")} {...field} />
                                     </FormControl>
                                     <FormMessage />
                                 </FormItem>
@@ -260,9 +253,9 @@ export function CreateLocationDialog({
                                 name="notificationEmail"
                                 render={({ field }) => (
                                     <FormItem>
-                                        <FormLabel>Notification Email</FormLabel>
+                                        <FormLabel>{mt("notificationEmail")}</FormLabel>
                                         <FormControl>
-                                            <Input type="email" placeholder="email@example.com" {...field} />
+                                            <Input type="email" placeholder={mt("emailExampleCom")} {...field} />
                                         </FormControl>
                                         <FormMessage />
                                     </FormItem>
@@ -273,7 +266,7 @@ export function CreateLocationDialog({
                                 name="notificationPhone"
                                 render={({ field }) => (
                                     <FormItem>
-                                        <FormLabel>Notification Phone</FormLabel>
+                                        <FormLabel>{mt("notificationPhone")}</FormLabel>
                                         <FormControl>
                                             <Input type="tel" placeholder="(709) 555-1234" {...field} />
                                         </FormControl>
@@ -284,7 +277,7 @@ export function CreateLocationDialog({
                         </div>
 
                         <div className="space-y-2">
-                            <FormLabel>Kitchen License <span className="text-destructive">*</span></FormLabel>
+                            <FormLabel>{mt("kitchenLicense")}<span className="text-destructive">*</span></FormLabel>
                             <div
                                 className={cn(
                                     "border-2 border-dashed border-border rounded-lg p-4 hover:border-primary/50 transition-colors bg-muted/10",
@@ -316,9 +309,8 @@ export function CreateLocationDialog({
                                                 const file = e.target.files?.[0];
                                                 if (file) {
                                                     if (file.size > 10 * 1024 * 1024) {
-                                                        toast({
-                                                            title: "File Too Large",
-                                                            description: "Please upload a file smaller than 10MB",
+                                                        toast({ title: mt("fileTooLarge"),
+                                                            description: mt("pleaseUploadAFileSmallerThan10MB"),
                                                             variant: "destructive",
                                                         });
                                                         return;
@@ -329,19 +321,17 @@ export function CreateLocationDialog({
                                             className="hidden"
                                         />
                                         <Upload className="h-8 w-8 text-muted-foreground" />
-                                        <span className="text-sm font-medium text-primary">Click to upload license</span>
-                                        <span className="text-xs text-muted-foreground">PDF, JPG, or PNG (max 10MB)</span>
+                                        <span className="text-sm font-medium text-primary">{mt("clickToUploadLicense")}</span>
+                                        <span className="text-xs text-muted-foreground">{mt("pDFJPGOrPNGMax10MB")}</span>
                                     </label>
                                 )}
                             </div>
-                            <p className="text-[0.8rem] text-muted-foreground">
-                                Upload a valid food establishment permit or kitchen license.
-                            </p>
+                            <p className="text-[0.8rem] text-muted-foreground">{mt("uploadAValidFoodEstablishmentPermitOrKitchenLicense")}</p>
                         </div>
 
                         {/* Kitchen Terms & Policies Upload */}
                         <div className="space-y-2">
-                            <FormLabel>Kitchen Terms & Policies <span className="text-destructive">*</span></FormLabel>
+                            <FormLabel>{mt("kitchenTermsPolicies")}<span className="text-destructive">*</span></FormLabel>
                             <div
                                 className={cn(
                                     "border-2 border-dashed border-border rounded-lg p-4 hover:border-primary/50 transition-colors bg-muted/10",
@@ -373,9 +363,8 @@ export function CreateLocationDialog({
                                                 const file = e.target.files?.[0];
                                                 if (file) {
                                                     if (file.size > 10 * 1024 * 1024) {
-                                                        toast({
-                                                            title: "File Too Large",
-                                                            description: "Please upload a file smaller than 10MB",
+                                                        toast({ title: mt("fileTooLarge"),
+                                                            description: mt("pleaseUploadAFileSmallerThan10MB"),
                                                             variant: "destructive",
                                                         });
                                                         return;
@@ -386,28 +375,20 @@ export function CreateLocationDialog({
                                             className="hidden"
                                         />
                                         <Upload className="h-8 w-8 text-muted-foreground" />
-                                        <span className="text-sm font-medium text-primary">Click to upload terms</span>
-                                        <span className="text-xs text-muted-foreground">PDF, JPG, PNG, or DOC (max 10MB)</span>
+                                        <span className="text-sm font-medium text-primary">{mt("clickToUploadTerms")}</span>
+                                        <span className="text-xs text-muted-foreground">{mt("pDFJPGPNGOrDOCMax10MB")}</span>
                                     </label>
                                 )}
                             </div>
-                            <p className="text-[0.8rem] text-muted-foreground">
-                                Upload your kitchen house rules, usage policies, and terms that chefs must agree to.
-                            </p>
+                            <p className="text-[0.8rem] text-muted-foreground">{mt("uploadYourKitchenHouseRulesUsagePoliciesAndTermsThatChefsMus")}</p>
                         </div>
 
                         <DialogFooter className="mt-6">
-                            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isCreating}>
-                                Cancel
-                            </Button>
+                            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isCreating}>{mt("cancel")}</Button>
                             <StatusButton
                                 type="submit"
                                 status={(isCreating || isUploadingLicense || isUploadingTerms) ? "loading" : "idle"}
-                                labels={{
-                                    idle: "Create Location",
-                                    loading: (isUploadingLicense || isUploadingTerms) ? "Uploading" : "Creating",
-                                    success: "Created"
-                                }}
+                                labels={{ idle: mt("createLocation"), loading: (isUploadingLicense || isUploadingTerms) ? mt("uploadingLabel") : mt("creating"), success: mt("created") }}
                             />
                         </DialogFooter>
                     </form>

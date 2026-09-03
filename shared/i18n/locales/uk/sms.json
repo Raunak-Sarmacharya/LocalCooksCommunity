@@ -1,5 +1,5 @@
 {
-  "bookingConfirm": "LocalCooks: Ваше бронювання на {{date}} підтверджено.",
-  "bookingCancel": "LocalCooks: Ваше бронювання на {{date}} скасовано.",
-  "managerNewBooking": "LocalCooks: Новий запит на бронювання на {{date}}."
+  "bookingConfirm": "LocalCooks: Ваше бронювання на {date} підтверджено.",
+  "bookingCancel": "LocalCooks: Ваше бронювання на {date} скасовано.",
+  "managerNewBooking": "LocalCooks: Новий запит на бронювання на {date}."
 }

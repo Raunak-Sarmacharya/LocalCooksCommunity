@@ -7,6 +7,7 @@ import { useKitchenBookings } from "@/hooks/use-kitchen-bookings";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { getAllConversations } from "@/services/chat-service";
+import { tt } from "@/i18n/common-ns";
 
 /**
  * Same visibility rules as the chef dashboard sidebar:
@@ -43,13 +44,13 @@ export function useChefSidebarHiddenItems(): string[] {
     queryKey: ["/api/firebase/user/me"],
     queryFn: async () => {
       const currentUser = auth.currentUser;
-      if (!currentUser) throw new Error("Not authenticated");
+      if (!currentUser) throw new Error(tt("notAuthenticated"));
       const token = await currentUser.getIdToken();
       const response = await fetch("/api/firebase/user/me", {
         headers: { Authorization: `Bearer ${token}` },
         credentials: "include",
       });
-      if (!response.ok) throw new Error("Failed to get user info");
+      if (!response.ok) throw new Error(tt("failedToGetUserInfo"));
       return response.json();
     },
     enabled: Boolean(user),

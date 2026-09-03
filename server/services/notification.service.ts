@@ -715,10 +715,10 @@ async function notifyChefApplicationApproved(data: {
     chefId: data.chefId,
     type: 'application_approved',
     priority: 'high',
-    title: isFullyApproved ? 'Application Approved!' : 'Step 1 Approved!',
+    title: isFullyApproved ? 'Application Approved!' : 'Request to apply approved!',
     message: isFullyApproved
       ? `Congratulations! Your application to ${data.kitchenName} at ${data.locationName} has been fully approved. You can now book this kitchen.`
-      : `Good news! Your Step 1 application to ${data.kitchenName} at ${data.locationName} was approved. Complete Step 2 before booking this kitchen.`,
+      : `Good news! Your request to apply to ${data.kitchenName} at ${data.locationName} was approved. Complete your kitchen documents before booking this kitchen.`,
     metadata: {
       kitchenName: data.kitchenName,
       locationName: data.locationName,

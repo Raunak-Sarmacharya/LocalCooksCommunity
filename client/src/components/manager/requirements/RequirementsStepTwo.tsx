@@ -4,6 +4,7 @@
  */
 
 import { Switch } from '@/components/ui/switch';
+import { mt } from "@/i18n/manager";
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -40,6 +41,7 @@ export function RequirementsStepTwo({
   onRequirementsChange,
   onUnsavedChange,
 }: RequirementsStepTwoProps) {
+  
   const handleToggle = (key: keyof LocationRequirements, value: boolean) => {
     onRequirementsChange({ [key]: value });
     onUnsavedChange();
@@ -70,9 +72,7 @@ export function RequirementsStepTwo({
               <FileCheck className="h-5 w-5" />
             </div>
             <div className="flex-1">
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-                Kitchen Specific Requirements
-              </h3>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{mt("kitchenSpecificRequirements")}</h3>
               <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
                 After you approve a chef's initial application, they'll need to provide these additional 
                 documents and information before they can start using your kitchen.
@@ -82,9 +82,7 @@ export function RequirementsStepTwo({
           
           <div className="mt-4 flex flex-wrap gap-2">
             <Badge variant="success">
-              <Info className="h-3 w-3 mr-1" />
-              These are collected after initial approval
-            </Badge>
+              <Info className="h-3 w-3 mr-1" />{mt("theseAreCollectedAfterInitialApproval")}</Badge>
             {enabledCount > 0 && (
               <Badge variant="outline">
                 {enabledCount} requirement{enabledCount !== 1 ? 's' : ''} enabled
@@ -98,9 +96,7 @@ export function RequirementsStepTwo({
       <div className="flex items-start gap-3 p-4 rounded-lg bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40">
         <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
         <div>
-          <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-            Compliance Requirements
-          </p>
+          <p className="text-sm font-medium text-amber-800 dark:text-amber-200">{mt("complianceRequirements")}</p>
           <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
             Check your local regulations to determine which documents are legally required. 
             Food establishment licenses and liability insurance are commonly required.
@@ -111,12 +107,8 @@ export function RequirementsStepTwo({
       {/* Built-in Fields Configuration */}
       <div className="rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
         <div className="px-5 py-4 border-b border-slate-200/80 dark:border-slate-700/80 bg-slate-50/50 dark:bg-slate-800/50">
-          <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-            Standard Coordination Requirements
-          </h4>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Enable the documentation requirements for your kitchen
-          </p>
+          <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{mt("standardCoordinationRequirements")}</h4>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{mt("enableTheDocumentationRequirementsForYourKitchen")}</p>
         </div>
 
         <Accordion type="multiple" defaultValue={['Licensing & Compliance', 'Insurance & Liability']} className="divide-y divide-slate-200/80 dark:divide-slate-700/80">
@@ -154,9 +146,7 @@ export function RequirementsStepTwo({
                                 variant="outline"
                                 className="text-[10px] px-1.5 py-0 h-4 border-warning/30 text-warning bg-warning/10"
                               >
-                                <BadgeCheck className="h-2.5 w-2.5 mr-0.5" />
-                                Recommended
-                              </Badge>
+                                <BadgeCheck className="h-2.5 w-2.5 mr-0.5" />{mt("recommended")}</Badge>
                             )}
                           </div>
                           {field.description && (
@@ -193,13 +183,9 @@ export function RequirementsStepTwo({
         <div className="px-5 py-4 border-b border-slate-200/80 dark:border-slate-700/80 bg-gradient-to-r from-emerald-50/50 to-teal-50/50 dark:from-emerald-950/30 dark:to-teal-950/30">
           <div className="flex items-center gap-2">
             <ClipboardList className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-            <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-              Custom Questions for Kitchen Applications
-            </h4>
+            <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{mt("customQuestionsForKitchenApplications")}</h4>
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Add additional documentation or information requirements
-          </p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{mt("addAdditionalDocumentationOrInformationRequirements")}</p>
         </div>
         
         <div className="p-5">

@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { mt } from "@/i18n/manager";
 import React, { useMemo, useState, useCallback } from "react";
 import { useLocation } from "wouter";
 import {
@@ -37,6 +38,7 @@ interface SetupItem {
 }
 
 export default function CompletionSummaryStep() {
+  
     const [, setLocation] = useLocation();
     const queryClient = useQueryClient();
     const [isCompletingOnboarding, setIsCompletingOnboarding] = useState(false);
@@ -61,10 +63,10 @@ export default function CompletionSummaryStep() {
         items.push({
             id: "location",
             icon: Building,
-            label: "Business Details",
+            label: mt("onboardingBusinessDetails"),
             status: selectedLocation ? 'complete' : 'incomplete',
             isRequired: true,
-            description: selectedLocation?.name || "Add your business information",
+            description: selectedLocation?.name || mt("onboardingAddBusinessInfo"),
             stepId: 'location'
         });
 
@@ -72,12 +74,12 @@ export default function CompletionSummaryStep() {
         items.push({
             id: "kitchen",
             icon: ChefHat,
-            label: "Kitchen Space",
+            label: mt("onboardingKitchenSpace"),
             status: kitchens.length > 0 ? 'complete' : 'incomplete',
             isRequired: true,
             description: kitchens.length > 0
-                ? `${kitchens.length} kitchen${kitchens.length > 1 ? 's' : ''} configured`
-                : "Set up your kitchen spaces",
+                ? mt("onboardingKitchensConfigured", { count: kitchens.length })
+                : mt("onboardingSetupKitchenSpaces"),
             stepId: 'create-kitchen'
         });
 
@@ -85,10 +87,10 @@ export default function CompletionSummaryStep() {
         items.push({
             id: "availability",
             icon: CalendarClock,
-            label: "Availability",
+            label: mt("onboardingAvailability"),
             status: hasAvailability ? 'complete' : 'incomplete',
             isRequired: true,
-            description: hasAvailability ? "Schedule configured" : "Set your operating hours",
+            description: hasAvailability ? mt("onboardingScheduleConfigured") : mt("onboardingSetOperatingHours"),
             stepId: 'availability'
         });
 
@@ -96,10 +98,10 @@ export default function CompletionSummaryStep() {
         items.push({
             id: "requirements",
             icon: ClipboardList,
-            label: "Chef Requirements",
+            label: mt("onboardingChefRequirements"),
             status: hasRequirements ? 'complete' : 'incomplete',
             isRequired: true,
-            description: hasRequirements ? "Application fields set" : "Configure application fields",
+            description: hasRequirements ? mt("onboardingApplicationFieldsSet") : mt("onboardingConfigureApplicationFields"),
             stepId: 'application-requirements'
         });
 
@@ -113,14 +115,14 @@ export default function CompletionSummaryStep() {
         items.push({
             id: "license",
             icon: FileCheck,
-            label: "Kitchen License",
+            label: mt("onboardingKitchenLicense"),
             status: licenseItemStatus,
             isRequired: true,
             description: licenseItemStatus === 'complete'
-                ? "Verified"
+                ? mt("onboardingLicenseVerified")
                 : licenseItemStatus === 'pending'
-                    ? "Awaiting verification"
-                    : "Upload your license",
+                    ? mt("onboardingAwaitingVerification")
+                    : mt("onboardingUploadLicense"),
             stepId: 'location'
         });
 
@@ -128,10 +130,10 @@ export default function CompletionSummaryStep() {
         items.push({
             id: "payment",
             icon: CreditCard,
-            label: "Payments",
+            label: mt("onboardingPayments"),
             status: isStripeOnboardingComplete ? 'complete' : 'incomplete',
             isRequired: true,
-            description: isStripeOnboardingComplete ? "Stripe connected" : "Connect to receive payouts",
+            description: isStripeOnboardingComplete ? mt("onboardingStripeConnected") : mt("onboardingConnectStripe"),
             stepId: 'payment-setup'
         });
 
@@ -140,10 +142,10 @@ export default function CompletionSummaryStep() {
         items.push({
             id: "equipment",
             icon: Wrench,
-            label: "Equipment",
+            label: mt("onboardingEquipment"),
             status: hasEquipment ? 'complete' : 'skipped',
             isRequired: false,
-            description: hasEquipment ? `${equipmentForm.listings.length} listings` : "Optional",
+            description: hasEquipment ? mt("onboardingListingsCount", { count: equipmentForm.listings.length }) : mt("optional"),
             stepId: 'equipment-listings'
         });
 
@@ -152,10 +154,10 @@ export default function CompletionSummaryStep() {
         items.push({
             id: "storage",
             icon: Package,
-            label: "Storage",
+            label: mt("onboardingStorage"),
             status: hasStorage ? 'complete' : 'skipped',
             isRequired: false,
-            description: hasStorage ? `${storageForm.listings.length} listings` : "Optional",
+            description: hasStorage ? mt("onboardingListingsCount", { count: storageForm.listings.length }) : mt("optional"),
             stepId: 'storage-listings'
         });
 
@@ -252,18 +254,18 @@ export default function CompletionSummaryStep() {
                 </div>
                 <h2 className="text-lg font-medium text-slate-900 dark:text-slate-100 tracking-tight mb-1">
                     {isFullyReady 
-                        ? "You're all set!" 
+                        ? mt("youreAllSet")
                         : isOnboardingComplete && isLicensePending
-                            ? "Setup Complete!"
-                            : "Almost there"
+                            ? mt("setupCompleteTitle")
+                            : mt("almostThereShort")
                     }
                 </h2>
                 <p className="text-sm text-slate-500 dark:text-slate-400">
                     {isFullyReady
-                        ? "Your kitchen is ready to accept bookings."
+                        ? mt("kitchenReadyForBookings")
                         : isOnboardingComplete && isLicensePending
-                            ? "Your license is under review. You can accept bookings once approved."
-                            : `Complete ${incompleteRequired.length} more step${incompleteRequired.length > 1 ? 's' : ''} to finish setup.`
+                            ? mt("licenseUnderReviewBookWhenApproved")
+                            : mt("completeMoreSteps", { count: incompleteRequired.length })
                     }
                 </p>
             </div>
@@ -271,12 +273,15 @@ export default function CompletionSummaryStep() {
             {/* Progress Indicator */}
             <div className="mb-8">
                 <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs text-slate-500 dark:text-slate-400">Setup Progress</span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">{mt("setupProgress")}</span>
                     <span className={cn(
                         "text-xs font-medium",
                         isFullyReady ? "text-emerald-600 dark:text-emerald-400" : "text-slate-600 dark:text-slate-300"
                     )}>
-                        {completedOrPendingRequired.length}/{requiredItems.length} required
+                        {mt("requiredStepsProgress", {
+                            completed: completedOrPendingRequired.length,
+                            total: requiredItems.length,
+                        })}
                     </span>
                 </div>
                 <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
@@ -302,16 +307,12 @@ export default function CompletionSummaryStep() {
                             </div>
                         </div>
                         <div className="flex-1">
-                            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-                                License Under Review
-                            </p>
-                            <p className="text-xs text-amber-600/80 dark:text-amber-400/70 mt-0.5">
-                                Your kitchen license is being verified. This typically takes 1-2 business days.
-                            </p>
+                            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">{mt("licenseUnderReview")}</p>
+                            <p className="text-xs text-amber-600/80 dark:text-amber-400/70 mt-0.5">{mt("yourKitchenLicenseIsBeingVerifiedThisTypicallyTakes12Busines")}</p>
                         </div>
                         <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-md bg-white/60 dark:bg-amber-950/40 ring-1 ring-amber-200/60 dark:ring-amber-800/40">
                             <Shield className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                            <span className="text-xs font-medium text-amber-700 dark:text-amber-300">Pending</span>
+                            <span className="text-xs font-medium text-amber-700 dark:text-amber-300">{mt("pending")}</span>
                         </div>
                     </div>
                     
@@ -320,17 +321,17 @@ export default function CompletionSummaryStep() {
                         <div className="flex items-center gap-4 text-xs">
                             <div className="flex items-center gap-1.5">
                                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                                <span className="text-slate-600 dark:text-slate-400">Setup Done</span>
+                                <span className="text-slate-600 dark:text-slate-400">{mt("setupDone")}</span>
                             </div>
                             <ArrowRight className="w-3 h-3 text-slate-300 dark:text-slate-600" />
                             <div className="flex items-center gap-1.5">
                                 <div className="w-3.5 h-3.5 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />
-                                <span className="text-amber-700 dark:text-amber-300 font-medium">License Review</span>
+                                <span className="text-amber-700 dark:text-amber-300 font-medium">{mt("licenseReview")}</span>
                             </div>
                             <ArrowRight className="w-3 h-3 text-slate-300 dark:text-slate-600" />
                             <div className="flex items-center gap-1.5 opacity-50">
                                 <Rocket className="w-3.5 h-3.5 text-slate-400" />
-                                <span className="text-slate-400">Accept Bookings</span>
+                                <span className="text-slate-400">{mt("acceptBookings")}</span>
                             </div>
                         </div>
                     </div>
@@ -343,12 +344,8 @@ export default function CompletionSummaryStep() {
                     <div className="flex items-start gap-3">
                         <AlertCircle className="w-5 h-5 text-slate-500 dark:text-slate-400 shrink-0 mt-0.5" />
                         <div>
-                            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                                Complete required steps
-                            </p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                Finish the highlighted steps below to complete your setup.
-                            </p>
+                            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{mt("completeRequiredSteps")}</p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{mt("finishTheHighlightedStepsBelowToCompleteYourSetup")}</p>
                         </div>
                     </div>
                 </div>
@@ -379,30 +376,21 @@ export default function CompletionSummaryStep() {
                 >
                     {isCompletingOnboarding ? (
                         <>
-                            <Loader2 className="mr-2 w-4 h-4 animate-spin" />
-                            Completing...
-                        </>
+                            <Loader2 className="mr-2 w-4 h-4 animate-spin" />{mt("completing")}</>
                     ) : (
                         <>
-                            {isFullyReady 
-                                ? "Go to Dashboard" 
-                                : isOnboardingComplete 
-                                    ? "Go to Dashboard"
-                                    : "Continue to Dashboard"
-                            }
+                            {isFullyReady || isOnboardingComplete
+                                ? mt("goToDashboard")
+                                : mt("continueToDashboard")}
                             <ArrowRight className="ml-2 w-4 h-4" />
                         </>
                     )}
                 </Button>
                 {isOnboardingComplete && isLicensePending && (
-                    <p className="text-xs text-amber-600 dark:text-amber-400 text-center max-w-xs font-medium">
-                        We'll notify you once your license is approved.
-                    </p>
+                    <p className="text-xs text-amber-600 dark:text-amber-400 text-center max-w-xs font-medium">{mt("weLlNotifyYouOnceYourLicenseIsApproved")}</p>
                 )}
                 {!isOnboardingComplete && (
-                    <p className="text-xs text-slate-400 dark:text-slate-500 text-center max-w-xs">
-                        You can complete the remaining steps anytime from your dashboard settings.
-                    </p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 text-center max-w-xs">{mt("youCanCompleteTheRemainingStepsAnytimeFromYourDashboardSetti")}</p>
                 )}
             </div>
         </div>
@@ -473,19 +461,13 @@ function SetupItemRow({ item, onAction }: SetupItemRowProps) {
                         {item.label}
                     </span>
                     {item.isRequired && item.status !== 'complete' && item.status !== 'pending' && (
-                        <span className="text-[10px] font-medium text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-1.5 py-0.5 rounded">
-                            Required
-                        </span>
+                        <span className="text-[10px] font-medium text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-1.5 py-0.5 rounded">{mt("required")}</span>
                     )}
                     {item.status === 'pending' && (
-                        <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.5 rounded">
-                            Pending
-                        </span>
+                        <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.5 rounded">{mt("pending")}</span>
                     )}
                     {!item.isRequired && item.status !== 'complete' && (
-                        <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                            Optional
-                        </span>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500">{mt("optional")}</span>
                     )}
                 </div>
                 <p className={cn(
@@ -500,7 +482,7 @@ function SetupItemRow({ item, onAction }: SetupItemRowProps) {
             {isActionable && (
                 <div className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                     <span className="text-xs font-medium text-primary">
-                        {item.status === 'pending' ? 'View' : 'Complete'}
+                        {item.status === 'pending' ? mt("view") : mt("complete")}
                     </span>
                 </div>
             )}

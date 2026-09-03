@@ -1,4 +1,5 @@
 "use client"
+import { mt } from "@/i18n/manager";
 
 import { ColumnDef } from "@tanstack/react-table"
 import { ArrowUpDown, MoreHorizontal, Eye, MessageCircle, Check, X, ExternalLink } from "lucide-react"
@@ -14,30 +15,33 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Application } from "./types"
 
-// Status Badge Component
-function StatusBadge({ status }: { status: string }) {
-    switch (status) {
-        case "inReview":
-            return (
-                <Badge variant="warning">
-                    Pending Review
-                </Badge>
-            )
-        case "approved":
-            return (
-                <Badge variant="success">
-                    Approved
-                </Badge>
-            )
-        case "rejected":
-            return (
-                <Badge variant="outline" className="text-destructive border-destructive/30">
-                    Rejected
-                </Badge>
-            )
-        default:
-            return <Badge variant="outline">{status}</Badge>
+// Status Badge Component — tier-aware so Step 1 approval is visible to admins
+function StatusBadge({ application }: { application: Application }) {
+    const status = application.status;
+    const tier = application.current_tier ?? 1;
+    const hasStep2 = !!application.tier2_completed_at;
+
+    if (status === "inReview") {
+        return <Badge variant="warning">{mt("pendingReview")}</Badge>;
     }
+    if (status === "approved") {
+        if (tier === 2 && hasStep2) {
+            return <Badge variant="warning">{mt("step2Review")}</Badge>;
+        }
+        if (tier === 1) {
+            return <Badge variant="info">{mt("step1Done")}</Badge>;
+        }
+        if (tier >= 3) {
+            return <Badge variant="success">{mt("approved")}</Badge>;
+        }
+        return <Badge variant="info">{mt("inProgress")}</Badge>;
+    }
+    if (status === "rejected") {
+        return (
+            <Badge variant="outline" className="text-destructive border-destructive/30">{mt("rejected")}</Badge>
+        );
+    }
+    return <Badge variant="outline">{status}</Badge>;
 }
 
 interface ApplicationColumnsProps {
@@ -63,9 +67,7 @@ export function getApplicationColumns({
                     variant="ghost"
                     onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
                     className="pl-0"
-                >
-                    Applicant
-                    <ArrowUpDown className="ml-2 h-4 w-4" />
+                >{mt("applicant")}<ArrowUpDown className="ml-2 h-4 w-4" />
                 </Button>
             ),
             cell: ({ row }) => (
@@ -90,7 +92,7 @@ export function getApplicationColumns({
         {
             accessorKey: "status",
             header: "Status",
-            cell: ({ row }) => <StatusBadge status={row.getValue("status")} />,
+            cell: ({ row }) => <StatusBadge application={row.original} />,
             filterFn: (row, id, value) => {
                 return value === 'all' || row.getValue(id) === value
             },
@@ -101,9 +103,7 @@ export function getApplicationColumns({
                 <Button
                     variant="ghost"
                     onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-                >
-                    Applied
-                    <ArrowUpDown className="ml-2 h-4 w-4" />
+                >{mt("applied")}<ArrowUpDown className="ml-2 h-4 w-4" />
                 </Button>
             ),
             cell: ({ row }) => (
@@ -121,25 +121,21 @@ export function getApplicationColumns({
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <Button variant="ghost" className="h-8 w-8 p-0">
-                                <span className="sr-only">Open menu</span>
+                                <span className="sr-only">{mt("openMenu")}</span>
                                 <MoreHorizontal className="h-4 w-4" />
                             </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                            <DropdownMenuLabel>{mt("actions")}</DropdownMenuLabel>
 
                             {(app.status === "approved" || app.status === "inReview") && onChat && (
                                 <DropdownMenuItem onClick={() => onChat(app)}>
-                                    <MessageCircle className="mr-2 h-4 w-4" />
-                                    Chat with Chef
-                                </DropdownMenuItem>
+                                    <MessageCircle className="mr-2 h-4 w-4" />{mt("chatWithChef")}</DropdownMenuItem>
                             )}
 
                             {(app.foodSafetyLicenseUrl || app.foodEstablishmentCertUrl) && onViewDocuments && (
                                 <DropdownMenuItem onClick={() => onViewDocuments(app)}>
-                                    <Eye className="mr-2 h-4 w-4" />
-                                    View Documents
-                                </DropdownMenuItem>
+                                    <Eye className="mr-2 h-4 w-4" />{mt("viewDocuments")}</DropdownMenuItem>
                             )}
 
                             {app.status === "inReview" && (
@@ -147,21 +143,15 @@ export function getApplicationColumns({
                                     <DropdownMenuSeparator />
                                     {onReview && (
                                         <DropdownMenuItem onClick={() => onReview(app)}>
-                                            <ExternalLink className="mr-2 h-4 w-4" />
-                                            Review Application
-                                        </DropdownMenuItem>
+                                            <ExternalLink className="mr-2 h-4 w-4" />{mt("reviewApplication")}</DropdownMenuItem>
                                     )}
                                     {onApprove && (
                                         <DropdownMenuItem onClick={() => onApprove(app)} className="text-green-600">
-                                            <Check className="mr-2 h-4 w-4" />
-                                            Approve
-                                        </DropdownMenuItem>
+                                            <Check className="mr-2 h-4 w-4" />{mt("approve")}</DropdownMenuItem>
                                     )}
                                     {onReject && (
                                         <DropdownMenuItem onClick={() => onReject(app)} className="text-red-600">
-                                            <X className="mr-2 h-4 w-4" />
-                                            Reject
-                                        </DropdownMenuItem>
+                                            <X className="mr-2 h-4 w-4" />{mt("reject")}</DropdownMenuItem>
                                     )}
                                 </>
                             )}

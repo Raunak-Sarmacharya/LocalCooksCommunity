@@ -10,11 +10,13 @@ interface AnimatedInputProps extends Omit<React.InputHTMLAttributes<HTMLInputEle
   error?: string;
   icon?: React.ReactNode;
   showPasswordToggle?: boolean;
+  /** Strength meter is for set/reset password only — never for sign-in. */
+  showPasswordStrength?: boolean;
   validationState?: 'idle' | 'valid' | 'invalid';
 }
 
 const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
-  ({ label, error, icon, showPasswordToggle, validationState = 'idle', className, type = 'text', value, ...props }, ref) => {
+  ({ label, error, icon, showPasswordToggle, showPasswordStrength = false, validationState = 'idle', className, type = 'text', value, ...props }, ref) => {
     const [showPassword, setShowPassword] = useState(false);
     const [internalValue, setInternalValue] = useState(value || '');
 
@@ -88,8 +90,8 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
           </p>
         )}
 
-        {/* Password Strength Indicator */}
-        {showPasswordToggle && hasValue && (
+        {/* Password Strength Indicator (create/reset flows only) */}
+        {showPasswordStrength && hasValue && (
           <PasswordStrengthIndicator password={String(value || internalValue)} />
         )}
       </div>

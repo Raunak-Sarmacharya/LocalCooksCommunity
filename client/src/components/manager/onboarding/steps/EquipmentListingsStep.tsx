@@ -1,4 +1,6 @@
 import { logger } from "@/lib/logger";
+import { mt } from "@/i18n/manager";
+import { tt } from "@/i18n/common-ns";
 /**
  * Equipment Listings Step - Onboarding
  * 
@@ -49,6 +51,7 @@ interface SelectedEquipment {
 }
 
 export default function EquipmentListingsStep() {
+  
   const {
     kitchens,
     selectedKitchenId,
@@ -174,7 +177,7 @@ export default function EquipmentListingsStep() {
         });
 
         if (!response.ok) {
-          throw new Error("Failed to create equipment listing");
+          throw new Error(tt("failedToCreateEquipmentListing"));
         }
         successCount++;
       } catch (error) {
@@ -186,17 +189,15 @@ export default function EquipmentListingsStep() {
     setIsCreating(false);
 
     if (successCount > 0) {
-      toast({
-        title: "Equipment Added",
+      toast({ title: mt("equipmentAdded"),
         description: `Successfully added ${successCount} equipment listing${successCount > 1 ? 's' : ''}.${errorCount > 0 ? ` ${errorCount} failed.` : ''}`,
       });
       setSelectedEquipment({});
       // Refresh listings to show the new ones immediately
       await refreshListings();
     } else {
-      toast({
-        title: "Error",
-        description: "Failed to add equipment listings. Please try again.",
+      toast({ title: mt("error"),
+        description: mt("failedToAddEquipmentListingsPleaseTryAgain"),
         variant: "destructive",
       });
     }
@@ -207,7 +208,7 @@ export default function EquipmentListingsStep() {
     // Use searchQuery as fallback if customEquipment.name is empty (intuitive flow)
     const equipmentName = (customEquipment.name.trim() || searchQuery.trim());
     if (!selectedKitchenId || !equipmentName) {
-      toast({ title: "Error", description: "Please enter an equipment name", variant: "destructive" });
+      toast({ title: mt("error"), description: mt("pleaseEnterAnEquipmentName"), variant: "destructive" });
       return;
     }
     setIsCreating(true);
@@ -232,14 +233,14 @@ export default function EquipmentListingsStep() {
           isActive: true,
         }),
       });
-      if (!response.ok) throw new Error("Failed to create equipment listing");
-      toast({ title: "Equipment Added", description: `Successfully added "${equipmentName}"` });
+      if (!response.ok) throw new Error(tt("failedToCreateEquipmentListing"));
+      toast({ title: mt("equipmentAdded"), description: `Successfully added "${equipmentName}"` });
       setCustomEquipment({ name: '', category: 'cooking', condition: 'good', availabilityType: 'included', sessionRate: 0, damageDeposit: 0, brand: '' });
       setSearchQuery('');
       // Refresh listings to show the new one immediately
       await refreshListings();
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to add equipment", variant: "destructive" });
+      toast({ title: mt("error"), description: error.message || mt("failedToAddEquipment"), variant: "destructive" });
     } finally {
       setIsCreating(false);
     }
@@ -248,35 +249,33 @@ export default function EquipmentListingsStep() {
   return (
     <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
       <div>
-        <h3 className="text-lg font-semibold mb-1">Equipment Listings (Optional)</h3>
-        <p className="text-sm text-gray-600">
-          Select equipment available in your kitchen. You can mark items as included or available for an extra fee.
-        </p>
+        <h3 className="text-lg font-semibold mb-1">{mt("equipmentListingsOptional")}</h3>
+        <p className="text-sm text-gray-600">{mt("selectEquipmentAvailableInYourKitchenYouCanMarkItemsAsInclud")}</p>
       </div>
 
       <div className="bg-gradient-to-r from-rose-50 to-pink-50 border-2 border-rose-200/50 rounded-xl p-5 shadow-sm">
         <div className="flex items-start gap-3">
           <Info className="h-5 w-5 text-[#F51042] flex-shrink-0 mt-0.5" />
           <div className="text-sm text-gray-700">
-            <p className="font-bold mb-2 text-gray-900">Why list equipment?</p>
-            <p>Detailed equipment lists help chefs know if your kitchen is right for them. Select from common commercial kitchen equipment below.</p>
+            <p className="font-bold mb-2 text-gray-900">{mt("whyListEquipment")}</p>
+            <p>{mt("equipmentListingsHelpText")}</p>
           </div>
         </div>
       </div>
 
       {kitchens.length === 0 ? (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <p className="text-sm text-yellow-800">No kitchens found. Please create a kitchen first.</p>
+          <p className="text-sm text-yellow-800">{mt("noKitchensFoundPleaseCreateAKitchenFirst")}</p>
         </div>
       ) : (
         <div className="space-y-4">
           <div>
-            <Label>Select Kitchen</Label>
+            <Label>{mt("selectKitchen")}</Label>
             <Select
               value={selectedKitchenId?.toString() || ""}
               onValueChange={(val) => setSelectedKitchenId(parseInt(val))}
             >
-              <SelectTrigger className="mt-1"><SelectValue placeholder="Select Kitchen" /></SelectTrigger>
+              <SelectTrigger className="mt-1"><SelectValue placeholder={mt("selectKitchen")} /></SelectTrigger>
               <SelectContent>
                 {kitchens.map(k => <SelectItem key={k.id} value={k.id.toString()}>{k.name}</SelectItem>)}
               </SelectContent>
@@ -311,7 +310,7 @@ export default function EquipmentListingsStep() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search equipment..."
+                  placeholder={mt("searchEquipment")}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-10"
@@ -378,7 +377,7 @@ export default function EquipmentListingsStep() {
                                       </div>
                                       <span className="truncate">{template.name}</span>
                                       {isAlreadyListed && (
-                                        <Badge variant="secondary" className="text-[10px] ml-auto">Listed</Badge>
+                                        <Badge variant="secondary" className="text-[10px] ml-auto">{mt("listed")}</Badge>
                                       )}
                                     </button>
                                   );
@@ -392,7 +391,7 @@ export default function EquipmentListingsStep() {
                         {showNoResultsCustomOption && (
                           <div className="border-2 border-dashed border-primary/50 bg-primary/5 rounded-lg p-4 text-center">
                             <SearchX className="h-8 w-8 mx-auto mb-2 text-muted-foreground opacity-50" />
-                            <h4 className="font-medium text-sm mb-1">No matching equipment</h4>
+                            <h4 className="font-medium text-sm mb-1">{mt("noMatchingEquipment")}</h4>
                             <p className="text-xs text-muted-foreground mb-3">
                               Can't find "{searchQuery}"? Add it as custom equipment.
                             </p>
@@ -400,31 +399,31 @@ export default function EquipmentListingsStep() {
                               <Input 
                                 value={customEquipment.name || searchQuery} 
                                 onChange={(e) => setCustomEquipment(prev => ({ ...prev, name: e.target.value }))}
-                                placeholder="Equipment name"
+                                placeholder={mt("equipmentName2")}
                                 className="h-8 text-xs"
                               />
                               <Input 
                                 value={customEquipment.brand} 
                                 onChange={(e) => setCustomEquipment(prev => ({ ...prev, brand: e.target.value }))}
-                                placeholder="Brand (optional)"
+                                placeholder={mt("brandOptional")}
                                 className="h-8 text-xs"
                               />
                               <div className="grid grid-cols-2 gap-2">
                                 <Select value={customEquipment.category} onValueChange={(v: EquipmentCategoryId) => setCustomEquipment(prev => ({ ...prev, category: v }))}>
-                                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Category" /></SelectTrigger>
+                                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder={mt("category")} /></SelectTrigger>
                                   <SelectContent>
-                                    <SelectItem value="cooking">Cooking</SelectItem>
-                                    <SelectItem value="food-prep">Prep</SelectItem>
-                                    <SelectItem value="refrigeration">Refrigeration</SelectItem>
-                                    <SelectItem value="specialty">Specialty</SelectItem>
-                                    <SelectItem value="cleaning">Cleaning</SelectItem>
+                                    <SelectItem value="cooking">{mt("cooking")}</SelectItem>
+                                    <SelectItem value="food-prep">{mt("prep")}</SelectItem>
+                                    <SelectItem value="refrigeration">{mt("refrigeration")}</SelectItem>
+                                    <SelectItem value="specialty">{mt("specialty")}</SelectItem>
+                                    <SelectItem value="cleaning">{mt("cleaning")}</SelectItem>
                                   </SelectContent>
                                 </Select>
                                 <Select value={customEquipment.availabilityType} onValueChange={(v: 'included' | 'rental') => setCustomEquipment(prev => ({ ...prev, availabilityType: v, sessionRate: v === 'included' ? 0 : prev.sessionRate, damageDeposit: v === 'included' ? 0 : prev.damageDeposit }))}>
                                   <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                                   <SelectContent>
-                                    <SelectItem value="included">Included</SelectItem>
-                                    <SelectItem value="rental">Rental</SelectItem>
+                                    <SelectItem value="included">{mt("included")}</SelectItem>
+                                    <SelectItem value="rental">{mt("rental")}</SelectItem>
                                   </SelectContent>
                                 </Select>
                               </div>
@@ -437,7 +436,7 @@ export default function EquipmentListingsStep() {
                                       value={customEquipment.sessionRate} 
                                       onChange={(e) => setCustomEquipment(prev => ({ ...prev, sessionRate: parseFloat(e.target.value) || 0 }))}
                                       className="h-8 text-xs pl-5"
-                                      placeholder="Rate per session"
+                                      placeholder={mt("ratePerSession")}
                                     />
                                   </div>
                                   <div className="relative">
@@ -447,7 +446,7 @@ export default function EquipmentListingsStep() {
                                       value={customEquipment.damageDeposit} 
                                       onChange={(e) => setCustomEquipment(prev => ({ ...prev, damageDeposit: parseFloat(e.target.value) || 0 }))}
                                       className="h-8 text-xs pl-5"
-                                      placeholder="Damage deposit (optional)"
+                                      placeholder={mt("damageDepositOptional")}
                                     />
                                   </div>
                                 </>
@@ -462,7 +461,7 @@ export default function EquipmentListingsStep() {
                                 }}
                                 status={activeCreatingAction === 'custom' && isCreating ? "loading" : "idle"}
                                 disabled={(isCreating && activeCreatingAction !== 'custom') || (!customEquipment.name.trim() && !searchQuery.trim())}
-                                labels={{ idle: "Add Custom", loading: "Adding", success: "Added" }}
+                                labels={{ idle: tt("addCustom"), loading: tt("adding"), success: tt("added") }}
                               />
                             </div>
                           </div>
@@ -477,9 +476,7 @@ export default function EquipmentListingsStep() {
                   <div className="border rounded-lg p-3 bg-white sticky top-4">
                     <div className="flex items-center justify-between mb-3">
                       <h4 className="font-medium text-sm flex items-center gap-2">
-                        <DollarSign className="h-4 w-4" />
-                        Configure
-                      </h4>
+                        <DollarSign className="h-4 w-4" />{mt("configure")}</h4>
                       {selectedEquipmentCount > 0 && (
                         <Badge variant="default" className="text-xs">{selectedEquipmentCount}</Badge>
                       )}
@@ -488,7 +485,7 @@ export default function EquipmentListingsStep() {
                     {selectedEquipmentCount === 0 ? (
                       <div className="text-center py-6 text-muted-foreground">
                         <Package className="h-8 w-8 mx-auto mb-2 opacity-20" />
-                        <p className="text-xs">Select equipment to configure</p>
+                        <p className="text-xs">{mt("selectEquipmentToConfigure")}</p>
                       </div>
                     ) : (
                       <ScrollArea className="h-[350px]">
@@ -515,7 +512,7 @@ export default function EquipmentListingsStep() {
                               </div>
                               <div className="space-y-2">
                                 <div className="flex items-center gap-2">
-                                  <Label className="text-[10px] w-16 text-muted-foreground">Condition</Label>
+                                  <Label className="text-[10px] w-16 text-muted-foreground">{mt("condition")}</Label>
                                   <Select
                                     value={equipment.condition}
                                     onValueChange={(v: 'excellent' | 'good' | 'fair') => 
@@ -524,23 +521,23 @@ export default function EquipmentListingsStep() {
                                   >
                                     <SelectTrigger className="h-7 text-xs flex-1"><SelectValue /></SelectTrigger>
                                     <SelectContent>
-                                      <SelectItem value="excellent">Excellent</SelectItem>
-                                      <SelectItem value="good">Good</SelectItem>
-                                      <SelectItem value="fair">Fair</SelectItem>
+                                      <SelectItem value="excellent">{mt("excellent")}</SelectItem>
+                                      <SelectItem value="good">{mt("good")}</SelectItem>
+                                      <SelectItem value="fair">{mt("fair")}</SelectItem>
                                     </SelectContent>
                                   </Select>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                  <Label className="text-[10px] w-16 text-muted-foreground">Brand</Label>
+                                  <Label className="text-[10px] w-16 text-muted-foreground">{mt("brand")}</Label>
                                   <Input
                                     value={equipment.brand}
                                     onChange={(e) => updateSelectedEquipment(templateId, { brand: e.target.value })}
-                                    placeholder="Optional"
+                                    placeholder={mt("optional")}
                                     className="h-7 text-xs flex-1"
                                   />
                                 </div>
                                 <div className="flex items-center gap-2">
-                                  <Label className="text-[10px] w-16 text-muted-foreground">Type</Label>
+                                  <Label className="text-[10px] w-16 text-muted-foreground">{mt("type")}</Label>
                                   <Select
                                     value={equipment.availabilityType}
                                     onValueChange={(v: 'included' | 'rental') => 
@@ -552,14 +549,14 @@ export default function EquipmentListingsStep() {
                                   >
                                     <SelectTrigger className="h-7 text-xs flex-1"><SelectValue /></SelectTrigger>
                                     <SelectContent>
-                                      <SelectItem value="included">Included (Free)</SelectItem>
-                                      <SelectItem value="rental">Rental (Paid)</SelectItem>
+                                      <SelectItem value="included">{mt("includedFree")}</SelectItem>
+                                      <SelectItem value="rental">{mt("rentalPaid")}</SelectItem>
                                     </SelectContent>
                                   </Select>
                                 </div>
                                 {equipment.availabilityType === 'rental' && (
                                   <div className="flex items-center gap-2">
-                                    <Label className="text-[10px] w-16 text-muted-foreground">Rate</Label>
+                                    <Label className="text-[10px] w-16 text-muted-foreground">{mt("rate")}</Label>
                                     <div className="relative flex-1">
                                       <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
                                       <Input
@@ -576,11 +573,11 @@ export default function EquipmentListingsStep() {
                                   </div>
                                 )}
                                 <div className="space-y-1">
-                                  <Label className="text-[10px] text-muted-foreground">Description</Label>
+                                  <Label className="text-[10px] text-muted-foreground">{mt("description")}</Label>
                                   <Input
                                     value={equipment.description}
                                     onChange={(e) => updateSelectedEquipment(templateId, { description: e.target.value })}
-                                    placeholder="Optional description"
+                                    placeholder={mt("optionalDescription")}
                                     className="h-7 text-xs"
                                   />
                                 </div>
@@ -598,7 +595,7 @@ export default function EquipmentListingsStep() {
                         onClick={() => { setActiveCreatingAction('bulk'); handleCreate(); }}
                         status={activeCreatingAction === 'bulk' && isCreating ? "loading" : "idle"}
                         disabled={isCreating && activeCreatingAction !== 'bulk'}
-                        labels={{ idle: `Add ${selectedEquipmentCount} Equipment`, loading: "Adding", success: "Added" }}
+                        labels={{ idle: `Add ${selectedEquipmentCount} Equipment`, loading: tt("adding"), success: tt("added") }}
                       />
                     )}
                   </div>

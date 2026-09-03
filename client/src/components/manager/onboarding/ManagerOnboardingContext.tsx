@@ -1,4 +1,6 @@
 import { logger } from "@/lib/logger";
+import { mt } from "@/i18n/manager";
+import { tt } from "@/i18n/common-ns";
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef, ReactNode } from 'react';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -905,7 +907,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         headers: { 'Authorization': `Bearer ${token}` },
         body: formData,
       });
-      if (!res.ok) throw new Error("Upload failed");
+      if (!res.ok) throw new Error(tt("uploadFailed"));
       const data = await res.json();
       setLicenseUploadedUrl(data.url);
       return data.url;
@@ -926,7 +928,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         headers: { 'Authorization': `Bearer ${token}` },
         body: formData,
       });
-      if (!res.ok) throw new Error("Upload failed");
+      if (!res.ok) throw new Error(tt("uploadFailed"));
       const data = await res.json();
       setLicenseUploadedUrl(data.url);
       licenseUploadedUrlRef.current = data.url; // Also set ref
@@ -959,7 +961,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       if (!res.ok) {
         const errorText = await res.text();
         logger.error('[Onboarding] Terms upload failed:', res.status, errorText);
-        throw new Error("Upload failed");
+        throw new Error(tt("uploadFailed"));
       }
       const data = await res.json();
       logger.info('[Onboarding] ✅ Terms file uploaded successfully:', {
@@ -989,7 +991,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   // - Proper async state handling before navigation
   const updateLocation = async () => {
     if (!locationName || !locationAddress) {
-      toast({ title: "Error", description: "Missing location details", variant: "destructive" });
+      toast({ title: mt("error"), description: mt("missingLocationDetails"), variant: "destructive" });
       return;
     }
 
@@ -1028,7 +1030,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       if (!licenseUrl && licenseFile) {
         // Only upload if not already uploaded
         if (!licenseExpiryDate) {
-          toast({ title: "Error", description: "Missing license expiry", variant: "destructive" });
+          toast({ title: mt("error"), description: mt("missingLicenseExpiry"), variant: "destructive" });
           setIsSubmitting(false);
           return;
         }
@@ -1067,7 +1069,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
           headers: { 'Authorization': `Bearer ${token}` },
           body: formData
         });
-        if (!uploadRes.ok) throw new Error("Failed to upload terms file");
+        if (!uploadRes.ok) throw new Error(tt("failedToUploadTerms"));
         const uploadResult = await uploadRes.json();
         termsUrl = uploadResult.url;
         setTermsUploadedUrl(termsUrl);
@@ -1088,14 +1090,14 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       let phone = notificationPhone;
       if (phone) {
         const p = optionalPhoneNumberSchema.safeParse(phone);
-        if (!p.success) throw new Error("Invalid phone");
+        if (!p.success) throw new Error(tt("invalidPhone"));
         phone = p.data || "";
       }
 
       let contactPhoneValidated = contactPhone;
       if (contactPhoneValidated) {
         const cp = optionalPhoneNumberSchema.safeParse(contactPhoneValidated);
-        if (!cp.success) throw new Error("Invalid contact phone");
+        if (!cp.success) throw new Error(tt("invalidContactPhone"));
         contactPhoneValidated = cp.data || "";
       }
 
@@ -1167,7 +1169,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       const data = await res.json();
       logger.info('[Onboarding] Response:', res.status, data);
 
-      if (!res.ok) throw new Error(data.error || "Failed to save location");
+      if (!res.ok) throw new Error(data.error || tt("failedToSaveLocation"));
 
       // [FIX 4] Track the created/updated location ID immediately via ref (sync)
       const savedLocationId = data.id || effectiveLocationId;
@@ -1243,7 +1245,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         return;
       }
 
-      toast({ title: "Success", description: "Location saved" });
+      toast({ title: mt("success"), description: mt("locationSaved") });
       
       // Clear file state after successful save (files are now persisted to location)
       setLicenseFile(null);
@@ -1253,7 +1255,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
 
     } catch (e: any) {
       logger.error('[Onboarding] Error in updateLocation:', e);
-      toast({ title: "Error", description: e.message, variant: "destructive" });
+      toast({ title: mt("error"), description: e.message, variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -1276,7 +1278,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
           imageUrl: kitchenFormData.imageUrl || undefined
         })
       });
-      if (!res.ok) throw new Error("Failed to create kitchen");
+      if (!res.ok) throw new Error(tt("failedToCreateKitchen"));
       let newKitchen = await res.json();
 
 
@@ -1311,10 +1313,10 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       setKitchenFormData({ name: '', description: '', hourlyRate: '', currency: 'CAD', minimumBookingHours: '1', imageUrl: '' });
 
       await trackStepCompletion(currentStep?.id || 'create-kitchen');
-      toast({ title: "Success", description: "Kitchen created" });
+      toast({ title: mt("success"), description: mt("kitchenCreated2") });
       // next(); // [FIX] Do not auto-advance. Let user click Next to avoid race conditions with checks.
     } catch (e: any) {
-      toast({ title: "Error", description: e.message, variant: "destructive" });
+      toast({ title: mt("error"), description: e.message, variant: "destructive" });
     } finally {
       setCreatingKitchen(false);
     }
@@ -1386,7 +1388,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       setIsOpen(false);
       setIsAddingLocation(false); // [MULTI-LOCATION FIX] Reset flag so auto-select works again
       onboardSkip();
-      toast({ title: "Flow Completed", description: "All set!" });
+      toast({ title: mt("flowCompleted"), description: mt("allSet") });
     } catch (e) {
       logger.error("Onboarding flow error", e);
     }
@@ -1616,9 +1618,8 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         queryClient.refetchQueries({ queryKey: ["/api/user/profile"] });
         queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
 
-        toast({ 
-          title: "Progress Saved", 
-          description: "You can continue setup anytime from where you left off." 
+        toast({ title: mt("progressSaved"), 
+          description: mt("youCanContinueSetupAnytimeFromWhereYouLeftOff") 
         });
 
         // 4. Reset multi-location flag and navigate to dashboard with locationId
@@ -1710,6 +1711,6 @@ export { ManagerOnboardingLogic }; // Export Logic for the Provider to use
 
 export const useManagerOnboarding = () => {
   const context = useContext(ManagerOnboardingContext);
-  if (!context) throw new Error("useManagerOnboarding must be used within Provider");
+  if (!context) throw new Error(mt("useManagerOnboardingWithinProvider"));
   return context;
 };

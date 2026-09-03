@@ -47,6 +47,7 @@ import { useQuery } from "@tanstack/react-query"
 import { auth } from "@/lib/firebase"
 import { useLocation } from "wouter"
 import { useTranslation } from "react-i18next"
+import { mt } from "@/i18n/manager"
 
 export type PortalType = 'chef' | 'manager' | 'admin'
 
@@ -119,12 +120,12 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
                     setRefLookupError(null)
                 } else {
                     setRefLookupResult(null)
-                    setRefLookupError(res.status === 404 ? "No booking found for this reference code" : "Lookup failed")
+                    setRefLookupError(res.status === 404 ? mt("cmdNoBookingForRef") : mt("cmdLookupFailed"))
                 }
             } catch (err: any) {
                 if (err.name !== "AbortError") {
                     setRefLookupResult(null)
-                    setRefLookupError("Lookup failed")
+                    setRefLookupError(mt("cmdLookupFailed"))
                 }
             } finally {
                 setRefLookupLoading(false)
@@ -176,7 +177,7 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
             </div>
             <CommandDialog open={open} onOpenChange={onOpenChange} shouldFilter={!isRefCodeSearch}>
                 <CommandInput
-                    placeholder={portalType === 'admin' ? "Search or paste reference code (e.g. KB-A7K9MX)..." : "Type a command or paste reference code..."}
+                    placeholder={portalType === 'admin' ? mt("shellSearchCommand") : portalType === 'manager' ? mt("shellSearchCommand") : t("shellSearchCommand")}
                     value={searchValue}
                     onValueChange={setSearchValue}
                 />
@@ -185,19 +186,19 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
                         {refLookupLoading ? (
                             <div className="flex items-center justify-center gap-2 py-2">
                                 <Loader2 className="h-4 w-4 animate-spin" />
-                                <span className="text-sm text-muted-foreground">Looking up reference code...</span>
+                                <span className="text-sm text-muted-foreground">{mt("cmdLookingUpRef")}</span>
                             </div>
                         ) : refLookupError ? (
                             <div className="text-sm text-muted-foreground">{refLookupError}</div>
                         ) : (
-                            "No results found."
+                            mt("shellNoResults", { defaultValue: t("shellNoResults") })
                         )}
                     </CommandEmpty>
 
                     {/* ═══ Reference Code Lookup Result ═══ */}
                     {refLookupResult && (
                         <>
-                            <CommandGroup heading="Reference Code Match">
+                            <CommandGroup heading={mt("cmdReferenceCodeMatch")}>
                                 <CommandItem
                                     onSelect={() => runCommand(() => {
                                         const url = refLookupResult.url
@@ -227,10 +228,10 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
                         </>
                     )}
                     {refLookupLoading && isRefCodeSearch && (
-                        <CommandGroup heading="Reference Code Lookup">
+                        <CommandGroup heading={mt("cmdReferenceCodeLookup")}>
                             <CommandItem disabled>
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                <span className="text-muted-foreground">Searching...</span>
+                                <span className="text-muted-foreground">{mt("cmdSearching")}</span>
                             </CommandItem>
                         </CommandGroup>
                     )}
@@ -315,23 +316,23 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
                     {/* ═══ MANAGER Portal Navigation ═══ */}
                     {portalType === 'manager' && (
                         <>
-                            <CommandGroup heading="Suggestions">
+                            <CommandGroup heading={mt("cmdSuggestions")}>
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("overview"))}>
                                     <LayoutDashboard className="mr-2 h-4 w-4" />
-                                    <span>Dashboard</span>
+                                    <span>{mt("navDashboard")}</span>
                                 </CommandItem>
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("bookings"))}>
                                     <Calendar className="mr-2 h-4 w-4" />
-                                    <span>Bookings</span>
+                                    <span>{mt("navBookings")}</span>
                                 </CommandItem>
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("messages"))}>
                                     <MessageCircle className="mr-2 h-4 w-4" />
-                                    <span>Messages</span>
+                                    <span>{mt("navMessages")}</span>
                                 </CommandItem>
                             </CommandGroup>
                             <CommandSeparator />
                             {locations.length > 0 && (
-                                <CommandGroup heading="Your Kitchens">
+                                <CommandGroup heading={mt("cmdYourKitchens")}>
                                     {locations.map((loc: any) => (
                                         <CommandItem key={loc.id} onSelect={() => runCommand(() => {
                                             onViewChange?.("my-locations");
@@ -344,60 +345,60 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
                                 </CommandGroup>
                             )}
                             {(locations.length > 0) && <CommandSeparator />}
-                            <CommandGroup heading="Management">
+                            <CommandGroup heading={mt("cmdManagement")}>
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("my-locations"))}>
                                     <MapPin className="mr-2 h-4 w-4" />
-                                    <span>All Locations</span>
+                                    <span>{mt("cmdAllLocations")}</span>
                                 </CommandItem>
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("settings"))}>
                                     <Settings className="mr-2 h-4 w-4" />
-                                    <span>Kitchen Settings</span>
+                                    <span>{mt("cmdKitchenSettings")}</span>
                                 </CommandItem>
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("availability"))}>
                                     <Calendar className="mr-2 h-4 w-4" />
-                                    <span>Availability</span>
+                                    <span>{mt("navAvailability")}</span>
                                 </CommandItem>
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("pricing"))}>
                                     <DollarSign className="mr-2 h-4 w-4" />
-                                    <span>Pricing</span>
+                                    <span>{mt("navPricing")}</span>
                                 </CommandItem>
                             </CommandGroup>
                             <CommandSeparator />
-                            <CommandGroup heading="Inventory">
+                            <CommandGroup heading={mt("cmdInventory")}>
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("storage-listings"))}>
                                     <Package className="mr-2 h-4 w-4" />
-                                    <span>Storage Listings</span>
+                                    <span>{mt("cmdStorageListings")}</span>
                                 </CommandItem>
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("equipment-listings"))}>
                                     <Wrench className="mr-2 h-4 w-4" />
-                                    <span>Equipment Listings</span>
+                                    <span>{mt("cmdEquipmentListings")}</span>
                                 </CommandItem>
                             </CommandGroup>
                             <CommandSeparator />
-                            <CommandGroup heading="Business">
+                            <CommandGroup heading={mt("cmdBusiness")}>
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("applications"))}>
                                     <FileText className="mr-2 h-4 w-4" />
-                                    <span>Applications</span>
+                                    <span>{mt("navApplications")}</span>
                                 </CommandItem>
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("revenue"))}>
                                     <DollarSign className="mr-2 h-4 w-4" />
-                                    <span>Revenue</span>
+                                    <span>{mt("navRevenue")}</span>
                                 </CommandItem>
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("payments"))}>
                                     <CreditCard className="mr-2 h-4 w-4" />
-                                    <span>Payments & Billing</span>
+                                    <span>{mt("cmdPaymentsBilling")}</span>
                                 </CommandItem>
                             </CommandGroup>
                             <CommandSeparator />
-                            <CommandGroup heading="Profile">
+                            <CommandGroup heading={mt("shellProfile")}>
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("profile"))}>
                                     <User className="mr-2 h-4 w-4" />
-                                    <span>Profile Settings</span>
+                                    <span>{mt("cmdProfileSettings")}</span>
                                 </CommandItem>
                                 {onLogout && (
                                     <CommandItem onSelect={() => runCommand(() => onLogout())}>
                                         <LogOut className="mr-2 h-4 w-4" />
-                                        <span>Log out</span>
+                                        <span>{mt("shellSignOut")}</span>
                                         <CommandShortcut>⇧⌘Q</CommandShortcut>
                                     </CommandItem>
                                 )}

@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { mt } from "@/i18n/manager";
 
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -9,6 +10,7 @@ import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { ImageWithReplace } from "@/components/ui/image-with-replace";
 import { cn } from "@/lib/utils";
+import { tt } from "@/i18n/common-ns";
 
 interface KitchenGalleryImagesProps {
     kitchenId: number;
@@ -21,6 +23,7 @@ export function KitchenGalleryImages({
     galleryImages,
     locationId
 }: KitchenGalleryImagesProps) {
+  
     const { toast } = useToast();
     const queryClient = useQueryClient();
     const [currentGalleryImages, setCurrentGalleryImages] = useState<string[]>(galleryImages || []);
@@ -33,8 +36,7 @@ export function KitchenGalleryImages({
             await updateGalleryImages(newGalleryImages);
         },
         onError: (error) => {
-            toast({
-                title: "Upload failed",
+            toast({ title: mt("uploadFailed2"),
                 description: error,
                 variant: "destructive",
             });
@@ -49,7 +51,7 @@ export function KitchenGalleryImages({
         try {
             const currentFirebaseUser = auth.currentUser;
             if (!currentFirebaseUser) {
-                throw new Error("Firebase user not available");
+                throw new Error(tt("firebaseUserNotAvailable"));
             }
 
             const token = await currentFirebaseUser.getIdToken();
@@ -73,14 +75,12 @@ export function KitchenGalleryImages({
             setCurrentGalleryImages(newGalleryImages);
             queryClient.invalidateQueries({ queryKey: ['managerKitchens', locationId] });
 
-            toast({
-                title: "Success",
-                description: "Gallery images updated successfully",
+            toast({ title: mt("success"),
+                description: mt("galleryImagesUpdatedSuccessfully"),
             });
         } catch (error: any) {
             logger.error('Gallery images update error:', error);
-            toast({
-                title: "Error",
+            toast({ title: mt("error"),
                 description: error.message || "Failed to update gallery images",
                 variant: "destructive",
             });
@@ -202,8 +202,8 @@ export function KitchenGalleryImages({
                             <div className="p-3 bg-primary/10 rounded-full mb-3">
                                 <Upload className="h-6 w-6 text-primary" />
                             </div>
-                            <span className="text-sm font-medium text-foreground mb-1">Click to add gallery image</span>
-                            <span className="text-xs text-muted-foreground">JPG, PNG, WebP (max 4.5MB)</span>
+                            <span className="text-sm font-medium text-foreground mb-1">{mt("clickToAddGalleryImage")}</span>
+                            <span className="text-xs text-muted-foreground">{mt("jPGPNGWebPMax45MB")}</span>
                         </>
                     )}
                 </label>

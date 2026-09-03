@@ -247,14 +247,21 @@ export async function getRevenueMetricsFromTransactions(
               )
           END
         ), 0)::bigint as calculated_tax_amount,
-        -- ENTERPRISE STANDARD: Calculate PAYOUT amount for revenue-eligible transactions
-        -- Manager collects tax and keeps it (remits to tax authorities themselves)
-        -- Payout = Amount - Stripe Fee - Refunds (tax is NOT subtracted - manager keeps it)
+        -- Manager payout: keep tax; platform keeps service_fee; Stripe fee from manager.
+        -- Prefer manager_revenue (Connect transfer). Fallback: amount − service_fee − stripe − refunds.
         COALESCE(SUM(
           CASE WHEN pt.status IN ('succeeded', 'partially_refunded') THEN
-            pt.amount::numeric 
-            - COALESCE(pt.stripe_processing_fee::numeric, 0)
-            - COALESCE(pt.refund_amount::numeric, 0)
+            CASE
+              WHEN COALESCE(pt.manager_revenue::numeric, 0) > 0 THEN
+                GREATEST(0, pt.manager_revenue::numeric - COALESCE(pt.refund_amount::numeric, 0))
+              ELSE
+                GREATEST(0,
+                  pt.amount::numeric
+                  - COALESCE(pt.service_fee::numeric, 0)
+                  - COALESCE(pt.stripe_processing_fee::numeric, 0)
+                  - COALESCE(pt.refund_amount::numeric, 0)
+                )
+            END
           ELSE 0 END
         ), 0)::bigint as completed_net_revenue,
         -- Get the actual tax rate from kitchens table (use MAX since it should be same for all kitchens of this manager)
@@ -388,8 +395,11 @@ export async function getRevenueMetricsFromTransactions(
     // platformFee is the service fee, NOT tax - they are different concepts
     const taxAmount = actualTaxAmount;
     
-    // NET REVENUE: Gross revenue minus tax and Stripe fees
-    const netRevenue = totalRevenue - taxAmount - stripeFee;
+    // NET REVENUE: manager payout (includes tax collected; Stripe fee already deducted).
+    // Do NOT subtract tax — managers keep tax and remit separately.
+    const netRevenue = finalManagerRevenue > 0
+      ? Math.max(0, finalManagerRevenue - refundedAmount)
+      : Math.max(0, totalRevenue - platformFee - stripeFee);
     
     // Also adjust completed payments to account for refunds
     // This ensures "In Your Account" metric reflects actual available funds

@@ -7,6 +7,8 @@
  */
 
 import { useState, useCallback } from "react";
+import { mt } from "@/i18n/manager";
+import { tt } from "@/i18n/common-ns";
 import {
   Plus,
   Trash2,
@@ -112,7 +114,7 @@ function ChecklistItemRow({
         <Input
           value={item.label}
           onChange={(e) => onUpdate({ ...item, label: e.target.value })}
-          placeholder="What should the chef confirm? (e.g. 'Wipe down all counters')"
+          placeholder={tt("whatShouldChefConfirm")}
           className="h-8 text-sm font-medium flex-1"
         />
         <Input
@@ -120,7 +122,7 @@ function ChecklistItemRow({
           onChange={(e) =>
             onUpdate({ ...item, description: e.target.value || undefined })
           }
-          placeholder="Optional hint"
+          placeholder={mt("optionalHint")}
           className="h-8 text-xs text-muted-foreground flex-1"
         />
       </div>
@@ -158,7 +160,7 @@ function PhotoRequirementRow({
         <Input
           value={item.label}
           onChange={(e) => onUpdate({ ...item, label: e.target.value })}
-          placeholder="What photo? (e.g. 'Kitchen countertops')"
+          placeholder={tt("whatPhoto")}
           className="h-8 text-sm font-medium flex-1"
         />
         <Input
@@ -166,7 +168,7 @@ function PhotoRequirementRow({
           onChange={(e) =>
             onUpdate({ ...item, description: e.target.value || undefined })
           }
-          placeholder="Optional hint"
+          placeholder={mt("optionalHint")}
           className="h-8 text-xs text-muted-foreground flex-1"
         />
       </div>
@@ -213,18 +215,14 @@ function ChefViewPreview({
         <ChefHat className="h-5 w-5 text-primary" />
         <div>
           <p className="text-sm font-semibold">{title}</p>
-          <p className="text-[11px] text-muted-foreground">
-            This is exactly what chefs will see
-          </p>
+          <p className="text-[11px] text-muted-foreground">{mt("thisIsExactlyWhatChefsWillSee")}</p>
         </div>
       </div>
 
       {/* Manager instructions */}
       {instructions && (
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
-          <p className="text-xs text-blue-800 font-medium mb-1">
-            Instructions from Manager
-          </p>
+          <p className="text-xs text-blue-800 font-medium mb-1">{mt("instructionsFromManager")}</p>
           <p className="text-xs text-blue-700 whitespace-pre-line">{instructions}</p>
         </div>
       )}
@@ -234,7 +232,7 @@ function ChefViewPreview({
         <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 space-y-2">
           <div className="flex items-center gap-1.5">
             <Lock className="size-3.5 text-violet-600" />
-            <p className="text-xs text-violet-800 font-medium">Smart Lock Access</p>
+            <p className="text-xs text-violet-800 font-medium">{mt("smartLockAccess")}</p>
           </div>
           <p className="text-xs text-violet-700 whitespace-pre-line">
             {smartLockInstructions}
@@ -243,7 +241,7 @@ function ChefViewPreview({
             <span className="text-lg font-mono font-bold text-violet-900 tracking-[0.2em]">
               A1B2C3
             </span>
-            <span className="text-[10px] text-violet-600 ml-auto">(sample code)</span>
+            <span className="text-[10px] text-violet-600 ml-auto">{mt("sampleCode")}</span>
           </div>
         </div>
       )}
@@ -251,7 +249,7 @@ function ChefViewPreview({
       {/* Checklist items */}
       {filledItems.length > 0 && (
         <div className="space-y-2">
-          <Label className="text-sm font-medium">Checklist</Label>
+          <Label className="text-sm font-medium">{mt("checklist")}</Label>
           {filledItems.map((item) => (
             <div
               key={item.id}
@@ -278,8 +276,7 @@ function ChefViewPreview({
       {filledPhotos.length > 0 && (
         <div className="space-y-2">
           <Label className="text-sm font-medium flex items-center gap-1.5">
-            <Camera className="h-4 w-4" /> Photos Required
-          </Label>
+            <Camera className="h-4 w-4" />{mt("photosRequired")}</Label>
           {filledPhotos.map((req) => (
             <div key={req.id} className="space-y-1">
               <div>
@@ -293,9 +290,7 @@ function ChefViewPreview({
               </div>
               <div className="border-2 border-dashed border-border rounded-lg p-4 flex flex-col items-center justify-center opacity-60">
                 <Upload className="h-5 w-5 text-muted-foreground mb-1" />
-                <span className="text-[11px] text-muted-foreground">
-                  Chef uploads this photo
-                </span>
+                <span className="text-[11px] text-muted-foreground">{mt("chefUploadsThisPhoto")}</span>
               </div>
             </div>
           ))}
@@ -309,8 +304,8 @@ function ChefViewPreview({
         !smartLockInstructions && (
           <div className="text-center py-8 text-sm text-muted-foreground border border-dashed rounded-lg">
             <Info className="size-5 mx-auto mb-2" />
-            <p>No checklist items or photos configured yet.</p>
-            <p className="text-xs mt-1">Add items to the left to see the chef view.</p>
+            <p>{mt("noChecklistItemsOrPhotosConfiguredYet")}</p>
+            <p className="text-xs mt-1">{mt("addItemsToTheLeftToSeeTheChefView")}</p>
           </div>
         )}
 
@@ -321,11 +316,9 @@ function ChefViewPreview({
         ) : (
           <LogOut className="h-4 w-4 mr-2" />
         )}
-        {type === "checkin" ? "Confirm Check-In" : "Submit Checkout"}
+        {type === "checkin" ? mt("confirmCheckIn") : mt("submitCheckout")}
       </Button>
-      <p className="text-[10px] text-center text-muted-foreground">
-        Chef cannot submit until all items are checked and all photos are uploaded.
-      </p>
+      <p className="text-[10px] text-center text-muted-foreground">{mt("chefCannotSubmitUntilAllItemsAreCheckedAndAllPhotosAreUpload")}</p>
     </div>
   );
 }
@@ -369,6 +362,7 @@ export function ChecklistSection({
   type,
   previewType,
 }: ChecklistSectionProps) {
+  
   const [previewOpen, setPreviewOpen] = useState(false);
 
   const addItem = useCallback(() => {
@@ -450,15 +444,13 @@ export function ChecklistSection({
                 className="h-8"
                 onClick={() => setPreviewOpen(true)}
               >
-                <Eye className="size-3.5 mr-1.5" />
-                Preview
-              </Button>
+                <Eye className="size-3.5 mr-1.5" />{mt("preview")}</Button>
             )}
             <Switch
               id={`enable-${type}-${previewType}`}
               checked={enabled}
               onCheckedChange={onToggleEnabled}
-              aria-label={`${enabled ? "Disable" : "Enable"} ${title}`}
+              aria-label={mt("disableEnableTitle", { action: enabled ? mt("disableLabel") : mt("enableLabel"), title })}
             />
           </div>
         </div>
@@ -483,7 +475,7 @@ export function ChecklistSection({
               className="text-sm font-medium"
             >
               Instructions for Chefs{" "}
-              <span className="text-muted-foreground font-normal">(optional)</span>
+              <span className="text-muted-foreground font-normal">{mt("optionalLabel")}</span>
             </Label>
             <Textarea
               id={`${type}-${previewType}-instructions`}
@@ -506,15 +498,14 @@ export function ChecklistSection({
                   htmlFor={`smart-lock-instructions-${previewType}`}
                   className="text-sm font-medium text-violet-900"
                 >
-                  Smart Lock Instructions{" "}
-                  <span className="text-violet-500 font-normal">(optional)</span>
+                  {mt("smartLockInstructionsLabel")} <span className="text-violet-500 font-normal">{mt("optionalLabel")}</span>
                 </Label>
               </div>
               <Textarea
                 id={`smart-lock-instructions-${previewType}`}
                 value={smartLockInstructions || ""}
                 onChange={(e) => onSmartLockInstructionsChange(e.target.value || null)}
-                placeholder="e.g. 'Enter the 6-digit access code on the keypad next to the front door'"
+                placeholder={mt("smartLockAccessPlaceholder")}
                 rows={2}
                 className="border-violet-200 bg-white"
               />
@@ -525,16 +516,14 @@ export function ChecklistSection({
           <div>
             <div className="flex items-center gap-2 mb-2">
               <ClipboardCheck className="size-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Checklist</span>
+              <span className="text-sm font-medium">{mt("checklist")}</span>
               <span className="text-xs text-muted-foreground">
-                — chefs must check each item before submitting
+                {mt("chefsMustCheckEachItem")}
               </span>
             </div>
             <div className="space-y-1.5">
               {items.length === 0 && (
-                <div className="text-center py-4 text-xs text-muted-foreground border border-dashed rounded-lg">
-                  No items yet. Click below to add the first one.
-                </div>
+                <div className="text-center py-4 text-xs text-muted-foreground border border-dashed rounded-lg">{mt("noItemsYetClickBelowToAddTheFirstOne")}</div>
               )}
               {items.map((item, index) => (
                 <ChecklistItemRow
@@ -551,9 +540,7 @@ export function ChecklistSection({
                 onClick={addItem}
                 className="w-full h-8 text-xs"
               >
-                <Plus className="size-3.5 mr-1.5" />
-                Add Checklist Item
-              </Button>
+                <Plus className="size-3.5 mr-1.5" />{mt("addChecklistItem")}</Button>
             </div>
           </div>
 
@@ -561,16 +548,14 @@ export function ChecklistSection({
           <div>
             <div className="flex items-center gap-2 mb-2">
               <Camera className="size-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Photos Required</span>
+              <span className="text-sm font-medium">{mt("photosRequired")}</span>
               <span className="text-xs text-muted-foreground">
-                — chefs must upload one photo per item
+                {mt("chefsMustUploadOnePhotoPerItem")}
               </span>
             </div>
             <div className="space-y-1.5">
               {photoRequirements.length === 0 && (
-                <div className="text-center py-4 text-xs text-muted-foreground border border-dashed rounded-lg">
-                  No photos required yet. Click below to add the first one.
-                </div>
+                <div className="text-center py-4 text-xs text-muted-foreground border border-dashed rounded-lg">{mt("noPhotosRequiredYetClickBelowToAddTheFirstOne")}</div>
               )}
               {photoRequirements.map((item, index) => (
                 <PhotoRequirementRow
@@ -587,9 +572,7 @@ export function ChecklistSection({
                 onClick={addPhotoReq}
                 className="w-full h-8 text-xs"
               >
-                <Plus className="size-3.5 mr-1.5" />
-                Add Photo Requirement
-              </Button>
+                <Plus className="size-3.5 mr-1.5" />{mt("addPhotoRequirement")}</Button>
             </div>
           </div>
         </CardContent>
@@ -600,11 +583,9 @@ export function ChecklistSection({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Eye className="size-4 text-primary" />
-              Chef View Preview
-            </DialogTitle>
+              <Eye className="size-4 text-primary" />{mt("chefViewPreview")}</DialogTitle>
             <DialogDescription>
-              Exactly what chefs see during {title.toLowerCase()}. Updates as you edit.
+              {mt("chefViewPreviewLiveDescription", { title: title.toLowerCase() })}
             </DialogDescription>
           </DialogHeader>
           <ChefViewPreview

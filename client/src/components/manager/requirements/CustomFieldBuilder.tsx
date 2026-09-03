@@ -4,6 +4,8 @@
  */
 
 import { useState } from 'react';
+import { mt } from "@/i18n/manager";
+import { tt } from "@/i18n/common-ns";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -72,6 +74,7 @@ export function CustomFieldBuilder({
   onFieldsChange,
   className = '',
 }: CustomFieldBuilderProps) {
+  
   const [editor, setEditor] = useState<FieldEditorState>({
     isOpen: false,
     editingField: null,
@@ -112,7 +115,7 @@ export function CustomFieldBuilder({
     const newErrors: Record<string, string> = {};
 
     if (!editor.formData.label?.trim()) {
-      newErrors.label = 'Field label is required';
+      newErrors.label = tt('fieldLabelRequired');
     }
 
     if (!editor.formData.type) {
@@ -204,18 +207,14 @@ export function CustomFieldBuilder({
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-            Custom Fields
-          </h4>
+          <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{mt("customFields")}</h4>
         </div>
         <Button
           onClick={openAddDialog}
           size="sm"
           className="shadow-sm"
         >
-          <Plus className="h-4 w-4 mr-1.5" />
-          Add Field
-        </Button>
+          <Plus className="h-4 w-4 mr-1.5" />{mt("addField")}</Button>
       </div>
 
       {/* Existing Fields List */}
@@ -245,9 +244,7 @@ export function CustomFieldBuilder({
                     {field.label}
                   </span>
                   {field.required && (
-                    <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4">
-                      Required
-                    </Badge>
+                    <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4">{mt("required")}</Badge>
                   )}
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
@@ -288,12 +285,8 @@ export function CustomFieldBuilder({
           <div className="h-10 w-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-3">
             <Plus className="h-5 w-5 text-slate-400" />
           </div>
-          <p className="text-sm font-medium text-slate-600 dark:text-slate-400">
-            No custom fields yet
-          </p>
-          <p className="text-xs text-slate-500 dark:text-slate-500 mt-1 text-center max-w-xs">
-            Add custom fields to collect specific information unique to your kitchen requirements
-          </p>
+          <p className="text-sm font-medium text-slate-600 dark:text-slate-400">{mt("noCustomFieldsYet")}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-500 mt-1 text-center max-w-xs">{mt("addCustomFieldsToCollectSpecificInformationUniqueToYourKitch")}</p>
         </div>
       )}
 
@@ -324,14 +317,13 @@ export function CustomFieldBuilder({
           <div className="space-y-4 py-4">
             {/* Field Label */}
             <div className="space-y-2">
-              <Label htmlFor="field-label" className="text-sm font-medium">
-                Field Label <span className="text-red-500">*</span>
+              <Label htmlFor="field-label" className="text-sm font-medium">{mt("fieldLabel")}<span className="text-red-500">*</span>
               </Label>
               <Input
                 id="field-label"
                 value={editor.formData.label || ''}
                 onChange={(e) => updateFormData({ label: e.target.value })}
-                placeholder="e.g., Specialty Cuisine Types"
+                placeholder={mt("eGSpecialtyCuisineTypes")}
                 className={errors.label ? 'border-red-500 focus-visible:ring-red-500' : ''}
               />
               {errors.label && (
@@ -344,8 +336,7 @@ export function CustomFieldBuilder({
 
             {/* Field Type */}
             <div className="space-y-2">
-              <Label htmlFor="field-type" className="text-sm font-medium">
-                Field Type <span className="text-red-500">*</span>
+              <Label htmlFor="field-type" className="text-sm font-medium">{mt("fieldType")}<span className="text-red-500">*</span>
               </Label>
               <Select
                 value={editor.formData.type}
@@ -357,7 +348,7 @@ export function CustomFieldBuilder({
                 }
               >
                 <SelectTrigger className={errors.type ? 'border-red-500' : ''}>
-                  <SelectValue placeholder="Select field type" />
+                  <SelectValue placeholder={mt("selectFieldType")} />
                 </SelectTrigger>
                 <SelectContent>
                   {CUSTOM_FIELD_TYPES.map((type) => (
@@ -383,14 +374,13 @@ export function CustomFieldBuilder({
 
             {/* Placeholder */}
             <div className="space-y-2">
-              <Label htmlFor="field-placeholder" className="text-sm font-medium">
-                Placeholder Text <span className="text-slate-400">(optional)</span>
+              <Label htmlFor="field-placeholder" className="text-sm font-medium">{mt("placeholderText")}<span className="text-slate-400">{mt("optionalLabel")}</span>
               </Label>
               <Input
                 id="field-placeholder"
                 value={editor.formData.placeholder || ''}
                 onChange={(e) => updateFormData({ placeholder: e.target.value })}
-                placeholder="e.g., Enter your specialty cuisines..."
+                placeholder={mt("eGEnterYourSpecialtyCuisines")}
               />
             </div>
 
@@ -434,7 +424,7 @@ export function CustomFieldBuilder({
                   <Input
                     value={newOption}
                     onChange={(e) => setNewOption(e.target.value)}
-                    placeholder="Type an option and press Add"
+                    placeholder={mt("typeAnOptionAndPressAdd")}
                     onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addOption())}
                     className="flex-1"
                   />
@@ -455,10 +445,8 @@ export function CustomFieldBuilder({
             {/* Required Toggle */}
             <div className="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
               <div>
-                <Label className="text-sm font-medium">Required Field</Label>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Applicants must complete this field to submit
-                </p>
+                <Label className="text-sm font-medium">{mt("requiredField")}</Label>
+                <p className="text-xs text-slate-500 mt-0.5">{mt("applicantsMustCompleteThisFieldToSubmit")}</p>
               </div>
               <Switch
                 checked={editor.formData.required ?? false}
@@ -468,9 +456,7 @@ export function CustomFieldBuilder({
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={closeDialog}>
-              Cancel
-            </Button>
+            <Button variant="outline" onClick={closeDialog}>{mt("cancel")}</Button>
             <Button
               onClick={handleSave}
             >

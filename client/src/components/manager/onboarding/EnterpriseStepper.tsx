@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { mt } from "@/i18n/manager";
 import { useManagerOnboarding } from './ManagerOnboardingContext';
 import { cn } from "@/lib/utils";
 import { 
@@ -65,23 +66,20 @@ const EnterpriseStepper = () => {
                     <div className="flex items-center gap-3 mb-4">
                         <Logo variant="brand" className="h-10 w-auto" />
                         <div className="flex flex-col justify-center">
-                            <span className="font-logo text-lg leading-none text-[#F51042] tracking-tight font-normal">
-                                LocalCooks
-                            </span>
-                            <span className="text-[10px] font-sans font-medium text-gray-500/80 uppercase tracking-wider mt-0.5 leading-none">
-                                for kitchens
-                            </span>
+                            <span className="font-logo text-lg leading-none text-[#F51042] tracking-tight font-normal">{mt("localCooks")}</span>
+                            <span className="text-[10px] font-sans font-medium text-gray-500/80 uppercase tracking-wider mt-0.5 leading-none">{mt("shellForKitchens")}</span>
                         </div>
                     </div>
 
                     {/* Progress Indicator */}
                     <div className="space-y-2">
                         <div className="flex items-center justify-between text-xs">
-                            <span className="text-slate-600 dark:text-slate-400 font-medium">
-                                Progress
-                            </span>
+                            <span className="text-slate-600 dark:text-slate-400 font-medium">{mt("progress")}</span>
                             <span className="text-primary font-semibold">
-                                {progressStats.completed}/{progressStats.total} required
+                                {mt("requiredStepsCount", {
+                                    completed: progressStats.completed,
+                                    total: progressStats.total,
+                                })}
                             </span>
                         </div>
                         <Progress 
@@ -165,7 +163,7 @@ const EnterpriseStepper = () => {
                                                                 isCompleted ? "bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400" : "text-slate-500"
                                                             )}
                                                         >
-                                                            {isCompleted ? "Done" : "Optional"}
+                                                            {isCompleted ? mt("doneBadge") : mt("optional")}
                                                         </Badge>
                                                     )}
                                                 </div>
@@ -186,9 +184,7 @@ const EnterpriseStepper = () => {
                                         </button>
                                     </TooltipTrigger>
                                     {!isAccessible && (
-                                        <TooltipContent side="right" className="text-xs">
-                                            Complete previous steps first
-                                        </TooltipContent>
+                                        <TooltipContent side="right" className="text-xs">{mt("completePreviousStepsFirst")}</TooltipContent>
                                     )}
                                 </Tooltip>
                             );
@@ -203,12 +199,8 @@ const EnterpriseStepper = () => {
                             <ClipboardCheck className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                         </div>
                         <div>
-                            <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
-                                Almost there!
-                            </p>
-                            <p className="text-[11px] text-amber-700/80 dark:text-amber-400/80 mt-0.5">
-                                Complete required steps to start accepting bookings.
-                            </p>
+                            <p className="text-xs font-medium text-amber-800 dark:text-amber-300">{mt("almostThere")}</p>
+                            <p className="text-[11px] text-amber-700/80 dark:text-amber-400/80 mt-0.5">{mt("completeRequiredStepsToStartAcceptingBookings")}</p>
                         </div>
                     </div>
                 </div>

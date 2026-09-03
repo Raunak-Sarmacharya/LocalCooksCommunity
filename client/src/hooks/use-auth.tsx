@@ -1,5 +1,7 @@
 import { logger } from "@/lib/logger";
 import { auth, db } from "@/lib/firebase";
+import { getAuthIntent } from "@/lib/auth-intent";
+import { sendVerificationEmailWithFallback } from "@/lib/send-verification-email";
 import { queryClient } from "@/lib/queryClient";
 import {
   createUserWithEmailAndPassword,
@@ -20,7 +22,7 @@ import {
   setDoc
 } from "firebase/firestore";
 import { createContext, ReactNode, useContext, useEffect, useState, useRef, useCallback } from "react";
-import { getSubdomainFromHostname } from "@shared/subdomain-utils";
+import { getSubdomainFromHostname, getRoleLoginOrigin } from "@shared/subdomain-utils";
 import { User, UserWithFlags } from "@shared/schema";
 
 // ENTERPRISE: Auth Phase State Machine
@@ -146,7 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           logger.info('👨‍🍳 Auto-setting role to chef based on chef subdomain');
         } else {
           // No subdomain match - check URL path as fallback
-          if (currentPath === '/admin-register' || currentPath === '/admin/register' || currentPath === '/admin-login' || currentPath === '/admin/login') {
+          if (currentPath === '/admin-login' || currentPath === '/admin/login') {
             finalRole = 'admin';
             logger.info('👑 Auto-setting role to admin based on admin URL path');
           } else if (currentPath === '/manager-register' || currentPath === '/manager/register' || currentPath === '/manager-login' || currentPath === '/manager/login') {
@@ -155,6 +157,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           } else if (currentPath === '/auth') {
             finalRole = 'chef';
             logger.info('👨‍🍳 Auto-setting role to chef based on /auth URL');
+          } else if (
+            currentPath.includes('/kitchen-preview') ||
+            currentPath.includes('/apply-kitchen') ||
+            currentPath.includes('/book-kitchen')
+          ) {
+            finalRole = 'chef';
+            logger.info('👨‍🍳 Auto-setting role to chef based on kitchen preview/book path');
           } else {
             // CRITICAL: Don't default to chef - this causes admins/managers to be created as chefs
             // Instead, log a warning and let the backend handle it
@@ -449,7 +458,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             logger.info('❌ User not verified in Firebase - signing out');
             setAuthPhase('error');
             await signOut(auth);
-            throw new Error('Please verify your email before logging in. Check your inbox for a verification link from Firebase.');
+            throw new Error('Please verify your email before logging in. Check your inbox and spam folder for the verification link, then click it to continue.');
           }
         }
 
@@ -497,7 +506,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const currentPath = window.location.pathname;
           let detectedRole: string | null = null;
 
-          if (currentPath === '/admin-register' || currentPath === '/admin/register' || currentPath === '/admin-login' || currentPath === '/admin/login') {
+          if (currentPath === '/admin-login' || currentPath === '/admin/login') {
             detectedRole = 'admin';
           } else if (currentPath === '/manager-register' || currentPath === '/manager/register' || currentPath === '/manager-login' || currentPath === '/manager/login') {
             detectedRole = 'manager';
@@ -548,9 +557,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       // Check for admin paths first (most specific)
-      if (currentPath === '/admin-register' || currentPath === '/admin/register' ||
-        currentPath === '/admin-login' || currentPath === '/admin/login' ||
-        currentPath.startsWith('/admin-register') || currentPath.startsWith('/admin/register') ||
+      if (currentPath === '/admin-login' || currentPath === '/admin/login' ||
         currentPath.startsWith('/admin-login') || currentPath.startsWith('/admin/login')) {
         detectedRole = 'admin';
         logger.info('👑 Detected admin role from URL path during signup');
@@ -563,6 +570,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else if (currentPath === '/auth' || currentPath.startsWith('/auth')) {
         detectedRole = 'chef';
         logger.info('👨‍🍳 Detected chef role from URL path during signup');
+      } else if (
+        currentPath.includes('/kitchen-preview') ||
+        currentPath.includes('/apply-kitchen') ||
+        currentPath.includes('/book-kitchen')
+      ) {
+        detectedRole = 'chef';
+        logger.info('👨‍🍳 Detected chef role from kitchen preview/book path during signup');
       } else {
         logger.warn(`⚠️ No role detected from URL path "${currentPath}" during signup - role will be determined by backend`);
         logger.warn(`   Full URL: ${currentUrl}`);
@@ -603,18 +617,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logger.info('📧 Sending Custom email verification...');
       let emailSent = false;
       try {
-        const response = await fetch('/api/firebase/send-verification-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: updatedUser.email, role: detectedRole })
+        await sendVerificationEmailWithFallback({
+          email: updatedUser.email!,
+          role: detectedRole || "chef",
+          returnUrl:
+            getAuthIntent()?.returnPath ||
+            `${window.location.pathname}${window.location.search}`,
         });
-        if (!response.ok) {
-          throw new Error('Failed to send custom verification email');
-        }
-        logger.info('✅ Custom email verification sent successfully');
+        logger.info("✅ Custom email verification sent successfully");
         emailSent = true;
       } catch (emailError: any) {
-        logger.error('❌ Failed to send Custom verification email:', emailError);
+        logger.error("❌ Failed to send Custom verification email:", emailError);
       }
 
       if (!emailSent) {
@@ -653,8 +666,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setPendingSync(false);
       setPendingRegistration(false);
 
-      // SECURITY FIX: Clear all localStorage data to prevent cross-user data leakage
+      // SECURITY FIX: Clear all localStorage data to prevent cross-user data leakage.
+      // Keep uid-scoped walkthrough flags so the same user is not toured again.
+      const walkthroughFlags: [string, string][] = [];
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (
+            key &&
+            (key.startsWith("lc.kitchenPreview.walkthrough") ||
+              key.startsWith("lc.discoverKitchens.buttonTour"))
+          ) {
+            const val = localStorage.getItem(key);
+            if (val != null) walkthroughFlags.push([key, val]);
+          }
+        }
+      } catch {
+        // ignore
+      }
       localStorage.clear();
+      try {
+        for (const [key, val] of walkthroughFlags) localStorage.setItem(key, val);
+      } catch {
+        // ignore
+      }
       logger.info('🧹 LOGOUT: Cleared all localStorage data');
 
       // SECURITY FIX: Clear all React Query cache to prevent cross-user data leakage
@@ -731,7 +766,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           logger.info('👨‍🍳 Detected role: chef from chef subdomain');
         } else {
           // No subdomain match - check URL path as fallback
-          if (currentPath === '/admin-login' || currentPath === '/admin/login' || currentPath === '/admin-register' || currentPath === '/admin/register') {
+          if (currentPath === '/admin-login' || currentPath === '/admin/login') {
             detectedRole = 'admin';
             logger.info('👑 Detected role: admin from URL path');
           } else if (currentPath === '/manager-register' || currentPath === '/manager/register' || currentPath === '/manager-login' || currentPath === '/manager/login') {
@@ -840,10 +875,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       // Try custom branded email endpoint first (uses server-side Firebase Admin + custom template)
       logger.info(`📧 Sending custom magic link email to: ${email}`);
+      const intent = getAuthIntent();
+      const returnUrl =
+        intent?.returnPath ||
+        `${window.location.pathname}${window.location.search}`;
       const customEmailResponse = await fetch('/api/firebase/send-magic-link-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
+        body: JSON.stringify({ email, returnUrl })
       });
 
       if (customEmailResponse.ok) {
@@ -903,15 +942,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   /**
-   * ENTERPRISE: Production subdomain configuration for role-based routing
-   * Single source of truth for all email verification redirects
+   * ENTERPRISE: Role login origins — preview → dev-*, production → bare subdomain.
    */
-  const PRODUCTION_SUBDOMAINS = {
-    manager: 'https://kitchen.localcooks.ca',
-    chef: 'https://chef.localcooks.ca',
-    admin: 'https://admin.localcooks.ca',
-  } as const;
-
   const DEFAULT_REDIRECT_PATHS = {
     manager: '/manager/login?verified=true',
     chef: '/auth?verified=true',
@@ -944,8 +976,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   /**
-   * Builds enterprise-grade verification redirect URL based on role
-   * Uses production subdomains in production, relative paths in development
+   * Builds verification redirect URL based on role + VERCEL_ENV / host.
+   * Preview → https://dev-chef.localcooks.ca/... ; production → https://chef.localcooks.ca/...
    */
   const buildVerificationRedirectUrl = (role?: 'manager' | 'chef' | 'admin'): string => {
     const detectedRole = role || detectRoleFromContext();
@@ -955,12 +987,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       hostname.endsWith('.localhost');
 
     if (isLocalhost) {
-      // Development: use relative paths for localhost
       return DEFAULT_REDIRECT_PATHS[detectedRole];
     }
 
-    // Production: use full subdomain URLs
-    return `${PRODUCTION_SUBDOMAINS[detectedRole]}${DEFAULT_REDIRECT_PATHS[detectedRole]}`;
+    const origin = getRoleLoginOrigin(detectedRole, hostname, {
+      vercelEnv: import.meta.env.VITE_VERCEL_ENV,
+    });
+    return `${origin}${DEFAULT_REDIRECT_PATHS[detectedRole]}`;
   };
 
   // Send verification email to a user (Firebase only)
@@ -1095,15 +1128,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       logger.info('📧 Resending Custom verification email...');
       
-      const response = await fetch('/api/firebase/send-verification-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: firebaseUser.email })
+      await sendVerificationEmailWithFallback({
+        email: firebaseUser.email!,
+        role: 'chef',
       });
-      
-      if (!response.ok) {
-        throw new Error('Failed to send verification email');
-      }
 
       logger.info('✅ Custom verification email resent successfully');
       return true;
@@ -1117,15 +1145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const resendEmailVerification = async (email: string, password: string) => {
     try {
       logger.info('📧 Sending verification email...');
-      const response = await fetch('/api/firebase/send-verification-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to send verification email');
-      }
+      await sendVerificationEmailWithFallback({ email });
       
       logger.info('✅ Verification email resent successfully.');
       return true;

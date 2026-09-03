@@ -8,6 +8,7 @@ import { StorageExtensionDialog } from "./StorageExtensionDialog";
 import { getAuthHeaders } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
+import { bt } from "@/i18n/booking-ns";
 
 interface ExpiringStorageBooking {
   id: number;
@@ -40,7 +41,7 @@ export function ExpiringStorageNotification() {
         headers,
       });
       if (!response.ok) {
-        throw new Error('Failed to fetch expiring storage bookings');
+        throw new Error(bt("failedToFetchExpiringStorage"));
       }
       return response.json() as Promise<ExpiringStorageBooking[]>;
     },

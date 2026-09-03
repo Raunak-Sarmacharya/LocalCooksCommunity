@@ -36,12 +36,27 @@ import { getKitchenDisplayStatus, kitchenLocationId, isActiveKitchenApplication,
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { SmartImage } from "@/components/ui/smart-image";
 import { TruncatedText } from "@/components/common/TruncatedText";
+import { getAuthHeaders } from "@/lib/api";
+import {
+  kitchensForTourAtLocation,
+  resolveTourKitchenTarget,
+  type TourKitchenOption,
+} from "@/lib/tour-kitchen-select";
+import { cn } from "@/lib/utils";
+import { tt } from "@/i18n/common-ns";
 
 interface StorageSummary {
   hasDryStorage: boolean;
@@ -145,6 +160,13 @@ export default function KitchenDiscovery({
   const [tourLocation, setTourLocation] = useState<{
     id: number;
     name: string;
+    kitchenId?: number;
+    kitchenName?: string;
+  } | null>(null);
+  const [tourKitchenPicker, setTourKitchenPicker] = useState<{
+    locationId: number;
+    locationName: string;
+    kitchens: TourKitchenOption[];
   } | null>(null);
   const [tourReplayToken, setTourReplayToken] = useState(() =>
     peekDiscoverKitchensWalkthroughRequest() ? 1 : 0
@@ -171,12 +193,109 @@ export default function KitchenDiscovery({
     queryFn: async () => {
       const response = await fetch("/api/public/kitchens");
       if (!response.ok) {
-        throw new Error("Failed to fetch kitchens");
+        throw new Error(tt("failedToFetchKitchens"));
       }
       return response.json();
     },
     staleTime: 60000, // Cache for 1 minute
   });
+
+  const openTour = (
+    locationId: number,
+    locationName: string,
+    kitchen?: TourKitchenOption | null
+  ) => {
+    setTourKitchenPicker(null);
+    setTourLocation({
+      id: locationId,
+      name: locationName,
+      kitchenId: kitchen?.id,
+      kitchenName: kitchen?.name,
+    });
+  };
+
+  /** Schedule already verified via is-active; pick a kitchen only when 2+ units share the location. */
+  const startTourForLocation = (locationId: number, locationName: string) => {
+    const options = kitchensForTourAtLocation(publicKitchens || [], locationId);
+    const resolved = resolveTourKitchenTarget(options, true);
+    if (resolved.mode === "select") {
+      setTourKitchenPicker({ locationId, locationName, kitchens: resolved.kitchens });
+      return;
+    }
+    openTour(locationId, locationName, resolved.kitchen);
+  };
+
+  const locationIdsForTourStatus = useMemo(
+    () => Array.from(new Set((publicKitchens || []).map((k) => k.locationId))),
+    [publicKitchens]
+  );
+
+  // Same endpoint as kitchen preview — hide Request tour when schedule isn't offered
+  const { data: toursAvailableByLocationId, isFetched: tourStatusFetched } = useQuery({
+    queryKey: ["/api/viewings/location/is-active", locationIdsForTourStatus],
+    queryFn: async () => {
+      const entries = await Promise.all(
+        locationIdsForTourStatus.map(async (locationId) => {
+          try {
+            const response = await fetch(`/api/viewings/location/${locationId}/is-active`, {
+              credentials: "include",
+            });
+            if (!response.ok) return [locationId, false] as const;
+            const data = (await response.json()) as {
+              toursAvailable?: boolean;
+              isActive?: boolean;
+            };
+            return [locationId, !!(data.toursAvailable ?? data.isActive)] as const;
+          } catch {
+            return [locationId, false] as const;
+          }
+        })
+      );
+      return new Map(entries);
+    },
+    enabled: locationIdsForTourStatus.length > 0,
+    staleTime: 60_000,
+  });
+
+  type ChefViewingRow = {
+    viewing?: { id: number; locationId: number; status: string; scheduledAt: string };
+    id?: number;
+    locationId?: number;
+    status?: string;
+    scheduledAt?: string;
+  };
+  const { data: chefViewings = [], isFetched: chefViewingsFetched } = useQuery<ChefViewingRow[]>({
+    queryKey: ["/api/viewings", "chef", user?.uid],
+    queryFn: async () => {
+      const headers = await getAuthHeaders();
+      const response = await fetch("/api/viewings/chef", {
+        headers,
+        credentials: "include",
+      });
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: !!user?.uid,
+  });
+
+  const tourKindByLocationId = useMemo(() => {
+    const map = new Map<number, "pending" | "confirmed">();
+    const ACTIVE = new Set(["pending", "confirmed"]);
+    for (const row of chefViewings) {
+      const v = row.viewing ?? row;
+      if (!v) continue;
+      const locId = Number(v.locationId);
+      if (!Number.isFinite(locId)) continue;
+      const status = String(v.status || "").toLowerCase();
+      if (!ACTIVE.has(status)) continue;
+      const kind = status === "confirmed" ? "confirmed" : "pending";
+      const existing = map.get(locId);
+      if (!existing || (kind === "confirmed" && existing === "pending")) {
+        map.set(locId, kind);
+      }
+    }
+    return map;
+  }, [chefViewings]);
 
   const isLoading = applicationsLoading || kitchensLoading;
 
@@ -207,10 +326,16 @@ export default function KitchenDiscovery({
     const openKitchen = filteredAvailableKitchens.find((kitchen) => {
       const locationId = kitchenLocationId(kitchen);
       const application = locationId != null ? applicationByLocationId.get(locationId) : undefined;
-      return kitchen.canAcceptBookings && !isActiveKitchenApplication(application);
+      const toursAvailable =
+        locationId != null && (toursAvailableByLocationId?.get(locationId) ?? false);
+      return (
+        kitchen.canAcceptBookings &&
+        !isActiveKitchenApplication(application) &&
+        toursAvailable
+      );
     });
     return (openKitchen ?? filteredAvailableKitchens[0])?.id;
-  }, [filteredAvailableKitchens, applicationByLocationId]);
+  }, [filteredAvailableKitchens, applicationByLocationId, toursAvailableByLocationId]);
 
   const kitchenStatusVariant = (status: string) =>
     toneToBadgeVariant(getKitchenDisplayStatus({ status }, tChef).tone);
@@ -411,7 +536,21 @@ export default function KitchenDiscovery({
                   const kitchenLocId = kitchenLocationId(kitchen);
                   const application = kitchenLocId != null ? applicationByLocationId.get(kitchenLocId) : undefined;
                   const display = application ? getKitchenDisplayStatus(application, tChef) : null;
-                  const alreadyApplied = isActiveKitchenApplication(application);
+                  // Any kitchen app hides "Request tour" (matches preview); reapply uses actionKind "discover"
+                  const hasApplication = Boolean(application);
+                  const canReapply = display?.actionKind === "discover";
+                  const showActiveAppActions = hasApplication && !canReapply;
+                  const tourKind =
+                    kitchenLocId != null ? tourKindByLocationId.get(kitchenLocId) : undefined;
+                  const tourReady = !user?.uid || chefViewingsFetched;
+                  const toursAvailable =
+                    kitchenLocId != null &&
+                    (toursAvailableByLocationId?.get(kitchenLocId) ?? false);
+                  // Match preview: pending/confirmed always; Request tour only when schedule exists
+                  const showTourButton =
+                    !hasApplication &&
+                    tourReady &&
+                    (tourKind || (tourStatusFetched && toursAvailable));
 
                   // Format price (cents to dollars)
                   const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
@@ -455,7 +594,7 @@ export default function KitchenDiscovery({
                                   <TruncatedText as="h3" className="text-xl font-bold text-foreground truncate">
                                     {kitchen.name}
                                   </TruncatedText>
-                                  {display && alreadyApplied ? (
+                                  {display ? (
                                     <Badge variant={toneToBadgeVariant(display.tone)} className="text-xs font-medium">
                                       {display.label}
                                     </Badge>
@@ -591,7 +730,7 @@ export default function KitchenDiscovery({
                                 <Eye />
                                 {t("applyFlowViewDetailsButton", "View details")}
                               </Button>
-                              {alreadyApplied ? (
+                              {showActiveAppActions ? (
                                 display?.actionKind === "book" ? (
                                   <Button
                                     size="sm"
@@ -628,26 +767,37 @@ export default function KitchenDiscovery({
                                   </Button>
                                 )
                               ) : kitchen.canAcceptBookings ? (
-                                <>
+                                showTourButton ? (
                                   <Button
                                     size="sm"
-                                    className={kitchenCardActionClass}
+                                    className={cn(
+                                      kitchenCardActionClass,
+                                      tourKind === "confirmed" &&
+                                        "border-emerald-200/90 bg-emerald-50 text-emerald-950 hover:bg-emerald-100/80",
+                                      tourKind === "pending" &&
+                                        "border-amber-200/90 bg-amber-50 text-amber-950 hover:bg-amber-100/80"
+                                    )}
+                                    variant={tourKind ? "outline" : "default"}
                                     data-kitchen-tour={isTourCard ? "tour" : undefined}
-                                    onClick={() => setTourLocation({ id: kitchen.locationId, name: kitchen.locationName })}
+                                    onClick={() => {
+                                      if (tourKind === "pending" || tourKind === "confirmed") {
+                                        setActiveTab("tours");
+                                        return;
+                                      }
+                                      startTourForLocation(
+                                        kitchen.locationId,
+                                        kitchen.locationName
+                                      );
+                                    }}
                                   >
                                     <Calendar />
-                                    {t("applyFlowScheduleTourButton", "Schedule tour")}
+                                    {tourKind === "confirmed"
+                                      ? t("tourConfirmedCta", "Tour confirmed")
+                                      : tourKind === "pending"
+                                        ? t("tourPendingCta", "Tour pending")
+                                        : t("applyFlowScheduleTourButton", "Request tour")}
                                   </Button>
-                                  <Button
-                                    size="sm"
-                                    className={kitchenCardActionClass}
-                                    data-kitchen-tour={isTourCard ? "apply" : undefined}
-                                    onClick={() => navigate(applicationUrl)}
-                                  >
-                                    {display?.actionKind === "discover" ? t("applyAgainBtn", "Apply again") : t("applyFlowApplyNowButton", "Apply Now")}
-                                    <ArrowRight />
-                                  </Button>
-                                </>
+                                ) : null
                               ) : (
                                 <TooltipProvider>
                                   <Tooltip>
@@ -856,6 +1006,45 @@ export default function KitchenDiscovery({
         />
       )}
 
+      <Dialog
+        open={!!tourKitchenPicker}
+        onOpenChange={(open) => {
+          if (!open) setTourKitchenPicker(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("chooseAKitchen", "Choose a kitchen")}</DialogTitle>
+            <DialogDescription>
+              {t(
+                "chooseKitchenForTourDesc",
+                "This location has more than one kitchen. Pick which kitchen you want to tour."
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2 pt-2">
+            {tourKitchenPicker?.kitchens.map((option) => (
+              <Button
+                key={option.id}
+                type="button"
+                variant="outline"
+                className="h-auto min-h-11 justify-start gap-3 px-4 py-3 text-left"
+                onClick={() =>
+                  openTour(
+                    tourKitchenPicker.locationId,
+                    tourKitchenPicker.locationName,
+                    option
+                  )
+                }
+              >
+                <ChefHat className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="font-medium">{option.name}</span>
+              </Button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Schedule tour modal */}
       {tourLocation && (
         <ScheduleViewingWidget
@@ -863,6 +1052,8 @@ export default function KitchenDiscovery({
           onClose={() => setTourLocation(null)}
           locationId={tourLocation.id}
           locationName={tourLocation.name}
+          targetedKitchenId={tourLocation.kitchenId}
+          targetedKitchenName={tourLocation.kitchenName}
         />
       )}
 
@@ -870,4 +1061,3 @@ export default function KitchenDiscovery({
     </div>
   );
 }
-

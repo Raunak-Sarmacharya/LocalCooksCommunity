@@ -1,12 +1,17 @@
 import { logger } from "@/lib/logger";
+import { getRoleLoginOrigin } from "@shared/subdomain-utils";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import ResetPasswordForm from "../components/auth/ResetPasswordForm";
 
+function clientVercelEnv(): string | undefined {
+  return import.meta.env.VITE_VERCEL_ENV || undefined;
+}
+
 /**
  * Redirects to the correct subdomain login page based on user role.
- * Uses full-page redirect for cross-subdomain navigation.
+ * Preview (`VERCEL_ENV=preview`) → dev-chef / etc.; production → chef.localcooks.ca.
  */
 function redirectToRoleLogin(role: string | null, setLocation: (path: string) => void) {
   const isLocalhost = window.location.hostname === 'localhost' ||
@@ -26,18 +31,14 @@ function redirectToRoleLogin(role: string | null, setLocation: (path: string) =>
     admin: '/admin/login',
   };
 
-  const subdomainMap: Record<string, string> = {
-    manager: 'https://kitchen.localcooks.ca',
-    chef: 'https://chef.localcooks.ca',
-    admin: 'https://admin.localcooks.ca',
-  };
-
   const detectedRole = role || 'chef';
-  const subdomain = subdomainMap[detectedRole] || subdomainMap.chef;
+  const subdomain = getRoleLoginOrigin(detectedRole, window.location.hostname, {
+    vercelEnv: clientVercelEnv(),
+  });
   const path = redirectPaths[detectedRole] || redirectPaths.chef;
   const fullUrl = `${subdomain}${path}`;
 
-  console.log('[redirectToRoleLogin] production redirect:', { role, detectedRole, fullUrl });
+  console.log('[redirectToRoleLogin] env-aware redirect:', { role, detectedRole, fullUrl, vercelEnv: clientVercelEnv() });
   logger.info('🔄 Redirecting to role login:', fullUrl);
   window.location.href = fullUrl;
 }
@@ -139,12 +140,9 @@ export default function PasswordReset() {
         (detectedRole === 'admin' && (currentHostname.includes('admin') || currentHostname.startsWith('admin.')));
 
       if (!isCorrectSubdomain) {
-        const subdomainMap: Record<string, string> = {
-          manager: 'https://kitchen.localcooks.ca',
-          chef: 'https://chef.localcooks.ca',
-          admin: 'https://admin.localcooks.ca',
-        };
-        const targetSubdomain = subdomainMap[detectedRole] || subdomainMap.chef;
+        const targetSubdomain = getRoleLoginOrigin(detectedRole, window.location.hostname, {
+          vercelEnv: clientVercelEnv(),
+        });
         const fullUrl = `${targetSubdomain}${window.location.pathname}${window.location.search}`;
         logger.info('🌐 Cross-subdomain redirect from PasswordReset:', fullUrl);
         window.location.href = fullUrl;

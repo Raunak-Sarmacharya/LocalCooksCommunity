@@ -46,6 +46,7 @@ import { toast } from "sonner"
 import { useKitchenCheckin, type KitchenCheckinStatus } from "@/hooks/use-kitchen-checkin"
 import { useLocationChecklist, type ChecklistItem, type PhotoRequirement } from "@/hooks/use-location-checklist"
 import { Checkbox } from "@/components/ui/checkbox"
+import { bt } from "@/i18n/booking-ns";
 import {
   PhotoRequirementUploader,
   flattenPhotos,
@@ -214,13 +215,13 @@ export function KitchenCheckinTracker({
         checkinPhotoUrls: flattenPhotos(checkinPhotos),
         checkinChecklistItems: checkinChecklistItems.length > 0 ? checkinChecklistItems : undefined,
       })
-      toast.success("Checked in successfully!")
+      toast.success(t("kciCheckedInSuccess"))
       setCheckinNotes("")
       setCheckinPhotos({})
       setCheckedItems(new Set())
       setShowCheckinForm(false)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to check in")
+      toast.error(error instanceof Error ? error.message : t("kciCheckInFailed"))
     }
   }
 
@@ -228,13 +229,13 @@ export function KitchenCheckinTracker({
     if (!allCheckoutPhotosUploaded) {
       toast.error(
         checkoutPhotoReqs.length > 0
-          ? "Please upload a photo for each required item before requesting checkout"
+          ? t("kciUploadPhotosCheckout")
           : t("kciErrUploadOnePhoto", "Please upload at least one photo of the kitchen condition"),
       )
       return
     }
     if (!allCheckoutItemsChecked) {
-      toast.error("Please complete all checklist items before requesting checkout")
+      toast.error(t("kciCompleteChecklistCheckout"))
       return
     }
     // Build checklist audit trail from checked items
@@ -249,13 +250,13 @@ export function KitchenCheckinTracker({
         checkoutPhotoUrls: flattenPhotos(checkoutPhotos),
         checkoutChecklistItems: checkoutChecklistItems.length > 0 ? checkoutChecklistItems : undefined,
       })
-      toast.success("Checkout requested! Manager will review shortly.")
+      toast.success(t("kciCheckoutRequestedToast"))
       setCheckoutNotes("")
       setCheckoutPhotos({})
       setCheckedItems(new Set())
       setShowCheckoutForm(false)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to request checkout")
+      toast.error(error instanceof Error ? error.message : t("kciCheckoutRequestFailed"))
     }
   }
 
@@ -492,7 +493,7 @@ export function KitchenCheckinTracker({
                   />
 
                   <Textarea
-                    placeholder="Optional check-in notes..."
+                    placeholder={bt("optionalCheckinNotesPlaceholder")}
                     value={checkinNotes}
                     onChange={(e) => setCheckinNotes(e.target.value)}
                     rows={2}
@@ -590,21 +591,21 @@ export function KitchenCheckinTracker({
                     photos={checkoutPhotos}
                     onPhotosChange={setCheckoutPhotos}
                     uploadFolder="kitchen-checkout"
-                    genericInstruction="Upload photos showing the kitchen is clean and in good condition. This speeds up manager approval."
+                    genericInstruction={t("kciGenericCheckoutInstruction")}
                     disabled={isCheckingOut}
                   />
 
                   <Textarea
-                    placeholder="Checkout notes (e.g., kitchen condition)..."
+                    placeholder={bt("checkoutNotesPlaceholder")}
                     value={checkoutNotes}
                     onChange={(e) => setCheckoutNotes(e.target.value)}
                     rows={2}
                   />
 
                   <WhatHappensNextInfo items={[
-                    "Manager will review your photos and inspect the kitchen",
-                    "If clear, your session is completed",
-                    "Auto-clears if no issues within the review window",
+                    t("kciNextStep1"),
+                    t("kciNextStep2"),
+                    t("kciNextStep3"),
                   ]} />
 
                   <div className="flex gap-2">
@@ -648,6 +649,7 @@ export function KitchenCheckinTracker({
 // ─── Info Popover ─────────────────────────────────────────────────────────────
 
 function WhatHappensNextInfo({ items }: { items: string[] }) {
+  const { t } = useTranslation("chef");
   const [open, setOpen] = useState(false)
   return (
     <div className="relative">
@@ -658,7 +660,7 @@ function WhatHappensNextInfo({ items }: { items: string[] }) {
         aria-expanded={open}
       >
         <Info className="h-3.5 w-3.5" />
-        <span>What happens next?</span>
+        <span>{t("kciWhatHappensNext")}</span>
       </button>
       {open && (
         <div className="mt-2 rounded-lg border p-3 animate-in fade-in slide-in-from-top-1 duration-150">

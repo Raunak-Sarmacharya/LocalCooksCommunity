@@ -11,19 +11,11 @@ import {
     BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
 import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { useFirebaseAuth } from "@/hooks/use-auth";
-import { LogOut, User as UserIcon, ChevronDown, Command, Languages } from "lucide-react";
 import { CommandMenu } from "@/components/command-menu";
 import { Button } from "@/components/ui/button";
 import NotificationCenter from "@/components/manager/NotificationCenter";
+import { useTranslation } from "react-i18next";
 
 interface DashboardLayoutProps {
     children: React.ReactNode;
@@ -44,17 +36,14 @@ export default function DashboardLayout({
     selectedLocation,
     onLocationChange,
     onCreateLocation,
-    breadcrumbs = [{ label: "Dashboard" }]
+    breadcrumbs
 }: DashboardLayoutProps) {
-    // Generate breadcrumbs based on active view if not provided
-    const displayBreadcrumbs = breadcrumbs.length > 0 ? breadcrumbs : [
-        { label: "Dashboard", href: "#" },
-        { label: activeView.charAt(0).toUpperCase() + activeView.slice(1).replace("-", " ") }
-    ];
+    const { t } = useTranslation("manager");
+    const displayBreadcrumbs = breadcrumbs ?? [{ label: t("shellDashboard") }];
 
     const [isCommandOpen, setIsCommandOpen] = React.useState(false);
 
-    const { user, logout } = useFirebaseAuth();
+    const { logout } = useFirebaseAuth();
 
     return (
         <SidebarProvider>
@@ -99,8 +88,8 @@ export default function DashboardLayout({
                             className="hidden md:flex relative h-9 w-full justify-start rounded-[0.5rem] bg-background text-sm font-normal text-muted-foreground shadow-none sm:pr-12 md:w-40 lg:w-64"
                             onClick={() => setIsCommandOpen(true)}
                         >
-                            <span className="hidden lg:inline-flex">Search...</span>
-                            <span className="inline-flex lg:hidden">Search...</span>
+                            <span className="hidden lg:inline-flex">{t("shellSearch")}</span>
+                            <span className="inline-flex lg:hidden">{t("shellSearch")}</span>
                             <kbd className="pointer-events-none absolute right-[0.3rem] top-[0.3rem] hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
                                 <span className="text-xs">⌘</span>K
                             </kbd>
@@ -109,54 +98,6 @@ export default function DashboardLayout({
                         {/* Notification Center */}
                         <NotificationCenter locationId={selectedLocation?.id} />
 
-                        <DropdownMenu modal={false}>
-                            <DropdownMenuTrigger asChild>
-                                <div className="flex items-center gap-2 cursor-pointer hover:bg-accent/50 p-1.5 rounded-lg transition-colors group">
-                                    <Avatar className="h-8 w-8 rounded-lg border">
-                                        <AvatarImage src={user?.photoURL || ""} alt={user?.displayName || ""} />
-                                        <AvatarFallback className="rounded-lg">CN</AvatarFallback>
-                                    </Avatar>
-                                    <ChevronDown className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-                                </div>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent
-                                align="end"
-                                sideOffset={4}
-                                forceMount
-                                className="w-64 p-2 bg-background/95 backdrop-blur-sm border border-border/60 rounded-lg shadow-xl shadow-foreground/5"
-                            >
-                                <div className="px-3 py-2.5 mb-1">
-                                    <p className="text-sm font-medium text-foreground tracking-tight leading-tight">
-                                        {user?.displayName || "Manager"}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground tracking-tight leading-tight">
-                                        {user?.email}
-                                    </p>
-                                </div>
-
-                                <DropdownMenuSeparator className="my-2 bg-gradient-to-r from-transparent via-border to-transparent" />
-
-                                <div className="space-y-1">
-                                    <DropdownMenuItem
-                                        onClick={() => onViewChange("profile")}
-                                        className="flex items-center p-3 rounded-md transition-all duration-200 cursor-pointer group hover:shadow-sm border border-transparent hover:border-border/50"
-                                    >
-                                        <UserIcon className="mr-2 h-4 w-4" />
-                                        <span className="text-sm font-medium tracking-tight">Profile</span>
-                                    </DropdownMenuItem>
-                                </div>
-
-                                <DropdownMenuSeparator className="my-2 bg-gradient-to-r from-transparent via-border to-transparent" />
-
-                                <DropdownMenuItem
-                                    onClick={() => logout()}
-                                    className="flex items-center gap-3 p-3 rounded-md duration-200 bg-destructive/10 hover:bg-destructive/20 cursor-pointer border border-transparent hover:border-destructive/30 hover:shadow-sm transition-all group"
-                                >
-                                    <LogOut className="h-4 w-4 text-destructive group-hover:text-destructive" />
-                                    <span className="text-sm font-medium text-destructive">Sign Out</span>
-                                </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
                     </div>
                 </header>
                 <main className="flex-1 p-4 md:p-6 lg:p-8 bg-muted/10 relative overflow-hidden">

@@ -61,6 +61,8 @@ import { auth } from "@/lib/firebase";
 import { toast } from "@/hooks/use-toast";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { formatDistanceToNow, isToday, isYesterday, isThisWeek } from "date-fns";
+import { tt } from "@/i18n/common-ns";
+import { ct } from "@/i18n/chef-ns";
 
 // Types
 interface Notification {
@@ -479,7 +481,7 @@ export default function ChefNotificationCenter() {
         headers,
         body: JSON.stringify({ notificationIds: ids }),
       });
-      if (!res.ok) throw new Error("Failed to mark as read");
+      if (!res.ok) throw new Error(tt("failedToMarkAsRead"));
       return res.json();
     },
     onMutate: async (ids: number[]) => {
@@ -529,7 +531,7 @@ export default function ChefNotificationCenter() {
         method: "POST",
         headers,
       });
-      if (!res.ok) throw new Error("Failed to mark all as read");
+      if (!res.ok) throw new Error(ct("failedToMarkAllAsRead"));
       return res.json();
     },
     onMutate: async () => {
@@ -578,7 +580,7 @@ export default function ChefNotificationCenter() {
         headers,
         body: JSON.stringify({ notificationIds: ids }),
       });
-      if (!res.ok) throw new Error("Failed to archive");
+      if (!res.ok) throw new Error(ct("failedToArchive"));
       return res.json();
     },
     onMutate: async (ids: number[]) => {
@@ -634,7 +636,7 @@ export default function ChefNotificationCenter() {
         method: "DELETE",
         headers,
       });
-      if (!res.ok) throw new Error("Failed to delete");
+      if (!res.ok) throw new Error(ct("failedToDeleteNotification"));
       return res.json();
     },
     onMutate: async (id: number) => {

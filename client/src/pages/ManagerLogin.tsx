@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { useTranslation } from "react-i18next";
 import EnhancedLoginForm from "@/components/auth/EnhancedLoginForm";
 import EnhancedRegisterForm from "@/components/auth/EnhancedRegisterForm";
 import EmailVerificationScreen from "@/components/auth/EmailVerificationScreen";
@@ -18,6 +19,8 @@ import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import FadeInSection from "@/components/ui/FadeInSection";
 
 export default function ManagerLogin() {
+  const { t } = useTranslation("manager");
+
   // Managers now use Firebase authentication (like chefs)
   const [location, setLocation] = useLocation();
   const { user, loading, authPhase, logout, refreshUserData } = useFirebaseAuth();
@@ -287,17 +290,13 @@ export default function ManagerLogin() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4 }}
-            >
-              Manager Portal
-            </motion.h1>
+            >{t("managerPortal")}</motion.h1>
             <motion.p
               className="text-gray-600 mt-2 leading-relaxed"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.4, delay: 0.1 }}
-            >
-              Sign in to access your commercial kitchen dashboard and manage your location
-            </motion.p>
+            >{t("signInToAccessYourCommercialKitchenDashboardAndManageYourLoc")}</motion.p>
           </motion.div>
 
           {/* Success Messages */}
@@ -316,7 +315,7 @@ export default function ManagerLogin() {
                 <div>
                   <p className="text-sm font-medium text-green-800">
                     {successMessageType === 'password-reset' 
-                      ? 'Password reset link sent! Check your email.' 
+                      ? 'Password reset link sent! Open the email and click the link to continue. Check spam if you don\'t see it.' 
                       : 'Email verified! You can now sign in.'}
                   </p>
                 </div>
@@ -338,13 +337,9 @@ export default function ManagerLogin() {
             <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "login" | "register")} className="w-full">
               <TabsList className="grid w-full grid-cols-2 mb-6">
                 <TabsTrigger value="login" className="flex items-center gap-2">
-                  <LogIn className="w-4 h-4" />
-                  Login
-                </TabsTrigger>
+                  <LogIn className="w-4 h-4" />{t("login")}</TabsTrigger>
                 <TabsTrigger value="register" className="flex items-center gap-2">
-                  <UserPlus className="w-4 h-4" />
-                  Register
-                </TabsTrigger>
+                  <UserPlus className="w-4 h-4" />{t("register")}</TabsTrigger>
               </TabsList>
 
               <TabsContent value="login">
@@ -387,9 +382,7 @@ export default function ManagerLogin() {
             transition={{ duration: 0.5, delay: 0.6 }}
             className="mt-8 text-center"
           >
-            <p className="text-sm text-gray-500">
-              Partner commercial kitchen access only
-            </p>
+            <p className="text-sm text-gray-500">{t("partnerCommercialKitchenAccessOnly")}</p>
           </motion.div>
         </div>
       </motion.div>
@@ -436,18 +429,14 @@ export default function ManagerLogin() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.5 }}
-          >
-            Manage Your Commercial Kitchen
-          </motion.h2>
+          >{t("manageYourCommercialKitchen")}</motion.h2>
           
           <motion.p
             className="text-white/90 mb-8 text-lg leading-relaxed"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.6 }}
-          >
-            Access your partner dashboard to manage bookings, availability, and chef profiles for your commercial kitchen location.
-          </motion.p>
+          >{t("accessYourPartnerDashboardToManageBookingsAvailabilityAndChe")}</motion.p>
           
           <motion.ul
             initial={{ opacity: 0 }}

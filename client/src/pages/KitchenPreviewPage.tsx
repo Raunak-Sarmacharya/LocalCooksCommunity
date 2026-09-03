@@ -1,30 +1,30 @@
 import { logger } from "@/lib/logger";
+import i18n from "@/i18n";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import { Helmet } from "react-helmet-async";
-import { motion, AnimatePresence } from "framer-motion";
-import {
-  Building2, MapPin, Loader2, Calendar, DoorOpen,
-  ChevronLeft, ChevronRight, ChevronDown, Utensils, Check, ImageOff, FileText, Clock,
-  CookingPot, Warehouse, ListChecks, BadgeCheck,
-  LayoutGrid, X, CheckCircle2, ClipboardList, Images, Info,
-} from "lucide-react";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { Icon } from "@iconify/react";
 import { formatCurrency, formatTime } from "@/lib/formatters";
-import { KitchenNextStepsDescription } from "@/components/common/KitchenNextStepsDescription";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  notifyBookingPrefsChanged,
+  usePersistedBookingPricePreview,
+  type PersistedBookingPricePreview,
+} from "@/lib/persisted-booking-prefs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from "react";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import useEmblaCarousel from 'embla-carousel-react';
@@ -32,12 +32,13 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useAuthModal } from "@/components/auth/AuthModalProvider";
 import { isChefUser } from "@/config/chef-onboarding-steps";
 import { chefDashboardHref } from "@/lib/chef-dashboard-nav";
+import { resolveChefDashboardNavigation } from "@shared/subdomain-utils";
 import {
   useChefKitchenApplicationForLocation,
   useChefKitchenApplications,
   useGlobalMyApplications,
 } from "@/hooks/use-chef-kitchen-applications";
-import { getKitchenDisplayStatus, isActiveKitchenApplication, kitchenLocationId, toneToBadgeVariant } from "@/components/chef/applications/status";
+import { getKitchenDisplayStatus, kitchenLocationId, toneToBadgeVariant, type KitchenActionKind, type KitchenDisplayStatus } from "@/components/chef/applications/status";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -46,9 +47,83 @@ import { cn } from "@/lib/utils";
 import { ScheduleViewingWidget } from "@/components/chef/ScheduleViewingWidget";
 import { KitchenPreviewWalkthrough } from "@/components/kitchen-application/KitchenPreviewWalkthrough";
 import { getAuthHeaders } from "@/lib/api";
+import { saveAuthIntentFromCurrentPage } from "@/lib/auth-intent";
+import { pickPreviewActiveSectionId } from "@/lib/preview-scroll-spy";
+import { resolveEquipmentIcon, resolveStorageIcon } from "@/lib/kitchen-inventory-icons";
 import { SmartImage } from "@/components/ui/smart-image";
 import { Calendar as UICalendar } from "@/components/ui/calendar";
-import { DateRange } from "react-day-picker";
+import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { kt } from "@/i18n/kitchen-ns";
+import KitchenBookingSheet from "@/components/booking/KitchenBookingSheet";
+
+/** Iconify icon used across kitchen preview chrome (MDI, bundled offline). */
+function PreviewIcon({
+  icon,
+  className,
+  size = 16,
+}: {
+  icon: string;
+  className?: string;
+  size?: number;
+}) {
+  return (
+    <Icon
+      icon={icon}
+      width={size}
+      height={size}
+      className={cn("shrink-0", className)}
+      aria-hidden
+    />
+  );
+}
+
+/** Click-to-open info tip — keeps helper copy off the layout. */
+function PreviewInfoTip({
+  label,
+  children,
+  className,
+  side = "top",
+  align = "end",
+}: {
+  label: string;
+  children: ReactNode;
+  className?: string;
+  side?: "top" | "bottom" | "left" | "right";
+  align?: "start" | "center" | "end";
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
+            "text-gray-400 hover:bg-gray-100 hover:text-gray-700",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]/40",
+            "touch-manipulation",
+            className
+          )}
+          aria-label={label}
+        >
+          <PreviewIcon icon="mdi:information-outline" size={16} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        side={side}
+        align={align}
+        sideOffset={8}
+        collisionPadding={16}
+        avoidCollisions
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        className="z-[100] w-auto max-w-[min(18rem,calc(100vw-2rem))] p-3 text-xs leading-relaxed text-gray-700 shadow-lg"
+      >
+        {children}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // ENTERPRISE-GRADE DESIGN SYSTEM - Notion-Inspired Kitchen Preview
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -180,7 +255,7 @@ function LightboxCarousel({ images, initialIndex, onClose, kitchenName }: { imag
           className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-colors z-20 backdrop-blur-md"
           aria-label={t("closeLightbox", "Close lightbox")}
         >
-          <X className="w-5 h-5" />
+          <PreviewIcon icon="mdi:close" size={20} />
         </button>
       </div>
 
@@ -205,17 +280,17 @@ function LightboxCarousel({ images, initialIndex, onClose, kitchenName }: { imag
             onClick={scrollPrev}
             className="absolute left-2 sm:left-6 top-1/2 -translate-y-1/2 w-10 h-10 sm:w-12 sm:h-12 bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-full flex items-center justify-center transition-colors disabled:opacity-30 touch-manipulation z-10 text-white backdrop-blur-md"
             disabled={!canScrollPrev}
-            aria-label="Previous image"
+            aria-label={t("previousImage", "Previous image")}
           >
-            <ChevronLeft className="w-6 h-6 sm:w-8 sm:h-8" />
+            <PreviewIcon icon="mdi:chevron-left" size={28} />
           </button>
           <button
             onClick={scrollNext}
             className="absolute right-2 sm:right-6 top-1/2 -translate-y-1/2 w-10 h-10 sm:w-12 sm:h-12 bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-full flex items-center justify-center transition-colors disabled:opacity-30 touch-manipulation z-10 text-white backdrop-blur-md"
             disabled={!canScrollNext}
-            aria-label="Next image"
+            aria-label={t("nextImage", "Next image")}
           >
-            <ChevronRight className="w-6 h-6 sm:w-8 sm:h-8" />
+            <PreviewIcon icon="mdi:chevron-right" size={28} />
           </button>
         </>
       )}
@@ -233,6 +308,9 @@ interface PublicLocation {
   kitchenLicenseStatus?: string | null;
   description?: string | null;
   customOnboardingLink?: string | null;
+  kitchenTermsUrl?: string | null;
+  cancellationPolicyHours?: number | null;
+  cancellationPolicyMessage?: string | null;
   canAcceptApplications?: boolean;
   isLicenseApproved?: boolean;
 }
@@ -299,13 +377,161 @@ function formatHourLabel(time: string): string {
   return formatTime(time.slice(0, 5));
 }
 
+function getKitchenImages(kitchen: PublicKitchen): string[] {
+  const images: string[] = [];
+  if (kitchen.imageUrl) images.push(kitchen.imageUrl);
+  if (kitchen.galleryImages && Array.isArray(kitchen.galleryImages)) {
+    images.push(...kitchen.galleryImages.filter((img) => img && typeof img === "string"));
+  }
+  return images;
+}
+
 function formatKitchenRate(kitchen: PublicKitchen): string | null {
   if (kitchen.hourlyRate == null || kitchen.hourlyRate <= 0) return null;
   const amount = formatCurrency(kitchen.hourlyRate, kitchen.currency || "CAD");
   const model = kitchen.pricingModel || "hourly";
-  if (model === "daily") return `${amount}/day`;
-  if (model === "hourly") return `${amount}/hr`;
+  if (model === "daily") {
+    return `${amount}${String(i18n.t("perDaySuffix", { ns: "kitchen", defaultValue: "/day" }))}`;
+  }
+  if (model === "hourly") {
+    return `${amount} ${String(i18n.t("perHour", { ns: "kitchen", defaultValue: "per hour" }))}`;
+  }
   return amount;
+}
+
+/** Total + selection details above the sticky-card Request CTA (not beside it). */
+function PreviewBookingTotalAboveCta({
+  preview,
+  className,
+}: {
+  preview: PersistedBookingPricePreview;
+  className?: string;
+}) {
+  const { t } = useTranslation("kitchen");
+  return (
+    <div className={cn("min-w-0 space-y-0.5", className)}>
+      <p className="text-lg font-bold tabular-nums text-gray-900">
+        {formatCurrency(preview.estimate.totalCents, preview.currency)}
+        <span className="ml-1 text-sm font-normal text-gray-500">{t("total", "total")}</span>
+      </p>
+      {preview.dateLabel ? (
+        <p className="text-xs text-muted-foreground">{preview.dateLabel}</p>
+      ) : null}
+      {preview.slotsLabel ? (
+        <p className="truncate text-xs text-muted-foreground">{preview.slotsLabel}</p>
+      ) : null}
+    </div>
+  );
+}
+
+/** Dock total next to Request CTA — total + date/hours, no $/hr (avoids confusion with tour CTA). */
+function DockBookingTotalBesideApply({
+  preview,
+  className,
+}: {
+  preview: PersistedBookingPricePreview;
+  className?: string;
+}) {
+  const { t } = useTranslation("kitchen");
+  const hours = preview.slots.length;
+  return (
+    <div className={cn("min-w-0 text-right", className)}>
+      <p className="text-sm font-semibold tabular-nums text-gray-900">
+        {formatCurrency(preview.estimate.totalCents, preview.currency)}
+        <span className="ml-1 text-xs font-normal text-gray-500">{t("total", "total")}</span>
+      </p>
+      <p className="truncate text-[11px] text-muted-foreground">
+        {preview.dateLabel}
+        {" · "}
+        {t("dockHoursCount", { count: hours, defaultValue: `${hours} hour${hours === 1 ? "" : "s"}` })}
+      </p>
+    </div>
+  );
+}
+
+/** Single source of truth for preview primary CTA copy (hero, sticky, calendar). */
+function resolvePreviewPrimaryCta(args: {
+  t: (key: string, fallback?: string) => string;
+  applicationLoading: boolean;
+  canBook: boolean;
+  alreadyApplied: boolean;
+  globalAppPending: boolean;
+  canAcceptApplications: boolean;
+  display: KitchenDisplayStatus | null;
+}): {
+  label: string;
+  kind: KitchenActionKind | "request" | "pending" | "loading" | "closed";
+  /** Calendar proceed needs dates only when starting a new request. */
+  requireDates: boolean;
+  variant: "default" | "outline";
+} | null {
+  const { t, applicationLoading, canBook, alreadyApplied, globalAppPending, canAcceptApplications, display } =
+    args;
+
+  if (applicationLoading) {
+    return {
+      label: t("checkingApplication", "Checking your application…"),
+      kind: "loading",
+      requireDates: false,
+      variant: "default",
+    };
+  }
+
+  if (canBook || display?.actionKind === "book") {
+    return {
+      label: t("bookThisKitchen", "Book"),
+      kind: "book",
+      requireDates: false,
+      variant: "default",
+    };
+  }
+
+  if (display?.actionKind === "complete-step") {
+    return {
+      label: t("continueApplication", "Continue"),
+      kind: "complete-step",
+      requireDates: false,
+      variant: "default",
+    };
+  }
+
+  if (alreadyApplied && display?.actionKind !== "discover") {
+    return {
+      label: t("applicationInProgress", "Application in progress"),
+      kind: "wait",
+      requireDates: false,
+      variant: "outline",
+    };
+  }
+
+  if (display?.actionKind === "discover" && canAcceptApplications) {
+    return {
+      label: t("applyAgain", "Apply again"),
+      kind: "discover",
+      requireDates: true,
+      variant: "default",
+    };
+  }
+
+  if (globalAppPending) {
+    return {
+      label: t("applicationInProgress", "Application in progress"),
+      kind: "pending",
+      requireDates: false,
+      variant: "outline",
+    };
+  }
+
+  if (!canAcceptApplications) {
+    return null;
+  }
+
+  return {
+    label: t("requestToApply", "Request to apply"),
+    kind: "request",
+    requireDates: true,
+    variant: "default",
+  };
 }
 
 function availableDaySummary(availability: PublicKitchen["availability"] | undefined, t: any): string | null {
@@ -345,7 +571,7 @@ function AvailabilityDisplay({ availability }: { availability: PublicKitchen['av
                 : 'bg-transparent border-2 border-gray-200 text-gray-300'
               }
             `}
-            title={isAvailable ? "Available" : "Not available"}
+            title={isAvailable ? t("dayAvailable", "Available") : t("dayNotAvailable", "Not available")}
           >
             {day.label}
           </div>
@@ -356,11 +582,21 @@ function AvailabilityDisplay({ availability }: { availability: PublicKitchen['av
 }
 
 // Image Carousel Component - Mobile Optimized
-function KitchenPhotoCollage({ images, kitchenName }: { images: string[]; kitchenName: string }) {
+function KitchenPhotoCollage({
+  images,
+  kitchenName,
+  compact = false,
+  fill = false,
+}: {
+  images: string[];
+  kitchenName: string;
+  compact?: boolean;
+  /** Stretch to match sibling height in a bento row */
+  fill?: boolean;
+}) {
   const { t } = useTranslation("kitchen");
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
-  const [showAll, setShowAll] = useState(false);
 
   const openAt = (index: number) => {
     setLightboxIndex(index);
@@ -371,10 +607,13 @@ function KitchenPhotoCollage({ images, kitchenName }: { images: string[]; kitche
     return (
       <div
         data-preview-tour="photos"
-        className="aspect-[16/9] bg-gradient-to-br from-gray-100 to-gray-200 rounded-2xl flex flex-col items-center justify-center"
+        className={cn(
+          "bg-gray-100 rounded-2xl flex flex-col items-center justify-center w-full shadow-sm",
+          fill ? "h-full min-h-[260px]" : compact ? "h-[180px] sm:h-[220px]" : "h-[200px] sm:h-[260px] lg:h-[300px]"
+        )}
       >
         <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center mb-3">
-          <ImageOff className="w-8 h-8 text-gray-400" />
+          <PreviewIcon icon="mdi:image-off" size={32} className="text-gray-400" />
         </div>
         <p className="text-gray-500 font-medium">{t("noPhotosYet", "No photos yet")}</p>
         <p className="text-gray-400 text-sm mt-1">{t("photosComingSoon", "Photos coming soon")}</p>
@@ -382,11 +621,17 @@ function KitchenPhotoCollage({ images, kitchenName }: { images: string[]; kitche
     );
   }
 
-  const PREVIEW_COUNT = 5;
-  const extraCount = images.length - PREVIEW_COUNT;
-  const previewImages = showAll ? images : images.slice(0, Math.min(images.length, PREVIEW_COUNT));
+  const PREVIEW_COUNT = fill || compact ? 3 : 5;
+  const extraCount = Math.max(0, images.length - PREVIEW_COUNT);
+  const previewImages = images.slice(0, Math.min(images.length, PREVIEW_COUNT));
   const count = previewImages.length;
-  const lastPreviewHasMore = !showAll && extraCount > 0;
+  const hasMore = extraCount > 0;
+  // Hero + remainder in a 2-col tail: even totals leave one empty cell.
+  const showSeeAllTile = count >= 4 && count % 2 === 0;
+  const seeAllTileClass = cn(
+    fill && "h-full min-h-0 aspect-auto",
+    !fill && "aspect-[4/3] sm:aspect-auto"
+  );
 
   const lightbox = (
     <AnimatePresence>
@@ -401,54 +646,35 @@ function KitchenPhotoCollage({ images, kitchenName }: { images: string[]; kitche
     </AnimatePresence>
   );
 
-  if (showAll) {
-    return (
-      <div>
-        <div
-          data-preview-tour="photos"
-          className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 rounded-2xl overflow-hidden shadow-xl"
-        >
-          {images.map((img, index) => (
-            <PhotoTile
-              key={`${img}-${index}`}
-              imageUrl={img}
-              kitchenName={kitchenName}
-              index={index}
-              onClick={() => openAt(index)}
-              className={cn(
-                "aspect-[4/3]",
-                index === 0 && "col-span-2 aspect-[16/9] sm:aspect-auto sm:row-span-2 sm:min-h-[280px]"
-              )}
-            />
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={() => setShowAll(false)}
-          className="mt-3 text-sm font-medium text-gray-600 hover:text-gray-900"
-        >
-          Show fewer photos
-        </button>
-        {lightbox}
-      </div>
-    );
-  }
-
   return (
-    <div>
+    <div className={cn(fill && "relative w-full h-full min-h-[260px] lg:min-h-[320px]")}>
       <div
         data-preview-tour="photos"
         className={cn(
-          "grid gap-1.5 overflow-hidden rounded-2xl bg-white shadow-xl",
+          "grid gap-1.5 overflow-hidden rounded-2xl bg-white",
+          count === 1 ? "shadow-sm" : "shadow-xl",
+          fill && "h-full min-h-[260px] lg:absolute lg:inset-0 lg:min-h-0",
           count === 1 && "grid-cols-1",
           count === 2 && "grid-cols-2",
-          count === 3 && "grid-cols-2 grid-rows-2 sm:h-[360px]",
-          count >= 4 && "grid-cols-2 sm:grid-cols-4 sm:grid-rows-2 sm:h-[380px]"
+          count === 3 && "grid-cols-2 grid-rows-2",
+          count >= 4 && "grid-cols-2 sm:grid-cols-4 sm:grid-rows-2",
+          !fill &&
+            (compact
+              ? cn(
+                  count === 1 && "h-[180px] sm:h-[220px]",
+                  count === 3 && "sm:h-[240px]",
+                  count >= 4 && "sm:h-[260px]"
+                )
+              : cn(
+                  count === 1 && "h-[200px] sm:h-[260px] lg:h-[300px]",
+                  count === 3 && "sm:h-[360px]",
+                  count >= 4 && "sm:h-[380px]"
+                ))
         )}
       >
         {previewImages.map((img, index) => {
           const isHero = count >= 3 && index === 0;
-          const isLastWithMore = lastPreviewHasMore && index === previewImages.length - 1;
+          const isLastWithMore = hasMore && !showSeeAllTile && index === previewImages.length - 1;
 
           return (
             <PhotoTile
@@ -456,41 +682,84 @@ function KitchenPhotoCollage({ images, kitchenName }: { images: string[]; kitche
               imageUrl={img}
               kitchenName={kitchenName}
               index={index}
-              onClick={() => (isLastWithMore ? setShowAll(true) : openAt(index))}
+              onClick={() => openAt(isLastWithMore ? PREVIEW_COUNT : index)}
               className={cn(
-                count === 1 && "aspect-[16/9] min-h-[220px] sm:min-h-[360px]",
-                count === 2 && "aspect-[4/3] sm:aspect-auto sm:min-h-[320px]",
-                isHero && count === 3 && "row-span-2 min-h-[200px] sm:min-h-0",
-                !isHero && count === 3 && "min-h-[100px] sm:min-h-0",
-                isHero && count >= 4 && "col-span-2 aspect-[16/9] sm:aspect-auto sm:row-span-2 sm:min-h-0",
-                !isHero && count >= 4 && "aspect-[4/3] sm:aspect-auto"
+                fill && "h-full min-h-0 aspect-auto",
+                !fill && count === 1 && "h-full min-h-0",
+                !fill && count === 2 && (compact ? "aspect-[4/3] sm:aspect-auto sm:min-h-[220px]" : "aspect-[4/3] sm:aspect-auto sm:min-h-[320px]"),
+                !fill && isHero && count === 3 && (compact ? "row-span-2 min-h-[160px] sm:min-h-0" : "row-span-2 min-h-[200px] sm:min-h-0"),
+                !fill && !isHero && count === 3 && "min-h-[80px] sm:min-h-0",
+                !fill && isHero && count >= 4 && "col-span-2 aspect-[16/9] sm:aspect-auto sm:row-span-2 sm:min-h-0",
+                !fill && !isHero && count >= 4 && "aspect-[4/3] sm:aspect-auto",
+                fill && isHero && count >= 3 && "row-span-2",
+                fill && isHero && count >= 4 && "col-span-2 sm:row-span-2"
               )}
               overlay={
                 isLastWithMore ? (
-                  <span className="absolute inset-0 flex flex-col items-center justify-center bg-black/55 text-white">
-                    <Images className="h-5 w-5 mb-1" />
-                    <span className="text-sm font-semibold">{t("viewMorePhotos", { count: extraCount, defaultValue: `View ${extraCount} more` })}</span>
+                  <span className="absolute inset-0 flex flex-col items-center justify-center bg-black/55 text-white pointer-events-none">
+                    <PreviewIcon icon="mdi:image-multiple" size={20} className="mb-1" />
+                    <span className="text-sm font-semibold">
+                      {t("viewMorePhotos", { count: extraCount, defaultValue: `View ${extraCount} more` })}
+                    </span>
                   </span>
                 ) : undefined
               }
             />
           );
         })}
+        {showSeeAllTile && (
+          <button
+            type="button"
+            onClick={() => openAt(0)}
+            className={cn(
+              "relative min-h-0 overflow-hidden bg-gray-900 text-white text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042] focus-visible:ring-inset",
+              seeAllTileClass
+            )}
+            aria-label={t("viewAllPhotos", {
+              count: images.length,
+              defaultValue: `View all ${images.length} photos`,
+            })}
+          >
+            {previewImages[previewImages.length - 1] ? (
+              <SmartImage
+                src={getR2ProxyUrl(previewImages[previewImages.length - 1])}
+                alt=""
+                className="absolute inset-0 h-full w-full scale-125 object-cover opacity-50 blur-xs"
+                hideOnError
+              />
+            ) : null}
+            <span className="absolute inset-0 bg-black/55" aria-hidden />
+            <span className="relative z-10 flex h-full flex-col items-center justify-center gap-1 p-3 text-center">
+              <PreviewIcon icon="mdi:image-multiple" size={22} className="mb-0.5" />
+              <span className="text-sm font-bold leading-tight">
+                {t("seeAllPhotos", "See all photos")}
+              </span>
+            </span>
+          </button>
+        )}
       </div>
-      {images.length > 1 && (
-        <div className="mt-3 flex items-center justify-between gap-3">
+      {!fill && hasMore && (
+        <div className="mt-2 flex items-center justify-between gap-3">
           <p className="text-xs text-gray-500">{t("clickPhotoEnlarge", "Click a photo to enlarge")}</p>
-          {extraCount > 0 && (
-            <button
-              type="button"
-              onClick={() => setShowAll(true)}
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-800 hover:text-[#F51042]"
-            >
-              <Images className="h-4 w-4" />
-              {t("viewAllPhotos", { count: images.length, defaultValue: `View all ${images.length} photos` })}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => openAt(0)}
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-800 hover:text-[#F51042]"
+          >
+            <PreviewIcon icon="mdi:image-multiple" size={16} />
+            {t("viewAllPhotos", { count: images.length, defaultValue: `View all ${images.length} photos` })}
+          </button>
         </div>
+      )}
+      {fill && hasMore && (
+        <button
+          type="button"
+          onClick={() => openAt(0)}
+          className="absolute bottom-3 right-3 z-10 inline-flex items-center gap-1.5 rounded-full bg-black/65 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm hover:bg-black/80"
+        >
+          <PreviewIcon icon="mdi:image-multiple" size={14} />
+          {t("viewAllPhotos", { count: images.length, defaultValue: `View all ${images.length} photos` })}
+        </button>
       )}
       {lightbox}
     </div>
@@ -548,11 +817,19 @@ function ExpandableInventory({
           onClick={() => setExpanded((open) => !open)}
           className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-[#F51042]"
         >
-          <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", expanded && "rotate-180")} />
+          <PreviewIcon icon="mdi:chevron-down" size={14} className={cn("transition-transform", expanded && "rotate-180")} />
           {expanded ? t("showLess", "Show less") : t("viewAllAndMore", { itemCount, hiddenCount, defaultValue: `View all ${itemCount} · ${hiddenCount} more` })}
         </button>
       )}
     </div>
+  );
+}
+
+function InventoryTypeIcon({ icon }: { icon: string }) {
+  return (
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#FFF8F5] text-[#F51042]">
+      <Icon icon={icon} width={16} height={16} className="text-[#F51042]" aria-hidden />
+    </span>
   );
 }
 
@@ -572,23 +849,36 @@ function NameCell({ name, hint }: { name: string; hint?: string }) {
 
 function PriceCell({ amount, unit }: { amount: string; unit: string }) {
   return (
-    <span className="shrink-0 tabular-nums text-sm text-gray-900">
+    <span className="shrink-0 text-sm text-gray-900">
       {amount}
       <span className="ml-1 text-xs font-normal text-gray-400">{unit}</span>
     </span>
   );
 }
 
-function CompactList({ children }: { children: ReactNode }) {
-  return <ul className="min-w-0">{children}</ul>;
+function CompactList({ children, columns = 1 }: { children: ReactNode; columns?: 1 | 2 }) {
+  return (
+    <ul
+      className={cn(
+        "min-w-0",
+        columns === 2
+          ? "grid grid-cols-1 sm:grid-cols-2 sm:gap-x-6"
+          : "divide-y divide-gray-100"
+      )}
+    >
+      {children}
+    </ul>
+  );
 }
 
 function IncludedEquipmentList({
   items,
   alwaysExpanded,
+  columns = 1,
 }: {
   items: EquipmentListing[];
   alwaysExpanded?: boolean;
+  columns?: 1 | 2;
 }) {
   const { t } = useTranslation("kitchen");
   const groups = groupByCategory(items);
@@ -608,17 +898,19 @@ function IncludedEquipmentList({
             return (
               <div key={category}>
                 {showGroups && (
-                  <p className="mb-1 text-[11px] font-medium uppercase tracking-[0.14em] text-gray-400">
+                  <p className="mb-1 text-xs font-medium uppercase tracking-wider text-gray-500">
                     {titleCaseLabel(category, t)}
                   </p>
                 )}
-                <CompactList>
+                <CompactList columns={columns}>
                   {visible.map((item) => (
                     <li
                       key={item.id}
-                      className="flex min-w-0 items-center gap-2.5 py-1"
+                      className="flex min-w-0 items-center gap-2.5 py-2"
                     >
-                      <span className="h-1 w-1 shrink-0 rounded-full bg-[#F51042]" />
+                      <InventoryTypeIcon
+                        icon={resolveEquipmentIcon(item.equipmentType, item.category)}
+                      />
                       <NameCell
                         name={titleCaseLabel(item.equipmentType, t)}
                         hint={[item.brand, item.model].filter(Boolean).join(" ")}
@@ -640,15 +932,20 @@ function PricedRow({
   hint,
   amount,
   unit,
+  icon,
 }: {
   name: string;
   hint?: string;
   amount?: string;
   unit?: string;
+  icon?: string;
 }) {
   return (
-    <li className="flex min-w-0 items-baseline justify-between gap-3 py-1.5">
-      <NameCell name={name} hint={hint} />
+    <li className="flex min-w-0 items-center justify-between gap-3 py-2">
+      <span className="flex min-w-0 items-center gap-2.5">
+        {icon ? <InventoryTypeIcon icon={icon} /> : null}
+        <NameCell name={name} hint={hint} />
+      </span>
       {amount && unit ? <PriceCell amount={amount} unit={unit} /> : null}
     </li>
   );
@@ -659,22 +956,24 @@ function InventoryPreviewRow({
   hint,
   amount,
   unit,
-  showDot = false,
+  icon,
 }: {
   name: string;
   hint?: string;
   amount?: string;
   unit?: string;
-  showDot?: boolean;
+  icon?: string;
 }) {
   return (
-    <li className="flex h-8 min-w-0 items-center justify-between gap-3">
-      <span className="flex min-w-0 items-center gap-2">
-        {showDot ? <span className="h-1 w-1 shrink-0 rounded-full bg-[#F51042]" /> : null}
-        <span className="truncate text-sm text-gray-900">{name}</span>
-        {hint ? (
-          <span className="hidden min-w-0 truncate text-xs text-gray-400 sm:inline">{hint}</span>
-        ) : null}
+    <li className="flex min-h-10 min-w-0 items-center justify-between gap-3 py-1.5">
+      <span className="flex min-w-0 items-center gap-2.5">
+        {icon ? <InventoryTypeIcon icon={icon} /> : null}
+        <span className="min-w-0">
+          <span className="block truncate text-sm text-gray-900">{name}</span>
+          {hint ? (
+            <span className="hidden truncate text-xs text-gray-400 sm:block">{hint}</span>
+          ) : null}
+        </span>
       </span>
       {amount && unit ? <PriceCell amount={amount} unit={unit} /> : null}
     </li>
@@ -685,14 +984,22 @@ function KitchenEquipmentSections({
   kitchen,
   alwaysExpanded,
   maxVisible,
+  previewPerSection,
+  section = "all",
+  columns = 1,
 }: {
   kitchen: PublicKitchen;
   alwaysExpanded?: boolean;
   maxVisible?: number;
+  /** Cap each Included / Available-to-rent list while keeping section headers. */
+  previewPerSection?: number;
+  /** Show only included, only rentals, or both. */
+  section?: "included" | "rental" | "all";
+  columns?: 1 | 2;
 }) {
   const { t } = useTranslation("kitchen");
-  const includedAll = kitchen.equipment?.included ?? [];
-  const rentalAll = kitchen.equipment?.rental ?? [];
+  const includedAll = section === "rental" ? [] : kitchen.equipment?.included ?? [];
+  const rentalAll = section === "included" ? [] : kitchen.equipment?.rental ?? [];
 
   if (maxVisible != null) {
     const previewItems = [...includedAll, ...rentalAll].slice(0, maxVisible);
@@ -701,8 +1008,9 @@ function KitchenEquipmentSections({
         {previewItems.map((item) => (
           <InventoryPreviewRow
             key={item.id}
+            icon={resolveEquipmentIcon(item.equipmentType, item.category)}
             name={titleCaseLabel(item.equipmentType, t)}
-            showDot
+            hint={[item.brand, item.model].filter(Boolean).join(" ") || undefined}
             amount={
               item.availabilityType === "rental" && item.sessionRate && item.sessionRate > 0
                 ? `$${item.sessionRate.toFixed(2)}`
@@ -722,48 +1030,96 @@ function KitchenEquipmentSections({
   const included = includedAll;
   const rental = rentalAll;
   const skipToggle = !!alwaysExpanded;
+  const includedPreview =
+    previewPerSection != null ? included.slice(0, previewPerSection) : included;
+  const rentalPreview =
+    previewPerSection != null ? rental.slice(0, previewPerSection) : rental;
+  const includedList = previewPerSection != null ? includedPreview : included;
+  const rentalList = previewPerSection != null ? rentalPreview : rental;
 
   return (
     <div className="space-y-5">
       {included.length > 0 && (
         <div>
-          <div className="mb-2 flex items-baseline justify-between gap-3">
-            <h3 className="text-xs font-medium uppercase tracking-[0.14em] text-gray-400">
-              {t("comesWithBooking", "Comes with the booking")}
-            </h3>
-            <span className="text-xs tabular-nums text-gray-400">{includedAll.length}</span>
-          </div>
-          <IncludedEquipmentList items={included} alwaysExpanded={skipToggle} />
+          {section === "all" && (
+            <div className="mb-2 flex items-baseline justify-between gap-3">
+              <h3 className="text-sm font-semibold text-gray-900">
+                {t("comesWithBooking", "Included")}
+              </h3>
+              <span className="text-xs text-gray-400">{includedAll.length}</span>
+            </div>
+          )}
+          {previewPerSection != null ? (
+            <CompactList>
+              {includedList.map((item) => (
+                <li key={item.id} className="flex min-w-0 items-center gap-2.5 py-2">
+                  <InventoryTypeIcon
+                    icon={resolveEquipmentIcon(item.equipmentType, item.category)}
+                  />
+                  <NameCell
+                    name={titleCaseLabel(item.equipmentType, t)}
+                    hint={[item.brand, item.model].filter(Boolean).join(" ")}
+                  />
+                </li>
+              ))}
+            </CompactList>
+          ) : (
+            <IncludedEquipmentList items={included} alwaysExpanded={skipToggle} columns={columns} />
+          )}
         </div>
       )}
 
       {rental.length > 0 && (
         <div>
-          <div className="mb-2 flex items-baseline justify-between gap-3">
-            <h3 className="text-xs font-medium uppercase tracking-[0.14em] text-gray-400">
-              {t("optionalRentals", "Optional rentals")}
-            </h3>
-            <span className="text-xs tabular-nums text-gray-400">{rentalAll.length}</span>
-          </div>
-          <ExpandableInventory itemCount={rental.length} alwaysExpanded={skipToggle}>
-            {(visibleCount) => (
-              <CompactList>
-                {rental.slice(0, visibleCount).map((item) => (
-                  <PricedRow
-                    key={item.id}
-                    name={titleCaseLabel(item.equipmentType, t)}
-                    hint={[item.brand, item.model].filter(Boolean).join(" ")}
-                    amount={
-                      item.sessionRate && item.sessionRate > 0
-                        ? `$${item.sessionRate.toFixed(2)}`
-                        : undefined
-                    }
-                    unit={item.sessionRate && item.sessionRate > 0 ? "/session" : undefined}
-                  />
-                ))}
-              </CompactList>
-            )}
-          </ExpandableInventory>
+          {section === "all" && (
+            <div className="mb-2 flex items-center justify-between gap-3 rounded-lg border border-[#F51042]/20 bg-[#FFF8F5] px-2.5 py-1.5">
+              <h3 className="text-sm font-semibold text-[#F51042]">
+                {t("optionalRentals", "Available to rent")}
+              </h3>
+              <span className="text-xs font-medium text-[#F51042]/80">
+                {rentalAll.length}
+              </span>
+            </div>
+          )}
+          {previewPerSection != null ? (
+            <CompactList>
+              {rentalList.map((item) => (
+                <PricedRow
+                  key={item.id}
+                  icon={resolveEquipmentIcon(item.equipmentType, item.category)}
+                  name={titleCaseLabel(item.equipmentType, t)}
+                  hint={[item.brand, item.model].filter(Boolean).join(" ")}
+                  amount={
+                    item.sessionRate && item.sessionRate > 0
+                      ? `$${item.sessionRate.toFixed(2)}`
+                      : undefined
+                  }
+                  unit={item.sessionRate && item.sessionRate > 0 ? "/session" : undefined}
+                />
+              ))}
+            </CompactList>
+          ) : (
+            <ExpandableInventory itemCount={rental.length} alwaysExpanded={skipToggle}>
+              {(visibleCount) => (
+                <CompactList columns={columns}>
+                  {rental.slice(0, visibleCount).map((item) => (
+                    <PricedRow
+                      key={item.id}
+                      icon={resolveEquipmentIcon(item.equipmentType, item.category)}
+                      name={titleCaseLabel(item.equipmentType, t)}
+                      hint={[item.brand, item.model].filter(Boolean).join(" ")}
+                      amount={
+                        item.sessionRate && item.sessionRate > 0
+                          ? `$${item.sessionRate.toFixed(2)}`
+                          : undefined
+                      }
+                      unit={item.sessionRate && item.sessionRate > 0 ? "/session" : undefined}
+                    />
+                  ))}
+                </CompactList>
+              )}
+            </ExpandableInventory>
+          )}
         </div>
       )}
     </div>
@@ -774,10 +1130,12 @@ function KitchenStorageSections({
   kitchen,
   maxVisible,
   alwaysExpanded = false,
+  columns = 1,
 }: {
   kitchen: PublicKitchen;
   maxVisible?: number;
   alwaysExpanded?: boolean;
+  columns?: 1 | 2;
 }) {
   const { t } = useTranslation("kitchen");
   const storageAll = kitchen.storage ?? [];
@@ -795,8 +1153,9 @@ function KitchenStorageSections({
         {storageAll.slice(0, maxVisible).map((item) => (
           <InventoryPreviewRow
             key={item.id}
-            name={item.name || item.storageType}
-            hint={titleCaseLabel(item.storageType, t)}
+            icon={resolveStorageIcon(item.storageType)}
+            name={item.name || titleCaseLabel(item.storageType, t)}
+            hint={item.name ? titleCaseLabel(item.storageType, t) : undefined}
             amount={
               item.basePrice !== undefined && item.basePrice > 0
                 ? `$${item.basePrice.toFixed(2)}`
@@ -817,12 +1176,13 @@ function KitchenStorageSections({
   return (
     <ExpandableInventory itemCount={storage.length} alwaysExpanded={skipToggle}>
       {(visibleCount) => (
-        <CompactList>
+        <CompactList columns={columns}>
           {storage.slice(0, visibleCount).map((item) => (
             <PricedRow
               key={item.id}
-              name={item.name || item.storageType}
-              hint={titleCaseLabel(item.storageType, t)}
+              icon={resolveStorageIcon(item.storageType)}
+              name={item.name || titleCaseLabel(item.storageType, t)}
+              hint={item.name ? titleCaseLabel(item.storageType, t) : undefined}
               amount={
                 item.basePrice !== undefined && item.basePrice > 0
                   ? `$${item.basePrice.toFixed(2)}`
@@ -856,12 +1216,12 @@ function InventoryShowAllButton({
       onClick={onClick}
     >
       {t("showAllCount", { count, label: t(label, { defaultValue: label }), defaultValue: `Show all ${count} ${label}` })}
-      <ChevronRight className="ml-0.5 h-4 w-4" />
+      <PreviewIcon icon="mdi:chevron-right" size={16} className="ml-0.5" />
     </button>
   );
 }
 
-function InventorySheet({
+function InventoryModal({
   open,
   onOpenChange,
   title,
@@ -875,20 +1235,15 @@ function InventorySheet({
   children: ReactNode;
 }) {
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="right"
-        className="flex w-[min(100vw,32rem)] flex-col gap-0 p-0 sm:max-w-lg"
-      >
-        <SheetHeader className="border-b border-gray-100 px-5 pb-4 pt-5 pr-12 text-left">
-          <SheetTitle>{title}</SheetTitle>
-          <SheetDescription>{description}</SheetDescription>
-        </SheetHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-          {children}
-        </div>
-      </SheetContent>
-    </Sheet>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex max-h-[85vh] w-[min(100vw-1.5rem,48rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
+        <DialogHeader className="border-b border-gray-100 px-5 pb-4 pt-5 text-left">
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -896,77 +1251,118 @@ function KitchenInventoryPair({
   kitchen,
   hasEquipment,
   hasStorage,
+  openModal: controlledOpen,
+  onOpenModalChange,
 }: {
   kitchen: PublicKitchen;
   hasEquipment: boolean;
   hasStorage: boolean;
+  openModal?: "equipment" | "storage" | null;
+  onOpenModalChange?: (modal: "equipment" | "storage" | null) => void;
 }) {
   const { t } = useTranslation("kitchen");
-  const [openSheet, setOpenSheet] = useState<"equipment" | "storage" | null>(null);
-  const both = hasEquipment && hasStorage;
-  const equipmentCount =
-    (kitchen.equipment?.included?.length ?? 0) + (kitchen.equipment?.rental?.length ?? 0);
-  const storageCount = kitchen.storage?.length ?? 0;
+  const [uncontrolledOpen, setUncontrolledOpen] = useState<"equipment" | "storage" | null>(null);
+  const openModal = controlledOpen !== undefined ? controlledOpen : uncontrolledOpen;
+  const setOpenModal = onOpenModalChange ?? setUncontrolledOpen;
+  const included = kitchen.equipment?.included ?? [];
+  const rental = kitchen.equipment?.rental ?? [];
+  const storage = kitchen.storage ?? [];
+  const equipmentCount = included.length + rental.length;
+  const showEquipment = hasEquipment && equipmentCount > 0;
+  const showStorage = hasStorage && storage.length > 0;
+  const both = showEquipment && showStorage;
 
   return (
     <div className="w-full">
-      <div className={cn("grid items-start gap-4", both ? "sm:grid-cols-2" : "grid-cols-1")}>
-        {hasEquipment && (
+      <div
+        className={cn(
+          "grid items-stretch gap-4",
+          both ? "sm:grid-cols-2" : "grid-cols-1"
+        )}
+      >
+        {showEquipment && (
           <div
-            className="min-w-0 rounded-xl border border-gray-200 bg-white p-4 sm:p-5"
+            id="preview-equipment"
+            className="flex min-h-0 min-w-0 flex-col rounded-xl border border-gray-200 bg-white p-4 sm:p-5 scroll-mt-32"
             data-preview-tour="equipment"
           >
-            <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-900">
-              <CookingPot className="h-4 w-4 text-[#F51042]" />{t("equipment", "Equipment")}</h3>
-            <KitchenEquipmentSections kitchen={kitchen} maxVisible={CARD_PREVIEW_COUNT} />
-            {equipmentCount > CARD_PREVIEW_COUNT && (
-              <InventoryShowAllButton
-                count={equipmentCount}
-                label="equipment"
-                onClick={() => setOpenSheet("equipment")}
+            <h3 className="mb-3 flex shrink-0 items-center gap-2 text-sm font-semibold text-gray-900">
+              <Icon icon="mdi:pot-steam" className="h-4 w-4 text-[#F51042]" />
+              {t("equipment", "Equipment")}
+              <span className="ml-auto text-xs font-normal text-gray-400">
+                {equipmentCount}
+              </span>
+            </h3>
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <KitchenEquipmentSections
+                kitchen={kitchen}
+                previewPerSection={Math.max(3, Math.ceil(CARD_PREVIEW_COUNT / 2))}
               />
+            </div>
+            {equipmentCount > CARD_PREVIEW_COUNT && (
+              <div className="mt-auto shrink-0 pt-1">
+                <InventoryShowAllButton
+                  count={equipmentCount}
+                  label="equipment"
+                  onClick={() => setOpenModal("equipment")}
+                />
+              </div>
             )}
           </div>
         )}
-        {hasStorage && (
+
+        {showStorage && (
           <div
-            className="min-w-0 rounded-xl border border-gray-200 bg-white p-4 sm:p-5"
+            id="preview-storage"
+            className="flex min-h-0 min-w-0 flex-col rounded-xl border border-gray-200 bg-white p-4 sm:p-5 scroll-mt-32"
             data-preview-tour="storage"
           >
-            <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-900">
-              <Warehouse className="h-4 w-4 text-[#F51042]" />{t("storage", "Storage")}</h3>
-            <KitchenStorageSections kitchen={kitchen} maxVisible={CARD_PREVIEW_COUNT} />
-            {storageCount > CARD_PREVIEW_COUNT && (
-              <InventoryShowAllButton
-                count={storageCount}
-                label="storage"
-                onClick={() => setOpenSheet("storage")}
-              />
+            <h3 className="mb-3 flex shrink-0 items-center gap-2 text-sm font-semibold text-gray-900">
+              <Icon icon="mdi:warehouse" className="h-4 w-4 text-[#F51042]" />
+              {t("storage", "Storage")}
+              <span className="ml-auto text-xs font-normal text-gray-400">
+                {storage.length}
+              </span>
+            </h3>
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <KitchenStorageSections kitchen={kitchen} maxVisible={CARD_PREVIEW_COUNT} />
+            </div>
+            {storage.length > CARD_PREVIEW_COUNT && (
+              <div className="mt-auto shrink-0 pt-1">
+                <InventoryShowAllButton
+                  count={storage.length}
+                  label="storage"
+                  onClick={() => setOpenModal("storage")}
+                />
+              </div>
             )}
           </div>
         )}
       </div>
 
-      {hasEquipment && (
-        <InventorySheet
-          open={openSheet === "equipment"}
-          onOpenChange={(open) => setOpenSheet(open ? "equipment" : null)}
-          title={t("equipment", "Equipment")}
-          description={t("equipmentSheetDesc", "What comes with a booking, plus optional rentals.")}
-        >
-          <KitchenEquipmentSections kitchen={kitchen} alwaysExpanded />
-        </InventorySheet>
-      )}
-      {hasStorage && (
-        <InventorySheet
-          open={openSheet === "storage"}
-          onOpenChange={(open) => setOpenSheet(open ? "storage" : null)}
-          title={t("storage", "Storage")}
-          description={t("storageSheetDesc", "Cold, dry, and other storage space you can add.")}
-        >
-          <KitchenStorageSections kitchen={kitchen} alwaysExpanded />
-        </InventorySheet>
-      )}
+      <InventoryModal
+        open={openModal === "equipment"}
+        onOpenChange={(open) => setOpenModal(open ? "equipment" : null)}
+        title={t("equipment", "Equipment")}
+        description={t(
+          "equipmentSheetDesc",
+          "Included with your booking, plus equipment you can rent by the session."
+        )}
+      >
+        <KitchenEquipmentSections kitchen={kitchen} alwaysExpanded columns={2} />
+      </InventoryModal>
+
+      <InventoryModal
+        open={openModal === "storage"}
+        onOpenChange={(open) => setOpenModal(open ? "storage" : null)}
+        title={t("storage", "Storage")}
+        description={t(
+          "storageSheetDesc",
+          "Dry, cold, and freezer space you can add to your booking."
+        )}
+      >
+        <KitchenStorageSections kitchen={kitchen} alwaysExpanded columns={2} />
+      </InventoryModal>
     </div>
   );
 }
@@ -985,7 +1381,7 @@ function KitchenAmenitiesList({ amenities }: { amenities: string[] }) {
           variants={itemVariants}
           className="inline-flex items-center rounded-full border border-[#F51042]/10 bg-[#FFF8F5] px-3 py-1.5 text-sm text-[#2C2C2C]"
         >
-          <Check className="mr-1.5 h-3.5 w-3.5 flex-shrink-0 text-[#F51042]" />
+          <PreviewIcon icon="mdi:check" size={14} className="mr-1.5 text-[#F51042]" />
           {amenity}
         </motion.span>
       ))}
@@ -994,93 +1390,199 @@ function KitchenAmenitiesList({ amenities }: { amenities: string[] }) {
 }
 
 function KitchenFactChip({
-  icon: Icon,
+  icon,
   label,
+  emphasize = false,
+  onClick,
 }: {
-  icon: typeof Clock;
+  icon: string;
   label: string;
+  emphasize?: boolean;
+  onClick?: () => void;
 }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700">
-      <Icon className="h-3.5 w-3.5 text-[#F51042]" />
+    <Badge
+      variant={emphasize ? undefined : "outline"}
+      className={cn(
+        "text-xs",
+        emphasize && "border-[#F51042]/30 bg-[#F51042]/10 text-[#F51042]",
+        onClick && "cursor-pointer hover:bg-[#F51042]/15"
+      )}
+      onClick={onClick}
+    >
+      <PreviewIcon icon={icon} size={12} className="mr-1" />
       {label}
-    </span>
+    </Badge>
   );
 }
 
-function KitchenTourBanner({
-  toursAvailable,
-  isLoading,
-  alreadyApplied,
-  onSchedule,
+/** Soft multi-layer elevation — large blur, no hard shadow edge. */
+const PREMIUM_CARD_SHADOW =
+  "shadow-[0_1px_2px_rgba(15,23,42,0.04),0_4px_12px_-2px_rgba(15,23,42,0.06),0_12px_32px_-8px_rgba(15,23,42,0.1)]";
+const PREMIUM_CTA_SHADOW =
+  "shadow-[0_1px_2px_rgba(15,23,42,0.05),0_6px_16px_-4px_rgba(15,23,42,0.12)]";
+/** Soft red glow — keep blur high / alpha modest so corners don’t read as a hard box. */
+const PREMIUM_PRIMARY_SHADOW =
+  "shadow-[0_2px_6px_-1px_rgba(15,23,42,0.1),0_10px_28px_-8px_rgba(245,16,66,0.38)]";
+
+/** Apply CTA surfaces — same soft elevation as tour CTA (primary red vs quiet outline). */
+function previewApplyCtaClass(variant: "default" | "outline" = "default") {
+  return variant === "outline"
+    ? cn("rounded-xl transition-colors disabled:opacity-100", PREMIUM_CTA_SHADOW)
+    : cn(
+        "rounded-xl border-transparent bg-[#F51042] text-white transition-colors hover:bg-[#E00A38] hover:text-white disabled:opacity-100",
+        PREMIUM_PRIMARY_SHADOW
+      );
+}
+
+/** Dock tour CTA — solid primary when alone; outline secondary when paired with Apply. */
+function previewDockTourCtaClass(
+  kind: "request" | "pending" | "confirmed",
+  pairedWithApply: boolean
+) {
+  if (kind === "confirmed") {
+    return cn(
+      "border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 hover:text-emerald-950",
+      PREMIUM_CTA_SHADOW
+    );
+  }
+  if (kind === "pending") {
+    return cn(
+      "border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100 hover:text-amber-950",
+      PREMIUM_CTA_SHADOW
+    );
+  }
+  if (pairedWithApply) {
+    return cn(
+      "border-[#F51042]/45 bg-white text-[#F51042] hover:bg-[#FFF8F5] hover:text-[#F51042]",
+      PREMIUM_CTA_SHADOW
+    );
+  }
+  return cn(
+    "border-transparent bg-[#F51042] text-white hover:bg-[#E00A38] hover:text-white",
+    PREMIUM_PRIMARY_SHADOW
+  );
+}
+
+/** Open-days + optional tour CTA under the listing title. Rate lives on the sticky booking card. */
+function RateHoursFacts({
+  hoursSummary,
+  extra,
 }: {
-  toursAvailable: boolean;
-  isLoading: boolean;
-  alreadyApplied?: boolean;
-  onSchedule: () => void;
+  hoursSummary: string | null;
+  extra?: ReactNode;
 }) {
   const { t } = useTranslation("kitchen");
-  if (isLoading) {
-    return <Skeleton className="h-[148px] w-full rounded-2xl" />;
-  }
-
+  if (!hoursSummary && !extra) return null;
+  const count = [hoursSummary, extra].filter(Boolean).length;
   return (
     <div
       className={cn(
-        "rounded-2xl border p-5 sm:p-6",
-        toursAvailable
-          ? "border-[#F51042]/20 bg-[#FFF8F5]"
-          : "border-gray-200 bg-white"
+        "grid gap-2.5",
+        count === 2
+          ? "grid-cols-1 sm:grid-cols-2"
+          : extra
+            ? "grid-cols-1"
+            : "grid-cols-1 max-w-xs"
       )}
     >
-      <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
-        <div
-          className={cn(
-            "flex h-12 w-12 shrink-0 items-center justify-center rounded-xl",
-            toursAvailable
-              ? "bg-white ring-1 ring-[#F51042]/15"
-              : "bg-[#F8F8F8] ring-1 ring-gray-200"
-          )}
-        >
-          {toursAvailable ? (
-            <DoorOpen className="h-6 w-6 text-[#F51042]" />
-          ) : (
-            <Clock className="h-6 w-6 text-gray-500" />
-          )}
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-            {t("kitchenTour", "Kitchen Tour")}
+      {hoursSummary && (
+        <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
+          <p className="text-xs font-medium uppercase tracking-wider text-gray-500">
+            {t("openDaysLabel", "Open days")}
           </p>
-          <h2 className="mt-1 text-base sm:text-lg font-semibold text-gray-900">
-            {toursAvailable ? t("wantToSeeInPerson", "Want to see it in person first?") : t("tourDatesComingSoon", "Tour dates coming soon")}
-          </h2>
-          {toursAvailable ? (
-            <p className="mt-1 text-sm text-gray-600 leading-relaxed">
-              {alreadyApplied
-                ? t("scheduleWalkthroughAlreadyApplied", "Schedule a walkthrough if you'd like a look around. Your application is already in with this kitchen.")
-                : t("scheduleWalkthroughApplySeparately", "Schedule a walkthrough if you'd like a look around. You'll still apply separately before you can book cooking time.")}
-            </p>
-          ) : (
-            <p className="mt-1 text-sm text-gray-600 leading-relaxed">
-              {alreadyApplied
-                ? t("tourNotPostedAlreadyApplied", "The kitchen hasn't posted tour dates yet. Your application is already in, so you can keep an eye out here.")
-                : t("tourNotPostedApplyLater", "The kitchen hasn't posted tour dates yet. You can still look around here, and apply when you're ready to cook.")}
-            </p>
-          )}
+          <p className="mt-1 text-base font-semibold text-gray-900">{hoursSummary}</p>
         </div>
-        {toursAvailable && (
-          <Button
-            className="shrink-0 w-full sm:w-auto"
-            data-preview-tour="schedule"
-            onClick={onSchedule}
-          >
-            <Calendar className="mr-2 h-4 w-4" />
-            {t("scheduleTourBtn")}
-          </Button>
-        )}
-      </div>
+      )}
+      {extra}
     </div>
+  );
+}
+
+const EN_CANCELLATION_POLICY_DEFAULT =
+  "Bookings cannot be cancelled within {hours} hours of the scheduled time.";
+
+function ThingsToKnowSection({
+  cancellationPolicyHours,
+  cancellationPolicyMessage,
+  kitchenTermsUrl,
+}: {
+  cancellationPolicyHours?: number | null;
+  cancellationPolicyMessage?: string | null;
+  kitchenTermsUrl?: string | null;
+}) {
+  const { t } = useTranslation("kitchen");
+  const hours = cancellationPolicyHours ?? 24;
+  const rawPolicy = cancellationPolicyMessage?.trim();
+  const policyText =
+    !rawPolicy || rawPolicy === EN_CANCELLATION_POLICY_DEFAULT
+      ? t("cancellationPolicyDefaultMessage", { hours })
+      : rawPolicy.replace(/\{hours\}/g, String(hours));
+  const termsHref = kitchenTermsUrl ? getR2ProxyUrl(kitchenTermsUrl) : "/terms";
+
+  const columns = [
+    {
+      icon: "mdi:calendar-remove-outline",
+      title: t("thingsToKnowCancellationTitle", "Cancellation policy"),
+      body: policyText,
+      href: "/terms",
+      linkLabel: t("thingsToKnowLearnMore", "Learn more"),
+    },
+    {
+      icon: "mdi:file-document-outline",
+      title: t("thingsToKnowTermsTitle", "Kitchen terms & policies"),
+      body: kitchenTermsUrl
+        ? t(
+            "thingsToKnowTermsBody",
+            "House rules, usage policies, and chef requirements for this kitchen."
+          )
+        : t(
+            "thingsToKnowTermsBodyFallback",
+            "Kitchen usage policies and food safety standards apply to every booking."
+          ),
+      href: termsHref,
+      linkLabel: t("thingsToKnowLearnMore", "Learn more"),
+      external: !!kitchenTermsUrl,
+    },
+    {
+      icon: "mdi:book-open-page-variant-outline",
+      title: t("thingsToKnowResourcesTitle", "Chef resources"),
+      body: t(
+        "thingsToKnowResourcesBody",
+        "Guides on certification, licensing, insurance, and starting your food business."
+      ),
+      href: "/resources",
+      linkLabel: t("thingsToKnowLearnMore", "Learn more"),
+    },
+  ] as const;
+
+  return (
+    <section id="preview-things-to-know" className="scroll-mt-32 border-t border-gray-200 pt-6 sm:pt-8">
+      <h2 className="text-lg sm:text-xl font-bold text-gray-900">
+        {t("thingsToKnowTitle", "Before You Book")}
+      </h2>
+      <div className="mt-4 grid grid-cols-1 divide-y divide-gray-200 sm:mt-5 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+        {columns.map((col) => (
+          <div
+            key={col.title}
+            className="flex flex-col py-4 first:pt-0 last:pb-0 sm:px-5 sm:py-0 first:sm:pl-0 last:sm:pr-0"
+          >
+            <PreviewIcon icon={col.icon} size={18} className="text-gray-900" />
+            <h3 className="mt-2.5 text-sm font-semibold text-gray-900">{col.title}</h3>
+            <p className="mt-1.5 text-sm leading-relaxed text-gray-600">{col.body}</p>
+            <a
+              href={col.href}
+              {...("external" in col && col.external
+                ? { target: "_blank", rel: "noopener noreferrer" }
+                : {})}
+              className="mt-2 text-sm font-medium text-gray-900 underline underline-offset-2 hover:text-[#F51042]"
+            >
+              {col.linkLabel}
+            </a>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -1090,6 +1592,7 @@ function GuestHoursCard({
   locationId,
   kitchenName,
   kitchenRate,
+  pricePreview,
   application,
   applicationLoading = false,
   locationApplicationLoading = false,
@@ -1097,13 +1600,25 @@ function GuestHoursCard({
   onProceed,
   canBook,
   alreadyApplied,
-  onConfirmModalOpenChange
+  equipmentListings,
+  storageListings,
+  bento = false,
+  proceedLabel,
+  requireDatesForProceed = true,
+  proceedVariant = "default",
+  proceedDisabled = false,
+  showPrimaryCta = true,
+  calendarOpen: calendarOpenProp,
+  onCalendarOpenChange,
+  onDatesOkChange,
+  extraInfoTip,
 }: {
   availability?: PublicKitchen["availability"];
   kitchenId?: string;
   locationId?: string;
   kitchenName?: string;
   kitchenRate?: string | null;
+  pricePreview?: PersistedBookingPricePreview | null;
   application?: {
     fullName?: string;
     email?: string;
@@ -1119,625 +1634,396 @@ function GuestHoursCard({
   onProceed?: () => void;
   canBook?: boolean;
   alreadyApplied?: boolean;
-  onConfirmModalOpenChange?: (open: boolean) => void;
+  equipmentListings?: { included: EquipmentListing[]; rental: EquipmentListing[] } | null;
+  storageListings?: StorageListing[] | null;
+  /** Compact card for photo+calendar bento row */
+  bento?: boolean;
+  /** Same label as hero/sticky primary CTA when dates aren't required / once dates selected. */
+  proceedLabel?: string;
+  requireDatesForProceed?: boolean;
+  proceedVariant?: "default" | "outline";
+  proceedDisabled?: boolean;
+  showPrimaryCta?: boolean;
+  calendarOpen?: boolean;
+  onCalendarOpenChange?: (open: boolean) => void;
+  onDatesOkChange?: (ok: boolean) => void;
+  /** Extra status tip shown in the CTA info popover (e.g. apply-first notice). */
+  extraInfoTip?: string | null;
 }) {
-  const { t } = useTranslation("kitchen");
+  const { t, i18n } = useTranslation("kitchen");
   const { openAuthModal } = useAuthModal();
   const { user } = useFirebaseAuth();
   const isAuthenticated = !!user;
-  const isFullyAuthenticated = isAuthenticated && (user?.isVerified || user?.is_verified || user?.emailVerified);
   
   const storageKey = kitchenId ? `kitchen_dates_${kitchenId}` : 'kitchen_dates_generic';
+  const tourStorageKey = locationId ? `viewing_booking_${locationId}` : null;
   
-  const [selectedRange, setSelectedRange] = useState<DateRange | undefined>(undefined);
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [confirmModalMode, setConfirmModalMode] = useState<"booking" | "application">("booking");
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const [calendarMonth, setCalendarMonth] = useState<Date>(() => new Date());
+  const [uncontrolledCalendarOpen, setUncontrolledCalendarOpen] = useState(false);
+  const calendarOpen = calendarOpenProp ?? uncontrolledCalendarOpen;
+  const setCalendarOpen = onCalendarOpenChange ?? setUncontrolledCalendarOpen;
+  const [dateAvailability, setDateAvailability] = useState<Record<string, boolean>>({});
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  const toLocalDateString = (date: Date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  };
+
+  const sameCalendarDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+
+  const dayHasOperatingHours = (dayAvail: NonNullable<PublicKitchen["availability"]>[number] | undefined) => {
+    if (!dayAvail) return false;
+    const available = dayAvail.isAvailable ?? (dayAvail as { is_available?: boolean }).is_available;
+    const start = dayAvail.startTime || (dayAvail as { start_time?: string }).start_time;
+    const end = dayAvail.endTime || (dayAvail as { end_time?: string }).end_time;
+    return !!(available && start && end);
+  };
 
   useEffect(() => {
-    onConfirmModalOpenChange?.(showConfirmModal);
-  }, [showConfirmModal, onConfirmModalOpenChange]);
+    if (!kitchenId) return;
+    let cancelled = false;
+    const loadMonth = async () => {
+      setAvailabilityLoading(true);
+      try {
+        const year = calendarMonth.getFullYear();
+        const month = calendarMonth.getMonth();
+        const response = await fetch(
+          `/api/public/kitchens/${kitchenId}/month-availability?year=${year}&month=${month}`,
+          { credentials: "include", cache: "no-store" }
+        );
+        if (!response.ok) throw new Error(kt("failedToLoadAvailability"));
+        const serverAvailability: Record<string, boolean> = await response.json();
+        if (cancelled) return;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const merged: Record<string, boolean> = {};
+        for (let day = 1; day <= daysInMonth; day++) {
+          const date = new Date(year, month, day);
+          const dateStr = toLocalDateString(date);
+          merged[dateStr] = date >= today && serverAvailability[dateStr] === true;
+        }
+        setDateAvailability(merged);
+      } catch {
+        if (!cancelled) setDateAvailability({});
+      } finally {
+        if (!cancelled) setAvailabilityLoading(false);
+      }
+    };
+    void loadMonth();
+    return () => {
+      cancelled = true;
+    };
+  }, [kitchenId, calendarMonth]);
 
-  // Restore from sessionStorage on mount & auth
+  // Persist or clear date in sessionStorage (single day — no range).
+  // Skip the initial undefined render so we don't wipe a just-saved preview date
+  // before the restore effect applies it.
+  const dateHydratedRef = useRef(false);
   useEffect(() => {
     try {
       const saved = sessionStorage.getItem(storageKey);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed.from) parsed.from = new Date(parsed.from);
-        if (parsed.to) parsed.to = new Date(parsed.to);
-        setSelectedRange(parsed);
+        if (parsed.from) {
+          const from = new Date(parsed.from);
+          from.setHours(0, 0, 0, 0);
+          setSelectedDate(from);
+        }
       }
     } catch (e) {
       console.error("Failed to restore dates", e);
+    } finally {
+      dateHydratedRef.current = true;
     }
   }, [storageKey, isAuthenticated]);
 
-  // When authenticated, check if we need to show modal
-  const latestDepsRef = useRef({
-    applicationLoading,
-    locationApplicationLoading,
-    listApplicationLoading,
-    alreadyApplied,
-    application,
-    storageKey,
-    isFullyAuthenticated,
-    kitchenId,
-  });
   useEffect(() => {
-    latestDepsRef.current = {
-      applicationLoading,
-      locationApplicationLoading,
-      listApplicationLoading,
-      alreadyApplied,
-      application,
-      storageKey,
-      isFullyAuthenticated,
-      kitchenId,
-    };
-  }, [applicationLoading, locationApplicationLoading, listApplicationLoading, alreadyApplied, application, storageKey, isFullyAuthenticated, kitchenId]);
-
-  // Tracks whether the user has already triggered a modal interactively on
-  // this page visit (i.e. clicked the Continue button themselves, or we
-  // already opened a pending modal for them). Prevents the auto-open
-  // useEffect from popping a "correct" application modal out of nowhere
-  // after the user has already seen/interacted with a modal in this
-  // visit and dismissed it, which users would perceive as a glitch.
-  const hasInteractedRef = useRef(false);
-
-  useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
-    if (isFullyAuthenticated && !hasInteractedRef.current) {
-      const pendingModal = sessionStorage.getItem(`${storageKey}_pending_modal`);
-      const pendingAppModal = sessionStorage.getItem('pending_application_modal');
-
-      if (pendingAppModal) {
-        const pendingTour = sessionStorage.getItem(`viewing_booking_${kitchenId}`);
-        if (!pendingTour) {
-          // Open the confirm dialog once BOTH queries have settled so we
-          // never flash "Continue to Apply" booking mode for a user whose
-          // Step 1 record already exists. Wait on the RAW per-location +
-          // list query loading flags (not the derived applicationLoading
-          // which flips to false immediately if any application data is
-          // cached and masks current-location races).
-          const openWhenReady = () => {
-            const d = latestDepsRef.current;
-            if (d.locationApplicationLoading || d.listApplicationLoading) {
-              timeoutId = setTimeout(openWhenReady, 120);
-              return;
-            }
-            // If the user has already interacted with a modal since
-            // page mount, don't surprise them with another open.
-            if (hasInteractedRef.current) return;
-            hasInteractedRef.current = true;
-            const hasKitchenApp =
-              d.alreadyApplied || isActiveKitchenApplication(d.application || null);
-            setConfirmModalMode(hasKitchenApp ? "application" : "booking");
-            setShowConfirmModal(true);
-            sessionStorage.removeItem('pending_application_modal');
-            sessionStorage.removeItem(`${d.storageKey}_pending_modal`);
-          };
-          timeoutId = setTimeout(openWhenReady, 400);
-        } else {
-          sessionStorage.removeItem('pending_application_modal');
-        }
-      } else if (pendingModal) {
-        const pendingTour = sessionStorage.getItem(`viewing_booking_${kitchenId}`);
-        if (!pendingTour) {
-          const openWhenReady = () => {
-            const d = latestDepsRef.current;
-            if (d.locationApplicationLoading || d.listApplicationLoading) {
-              timeoutId = setTimeout(openWhenReady, 120);
-              return;
-            }
-            if (hasInteractedRef.current) return;
-            hasInteractedRef.current = true;
-            const hasKitchenApp =
-              d.alreadyApplied || isActiveKitchenApplication(d.application || null);
-            setConfirmModalMode(hasKitchenApp ? "application" : "booking");
-            setShowConfirmModal(true);
-            sessionStorage.removeItem(`${storageKey}_pending_modal`);
-          };
-          timeoutId = setTimeout(openWhenReady, 400);
-        } else {
-          sessionStorage.removeItem(`${storageKey}_pending_modal`);
-        }
-      }
+    if (!dateHydratedRef.current) return;
+    if (selectedDate) {
+      sessionStorage.setItem(storageKey, JSON.stringify({ from: selectedDate }));
+      if (kitchenId) notifyBookingPrefsChanged(kitchenId);
+    } else {
+      sessionStorage.removeItem(storageKey);
     }
-    return () => {
-      if (timeoutId) clearTimeout(timeoutId);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFullyAuthenticated, storageKey]);
-
-  // Automatically save to sessionStorage whenever selectedRange changes
-  // so the intent prevails if the user navigates away using sidebar buttons
-  useEffect(() => {
-    if (selectedRange) {
-      sessionStorage.setItem(storageKey, JSON.stringify(selectedRange));
-    }
-  }, [selectedRange, storageKey]);
+  }, [selectedDate, storageKey, kitchenId]);
 
   const isDayAvailable = (date: Date) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     if (date < today) return false;
+
+    const dateStr = toLocalDateString(date);
+    if (Object.keys(dateAvailability).length > 0) {
+      return dateAvailability[dateStr] === true;
+    }
+
     if (!availability || availability.length === 0) return false;
-    
     const day = date.getDay();
-    const dayAvail = availability.find(a => a.dayOfWeek === day);
-    return dayAvail && dayAvail.isAvailable;
+    const dayAvail = availability.find((a) => a.dayOfWeek === day);
+    return dayHasOperatingHours(dayAvail);
   };
 
   useEffect(() => {
-    if (selectedRange?.from) {
-      let curr = new Date(selectedRange.from);
-      curr.setHours(0, 0, 0, 0);
-      let end = selectedRange.to ? new Date(selectedRange.to) : curr;
-      let endCopy = new Date(end);
-      endCopy.setHours(0, 0, 0, 0);
-      
-      let isValid = true;
-      while (curr <= endCopy) {
-        if (!isDayAvailable(curr)) {
-          isValid = false;
-          break;
-        }
-        curr.setDate(curr.getDate() + 1);
-      }
-      if (!isValid) {
-        setSelectedRange(undefined);
-      }
+    // Don't clear the saved date while month availability is still loading
+    if (availabilityLoading) return;
+    if (selectedDate && !isDayAvailable(selectedDate)) {
+      setSelectedDate(undefined);
     }
-  }, [selectedRange, availability]);
+  }, [selectedDate, availability, dateAvailability, availabilityLoading]);
 
-  const handleSelect = (range: DateRange | undefined) => {
-    // Quality guard: firmly reject any selection spanning an unavailable date
-    if (range?.from && range?.to) {
-      let curr = new Date(range.from);
-      curr.setHours(0, 0, 0, 0);
-      const end = new Date(range.to);
-      end.setHours(0, 0, 0, 0);
-      
-      let isValid = true;
-      while (curr <= end) {
-        if (!isDayAvailable(curr)) {
-          isValid = false;
-          break;
-        }
-        curr.setDate(curr.getDate() + 1);
-      }
-      
-      if (!isValid) {
-        // Reject the invalid range and reset to just the start date
-        range = { from: range.from, to: undefined };
-      }
+  const clearDates = () => {
+    setSelectedDate(undefined);
+    sessionStorage.removeItem(storageKey);
+    if (kitchenId) {
+      sessionStorage.removeItem(`kitchen_booking_prefs_${kitchenId}`);
+      notifyBookingPrefsChanged(kitchenId);
     }
-
-    setSelectedRange(range);
+    setCalendarOpen(true);
   };
 
-  const getValidDateSegments = (from: Date, to: Date) => {
-    const segments: { start: Date; end: Date }[] = [];
-    let currentStart: Date | null = null;
-    let currentEnd: Date | null = null;
-
-    let currentDate = new Date(from);
-    while (currentDate <= to) {
-      if (isDayAvailable(currentDate)) {
-        if (!currentStart) {
-          currentStart = new Date(currentDate);
-          currentEnd = new Date(currentDate);
-        } else {
-          currentEnd = new Date(currentDate);
-        }
-      } else {
-        if (currentStart && currentEnd) {
-          segments.push({ start: currentStart, end: currentEnd });
-          currentStart = null;
-          currentEnd = null;
-        }
-      }
-      currentDate.setDate(currentDate.getDate() + 1);
+  const handleSelect = (day: Date | undefined) => {
+    if (!day) {
+      clearDates();
+      return;
     }
-    
-    if (currentStart && currentEnd) {
-      segments.push({ start: currentStart, end: currentEnd });
+    const next = new Date(day);
+    next.setHours(0, 0, 0, 0);
+    if (!isDayAvailable(next)) return;
+    if (selectedDate && sameCalendarDay(selectedDate, next)) {
+      clearDates();
+      return;
     }
-    
-    return segments;
+    setSelectedDate(next);
+    // New date invalidates prior hour slots for this kitchen.
+    if (kitchenId) {
+      sessionStorage.removeItem(`kitchen_booking_prefs_${kitchenId}`);
+      notifyBookingPrefsChanged(kitchenId);
+    }
+    setCalendarOpen(false);
   };
 
   const handleProceed = () => {
-    if (selectedRange) {
-      sessionStorage.setItem(storageKey, JSON.stringify(selectedRange));
+    if (selectedDate) {
+      sessionStorage.setItem(storageKey, JSON.stringify({ from: selectedDate }));
     }
 
-    if (isFullyAuthenticated) {
-      // Guard against double-trigger: if the auto-open useEffect already
-      // opened (or is about to open) a modal, or the user already clicked
-      // Continue on this page visit, don't pop another one.
-      if (hasInteractedRef.current && showConfirmModal) return;
-      hasInteractedRef.current = true;
-
-      // Clear pending flags immediately so the auto-open useEffect doesn't
-      // fight with this manual open and cause spotlight flicker or a
-      // later "out of nowhere" re-open.
+    if (isAuthenticated) {
       sessionStorage.removeItem('pending_application_modal');
       sessionStorage.removeItem(`${storageKey}_pending_modal`);
-
-      // Wait for BOTH raw queries to settle:
-      //   - useChefKitchenApplicationForLocation (location-specific row)
-      //   - useChefKitchenApplications (list of ALL chef kitchen apps)
-      //
-      // The previous loop waited on the DERIVED `applicationLoading`
-      // boolean which is:
-      //   `!application && (locationApplicationLoading || listLoading)`.
-      // That flips to false as soon as `application` has ANY cached data
-      // (even data from a prior location in the same page session), so a
-      // stale cached row would short-circuit the poll and open booking
-      // mode for a user whose real Step 1 row was still loading.
-      const openWhenReady = () => {
-        const d = latestDepsRef.current;
-        if (d.locationApplicationLoading || d.listApplicationLoading) {
-          setTimeout(openWhenReady, 100);
-          return;
-        }
-        const hasKitchenApp =
-          d.alreadyApplied || isActiveKitchenApplication(d.application || null);
-        setConfirmModalMode(hasKitchenApp ? "application" : "booking");
-        setShowConfirmModal(true);
-      };
-      openWhenReady();
-    } else {
-      sessionStorage.setItem(`${storageKey}_pending_modal`, "true");
-      sessionStorage.removeItem(`viewing_booking_${kitchenId}`);
-      sessionStorage.removeItem('pending_application_modal');
-      // Persist the location context so the post-verification submitter can
-      // route the pending application to the kitchen-specific endpoint even
-      // if the email verification redirects the user to /auth?verified=true.
-      // The kitchen application API requires `locationId`, not the kitchen
-      // id, so we must use the location id here.
-      try {
-        if (locationId || kitchenId) {
-          sessionStorage.setItem(
-            'pendingRegistrationKitchenContext',
-            JSON.stringify({
-              // Prefer the explicit locationId (the API requires locationId).
-              // Fall back to kitchenId only if locationId isn't available.
-              locationId: locationId || kitchenId,
-              kitchenId,
-              kitchenName
-            })
-          );
-        }
-      } catch (e) {
-        console.error("Failed to persist pendingRegistrationKitchenContext", e);
-      }
-      openAuthModal({
-        title: t("authModalNextStepsTitle", "Almost there!"),
-        description: <KitchenNextStepsDescription type="book" />,
-        defaultTab: "register",
-        requireApplication: true
-      });
+      if (onProceed) onProceed();
+      return;
     }
+
+    if (tourStorageKey) sessionStorage.removeItem(tourStorageKey);
+    sessionStorage.removeItem('pending_application_modal');
+    saveAuthIntentFromCurrentPage("book", locationId || kitchenId, kitchenId);
+    try {
+      if (locationId || kitchenId) {
+        sessionStorage.setItem(
+          'pendingRegistrationKitchenContext',
+          JSON.stringify({
+            locationId: locationId || kitchenId,
+            kitchenId,
+            kitchenName
+          })
+        );
+      }
+    } catch (e) {
+      console.error("Failed to persist pendingRegistrationKitchenContext", e);
+    }
+    openAuthModal({
+      title: t("requestToApply", "Request to apply"),
+      defaultTab: "register",
+      requireApplication: true,
+      bookingContext: kitchenId
+        ? {
+            kitchenId,
+            kitchenName,
+            equipmentListings: equipmentListings
+              ? { included: equipmentListings.included, rental: equipmentListings.rental }
+              : null,
+            storageListings: storageListings ?? null,
+          }
+        : undefined,
+    });
   };
 
-  const hasSelection = !!(selectedRange?.from || selectedRange?.to);
-  const formatDate = (date: Date) => date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  
-  const formatSegment = (segment: { start: Date; end: Date }) => {
-    if (segment.start.getTime() === segment.end.getTime()) {
-      return formatDate(segment.start);
+  const hasSelection = !!selectedDate;
+  const datesOk = !!(selectedDate && isDayAvailable(selectedDate));
+  const checkingApp =
+    isAuthenticated && (locationApplicationLoading || listApplicationLoading);
+
+  useEffect(() => {
+    onDatesOkChange?.(datesOk);
+  }, [datesOk, onDatesOkChange]);
+  const stickyCtaLabel = checkingApp
+    ? t("checkingApplication", "Checking your application…")
+    : proceedLabel || t("requestToApply", "Request to apply");
+  const datesSummary = datesOk
+    ? selectedDate!.toLocaleDateString(i18n.language, { month: "short", day: "numeric" })
+    : t("addDate", "Add a date");
+
+  const ctaBlocked = proceedDisabled || checkingApp || availabilityLoading;
+  const handleCtaClick = () => {
+    if (ctaBlocked) return;
+    if (requireDatesForProceed && !datesOk) {
+      setCalendarOpen(true);
+      cardRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      return;
     }
-    return `${formatDate(segment.start)} - ${formatDate(segment.end)}`;
+    handleProceed();
   };
 
-  const validSegments = (selectedRange?.from && selectedRange?.to) 
-    ? getValidDateSegments(selectedRange.from, selectedRange.to) 
-    : (selectedRange?.from && isDayAvailable(selectedRange.from)) 
-      ? [{ start: selectedRange.from, end: selectedRange.from }] 
-      : [];
+  const ctaButton = showPrimaryCta ? (
+    <Button
+      id="preview-apply"
+      variant={proceedVariant === "outline" ? "outline" : "default"}
+      className={cn(previewApplyCtaClass(proceedVariant), "w-full font-semibold", bento && "h-9 text-sm")}
+      onClick={handleCtaClick}
+      disabled={ctaBlocked}
+    >
+      {stickyCtaLabel}
+    </Button>
+  ) : null;
 
-  const bounds = useMemo(() => {
-    if (!selectedRange?.from || selectedRange?.to) return { min: null, max: null };
-    
-    let maxDate = null;
-    let minDate = null;
-    
-    // Find first unavailable date AFTER start
-    let checkDate = new Date(selectedRange.from);
-    checkDate.setHours(0, 0, 0, 0);
-    checkDate.setDate(checkDate.getDate() + 1);
-    for (let i = 0; i < 365; i++) {
-      if (!isDayAvailable(checkDate)) {
-        maxDate = new Date(checkDate);
-        break;
-      }
-      checkDate.setDate(checkDate.getDate() + 1);
-    }
-    
-    // Find first unavailable date BEFORE start
-    checkDate = new Date(selectedRange.from);
-    checkDate.setHours(0, 0, 0, 0);
-    checkDate.setDate(checkDate.getDate() - 1);
-    for (let i = 0; i < 365; i++) {
-      if (!isDayAvailable(checkDate)) {
-        minDate = new Date(checkDate);
-        break;
-      }
-      checkDate.setDate(checkDate.getDate() - 1);
-    }
-    
-    return { min: minDate, max: maxDate };
-  }, [selectedRange?.from, selectedRange?.to, isDayAvailable]);
+  const bookingInfoBody = (
+    <>
+      <p>
+        {t(
+          "pickDateToBook",
+          "Select the day you'd like. You won't be charged until you complete a booking."
+        )}
+      </p>
+      {extraInfoTip ? <p className="mt-2">{extraInfoTip}</p> : null}
+    </>
+  );
+  const showBookingInfo = showPrimaryCta || !!extraInfoTip;
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5" data-preview-tour="hours">
-      <h2 className="font-semibold text-gray-900 text-sm flex items-center gap-2 mb-1">
-        <Calendar className="h-4 w-4 text-[#F51042]" />{t("selectYourDates", "Select your dates")}
-      </h2>
-      <p className="text-xs text-gray-500 mb-4 leading-relaxed">
-        {t("pickDatesToBook", "Pick the dates you'd like to cook. You won't be charged yet.")}
-      </p>
-      
-      <div className="border border-gray-100 rounded-lg p-1 bg-gray-50/30">
-        <UICalendar
-          mode="range"
-          selected={selectedRange}
-          onSelect={handleSelect}
-          className="w-full bg-transparent"
-          disabled={(date) => {
-            const d = new Date(date);
-            d.setHours(0, 0, 0, 0);
-            if (!isDayAvailable(d)) return true;
-            if (bounds.max && d >= bounds.max) return true;
-            if (bounds.min && d <= bounds.min) return true;
-            return false;
-          }}
-        />
-      </div>
-      
-      <div className="mt-4 pt-4 border-t border-gray-100 space-y-3">
-        {selectedRange?.from && validSegments.length > 0 && (
-          <div className="bg-red-50 text-red-900 px-3 py-2 rounded-md text-sm font-medium border border-red-100 flex flex-col gap-1">
-            <span className="font-semibold">Eligible Booking Dates:</span>
-            <span className="text-xs opacity-90 mb-1">Based on kitchen availability, your selection includes:</span>
-            <ul className="list-disc pl-4 space-y-0.5 text-sm">
-              {validSegments.map((seg, idx) => (
-                <li key={idx}>{formatSegment(seg)}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {selectedRange?.from && validSegments.length === 0 && (
-          <div className="bg-amber-50 text-amber-900 px-3 py-2 rounded-md text-sm font-medium border border-amber-100 flex flex-col gap-1">
-            <span className="font-semibold">No Eligible Dates</span>
-            <span className="text-xs opacity-90">Your selection does not include any days the kitchen is open.</span>
-          </div>
-        )}
-        <div className="flex items-start gap-2 bg-blue-50/50 p-2.5 rounded-lg border border-blue-100/50">
-          <Info className="h-4 w-4 text-blue-500 mt-0.5 shrink-0" />
-          <p className="text-xs text-blue-700 leading-relaxed font-medium">
-            {t("nextStepsInfo", "Next steps: Take a tour or apply. Once the kitchen manager approves you, you can book these dates.")}
-          </p>
+    <div
+      ref={cardRef}
+      className={cn(
+        "relative bg-white rounded-2xl border border-gray-200/70 flex flex-col w-full",
+        PREMIUM_CARD_SHADOW,
+        bento ? "p-3 sm:p-3.5 h-full" : "p-5"
+      )}
+      data-preview-tour="hours"
+    >
+      {showBookingInfo ? (
+        <div className={cn("absolute z-10", bento ? "right-2 top-2" : "right-3 top-3")}>
+          <PreviewInfoTip label={t("bookingInfoTip", "Booking info")}>
+            {showPrimaryCta ? bookingInfoBody : extraInfoTip}
+          </PreviewInfoTip>
         </div>
-        
-        <Button 
-          className="w-full bg-[#F51042] hover:bg-[#E00A38] text-white transition-all shadow-sm" 
-          onClick={handleProceed}
-          disabled={
-            !hasSelection ||
-            validSegments.length === 0 ||
-            (isFullyAuthenticated && (locationApplicationLoading || listApplicationLoading))
-          }
+      ) : null}
+
+      {kitchenRate ? (
+        <p
+          className={cn(
+            "mb-3 text-lg font-bold text-gray-900",
+            showBookingInfo && "pr-9"
+          )}
         >
-          {isFullyAuthenticated && (locationApplicationLoading || listApplicationLoading)
-            ? t("checkingYourApplication", "Checking your application...")
-            : hasSelection && validSegments.length > 0
-              ? t("continueWithSelectedDates", "Continue with selected dates") 
-              : t("selectDatesToContinue", "Select dates to continue")}
-        </Button>
-      </div>
+          {kitchenRate}
+        </p>
+      ) : null}
 
-      <Dialog
-        open={showConfirmModal}
-        onOpenChange={(nextOpen) => {
-          setShowConfirmModal(nextOpen);
-          if (!nextOpen) {
-            // User closed the confirm dialog. Clear pending-modal session
-            // flags so the auto-open useEffect won't try to re-open it on
-            // the next render, and so the spotlight walkthrough doesn't
-            // flicker (the walkthrough waits until body has no real dialog).
-            try {
-              sessionStorage.removeItem('pending_application_modal');
-              sessionStorage.removeItem(`${storageKey}_pending_modal`);
-            } catch (e) { /* ignore */ }
-          }
-        }}
-      >
-        <DialogContent className="w-full sm:max-w-[450px] overflow-y-auto max-h-[90vh] p-4 sm:p-6">
-          <DialogHeader className="mb-2">
-            <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
-              {confirmModalMode === "application" ? (
-                <>
-                  <CheckCircle2 className="h-5 w-5 text-primary" />
-                  {t("applicationStarted", "Step 1 Complete!")}
-                </>
-              ) : (
-                <>
-                  <Calendar className="h-5 w-5 text-primary" />
-                  {t("reviewSelectedDates", "Review your selected dates")}
-                </>
-              )}
-            </DialogTitle>
-            <DialogDescription className="text-xs sm:text-sm">
-              {confirmModalMode === "application" ? (
-                t("applicationSubmittedDesc", "Your application has been successfully submitted. We will notify you once it is approved.")
-              ) : (
-                <>
-                  {kitchenName ? t("bookingAt", { defaultValue: `Booking at ${kitchenName}`, name: kitchenName }) : t("bookingAtKitchen", "Booking at this kitchen")}
-                  {kitchenRate && ` • ${kitchenRate}`}
-                </>
-              )}
-            </DialogDescription>
-          </DialogHeader>
+      <div data-preview-tour="cta">
+      <Collapsible open={calendarOpen} onOpenChange={setCalendarOpen}>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setCalendarOpen(!calendarOpen)}
+            className="flex min-w-0 flex-1 items-center justify-between rounded-xl border border-gray-300 px-3.5 py-3 text-left transition-colors hover:border-gray-400"
+            aria-expanded={calendarOpen}
+          >
+            <span className="min-w-0">
+              <span className="block text-xs font-medium uppercase tracking-wider text-gray-500">
+                {t("selectYourDate", "Choose your date")}
+              </span>
+              <span className="mt-0.5 block truncate text-sm text-gray-900">{datesSummary}</span>
+            </span>
+            <PreviewIcon
+              icon={calendarOpen ? "mdi:chevron-up" : "mdi:chevron-down"}
+              size={18}
+              className="shrink-0 text-gray-500"
+            />
+          </button>
+          {hasSelection && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={clearDates}
+              className="shrink-0 h-10 px-2 text-xs text-gray-500 hover:text-[#F51042]"
+            >
+              {t("clearDate", "Clear")}
+            </Button>
+          )}
+        </div>
 
-          <div className="space-y-6">
-            {/* Selected Dates Summary (Only for booking mode) */}
-            {confirmModalMode === "booking" && (
-              <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 flex items-start gap-3">
-                <Calendar className="h-5 w-5 text-[#F51042] mt-0.5 shrink-0" />
-                <div>
-                  <p className="font-semibold text-sm text-gray-900 mb-1">{t("selectedDates", "Selected Dates")}</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {validSegments.map((seg, idx) => (
-                      <Badge variant="secondary" key={idx} className="bg-white border-gray-200 text-gray-700 font-medium hover:bg-gray-50">
-                        {formatSegment(seg)}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
+        <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-none">
+          <div className="relative mt-2 rounded-lg border border-gray-300 bg-gray-50/30 p-1">
+            {availabilityLoading && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 rounded-lg">
+                <PreviewIcon icon="mdi:loading" size={20} className="animate-spin text-[#F51042]" />
               </div>
             )}
-
-            {confirmModalMode === "application" && application && (
-              <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 mb-6">
-                <h4 className="font-semibold text-sm text-gray-900 mb-3">{t("applicationDetails", "Application Details")}</h4>
-                <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm">
-                  <div>
-                    <p className="text-muted-foreground text-xs">{t("name", "Name")}</p>
-                    <p className="font-medium text-gray-900">{application.fullName}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs">{t("email", "Email")}</p>
-                    <p className="font-medium text-gray-900 truncate" title={application.email}>{application.email}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs">{t("phone", "Phone")}</p>
-                    <p className="font-medium text-gray-900">{application.phone || "N/A"}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs">{t("shopName", "Shop Name")}</p>
-                    <p className="font-medium text-gray-900 truncate" title={application.shopName}>{application.shopName || "N/A"}</p>
-                  </div>
-                  {application.shopAddress && (
-                    <div className="col-span-2">
-                      <p className="text-muted-foreground text-xs">{t("shopAddress", "Address")}</p>
-                      <p className="font-medium text-gray-900 truncate" title={application.shopAddress}>{application.shopAddress}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Application Submitted confirmation (when in application mode but application object is missing) */}
-            {confirmModalMode === "application" && !application && (
-              <div className="bg-gray-50 rounded-xl p-4 border border-gray-100 mb-6">
-                <div className="flex items-start gap-3">
-                  <CheckCircle2 className="h-5 w-5 text-[#F51042] mt-0.5 shrink-0" />
-                  <div>
-                    <h4 className="font-semibold text-sm text-gray-900 mb-2">{t("applicationDetails", "Application Details")}</h4>
-                    <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm">
-                      <div>
-                        <p className="text-muted-foreground text-xs">{t("name", "Name")}</p>
-                        <p className="font-medium text-gray-900">
-                          {(user?.displayName ||
-                            ((user as unknown as { firstName?: string; lastName?: string; name?: string }).firstName
-                              ? `${(user as unknown as { firstName?: string }).firstName}${(user as unknown as { lastName?: string }).lastName ? ` ${(user as unknown as { lastName?: string }).lastName}` : ''}`
-                              : (user as unknown as { name?: string }).name) ||
-                            'N/A')}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground text-xs">{t("email", "Email")}</p>
-                        <p className="font-medium text-gray-900 truncate">{user?.email || 'N/A'}</p>
-                      </div>
-                      <div className="col-span-2">
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {t("appSubmittedDuringReg", "Your Step 1 details were submitted during registration and are pending admin approval. Click View Application to review your submission.")}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Stepper / Timeline */}
-            <div className="space-y-4">
-              <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">
-                {confirmModalMode === "application" ? t("yourApplicationJourney", "Your application journey") : t("yourBookingJourney", "Your booking journey")}
-              </h4>
-              <div className="relative pl-3 space-y-6 before:absolute before:inset-y-2 before:left-[23px] before:w-0.5 before:bg-gray-100">
-                
-                {/* Step 1 */}
-                <div className="relative flex gap-4 items-start">
-                  <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 z-10 ${alreadyApplied || canBook ? 'bg-primary/10 text-primary' : 'bg-primary text-primary-foreground shadow-sm ring-4 ring-background'}`}>
-                    {alreadyApplied || canBook ? <CheckCircle2 className="h-5 w-5" /> : <span className="text-sm font-bold">1</span>}
-                  </div>
-                  <div className="pt-1.5">
-                    <p className={`text-sm font-semibold ${alreadyApplied || canBook ? 'text-foreground' : 'text-foreground'}`}>{t("submitApplication", "Submit Application")}</p>
-                    <p className="text-sm text-muted-foreground mt-0.5">
-                      {alreadyApplied || canBook 
-                        ? t("youHaveSuccessfullySubmitted", "You've successfully submitted your application.")
-                        : t("fillOutRequirements", "Fill out your requirements so the kitchen manager can verify you.")}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Step 2 */}
-                <div className="relative flex gap-4 items-start">
-                  <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 z-10 ${canBook ? 'bg-primary/10 text-primary' : alreadyApplied ? 'bg-primary/10 text-primary shadow-sm ring-4 ring-background' : 'bg-muted text-muted-foreground ring-4 ring-background'}`}>
-                    {canBook ? <CheckCircle2 className="h-5 w-5" /> : alreadyApplied ? <Clock className="h-5 w-5" /> : <span className="text-sm font-bold">2</span>}
-                  </div>
-                  <div className="pt-1.5">
-                    <p className={`text-sm font-semibold ${canBook ? 'text-foreground' : alreadyApplied ? 'text-foreground' : 'text-muted-foreground'}`}>{t("kitchenReview", "Kitchen Review")}</p>
-                    <p className={`text-sm mt-0.5 ${canBook ? 'text-muted-foreground' : alreadyApplied ? 'text-muted-foreground' : 'text-muted-foreground'}`}>
-                      {canBook 
-                        ? t("applicationApproved", "Your application was approved by the kitchen.")
-                        : alreadyApplied
-                          ? (application?.current_tier === 1 
-                              ? t("adminCurrentlyReviewing", "The platform Admin is currently reviewing your details.") 
-                              : t("managerCurrentlyReviewing", "The kitchen manager is currently reviewing your details."))
-                          : t("waitKitchenApproval", "Wait for the kitchen manager to approve your application.")}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Step 3 */}
-                <div className="relative flex gap-4 items-start">
-                  <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 z-10 ${canBook ? 'bg-primary text-primary-foreground shadow-sm ring-4 ring-background' : 'bg-muted text-muted-foreground ring-4 ring-background'}`}>
-                    <span className="text-sm font-bold">3</span>
-                  </div>
-                  <div className="pt-1.5">
-                    <p className={`text-sm font-semibold ${canBook ? 'text-foreground' : 'text-muted-foreground'}`}>{t("bookAndPay", "Book & Pay")}</p>
-                    <p className={`text-sm mt-0.5 ${canBook ? 'text-muted-foreground' : 'text-muted-foreground'}`}>
-                      {t("onceApprovedFinalize", "Once approved, finalize your schedule and pay for your booking.")}
-                    </p>
-                  </div>
-                </div>
-
-              </div>
-            </div>
-
-            <div className="pt-2 flex justify-end gap-3 mt-4">
-              <Button variant="outline" onClick={() => setShowConfirmModal(false)}>{t("cancel", "Cancel")}</Button>
-              <Button onClick={() => {
-                setShowConfirmModal(false);
-                if (onProceed) onProceed();
-              }}>
-                {canBook
-                  ? t("continueToBooking", "Continue to Booking")
-                  : confirmModalMode === "application"
-                    ? t("viewApplication", "View Application")
-                    : alreadyApplied
-                      ? t("viewApplication", "View Application")
-                      : t("continueToApply", "Continue to Apply")}
-              </Button>
-            </div>
+            <UICalendar
+              mode="single"
+              selected={selectedDate}
+              onSelect={handleSelect}
+              month={calendarMonth}
+              onMonthChange={setCalendarMonth}
+              initialFocus={false}
+              className="w-full bg-transparent p-1"
+              classNames={{
+                months: "flex flex-col space-y-0 w-full",
+                month: "space-y-2 w-full",
+                caption: "flex justify-center pt-0.5 relative items-center w-full",
+                caption_label: "text-xs font-medium",
+                nav_button:
+                  "inline-flex items-center justify-center h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100 rounded-md border-0 shadow-none",
+                nav_button_previous: "absolute left-0",
+                nav_button_next: "absolute right-0",
+                table: "w-full border-collapse table-fixed",
+                head_cell:
+                  "text-muted-foreground font-normal text-xs text-center pb-0.5 w-[14.28%]",
+                row: "mt-0.5",
+                day: "h-8 w-8 max-w-[32px] mx-auto p-0 font-normal text-xs aria-selected:opacity-100 rounded-full hover:bg-gray-100 transition-colors flex items-center justify-center text-gray-900",
+                day_disabled:
+                  "text-gray-300 opacity-40 font-normal line-through decoration-gray-300/80 pointer-events-none",
+                cell: cn(
+                  "text-center text-xs p-0 relative h-8 z-0",
+                  "[&:has([aria-selected])]:before:absolute [&:has([aria-selected])]:before:left-1/2 [&:has([aria-selected])]:before:top-1/2 [&:has([aria-selected])]:before:h-8 [&:has([aria-selected])]:before:w-8 [&:has([aria-selected])]:before:-translate-x-1/2 [&:has([aria-selected])]:before:-translate-y-1/2 [&:has([aria-selected])]:before:border-2 [&:has([aria-selected])]:before:border-[#F51042] [&:has([aria-selected])]:before:rounded-full [&:has([aria-selected])]:before:-z-10"
+                ),
+              }}
+              disabled={(date) => {
+                const d = new Date(date);
+                d.setHours(0, 0, 0, 0);
+                return !isDayAvailable(d);
+              }}
+            />
           </div>
-        </DialogContent>
-      </Dialog>
+        </CollapsibleContent>
+      </Collapsible>
+
+      {showPrimaryCta && (
+        <div className="mt-4 shrink-0 space-y-2 border-t border-gray-200 pt-3">
+          {pricePreview ? <PreviewBookingTotalAboveCta preview={pricePreview} /> : null}
+          {ctaButton}
+        </div>
+      )}
+      </div>
     </div>
   );
 }
@@ -1752,6 +2038,11 @@ interface KitchenDetailsSectionProps {
   locationDescription?: string | null;
   layout?: "tabs" | "stacked";
   addonsLoading?: boolean;
+  hidePhotoCollage?: boolean;
+  /** When true, title/description are rendered by the parent (keeps chips → name tight). */
+  hideOverview?: boolean;
+  inventoryModal?: "equipment" | "storage" | null;
+  onInventoryModalChange?: (modal: "equipment" | "storage" | null) => void;
 }
 
 function KitchenDetailsSection({
@@ -1761,18 +2052,15 @@ function KitchenDetailsSection({
   locationDescription,
   layout = "tabs",
   addonsLoading = false,
+  hidePhotoCollage = false,
+  hideOverview = false,
+  inventoryModal,
+  onInventoryModalChange,
 }: KitchenDetailsSectionProps) {
   const [activeTab, setActiveTab] = useState("overview");
   const isStacked = layout === "stacked";
 
-  const allImages: string[] = useMemo(() => {
-    const images: string[] = [];
-    if (kitchen.imageUrl) images.push(kitchen.imageUrl);
-    if (kitchen.galleryImages && Array.isArray(kitchen.galleryImages)) {
-      images.push(...kitchen.galleryImages.filter(img => img && typeof img === 'string'));
-    }
-    return images;
-  }, [kitchen.imageUrl, kitchen.galleryImages]);
+  const allImages: string[] = useMemo(() => getKitchenImages(kitchen), [kitchen]);
 
   const hasEquipment = kitchen.equipment && (
     (kitchen.equipment.included && kitchen.equipment.included.length > 0) ||
@@ -1785,35 +2073,9 @@ function KitchenDetailsSection({
   const storageCount = kitchen.storage?.length || 0;
   const rateLabel = formatKitchenRate(kitchen);
   const { t } = useTranslation("kitchen");
-  const hoursSummary = availableDaySummary(kitchen.availability, t);
   const aboutCopy = isStacked
     ? (kitchen.description || null)
     : (kitchen.description || locationDescription || null);
-  const showFactChips = includedCount > 0 || rentalCount > 0 || storageCount > 0 || !!hoursSummary;
-
-  const factChips = showFactChips ? (
-    <div className="flex flex-wrap gap-2">
-      {hoursSummary && <KitchenFactChip icon={Clock} label={hoursSummary} />}
-      {includedCount > 0 && (
-        <KitchenFactChip
-          icon={CheckCircle2}
-          label={t("includedItemsCount", { count: includedCount, defaultValue: `${includedCount} included ${includedCount === 1 ? "item" : "items"}` })}
-        />
-      )}
-      {rentalCount > 0 && (
-        <KitchenFactChip
-          icon={CookingPot}
-          label={t("rentalOptionsCount", { count: rentalCount, defaultValue: `${rentalCount} rental ${rentalCount === 1 ? "option" : "options"}` })}
-        />
-      )}
-      {storageCount > 0 && (
-        <KitchenFactChip
-          icon={Warehouse}
-          label={t("storageOptionsCount", { count: storageCount, defaultValue: `${storageCount} storage ${storageCount === 1 ? "option" : "options"}` })}
-        />
-      )}
-    </div>
-  ) : null;
 
   return (
     <motion.div
@@ -1822,30 +2084,33 @@ function KitchenDetailsSection({
       animate="visible"
       exit={{ opacity: 0, y: -20 }}
       variants={fadeInUp}
-      className="space-y-6"
+      className="space-y-5"
     >
-      <KitchenPhotoCollage images={allImages} kitchenName={kitchen.name} />
+      {!hidePhotoCollage && (
+        <KitchenPhotoCollage images={allImages} kitchenName={kitchen.name} />
+      )}
 
-      <div className="space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
-          <h2 className="text-xl sm:text-2xl font-bold text-gray-900">{kitchen.name}</h2>
-          {rateLabel && (
-            <p className="text-lg font-semibold text-[#F51042] shrink-0">{rateLabel}</p>
+      {!hideOverview && (
+        <div id="preview-overview" className="space-y-2 scroll-mt-32">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+            <h2 className="text-lg sm:text-xl font-bold text-gray-900">{kitchen.name}</h2>
+            {rateLabel && !hidePhotoCollage && (
+              <p className="text-base font-semibold text-[#F51042] shrink-0">{rateLabel}</p>
+            )}
+          </div>
+          {aboutCopy && isStacked && (
+            <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{aboutCopy}</p>
           )}
         </div>
-        {factChips}
-        {aboutCopy && isStacked && (
-          <p className="text-gray-600 leading-relaxed whitespace-pre-wrap">{aboutCopy}</p>
-        )}
-      </div>
+      )}
 
       {isStacked ? (
         <>
           {kitchen.amenities && kitchen.amenities.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 p-5 sm:p-6">
+            <div id="preview-amenities" className="bg-white rounded-xl border border-gray-200 p-5 sm:p-6 scroll-mt-32">
               <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                <ListChecks className="w-4 h-4 text-[#F51042]" />
-                Amenities
+                <PreviewIcon icon="mdi:format-list-checks" size={16} className="text-[#F51042]" />
+                {t("amenities")}
               </h3>
               <KitchenAmenitiesList amenities={kitchen.amenities} />
             </div>
@@ -1864,13 +2129,17 @@ function KitchenDetailsSection({
               kitchen={kitchen}
               hasEquipment={!!hasEquipment}
               hasStorage={!!hasStorage}
+              openModal={inventoryModal}
+              onOpenModalChange={onInventoryModalChange}
             />
           )}
 
           {locationAddress && (
-            <div className="bg-white rounded-xl border border-gray-200 p-5 sm:p-6">
+            <div id="preview-location" className="bg-white rounded-xl border border-gray-200 p-5 sm:p-6 scroll-mt-32">
               <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-[#F51042]" />{t("whereItIs", "Where it is")}</h3>
+                <PreviewIcon icon="mdi:map-marker" size={16} className="text-[#F51042]" />
+                {t("whereItIs", "Location")}
+              </h3>
               {locationName && (
                 <p className="text-sm text-gray-600 mb-3">{locationAddress}</p>
               )}
@@ -1892,8 +2161,8 @@ function KitchenDetailsSection({
                 data-preview-tour="tab-overview"
                 className="data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-t-lg rounded-b-none border-b-2 border-transparent data-[state=active]:border-primary px-4 py-2.5 text-sm font-medium"
               >
-                <LayoutGrid className="w-4 h-4 mr-2" />
-                Overview
+                <PreviewIcon icon="mdi:view-grid-outline" size={16} className="mr-2" />
+                {t("overviewTab", "Overview")}
               </TabsTrigger>
               {hasEquipment && (
                 <TabsTrigger 
@@ -1901,7 +2170,7 @@ function KitchenDetailsSection({
                   data-preview-tour="tab-equipment"
                   className="data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-t-lg rounded-b-none border-b-2 border-transparent data-[state=active]:border-primary px-4 py-2.5 text-sm font-medium"
                 >
-                  <CookingPot className="w-4 h-4 mr-2" />{t("equipment", "Equipment")}<Badge variant="count" className="ml-2">
+                  <PreviewIcon icon="mdi:pot-steam" size={16} className="mr-2 text-[#F51042]" />{t("equipment", "Equipment")}<Badge variant="count" className="ml-2">
                     {includedCount + rentalCount}
                   </Badge>
                 </TabsTrigger>
@@ -1912,7 +2181,7 @@ function KitchenDetailsSection({
                   data-preview-tour="tab-storage"
                   className="data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-t-lg rounded-b-none border-b-2 border-transparent data-[state=active]:border-primary px-4 py-2.5 text-sm font-medium"
                 >
-                  <Warehouse className="w-4 h-4 mr-2" />{t("storage", "Storage")}<Badge variant="count" className="ml-2">
+                  <PreviewIcon icon="mdi:warehouse" size={16} className="mr-2 text-[#F51042]" />{t("storage", "Storage")}<Badge variant="count" className="ml-2">
                     {storageCount}
                   </Badge>
                 </TabsTrigger>
@@ -1934,8 +2203,8 @@ function KitchenDetailsSection({
                   {aboutCopy && (
                     <div>
                       <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-[#F51042]" />
-                        {kitchen.description ? "About This Kitchen" : "About This Space"}
+                        <PreviewIcon icon="mdi:file-document-outline" size={16} className="text-[#F51042]" />
+                        {kitchen.description ? t("aboutThisKitchen") : t("aboutThisSpace")}
                       </h3>
                       <p className="text-[#6B6B6B] leading-relaxed whitespace-pre-wrap">
                         {aboutCopy}
@@ -1946,8 +2215,8 @@ function KitchenDetailsSection({
                   {kitchen.availability && kitchen.availability.length > 0 && (
                     <div>
                       <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                        <Calendar className="w-4 h-4 text-[#F51042]" />
-                        Weekly Availability
+                        <PreviewIcon icon="mdi:calendar" size={16} className="text-[#F51042]" />
+                        {t("weeklyAvailability")}
                       </h3>
                       <AvailabilityDisplay availability={kitchen.availability} />
                     </div>
@@ -1956,8 +2225,8 @@ function KitchenDetailsSection({
                   {kitchen.amenities && Array.isArray(kitchen.amenities) && kitchen.amenities.length > 0 && (
                     <div>
                       <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                        <ListChecks className="w-4 h-4 text-[#F51042]" />
-                        Kitchen Amenities
+                        <PreviewIcon icon="mdi:format-list-checks" size={16} className="text-[#F51042]" />
+                        {t("kitchenAmenities")}
                       </h3>
                       <KitchenAmenitiesList amenities={kitchen.amenities} />
                     </div>
@@ -1966,8 +2235,8 @@ function KitchenDetailsSection({
                   {locationAddress && (
                     <div className="pt-4 border-t border-border/50">
                       <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                        <MapPin className="w-4 h-4 text-[#F51042]" />
-                        Location
+                        <PreviewIcon icon="mdi:map-marker" size={16} className="text-[#F51042]" />
+                        {t("location")}
                       </h3>
                       <LocationMap
                         address={locationAddress}
@@ -2014,6 +2283,178 @@ function KitchenDetailsSection({
   );
 }
 
+function headerOffsetPx(chefChrome: boolean, staticSiteHeader: boolean) {
+  if (chefChrome) return 64;
+  if (staticSiteHeader) return 0;
+  const raw = getComputedStyle(document.documentElement).getPropertyValue("--header-height").trim();
+  const n = parseFloat(raw);
+  return Number.isFinite(n) ? n : 96;
+}
+
+const PREVIEW_DOCK_HEIGHT_PX = 56; // h-14
+
+/** Activation line for dock scroll-spy / nav scroll — just under sticky chrome. */
+function previewSpyOffsetPx(args: {
+  chefChrome: boolean;
+  staticSiteHeader: boolean;
+  dockVisible: boolean;
+}) {
+  const header = headerOffsetPx(args.chefChrome, args.staticSiteHeader);
+  return header + (args.dockVisible ? PREVIEW_DOCK_HEIGHT_PX : 0) + 8;
+}
+
+const PREVIEW_SPY_SECTION_IDS = [
+  "preview-overview",
+  "preview-amenities",
+  "preview-equipment",
+  "preview-storage",
+  "preview-location",
+  "preview-things-to-know",
+] as const;
+
+function resolvePreviewActiveSection(spyOffset: number): string | null {
+  const sections: { id: string; top: number }[] = [];
+  for (const id of PREVIEW_SPY_SECTION_IDS) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    sections.push({ id, top: el.getBoundingClientRect().top });
+  }
+  if (sections.length === 0) return null;
+
+  // Visual order (side-by-side equipment/storage share a top).
+  sections.sort((a, b) => a.top - b.top);
+
+  const doc = document.documentElement;
+  const nearBottom = window.scrollY + window.innerHeight >= doc.scrollHeight - 72;
+  return pickPreviewActiveSectionId(sections, spyOffset, nearBottom);
+}
+
+function scrollToPreviewSection(id: string, offset: number) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const top = window.scrollY + el.getBoundingClientRect().top - offset;
+  window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+}
+
+function ctaUsableInViewport(
+  el: Element | null,
+  topInset: number,
+  wasInView: boolean
+) {
+  if (!el) return false;
+  const r = el.getBoundingClientRect();
+  const visible = Math.min(r.bottom, window.innerHeight) - Math.max(r.top, topInset);
+  if (visible <= 0) return false;
+  return wasInView ? visible >= 8 : visible >= 36;
+}
+
+/** Hysteresis so the sticky tour chip does not flicker at the fold. */
+function tourAnchorInView(el: Element | null, headerPx: number, wasInView: boolean) {
+  if (!el) return false;
+  const r = el.getBoundingClientRect();
+  if (r.top >= window.innerHeight) return false;
+  if (wasInView) return r.bottom > headerPx;
+  return r.bottom > headerPx + 48;
+}
+
+const DOCK_EASE = [0.32, 0.72, 0, 1] as const;
+const DOCK_FADE_EASE = [0.22, 1, 0.36, 1] as const;
+
+/** Horizontal CTA chip enter/exit — matches sticky-tour softness, no layout pop. */
+function DockCtaChip({
+  show,
+  reduceMotion,
+  className,
+  children,
+}: {
+  show: boolean;
+  reduceMotion: boolean | null;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <AnimatePresence initial={false}>
+      {show ? (
+        <motion.div
+          key="dock-cta-chip"
+          initial={{ opacity: 0, x: 10 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: 8 }}
+          transition={{
+            duration: reduceMotion ? 0 : 0.28,
+            ease: DOCK_FADE_EASE,
+          }}
+          className={cn("shrink-0 overflow-hidden", className)}
+        >
+          {children}
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
+  );
+}
+
+function KitchenPreviewDockNav({
+  visible,
+  links,
+  activeId,
+  cta,
+  positionClass,
+  contentClassName,
+  onNavigate,
+}: {
+  visible: boolean;
+  links: { id: string; label: string }[];
+  activeId: string;
+  cta: ReactNode;
+  positionClass: string;
+  contentClassName: string;
+  onNavigate: (id: string) => void;
+}) {
+  const { t } = useTranslation("kitchen");
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div
+      className={cn(
+        "fixed z-50 border-b shadow-md bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/90 transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
+        positionClass,
+        visible
+          ? "translate-y-0 opacity-100"
+          : "pointer-events-none -translate-y-full opacity-0"
+      )}
+      aria-hidden={!visible}
+    >
+      <div className={cn("flex h-14 items-center gap-3 sm:gap-4", contentClassName)}>
+        <nav className="flex min-w-0 flex-1 items-center gap-4 sm:gap-5 overflow-x-auto" aria-label={t("kitchenSectionsNav", "Kitchen sections")}>
+          {links.map((link) => {
+            const isActive = activeId === link.id;
+            return (
+              <a
+                key={link.id}
+                href={`#${link.id}`}
+                aria-current={isActive ? "location" : undefined}
+                onClick={(event) => {
+                  event.preventDefault();
+                  onNavigate(link.id);
+                }}
+                className={cn(
+                  "shrink-0 whitespace-nowrap py-2 text-sm font-medium border-b-2 transition-colors duration-200",
+                  isActive
+                    ? "border-[#F51042] text-gray-900"
+                    : "border-transparent text-gray-500 hover:text-gray-900"
+                )}
+              >
+                {link.label}
+              </a>
+            );
+          })}
+        </nav>
+        {cta}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 export default function KitchenPreviewPage() {
   const { t } = useTranslation("kitchen");
   const { t: tChef } = useTranslation("chef");
@@ -2022,6 +2463,8 @@ export default function KitchenPreviewPage() {
   const { openAuthModal } = useAuthModal();
   const isAuthenticated = !!user;
   const useChefChrome = isChefUser(user);
+  const staticSiteHeader = !isAuthenticated;
+  const reduceMotion = useReducedMotion();
 
   const locationIdMatch = locationPath.match(/\/kitchen-preview\/(.+)/);
   const identifier = locationIdMatch ? locationIdMatch[1] : null;
@@ -2032,19 +2475,57 @@ export default function KitchenPreviewPage() {
   const [isLoadingAddons, setIsLoadingAddons] = useState(false);
   const [activeView, setActiveView] = useState("discover-kitchens");
   const [tourModalOpen, setTourModalOpen] = useState(false);
-  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
-  const [tourReplayToken, setTourReplayToken] = useState(0);
+  const [inventoryModal, setInventoryModal] = useState<"equipment" | "storage" | null>(null);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [datesOk, setDatesOk] = useState(false);
+  const [activeSection, setActiveSection] = useState("preview-overview");
+  const [photosInView, setPhotosInView] = useState(true);
+  const [tourInView, setTourInView] = useState(true);
+  /** Sticky tour under apply — dock only after this scrolls away. */
+  const [stickyTourInView, setStickyTourInView] = useState(true);
+  const [applyInView, setApplyInView] = useState(true);
+
+  const { preview: bookingPricePreview } = usePersistedBookingPricePreview(
+    selectedKitchen?.id != null ? String(selectedKitchen.id) : undefined
+  );
 
   const { data: locationData, isLoading, error } = useQuery<PublicLocation & { kitchens: PublicKitchen[], slug?: string }>({
     queryKey: [`/api/public/locations/${identifier}/details`],
     queryFn: async () => {
       const response = await fetch(`/api/public/locations/${identifier}/details`);
-      if (!response.ok) throw new Error("Location not found");
+      if (!response.ok) throw new Error(kt("locationNotFound"));
       return response.json();
     },
     enabled: !!identifier,
     placeholderData: keepPreviousData,
   });
+
+  // Wouter keeps window.scrollY across client navigations (e.g. a scrolled
+  // discover list). Reset before paint, and again once real content replaces
+  // the loading skeleton so the map/calendar cannot leave you mid-page.
+  useLayoutEffect(() => {
+    const previous = window.history.scrollRestoration;
+    try {
+      window.history.scrollRestoration = "manual";
+    } catch {
+      /* ignore */
+    }
+    const reset = () => {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    };
+    reset();
+    const frame = window.requestAnimationFrame(reset);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      try {
+        window.history.scrollRestoration = previous || "auto";
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [identifier, isLoading, authLoading]);
 
   const locationId = locationData?.id;
   const previewSlug = locationData?.slug || identifier;
@@ -2082,6 +2563,71 @@ export default function KitchenPreviewPage() {
   });
   const toursAvailable = tourStatus?.toursAvailable ?? tourStatus?.isActive ?? false;
 
+  // Existing tour request for this location (pending / confirmed).
+  type ChefViewingRow = {
+    viewing?: { id: number; locationId: number; status: string; scheduledAt: string };
+    id?: number;
+    locationId?: number;
+    status?: string;
+    scheduledAt?: string;
+  };
+  const { data: chefViewings = [], isFetched: chefViewingsFetched } = useQuery<ChefViewingRow[]>({
+    queryKey: ["/api/viewings", "chef", user?.uid],
+    queryFn: async () => {
+      const headers = await getAuthHeaders();
+      const response = await fetch("/api/viewings/chef", {
+        headers,
+        credentials: "include",
+      });
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: !!isAuthenticated && !!user?.uid,
+  });
+  const activeLocationTour = useMemo(() => {
+    if (!locationId || !chefViewings.length) return null;
+    const ACTIVE = new Set(["pending", "confirmed"]);
+    const rows = chefViewings
+      .map((r) => r.viewing ?? r)
+      .filter(
+        (v): v is { id: number; locationId: number; status: string; scheduledAt: string } =>
+          !!v &&
+          typeof v.id === "number" &&
+          Number(v.locationId) === Number(locationId) &&
+          ACTIVE.has(String(v.status || "").toLowerCase())
+      )
+      .sort(
+        (a, b) =>
+          new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime()
+      );
+    return rows[0] ?? null;
+  }, [chefViewings, locationId]);
+  const activeTourStatus = String(activeLocationTour?.status || "").toLowerCase();
+  const activeTourKind: "pending" | "confirmed" | null = !activeLocationTour
+    ? null
+    : activeTourStatus === "confirmed"
+      ? "confirmed"
+      : "pending";
+
+  // Resume an in-progress tour draft after login. Never reopen once a tour
+  // is already pending/confirmed — leftover sessionStorage used to pop the dialog
+  // on every preview visit.
+  useEffect(() => {
+    if (!locationId) return;
+    const key = `viewing_booking_${locationId}`;
+    try {
+      if (isAuthenticated && user?.uid && !chefViewingsFetched) return;
+      if (activeLocationTour) {
+        sessionStorage.removeItem(key);
+        return;
+      }
+      if (!isAuthenticated) return;
+      if (sessionStorage.getItem(key)) setTourModalOpen(true);
+    } catch {
+      /* ignore */
+    }
+  }, [locationId, isAuthenticated, user, activeLocationTour, chefViewingsFetched]);
+
   const {
     application: locationApplication,
     hasApplication: locationHasApplication,
@@ -2098,7 +2644,6 @@ export default function KitchenPreviewPage() {
   // Find the most recent global application (Step 1)
   const globalApplication = globalApplications?.[0] || null;
   const globalAppPending = globalApplication?.status === 'inReview';
-  const globalAppApproved = globalApplication?.status === 'approved';
   const application = locationApplication ?? listApplication;
   const hasApplication = locationHasApplication || Boolean(listApplication);
   const kitchenDisplay =
@@ -2150,6 +2695,74 @@ export default function KitchenPreviewPage() {
     }
   }, [locationData?.kitchens, selectedKitchen]);
 
+  useEffect(() => {
+    let raf = 0;
+    const update = () => {
+      raf = 0;
+      const headerPx = headerOffsetPx(useChefChrome, staticSiteHeader);
+      const photos = document.getElementById("preview-photos");
+      const tour = document.getElementById("preview-tour");
+      const stickyTour = document.getElementById("preview-tour-sticky");
+      const apply = document.getElementById("preview-apply");
+      const photosStillInView = photos
+        ? photos.getBoundingClientRect().bottom > headerPx + 8
+        : true;
+      const dockVisible = !isAuthenticated && !photosStillInView;
+      const ctaInset = headerPx + (dockVisible ? PREVIEW_DOCK_HEIGHT_PX : 0);
+      const spyOffset = previewSpyOffsetPx({
+        chefChrome: useChefChrome,
+        staticSiteHeader,
+        dockVisible,
+      });
+
+      const nextSection = resolvePreviewActiveSection(spyOffset);
+      if (nextSection) {
+        setActiveSection((prev) => (prev === nextSection ? prev : nextSection));
+      }
+
+      setPhotosInView(photosStillInView);
+      setTourInView((wasInView) => tourAnchorInView(tour, ctaInset, wasInView));
+      // Sticky tour mounts only after the fact-row tour scrolls away. Until then,
+      // treat it as in-view so the dock does not show tour early.
+      if (!stickyTour) {
+        setStickyTourInView(true);
+      } else {
+        setStickyTourInView((wasInView) => tourAnchorInView(stickyTour, ctaInset, wasInView));
+      }
+      setApplyInView((wasInView) => ctaUsableInViewport(apply, ctaInset, wasInView));
+    };
+    const onScrollOrResize = () => {
+      if (raf) return;
+      raf = window.requestAnimationFrame(update);
+    };
+    update();
+    window.addEventListener("scroll", onScrollOrResize, { passive: true });
+    window.addEventListener("resize", onScrollOrResize);
+    return () => {
+      if (raf) window.cancelAnimationFrame(raf);
+      window.removeEventListener("scroll", onScrollOrResize);
+      window.removeEventListener("resize", onScrollOrResize);
+    };
+  }, [
+    identifier,
+    selectedKitchen,
+    kitchenEquipment,
+    kitchenStorage,
+    alreadyApplied,
+    toursAvailable,
+    tourStatusLoading,
+    activeLocationTour,
+    isLoading,
+    useChefChrome,
+    staticSiteHeader,
+    calendarOpen,
+    isAuthenticated,
+  ]);
+
+  useEffect(() => {
+    setInventoryModal(null);
+  }, [selectedKitchen?.id]);
+
   // Fetch equipment and storage when kitchen is selected (public — works logged out)
   useEffect(() => {
     const fetchKitchenAddons = async () => {
@@ -2161,6 +2774,8 @@ export default function KitchenPreviewPage() {
       }
 
       setIsLoadingAddons(true);
+      setKitchenEquipment(null);
+      setKitchenStorage(null);
       try {
         // Fetch equipment listings (public browse endpoint)
         try {
@@ -2238,47 +2853,117 @@ export default function KitchenPreviewPage() {
     fetchKitchenAddons();
   }, [selectedKitchen]);
 
-  const handleGetStarted = () => {
-    if (isAuthenticated) {
-      if (canBook) {
-        navigate(`/book-kitchen${locationId ? `?location=${locationId}` : ''}`);
-      } else if (alreadyApplied) {
-        // Unified "My Applications" page where both seller and kitchen
-        // applications are shown together (user explicitly requested this).
-        navigate(chefDashboardHref("applications"));
-      } else if (locationData?.canAcceptApplications !== false) {
-        navigate(`/kitchen-requirements/${locationId}`);
-      }
+  const goToChefApplications = useCallback(() => {
+    const { path, href, sameOrigin } = resolveChefDashboardNavigation(
+      "applications",
+      window.location.hostname,
+      window.location.port,
+      import.meta.env.VITE_VERCEL_ENV
+    );
+    if (sameOrigin) {
+      navigate(path, { replace: true });
     } else {
-      openAuthModal({
-        title: t("authModalBookKitchenTitle", "Almost there!"),
-        description: <KitchenNextStepsDescription type="book" />,
-        requireApplication: true
-      });
+      window.location.href = href;
     }
+  }, [navigate]);
+
+  const goToMyTours = useCallback(() => {
+    const { path, href, sameOrigin } = resolveChefDashboardNavigation(
+      "viewings",
+      window.location.hostname,
+      window.location.port,
+      import.meta.env.VITE_VERCEL_ENV
+    );
+    if (sameOrigin) {
+      navigate(path, { replace: true });
+    } else {
+      window.location.href = href;
+    }
+  }, [navigate]);
+
+  const openRequestToApplyModal = () => {
+    if (locationData?.canAcceptApplications === false) return;
+    if (alreadyApplied) {
+      goToChefApplications();
+      return;
+    }
+    const kitchenId = selectedKitchen?.id?.toString();
+    saveAuthIntentFromCurrentPage("book", locationId || kitchenId, kitchenId);
+    try {
+      if (locationId || kitchenId) {
+        sessionStorage.setItem(
+          "pendingRegistrationKitchenContext",
+          JSON.stringify({
+            locationId: locationId || kitchenId,
+            kitchenId,
+            kitchenName: selectedKitchen?.name || locationData?.name,
+          })
+        );
+      }
+    } catch {
+      /* ignore */
+    }
+    openAuthModal({
+      title: t("requestToApply", "Request to apply"),
+      requireApplication: true,
+      defaultTab: "register",
+      bookingContext: kitchenId
+        ? {
+            kitchenId,
+            kitchenName: selectedKitchen?.name,
+            equipmentListings: kitchenEquipment
+              ? { included: kitchenEquipment.included, rental: kitchenEquipment.rental }
+              : null,
+            storageListings: kitchenStorage ?? null,
+          }
+        : undefined,
+    });
+  };
+
+  const [bookingSheetOpen, setBookingSheetOpen] = useState(false);
+
+  const openBookingSheet = () => {
+    if (!locationId) return;
+    setBookingSheetOpen(true);
+  };
+
+  const handleGetStarted = () => {
+    if (canBook) {
+      openBookingSheet();
+      return;
+    }
+    if (alreadyApplied) {
+      goToChefApplications();
+      return;
+    }
+    openRequestToApplyModal();
   };
 
   const handleBookClick = () => {
     if (canBook) {
-      navigate(`/book-kitchen${locationId ? `?location=${locationId}` : ''}`);
+      openBookingSheet();
     } else if (alreadyApplied) {
-      navigate(chefDashboardHref("applications"));
+      goToChefApplications();
     } else if (locationData?.canAcceptApplications !== false) {
-      navigate(`/kitchen-requirements/${locationId}`);
+      openRequestToApplyModal();
     }
   };
 
   const handleApplyClick = () => {
-    // Only navigate to application if location can accept applications
-    if (locationData?.canAcceptApplications !== false) {
-      if (isAuthenticated && alreadyApplied) {
-        // Already applied for this kitchen: go to My Applications (unified
-        // page per user request).
-        navigate(chefDashboardHref("applications"));
-      } else {
-        navigate(`/kitchen-requirements/${locationId}`);
-      }
+    openRequestToApplyModal();
+  };
+
+  const handleScheduleTour = () => {
+    if (!locationId) return;
+    if (alreadyApplied) return;
+    if (activeLocationTour) {
+      goToMyTours();
+      return;
     }
+    if (!isAuthenticated) {
+      saveAuthIntentFromCurrentPage("tour", locationId);
+    }
+    setTourModalOpen(true);
   };
 
   // Loading content for dashboard
@@ -2301,7 +2986,7 @@ export default function KitchenPreviewPage() {
   const notFoundContent = (
     <div className="text-center py-16">
       <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-4">
-        <ImageOff className="h-8 w-8 text-muted-foreground" />
+        <PreviewIcon icon="mdi:image-off" size={32} className="text-muted-foreground" />
       </div>
       <h1 className="text-xl sm:text-2xl font-bold text-foreground mb-2">{t("locationNotFound", "Location Not Found")}</h1>
       <p className="text-sm sm:text-base text-muted-foreground mb-6">{t("locationNotFoundDesc", "This kitchen location doesn't exist or has been removed.")}</p>
@@ -2319,162 +3004,287 @@ export default function KitchenPreviewPage() {
     const { kitchens, ...location } = locationData;
     const display = kitchenDisplay;
     const canReapply = display?.actionKind === "discover";
-    const sidebar = !isAuthenticated
-      ? { title: t("howToCookHere", "How to cook here"), subtitle: t("applyFirstThenBook", "Apply first, then book time") }
-      : applicationLoading
-        ? { title: t("howToCookHere", "How to cook here"), subtitle: t("checkingApplication", "Checking your application…") }
-        : display?.actionKind === "book"
-          ? { title: t("readyToBookTitle", "Ready to book"), subtitle: t("youAreApprovedAtKitchen", "You're approved at this kitchen") }
-          : display?.actionKind === "complete-step"
-            ? { title: t("yourApplicationTitle", "Your application"), subtitle: t("fewStepsLeftToBook", "A few steps left before you can book") }
-            : alreadyApplied
-              ? { title: t("yourApplicationTitle", "Your application"), subtitle: t("alreadyAppliedToKitchen", "You've already applied to this kitchen") }
-              : canReapply
-                ? { title: t("yourApplicationTitle", "Your application"), subtitle: display?.label ?? t("applicationClosed", "Application closed") }
-                : { title: t("howToCookHere", "How to cook here"), subtitle: t("applyFirstThenBook", "Apply first, then book time") };
+    const ctaSpec = resolvePreviewPrimaryCta({
+      t: (key, fallback) => t(key, fallback ?? key),
+      applicationLoading,
+      canBook,
+      alreadyApplied,
+      globalAppPending,
+      canAcceptApplications: location.canAcceptApplications !== false,
+      display,
+    });
 
-    const nextSteps = (() => {
-      if (!isAuthenticated) {
-        if (location.canAcceptApplications === false) {
-          return (
-            <p className="mt-2 text-sm text-gray-600 leading-relaxed">
-              {t("notAcceptingAppsNotice", "This location is not accepting new chef applications yet. You can still look around, and check back once it opens.")}
-            </p>
-          );
-        }
-        return (
-          <>
-            <p className="mt-2 text-sm text-gray-600 leading-relaxed">
-              {t("createAccountThenApplyNotice", "Create an account, then apply. Once this kitchen approves you, you can book cooking time.")}
-            </p>
-            <ol className="mt-4 space-y-2.5 text-sm text-gray-600">
-              <li className="flex gap-2">
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#F8F8F8] text-[11px] font-semibold text-gray-500">1</span>
-                {t("applyToCookHereStep", "Apply to cook here")}
-              </li>
-              <li className="flex gap-2">
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#F8F8F8] text-[11px] font-semibold text-gray-500">2</span>
-                {t("afterApprovedBookSessions", "After you're approved, book sessions on the calendar")}
-              </li>
-            </ol>
-            <Button onClick={handleGetStarted} variant="outline" className="mt-4 w-full" data-preview-tour="cta">
-              {t("continueWithAccount", "Continue with an account")}
-            </Button>
-          </>
+    const hoursSummary = availableDaySummary(selectedKitchen?.availability, t);
+    const includedCount = kitchenEquipment?.included?.length ?? 0;
+    const rentalCount = kitchenEquipment?.rental?.length ?? 0;
+    const storageCount = kitchenStorage?.length ?? 0;
+    const amenityCount = selectedKitchen?.amenities?.length ?? 0;
+
+    const heroHelper = (() => {
+      if (applicationLoading) return null;
+      if (activeLocationTour && !alreadyApplied) {
+        return activeLocationTour.status === "confirmed"
+          ? t(
+              "tourConfirmedNotice",
+              "Your tour is confirmed. See the time and details under My Tours."
+            )
+          : t(
+              "tourPendingNotice",
+              "You’ve already requested a tour here. We’re waiting on the kitchen to confirm."
+            );
+      }
+      if (!isAuthenticated && location.canAcceptApplications === false) {
+        return t(
+          "notAcceptingAppsNotice",
+          "This location isn’t accepting new chef applications yet. You’re welcome to look around and check back later."
         );
       }
-
-      if (applicationLoading) {
-        return (
-          <div className="mt-4 space-y-2">
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-10 w-full" />
-          </div>
+      if (!isAuthenticated || (!alreadyApplied && !canBook && !globalAppPending && location.canAcceptApplications !== false)) {
+        return t(
+          "applyFirstThenBook",
+          "Request to apply first — booking opens after you’re approved."
         );
       }
-
       if (canBook || display?.actionKind === "book") {
-        return (
-          <>
-            <p className="mt-2 text-sm text-gray-600 leading-relaxed">
-              {t("youAreApprovedBookNotice", "You're approved. Book a cooking session whenever you're ready.")}
-            </p>
-            <Button onClick={handleBookClick} className="mt-4 w-full" data-preview-tour="cta">
-              <Calendar className="mr-2 h-4 w-4" />
-              {t("bookThisKitchen")}
-            </Button>
-          </>
+        return t(
+          "youAreApprovedBookNotice",
+          "You’re approved here. Book a cooking session whenever you’re ready."
         );
       }
-
       if (display?.actionKind === "complete-step") {
-        return (
-          <>
-            <p className="mt-2 text-sm text-gray-600 leading-relaxed">
-              {t("finishRemainingStepsNotice", "Finish a few remaining steps, then you can start booking sessions here.")}
-            </p>
-            <Button onClick={handleApplyClick} className="mt-4 w-full" data-preview-tour="cta">
-              {t("continueApplication")}
-            </Button>
-          </>
+        return t(
+          "finishRemainingStepsNotice",
+          "A few steps remain, then you can start booking sessions here."
         );
       }
-
       if (alreadyApplied) {
-        return (
-          <>
-            <p className="mt-2 text-sm text-gray-600 leading-relaxed">
-              {t("youveAlreadyApplied", "You've already applied. ")}
-              {display?.label === "In review"
-                ? t("alreadyAppliedInReview", "The kitchen is reviewing your application. You can book sessions once you're approved.")
-                : t("alreadyAppliedReviewFinished", "You can book sessions once this kitchen finishes review.")}
-            </p>
-            <Button
-              variant="outline"
-              className="mt-4 w-full"
-              data-preview-tour="cta"
-              onClick={() => navigate(chefDashboardHref("applications"))}
-            >
-              <FileText className="mr-2 h-4 w-4" />
-              {t("viewApplicationBtn")}
-            </Button>
-          </>
-        );
+        return display?.label === "In review"
+          ? t(
+              "alreadyAppliedInReview",
+              "The kitchen is reviewing your application. You can book once you’re approved."
+            )
+          : t(
+              "alreadyAppliedReviewFinished",
+              "You can book sessions once this kitchen finishes review."
+            );
       }
-
       if (canReapply) {
-        return (
-          <>
-            <p className="mt-2 text-sm text-gray-600 leading-relaxed">
-              {application?.status === "rejected"
-                ? t("applicationRejectedReapply", "This kitchen didn't approve your last application. You can apply again if you have updated documents.")
-                : t("applicationCancelledReapply", "Your previous application was cancelled. You can apply again if you still want to cook here.")}
-            </p>
-            {location.canAcceptApplications !== false && (
-              <Button onClick={handleApplyClick} className="mt-4 w-full" data-preview-tour="cta">
-                <ClipboardList className="mr-2 h-4 w-4" />
-                {t("applyAgain")}
-              </Button>
-            )}
-          </>
-        );
+        return application?.status === "rejected"
+          ? t(
+              "applicationRejectedReapply",
+              "Your last application wasn’t approved. You’re welcome to apply again with updated details."
+            )
+          : t(
+              "applicationCancelledReapply",
+              "Your previous application was cancelled. You can apply again if you’d still like to cook here."
+            );
       }
-
       if (globalAppPending) {
-        return (
-          <>
-            <p className="mt-2 text-sm text-gray-600 leading-relaxed">
-              Your initial application is currently under review by our team.
-            </p>
-            <Button disabled className="mt-4 w-full" data-preview-tour="cta">
-              Pending Admin Approval
-            </Button>
-          </>
+        return t(
+          "globalApplicationUnderReview",
+          "Your initial application is currently under review by our team."
         );
       }
-
       if (location.canAcceptApplications === false) {
-        return (
-          <p className="mt-2 text-sm text-gray-600 leading-relaxed">
-            {t("notAcceptingNewChefApps")}
-          </p>
-        );
+        return t("notAcceptingNewChefApps");
       }
-
-      return (
-        <>
-          <p className="mt-2 text-sm text-gray-600 leading-relaxed">
-            {t("applyToCookHereGeneral", "Apply to cook here. The kitchen reviews your application, then you can book sessions.")}
-          </p>
-          <Button onClick={handleApplyClick} className="mt-4 w-full" data-preview-tour="cta">
-            {t("applyBtn", "Apply")}
-          </Button>
-        </>
-      );
+      return null;
     })();
 
+    const tourCta = (() => {
+      if (alreadyApplied) return null;
+      // Wait for availability + existing tours so we don't flash "Request a tour"
+      // over a pending/confirmed visit.
+      if (tourStatusLoading) return null;
+      if (isAuthenticated && !chefViewingsFetched) return null;
+      if (activeTourKind) return { kind: activeTourKind };
+      if (!toursAvailable) return null;
+      return { kind: "request" as const };
+    })();
+
+    const tourTitle =
+      tourCta?.kind === "confirmed"
+        ? t("tourConfirmedCta", "Tour confirmed")
+        : tourCta?.kind === "pending"
+          ? t("tourPendingCta", "Tour pending")
+          : t("requestATour", "Request a tour");
+    const tourHint =
+      tourCta?.kind === "confirmed"
+        ? t("tourConfirmedChipHint", "View time and details in My Tours")
+        : tourCta?.kind === "pending"
+          ? t("tourPendingChipHint", "Waiting on the kitchen — open My Tours")
+          : t("requestATourHint", "Visit kitchen before applying");
+    const tourOnClick =
+      tourCta?.kind === "confirmed" || tourCta?.kind === "pending" ? goToMyTours : handleScheduleTour;
+    const tourIcon =
+      tourCta?.kind === "confirmed"
+        ? "mdi:calendar-check"
+        : tourCta?.kind === "pending"
+          ? "mdi:calendar-clock"
+          : "mdi:calendar-account";
+
+    const tourSurfaceClass =
+      tourCta?.kind === "request"
+        ? cn("bg-[#F51042] text-white hover:bg-[#E00A38]", PREMIUM_PRIMARY_SHADOW)
+        : tourCta?.kind === "confirmed"
+          ? cn(
+              "border border-emerald-200/90 bg-emerald-50 text-emerald-950 hover:bg-emerald-100/80",
+              PREMIUM_CTA_SHADOW
+            )
+          : tourCta?.kind === "pending"
+            ? cn(
+                "border border-amber-200/90 bg-amber-50 text-amber-950 hover:bg-amber-100/80",
+                PREMIUM_CTA_SHADOW
+              )
+            : "";
+    const tourTitleClass =
+      tourCta?.kind === "request"
+        ? "text-white"
+        : tourCta?.kind === "confirmed"
+          ? "text-emerald-900"
+          : "text-amber-900";
+    const tourHintClass =
+      tourCta?.kind === "request"
+        ? "text-white/85"
+        : tourCta?.kind === "confirmed"
+          ? "text-emerald-800/80"
+          : "text-amber-800/80";
+    const tourIconWrapClass =
+      tourCta?.kind === "request"
+        ? "bg-white/20 text-white"
+        : tourCta?.kind === "confirmed"
+          ? "bg-emerald-600 text-white"
+          : "bg-amber-500 text-white";
+    const tourChevronClass =
+      tourCta?.kind === "request"
+        ? "text-white"
+        : tourCta?.kind === "confirmed"
+          ? "text-emerald-700"
+          : "text-amber-700";
+    const tourEyebrowClass =
+      tourCta?.kind === "request"
+        ? "text-white/90"
+        : tourCta?.kind === "confirmed"
+          ? "text-emerald-700"
+          : "text-amber-700";
+
+    const tourButton = !tourCta ? null : (
+      <button
+        type="button"
+        data-preview-tour="schedule"
+        onClick={tourOnClick}
+        className={cn(
+          "w-full min-w-0 rounded-xl px-4 py-3.5 text-left transition-colors",
+          tourSurfaceClass
+        )}
+      >
+        <span className="flex items-center gap-3">
+          <span
+            className={cn(
+              "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
+              tourIconWrapClass
+            )}
+          >
+            <PreviewIcon icon={tourIcon} size={20} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className={cn("block text-sm font-semibold", tourTitleClass)}>{tourTitle}</span>
+            <span className={cn("mt-0.5 block text-xs", tourHintClass)}>{tourHint}</span>
+          </span>
+          <PreviewIcon icon="mdi:chevron-right" size={18} className={tourChevronClass} />
+        </span>
+      </button>
+    );
+
+    const tourFactCard = !tourCta ? null : (
+      <button
+        type="button"
+        data-preview-tour="schedule"
+        onClick={tourOnClick}
+        className={cn(
+          "flex h-full w-full flex-col justify-center rounded-xl px-4 py-3 text-left transition-colors",
+          tourSurfaceClass
+        )}
+      >
+        <p className={cn("flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider", tourEyebrowClass)}>
+          <PreviewIcon icon={tourIcon} size={14} />
+          {tourTitle}
+        </p>
+        <p className={cn("mt-1 flex items-start gap-1 text-sm font-medium leading-snug", tourTitleClass)}>
+          <span className="min-w-0">{tourHint}</span>
+          <PreviewIcon icon="mdi:chevron-right" size={16} className={cn("mt-0.5 shrink-0", tourChevronClass)} />
+        </p>
+      </button>
+    );
+
+    // Dock tour only after the sticky-under-apply tour scrolls away (second position).
+    const showDockTour = !!tourCta && !tourInView && !stickyTourInView;
+    const showDockApply = !applyInView && !!ctaSpec;
+    const dockTourPairedWithApply = showDockTour && showDockApply;
+
+    const showDockTotal = showDockApply && !!bookingPricePreview;
+
+    const applyCtaButton = ctaSpec ? (
+      <Button
+        size="sm"
+        variant={ctaSpec.variant === "outline" ? "outline" : "default"}
+        className={cn("shrink-0 font-semibold", previewApplyCtaClass(ctaSpec.variant))}
+        disabled={ctaSpec.kind === "pending" || ctaSpec.kind === "loading"}
+        onClick={() => {
+          if (ctaSpec.requireDates && !datesOk) {
+            setCalendarOpen(true);
+            document
+              .getElementById("preview-dates")
+              ?.scrollIntoView({ behavior: "smooth", block: "start" });
+            return;
+          }
+          handleGetStarted();
+        }}
+      >
+        {ctaSpec.label}
+      </Button>
+    ) : null;
+
+    const dockCtaSlot = (
+      <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
+        {showDockTotal && bookingPricePreview ? (
+          <DockBookingTotalBesideApply
+            preview={bookingPricePreview}
+            className="hidden max-w-[10rem] sm:block"
+          />
+        ) : null}
+        <DockCtaChip show={showDockApply && !!ctaSpec} reduceMotion={reduceMotion}>
+          {applyCtaButton}
+        </DockCtaChip>
+        <DockCtaChip show={showDockTour && !!tourCta} reduceMotion={reduceMotion}>
+          {tourCta ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className={cn(
+                "shrink-0 font-semibold",
+                previewDockTourCtaClass(tourCta.kind, dockTourPairedWithApply)
+              )}
+              onClick={tourOnClick}
+            >
+              {tourTitle}
+            </Button>
+          ) : null}
+        </DockCtaChip>
+      </div>
+    );
+
+    const amenitiesDockId = selectedKitchen?.amenities?.length
+      ? "preview-amenities"
+      : !isLoadingAddons && (includedCount > 0 || rentalCount > 0)
+        ? "preview-equipment"
+        : !isLoadingAddons && storageCount > 0
+          ? "preview-storage"
+          : null;
+
     return (
-      <div className="space-y-6">
+      <div className={cn("font-sans space-y-5 sm:space-y-6", "pb-24 lg:pb-0")}>
         <Helmet>
           <title>{location.name} Commercial Kitchen | Local Cooks</title>
           <meta
@@ -2486,18 +3296,15 @@ export default function KitchenPreviewPage() {
           />
         </Helmet>
 
-        <div className="flex items-start gap-3 sm:gap-4 min-w-0">
+        {/* Identity above gallery */}
+        <div className="flex items-start gap-3 min-w-0">
           {location.logoUrl ? (
             <SmartImage
               src={location.logoUrl}
               alt={location.name}
-              className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl object-cover flex-shrink-0"
+              className="h-10 w-10 sm:h-12 sm:w-12 rounded-lg object-cover flex-shrink-0"
             />
-          ) : (
-            <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl bg-gradient-to-br from-[#F51042] to-[#FF6B7A] flex items-center justify-center flex-shrink-0">
-              <Building2 className="h-6 w-6 text-white" />
-            </div>
-          )}
+          ) : null}
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{location.name}</h1>
@@ -2508,71 +3315,220 @@ export default function KitchenPreviewPage() {
               )}
               {location.kitchenLicenseStatus === "pending" && (
                 <Badge variant="warning" className="text-xs">
-                  <Clock className="h-3 w-3 mr-1" />
-                  Verification in progress
+                  <PreviewIcon icon="mdi:clock-outline" size={12} className="mr-1" />
+                  {t("verificationInProgress")}
                 </Badge>
               )}
               {location.kitchenLicenseStatus === "approved" && (
                 <Badge variant="success" className="text-xs">
-                  <BadgeCheck className="h-3 w-3 mr-1" />{t("licensedKitchenBadge", "Licensed kitchen")}</Badge>
+                  <PreviewIcon icon="mdi:shield-check" size={12} className="mr-1" />
+                  {t("licensedKitchenBadge", "Licensed kitchen")}
+                </Badge>
               )}
             </div>
-            <p className="mt-1 flex items-center gap-1.5 text-sm text-gray-500">
-              <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
-              <span>{location.address}</span>
+            <p className="mt-1 text-sm text-gray-600">{location.address}</p>
+            <p className="mt-0.5 text-sm text-gray-500">
+              {t("kitchensAtThisLocationPrefix", {
+                count: kitchens.length,
+                defaultValue: `${kitchens.length} ${kitchens.length === 1 ? "kitchen" : "kitchens"}`,
+              })}{" "}
+              {t("kitchensAtThisLocationSuffix", "at this location")}
+              {location.canAcceptApplications === false
+                ? ` · ${t("notAcceptingNewApplicationsYet", "Not accepting new applications yet")}`
+                : ""}
             </p>
-            {location.description && (
-              <p className="mt-2 text-sm text-gray-600 leading-relaxed max-w-2xl">
-                {location.description}
-              </p>
-            )}
-            <p className="mt-2 text-sm text-gray-500">
-              {t("kitchensAtThisLocationPrefix", { count: kitchens.length, defaultValue: `${kitchens.length} ${kitchens.length === 1 ? "kitchen" : "kitchens"}` })} {t("kitchensAtThisLocationSuffix", "at this location")}
-              {location.canAcceptApplications === false ? ` · ${t("notAcceptingNewApplicationsYet", "Not accepting new applications yet")}` : ""}
-            </p>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 -ml-2 mt-2 gap-1.5 px-2 font-normal text-gray-500 hover:text-gray-900"
-              onClick={() => setTourReplayToken((token) => token + 1)}
-            >
-              <Info className="h-4 w-4" />{t("whatButtonsDo", "What buttons do?")}</Button>
           </div>
         </div>
 
-        {!alreadyApplied && (
-          <KitchenTourBanner
-            toursAvailable={toursAvailable}
-            isLoading={tourStatusLoading}
-            alreadyApplied={alreadyApplied}
-            onSchedule={() => {
-              if (!isAuthenticated) {
-                openAuthModal({
-                  title: t("authModalScheduleTourTitle", "Almost there!"),
-                  description: <KitchenNextStepsDescription type="tour" />,
-                  preAuthComponent: (
-                    <ScheduleViewingWidget 
-                      locationId={locationId!} 
-                      locationName={locationData?.name}
-                      mode="inline"
-                    />
-                  ),
-                  defaultTab: "register"
-                });
-              } else {
-                setTourModalOpen(true);
+        {/* Full-width photo gallery */}
+        {selectedKitchen ? (
+          <div id="preview-photos" className="scroll-mt-32">
+            <KitchenPhotoCollage
+              images={getKitchenImages(selectedKitchen)}
+              kitchenName={selectedKitchen.name}
+            />
+          </div>
+        ) : (
+          <div id="preview-photos" className="w-full h-[200px] sm:h-[260px] lg:h-[300px] rounded-2xl bg-gray-100 scroll-mt-32" />
+        )}
+
+        {!isAuthenticated && (
+          <KitchenPreviewDockNav
+            visible={!photosInView}
+            positionClass={
+              staticSiteHeader
+                ? "top-0 left-0 right-0"
+                : "top-[var(--header-height)] left-0 right-0"
+            }
+            contentClassName="mx-auto w-full max-w-7xl px-4 sm:px-6"
+            links={[
+              { id: "preview-photos", label: t("photos", "Photos") },
+              { id: "preview-overview", label: t("overviewTab", "Overview") },
+              ...(amenitiesDockId
+                ? [{ id: amenitiesDockId, label: t("amenities", "Amenities") }]
+                : []),
+              { id: "preview-location", label: t("whereItIs", "Location") },
+              { id: "preview-things-to-know", label: t("thingsToKnowTitle", "Before You Book") },
+            ]}
+            activeId={
+              ["preview-amenities", "preview-equipment", "preview-storage"].includes(activeSection)
+                ? amenitiesDockId ?? activeSection
+                : activeSection
+            }
+            onNavigate={(id) => {
+              if (id === "preview-photos") {
+                setActiveSection("preview-overview");
+                window.scrollTo({ top: 0, behavior: "smooth" });
+                return;
               }
+              setActiveSection(id);
+              scrollToPreviewSection(
+                id,
+                previewSpyOffsetPx({
+                  chefChrome: useChefChrome,
+                  staticSiteHeader,
+                  dockVisible: true,
+                })
+              );
             }}
+            cta={dockCtaSlot}
           />
         )}
 
-        <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6 sm:gap-8">
-          <div className="lg:col-span-7 xl:col-span-8 space-y-5">
+        {typeof document !== "undefined"
+          ? createPortal(
+              <AnimatePresence initial={false}>
+                {!applyInView || showDockTour ? (
+                  <motion.div
+                    key="preview-booking-dock"
+                    initial={{ y: "100%", opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={{ y: "100%", opacity: 0 }}
+                    transition={{
+                      duration: reduceMotion ? 0 : 0.32,
+                      ease: DOCK_EASE,
+                    }}
+                    className="fixed bottom-0 inset-x-0 z-40 border-t bg-white/95 py-3 shadow-[0_-8px_24px_-8px_rgba(15,23,42,0.1)] lg:hidden pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+                  >
+                    <div className="mx-auto flex max-w-7xl items-center justify-end gap-2 px-4 sm:gap-3 sm:px-6">
+                      {showDockApply ? (
+                        <>
+                          {showDockTotal && bookingPricePreview ? (
+                            <DockBookingTotalBesideApply
+                              preview={bookingPricePreview}
+                              className="min-w-0 max-w-[9.5rem] sm:max-w-[11rem]"
+                            />
+                          ) : null}
+                          <DockCtaChip show={!!ctaSpec} reduceMotion={reduceMotion} className="shrink-0">
+                            {applyCtaButton}
+                          </DockCtaChip>
+                        </>
+                      ) : null}
+                      <DockCtaChip
+                        show={showDockTour && !!tourCta}
+                        reduceMotion={reduceMotion}
+                        className={!showDockApply ? "min-w-0 flex-1" : "shrink-0"}
+                      >
+                        {tourCta ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className={cn(
+                              "font-semibold",
+                              !showDockApply && "w-full",
+                              previewDockTourCtaClass(tourCta.kind, dockTourPairedWithApply)
+                            )}
+                            onClick={tourOnClick}
+                          >
+                            {tourTitle}
+                          </Button>
+                        ) : null}
+                      </DockCtaChip>
+                    </div>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>,
+              document.body
+            )
+          : null}
+
+        {/* Airbnb-style: left listing content + sticky date/CTA card on the right */}
+        <div className="flex flex-col lg:grid lg:grid-cols-12 gap-x-6 gap-y-4 sm:gap-x-8 sm:gap-y-5 lg:items-start">
+          <div className="order-1 lg:col-span-7 xl:col-span-8 space-y-2.5 min-w-0">
+            {(hoursSummary ||
+              includedCount > 0 ||
+              rentalCount > 0 ||
+              storageCount > 0 ||
+              amenityCount > 0 ||
+              tourFactCard) && (
+              <div className="space-y-2.5">
+                <RateHoursFacts
+                  hoursSummary={hoursSummary}
+                  extra={
+                    tourFactCard ? (
+                      <div id="preview-tour" className="h-full">
+                        {tourFactCard}
+                      </div>
+                    ) : undefined
+                  }
+                />
+                {(includedCount > 0 ||
+                  rentalCount > 0 ||
+                  storageCount > 0 ||
+                  amenityCount > 0) && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {includedCount > 0 && (
+                      <KitchenFactChip
+                        emphasize
+                        icon="mdi:check-decagram"
+                        label={t("includedEquipmentCount", {
+                          count: includedCount,
+                          defaultValue: `${includedCount} included`,
+                        })}
+                        onClick={() => setInventoryModal("equipment")}
+                      />
+                    )}
+                    {rentalCount > 0 && (
+                      <KitchenFactChip
+                        emphasize
+                        icon="mdi:cash-plus"
+                        label={t("equipmentRentalCount", {
+                          count: rentalCount,
+                          defaultValue: `${rentalCount} available to rent`,
+                        })}
+                        onClick={() => setInventoryModal("equipment")}
+                      />
+                    )}
+                    {storageCount > 0 && (
+                      <KitchenFactChip
+                        emphasize
+                        icon="mdi:warehouse"
+                        label={t("storageOptionsCount", {
+                          count: storageCount,
+                          defaultValue: `${storageCount} storage ${storageCount === 1 ? "option" : "options"}`,
+                        })}
+                        onClick={() => setInventoryModal("storage")}
+                      />
+                    )}
+                    {amenityCount > 0 && (
+                      <KitchenFactChip
+                        icon="mdi:format-list-checks"
+                        label={t("amenitiesCount", {
+                          count: amenityCount,
+                          defaultValue: `${amenityCount} ${amenityCount === 1 ? "amenity" : "amenities"}`,
+                        })}
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {kitchens.length > 1 && (
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
-                  Choose a kitchen
+                <p className="text-xs font-medium uppercase tracking-wider text-gray-500 mb-2">
+                  {t("chooseAKitchen")}
                 </p>
                 <div
                   className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1"
@@ -2593,7 +3549,12 @@ export default function KitchenPreviewPage() {
                             : "border-gray-200 bg-white hover:border-gray-300"
                         )}
                       >
-                        <span className={cn("block text-sm font-semibold", selected ? "text-[#F51042]" : "text-gray-900")}>
+                        <span
+                          className={cn(
+                            "block text-sm font-semibold",
+                            selected ? "text-[#F51042]" : "text-gray-900"
+                          )}
+                        >
                           {kitchen.name}
                         </span>
                         {rate && <span className="block text-xs text-gray-500 mt-0.5">{rate}</span>}
@@ -2604,6 +3565,89 @@ export default function KitchenPreviewPage() {
               </div>
             )}
 
+            {selectedKitchen && (
+              <div id="preview-overview" className="space-y-1.5 scroll-mt-32">
+                <h2 className="text-lg sm:text-xl font-bold text-gray-900">
+                  {selectedKitchen.name}
+                </h2>
+                {selectedKitchen.description ? (
+                  <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">
+                    {selectedKitchen.description}
+                  </p>
+                ) : null}
+              </div>
+            )}
+          </div>
+
+          <aside
+            id="preview-dates"
+            className={cn(
+              "order-2 lg:col-span-5 xl:col-span-4 lg:row-span-2 lg:col-start-8 xl:col-start-9 w-full min-w-0 max-w-md lg:max-w-none mx-auto lg:mx-0 self-start scroll-mt-32",
+              "sticky",
+              useChefChrome
+                ? "top-20"
+                : isAuthenticated
+                  ? "top-[calc(var(--header-height)+1rem)]"
+                  : staticSiteHeader
+                    ? photosInView
+                      ? "top-4"
+                      : "top-16"
+                    : photosInView
+                      ? "top-[calc(var(--header-height)+1rem)]"
+                      : "top-[calc(var(--header-height)+3.5rem)]"
+            )}
+          >
+            <div className="w-full min-w-0 space-y-3">
+              <GuestHoursCard
+                availability={selectedKitchen?.availability}
+                kitchenId={selectedKitchen?.id?.toString()}
+                locationId={locationId?.toString()}
+                kitchenName={selectedKitchen?.name}
+                kitchenRate={selectedKitchen ? formatKitchenRate(selectedKitchen) : undefined}
+                pricePreview={bookingPricePreview}
+                application={application}
+                applicationLoading={applicationLoading}
+                locationApplicationLoading={locationApplicationLoading}
+                listApplicationLoading={applicationsListLoading}
+                onProceed={handleGetStarted}
+                canBook={canBook}
+                alreadyApplied={alreadyApplied}
+                equipmentListings={kitchenEquipment}
+                storageListings={kitchenStorage}
+                proceedLabel={ctaSpec?.label}
+                requireDatesForProceed={ctaSpec?.requireDates ?? true}
+                proceedVariant={ctaSpec?.variant ?? "default"}
+                proceedDisabled={
+                  !ctaSpec || ctaSpec.kind === "pending" || ctaSpec.kind === "loading"
+                }
+                showPrimaryCta={!!ctaSpec}
+                calendarOpen={calendarOpen}
+                onCalendarOpenChange={setCalendarOpen}
+                onDatesOkChange={setDatesOk}
+                extraInfoTip={heroHelper}
+              />
+              <AnimatePresence initial={false}>
+                {!tourInView && tourButton ? (
+                  <motion.div
+                    key="sticky-tour"
+                    id="preview-tour-sticky"
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    transition={{
+                      duration: reduceMotion ? 0 : 0.35,
+                      ease: [0.22, 1, 0.36, 1],
+                    }}
+                    className="w-full min-w-0"
+                  >
+                    {tourButton}
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
+            </div>
+          </aside>
+
+          <div className="order-3 lg:col-span-7 xl:col-span-8 min-w-0">
             <AnimatePresence mode="wait">
               {selectedKitchen ? (
                 <KitchenDetailsSection
@@ -2618,6 +3662,10 @@ export default function KitchenPreviewPage() {
                   locationDescription={location.description}
                   layout="stacked"
                   addonsLoading={isLoadingAddons}
+                  hidePhotoCollage
+                  hideOverview
+                  inventoryModal={inventoryModal}
+                  onInventoryModalChange={setInventoryModal}
                 />
               ) : (
                 <motion.div
@@ -2628,51 +3676,26 @@ export default function KitchenPreviewPage() {
                   className="flex items-center justify-center h-64 sm:h-96 bg-white rounded-xl border border-gray-200"
                 >
                   <div className="text-center px-4">
-                    <Utensils className="h-10 w-10 sm:h-12 sm:w-12 text-gray-300 mx-auto mb-3" />
-                    <p className="text-sm sm:text-base text-gray-500">{t("noKitchensListedYet", "No kitchens are listed at this location yet.")}</p>
+                    <PreviewIcon icon="mdi:silverware-fork-knife" size={48} className="mx-auto mb-3 text-gray-300" />
+                    <p className="text-sm sm:text-base text-gray-500">
+                      {t("noKitchensListedYet", "No kitchens are listed at this location yet.")}
+                    </p>
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
-
-          <aside className="lg:col-span-5 xl:col-span-4 space-y-4 lg:sticky lg:top-24 self-start">
-            <GuestHoursCard
-              availability={selectedKitchen?.availability}
-              kitchenId={selectedKitchen?.id?.toString()}
-              locationId={locationId?.toString()}
-              kitchenName={selectedKitchen?.name}
-              kitchenRate={selectedKitchen ? formatKitchenRate(selectedKitchen) : undefined}
-              application={application}
-              applicationLoading={applicationLoading}
-              locationApplicationLoading={locationApplicationLoading}
-              listApplicationLoading={applicationsListLoading}
-              onProceed={handleGetStarted}
-              canBook={canBook}
-              alreadyApplied={alreadyApplied}
-              onConfirmModalOpenChange={setIsConfirmModalOpen}
-            />
-            {isAuthenticated && (
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
-                <h2 className="font-semibold text-gray-900 text-sm flex items-center gap-2">
-                  {alreadyApplied || canBook ? (
-                    <CheckCircle2 className="h-4 w-4 text-[#F51042]" />
-                  ) : (
-                    <ClipboardList className="h-4 w-4 text-[#F51042]" />
-                  )}
-                  {sidebar.title}
-                </h2>
-                <p className="text-xs text-gray-500 mt-0.5">{sidebar.subtitle}</p>
-                {nextSteps}
-              </div>
-            )}
-          </aside>
         </div>
+
+        <ThingsToKnowSection
+          cancellationPolicyHours={location.cancellationPolicyHours}
+          cancellationPolicyMessage={location.cancellationPolicyMessage}
+          kitchenTermsUrl={location.kitchenTermsUrl}
+        />
 
         <KitchenPreviewWalkthrough
           key={identifier ?? location.id}
-          enabled={!!user && !tourModalOpen && !isConfirmModalOpen}
-          replayToken={tourReplayToken}
+          enabled={!!user}
         />
       </div>
     );
@@ -2702,6 +3725,17 @@ export default function KitchenPreviewPage() {
     />
   ) : null;
 
+  const bookingSheet =
+    locationId != null && locationData ? (
+      <KitchenBookingSheet
+        open={bookingSheetOpen}
+        onOpenChange={setBookingSheetOpen}
+        locationId={locationId}
+        locationName={locationData.name}
+        locationAddress={locationData.address}
+      />
+    ) : null;
+
   // Chefs keep the dashboard sidebar; other signed-in roles use the public chrome.
   if (useChefChrome) {
     return (
@@ -2718,6 +3752,7 @@ export default function KitchenPreviewPage() {
           {getContent()}
         </ChefDashboardLayout>
         {scheduleTourSheet}
+        {bookingSheet}
       </>
     );
   }
@@ -2727,7 +3762,7 @@ export default function KitchenPreviewPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
         <div className="text-center">
-          <Loader2 className="h-8 w-8 sm:h-10 sm:w-10 animate-spin text-[#F51042] mx-auto mb-3" />
+          <PreviewIcon icon="mdi:loading" size={40} className="mx-auto mb-3 animate-spin text-[#F51042]" />
           <p className="text-sm sm:text-base text-gray-600">{t("loadingKitchens", "Loading kitchens...")}</p>
         </div>
       </div>
@@ -2749,14 +3784,15 @@ export default function KitchenPreviewPage() {
   // Public view for unauthenticated users
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      <Header />
-      <main className="flex-1 pt-16 sm:pt-20 pb-8 sm:pb-12">
+      <Header position={staticSiteHeader ? "static" : "fixed"} />
+      <main className={cn("flex-1 pb-8 sm:pb-12 lg:pb-12", !staticSiteHeader && "pt-[var(--header-height)]")}>
         <div className="container mx-auto px-4 sm:px-6 max-w-7xl py-6 sm:py-8">
           {mainContent(locationData)}
         </div>
       </main>
       <Footer />
       {scheduleTourSheet}
+      {bookingSheet}
     </div>
   );
 }

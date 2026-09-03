@@ -83,6 +83,8 @@ import { auth } from "@/lib/firebase"
 import { onAuthStateChanged } from "firebase/auth"
 import { format, differenceInDays } from "date-fns"
 import { cn } from "@/lib/utils"
+import { tt } from "@/i18n/common-ns";
+import { bt } from "@/i18n/booking-ns";
 
 // Types
 interface Booking {
@@ -1255,7 +1257,7 @@ export default function ChefBookingsView({
         headers,
         credentials: 'include',
       })
-      if (!response.ok) throw new Error('Failed to fetch storage bookings')
+      if (!response.ok) throw new Error(tt("failedToFetchStorageBookings"))
       return response.json()
     },
   })
@@ -1270,7 +1272,7 @@ export default function ChefBookingsView({
         headers,
         credentials: 'include',
       })
-      if (!response.ok) throw new Error('Failed to fetch equipment bookings')
+      if (!response.ok) throw new Error(tt("failedToFetchEquipmentBookings"))
       return response.json()
     },
   })
@@ -1493,9 +1495,9 @@ export default function ChefBookingsView({
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['/api/chef/storage-bookings'] })
       if (data?.action === 'cancellation_requested') {
-        toast.success('Cancellation request sent to the kitchen manager for review.')
+        toast.success(bt('cancellationRequestSent'))
       } else {
-        toast.success('Storage booking cancelled successfully.')
+        toast.success(bt('storageBookingCancelled'))
       }
     },
     onError: (error: Error) => {

@@ -7,6 +7,7 @@
 
 import { useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
@@ -89,6 +90,7 @@ import {
 } from "@/components/ui/alert";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { cn } from "@/lib/utils";
+import { tt } from "@/i18n/common-ns";
 
 // Types
 interface DamageEvidence {
@@ -148,38 +150,40 @@ function formatCurrency(cents: number): string {
   }).format(cents / 100);
 }
 
-function getStatusBadge(status: string) {
-  const statusConfig: Record<string, { variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning"; label: string }> = {
-    submitted: { variant: "warning", label: "Awaiting Your Response" },
-    chef_accepted: { variant: "success", label: "You Accepted" },
-    chef_disputed: { variant: "destructive", label: "You Disputed" },
-    under_review: { variant: "warning", label: "Under Admin Review" },
-    approved: { variant: "success", label: "Approved" },
-    partially_approved: { variant: "success", label: "Partially Approved" },
-    rejected: { variant: "destructive", label: "Rejected" },
-    charge_pending: { variant: "warning", label: "Payment Processing" },
-    charge_succeeded: { variant: "success", label: "Charged" },
-    charge_failed: { variant: "destructive", label: "Charge Failed" },
-    escalated: { variant: "destructive", label: "Payment Required" },
-    resolved: { variant: "outline", label: "Resolved" },
-    expired: { variant: "outline", label: "Expired" },
+function getStatusBadge(status: string, t: TFunction<'chef'>) {
+  const statusConfig: Record<string, { variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning"; labelKey: string }> = {
+    submitted: { variant: "warning", labelKey: "dcStatusSubmitted" },
+    chef_accepted: { variant: "success", labelKey: "dcStatusChefAccepted" },
+    chef_disputed: { variant: "destructive", labelKey: "dcStatusChefDisputed" },
+    under_review: { variant: "warning", labelKey: "dcStatusUnderReview" },
+    approved: { variant: "success", labelKey: "dcStatusApproved" },
+    partially_approved: { variant: "success", labelKey: "dcStatusPartiallyApproved" },
+    rejected: { variant: "destructive", labelKey: "dcStatusRejected" },
+    charge_pending: { variant: "warning", labelKey: "dcStatusChargePending" },
+    charge_succeeded: { variant: "success", labelKey: "dcStatusChargeSucceeded" },
+    charge_failed: { variant: "destructive", labelKey: "dcStatusChargeFailed" },
+    escalated: { variant: "destructive", labelKey: "dcStatusEscalated" },
+    resolved: { variant: "outline", labelKey: "dcStatusResolved" },
+    expired: { variant: "outline", labelKey: "dcStatusExpired" },
   };
 
-  const config = statusConfig[status] || { variant: "outline" as const, label: status };
-  return <Badge variant={config.variant}>{config.label}</Badge>;
+  const config = statusConfig[status] || { variant: "outline" as const, labelKey: status };
+  const label = statusConfig[status] ? String(t(config.labelKey as never)) : status;
+  return <Badge variant={config.variant}>{label}</Badge>;
 }
 
-function getEvidenceTypeLabel(type: string): string {
+function getEvidenceTypeLabel(type: string, t: TFunction<'chef'>): string {
   const labels: Record<string, string> = {
-    photo_before: "Before Photo",
-    photo_after: "After Photo",
-    receipt: "Receipt",
-    invoice: "Invoice",
-    video: "Video",
-    document: "Document",
-    third_party_report: "Third Party Report",
+    photo_before: "dcEvidencePhotoBefore",
+    photo_after: "dcEvidencePhotoAfter",
+    receipt: "dcEvidenceReceipt",
+    invoice: "dcEvidenceInvoice",
+    video: "dcEvidenceVideo",
+    document: "dcEvidenceDocument",
+    third_party_report: "dcEvidenceThirdPartyReport",
   };
-  return labels[type] || type;
+  const key = labels[type];
+  return key ? String(t(key as never)) : type;
 }
 
 // Response Dialog Component
@@ -195,12 +199,13 @@ function ResponseDialog({
   onSuccess: () => void;
 }) {
   const { toast } = useToast();
+  const { t } = useTranslation("chef");
   const [action, setAction] = useState<'accept' | 'dispute' | null>(null);
   const [response, setResponse] = useState("");
 
   const respondMutation = useMutation({
     mutationFn: async () => {
-      if (!action) throw new Error("Please select an action");
+      if (!action) throw new Error(t("dcSelectAction"));
       const res = await apiRequest('POST', `/api/chef/damage-claims/${claim.id}/respond`, {
         action,
         response,
@@ -209,10 +214,10 @@ function ResponseDialog({
     },
     onSuccess: () => {
       toast({
-        title: action === 'accept' ? "Claim Accepted" : "Claim Disputed",
+        title: action === 'accept' ? t("dcClaimAcceptedTitle") : t("dcClaimDisputedTitle"),
         description: action === 'accept' 
-          ? "You have accepted the damage claim. Your card will be charged."
-          : "Your dispute has been submitted for admin review.",
+          ? t("dcClaimAcceptedBody")
+          : t("dcClaimDisputedBody"),
       });
       onOpenChange(false);
       setAction(null);
@@ -220,7 +225,7 @@ function ResponseDialog({
       onSuccess();
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: t("errorGeneric", { ns: "common" }), description: error.message, variant: "destructive" });
     },
   });
 
@@ -276,7 +281,7 @@ function ResponseDialog({
                     }
                   } catch (error: unknown) {
                     const message = error instanceof Error ? error.message : 'Failed to start payment';
-                    toast({ title: "Payment Error", description: message, variant: "destructive" });
+                    toast({ title: t("dcPaymentErrorTitle"), description: message, variant: "destructive" });
                     setIsPaying(false);
                   }
                 }}
@@ -390,7 +395,7 @@ function ResponseDialog({
                     )}
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">
-                        {getEvidenceTypeLabel(ev.evidenceType)}
+                        {getEvidenceTypeLabel(ev.evidenceType, t)}
                       </p>
                       {ev.description && (
                         <p className="text-xs text-muted-foreground truncate">{ev.description}</p>
@@ -573,7 +578,7 @@ const getDamageClaimColumns = (t: any, {
       
       return (
         <div className="flex flex-col gap-1">
-          {getStatusBadge(status)}
+          {getStatusBadge(status, t)}
           {status === 'submitted' && !isExpired && hoursRemaining <= 24 && (
             <span className="text-xs text-destructive font-medium">
               {hoursRemaining}h left
@@ -775,10 +780,10 @@ export function PendingDamageClaims() {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
       
-      toast({ title: "Invoice Downloaded", description: "Your damage claim invoice has been downloaded." });
+      toast({ title: tt("invoiceDownloaded"), description: "Your damage claim invoice has been downloaded." });
     } catch (err) {
       toast({ 
-        title: "Download Failed", 
+        title: tt("downloadFailed"), 
         description: err instanceof Error ? err.message : 'Failed to download invoice',
         variant: "destructive" 
       });

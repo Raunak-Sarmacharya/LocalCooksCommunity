@@ -4,6 +4,7 @@
  */
 
 import { useCallback } from 'react';
+import { mt } from "@/i18n/manager";
 import { Globe } from 'lucide-react';
 import { StatusButton } from '@/components/ui/status-button';
 import { useStatusButton } from '@/hooks/use-status-button';
@@ -23,6 +24,7 @@ interface LocationSettingsProps {
 }
 
 export default function LocationSettings({ location, onSave }: LocationSettingsProps) {
+  
   const timezone = DEFAULT_TIMEZONE;
 
   const saveAction = useStatusButton(
@@ -37,7 +39,7 @@ export default function LocationSettings({ location, onSave }: LocationSettingsP
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">Location Settings</h2>
+        <h2 className="text-2xl font-bold tracking-tight">{mt("locationSettings")}</h2>
         <p className="text-muted-foreground">
           Configure location-specific settings for {location.name}.
         </p>
@@ -49,21 +51,21 @@ export default function LocationSettings({ location, onSave }: LocationSettingsP
           <div className="flex items-center gap-3">
             <Globe className="h-5 w-5 text-cyan-600" />
             <div>
-              <CardTitle className="text-lg">Location Details</CardTitle>
-              <CardDescription>Basic information about this location</CardDescription>
+              <CardTitle className="text-lg">{mt("locationDetails")}</CardTitle>
+              <CardDescription>{mt("basicInformationAboutThisLocation")}</CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium text-slate-700">Location Name</label>
+              <label className="text-sm font-medium text-slate-700">{mt("locationName")}</label>
               <div className="mt-1 p-3 bg-slate-50 rounded-lg text-slate-900">
                 {location.name}
               </div>
             </div>
             <div>
-              <label className="text-sm font-medium text-slate-700">Address</label>
+              <label className="text-sm font-medium text-slate-700">{mt("address")}</label>
               <div className="mt-1 p-3 bg-slate-50 rounded-lg text-slate-900">
                 {location.address || 'Not specified'}
               </div>
@@ -78,20 +80,18 @@ export default function LocationSettings({ location, onSave }: LocationSettingsP
           <div className="flex items-center gap-3">
             <Globe className="h-5 w-5 text-cyan-600" />
             <div>
-              <CardTitle className="text-lg">Timezone Settings</CardTitle>
-              <CardDescription>
-                The timezone for this location is locked to Newfoundland Time
-              </CardDescription>
+              <CardTitle className="text-lg">{mt("timezoneSettings")}</CardTitle>
+              <CardDescription>{mt("theTimezoneForThisLocationIsLockedToNewfoundlandTime")}</CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <label className="text-sm font-medium text-slate-700">Location Timezone</label>
+            <label className="text-sm font-medium text-slate-700">{mt("locationTimezone")}</label>
             <div className="mt-1.5 w-full max-w-md border border-gray-300 rounded-lg px-4 py-2.5 bg-gray-50 text-gray-700 flex items-center gap-2">
               <Globe className="h-4 w-4 text-gray-400" />
-              <span>Newfoundland Time (GMT-3:30)</span>
-              <span className="ml-auto text-xs text-gray-500 bg-gray-200 px-2 py-0.5 rounded">Locked</span>
+              <span>{mt("newfoundlandTimeGMT330")}</span>
+              <span className="ml-auto text-xs text-gray-500 bg-gray-200 px-2 py-0.5 rounded">{mt("locked")}</span>
             </div>
             <p className="text-xs text-muted-foreground mt-2">
               All booking times for this location will be interpreted in Newfoundland Time. 
@@ -110,7 +110,7 @@ export default function LocationSettings({ location, onSave }: LocationSettingsP
             status={saveAction.status}
             onClick={saveAction.execute}
             variant="outline"
-            labels={{ idle: "Save Settings", loading: "Saving", success: "Saved" }}
+            labels={{ idle: mt("saveSettings"), loading: mt("savingShort"), success: mt("saved") }}
           />
         </CardContent>
       </Card>

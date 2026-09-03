@@ -1,129 +1,110 @@
 /**
- * ScheduleViewingWidget
- *
- * Chef-facing component for booking kitchen viewings.
- * Features a calendar date picker, time slot selector, and pre-viewing intake form.
- * Built mobile-first with shadcn/ui components.
+ * ScheduleViewingWidget — request an in-person kitchen tour (visit only, not an application).
+ * Guest: Date → Time → Account → Verify → Confirm → Success
+ * Signed-in (including veterans): Date → Time → Confirm → Success
  */
 
-import { useState, useCallback, useEffect } from "react"
-import { useTranslation } from "react-i18next"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { KitchenNextStepsDescription } from "@/components/common/KitchenNextStepsDescription"
+import { useState, useCallback, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  KeyRound,
   CalendarDays,
   Clock,
   MapPin,
-  ChefHat,
   Loader2,
   CheckCircle,
   ArrowLeft,
-  ArrowRight,
   Building2,
-  Briefcase,
-  ClipboardList,
   Send,
-} from "lucide-react"
-import { toast } from "sonner"
-import { auth } from "@/lib/firebase"
-import { useFirebaseAuth } from "@/hooks/use-auth"
-import { useAuthModal } from "@/components/auth/AuthModalProvider"
-import { useLocation } from "wouter"
-import { chefDashboardHref } from "@/lib/chef-dashboard-nav"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Calendar } from "@/components/ui/calendar"
-import { Checkbox } from "@/components/ui/checkbox"
+  Mail,
+  RefreshCw,
+} from "lucide-react";
+import { toast } from "sonner";
+import { auth } from "@/lib/firebase";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import EnhancedRegisterForm from "@/components/auth/EnhancedRegisterForm";
+import EnhancedLoginForm from "@/components/auth/EnhancedLoginForm";
+import { useLocation } from "wouter";
+import { chefDashboardHref } from "@/lib/chef-dashboard-nav";
+import { saveAuthIntentFromCurrentPage, getAuthIntent, resolveVerificationReturnPath, kitchenActor, nextTourStepAfterSlot, coerceTourStepForActor, skipKitchenVerify } from "@/lib/auth-intent";
+import { sendVerificationEmailWithFallback } from "@/lib/send-verification-email";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Calendar } from "@/components/ui/calendar";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
-} from "@/components/ui/dialog"
-import { Separator } from "@/components/ui/separator"
-import { cn } from "@/lib/utils"
-import { format, addDays, isBefore, startOfDay, endOfDay } from "date-fns"
-
-// ─── Auth Helper ──────────────────────────────────────────────────────────────
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
+import { format, addDays, isBefore, startOfDay, endOfDay } from "date-fns";
+import { ct } from "@/i18n/chef-ns";
 
 async function getAuthHeaders(): Promise<HeadersInit> {
-  const currentUser = auth.currentUser
+  const currentUser = auth.currentUser;
   if (currentUser) {
-    const token = await currentUser.getIdToken()
+    const token = await currentUser.getIdToken();
     return {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
-    }
+    };
   }
-  return { "Content-Type": "application/json" }
+  return { "Content-Type": "application/json" };
 }
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
 interface TimeSlot {
-  startTime: string
-  endTime: string
-  scheduledAt: string
+  startTime: string;
+  endTime: string;
+  scheduledAt: string;
 }
 
 interface AvailabilityResponse {
-  locationName: string
-  date: string
-  timezone: string
-  slots: TimeSlot[]
+  locationName: string;
+  date: string;
+  timezone: string;
+  slots: TimeSlot[];
   settings: {
-    defaultDurationMinutes: number
-    maxAdvanceBookingDays: number
-    advanceNoticeHours: number
-    isActive: boolean
-  } | null
+    defaultDurationMinutes: number;
+    maxAdvanceBookingDays: number;
+    advanceNoticeHours: number;
+    isActive: boolean;
+  } | null;
 }
 
-interface IntakeData {
-  name?: string
-  email?: string
-  intendedUse?: string
-  otherIntendedUse?: string
-  estimatedWeeklyHours?: string
-  hasLicense?: boolean
-  targetStartDate?: string
-  additionalInfo?: string
-}
-
-// ─── Steps ────────────────────────────────────────────────────────────────────
-
-type BookingStep = "date" | "time" | "intake" | "register" | "confirm" | "success"
-
-// ─── Component ────────────────────────────────────────────────────────────────
+type TourStep = "date" | "time" | "account" | "verify" | "confirm" | "success";
 
 interface ScheduleViewingWidgetProps {
-  locationId: number
-  locationName?: string
-  targetedKitchenId?: number
-  targetedKitchenName?: string
-  mode?: "inline" | "modal"
-  onClose?: () => void
-  onRequireOpen?: () => void
-  open?: boolean
+  locationId: number;
+  locationName?: string;
+  targetedKitchenId?: number;
+  targetedKitchenName?: string;
+  onClose?: () => void;
+  onRequireOpen?: () => void;
+  open?: boolean;
+}
+
+function isUserVerified(
+  user: { is_verified?: boolean; isVerified?: boolean; emailVerified?: boolean } | null | undefined
+): boolean {
+  const firebaseVerified = !!auth.currentUser?.emailVerified;
+  const dbVerified = !!(user?.is_verified || user?.isVerified || user?.emailVerified);
+  return firebaseVerified || dbVerified;
 }
 
 export function ScheduleViewingWidget({
@@ -131,70 +112,118 @@ export function ScheduleViewingWidget({
   locationName,
   targetedKitchenId,
   targetedKitchenName,
-  mode,
   onClose,
   onRequireOpen,
   open = true,
 }: ScheduleViewingWidgetProps) {
-  const queryClient = useQueryClient()
-  const { t } = useTranslation("kitchen")
-  const { user, refreshUserData } = useFirebaseAuth()
-  const { openAuthModal, showAuthForms } = useAuthModal()
-  const [, setLocation] = useLocation()
-  const isAuthenticated = !!user
-  // Check if user is fully authenticated (verified and accepted terms)
-  // For users created by admins/managers, they might not need terms, but regular users do
-  const isFullyAuthenticated = isAuthenticated && user?.emailVerified && user?.termsAccepted;
+  const queryClient = useQueryClient();
+  const { t } = useTranslation("kitchen");
+  const { user, refreshUserData } = useFirebaseAuth();
+  const [, setLocation] = useLocation();
+  const isAuthenticated = !!user;
+  const [registeredInFlow, setRegisteredInFlow] = useState(false);
+  const actor = kitchenActor(isAuthenticated, registeredInFlow);
+  const skipVerify = skipKitchenVerify(actor);
 
-  // Step management
-  const [step, setStep] = useState<BookingStep>("date")
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined)
-  const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null)
-  const [chefNotes, setChefNotes] = useState("")
-  const [intakeData, setIntakeData] = useState<IntakeData>({})
-  const [password, setPassword] = useState("")
-  const [confirmPassword, setConfirmPassword] = useState("")
+  const [step, setStep] = useState<TourStep>("date");
+  const [authTab, setAuthTab] = useState<"register" | "login">("register");
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
+  const [chefNotes, setChefNotes] = useState("");
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
+  const [isCheckingVerification, setIsCheckingVerification] = useState(false);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+  const [isResendingVerification, setIsResendingVerification] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
-  // Auto-save state to sessionStorage on every change for guests
-  useEffect(() => {
-    if (!isFullyAuthenticated && (selectedDate || selectedSlot || Object.keys(intakeData).length > 0)) {
-      sessionStorage.setItem(`viewing_booking_${locationId}`, JSON.stringify({
-        date: selectedDate,
-        slot: selectedSlot,
-        intake: intakeData,
-        step: step
-      }))
-    }
-  }, [isFullyAuthenticated, locationId, selectedDate, selectedSlot, intakeData, step])
+  const hasProgress =
+    step !== "date" || !!selectedDate || !!selectedSlot || chefNotes.trim().length > 0;
+  const isDataTaking = open && step !== "success";
 
-  // Restore state from sessionStorage
-  useEffect(() => {
-    // Only restore once on mount if FULLY authenticated
-    if (!isFullyAuthenticated) return
+  const storageKey = `viewing_booking_${locationId}`;
 
-    try {
-      const savedData = sessionStorage.getItem(`viewing_booking_${locationId}`)
-      if (savedData) {
-        const parsed = JSON.parse(savedData)
-        if (parsed.date) setSelectedDate(new Date(parsed.date))
-        if (parsed.slot) setSelectedSlot(parsed.slot)
-        if (parsed.intake) setIntakeData(parsed.intake)
-        
-        if (isFullyAuthenticated) {
-          setStep("confirm")
-          onRequireOpen?.() // Open modal if we're in hidden state so user can manually submit
-          sessionStorage.removeItem(`viewing_booking_${locationId}`)
-        } else if (parsed.step) {
-          setStep(parsed.step)
-        }
+  const persistProgress = useCallback(
+    (next?: Partial<{
+      date: Date | undefined;
+      slot: TimeSlot | null;
+      step: TourStep;
+      chefNotes: string;
+      registeredInFlow: boolean;
+    }>) => {
+      const date = next?.date !== undefined ? next.date : selectedDate;
+      const slot = next?.slot !== undefined ? next.slot : selectedSlot;
+      const st = next?.step ?? step;
+      const notes = next?.chefNotes ?? chefNotes;
+      const registering = next?.registeredInFlow ?? registeredInFlow;
+      if (st === "success") {
+        sessionStorage.removeItem(storageKey);
+        return;
       }
-    } catch (e) {
-      console.error("Failed to restore booking data", e)
-    }
-  }, [isAuthenticated, isFullyAuthenticated, locationId, onRequireOpen])
+      if (date || slot || st !== "date" || notes) {
+        sessionStorage.setItem(
+          storageKey,
+          JSON.stringify({ date, slot, step: st, chefNotes: notes, registeredInFlow: registering })
+        );
+      } else {
+        sessionStorage.removeItem(storageKey);
+      }
+    },
+    [selectedDate, selectedSlot, step, chefNotes, storageKey, registeredInFlow]
+  );
 
-  // Fetch available slots for the selected date
-  const dateStr = selectedDate ? format(selectedDate, "yyyy-MM-dd") : ""
+  useEffect(() => {
+    if (!open || step === "success") return;
+    persistProgress();
+  }, [open, persistProgress, step]);
+
+  useEffect(() => {
+    try {
+      const savedData = sessionStorage.getItem(storageKey);
+      if (!savedData) return;
+      const parsed = JSON.parse(savedData);
+      if (parsed.date) setSelectedDate(new Date(parsed.date));
+      if (parsed.slot) setSelectedSlot(parsed.slot);
+      if (parsed.chefNotes) setChefNotes(parsed.chefNotes || "");
+      const registering = parsed.registeredInFlow === true;
+      setRegisteredInFlow(registering);
+      const restoreActor = kitchenActor(isAuthenticated, registering);
+      const rawStep: string =
+        parsed.step === "intake" || parsed.step === "register"
+          ? "account"
+          : parsed.step || (parsed.slot ? "time" : "date");
+      const restored = coerceTourStepForActor(rawStep, restoreActor, !!parsed.slot) as TourStep;
+      // Resume fields only — the preview page decides whether to reopen the dialog.
+      if (restored !== "date") setStep(restored);
+    } catch (e) {
+      console.error("Failed to restore tour booking data", e);
+    }
+    // Re-coerce once auth hydrates so signed-in chefs don't land on verify.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locationId, isAuthenticated]);
+
+  // After login / in-flow register, advance when we have a slot.
+  useEffect(() => {
+    if (!selectedSlot) return;
+    if (step === "time" || step === "date" || step === "success") return;
+    const next = nextTourStepAfterSlot(actor);
+    if (next === "confirm" && (step === "verify" || step === "account")) {
+      setStep("confirm");
+      onRequireOpen?.();
+    } else if (next === "verify" && step === "account") {
+      setStep("verify");
+      onRequireOpen?.();
+    }
+  }, [actor, selectedSlot, step, onRequireOpen]);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setResendCooldown((prev) => (prev <= 1 ? 0 : prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [resendCooldown]);
+
+  const dateStr = selectedDate ? format(selectedDate, "yyyy-MM-dd") : "";
   const {
     data: availability,
     isLoading: slotsLoading,
@@ -202,30 +231,28 @@ export function ScheduleViewingWidget({
   } = useQuery<AvailabilityResponse>({
     queryKey: [`/api/viewings/available-slots/${locationId}?date=${dateStr}`],
     enabled: !!selectedDate && !!dateStr,
-    staleTime: 30000, // 30 seconds
+    staleTime: 30000,
     refetchOnWindowFocus: true,
-  })
+  });
 
-  // Fetch calendar availability metadata (for disabling dates)
   const { data: calMetadata } = useQuery({
     queryKey: [`/api/viewings/calendar-availability/${locationId}`],
     queryFn: async () => {
-      const headers = await getAuthHeaders()
+      const headers = await getAuthHeaders();
       const response = await fetch(`/api/viewings/calendar-availability/${locationId}`, {
         headers,
         credentials: "include",
-      })
-      if (!response.ok) return null
-      return response.json()
+      });
+      if (!response.ok) return null;
+      return response.json();
     },
     enabled: !!locationId,
-  })
+  });
 
-  // Booking mutation
   const bookMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedSlot) throw new Error("No time slot selected")
-      const headers = await getAuthHeaders()
+      if (!selectedSlot) throw new Error(ct("noTimeSlotSelected"));
+      const headers = await getAuthHeaders();
       const response = await fetch("/api/viewings/book", {
         method: "POST",
         headers,
@@ -235,124 +262,274 @@ export function ScheduleViewingWidget({
           targetedKitchenId,
           scheduledAt: selectedSlot.scheduledAt,
           chefNotes: chefNotes || undefined,
-          intakeData: Object.keys(intakeData).length > 0 ? intakeData : undefined,
         }),
-      })
+      });
       if (!response.ok) {
-        const err = await response.json().catch(() => ({}))
+        const err = await response.json().catch(() => ({}));
         if (err.code === "SLOT_TAKEN") {
-          throw new Error(t("timeSlotJustTaken", "This time slot was just taken. Please pick another."))
+          throw new Error(
+            t("timeSlotJustTaken", "This time slot was just taken. Please pick another.")
+          );
         }
-        throw new Error(err.error || t("failedToBookViewing", "Failed to book viewing"))
+        if (err.code === "ACTIVE_TOUR_EXISTS") {
+          throw new Error(
+            t(
+              "activeTourExists",
+              "You already have an active tour for this kitchen. Check My Tours."
+            )
+          );
+        }
+        throw new Error(err.error || t("failedToBookViewing", "Failed to book viewing"));
       }
-      return response.json()
+      return response.json();
     },
     onSuccess: () => {
-      setStep("success")
-      queryClient.invalidateQueries({ queryKey: ["/api/viewings/chef"] })
-      toast.success(t("kitchenTourBookedSuccess", "Kitchen tour booked!"))
+      setStep("success");
+      sessionStorage.removeItem(storageKey);
+      queryClient.invalidateQueries({ queryKey: ["/api/viewings/chef"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/viewings", "chef"] });
+      toast.success(t("kitchenTourBookedSuccess", "Kitchen tour booked!"));
     },
     onError: (error: Error) => {
-      toast.error(error.message)
-      // If slot was taken, go back to time selection
+      toast.error(error.message);
       if (error.message.includes("slot")) {
-        setSelectedSlot(null)
-        setStep("time")
+        setSelectedSlot(null);
+        setStep("time");
       }
     },
-  })
+  });
 
+  const maxBookingDays = availability?.settings?.maxAdvanceBookingDays || 30;
+  const today = startOfDay(new Date());
 
+  const handleDateSelect = useCallback((date: Date | undefined) => {
+    setSelectedDate(date);
+    setSelectedSlot(null);
+    if (date) setStep("time");
+  }, []);
 
-  const maxBookingDays = availability?.settings?.maxAdvanceBookingDays || 30
-  const today = startOfDay(new Date())
+  const continueAfterSlot = useCallback(
+    (slot: TimeSlot) => {
+      setSelectedSlot(slot);
+      sessionStorage.removeItem("pending_application_modal");
+      saveAuthIntentFromCurrentPage("tour", locationId, targetedKitchenId);
 
-  const handleDateSelect = useCallback(
-    (date: Date | undefined) => {
-      setSelectedDate(date)
-      setSelectedSlot(null)
-      if (date) setStep("time")
+      const next = nextTourStepAfterSlot(actor);
+      persistProgress({ slot, step: next });
+      if (next === "account") setAuthTab("register");
+      setStep(next);
     },
-    []
-  )
-
-  const handleSlotSelect = useCallback((slot: TimeSlot) => {
-    setSelectedSlot(slot)
-    setStep("intake")
-  }, [])
+    [actor, locationId, targetedKitchenId, persistProgress]
+  );
 
   const handleBack = useCallback(() => {
-    if (step === "time") setStep("date")
-    else if (step === "intake") setStep("time")
-    else if (step === "confirm") setStep("intake")
-  }, [step])
+    if (step === "time") setStep("date");
+    else if (step === "account") setStep("time");
+    else if (step === "verify") setStep(isAuthenticated ? "time" : "account");
+    else if (step === "confirm") setStep(skipVerify ? "time" : "verify");
+  }, [step, skipVerify, isAuthenticated]);
 
   const resetForm = useCallback(() => {
-    setStep("date")
-    setSelectedDate(undefined)
-    setSelectedSlot(null)
-    setChefNotes("")
-    setIntakeData({})
-  }, [])
+    setStep("date");
+    setSelectedDate(undefined);
+    setSelectedSlot(null);
+    setChefNotes("");
+    setRegisteredInFlow(false);
+    sessionStorage.removeItem(storageKey);
+  }, [storageKey]);
 
-  // ─── Render Steps ─────────────────────────────────────────────────────────
+  const requestClose = () => {
+    if (isDataTaking && hasProgress) {
+      setCancelConfirmOpen(true);
+      return;
+    }
+    onClose?.();
+  };
 
-  const renderStepIndicator = () => {
-    const steps = [
-      { key: "date", label: t("dateLabel", "Date").replace(":", ""), icon: CalendarDays },
-      { key: "time", label: t("timeLabel", "Time").replace(":", ""), icon: Clock },
-      { key: "intake", label: t("applyFlowTourDetails", "Details").split(" ")[0], icon: ClipboardList },
-      { key: "confirm", label: t("reviewAndConfirm", "Confirm").split(" ")[0] || "Confirm", icon: CheckCircle },
-    ]
+  const confirmCancel = () => {
+    resetForm();
+    setCancelConfirmOpen(false);
+    onClose?.();
+  };
 
-    const currentIndex = steps.findIndex((s) => s.key === step)
+  const handleCheckVerified = async () => {
+    setIsCheckingVerification(true);
+    setVerifyError(null);
+    try {
+      await auth.currentUser?.reload();
+      await refreshUserData();
+      const verified =
+        !!auth.currentUser?.emailVerified || isUserVerified(user);
+      if (!verified) {
+        setVerifyError(
+          t(
+            "notVerifiedYet",
+            "We haven't detected your verification yet. Click the link in your email, wait a few seconds, and try again."
+          )
+        );
+        return;
+      }
+      setStep("confirm");
+    } catch {
+      setVerifyError(t("verifyCheckFailed", "Could not check verification status. Please try again."));
+    } finally {
+      setIsCheckingVerification(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (isResendingVerification || resendCooldown > 0) return;
+    const email = auth.currentUser?.email || user?.email;
+    if (!email) {
+      setVerifyError(
+        t("resendVerificationNoEmail", "No email on file. Please register again.")
+      );
+      return;
+    }
+
+    setIsResendingVerification(true);
+    setVerifyError(null);
+    try {
+      await sendVerificationEmailWithFallback({
+        email,
+        role: "chef",
+        returnUrl:
+          resolveVerificationReturnPath() ||
+          getAuthIntent()?.returnPath ||
+          `${window.location.pathname}${window.location.search}`,
+      });
+      setResendCooldown(60);
+      toast.success(t("verificationEmailSent", "Verification email sent"));
+    } catch (err) {
+      setVerifyError(
+        err instanceof Error && err.message
+          ? err.message
+          : t("resendVerificationFailed", "Failed to resend verification email.")
+      );
+    } finally {
+      setIsResendingVerification(false);
+    }
+  };
+
+  const guidedChrome = (() => {
+    switch (step) {
+      case "date":
+        return {
+          title: t("tourModalDateTitle", "Pick a tour date"),
+          subtext: t(
+            "tourModalDateSubtext",
+            "Choose a day to visit in person. You’re not applying — just checking if it fits."
+          ),
+        };
+      case "time":
+        return {
+          title: t("tourModalTimeTitle", "Choose a time"),
+          subtext: t("tourModalTimeSubtext", "Select an available time slot for your visit."),
+        };
+      case "account":
+        return {
+          title: t("tourModalAccountTitle", "Create your account"),
+          subtext: t(
+            "tourModalAccountSubtext",
+            "We need an account so the kitchen can confirm your visit. You’re not applying yet."
+          ),
+        };
+      case "verify":
+        return {
+          title: t("tourModalVerifyTitle", "We’re waiting on you"),
+          subtext: t(
+            "tourModalVerifySubtext",
+            "Check your email (and spam) and click the verify link. Nothing else happens until you do."
+          ),
+        };
+      case "confirm":
+        return {
+          title: t("tourModalConfirmTitle", "Confirm your visit"),
+          subtext: t(
+            "tourModalConfirmSubtext",
+            "Double-check the time. Optional notes help the manager prepare."
+          ),
+        };
+      case "success":
+        return {
+          title: t("tourModalDoneTitle", "Tour requested"),
+          subtext: t(
+            "tourModalDoneSubtext",
+            "The kitchen will review and email you. Check spam for that email too."
+          ),
+        };
+      default:
+        return {
+          title: t("scheduleKitchenTour", "Request a Kitchen Tour"),
+          subtext: t("bookInPersonKitchenTour", {
+            defaultValue: "Request an in-person kitchen tour of {locationName}",
+            locationName: locationName || t("theKitchenFacility", "the kitchen facility"),
+          }),
+        };
+    }
+  })();
+
+  const renderGuideRail = () => {
+    const steps: { id: string; label: string }[] = skipVerify
+      ? [
+          { id: "date", label: t("tourGuideStepDate") },
+          { id: "time", label: t("tourGuideStepTime") },
+          { id: "confirm", label: t("tourGuideStepConfirmShort") },
+        ]
+      : [
+          { id: "date", label: t("tourGuideStepDate") },
+          { id: "time", label: t("tourGuideStepTime") },
+          { id: "account", label: t("tourGuideStepAccount") },
+          { id: "confirm", label: t("tourGuideStepConfirm") },
+        ];
+    const railIdx = skipVerify
+      ? step === "date"
+        ? 0
+        : step === "time"
+          ? 1
+          : 2
+      : step === "date"
+        ? 0
+        : step === "time"
+          ? 1
+          : step === "account" || step === "verify"
+            ? 2
+            : 3;
 
     return (
-      <div className="flex items-center justify-center w-full max-w-md mx-auto mb-6 sm:mb-8">
-        {steps.map((s, i) => {
-          const Icon = s.icon
-          const isActive = s.key === step
-          const isCompleted = i < currentIndex
-          
+      <ol className="space-y-2.5">
+        {steps.map((s, idx) => {
+          const done = step === "success" || idx < railIdx;
+          const current = step !== "success" && idx === railIdx;
           return (
-            <div key={s.key} className="flex items-center">
-              <div
+            <li key={s.id} className="flex items-center gap-3">
+              <span
                 className={cn(
-                  "flex items-center justify-center rounded-full transition-all duration-300 ease-in-out",
-                  isActive 
-                    ? "bg-primary text-primary-foreground px-3 py-1.5 gap-2" 
-                    : "bg-muted text-muted-foreground w-8 h-8",
-                  isCompleted && "bg-primary/10 text-primary border border-primary/20"
+                  "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
+                  done && "bg-[#F51042] text-white",
+                  current && "bg-[#F51042]/15 text-[#F51042] ring-2 ring-[#F51042]/25",
+                  !done && !current && "bg-gray-100 text-gray-400"
                 )}
               >
-                <Icon className={cn("h-4 w-4 shrink-0", isActive && "h-3.5 w-3.5")} />
-                {isActive && (
-                  <span className="text-xs font-medium whitespace-nowrap">
-                    {s.label}
-                  </span>
+                {done ? <CheckCircle className="h-4 w-4" /> : idx + 1}
+              </span>
+              <span
+                className={cn(
+                  "text-sm font-medium",
+                  current || done ? "text-gray-900" : "text-gray-400"
                 )}
-              </div>
-              {i < steps.length - 1 && (
-                <div className={cn(
-                  "w-4 sm:w-8 h-[2px] mx-1 sm:mx-2 rounded-full transition-colors",
-                  i < currentIndex ? "bg-primary/40" : "bg-border"
-                )} />
-              )}
-            </div>
-          )
+              >
+                {s.label}
+              </span>
+            </li>
+          );
         })}
-      </div>
-    )
-  }
+      </ol>
+    );
+  };
 
   const renderDateStep = () => (
-    <div className="space-y-4">
-      <div className="text-center space-y-1">
-        <h3 className="text-base sm:text-lg font-semibold">{t("pickADate", "Pick a date")}</h3>
-        <p className="text-xs sm:text-sm text-muted-foreground">
-          {t("chooseWhenToVisitLocation", { defaultValue: "Choose when you'd like to visit {locationName}", locationName: locationName || t("theKitchen", "the kitchen") })}
-        </p>
-      </div>
+    <div className="space-y-3">
       <div className="flex justify-center">
         <Calendar
           mode="single"
@@ -362,31 +539,27 @@ export function ScheduleViewingWidget({
             const maxDays = calMetadata?.settings?.maxAdvanceBookingDays || maxBookingDays;
             if (isBefore(date, today) || isBefore(addDays(today, maxDays), date)) return true;
             if (!calMetadata) return true;
-
-            // Check day of week
             const dayOfWeek = date.getDay();
-            const availDay = calMetadata.availability?.find((a: any) => a.dayOfWeek === dayOfWeek);
+            const availDay = calMetadata.availability?.find((a: { dayOfWeek: number; isAvailable?: boolean }) => a.dayOfWeek === dayOfWeek);
             if (!availDay || !availDay.isAvailable) return true;
-
-            // Check blackouts
             const dStart = startOfDay(date);
             for (const b of calMetadata.blackouts || []) {
-              if (dStart >= startOfDay(new Date(b.startDate)) && dStart <= endOfDay(new Date(b.endDate))) {
+              if (
+                dStart >= startOfDay(new Date(b.startDate)) &&
+                dStart <= endOfDay(new Date(b.endDate))
+              ) {
                 return true;
               }
             }
-
-            // Check fully booked dates
-            const dateStr = format(date, "yyyy-MM-dd");
-            if (calMetadata.fullyBookedDates?.includes(dateStr)) return true;
-
+            const ds = format(date, "yyyy-MM-dd");
+            if (calMetadata.fullyBookedDates?.includes(ds)) return true;
             return false;
           }}
           className="rounded-md border"
         />
       </div>
     </div>
-  )
+  );
 
   const renderTimeStep = () => (
     <div className="space-y-4">
@@ -394,18 +567,17 @@ export function ScheduleViewingWidget({
         <Button variant="ghost" size="icon" onClick={handleBack} className="h-8 w-8">
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <div>
-          <h3 className="text-base sm:text-lg font-semibold">{t("chooseATime", "Choose a time")}</h3>
-          <p className="text-xs sm:text-sm text-muted-foreground">
-            {selectedDate && format(selectedDate, "EEEE, MMMM d, yyyy")}
-          </p>
-        </div>
+        <p className="text-sm text-muted-foreground">
+          {selectedDate && format(selectedDate, "EEEE, MMMM d, yyyy")}
+        </p>
       </div>
 
-      {(slotsLoading || slotsFetching) ? (
+      {slotsLoading || slotsFetching ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          <span className="ml-2 text-sm text-muted-foreground">{t("loadingAvailableTimes", "Loading available times...")}</span>
+          <span className="ml-2 text-sm text-muted-foreground">
+            {t("loadingAvailableTimes", "Loading available times...")}
+          </span>
         </div>
       ) : availability?.slots.length === 0 ? (
         <div className="text-center py-12 space-y-3">
@@ -419,7 +591,7 @@ export function ScheduleViewingWidget({
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[280px] overflow-y-auto">
           {availability?.slots.map((slot) => (
             <Button
               key={slot.scheduledAt}
@@ -429,7 +601,7 @@ export function ScheduleViewingWidget({
                 selectedSlot?.scheduledAt === slot.scheduledAt &&
                   "ring-2 ring-primary ring-offset-2"
               )}
-              onClick={() => handleSlotSelect(slot)}
+              onClick={() => continueAfterSlot(slot)}
             >
               <span className="text-sm font-medium">{slot.startTime}</span>
               <span className="text-[10px] text-muted-foreground">
@@ -440,138 +612,156 @@ export function ScheduleViewingWidget({
         </div>
       )}
     </div>
-  )
+  );
 
-  const renderIntakeStep = () => (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" onClick={handleBack} className="h-8 w-8">
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div>
-          <h3 className="text-base sm:text-lg font-semibold">{t("tellUsAboutYourNeeds", "Tell us about your needs")}</h3>
-          <p className="text-xs sm:text-sm text-muted-foreground">
-            {t("helpsManagerPrepareTour", "This helps the kitchen manager prepare for your kitchen tour.")}
-          </p>
-        </div>
-      </div>
-
-      <div className="space-y-4">
-        {/* Intended Use */}
-        <div className="space-y-2">
-          <Label className="text-sm">{t("whatWillYouUseKitchenFor", "What will you use the kitchen for?")}</Label>
-          <Select
-            value={intakeData.intendedUse || ""}
-            onValueChange={(v) => setIntakeData({ ...intakeData, intendedUse: v })}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder={t("selectIntendedUse", "Select intended use")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="catering">{t("catering", "Catering")}</SelectItem>
-              <SelectItem value="baking_pastry">{t("bakingPastry", "Baking / Pastry")}</SelectItem>
-              <SelectItem value="food_production">{t("foodProduction", "Food Production")}</SelectItem>
-              <SelectItem value="other">{t("other", "Other")}</SelectItem>
-            </SelectContent>
-          </Select>
-          {intakeData.intendedUse === "other" && (
-            <Input
-              placeholder={t("pleaseSpecifyIntendedUse", "Please specify intended use")}
-              value={intakeData.otherIntendedUse || ""}
-              onChange={(e) =>
-                setIntakeData({ ...intakeData, otherIntendedUse: e.target.value })
-              }
-              className="mt-2"
-            />
-          )}
-        </div>
-
-        {/* Estimated Hours */}
-        <div className="space-y-2">
-          <Label className="text-sm">{t("estimatedWeeklyHoursNeeded", "Estimated weekly hours needed?")}</Label>
-          <Select
-            value={intakeData.estimatedWeeklyHours || ""}
-            onValueChange={(v) =>
-              setIntakeData({ ...intakeData, estimatedWeeklyHours: v })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue placeholder={t("selectEstimatedHours", "Select estimated hours")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="1-5">{t("hours1to5", "1 – 5 hours")}</SelectItem>
-              <SelectItem value="5-10">{t("hours5to10", "5 – 10 hours")}</SelectItem>
-              <SelectItem value="10-20">{t("hours10to20", "10 – 20 hours")}</SelectItem>
-              <SelectItem value="20+">{t("hours20Plus", "20+ hours")}</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Food Safety License */}
-        <div className="flex items-center space-x-2">
-          <Checkbox
-            id="hasLicense"
-            checked={intakeData.hasLicense || false}
-            onCheckedChange={(checked) =>
-              setIntakeData({ ...intakeData, hasLicense: !!checked })
-            }
-          />
-          <Label htmlFor="hasLicense" className="text-sm cursor-pointer">
-            {t("haveValidFoodSafetyLicense", "I have a valid food safety license")}
-          </Label>
-        </div>
-
-        {/* Notes */}
-        <div className="space-y-2">
-          <Label className="text-sm">
-            {t("anythingSpecificToSee", "Anything specific you want to see or discuss? (optional)")}
-          </Label>
-          <Textarea
-            value={chefNotes}
-            onChange={(e) => setChefNotes(e.target.value)}
-            placeholder={t("egEquipmentNeeds", "e.g., equipment needs, storage requirements...")}
-            maxLength={500}
-            rows={3}
-          />
-          <p className="text-xs text-muted-foreground text-right">
-            {chefNotes.length}/500
-          </p>
-        </div>
-      </div>
-
-      <Button 
-        className="w-full" 
-        onClick={() => {
-          if (!isFullyAuthenticated) {
-            // Fulfill user request to remember dates when they get to login
-            sessionStorage.removeItem('pending_application_modal');
-            sessionStorage.removeItem(`kitchen_dates_${locationId}_pending_modal`);
-            sessionStorage.setItem(`viewing_booking_${locationId}`, JSON.stringify({
-              date: selectedDate,
-              slot: selectedSlot,
-              step: 3,
-              intake: intakeData
-            }));
-            if (mode === "inline" && showAuthForms) {
-              showAuthForms();
+  const renderAccountStep = () => (
+    <div className="space-y-3">
+      <Button variant="ghost" size="sm" onClick={handleBack} className="self-start -ml-2 text-gray-500">
+        <ArrowLeft className="h-4 w-4 mr-1" />
+        {t("modalBack")}
+      </Button>
+      {authTab === "login" ? (
+        <EnhancedLoginForm
+          onSuccess={async () => {
+            await refreshUserData();
+            setRegisteredInFlow(false);
+            setStep("confirm");
+            persistProgress({ step: "confirm", registeredInFlow: false });
+          }}
+          onSwitchToRegister={() => setAuthTab("register")}
+        />
+      ) : (
+        <EnhancedRegisterForm
+          hideApplyingToggle
+          onSwitchToLogin={() => setAuthTab("login")}
+          onRegistrationComplete={() => {
+            // signup() already sends verification — avoid a second send (rate limits).
+            setRegisteredInFlow(true);
+            setStep("verify");
+            persistProgress({ step: "verify", registeredInFlow: true });
+          }}
+          onSuccess={async () => {
+            await refreshUserData();
+            if (auth.currentUser?.emailVerified) {
+              setRegisteredInFlow(false);
+              setStep("confirm");
+              persistProgress({ step: "confirm", registeredInFlow: false });
             } else {
-              openAuthModal({ 
-                title: t("authModalScheduleTourTitle", "Almost there!"),
-                description: <KitchenNextStepsDescription type="tour" />,
-                defaultTab: "register" 
-              });
+              setRegisteredInFlow(true);
+              setStep("verify");
+              persistProgress({ step: "verify", registeredInFlow: true });
+              const email = auth.currentUser?.email;
+              if (email) {
+                try {
+                  await sendVerificationEmailWithFallback({
+                    email,
+                    role: "chef",
+                    returnUrl:
+                      resolveVerificationReturnPath() ||
+                      getAuthIntent()?.returnPath ||
+                      `${window.location.pathname}${window.location.search}`,
+                  });
+                } catch (err) {
+                  console.error("Tour Google verification email send failed:", err);
+                  setVerifyError(
+                    err instanceof Error && err.message
+                      ? err.message
+                      : t(
+                          "resendVerificationFailed",
+                          "Failed to send verification email. Tap Resend below."
+                        )
+                  );
+                }
+              }
             }
-            return;
-          }
-          setStep("confirm")
-        }}
-        disabled={intakeData.intendedUse === "other" && !intakeData.otherIntendedUse?.trim()}
+          }}
+        />
+      )}
+    </div>
+  );
+
+  const renderVerifyStep = () => (
+    <div className="space-y-4">
+      <div className="rounded-xl border-2 border-[#F51042]/30 bg-[#F51042]/5 p-5 text-center space-y-3">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#F51042] text-white">
+          <Mail className="h-6 w-6" aria-hidden />
+        </div>
+        <p className="text-lg font-bold text-gray-900 leading-snug">
+          {t("applyVerifyWaitingHeadline", "Open your email and verify")}
+        </p>
+        <ol className="text-left text-sm text-gray-800 space-y-2 max-w-sm mx-auto">
+          <li className="flex gap-2">
+            <span className="font-bold text-[#F51042] shrink-0">1.</span>
+            <span>
+              {t("applyVerifyStep1", "Open the email from Local Cooks")}
+              {user?.email ? (
+                <>
+                  {" "}
+                  (<span className="font-semibold break-all">{user.email}</span>)
+                </>
+              ) : null}
+              {t("applyVerifyStep1Spam", " — check your spam folder if you don’t see it")}
+            </span>
+          </li>
+          <li className="flex gap-2">
+            <span className="font-bold text-[#F51042] shrink-0">2.</span>
+            <span>
+              {t("applyVerifyStep2", "Click the “Verify my email” button in that email")}
+            </span>
+          </li>
+          <li className="flex gap-2">
+            <span className="font-bold text-[#F51042] shrink-0">3.</span>
+            <span>{t("applyVerifyStep3", "Come back here and tap Continue below")}</span>
+          </li>
+        </ol>
+        <p className="text-sm font-medium text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+          {t("applyVerifySpamOneLiner", "Tip: it often lands in Spam or Promotions.")}
+        </p>
+      </div>
+      {verifyError && <p className="text-sm text-red-600 text-center">{verifyError}</p>}
+      <Button
+        className="w-full bg-[#F51042] hover:bg-[#E00A38] text-white"
+        onClick={() => void handleCheckVerified()}
+        disabled={isCheckingVerification}
       >
-        {t("reviewAndConfirm", "Review & Confirm")}
-        <ArrowRight className="h-4 w-4 ml-2" />
+        {isCheckingVerification ? (
+          <>
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            {t("checkingVerification", "Checking...")}
+          </>
+        ) : (
+          t("applyVerifyContinueBtn", "I’ve verified — continue")
+        )}
+      </Button>
+      <button
+        type="button"
+        onClick={() => void handleResendVerification()}
+        disabled={isResendingVerification || resendCooldown > 0}
+        className="w-full text-sm font-medium text-gray-600 hover:text-gray-900 py-1.5 flex items-center justify-center gap-2 disabled:opacity-60"
+      >
+        {isResendingVerification ? (
+          <>
+            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+            {t("sendingVerificationEmail", "Sending...")}
+          </>
+        ) : resendCooldown > 0 ? (
+          t("resendVerificationWait", {
+            seconds: resendCooldown,
+            defaultValue: `Resend in ${resendCooldown}s`,
+          })
+        ) : (
+          <>
+            <RefreshCw className="h-3.5 w-3.5" />
+            {t("resendVerificationEmail", "Resend email")}
+          </>
+        )}
+      </button>
+      <Button variant="ghost" size="sm" onClick={handleBack} className="w-full text-gray-500">
+        <ArrowLeft className="h-4 w-4 mr-1" />
+        {t("modalBack")}
       </Button>
     </div>
-  )
+  );
 
   const renderConfirmStep = () => (
     <div className="space-y-4">
@@ -579,7 +769,7 @@ export function ScheduleViewingWidget({
         <Button variant="ghost" size="icon" onClick={handleBack} className="h-8 w-8">
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <h3 className="text-base sm:text-lg font-semibold">{t("confirmKitchenTour", "Confirm your kitchen tour")}</h3>
+        <h3 className="text-base font-semibold">{t("confirmKitchenTour", "Confirm your kitchen tour request")}</h3>
       </div>
 
       <Card className="border-primary/20">
@@ -587,17 +777,20 @@ export function ScheduleViewingWidget({
           <div className="flex items-start gap-3">
             <Building2 className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
             <div>
-              <p className="text-sm font-medium">{locationName || t("applyFlowKitchenFallbackName", "Kitchen")}</p>
+              <p className="text-sm font-medium">
+                {locationName || t("applyFlowKitchenFallbackName", "Kitchen")}
+              </p>
               {targetedKitchenName && (
                 <p className="text-xs text-muted-foreground">
-                  {t("interestedIn", { defaultValue: "Interested in: {name}", name: targetedKitchenName })}
+                  {t("interestedIn", {
+                    defaultValue: "Interested in: {name}",
+                    name: targetedKitchenName,
+                  })}
                 </p>
               )}
             </div>
           </div>
-
           <Separator />
-
           <div className="flex items-start gap-3">
             <CalendarDays className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
             <div>
@@ -609,41 +802,33 @@ export function ScheduleViewingWidget({
               </p>
             </div>
           </div>
-
-          {intakeData.intendedUse && (
-            <>
-              <Separator />
-              <div className="flex items-start gap-3">
-                <Briefcase className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
-                <div className="text-sm">
-                  <p className="font-medium capitalize">
-                    {intakeData.intendedUse === "other"
-                      ? intakeData.otherIntendedUse || t("other", "Other")
-                      : intakeData.intendedUse === "baking_pastry"
-                      ? t("bakingPastry", "Baking / Pastry")
-                      : intakeData.intendedUse === "catering"
-                      ? t("catering", "Catering")
-                      : intakeData.intendedUse === "food_production"
-                      ? t("foodProduction", "Food Production")
-                      : intakeData.intendedUse?.replace(/_/g, " ")}
-                  </p>
-                  {intakeData.estimatedWeeklyHours && (
-                    <p className="text-xs text-muted-foreground">
-                      ~{intakeData.estimatedWeeklyHours} hours/week
-                    </p>
-                  )}
-                </div>
-              </div>
-            </>
-          )}
         </CardContent>
       </Card>
 
+      {/* Optional after required summary */}
+      <div className="space-y-2">
+        <Label className="text-sm">
+          {t(
+            "anythingSpecificToSee",
+            "Anything specific you want to see or discuss? (optional)"
+          )}
+        </Label>
+        <Textarea
+          value={chefNotes}
+          onChange={(e) => setChefNotes(e.target.value)}
+          placeholder={t("egEquipmentNeeds", "e.g., equipment needs, storage requirements...")}
+          maxLength={500}
+          rows={3}
+        />
+        <p className="text-xs text-muted-foreground text-right">{chefNotes.length}/500</p>
+      </div>
+
       <Button
-        className="w-full"
+        className="w-full bg-[#F51042] hover:bg-[#E00A38] text-white"
         size="lg"
+        data-testid="tour-request-submit"
         onClick={() => bookMutation.mutate()}
-        disabled={bookMutation.isPending}
+        disabled={bookMutation.isPending || !isAuthenticated}
       >
         {bookMutation.isPending ? (
           <>
@@ -653,38 +838,41 @@ export function ScheduleViewingWidget({
         ) : (
           <>
             <Send className="h-4 w-4 mr-2" />
-            {t("bookKitchenTour", "Book Kitchen Tour")}
+            {t("bookKitchenTour", "Request Kitchen Tour")}
           </>
         )}
       </Button>
-
       <p className="text-xs text-center text-muted-foreground">
-        {t("receiveConfirmationNotification", "You'll receive a confirmation notification and email.")}
+        {t(
+          "receiveConfirmationNotification",
+          "You'll receive a confirmation notification and email."
+        )}
       </p>
     </div>
-  )
+  );
 
   const renderSuccessStep = () => (
-    <div className="text-center space-y-4 py-4 sm:py-8">
-      <div className="mx-auto w-14 h-14 sm:w-16 sm:h-16 rounded-full border flex items-center justify-center">
-        <CheckCircle className="h-7 w-7 sm:h-8 sm:w-8 text-success" />
+    <div className="text-center space-y-4 py-2">
+      <div className="mx-auto w-14 h-14 rounded-full border flex items-center justify-center">
+        <CheckCircle className="h-7 w-7 text-emerald-600" />
       </div>
       <div className="space-y-1">
         <div className="flex items-center justify-center gap-2">
-          <h3 className="text-lg sm:text-xl font-semibold">
+          <h3 className="text-lg font-semibold">
             {t("kitchenTourRequested", "Kitchen Tour Requested")}
           </h3>
           <Badge variant="success">{t("confirmed", "Confirmed")}</Badge>
         </div>
         <p className="text-sm text-muted-foreground">
-          {t("kitchenTourRequestedAwaitingApproval", { defaultValue: "Your kitchen tour at {locationName} has been requested and is awaiting manager approval.", locationName: locationName || t("theKitchen", "the kitchen") })}
-        </p>
-        <p className="text-sm text-muted-foreground mt-2">
-          {t("kitchenTourWhereToCheck", "You can view your scheduled tours in the Kitchen Tours tab under Discover Kitchens.")}
+          {t("kitchenTourRequestedAwaitingApproval", {
+            defaultValue:
+              "Your kitchen tour at {locationName} has been requested and is awaiting manager approval.",
+            locationName: locationName || t("theKitchen", "the kitchen"),
+          })}
         </p>
       </div>
 
-      <Card className="bg-muted/50">
+      <Card className="bg-muted/50 text-left">
         <CardContent className="pt-4 text-sm space-y-1.5">
           <p>
             <span className="text-muted-foreground">{t("dateLabel", "Date:")}</span>{" "}
@@ -701,72 +889,147 @@ export function ScheduleViewingWidget({
         </CardContent>
       </Card>
 
-      <div className="flex flex-col sm:flex-row gap-2 pt-2">
-        <Button variant="outline" className="flex-1" onClick={resetForm}>
-          {t("bookAnother", "Book Another")}
-        </Button>
-        <Button 
-          className="flex-1" 
+      <div className="flex flex-col gap-2 pt-1">
+        <Button
+          className="w-full bg-[#F51042] hover:bg-[#E00A38] text-white"
           onClick={() => {
-            if (onClose) onClose();
+            onClose?.();
             setLocation(chefDashboardHref("viewings"));
           }}
         >
           {t("viewMyTours", "View My Tours")}
         </Button>
+        <Button
+          variant="outline"
+          className="w-full"
+          onClick={() => {
+            resetForm();
+            onClose?.();
+          }}
+        >
+          {t("doneStayOnPreview", "Done")}
+        </Button>
       </div>
     </div>
-  )
+  );
 
-  // ─── Main Render ──────────────────────────────────────────────────────────
-
-  const content = (
-    <div className="w-full max-w-lg mx-auto">
-      {step !== "success" && renderStepIndicator()}
-
+  const body = (
+    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
       {step === "date" && renderDateStep()}
       {step === "time" && renderTimeStep()}
-      {step === "intake" && renderIntakeStep()}
+      {step === "account" && renderAccountStep()}
+      {step === "verify" && renderVerifyStep()}
       {step === "confirm" && renderConfirmStep()}
       {step === "success" && renderSuccessStep()}
     </div>
-  )
+  );
 
-  // If used as a modal (with open/onClose props)
-  if (onClose !== undefined) {
-    return (
-      <Dialog open={open} onOpenChange={(o) => !o && onClose?.()}>
-        <DialogContent className="w-full sm:max-w-lg overflow-y-auto max-h-[90vh] p-4 sm:p-6">
-          <DialogHeader className="mb-6">
-            <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
-              <MapPin className="h-5 w-5 text-primary" />
-              {t("scheduleKitchenTour", "Schedule a Kitchen Tour")}
-            </DialogTitle>
-            <DialogDescription className="text-xs sm:text-sm">
-              {t("bookInPersonKitchenTour", { defaultValue: "Book an in-person kitchen tour of {locationName}", locationName: locationName || t("theKitchenFacility", "the kitchen facility") })}
-            </DialogDescription>
-          </DialogHeader>
-          {content}
+  return (
+    <>
+      <Dialog
+        open={open}
+        onOpenChange={(o) => {
+          if (!o) requestClose();
+        }}
+      >
+        <DialogContent
+          showCloseButton={step === "success" || !isDataTaking}
+          className={cn(
+            "p-0 !overflow-hidden bg-background max-h-[90vh] flex flex-col sm:flex-row sm:max-w-[820px]"
+          )}
+          onPointerDownOutside={(e) => {
+            if (isDataTaking) e.preventDefault();
+          }}
+          onInteractOutside={(e) => {
+            if (isDataTaking) e.preventDefault();
+          }}
+          onEscapeKeyDown={(e) => {
+            if (isDataTaking) {
+              e.preventDefault();
+              requestClose();
+            }
+          }}
+        >
+          <div className="hidden sm:flex sm:w-5/12 shrink-0 flex-col p-8 border-r border-gray-100 bg-[#F8F9FA] overflow-hidden">
+            <DialogHeader className="text-left space-y-4">
+              <DialogTitle className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                <MapPin className="h-5 w-5 text-[#F51042] shrink-0" />
+                {guidedChrome.title}
+              </DialogTitle>
+              <DialogDescription asChild>
+                <div className="text-muted-foreground text-sm leading-relaxed space-y-6">
+                  <p className="text-gray-600 text-[15px]">{guidedChrome.subtext}</p>
+                  {step !== "success" && renderGuideRail()}
+                </div>
+              </DialogDescription>
+            </DialogHeader>
+            {isDataTaking && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="mt-auto self-start text-gray-500"
+                onClick={requestClose}
+              >
+                Cancel
+              </Button>
+            )}
+          </div>
+
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="shrink-0 px-6 pt-6 pb-4 sm:hidden">
+              <DialogHeader>
+                <DialogTitle className="text-2xl font-bold text-gray-900">
+                  {guidedChrome.title}
+                </DialogTitle>
+                <DialogDescription asChild>
+                  <div className="text-muted-foreground mt-2 text-sm leading-relaxed space-y-3">
+                    <p>{guidedChrome.subtext}</p>
+                    {step !== "success" && renderGuideRail()}
+                  </div>
+                </DialogDescription>
+              </DialogHeader>
+              {isDataTaking && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="mt-3 -ml-2 self-start text-gray-500"
+                  onClick={requestClose}
+                >
+                  Cancel
+                </Button>
+              )}
+            </div>
+            <div className="min-h-0 flex-1 flex flex-col px-6 pb-6 sm:px-8 sm:pb-8 sm:pt-8">
+              {body}
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
-    )
-  }
 
-  // Inline mode
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-          <MapPin className="h-5 w-5 text-primary" />
-          {t("scheduleKitchenTour", "Schedule a Kitchen Tour")}
-        </CardTitle>
-        <CardDescription className="text-xs sm:text-sm">
-          {t("bookInPersonKitchenTour", { defaultValue: "Book an in-person kitchen tour of {locationName}", locationName: locationName || t("theKitchenFacility", "the kitchen facility") })}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>{content}</CardContent>
-    </Card>
-  )
+      <AlertDialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("cancelAuthModalTitle", "Are you sure you want to cancel?")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t(
+                "cancelTourModalDesc",
+                "Your tour progress is saved on this device. You can come back and continue later."
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("keepEditing", "Keep editing")}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmCancel}>
+              {t("confirmCancel", "Yes, cancel")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
 }
 
-export default ScheduleViewingWidget
+export default ScheduleViewingWidget;

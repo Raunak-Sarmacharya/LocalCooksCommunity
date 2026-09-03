@@ -104,10 +104,10 @@ export async function sendSystemNotification(
     let content = '';
     switch (eventType) {
       case 'TIER1_APPROVED':
-        content = `✅ Step 1 Approved: Your food handler certificate has been verified. You can now proceed to Step 2 - Kitchen Coordination.`;
+        content = `✅ Request to apply approved: Your food handler certificate has been verified. You can now proceed to kitchen documents.`;
         break;
       case 'TIER1_REJECTED':
-        content = `❌ Step 1 Rejected: ${data?.reason || 'Your application did not meet the requirements.'}`;
+        content = `❌ Request to apply was not approved: ${data?.reason || 'Your application did not meet the requirements.'}`;
         break;
       case 'TIER2_COMPLETE':
         content = `✅ Step 2 Complete: All kitchen coordination requirements have been met. Your application is now fully approved.`;

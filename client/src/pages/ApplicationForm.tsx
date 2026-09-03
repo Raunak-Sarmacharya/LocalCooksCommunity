@@ -50,7 +50,7 @@ function FormStep() {
 
       <div className="container mx-auto px-4 sm:px-6">
         <FadeInSection>
-          <div className="max-w-2xl mx-auto bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-6 md:p-8 mobile-safe-area card-hover">
+          <div className="max-w-2xl mx-auto bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-6 md:p-8 mobile-safe-area card-hover" data-testid="seller-application-form">
             <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-6 text-center px-2">Local Cooks Application</h1>
 
             {currentStep === 1 && (

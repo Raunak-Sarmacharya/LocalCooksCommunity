@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { mt } from "@/i18n/manager";
 import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Building2, Search, Filter, RefreshCw } from "lucide-react";
@@ -59,6 +60,7 @@ export default function ManagerLocationsPage({
   onCreateLocation,
   onSelectLocation,
 }: ManagerLocationsPageProps) {
+  
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -210,18 +212,14 @@ export default function ManagerLocationsPage({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">My Locations</h1>
-          <p className="text-gray-500 mt-1">
-            Manage all your kitchen locations and their approval status
-          </p>
+          <h1 className="text-2xl font-bold text-gray-900">{mt("navMyLocations")}</h1>
+          <p className="text-gray-500 mt-1">{mt("manageAllYourKitchenLocationsAndTheirApprovalStatus")}</p>
         </div>
         <Button
           onClick={onCreateLocation}
           className="gap-2"
         >
-          <Plus className="w-4 h-4" />
-          Add New Location
-        </Button>
+          <Plus className="w-4 h-4" />{mt("addNewLocation")}</Button>
       </div>
 
       {/* Filters */}
@@ -230,7 +228,7 @@ export default function ManagerLocationsPage({
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <Input
-            placeholder="Search locations..."
+            placeholder={mt("searchLocations")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10"
@@ -241,7 +239,7 @@ export default function ManagerLocationsPage({
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[200px]">
             <Filter className="w-4 h-4 mr-2 text-gray-400" />
-            <SelectValue placeholder="Filter by status" />
+            <SelectValue placeholder={mt("filterByStatus")} />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">
@@ -282,30 +280,20 @@ export default function ManagerLocationsPage({
           <Building2 className="h-16 w-16 text-gray-300 mx-auto mb-4" />
           {locations.length === 0 ? (
             <>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                No Locations Yet
-              </h3>
-              <p className="text-gray-500 mb-6">
-                Create your first location to start managing your kitchens
-              </p>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("noLocationsYet")}</h3>
+              <p className="text-gray-500 mb-6">{mt("createYourFirstLocationToStartManagingYourKitchens")}</p>
               <div className="flex flex-col items-center gap-3">
                 <Button
                   onClick={onCreateLocation}
                   className="gap-2"
                 >
-                  <Plus className="w-4 h-4" />
-                  Add Your First Location
-                </Button>
+                  <Plus className="w-4 h-4" />{mt("addYourFirstLocation")}</Button>
               </div>
             </>
           ) : (
             <>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                No Matching Locations
-              </h3>
-              <p className="text-gray-500">
-                Try adjusting your search or filter criteria
-              </p>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("noMatchingLocations")}</h3>
+              <p className="text-gray-500">{mt("tryAdjustingYourSearchOrFilterCriteria")}</p>
             </>
           )}
         </div>

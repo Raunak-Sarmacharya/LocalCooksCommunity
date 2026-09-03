@@ -1,4 +1,6 @@
 import { logger } from "@/lib/logger";
+import { mt } from "@/i18n/manager";
+import { tt } from "@/i18n/common-ns";
 /**
  * Booking Rules Settings Component
  * Manages cancellation policy, booking limits, minimum window, and overstay penalties
@@ -35,12 +37,13 @@ interface BookingRulesSettingsProps {
 }
 
 export default function BookingRulesSettings({ location, onSave }: BookingRulesSettingsProps) {
+  
   const { toast } = useToast();
   
   // Cancellation Policy State
   const [cancellationHours, setCancellationHours] = useState(location.cancellationPolicyHours || 24);
   const [cancellationMessage, setCancellationMessage] = useState(
-    location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time."
+    location.cancellationPolicyMessage || mt("cancellationPolicyDefaultMessage")
   );
 
   // Daily Booking Limit State
@@ -70,7 +73,7 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
   useEffect(() => {
     setCancellationHours(location.cancellationPolicyHours || 24);
     setCancellationMessage(
-      location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time."
+      location.cancellationPolicyMessage || mt("cancellationPolicyDefaultMessage")
     );
     setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
     setMinimumBookingWindowHours(location.minimumBookingWindowHours ?? 1);
@@ -126,7 +129,7 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
     try {
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
-        throw new Error("Firebase user not available");
+        throw new Error(tt("firebaseUserNotAvailable"));
       }
 
       const token = await currentFirebaseUser.getIdToken();
@@ -139,7 +142,7 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
       });
 
       if (!response.ok) {
-        throw new Error('Failed to fetch overstay penalty defaults');
+        throw new Error(tt('failedToFetchOverstayDefaults'));
       }
 
       const data = await response.json();
@@ -180,7 +183,7 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
       setKitchens(prev => prev.map(k =>
         k.id === selectedKitchenId ? { ...k, minimumBookingHours: updated.minimumBookingHours ?? minimumBookingHours } : k
       ));
-      toast({ title: "Success", description: `Minimum booking duration updated` });
+      toast({ title: mt("success"), description: mt("minimumBookingDurationUpdated") });
     }, [selectedKitchenId, minimumBookingHours, toast]),
   );
 
@@ -190,7 +193,7 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
     try {
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
-        throw new Error("Firebase user not available");
+        throw new Error(tt("firebaseUserNotAvailable"));
       }
 
       const token = await currentFirebaseUser.getIdToken();
@@ -217,15 +220,13 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
         throw new Error(errorData.error || 'Failed to save overstay penalty defaults');
       }
 
-      toast({
-        title: "Success",
-        description: "Overstay penalty defaults updated successfully",
+      toast({ title: mt("success"),
+        description: mt("overstayPenaltyDefaultsUpdatedSuccessfully"),
       });
     } catch (error: any) {
       logger.error('Error saving overstay penalty defaults:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to save overstay penalty settings",
+      toast({ title: mt("error"),
+        description: error.message || tt("failedToSaveOverstayPenalty"),
         variant: "destructive"
       });
     }
@@ -238,7 +239,7 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
     try {
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
-        throw new Error("Firebase user not available");
+        throw new Error(tt("firebaseUserNotAvailable"));
       }
 
       const token = await currentFirebaseUser.getIdToken();
@@ -280,17 +281,15 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
         throw new Error(errorData.error || 'Failed to update terms');
       }
 
-      toast({
-        title: "Terms Uploaded",
-        description: "Your terms and conditions have been uploaded successfully.",
+      toast({ title: mt("termsUploaded"),
+        description: mt("yourTermsAndConditionsHaveBeenUploadedSuccessfully"),
       });
 
       setTermsFile(null);
     } catch (error: any) {
       logger.error('Terms upload error:', error);
-      toast({
-        title: "Upload Failed",
-        description: error.message || "Failed to upload terms",
+      toast({ title: mt("uploadFailed"),
+        description: error.message || tt("failedToUploadTermsDoc"),
         variant: "destructive",
       });
     } finally {
@@ -301,10 +300,8 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">Booking Rules</h2>
-        <p className="text-muted-foreground">
-          Configure cancellation policies, booking limits, and penalties for your location.
-        </p>
+        <h2 className="text-2xl font-bold tracking-tight">{mt("navBookingRules")}</h2>
+        <p className="text-muted-foreground">{mt("configureCancellationPoliciesBookingLimitsAndPenaltiesForYou")}</p>
       </div>
 
       {/* Unified Booking Policies & Limits — Cancellation Policy + Daily Limit + Min Window */}
@@ -313,10 +310,8 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
           <div className="flex items-center gap-3">
             <AlertCircle className="h-5 w-5 text-blue-600" />
             <div>
-              <CardTitle className="text-lg">Booking Policies & Limits</CardTitle>
-              <CardDescription>
-                Cancellation policy, daily booking limit, and minimum advance notice. One save button applies all three.
-              </CardDescription>
+              <CardTitle className="text-lg">{mt("bookingPoliciesLimits")}</CardTitle>
+              <CardDescription>{mt("cancellationPolicyDailyBookingLimitAndMinimumAdvanceNoticeOn")}</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -325,15 +320,11 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
           <div className="space-y-4 px-6 pb-6 pt-0">
             <div>
               <h3 className="text-sm font-semibold flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 text-blue-600" />
-                Cancellation Policy
-              </h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                Configure when chefs can cancel their bookings
-              </p>
+                <AlertCircle className="h-4 w-4 text-blue-600" />{mt("cancellationPolicy")}</h3>
+              <p className="text-xs text-muted-foreground mt-1">{mt("configureWhenChefsCanCancelTheirBookings")}</p>
             </div>
             <div>
-              <Label htmlFor="cancellation-hours">Cancellation Window</Label>
+              <Label htmlFor="cancellation-hours">{mt("cancellationWindow")}</Label>
               <NumericInput
                 id="cancellation-hours"
                 suffix="hours"
@@ -346,14 +337,14 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
               </p>
             </div>
             <div>
-              <Label htmlFor="cancellation-message">Policy Message</Label>
+              <Label htmlFor="cancellation-message">{mt("policyMessage")}</Label>
               <Textarea
                 id="cancellation-message"
                 value={cancellationMessage}
                 onChange={(e) => setCancellationMessage(e.target.value)}
                 rows={3}
                 className="mt-1.5"
-                placeholder="Bookings cannot be cancelled within {hours} hours of the scheduled time."
+                placeholder={mt("cancellationPolicyDefaultMessage")}
               />
               <p className="text-xs text-muted-foreground mt-1">
                 Use {"{hours}"} as a placeholder for the cancellation window
@@ -365,15 +356,11 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
           <div className="space-y-4 px-6 py-6">
             <div>
               <h3 className="text-sm font-semibold flex items-center gap-2">
-                <Clock className="h-4 w-4 text-green-600" />
-                Daily Booking Limit
-              </h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                Maximum hours a chef can book per day
-              </p>
+                <Clock className="h-4 w-4 text-green-600" />{mt("dailyBookingLimit")}</h3>
+              <p className="text-xs text-muted-foreground mt-1">{mt("maximumHoursAChefCanBookPerDay")}</p>
             </div>
             <div>
-              <Label htmlFor="daily-limit">Default Hours per Chef per Day</Label>
+              <Label htmlFor="daily-limit">{mt("defaultHoursPerChefPerDay")}</Label>
               <NumericInput
                 id="daily-limit"
                 suffix="hours"
@@ -381,16 +368,12 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
                 onValueChange={(val) => setDailyBookingLimit(parseInt(val) || 2)}
                 className="mt-1.5 max-w-xs"
               />
-              <p className="text-xs text-muted-foreground mt-1">
-                Maximum hours a chef can book in a single day (1-24 hours)
-              </p>
+              <p className="text-xs text-muted-foreground mt-1">{mt("maximumHoursAChefCanBookInASingleDay124Hours")}</p>
             </div>
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
               <div className="flex items-start gap-2">
                 <Info className="h-4 w-4 text-blue-600 mt-0.5" />
-                <p className="text-xs text-blue-800">
-                  You can override this limit for specific dates in the Availability calendar.
-                </p>
+                <p className="text-xs text-blue-800">{mt("youCanOverrideThisLimitForSpecificDatesInTheAvailabilityCale")}</p>
               </div>
             </div>
           </div>
@@ -399,15 +382,11 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
           <div className="space-y-4 px-6 py-6">
             <div>
               <h3 className="text-sm font-semibold flex items-center gap-2">
-                <Clock className="h-4 w-4 text-orange-600" />
-                Minimum Booking Window
-              </h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                Minimum advance notice required for bookings
-              </p>
+                <Clock className="h-4 w-4 text-orange-600" />{mt("minimumBookingWindow")}</h3>
+              <p className="text-xs text-muted-foreground mt-1">{mt("minimumAdvanceNoticeRequiredForBookings")}</p>
             </div>
             <div>
-              <Label htmlFor="min-window">Minimum Hours in Advance</Label>
+              <Label htmlFor="min-window">{mt("minimumHoursInAdvance")}</Label>
               <NumericInput
                 id="min-window"
                 suffix="hours"
@@ -425,22 +404,18 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
               <div className="flex items-start gap-2">
                 <Info className="h-4 w-4 text-blue-600 mt-0.5" />
-                <p className="text-xs text-blue-800">
-                  Example: With 1 hour, if it's 1:00 PM, chefs can only book times starting from 2:00 PM onwards.
-                </p>
+                <p className="text-xs text-blue-800">{mt("exampleWith1HourIfItS100PMChefsCanOnlyBookTimesStartingFrom2")}</p>
               </div>
             </div>
           </div>
 
           {/* Single save button applies to all three subsections above */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-6 py-4 bg-muted/30">
-            <p className="text-xs text-muted-foreground">
-              Saves cancellation policy, daily booking limit, and minimum booking window together.
-            </p>
+            <p className="text-xs text-muted-foreground">{mt("savesCancellationPolicyDailyBookingLimitAndMinimumBookingWin")}</p>
             <StatusButton
               status={saveRulesAction.status}
               onClick={saveRulesAction.execute}
-              labels={{ idle: "Save Booking Rules", loading: "Saving", success: "Saved" }}
+              labels={{ idle: mt("saveBookingRules"), loading: mt("savingShort"), success: mt("saved") }}
             />
           </div>
         </CardContent>
@@ -452,8 +427,8 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
           <div className="flex items-center gap-3">
             <ChefHat className="h-5 w-5 text-violet-600" />
             <div>
-              <CardTitle className="text-lg">Minimum Booking Duration</CardTitle>
-              <CardDescription>Set the minimum hours required per booking for each kitchen</CardDescription>
+              <CardTitle className="text-lg">{mt("minimumBookingDuration")}</CardTitle>
+              <CardDescription>{mt("setTheMinimumHoursRequiredPerBookingForEachKitchen")}</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -461,22 +436,20 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
           {isLoadingKitchens ? (
             <div className="flex items-center gap-2 py-4">
               <Loader2 className="h-4 w-4 animate-spin text-violet-600" />
-              <span className="text-sm text-muted-foreground">Loading kitchens...</span>
+              <span className="text-sm text-muted-foreground">{mt("loadingKitchens")}</span>
             </div>
           ) : kitchens.length === 0 ? (
-            <div className="text-sm text-muted-foreground py-4">
-              No kitchens found for this location. Create a kitchen first.
-            </div>
+            <div className="text-sm text-muted-foreground py-4">{mt("noKitchensFoundForThisLocationCreateAKitchenFirst")}</div>
           ) : (
             <>
               <div>
-                <Label htmlFor="kitchen-selector">Select Kitchen</Label>
+                <Label htmlFor="kitchen-selector">{mt("selectKitchen")}</Label>
                 <Select
                   value={selectedKitchenId?.toString() || ''}
                   onValueChange={(value) => setSelectedKitchenId(parseInt(value, 10))}
                 >
                   <SelectTrigger id="kitchen-selector" className="mt-1.5 max-w-xs">
-                    <SelectValue placeholder="Select a kitchen" />
+                    <SelectValue placeholder={mt("selectAKitchen")} />
                   </SelectTrigger>
                   <SelectContent>
                     {kitchens.map((kitchen) => (
@@ -491,7 +464,7 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
               {selectedKitchenId && (
                 <>
                   <div>
-                    <Label htmlFor="min-booking-duration">Minimum Hours per Booking</Label>
+                    <Label htmlFor="min-booking-duration">{mt("minimumHoursPerBooking")}</Label>
                     <NumericInput
                       id="min-booking-duration"
                       suffix="hours"
@@ -513,15 +486,13 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
                   <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <div className="flex items-start gap-2">
                       <Info className="h-4 w-4 text-blue-600 mt-0.5" />
-                      <p className="text-xs text-blue-800">
-                        This setting is per-kitchen. Chefs will not be able to submit a booking with fewer hours than the minimum set here.
-                      </p>
+                      <p className="text-xs text-blue-800">{mt("thisSettingIsPerKitchenChefsWillNotBeAbleToSubmitABookingWit")}</p>
                     </div>
                   </div>
                   <StatusButton
                     status={saveDurationAction.status}
                     onClick={saveDurationAction.execute}
-                    labels={{ idle: "Save Duration", loading: "Saving", success: "Saved" }}
+                    labels={{ idle: mt("saveDuration"), loading: mt("savingShort"), success: mt("saved") }}
                   />
                 </>
               )}
@@ -536,8 +507,8 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
           <div className="flex items-center gap-3">
             <FileText className="h-5 w-5 text-purple-600" />
             <div>
-              <CardTitle className="text-lg">Terms & Conditions</CardTitle>
-              <CardDescription>Upload terms that chefs must agree to when booking</CardDescription>
+              <CardTitle className="text-lg">{mt("termsConditions")}</CardTitle>
+              <CardDescription>{mt("uploadTermsThatChefsMustAgreeToWhenBooking")}</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -546,16 +517,14 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
             <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
               <div className="flex items-center gap-2">
                 <FileText className="h-4 w-4 text-slate-500" />
-                <span className="text-sm">Current terms document uploaded</span>
+                <span className="text-sm">{mt("currentTermsDocumentUploaded")}</span>
               </div>
               <a
                 href={location.kitchenTermsUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm text-blue-600 hover:text-blue-700"
-              >
-                View Document
-              </a>
+              >{mt("viewDocument")}</a>
             </div>
           )}
 
@@ -581,7 +550,7 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
               <span className="text-sm font-medium text-gray-700 mb-1">
                 {termsFile ? termsFile.name : 'Click to upload terms & conditions'}
               </span>
-              <span className="text-xs text-gray-500">PDF only (max 5MB)</span>
+              <span className="text-xs text-gray-500">{mt("pDFOnlyMax5MB")}</span>
             </label>
           </div>
 
@@ -589,14 +558,10 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
             <Button onClick={handleUploadTerms} disabled={isUploadingTerms}>
               {isUploadingTerms ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Uploading...
-                </>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />{mt("uploading")}</>
               ) : (
                 <>
-                  <Upload className="mr-2 h-4 w-4" />
-                  Upload Terms
-                </>
+                  <Upload className="mr-2 h-4 w-4" />{mt("uploadTerms")}</>
               )}
             </Button>
           )}
@@ -609,8 +574,8 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
           <div className="flex items-center gap-3">
             <AlertCircle className="h-5 w-5 text-red-600" />
             <div>
-              <CardTitle className="text-lg">Storage Overstay Penalty Defaults</CardTitle>
-              <CardDescription>Configure default penalty settings for storage overstays</CardDescription>
+              <CardTitle className="text-lg">{mt("storageOverstayPenaltyDefaults")}</CardTitle>
+              <CardDescription>{mt("configureDefaultPenaltySettingsForStorageOverstays")}</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -618,13 +583,13 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
           {isLoadingPenaltyDefaults ? (
             <div className="flex items-center justify-center py-4">
               <Loader2 className="h-6 w-6 animate-spin text-red-600" />
-              <span className="ml-2 text-sm text-muted-foreground">Loading penalty settings...</span>
+              <span className="ml-2 text-sm text-muted-foreground">{mt("loadingPenaltySettings")}</span>
             </div>
           ) : (
             <>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <Label htmlFor="grace-period">Grace Period</Label>
+                  <Label htmlFor="grace-period">{mt("gracePeriod")}</Label>
                   <NumericInput
                     id="grace-period"
                     suffix="days"
@@ -632,16 +597,14 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
                     onValueChange={(val) => {
                       setOverstayGracePeriodDays(val === '' ? null : parseInt(val));
                     }}
-                    placeholder="Platform default"
+                    placeholder={mt("platformDefault")}
                     className="mt-1.5"
                   />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Days before penalties apply (0-14)
-                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">{mt("daysBeforePenaltiesApply014")}</p>
                 </div>
 
                 <div>
-                  <Label htmlFor="penalty-rate">Penalty Rate</Label>
+                  <Label htmlFor="penalty-rate">{mt("penaltyRate")}</Label>
                   <NumericInput
                     id="penalty-rate"
                     suffix="%"
@@ -649,7 +612,7 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
                     onValueChange={(val) => {
                       setOverstayPenaltyRate(val === '' ? null : parseInt(val));
                     }}
-                    placeholder="Platform default"
+                    placeholder={mt("platformDefault")}
                     className="mt-1.5"
                   />
                   <p className="text-xs text-muted-foreground mt-1">
@@ -658,7 +621,7 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
                 </div>
 
                 <div>
-                  <Label htmlFor="max-penalty">Max Penalty Days</Label>
+                  <Label htmlFor="max-penalty">{mt("maxPenaltyDays")}</Label>
                   <NumericInput
                     id="max-penalty"
                     suffix="days"
@@ -666,31 +629,27 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
                     onValueChange={(val) => {
                       setOverstayMaxPenaltyDays(val === '' ? null : parseInt(val));
                     }}
-                    placeholder="Platform default"
+                    placeholder={mt("platformDefault")}
                     className="mt-1.5"
                   />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Max days to charge penalties (1-90)
-                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">{mt("maxDaysToChargePenalties190")}</p>
                 </div>
               </div>
 
               <div>
-                <Label htmlFor="policy-text">Policy Text (Optional)</Label>
+                <Label htmlFor="policy-text">{mt("policyTextOptional")}</Label>
                 <Textarea
                   id="policy-text"
                   value={overstayPolicyText}
                   onChange={(e) => setOverstayPolicyText(e.target.value)}
                   rows={3}
                   className="mt-1.5"
-                  placeholder="Custom policy text shown to chefs regarding overstay penalties..."
+                  placeholder={mt("customPolicyTextShownToChefsRegardingOverstayPenalties")}
                 />
               </div>
 
               <Button onClick={handleSaveOverstayPenaltyDefaults} variant="destructive">
-                <Save className="mr-2 h-4 w-4" />
-                Save Penalty Defaults
-              </Button>
+                <Save className="mr-2 h-4 w-4" />{mt("savePenaltyDefaults")}</Button>
             </>
           )}
         </CardContent>

@@ -290,6 +290,9 @@ export function registerSecurityMiddleware(app: Express): void {
       // In development, only rate-limit /api/ routes — skip Vite asset requests
       // (/@fs/, /src/, /node_modules/, static files, HMR, etc.)
       if (!isProduction && !req.path.startsWith('/api/')) return true;
+      // ponytail: QA suites hammer secret-gated /api/dev/*; production hard-off already
+      // blocks these routes. Ceiling: still rate-limited in production.
+      if (!isProduction && req.path.startsWith('/api/dev/')) return true;
       return false;
     },
     // In production (behind Vercel proxy), use X-Forwarded-For; in dev, use default

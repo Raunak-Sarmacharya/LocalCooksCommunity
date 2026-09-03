@@ -397,7 +397,7 @@ export function PlatformSettingsSection() {
           <p>2. Stripe deducts the actual processing fee (varies by card type) from the platform balance.</p>
           <p>3. The webhook reads the actual fee from <code>balance_transaction.fee</code>.</p>
           <p>4. The platform calls <code>stripe.transfers.create()</code> to send the manager
-            <strong> charge − actual Stripe fee − service fee</strong> to their Connect account.</p>
+            <strong> subtotal + kitchen tax − actual Stripe fee</strong> to their Connect account. The chef pays the service fee on top.</p>
           <p>The Stripe % and flat fee values above are display-only estimates; the actual fee
             from Stripe is always used for the transfer.</p>
         </AlertDescription>

@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
-import { SpotlightWalkthrough } from "@/components/ui/spotlight-walkthrough";
+import { SpotlightWalkthrough, walkthroughStorageKey } from "@/components/ui/spotlight-walkthrough";
 import { useAuthModal } from "@/components/auth/AuthModalProvider";
+import { useFirebaseAuth } from "@/hooks/use-auth";
 
 import { useTranslation } from "react-i18next";
+
+const PREVIEW_WALKTHROUGH_BASE = "lc.kitchenPreview.walkthrough.v3";
 
 export function KitchenPreviewWalkthrough({
   enabled,
@@ -12,6 +15,7 @@ export function KitchenPreviewWalkthrough({
   replayToken?: number;
 }) {
   const { t } = useTranslation("kitchen");
+  const { user } = useFirebaseAuth();
   const { isOpen } = useAuthModal();
   const [hasOpenDialog, setHasOpenDialog] = useState(false);
 
@@ -41,7 +45,7 @@ export function KitchenPreviewWalkthrough({
   const STEPS = [
     {
       id: "schedule",
-      title: t("tourSchedule", "Schedule a tour"),
+      title: t("tourSchedule", "Request a tour"),
       body: t("tourScheduleDesc", "Kitchen tour. You still need to apply."),
     },
     {
@@ -93,12 +97,12 @@ export function KitchenPreviewWalkthrough({
 
   return (
     <SpotlightWalkthrough
-      storageKey="lc.kitchenPreview.walkthrough.v3"
+      storageKey={walkthroughStorageKey(PREVIEW_WALKTHROUGH_BASE, user?.uid)}
       attr="data-preview-tour"
       steps={STEPS}
       enabled={enabled && !isOpen && !hasOpenDialog}
       replayToken={replayToken}
-      readyWhen={(ids) => ids.includes("cta") && ids.includes("photos") && ids.includes("hours")}
+      readyWhen={(ids) => ids.includes("photos") && ids.includes("hours")}
     />
   );
 }

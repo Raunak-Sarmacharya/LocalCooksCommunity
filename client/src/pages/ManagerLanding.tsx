@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { Redirect, useLocation } from "wouter";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -12,6 +13,8 @@ import GradientHero from "@/components/ui/GradientHero";
 import FadeInSection from "@/components/ui/FadeInSection";
 
 export default function ManagerLanding() {
+  const { t } = useTranslation("manager");
+
   const [, setLocation] = useLocation();
 
   // Check if manager is logged in using Firebase auth
@@ -62,7 +65,7 @@ export default function ManagerLanding() {
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-2" />
-          <p className="text-sm text-gray-600">Loading...</p>
+          <p className="text-sm text-gray-600">{t("loading")}</p>
         </div>
       </div>
     );
@@ -80,8 +83,8 @@ export default function ManagerLanding() {
               <div className="flex items-center gap-4">
                 <Logo className="h-10 w-auto" />
                 <div>
-                  <h1 className="text-xl font-semibold text-white">Manager Portal</h1>
-                  <p className="text-sm text-blue-100">Commercial Kitchen Management</p>
+                  <h1 className="text-xl font-semibold text-white">{t("managerPortal")}</h1>
+                  <p className="text-sm text-blue-100">{t("commercialKitchenManagement")}</p>
                 </div>
               </div>
             </div>
@@ -95,20 +98,14 @@ export default function ManagerLanding() {
               <div className="inline-flex items-center justify-center w-20 h-20 bg-white/20 rounded-full mb-8 backdrop-blur-sm">
                 <Building2 className="h-10 w-10 text-white" />
               </div>
-              <h2 className="text-5xl md:text-7xl font-bold text-white mb-8 leading-tight">
-                Manage Your Commercial Kitchen
-              </h2>
-            <p className="text-xl md:text-2xl text-blue-100 max-w-3xl mx-auto mb-10 leading-relaxed font-medium">
-              Access your dashboard to manage bookings, availability, chef profiles, and location settings.
-            </p>
+              <h2 className="text-5xl md:text-7xl font-bold text-white mb-8 leading-tight">{t("manageYourCommercialKitchen")}</h2>
+            <p className="text-xl md:text-2xl text-blue-100 max-w-3xl mx-auto mb-10 leading-relaxed font-medium">{t("accessYourDashboardToManageBookingsAvailabilityChefProfilesA")}</p>
               <Button
                 size="lg"
                 className="w-full sm:w-auto bg-white text-blue-600 hover:bg-blue-50 text-base sm:text-lg px-6 sm:px-8 py-4 sm:py-5 md:py-6 h-auto btn-glow min-h-[48px] sm:min-h-[56px]"
                 onClick={() => setLocation("/manager/login")}
               >
-                <Lock className="mr-2 h-5 w-5" />
-                Sign In to Your Dashboard
-                <ArrowRight className="ml-2 h-5 w-5" />
+                <Lock className="mr-2 h-5 w-5" />{t("signInToYourDashboard")}<ArrowRight className="ml-2 h-5 w-5" />
               </Button>
             </div>
           </FadeInSection>
@@ -123,10 +120,8 @@ export default function ManagerLanding() {
                   <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mb-4 shadow-lg group-hover:scale-110 transition-transform duration-300">
                     <Calendar className="h-8 w-8 text-white" />
                   </div>
-                  <CardTitle className="text-2xl md:text-3xl font-bold text-white mb-3">Manage Bookings</CardTitle>
-                  <CardDescription className="text-blue-100 text-base md:text-lg leading-relaxed">
-                    View and manage all kitchen bookings from third-party users and chefs.
-                  </CardDescription>
+                  <CardTitle className="text-2xl md:text-3xl font-bold text-white mb-3">{t("manageBookings")}</CardTitle>
+                  <CardDescription className="text-blue-100 text-base md:text-lg leading-relaxed">{t("viewAndManageAllKitchenBookingsFromThirdPartyUsersAndChefs")}</CardDescription>
                 </CardHeader>
               </Card>
 
@@ -137,10 +132,8 @@ export default function ManagerLanding() {
                   <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mb-4 shadow-lg group-hover:scale-110 transition-transform duration-300">
                     <Settings className="h-8 w-8 text-white" />
                   </div>
-                  <CardTitle className="text-2xl md:text-3xl font-bold text-white mb-3">Set Availability</CardTitle>
-                  <CardDescription className="text-blue-100 text-base md:text-lg leading-relaxed">
-                    Configure kitchen availability, time slots, and booking policies.
-                  </CardDescription>
+                  <CardTitle className="text-2xl md:text-3xl font-bold text-white mb-3">{t("setAvailability")}</CardTitle>
+                  <CardDescription className="text-blue-100 text-base md:text-lg leading-relaxed">{t("configureKitchenAvailabilityTimeSlotsAndBookingPolicies")}</CardDescription>
                 </CardHeader>
               </Card>
 
@@ -151,10 +144,8 @@ export default function ManagerLanding() {
                   <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mb-4 shadow-lg group-hover:scale-110 transition-transform duration-300">
                     <Users className="h-8 w-8 text-white" />
                   </div>
-                  <CardTitle className="text-2xl md:text-3xl font-bold text-white mb-3">Chef Profiles</CardTitle>
-                  <CardDescription className="text-blue-100 text-base md:text-lg leading-relaxed">
-                    Review and manage chef profiles and access permissions.
-                  </CardDescription>
+                  <CardTitle className="text-2xl md:text-3xl font-bold text-white mb-3">{t("chefProfiles")}</CardTitle>
+                  <CardDescription className="text-blue-100 text-base md:text-lg leading-relaxed">{t("reviewAndManageChefProfilesAndAccessPermissions")}</CardDescription>
                 </CardHeader>
               </Card>
             </div>

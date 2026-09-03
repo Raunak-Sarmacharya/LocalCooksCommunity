@@ -22,6 +22,7 @@ import { useFileUpload } from "@/hooks/useFileUpload";
 import { cn } from "@/lib/utils";
 import { ChefPageHeader } from "@/components/chef/ui";
 import { useTranslation } from "react-i18next";
+import { tt } from "@/i18n/common-ns";
 
 export default function ChefProfileSettings() {
     const { t } = useTranslation("chef");
@@ -158,7 +159,7 @@ export default function ChefProfileSettings() {
             profileImageUrl?: string;
         }) => {
             const currentFirebaseUser = auth.currentUser;
-            if (!currentFirebaseUser) throw new Error("Not authenticated");
+            if (!currentFirebaseUser) throw new Error(tt("notAuthenticated"));
 
             // Update Firebase Auth displayName if changed
             if (profileData.displayName) {
@@ -182,7 +183,7 @@ export default function ChefProfileSettings() {
                 body: JSON.stringify(profileData),
             });
 
-            if (!response.ok) throw new Error('Failed to update profile');
+            if (!response.ok) throw new Error(tt("failedToUpdateProfile"));
             return response.json();
         },
         onSuccess: () => {

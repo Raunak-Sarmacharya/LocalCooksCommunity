@@ -6,6 +6,7 @@
  */
 
 import * as React from "react"
+import { mt } from "@/i18n/manager"
 import { CalendarIcon, ChevronDown } from "lucide-react"
 import { type DateRange } from "react-day-picker"
 import { startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, startOfYear, endOfYear, subDays, subMonths } from "date-fns"
@@ -27,9 +28,9 @@ interface DateRangePickerProps {
     className?: string
 }
 
-const presets: { label: string; value: DateRangePreset; getRange: () => { from: Date; to: Date } }[] = [
+const presets: { labelKey: string; value: DateRangePreset; getRange: () => { from: Date; to: Date } }[] = [
     {
-        label: 'Today',
+        labelKey: 'today',
         value: 'today',
         getRange: () => {
             const today = new Date()
@@ -37,7 +38,7 @@ const presets: { label: string; value: DateRangePreset; getRange: () => { from: 
         },
     },
     {
-        label: 'Last 7 Days',
+        labelKey: 'last7Days',
         value: 'week',
         getRange: () => ({
             from: subDays(new Date(), 6),
@@ -45,7 +46,7 @@ const presets: { label: string; value: DateRangePreset; getRange: () => { from: 
         }),
     },
     {
-        label: 'This Month',
+        labelKey: 'thisMonth',
         value: 'month',
         getRange: () => ({
             from: startOfMonth(new Date()),
@@ -53,7 +54,7 @@ const presets: { label: string; value: DateRangePreset; getRange: () => { from: 
         }),
     },
     {
-        label: 'Last Month',
+        labelKey: 'lastMonth',
         value: 'month',
         getRange: () => {
             const lastMonth = subMonths(new Date(), 1)
@@ -64,7 +65,7 @@ const presets: { label: string; value: DateRangePreset; getRange: () => { from: 
         },
     },
     {
-        label: 'This Quarter',
+        labelKey: 'thisQuarter',
         value: 'quarter',
         getRange: () => ({
             from: startOfQuarter(new Date()),
@@ -72,7 +73,7 @@ const presets: { label: string; value: DateRangePreset; getRange: () => { from: 
         }),
     },
     {
-        label: 'Year to Date',
+        labelKey: 'yearToDate',
         value: 'year',
         getRange: () => ({
             from: startOfYear(new Date()),
@@ -86,13 +87,14 @@ export function DateRangePicker({
     onDateRangeChange,
     className,
 }: DateRangePickerProps) {
+  
     const [isOpen, setIsOpen] = React.useState(false)
-    const [selectedPreset, setSelectedPreset] = React.useState<string>('This Month')
+    const [selectedPreset, setSelectedPreset] = React.useState<string>(mt("thisMonth"))
 
     const handlePresetSelect = (preset: typeof presets[0]) => {
         const range = preset.getRange()
         onDateRangeChange(range)
-        setSelectedPreset(preset.label)
+        setSelectedPreset(mt(preset.labelKey))
     }
 
     const handleCalendarSelect = (range: DateRange | undefined) => {
@@ -101,7 +103,7 @@ export function DateRangePicker({
                 from: range.from,
                 to: range.to,
             })
-            setSelectedPreset('Custom')
+            setSelectedPreset(mt("customDateRange"))
         }
     }
 
@@ -112,7 +114,7 @@ export function DateRangePicker({
             }
             return `${formatDate(dateRange.from)} - ${formatDate(dateRange.to)}`
         }
-        return 'Select date range'
+        return mt("selectDateRange")
     }, [dateRange])
 
     return (
@@ -141,19 +143,17 @@ export function DateRangePicker({
                 <div className="flex flex-col md:flex-row">
                     {/* Presets Sidebar */}
                     <div className="w-full border-b p-3 md:w-44 md:border-b-0 md:border-r">
-                        <p className="text-xs font-medium text-muted-foreground mb-2 px-2">
-                            Quick Select
-                        </p>
+                        <p className="text-xs font-medium text-muted-foreground mb-2 px-2">{mt("quickSelect")}</p>
                         <div className="grid grid-cols-2 gap-1 md:block md:space-y-1">
                             {presets.map((preset) => (
                                 <Button
-                                    key={preset.label}
-                                    variant={selectedPreset === preset.label ? "secondary" : "ghost"}
+                                    key={preset.labelKey}
+                                    variant={selectedPreset === mt(preset.labelKey) ? "secondary" : "ghost"}
                                     size="sm"
                                     className="w-full justify-start text-sm"
                                     onClick={() => handlePresetSelect(preset)}
                                 >
-                                    {preset.label}
+                                    {mt(preset.labelKey)}
                                 </Button>
                             ))}
                         </div>
@@ -195,15 +195,11 @@ export function DateRangePicker({
                         variant="outline"
                         size="sm"
                         onClick={() => setIsOpen(false)}
-                    >
-                        Cancel
-                    </Button>
+                    >{mt("cancel")}</Button>
                     <Button
                         size="sm"
                         onClick={() => setIsOpen(false)}
-                    >
-                        Apply
-                    </Button>
+                    >{mt("apply")}</Button>
                 </div>
             </PopoverContent>
         </Popover>

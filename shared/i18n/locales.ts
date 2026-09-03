@@ -17,6 +17,7 @@ export const I18N_NAMESPACES = [
   "booking",
   "chef",
   "kitchen",
+  "manager",
   "admin",
   "email",
   "sms",

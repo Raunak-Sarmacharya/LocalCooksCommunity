@@ -97,6 +97,116 @@ export function isDevSubdomain(hostname: string): boolean {
 }
 
 /**
+ * True for Vercel preview deploys, or when already on a `dev-*` host.
+ * Production (`VERCEL_ENV=production`) and plain local hosts are false.
+ */
+export function isPreviewDeployment(
+  hostname?: string,
+  vercelEnv?: string | null
+): boolean {
+  if (vercelEnv === 'preview') return true;
+  if (hostname && isDevSubdomain(hostname)) return true;
+  return false;
+}
+
+/**
+ * Origin URL for a role subdomain in the current environment.
+ * - Local: http://chef.localhost:5001
+ * - Preview (`VERCEL_ENV=preview` or `dev-*` host): https://dev-chef.localcooks.ca
+ * - Production: https://chef.localcooks.ca
+ */
+export function getSubdomainOriginForEnvironment(
+  subdomainType: 'chef' | 'kitchen' | 'admin',
+  hostname: string,
+  options?: { port?: string; protocol?: string; vercelEnv?: string | null }
+): string {
+  const hostWithoutPort = hostname.split(':')[0].toLowerCase();
+
+  if (
+    hostWithoutPort === 'localhost' ||
+    hostWithoutPort === '127.0.0.1' ||
+    hostWithoutPort.endsWith('.localhost')
+  ) {
+    const proto = options?.protocol ?? 'http:';
+    const p = options?.port || '5001';
+    const portSuffix = p ? `:${p}` : '';
+    return `${proto}//${subdomainType}.localhost${portSuffix}`;
+  }
+
+  const isDev = isPreviewDeployment(hostname, options?.vercelEnv);
+  const prefix = isDev ? 'dev-' : '';
+  const parts = hostWithoutPort.split('.');
+  // vercel.app / single-label hosts → fall back to localcooks.ca
+  const baseDomain =
+    parts.length >= 2 && !hostWithoutPort.endsWith('.vercel.app')
+      ? parts.slice(-2).join('.')
+      : 'localcooks.ca';
+  return `https://${prefix}${subdomainType}.${baseDomain}`;
+}
+
+/**
+ * Login/auth origin for a user role (manager → kitchen subdomain).
+ * Preview → https://dev-chef.localcooks.ca ; production → https://chef.localcooks.ca
+ */
+export function getRoleLoginOrigin(
+  role: string | null | undefined,
+  hostname: string,
+  options?: { port?: string; protocol?: string; vercelEnv?: string | null }
+): string {
+  const normalized = (role || 'chef').toLowerCase();
+  const subdomainType: 'chef' | 'kitchen' | 'admin' =
+    normalized === 'manager' || normalized === 'kitchen'
+      ? 'kitchen'
+      : normalized === 'admin'
+        ? 'admin'
+        : 'chef';
+  return getSubdomainOriginForEnvironment(subdomainType, hostname, options);
+}
+
+/**
+ * Chef dashboard path + whether a cross-subdomain redirect is required.
+ */
+export function resolveChefDashboardNavigation(
+  view?: string,
+  hostname: string = typeof globalThis !== 'undefined' && typeof window !== 'undefined'
+    ? window.location.hostname
+    : 'localcooks.ca',
+  port: string = typeof globalThis !== 'undefined' && typeof window !== 'undefined'
+    ? window.location.port
+    : '',
+  vercelEnv?: string | null
+): { path: string; href: string; sameOrigin: boolean } {
+  const path =
+    !view || view === 'overview'
+      ? '/dashboard'
+      : `/dashboard?view=${encodeURIComponent(view)}`;
+  const origin = getSubdomainOriginForEnvironment('chef', hostname, {
+    port,
+    protocol: typeof window !== 'undefined' ? window.location.protocol : 'https:',
+    vercelEnv,
+  });
+  const sameOrigin =
+    typeof window !== 'undefined' ? window.location.origin === origin : true;
+  return { path, href: `${origin}${path}`, sameOrigin };
+}
+
+/** Full-page redirect to chef dashboard when not already on chef origin. */
+export function goToChefDashboard(view?: string, vercelEnv?: string | null): void {
+  if (typeof window === 'undefined') return;
+  const { path, href, sameOrigin } = resolveChefDashboardNavigation(
+    view,
+    window.location.hostname,
+    window.location.port,
+    vercelEnv
+  );
+  if (sameOrigin) {
+    window.location.assign(path);
+    return;
+  }
+  window.location.href = href;
+}
+
+/**
  * Get the subdomain URL for the correct environment (prod or dev)
  * @param subdomainType - The subdomain type
  * @param hostname - Current hostname to detect dev vs prod
@@ -106,15 +216,14 @@ export function isDevSubdomain(hostname: string): boolean {
 export function getSubdomainUrlForEnvironment(
   subdomainType: SubdomainType,
   hostname: string,
-  baseDomain: string = 'localcooks.ca'
+  baseDomain: string = 'localcooks.ca',
+  vercelEnv?: string | null
 ): string {
-  const isDev = isDevSubdomain(hostname);
-  const prefix = isDev ? 'dev-' : '';
-
   if (!subdomainType || subdomainType === 'main') {
+    const isDev = isPreviewDeployment(hostname, vercelEnv);
     return isDev ? `https://dev.${baseDomain}` : `https://${baseDomain}`;
   }
-  return `https://${prefix}${subdomainType}.${baseDomain}`;
+  return getSubdomainOriginForEnvironment(subdomainType, hostname, { vercelEnv });
 }
 
 /**
@@ -157,14 +266,9 @@ export function isRouteAccessibleFromSubdomain(subdomainType: SubdomainType, rou
     return subdomainType === 'admin' || subdomainType === 'kitchen';
   }
 
-  // Portal routes - accessible from kitchen subdomain
-  if (routePath.startsWith('/portal')) {
-    return subdomainType === 'kitchen';
-  }
-
   // Chef routes - accessible from chef subdomain
   if (routePath.startsWith('/apply') || routePath.startsWith('/dashboard') || 
-      routePath.startsWith('/book-kitchen') || routePath.startsWith('/share-profile')) {
+      routePath.startsWith('/book-kitchen')) {
     return subdomainType === 'chef';
   }
 

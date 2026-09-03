@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { ArrowLeft, Clock, Mail, RefreshCw, CheckCircle2, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import AnimatedButton from "./AnimatedButton";
+import { EmailContinueHint, getEmailContinueMessage } from "./EmailContinueHint";
 
 interface EmailVerificationScreenProps {
   email: string;
@@ -121,7 +122,7 @@ export default function EmailVerificationScreen({
         </h2>
         <p className="text-gray-600 leading-relaxed">
           {mode === "magic-link" 
-            ? "We sent a magic sign-in link to:" 
+            ? "We sent a sign-in link to:" 
             : "We sent a verification link to:"}
         </p>
         <motion.div
@@ -138,14 +139,14 @@ export default function EmailVerificationScreen({
       <motion.div variants={itemVariants} className="text-center mb-6">
         <p className="text-gray-600 text-sm leading-relaxed">
           {mode === "magic-link"
-            ? "Click the link in the email to instantly sign in to your account."
-            : "Click the link to verify your account and unlock your learning journey."}
+            ? "Open the email on this device and tap the link to sign in and continue where you left off."
+            : "Open the email and tap the link to verify your account and continue."}
         </p>
         {resendCount > 0 && (
           <p className="text-sm text-gray-500 mt-2">
             {mode === "magic-link"
-              ? resendCount === 1 ? 'Sign-in link resent.' : `Sign-in link resent ${resendCount} times.`
-              : resendCount === 1 ? 'Verification email resent.' : `Verification email resent ${resendCount} times.`}
+              ? resendCount === 1 ? 'Sign-in link resent — check your inbox and spam folder.' : `Sign-in link resent ${resendCount} times.`
+              : resendCount === 1 ? 'Verification email resent — check your inbox and spam folder.' : `Verification email resent ${resendCount} times.`}
           </p>
         )}
       </motion.div>
@@ -214,15 +215,10 @@ export default function EmailVerificationScreen({
         </motion.div>
       )}
 
-      {/* Spam Folder Note */}
-      <motion.div
-        variants={itemVariants}
-        className="mt-8 p-4 bg-yellow-50 rounded-lg border border-yellow-100"
-      >
-        <p className="text-sm text-yellow-800">
-          <strong>Not seeing the email?</strong> Check your spam folder or try using a different email address.
-        </p>
-      </motion.div>
+      <EmailContinueHint
+        variant={mode === "magic-link" ? "sign-in" : "verify"}
+        className="mt-8"
+      />
     </motion.div>
   );
 } 

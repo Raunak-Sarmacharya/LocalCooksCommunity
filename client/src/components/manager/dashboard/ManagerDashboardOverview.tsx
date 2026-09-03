@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { mt } from "@/i18n/manager";
 
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -28,6 +29,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RevenueMetricCards } from "@/components/manager/revenue/components/RevenueMetricCards";
 import type { RevenueMetrics } from "@/components/manager/revenue/types";
+import { tt } from "@/i18n/common-ns";
 
 // Storage/Equipment item types
 interface StorageItem {
@@ -74,6 +76,7 @@ interface ManagerDashboardOverviewProps {
 
 
 export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, onNavigate }: ManagerDashboardOverviewProps) {
+  
     const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
     // Fetch revenue metrics for the overview
@@ -82,7 +85,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
         queryFn: async () => {
             const currentFirebaseUser = auth.currentUser;
             if (!currentFirebaseUser) {
-                throw new Error("Firebase user not available");
+                throw new Error(tt("firebaseUserNotAvailable"));
             }
 
             const token = await currentFirebaseUser.getIdToken();
@@ -104,7 +107,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
             });
 
             if (!response.ok) {
-                throw new Error('Failed to fetch revenue metrics');
+                throw new Error(tt("failedToFetchRevenueMetrics"));
             }
 
             return await response.json();
@@ -119,7 +122,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
             // Get Firebase token for authentication
             const currentFirebaseUser = auth.currentUser;
             if (!currentFirebaseUser) {
-                throw new Error("Firebase user not available");
+                throw new Error(tt("firebaseUserNotAvailable"));
             }
 
             const token = await currentFirebaseUser.getIdToken();
@@ -134,7 +137,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
             });
 
             if (!response.ok) {
-                throw new Error('Failed to fetch bookings');
+                throw new Error(tt("failedToFetchBookings"));
             }
 
             const contentType = response.headers.get('content-type');
@@ -167,7 +170,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
         queryFn: async () => {
             const currentFirebaseUser = auth.currentUser;
             if (!currentFirebaseUser) {
-                throw new Error("Firebase user not available");
+                throw new Error(tt("firebaseUserNotAvailable"));
             }
             const token = await currentFirebaseUser.getIdToken();
             const headers: HeadersInit = {
@@ -178,7 +181,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                 headers,
                 credentials: "include",
             });
-            if (!response.ok) throw new Error('Failed to fetch viewings');
+            if (!response.ok) throw new Error(tt("failedToFetchViewings"));
             return await response.json();
         },
         refetchInterval: 15000,
@@ -308,7 +311,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                     <CardContent className="p-6">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm font-medium text-muted-foreground">Pending Review</p>
+                                <p className="text-sm font-medium text-muted-foreground">{mt("pendingReview")}</p>
                                 <p className="text-3xl font-bold mt-1 text-foreground">{pendingBookings.length}</p>
                             </div>
                             <div className="p-3 bg-yellow-100 rounded-full">
@@ -322,7 +325,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                     <CardContent className="p-6">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm font-medium text-muted-foreground">Confirmed</p>
+                                <p className="text-sm font-medium text-muted-foreground">{mt("confirmed")}</p>
                                 <p className="text-3xl font-bold mt-1 text-foreground">{confirmedBookings.length}</p>
                             </div>
                             <div className="p-3 bg-green-100 rounded-full">
@@ -336,7 +339,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                     <CardContent className="p-6">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm font-medium text-muted-foreground">Total Bookings</p>
+                                <p className="text-sm font-medium text-muted-foreground">{mt("totalBookings")}</p>
                                 <p className="text-3xl font-bold mt-1 text-foreground">{bookings.length}</p>
                             </div>
                             <div className="p-3 bg-blue-100 rounded-full">
@@ -351,7 +354,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
             <Card>
                 <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-4 sm:space-y-0 pb-4">
                     <div className="flex items-center gap-3">
-                        <CardTitle className="text-xl">Booking Calendar</CardTitle>
+                        <CardTitle className="text-xl">{mt("bookingCalendar")}</CardTitle>
                         {isLoadingBookings && (
                             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
                         )}
@@ -359,19 +362,19 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                     <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground mt-2 sm:mt-0">
                         <div className="flex items-center gap-2">
                             <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                            <span>Pending Booking</span>
+                            <span>{mt("pendingBooking")}</span>
                         </div>
                         <div className="flex items-center gap-2">
                             <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                            <span>Confirmed Booking</span>
+                            <span>{mt("confirmedBooking")}</span>
                         </div>
                         <div className="flex items-center gap-2">
                             <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-                            <span>Viewing</span>
+                            <span>{mt("viewing")}</span>
                         </div>
                         <div className="flex items-center gap-2">
                             <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
-                            <span>Cancelled</span>
+                            <span>{mt("cancelled")}</span>
                         </div>
                     </div>
                 </CardHeader>
@@ -381,7 +384,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                             <div className="flex items-center justify-center py-12">
                                 <div className="text-center">
                                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-                                    <p className="text-muted-foreground">Loading bookings...</p>
+                                    <p className="text-muted-foreground">{mt("loadingBookings")}</p>
                                 </div>
                             </div>
                         ) : (
@@ -462,7 +465,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                         ) : getBookingsForDate(selectedDate).length === 0 && getViewingsForDate(selectedDate).length === 0 ? (
                             <div className="text-center py-8">
                                 <Clock className="h-12 w-12 text-muted mx-auto mb-3" />
-                                <p className="text-muted-foreground">No bookings or viewings on this date</p>
+                                <p className="text-muted-foreground">{mt("noBookingsOrViewingsOnThisDate")}</p>
                             </div>
                         ) : (
                             <div className="space-y-3">
@@ -529,7 +532,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                                                 {((booking.storageItems && booking.storageItems.length > 0) || 
                                                   (booking.equipmentItems && booking.equipmentItems.length > 0)) && (
                                                     <div className="mt-2 p-2 bg-background rounded border">
-                                                        <p className="text-xs font-medium text-muted-foreground mb-1.5">Add-ons:</p>
+                                                        <p className="text-xs font-medium text-muted-foreground mb-1.5">{mt("addOns")}</p>
                                                         <div className="flex flex-wrap gap-1.5">
                                                             {booking.storageItems?.map((item, idx) => (
                                                                 <Badge key={`s-${idx}`} variant="outline" className="text-xs gap-1">
@@ -548,7 +551,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                                                 )}
                                                 {booking.specialNotes && (
                                                     <div className="mt-2 p-2 bg-background rounded border text-xs text-muted-foreground">
-                                                        <span className="font-medium">Notes:</span> {booking.specialNotes}
+                                                        <span className="font-medium">{mt("notes")}</span> {booking.specialNotes}
                                                     </div>
                                                 )}
                                             </div>
@@ -557,9 +560,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                                                 size="sm"
                                                 onClick={() => onNavigate('bookings')}
                                                 className="w-full sm:w-auto text-primary hover:text-primary hover:bg-primary/10"
-                                            >
-                                                View Details
-                                            </Button>
+                                            >{mt("viewDetails")}</Button>
                                         </div>
                                     );
                                 })}
@@ -640,9 +641,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                                                 }}
                                                 className="w-full sm:w-auto text-purple-600 hover:text-purple-700 hover:bg-purple-50"
                                             >
-                                                <Eye className="w-4 h-4 mr-2" />
-                                                View Details
-                                            </Button>
+                                                <Eye className="w-4 h-4 mr-2" />{mt("viewDetails")}</Button>
                                         </div>
                                     );
                                 })}

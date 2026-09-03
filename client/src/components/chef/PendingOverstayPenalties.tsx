@@ -1,10 +1,11 @@
 import { logger } from "@/lib/logger";
 /**
  * PendingOverstayPenalties Component
- * 
+ *
  * Displays pending overstay penalties for chefs and allows them to pay via Stripe.
  */
 
+import { useTranslation } from "react-i18next";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,8 @@ import { AlertTriangle, CreditCard, Package, Calendar, Building2 } from "lucide-
 import { format } from "date-fns";
 import { auth } from "@/lib/firebase";
 import { toast } from "sonner";
+import { formatCurrency as formatCad } from "@shared/i18n";
+import { ct } from "@/i18n/chef-ns";
 
 interface PendingPenalty {
   overstayId: number;
@@ -52,11 +55,9 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   };
 }
 
-const formatCurrency = (cents: number) => {
-  return `$${(cents / 100).toFixed(2)} CAD`;
-};
-
 export function PendingOverstayPenalties() {
+  const { t, i18n } = useTranslation("chef");
+
   // Fetch pending penalties
   const { data: penalties = [], isLoading, error } = useQuery<PendingPenalty[]>({
     queryKey: ['/api/chef/overstay-penalties'],
@@ -66,7 +67,7 @@ export function PendingOverstayPenalties() {
         headers,
         credentials: 'include',
       });
-      if (!response.ok) throw new Error('Failed to fetch penalties');
+      if (!response.ok) throw new Error(ct("failedToFetchPenalties"));
       return response.json();
     },
     refetchInterval: 30000, // Refresh every 30 seconds
@@ -95,7 +96,7 @@ export function PendingOverstayPenalties() {
       }
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Failed to initiate payment');
+      toast.error(error.message || t("overstayPaymentFailed", "Failed to initiate payment"));
     },
   });
 
@@ -131,12 +132,20 @@ export function PendingOverstayPenalties() {
         <div className="flex items-center gap-2">
           <AlertTriangle className="h-5 w-5 text-destructive" />
           <CardTitle className="text-lg">
-            Outstanding Overstay Penalties
+            {t("overstayPenaltiesTitle", "Outstanding Overstay Penalties")}
           </CardTitle>
-          <Badge variant="destructive" className="text-xs">Payment required</Badge>
+          <Badge variant="destructive" className="text-xs">
+            {t("overstayPaymentRequired", "Payment required")}
+          </Badge>
         </div>
         <CardDescription>
-          You have {pendingPenalties.length} pending penalty{pendingPenalties.length !== 1 ? 'ies' : 'y'} that require{pendingPenalties.length === 1 ? 's' : ''} payment.
+          {t("overstayPenaltiesDesc", {
+            count: pendingPenalties.length,
+            defaultValue:
+              pendingPenalties.length === 1
+                ? "You have 1 pending penalty that requires payment."
+                : `You have ${pendingPenalties.length} pending penalties that require payment.`,
+          })}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -154,7 +163,7 @@ export function PendingOverstayPenalties() {
                     {penalty.storageType}
                   </Badge>
                 </div>
-                
+
                 <div className="flex items-center gap-4 text-sm text-muted-foreground">
                   <div className="flex items-center gap-1">
                     <Building2 className="h-3.5 w-3.5" />
@@ -162,20 +171,28 @@ export function PendingOverstayPenalties() {
                   </div>
                   <div className="flex items-center gap-1">
                     <Calendar className="h-3.5 w-3.5" />
-                    <span>Ended {format(new Date(penalty.bookingEndDate), "MMM d, yyyy")}</span>
+                    <span>
+                      {t("overstayEndedOn", {
+                        date: format(new Date(penalty.bookingEndDate), "MMM d, yyyy"),
+                        defaultValue: `Ended ${format(new Date(penalty.bookingEndDate), "MMM d, yyyy")}`,
+                      })}
+                    </span>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <Badge variant="destructive" className="text-xs">
-                    {penalty.daysOverdue} day{penalty.daysOverdue !== 1 ? 's' : ''} overdue
+                    {t("overstayDaysOverdue", {
+                      count: penalty.daysOverdue,
+                      defaultValue: `${penalty.daysOverdue} day${penalty.daysOverdue !== 1 ? "s" : ""} overdue`,
+                    })}
                   </Badge>
                 </div>
               </div>
 
               <div className="text-right space-y-2">
                 <div className="text-xl font-bold">
-                  {formatCurrency(penalty.penaltyAmountCents)}
+                  {formatCad(penalty.penaltyAmountCents, { locale: i18n.language })}
                 </div>
                 <Button
                   size="sm"
@@ -183,19 +200,27 @@ export function PendingOverstayPenalties() {
                   disabled={payMutation.isPending}
                 >
                   <CreditCard className="h-4 w-4 mr-1" />
-                  {payMutation.isPending ? 'Processing...' : 'Pay Now'}
+                  {payMutation.isPending
+                    ? t("processing", "Processing...")
+                    : t("payNow", "Pay Now")}
                 </Button>
               </div>
             </div>
 
             <p className="text-xs text-muted-foreground border-t pt-2">
-              Approved on {format(new Date(penalty.penaltyApprovedAt), "MMM d, yyyy 'at' h:mm a")}
+              {t("overstayApprovedOn", {
+                date: format(new Date(penalty.penaltyApprovedAt), "MMM d, yyyy 'at' h:mm a"),
+                defaultValue: `Approved on ${format(new Date(penalty.penaltyApprovedAt), "MMM d, yyyy 'at' h:mm a")}`,
+              })}
             </p>
           </div>
         ))}
 
         <p className="text-xs text-muted-foreground text-center pt-2">
-          Please pay your outstanding penalties to maintain good standing and continue using storage facilities.
+          {t(
+            "overstayPenaltiesFooter",
+            "Please pay your outstanding penalties to maintain good standing and continue using storage facilities."
+          )}
         </p>
       </CardContent>
     </Card>

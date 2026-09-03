@@ -70,7 +70,7 @@ export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginForm
       } else if (e.message.includes('too-many-requests')) {
         setFormError("Too many failed attempts. Please wait a moment before trying again.");
       } else if (e.message.includes('EMAIL_NOT_VERIFIED') || e.message.includes('verify your email')) {
-        setFormError("Please verify your email address before signing in. Check your inbox for a verification link.");
+        setFormError("Please verify your email before signing in. Check your inbox and spam folder for the verification link, then click it to continue.");
         setUnverifiedEmail(data.email);
         setUnverifiedPassword(data.password);
         setShowEmailVerification(true);
@@ -273,6 +273,9 @@ export default function LoginForm({ onSuccess, setHasAttemptedLogin }: LoginForm
           type="button"
           variant="ghost"
           className="text-sm text-blue-600 hover:text-blue-700 font-medium p-0 h-auto hover:bg-transparent hover:underline"
+          onClick={() => {
+            window.location.href = "/forgot-password";
+          }}
         >
           Forgot your password?
         </Button>

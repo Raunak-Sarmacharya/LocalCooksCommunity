@@ -214,7 +214,11 @@ function ChefSetupContent() {
     : t("chefSetupStepProgress", { current: currentStepIndex + 1, total: stepCount });
 
   return (
-    <div className="h-screen bg-background flex flex-col overflow-hidden">
+    <div
+      className="h-screen bg-background flex flex-col overflow-hidden"
+      data-testid="chef-onboarding"
+      data-onboarding-step={currentStepId}
+    >
       <TidioController
         userEmail={user?.email || undefined}
         userName={user?.displayName || undefined}
@@ -317,7 +321,7 @@ function ChefSetupContent() {
                   onClick={handleBack}
                   className="text-muted-foreground"
                 >
-                  Back
+                  {t("back", { ns: "common" })}
                 </Button>
               ) : (
                 <div className="hidden sm:block" />
@@ -331,13 +335,19 @@ function ChefSetupContent() {
                 )}
                 <div className="flex items-center justify-end gap-2">
                   {footer.showSkip && !isLastStep && (
-                    <Button variant="ghost" onClick={handleNext} className="text-muted-foreground">
+                    <Button
+                      variant="ghost"
+                      onClick={handleNext}
+                      className="text-muted-foreground"
+                      data-testid="chef-onboarding-skip"
+                    >
                       {footer.skipLabel}
                     </Button>
                   )}
                   <Button
                     onClick={footer.onPrimary}
                     disabled={footer.disabled}
+                    data-testid="chef-onboarding-primary"
                     size="lg"
                     className={cn(
                       "h-11 px-6 font-semibold shadow-md shadow-primary/20",

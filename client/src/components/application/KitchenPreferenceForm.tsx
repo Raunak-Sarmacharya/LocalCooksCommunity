@@ -36,7 +36,7 @@ export default function KitchenPreferenceForm() {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6" data-testid="seller-application-step-2">
         <div className="flex flex-col space-y-4">
           {(
             [
@@ -69,6 +69,7 @@ export default function KitchenPreferenceForm() {
               <button
                 key={option.value}
                 type="button"
+                data-testid={`seller-kitchen-preference-${option.value}`}
                 onClick={() => form.setValue("kitchenPreference", option.value)}
                 className={`w-full rounded-xl border p-4 sm:p-5 text-left transition-all duration-200 ${
                   selected
@@ -123,7 +124,7 @@ export default function KitchenPreferenceForm() {
             <ArrowLeft className="mr-2 h-4 w-4" />
             {t("sellerApp_back")}
           </Button>
-          <Button type="submit" size="lg" className="px-8">
+          <Button type="submit" size="lg" className="px-8" data-testid="seller-application-continue">
             {t("sellerApp_continue")}
             <ArrowRight className="ml-2 h-4 w-4" />
           </Button>

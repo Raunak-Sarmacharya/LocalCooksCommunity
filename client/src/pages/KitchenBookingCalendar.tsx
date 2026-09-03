@@ -1,7 +1,14 @@
 import { logger } from "@/lib/logger";
 import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, Package, Wrench, DollarSign, ChefHat, Lock, FileText, Loader2 } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
+import {
+  estimateBookingCheckoutTotal,
+  estimateKitchenBookingPrice,
+  type BookingPriceEstimate,
+} from "@/lib/booking-price-estimate";
+import { BookingPriceSummary } from "@/components/kitchen-application/BookingPriceSummary";
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { useKitchenBookings } from "../hooks/use-kitchen-bookings";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -68,6 +75,7 @@ function getCalendarDays(year: number, month: number) {
 }
 
 export default function KitchenBookingCalendar() {
+  const { t, i18n } = useTranslation("booking");
   const { kitchens, bookings, isLoadingKitchens, isLoadingBookings, getAvailableSlots, createBooking, cancelBooking, kitchensQuery } = useKitchenBookings();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -77,6 +85,19 @@ export default function KitchenBookingCalendar() {
   const urlParams = new URLSearchParams(window.location.search);
   const locationParam = urlParams.get('location');
   const locationFilterId = locationParam ? parseInt(locationParam) : null;
+
+  // Book CTAs use KitchenBookingSheet via dashboard deep link — don't leave chefs on this orphaned calendar page.
+  const shouldRedirectToSheet =
+    !!locationFilterId &&
+    !Number.isNaN(locationFilterId) &&
+    !urlParams.get("date") &&
+    !urlParams.get("slots") &&
+    !urlParams.get("kitchen");
+
+  useEffect(() => {
+    if (!shouldRedirectToSheet) return;
+    setLocation(`/dashboard?bookLocation=${locationFilterId}`, { replace: true });
+  }, [shouldRedirectToSheet, locationFilterId, setLocation]);
 
   const filteredKitchens = useMemo(() => {
     if (!locationFilterId) {
@@ -168,24 +189,24 @@ export default function KitchenBookingCalendar() {
 
   // Memoize cancel handler to prevent re-renders
   const handleCancelBooking = useCallback((bookingId: number) => {
-    if (window.confirm("Are you sure you want to cancel this booking?")) {
+    if (window.confirm(t("kbcConfirmCancelBooking"))) {
       cancelBooking.mutate({ bookingId }, {
         onSuccess: () => {
           toast({
-            title: "Booking Cancelled",
-            description: "Your booking has been cancelled successfully.",
+            title: t("kbcBookingCancelledTitle"),
+            description: t("kbcBookingCancelledDesc"),
           });
         },
         onError: (error: any) => {
           toast({
-            title: "Cancellation Failed",
-            description: error.message || "Failed to cancel booking. Please try again.",
+            title: t("kbcCancellationFailedTitle"),
+            description: error.message || t("kbcCancellationFailedDesc"),
             variant: "destructive",
           });
         },
       });
     }
-  }, [cancelBooking, toast]);
+  }, [cancelBooking, toast, t]);
 
   // Step 1: Kitchen Selection
   const [selectedKitchen, setSelectedKitchen] = useState<any | null>(null);
@@ -221,6 +242,8 @@ export default function KitchenBookingCalendar() {
     hourlyRate: number | null;
     currency: string;
     minimumBookingHours: number;
+    taxRatePercent: number;
+    platformCommissionRate: number;
   } | null>(null);
   const [estimatedPrice, setEstimatedPrice] = useState<{
     basePrice: number;
@@ -285,37 +308,88 @@ export default function KitchenBookingCalendar() {
     };
   }, [selectedEquipmentIds, equipmentListings.rental]);
 
-  // Calculate combined subtotal (kitchen base + storage base + equipment base)
-  // All values are in CENTS for consistency with formatCurrency
+  // Kitchen + add-on subtotal (pre-tax), in cents
   const combinedSubtotal = useMemo(() => {
-    const kitchenBase = estimatedPrice?.basePrice || 0; // Already in cents
-    // Storage and equipment pricing are already in cents from the API
+    const kitchenBase = estimatedPrice?.basePrice || 0;
     const storageBaseCents = storagePricing.subtotal || 0;
     const equipmentBaseCents = equipmentPricing.subtotal || 0;
     return kitchenBase + storageBaseCents + equipmentBaseCents;
   }, [estimatedPrice?.basePrice, storagePricing.subtotal, equipmentPricing.subtotal]);
 
-  // Calculate tax on combined subtotal
-  const tax = useMemo(() => {
-    const subtotalCents = combinedSubtotal; // Already in cents
-    if (subtotalCents <= 0) return 0;
-    
-    // Tax rate is stored as a percentage (e.g., 5 for 5%, 13 for 13%)
-    // If not set, default to 0
-    const taxRatePercent = selectedKitchen?.taxRatePercent || 0;
-    
-    // Calculate tax: (subtotal * taxRate) / 100
-    // Result is in cents
-    return Math.round((subtotalCents * taxRatePercent) / 100);
-  }, [combinedSubtotal, selectedKitchen?.taxRatePercent]);
+  const taxRatePercent =
+    kitchenPricing?.taxRatePercent ?? selectedKitchen?.taxRatePercent ?? 0;
+  const platformCommissionRate = kitchenPricing?.platformCommissionRate ?? 0;
 
-  // Calculate grand total (subtotal + tax)
-  const grandTotal = useMemo(() => {
-    return combinedSubtotal + tax;
-  }, [combinedSubtotal, tax]);
+  const bookingPriceEstimate = useMemo((): BookingPriceEstimate | null => {
+    if (!kitchenPricing?.hourlyRate || selectedSlots.length === 0) return null;
 
-  const monthNames = ["January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"];
+    const kitchenOnly = estimateKitchenBookingPrice({
+      hourlyRateCents: kitchenPricing.hourlyRate,
+      hours: selectedSlots.length,
+      minimumBookingHours: kitchenPricing.minimumBookingHours ?? 1,
+      taxRatePercent,
+      platformCommissionRate,
+    });
+
+    const addonCents =
+      (storagePricing.subtotal || 0) + (equipmentPricing.subtotal || 0);
+    if (addonCents === 0) return kitchenOnly;
+
+    const checkout = estimateBookingCheckoutTotal({
+      subtotalCents: kitchenOnly.basePriceCents + addonCents,
+      taxRatePercent,
+      platformCommissionRate,
+    });
+
+    return {
+      durationHours: kitchenOnly.durationHours,
+      basePriceCents: kitchenOnly.basePriceCents,
+      taxCents: checkout.taxCents,
+      serviceFeeCents: checkout.serviceFeeCents,
+      taxesAndFeesCents: checkout.taxesAndFeesCents,
+      totalCents: checkout.totalCents,
+      taxRatePercent: checkout.taxRatePercent,
+      platformCommissionRate: checkout.platformCommissionRate,
+    };
+  }, [
+    kitchenPricing,
+    selectedSlots.length,
+    taxRatePercent,
+    platformCommissionRate,
+    storagePricing.subtotal,
+    equipmentPricing.subtotal,
+  ]);
+
+  const bookingExtraLineItems = useMemo(() => {
+    const lines: Array<{ label: string; amountCents: number }> = [];
+    if (equipmentPricing.subtotal > 0) {
+      lines.push({
+        label: t("kbcEquipmentSubtotal", {
+          count: equipmentPricing.items.length,
+          defaultValue: `Equipment (${equipmentPricing.items.length})`,
+        }),
+        amountCents: equipmentPricing.subtotal,
+      });
+    }
+    if (storagePricing.subtotal > 0) {
+      lines.push({
+        label: t("kbcStorageSubtotal", {
+          count: storagePricing.items.length,
+          defaultValue: `Storage (${storagePricing.items.length})`,
+        }),
+        amountCents: storagePricing.subtotal,
+      });
+    }
+    return lines;
+  }, [equipmentPricing, storagePricing, t]);
+
+  const monthNames = useMemo(
+    () =>
+      Array.from({ length: 12 }, (_, m) =>
+        new Intl.DateTimeFormat(i18n.language, { month: "long" }).format(new Date(2000, m, 1))
+      ),
+    [i18n.language]
+  );
 
   // Util to get local YYYY-MM-DD
   const toLocalDateString = (d: Date) => {
@@ -430,8 +504,8 @@ export default function KitchenBookingCalendar() {
 
       if (slots.length === 0) {
         toast({
-          title: "Kitchen closed",
-          description: "This date has no operating hours set.",
+          title: t("toastKitchenClosedTitle"),
+          description: t("toastKitchenClosedDesc"),
           variant: "destructive",
         });
       }
@@ -439,8 +513,8 @@ export default function KitchenBookingCalendar() {
       logger.error("Error loading slots:", error);
       setAllSlots([]);
       toast({
-        title: "Error",
-        description: (error as Error)?.message || "Failed to load time slots. Please try again.",
+        title: t("toastGenericErrorTitle"),
+        description: (error as Error)?.message || t("toastLoadSlotsFailedDesc"),
         variant: "destructive",
       });
     } finally {
@@ -597,8 +671,10 @@ export default function KitchenBookingCalendar() {
           hourlyRate: hourlyRateCents,
           currency: pricing.currency || 'CAD',
           minimumBookingHours: pricing.minimumBookingHours || 1,
+          taxRatePercent: Math.max(0, Number(pricing.taxRatePercent) || 0),
+          platformCommissionRate: Math.max(0, Number(pricing.platformCommissionRate) || 0),
         });
-        logger.info('✅ Set kitchenPricing state:', { hourlyRate: hourlyRateCents, currency: pricing.currency || 'CAD', minimumBookingHours: pricing.minimumBookingHours || 1 });
+        logger.info('✅ Set kitchenPricing state:', { hourlyRate: hourlyRateCents, currency: pricing.currency || 'CAD', minimumBookingHours: pricing.minimumBookingHours || 1, taxRatePercent: pricing.taxRatePercent, platformCommissionRate: pricing.platformCommissionRate });
       } else if (response.status === 404) {
         // No pricing set yet - this is expected
         logger.info('ℹ️ No pricing set for kitchen:', kitchen.id);
@@ -606,6 +682,8 @@ export default function KitchenBookingCalendar() {
           hourlyRate: null,
           currency: 'CAD',
           minimumBookingHours: 1,
+          taxRatePercent: 0,
+          platformCommissionRate: 0,
         });
       } else {
         const errorText = await response.text();
@@ -615,6 +693,8 @@ export default function KitchenBookingCalendar() {
           hourlyRate: null,
           currency: 'CAD',
           minimumBookingHours: 1,
+          taxRatePercent: 0,
+          platformCommissionRate: 0,
         });
       }
     } catch (error) {
@@ -623,6 +703,8 @@ export default function KitchenBookingCalendar() {
         hourlyRate: null,
         currency: 'CAD',
         minimumBookingHours: 1,
+        taxRatePercent: 0,
+        platformCommissionRate: 0,
       });
     }
 
@@ -681,8 +763,8 @@ export default function KitchenBookingCalendar() {
             if (date >= new Date(new Date().setHours(0, 0, 0, 0))) {
               setSelectedDate(date);
               toast({
-                title: "Dates Restored",
-                description: "Your previously selected dates have been restored. You can now complete your booking!",
+                title: t("kbcDatesRestoredTitle"),
+                description: t("kbcDatesRestoredDesc"),
               });
             }
           });
@@ -695,8 +777,8 @@ export default function KitchenBookingCalendar() {
              if (date >= new Date(new Date().setHours(0, 0, 0, 0))) {
                setSelectedDate(date);
                toast({
-                 title: "Dates Restored",
-                 description: "Your previously selected dates have been restored. You can now complete your booking!",
+                 title: t("kbcDatesRestoredTitle"),
+                 description: t("kbcDatesRestoredDesc"),
                });
              }
              if (intentKey) sessionStorage.removeItem(intentKey);
@@ -765,8 +847,8 @@ export default function KitchenBookingCalendar() {
     // Don't allow selecting fully booked slots
     if (slot.isFullyBooked) {
       toast({
-        title: "Slot Fully Booked",
-        description: "This time slot is already at maximum capacity.",
+        title: t("toastSlotFullyBookedTitle"),
+        description: t("toastSlotFullyBookedDesc"),
         variant: "destructive",
       });
       return;
@@ -781,8 +863,8 @@ export default function KitchenBookingCalendar() {
         return [...prev, slot.time].sort();
       } else {
         toast({
-          title: "Limit reached",
-          description: `You can select up to ${maxSlotsPerChef} hour slot${maxSlotsPerChef > 1 ? 's' : ''} for this day.`,
+          title: t("toastLimitReachedTitle"),
+          description: t("toastLimitReachedDesc", { count: maxSlotsPerChef }),
           variant: "destructive",
         });
         return prev;
@@ -797,8 +879,11 @@ export default function KitchenBookingCalendar() {
     const minHours = kitchenPricing?.minimumBookingHours ?? 0;
     if (minHours > 0 && selectedSlots.length < minHours) {
       toast({
-        title: "Minimum Booking Required",
-        description: `This kitchen requires a minimum of ${minHours} hour${minHours > 1 ? 's' : ''} per booking. You have selected ${selectedSlots.length}.`,
+        title: t("toastMinBookingRequiredTitle"),
+        description: t("toastMinBookingRequiredDesc", {
+          minHours,
+          selected: selectedSlots.length,
+        }),
         variant: "destructive",
       });
       return;
@@ -843,8 +928,8 @@ export default function KitchenBookingCalendar() {
           const addonsCount = selectedEquipmentIds.length;
           const addonsMsg = addonsCount > 0 ? ` with ${addonsCount} equipment add-on${addonsCount > 1 ? 's' : ''}` : '';
           toast({
-            title: "Booking Created!",
-            description: `Your ${sortedSlots.length} hour${sortedSlots.length > 1 ? 's' : ''} kitchen booking${addonsMsg} has been submitted successfully.`,
+            title: t("toastBookingCreatedTitle"),
+            description: t("toastBookingCreatedDesc", { count: sortedSlots.length }),
           });
           setSelectedSlots([]);
           setNotes("");
@@ -858,8 +943,8 @@ export default function KitchenBookingCalendar() {
         },
         onError: (error: any) => {
           toast({
-            title: "Booking Failed",
-            description: error.message || "Failed to create booking. Please try again.",
+            title: t("toastBookingFailedTitle"),
+            description: error.message || t("toastBookingFailedDefaultDesc"),
             variant: "destructive",
           });
         },
@@ -932,15 +1017,23 @@ export default function KitchenBookingCalendar() {
   const isToday = (date: Date) => date.toDateString() === today.toDateString();
   const isPast = (date: Date) => date < new Date(new Date().setHours(0, 0, 0, 0));
 
+  if (shouldRedirectToSheet) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <SEOHead
-        title="Book a Kitchen — Commercial Kitchen Booking"
-        description="Browse and book available commercial kitchens in St. John's, Newfoundland. View real-time availability, compare amenities, and reserve your time slot instantly on LocalCooks."
+        title={t("kbcSeoTitle")}
+        description={t("kbcSeoDesc")}
         canonicalUrl="/book-kitchen"
         breadcrumbs={[
           { name: "LocalCooks", url: "https://chef.localcooks.ca/" },
-          { name: "Book a Kitchen", url: "https://chef.localcooks.ca/book-kitchen" },
+          { name: t("kbcBreadcrumbBook"), url: "https://chef.localcooks.ca/book-kitchen" },
         ]}
       />
       <Header />
@@ -948,15 +1041,15 @@ export default function KitchenBookingCalendar() {
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 max-w-7xl">
           {/* Header */}
           <div className="mb-6 sm:mb-8">
-            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900">Book a Kitchen</h1>
-            <p className="text-gray-600 mt-2 text-sm sm:text-base md:text-lg">Reserve a professional kitchen space for your culinary needs</p>
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900">{t("kbcPageTitle")}</h1>
+            <p className="text-gray-600 mt-2 text-sm sm:text-base md:text-lg">{t("kbcPageSubtitle")}</p>
           </div>
 
           {/* Loading State */}
           {isLoadingKitchens && (
-            <div className="text-center py-12">
+            <div className="text-center py-12" data-testid="booking-kitchens-loading">
               <Loader2 className="h-12 w-12 animate-spin text-muted-foreground inline-block" />
-              <p className="text-gray-600 mt-4">Loading kitchens...</p>
+              <p className="text-gray-600 mt-4">{t("kbcLoadingKitchens")}</p>
             </div>
           )}
 
@@ -965,9 +1058,9 @@ export default function KitchenBookingCalendar() {
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 sm:p-6">
               <div className="flex items-center gap-2 sm:gap-3 mb-2">
                 <AlertCircle className="h-5 w-5 sm:h-6 sm:w-6 text-red-600 flex-shrink-0" />
-                <h3 className="text-base sm:text-lg font-semibold text-red-900">Error Loading Kitchens</h3>
+                <h3 className="text-base sm:text-lg font-semibold text-red-900">{t("kbcErrorLoadingKitchens")}</h3>
               </div>
-              <p className="text-sm sm:text-base text-red-700">{(kitchensQuery.error as Error)?.message || "Failed to fetch kitchens"}</p>
+              <p className="text-sm sm:text-base text-red-700">{(kitchensQuery.error as Error)?.message || t("kbcFailedFetchKitchens")}</p>
             </div>
           )}
 
@@ -976,12 +1069,12 @@ export default function KitchenBookingCalendar() {
             <div className="bg-white border border-gray-200 rounded-xl p-6 sm:p-8 md:p-12 text-center">
               <Building className="h-12 w-12 sm:h-16 sm:w-16 text-gray-400 mx-auto mb-3 sm:mb-4" />
               <h2 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-2 px-4">
-                {locationFilterId ? "No Kitchens Available at This Location" : "No Kitchens Available"}
+                {locationFilterId ? t("kbcNoKitchensAtLocation") : t("kbcNoKitchens")}
               </h2>
               <p className="text-sm sm:text-base text-gray-600 max-w-md mx-auto px-4">
                 {locationFilterId
-                  ? "There are currently no commercial kitchens available for booking at this location. Please check back later or contact support."
-                  : "There are currently no commercial kitchens available for booking. Please check back later or contact support."}
+                  ? t("kbcNoKitchensAtLocationDesc")
+                  : t("kbcNoKitchensDesc")}
               </p>
             </div>
           )}
@@ -1040,6 +1133,7 @@ export default function KitchenBookingCalendar() {
                               <button
                                 key={kitchen.id}
                                 onClick={() => handleKitchenSelect(kitchen)}
+                                data-testid={`booking-kitchen-${kitchen.id}`}
                                 className="group p-4 sm:p-5 rounded-lg border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-all text-left mobile-touch-target"
                               >
                                 <h4 className="font-semibold text-sm sm:text-base text-gray-900 group-hover:text-blue-600 mb-1.5 sm:mb-2">{kitchen.name}</h4>
@@ -1244,7 +1338,7 @@ export default function KitchenBookingCalendar() {
                         <button
                           onClick={() => navigateMonth('prev')}
                           className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg transition-colors mobile-touch-target"
-                          aria-label="Previous month"
+                          aria-label={t("kbcPrevMonthAria")}
                         >
                           <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />
                         </button>
@@ -1256,7 +1350,7 @@ export default function KitchenBookingCalendar() {
                         <button
                           onClick={() => navigateMonth('next')}
                           className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg transition-colors mobile-touch-target"
-                          aria-label="Next month"
+                          aria-label={t("kbcNextMonthAria")}
                         >
                           <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />
                         </button>
@@ -1311,6 +1405,7 @@ export default function KitchenBookingCalendar() {
                                 key={index}
                                 onClick={() => !isPastDate && isCurrent && canSelectDate && handleDateClick(date)}
                                 disabled={isDisabled}
+                                data-testid={`booking-date-${toLocalDateString(date)}`}
                                 className={`
                                   aspect-square p-1 sm:p-2 rounded-lg border transition-all
                                   ${bgColor} ${borderColor} ${textColor} ${isDisabled ? 'cursor-not-allowed' : cursor}
@@ -1356,25 +1451,25 @@ export default function KitchenBookingCalendar() {
                               <Lock className="w-5 h-5 text-[#F51042]" />
                             </div>
                             <p className="text-sm font-semibold text-gray-800 mb-1">
-                              Apply to book
+                              {t("kbcApplyToBookTitle")}
                             </p>
                             <p className="text-xs text-gray-500 mb-4">
                               {!hasApplication
-                                ? "Submit an application to book this kitchen"
+                                ? t("kbcApplyToBookOverlay")
                                 : application?.status === 'inReview'
-                                  ? "Your application is pending manager review"
+                                  ? t("kbcPendingReviewOverlay")
                                   : application?.status === 'rejected'
-                                    ? "Your application was rejected. Re-apply with updated documents"
+                                    ? t("kbcRejectedOverlay")
                                     : ((application as any)?.current_tier ?? 1) >= 3
-                                      ? "All tiers completed. You can now book kitchens."
-                                      : "Complete all application tiers to book kitchens"}
+                                      ? t("kbcAllTiersCompleteOverlay")
+                                      : t("kbcCompleteTiersOverlay")}
                             </p>
                             <button
                               onClick={() => setLocation(`/apply-kitchen/${selectedLocationId}`)}
                               className="w-full px-4 py-2 bg-[#F51042] hover:bg-[#D90E3A] text-white rounded-lg font-medium transition-colors text-sm flex items-center justify-center gap-2"
                             >
                               <FileText className="w-4 h-4" />
-                              {!hasApplication ? "Apply to Kitchen" : "View Application"}
+                              {!hasApplication ? t("kbcApplyToKitchen") : t("kbcViewApplication")}
                             </button>
                           </div>
                         </div>
@@ -1385,7 +1480,7 @@ export default function KitchenBookingCalendar() {
                         <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-xl">
                           <div className="text-center">
                             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mx-auto mb-2" />
-                            <p className="text-sm text-gray-600">Checking application status...</p>
+                            <p className="text-sm text-gray-600">{t("kbcCheckingApplication")}</p>
                           </div>
                         </div>
                       )}
@@ -1431,6 +1526,7 @@ export default function KitchenBookingCalendar() {
 
                                 setLocation(`/book-kitchen/confirm?${params.toString()}`);
                               }}
+                              data-testid="booking-continue"
                               className="w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors flex items-center justify-center gap-2 min-h-[44px] text-sm sm:text-base"
                             >
                               Continue
@@ -1455,7 +1551,7 @@ export default function KitchenBookingCalendar() {
                              into a tiny spinner block while slots are fetched. */
                           <div
                             role="status"
-                            aria-label="Loading available time slots"
+                            aria-label={t("sheetLoadingSlotsAria")}
                             aria-live="polite"
                           >
                             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
@@ -1519,6 +1615,7 @@ export default function KitchenBookingCalendar() {
                                     key={slot.time}
                                     onClick={() => handleSlotClick(slot)}
                                     disabled={isFullyBooked}
+                                    data-testid={`booking-slot-${slot.time.replace(':', '')}`}
                                     className={`
                                       relative p-2.5 sm:p-4 border-2 rounded-lg sm:rounded-xl transition-all font-medium text-center
                                       ${statusBg} ${statusColor} ${statusText} ${cursorStyle}
@@ -1585,29 +1682,33 @@ export default function KitchenBookingCalendar() {
                               </div>
                             </div>
 
-                            {selectedSlots.length > 0 && (
-                              <div className="mt-3 sm:mt-4 p-3 sm:p-4 bg-green-50 border border-green-200 rounded-lg">
-                                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
-                                  <div className="flex-1">
-                                    <p className="text-xs sm:text-sm font-medium text-green-900">
-                                      {selectedSlots.length} hour{selectedSlots.length > 1 ? 's' : ''} selected
-                                    </p>
-                                    <p className="text-[10px] sm:text-xs text-green-700 mt-0.5 sm:mt-1">
-                                      Duration: {selectedSlots.length} {selectedSlots.length === 1 ? 'hour' : 'hours'}
-                                    </p>
-                                    {estimatedPrice && (
-                                      <p className="text-xs sm:text-sm font-semibold text-green-900 mt-1.5 sm:mt-2">
-                                        Estimated Total: {formatCurrency(combinedSubtotal)} {kitchenPricing?.currency || 'CAD'}
-                                      </p>
-                                    )}
-                                  </div>
+                            {selectedSlots.length > 0 && bookingPriceEstimate && kitchenPricing?.hourlyRate && (
+                              <div className="mt-3 sm:mt-4 space-y-2">
+                                <div className="flex items-center justify-between text-xs sm:text-sm text-green-800 px-1">
+                                  <span className="font-medium">
+                                    {selectedSlots.length} hour{selectedSlots.length > 1 ? "s" : ""} selected
+                                  </span>
                                   <button
+                                    type="button"
                                     onClick={() => setSelectedSlots([])}
-                                    className="text-xs sm:text-sm text-green-700 hover:text-green-900 font-medium underline mobile-touch-target py-1"
+                                    className="text-green-700 hover:text-green-900 font-medium underline mobile-touch-target"
                                   >
-                                    Clear Selection
+                                    Clear
                                   </button>
                                 </div>
+                                <BookingPriceSummary
+                                  compact
+                                  hideDisclaimer
+                                  estimate={bookingPriceEstimate}
+                                  hourlyRateCents={kitchenPricing.hourlyRate}
+                                  currency={kitchenPricing.currency}
+                                  extraLineItems={
+                                    bookingExtraLineItems.length > 0
+                                      ? bookingExtraLineItems
+                                      : undefined
+                                  }
+                                  className="border-green-200 bg-green-50/50"
+                                />
                               </div>
                             )}
                           </>

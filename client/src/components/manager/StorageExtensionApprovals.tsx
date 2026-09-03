@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { mt } from "@/i18n/manager";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Check, X, Package, Clock, AlertCircle, CheckCircle, Calendar, ChefHat } from "lucide-react";
@@ -30,6 +31,7 @@ interface PendingStorageExtension {
 }
 
 export function StorageExtensionApprovals() {
+  
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
@@ -43,7 +45,7 @@ export function StorageExtensionApprovals() {
       const headers = await getAuthHeaders();
       const response = await fetch('/api/manager/storage-extensions/pending', { headers });
       if (!response.ok) {
-        throw new Error('Failed to fetch pending extensions');
+        throw new Error(mt("failedToFetchPendingExtensions"));
       }
       return response.json() as Promise<PendingStorageExtension[]>;
     },
@@ -64,15 +66,13 @@ export function StorageExtensionApprovals() {
       return response.json();
     },
     onSuccess: () => {
-      toast({
-        title: "Extension Approved",
-        description: "The storage booking has been extended successfully.",
+      toast({ title: mt("extensionApproved"),
+        description: mt("theStorageBookingHasBeenExtendedSuccessfully"),
       });
       queryClient.invalidateQueries({ queryKey: ['/api/manager/storage-extensions/pending'] });
     },
     onError: (error: Error) => {
-      toast({
-        title: "Approval Failed",
+      toast({ title: mt("approvalFailed"),
         description: error.message,
         variant: "destructive",
       });
@@ -95,9 +95,8 @@ export function StorageExtensionApprovals() {
       return response.json();
     },
     onSuccess: () => {
-      toast({
-        title: "Extension Rejected",
-        description: "The extension request has been rejected. A refund will be processed.",
+      toast({ title: mt("extensionRejected"),
+        description: mt("theExtensionRequestHasBeenRejectedARefundWillBeProcessed"),
       });
       queryClient.invalidateQueries({ queryKey: ['/api/manager/storage-extensions/pending'] });
       setRejectDialogOpen(false);
@@ -105,8 +104,7 @@ export function StorageExtensionApprovals() {
       setRejectionReason("");
     },
     onError: (error: Error) => {
-      toast({
-        title: "Rejection Failed",
+      toast({ title: mt("rejectionFailed"),
         description: error.message,
         variant: "destructive",
       });
@@ -140,10 +138,8 @@ export function StorageExtensionApprovals() {
               <Package className="h-4 w-4 text-muted-foreground" />
             </div>
             <div>
-              <CardTitle className="text-base">Storage Extension Requests</CardTitle>
-              <CardDescription className="text-xs">
-                Review and approve storage booking extension requests
-              </CardDescription>
+              <CardTitle className="text-base">{mt("storageExtensionRequests")}</CardTitle>
+              <CardDescription className="text-xs">{mt("reviewAndApproveStorageBookingExtensionRequests")}</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -165,17 +161,15 @@ export function StorageExtensionApprovals() {
               <Package className="h-4 w-4 text-muted-foreground" />
             </div>
             <div>
-              <CardTitle className="text-base">Storage Extension Requests</CardTitle>
-              <CardDescription className="text-xs">
-                Review and approve storage booking extension requests
-              </CardDescription>
+              <CardTitle className="text-base">{mt("storageExtensionRequests")}</CardTitle>
+              <CardDescription className="text-xs">{mt("reviewAndApproveStorageBookingExtensionRequests")}</CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col items-center justify-center py-6 text-center">
             <CheckCircle className="h-8 w-8 text-muted-foreground/40 mb-2" />
-            <p className="text-sm text-muted-foreground">No pending extension requests</p>
+            <p className="text-sm text-muted-foreground">{mt("noPendingExtensionRequests")}</p>
           </div>
         </CardContent>
       </Card>
@@ -192,12 +186,8 @@ export function StorageExtensionApprovals() {
                 <Package className="h-4 w-4 text-amber-600" />
               </div>
               <div>
-                <CardTitle className="text-base">
-                  Storage Extension Requests
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  Review and approve storage booking extension requests
-                </CardDescription>
+                <CardTitle className="text-base">{mt("storageExtensionRequests")}</CardTitle>
+                <CardDescription className="text-xs">{mt("reviewAndApproveStorageBookingExtensionRequests")}</CardDescription>
               </div>
             </div>
             <Badge variant="warning">
@@ -247,18 +237,14 @@ export function StorageExtensionApprovals() {
                   onClick={() => handleRejectClick(extension)}
                   disabled={rejectMutation.isPending}
                 >
-                  <X className="h-3.5 w-3.5 mr-1" />
-                  Reject
-                </Button>
+                  <X className="h-3.5 w-3.5 mr-1" />{mt("reject")}</Button>
                 <Button
                   size="sm"
                   className="h-8"
                   onClick={() => handleApprove(extension)}
                   disabled={approveMutation.isPending}
                 >
-                  <Check className="h-3.5 w-3.5 mr-1" />
-                  Approve
-                </Button>
+                  <Check className="h-3.5 w-3.5 mr-1" />{mt("approve")}</Button>
               </div>
             </div>
           ))}
@@ -270,9 +256,7 @@ export function StorageExtensionApprovals() {
         <SheetContent className="w-full sm:max-w-md">
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2 text-red-600">
-              <AlertCircle className="h-5 w-5" />
-              Reject Extension Request
-            </SheetTitle>
+              <AlertCircle className="h-5 w-5" />{mt("rejectExtensionRequest")}</SheetTitle>
             <SheetDescription>
               {selectedExtension?.status === 'authorized'
               ? "Are you sure you want to reject this extension request? The payment hold will be released — the chef will not be charged."
@@ -290,10 +274,10 @@ export function StorageExtensionApprovals() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="reason">Reason for rejection (optional)</Label>
+                <Label htmlFor="reason">{mt("reasonForRejectionOptional")}</Label>
                 <Textarea
                   id="reason"
-                  placeholder="e.g., Storage space is already reserved for another chef..."
+                  placeholder={mt("eGStorageSpaceIsAlreadyReservedForAnotherChef")}
                   value={rejectionReason}
                   onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setRejectionReason(e.target.value)}
                 />
@@ -309,9 +293,7 @@ export function StorageExtensionApprovals() {
                 setSelectedExtension(null);
                 setRejectionReason("");
               }}
-            >
-              Cancel
-            </Button>
+            >{mt("cancel")}</Button>
             <Button
               variant="destructive"
               onClick={handleRejectConfirm}

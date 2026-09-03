@@ -25,6 +25,7 @@ import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { formatCurrency } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 import { SmartImage } from "@/components/ui/smart-image";
+import { tt } from "@/i18n/common-ns";
 
 interface PublicLocation {
   id: number;
@@ -95,7 +96,7 @@ function BrowseLocationCard({
       case "apply":
         return t("applyToBook", "Apply to Book");
       case "guest":
-        return t("signInToBook", "Sign In to Book");
+        return t("viewDetails", "View Details");
     }
   })();
 
@@ -184,27 +185,35 @@ function BrowseLocationCard({
         </div>
 
         <div className="mt-auto flex flex-col gap-2">
+          {/* Guests: View Details only — sign-in happens on preview / book flow */}
+          {action.kind !== "guest" && (
+            <Button
+              disabled={primaryDisabled}
+              className={cn(
+                "min-h-[44px] flex-1 rounded-full font-semibold",
+                primaryDisabled
+                  ? "bg-[#2C2C2C]/10 text-[#6B6B6B] hover:bg-[#2C2C2C]/10"
+                  : "bg-[#F51042] text-white hover:bg-[#D90E3A]"
+              )}
+              onClick={onPrimaryAction}
+            >
+              {action.kind === "book" && <Calendar className="mr-1.5 h-3.5 w-3.5" />}
+              {primaryLabel}
+              {!primaryDisabled && <ArrowRight className="ml-1.5 h-3.5 w-3.5" />}
+            </Button>
+          )}
           <Button
-            disabled={primaryDisabled}
+            variant={action.kind === "guest" ? "default" : "outline"}
             className={cn(
               "min-h-[44px] flex-1 rounded-full font-semibold",
-              primaryDisabled
-                ? "bg-[#2C2C2C]/10 text-[#6B6B6B] hover:bg-[#2C2C2C]/10"
-                : "bg-[#F51042] text-white hover:bg-[#D90E3A]"
+              action.kind === "guest"
+                ? "bg-[#F51042] text-white hover:bg-[#D90E3A]"
+                : "border-[#2C2C2C]/15 text-[#2C2C2C] hover:border-[#F51042] hover:bg-[#F51042]/5 hover:text-[#F51042]"
             )}
-            onClick={onPrimaryAction}
-          >
-            {action.kind === "guest" && <Lock className="mr-1.5 h-3.5 w-3.5" />}
-            {action.kind === "book" && <Calendar className="mr-1.5 h-3.5 w-3.5" />}
-            {primaryLabel}
-            {!primaryDisabled && <ArrowRight className="ml-1.5 h-3.5 w-3.5" />}
-          </Button>
-          <Button
-            variant="outline"
-            className="min-h-[44px] flex-1 rounded-full border-[#2C2C2C]/15 font-semibold text-[#2C2C2C] hover:border-[#F51042] hover:bg-[#F51042]/5 hover:text-[#F51042]"
             onClick={onViewDetails}
           >
             {t("viewDetails", "View Details")}
+            {action.kind === "guest" && <ArrowRight className="ml-1.5 h-3.5 w-3.5" />}
           </Button>
         </div>
       </div>
@@ -245,7 +254,7 @@ export default function KitchenComparisonPage() {
     queryKey: ["/api/public/locations"],
     queryFn: async () => {
       const response = await fetch("/api/public/locations");
-      if (!response.ok) throw new Error("Failed to fetch locations");
+      if (!response.ok) throw new Error(tt("failedToFetchLocations"));
       return response.json();
     },
     staleTime: 60_000,
@@ -300,7 +309,7 @@ export default function KitchenComparisonPage() {
     const redirectPreview = `/kitchen-preview/${location?.slug || locationId}`;
     switch (action.kind) {
       case "book":
-        navigate(`/book-kitchen?location=${locationId}`);
+        navigate(`/dashboard?bookLocation=${locationId}`);
         break;
       case "continue":
       case "apply":
@@ -354,7 +363,7 @@ export default function KitchenComparisonPage() {
                   className="px-0 text-[#6B6B6B] hover:bg-transparent hover:text-[#F51042]"
                 >
                   <ArrowLeft className="mr-2 h-4 w-4" />
-                  Back to Dashboard
+                  {t("backToDashboard")}
                 </Button>
               </div>
             </FadeInSection>
@@ -444,7 +453,7 @@ export default function KitchenComparisonPage() {
                     className="mt-6 rounded-full border-[#F51042]/30 text-[#F51042] hover:bg-[#F51042]/5"
                     onClick={() => setSearchQuery("")}
                   >
-                    Clear search
+                    {t("clearSearch")}
                   </Button>
                 )}
               </div>
@@ -476,7 +485,7 @@ export default function KitchenComparisonPage() {
                     onClick={() => navigate("/auth?redirect=/compare-kitchens")}
                     className="font-medium text-[#F51042] hover:underline"
                   >
-                    Log in
+                    {t("logIn")}
                   </button>
                 </p>
               </div>

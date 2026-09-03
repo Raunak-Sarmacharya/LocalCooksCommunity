@@ -1,4 +1,6 @@
 import React from "react";
+import { mt } from "@/i18n/manager";
+import { tt } from "@/i18n/common-ns";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { ChevronLeft, SkipForward } from "lucide-react";
@@ -26,13 +28,14 @@ export function OnboardingNavigationFooter({
     isNextDisabled = false,
     isBackDisabled = false,
     isLoading = false,
-    nextLabel = "Continue",
-    backLabel = "Back",
-    skipLabel = "Skip for now",
+    nextLabel = tt("continue"),
+    backLabel = mt("back"),
+    skipLabel = tt("skipForNow"),
     showBack = true,
     showSkip = false,
     className = ""
 }: OnboardingNavigationFooterProps) {
+  
     return (
         <div className={cn(
             "flex items-center justify-between pt-8 mt-10",
@@ -78,7 +81,7 @@ export function OnboardingNavigationFooter({
                         "shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30",
                         "transition-all duration-200"
                     )}
-                    labels={{ idle: nextLabel, loading: "Saving", success: "Saved" }}
+                    labels={{ idle: nextLabel, loading: mt("savingShort"), success: mt("saved") }}
                 />
             </div>
         </div>

@@ -1,4 +1,5 @@
-import { SpotlightWalkthrough, type SpotlightWalkthroughStep } from "@/components/ui/spotlight-walkthrough";
+import { SpotlightWalkthrough, walkthroughStorageKey, type SpotlightWalkthroughStep } from "@/components/ui/spotlight-walkthrough";
+import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useTranslation } from "react-i18next";
 
 const START_TOUR_KEY = "lc.discoverKitchens.startTour";
@@ -37,6 +38,7 @@ export function DiscoverKitchensButtonTour({
   replayToken?: number;
 }) {
   const { t } = useTranslation("kitchen");
+  const { user } = useFirebaseAuth();
 
   const STEPS: SpotlightWalkthroughStep[] = [
     {
@@ -53,7 +55,7 @@ export function DiscoverKitchensButtonTour({
 
   return (
     <SpotlightWalkthrough
-      storageKey="lc.discoverKitchens.buttonTour.v6"
+      storageKey={walkthroughStorageKey("lc.discoverKitchens.buttonTour.v6", user?.uid)}
       attr="data-kitchen-tour"
       steps={STEPS}
       enabled={enabled}

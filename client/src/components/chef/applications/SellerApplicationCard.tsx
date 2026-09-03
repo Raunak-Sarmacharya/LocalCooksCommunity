@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,6 +20,8 @@ import {
 } from "./status";
 import type { StatusVariant } from "@/components/chef/dashboard/types";
 
+type ChefTFunction = TFunction<"chef", undefined>;
+
 interface SellerApplicationCardProps {
   application: Application;
   onCancelApplication: (type: "chef", id: number) => void;
@@ -25,14 +29,20 @@ interface SellerApplicationCardProps {
   getStatusVariant: (status: string) => StatusVariant;
 }
 
-function docBadge(status: string | null | undefined, uploaded: boolean) {
+function docBadge(
+  status: string | null | undefined,
+  uploaded: boolean,
+  t: ChefTFunction,
+) {
   if (!uploaded) {
-    return { variant: "outline" as const, label: "Not uploaded" };
+    return { variant: "outline" as const, label: t("docNotUploaded", "Not uploaded") };
   }
   const tone = documentToneFromLabel(status || "pending");
   return {
     variant: toneToBadgeVariant(tone),
-    label: status ? status.charAt(0).toUpperCase() + status.slice(1) : "Pending",
+    label: status
+      ? status.charAt(0).toUpperCase() + status.slice(1)
+      : t("docPending", "Pending"),
   };
 }
 
@@ -41,6 +51,7 @@ export default function SellerApplicationCard({
   onCancelApplication,
   onManageDocuments,
 }: SellerApplicationCardProps) {
+  const { t, i18n } = useTranslation("chef");
   const [isExpanded, setIsExpanded] = useState(false);
 
   const foodSafetyStatus =
@@ -56,8 +67,8 @@ export default function SellerApplicationCard({
       ? (app as Application).foodEstablishmentCertUrl
       : undefined;
 
-  const foodSafety = docBadge(foodSafetyStatus, Boolean(foodSafetyUrl));
-  const establishment = docBadge(establishmentStatus, Boolean(establishmentUrl));
+  const foodSafety = docBadge(foodSafetyStatus, Boolean(foodSafetyUrl), t);
+  const establishment = docBadge(establishmentStatus, Boolean(establishmentUrl), t);
 
   const docsNeedAction =
     foodSafety.variant === "destructive" ||
@@ -67,24 +78,37 @@ export default function SellerApplicationCard({
     !foodSafetyUrl;
 
   const docsSummary = !foodSafetyUrl
-    ? "Documents needed"
+    ? t("sellerDocsNeeded", "Documents needed")
     : foodSafety.variant === "destructive" || establishment.variant === "destructive"
-      ? "Documents rejected"
+      ? t("sellerDocsRejected", "Documents rejected")
       : foodSafety.variant === "success" &&
           (establishment.variant === "success" || !establishmentUrl)
-        ? "Documents verified"
-        : "Documents in review";
+        ? t("sellerDocsVerified", "Documents verified")
+        : t("sellerDocsInReview", "Documents in review");
 
   const statusMessage =
     app.status === "approved"
-      ? "Approved. Finish document verification if anything is still outstanding, then you can start selling."
+      ? t(
+          "sellerApprovedStatusMsg",
+          "Approved. Finish document verification if anything is still outstanding, then you can start selling."
+        )
       : app.status === "inReview"
-        ? "Our team is reviewing this application. You’ll be notified when there’s a decision."
+        ? t(
+            "sellerInReviewStatusMsg",
+            "Our team is reviewing this application. You'll be notified when there's a decision."
+          )
         : app.status === "rejected"
-          ? "This application was not approved. Review any feedback, then submit a new one if you want to try again."
+          ? t(
+              "sellerRejectedStatusMsg",
+              "This application was not approved. Review any feedback, then submit a new one if you want to try again."
+            )
           : app.status === "cancelled"
-            ? "This application was cancelled."
+            ? t("sellerCancelledStatusMsg", "This application was cancelled.")
             : "";
+
+  const submittedDate = app.createdAt
+    ? new Date(app.createdAt).toLocaleDateString(i18n.language)
+    : "";
 
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
@@ -96,13 +120,15 @@ export default function SellerApplicationCard({
           >
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <p className="font-medium">Seller application #{app.id}</p>
+                <p className="font-medium">
+                  {t("sellerApplicationCardTitle", { id: app.id, defaultValue: `Seller application #${app.id}` })}
+                </p>
                 <Badge variant={applicationStatusVariant(app.status)} className="font-medium">
-                  {formatApplicationStatus(app.status)}
+                  {formatApplicationStatus(app.status, t)}
                 </Badge>
               </div>
               <p className="mt-1 text-sm text-muted-foreground">
-                Submitted {new Date(app.createdAt || "").toLocaleDateString()}
+                {t("sellerSubmittedOn", { date: submittedDate, defaultValue: `Submitted ${submittedDate}` })}
                 <span className="mx-1.5 text-border">·</span>
                 {docsSummary}
               </p>
@@ -124,24 +150,24 @@ export default function SellerApplicationCard({
 
             <div>
               <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Submitted information
+                {t("sellerSubmittedInformation", "Submitted information")}
               </p>
               <dl className="grid grid-cols-2 gap-x-4 gap-y-3 md:grid-cols-4">
                 <div>
-                  <dt className="text-xs text-muted-foreground">Full name</dt>
-                  <dd className="truncate text-sm font-medium">{app.fullName || "N/A"}</dd>
+                  <dt className="text-xs text-muted-foreground">{t("fullName", "Full name")}</dt>
+                  <dd className="truncate text-sm font-medium">{app.fullName || t("notAvailable", "N/A")}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs text-muted-foreground">Email</dt>
-                  <dd className="truncate text-sm font-medium">{app.email || "N/A"}</dd>
+                  <dt className="text-xs text-muted-foreground">{t("email", "Email")}</dt>
+                  <dd className="truncate text-sm font-medium">{app.email || t("notAvailable", "N/A")}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs text-muted-foreground">Phone</dt>
-                  <dd className="text-sm font-medium">{app.phone || "N/A"}</dd>
+                  <dt className="text-xs text-muted-foreground">{t("phone", "Phone")}</dt>
+                  <dd className="text-sm font-medium">{app.phone || t("notAvailable", "N/A")}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs text-muted-foreground">Kitchen preference</dt>
-                  <dd className="text-sm font-medium capitalize">{app.kitchenPreference || "N/A"}</dd>
+                  <dt className="text-xs text-muted-foreground">{t("kitchenPreference", "Kitchen preference")}</dt>
+                  <dd className="text-sm font-medium capitalize">{app.kitchenPreference || t("notAvailable", "N/A")}</dd>
                 </div>
               </dl>
             </div>
@@ -149,24 +175,24 @@ export default function SellerApplicationCard({
             <div>
               <div className="mb-2 flex items-center justify-between gap-2">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Documents
+                  {t("documents", "Documents")}
                 </p>
                 {app.status !== "cancelled" && app.status !== "rejected" && (
                   <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={onManageDocuments}>
                     <FileText className="h-3 w-3" />
-                    {docsNeedAction ? "Update" : "Manage"}
+                    {docsNeedAction ? t("update", "Update") : t("manage", "Manage")}
                   </Button>
                 )}
               </div>
               <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                 <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2.5">
-                  <span className="text-sm">Food Safety License</span>
+                  <span className="text-sm">{t("foodSafetyLicense", "Food Safety License")}</span>
                   <Badge variant={foodSafety.variant} className="font-medium">
                     {foodSafety.label}
                   </Badge>
                 </div>
                 <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2.5">
-                  <span className="text-sm">Establishment Cert</span>
+                  <span className="text-sm">{t("establishmentCert", "Establishment Cert")}</span>
                   <Badge variant={establishment.variant} className="font-medium">
                     {establishment.label}
                   </Badge>
@@ -177,7 +203,7 @@ export default function SellerApplicationCard({
             {app.feedback && (
               <div>
                 <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Reviewer feedback
+                  {t("reviewerFeedback", "Reviewer feedback")}
                 </p>
                 <p className="text-sm text-muted-foreground">{app.feedback}</p>
               </div>
@@ -190,7 +216,7 @@ export default function SellerApplicationCard({
                 className="text-muted-foreground"
                 onClick={() => onCancelApplication("chef", app.id)}
               >
-                Cancel application
+                {t("cancelApplication", "Cancel application")}
               </Button>
             )}
           </div>

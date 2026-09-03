@@ -32,7 +32,6 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
     navigate(getNavigationPath());
   };
 
-
   const handleAnchorClick = (anchor: string) => {
     if (isLandingRoot) {
       // On the landing page — scroll directly (sections are rendered inline)
@@ -61,16 +60,12 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
     }, 200);
   };
 
-  const getCTAButtonText = () => {
-    return getButtonText(t("joinAsCook"));
-  };
-
   const getApplyLinkText = () => {
     return getButtonText(t("applyNow"));
   };
 
   return (
-    <footer ref={ref} className="bg-gradient-to-t from-[#1a1a1a] via-[#2C2C2C] to-[#1a1a1a] text-white pt-12 pb-8 px-4 relative overflow-hidden">
+    <footer ref={ref} className="bg-gradient-to-t from-[#1a1a1a] via-[#2C2C2C] to-[#1a1a1a] text-white pt-10 pb-6 px-4 relative overflow-hidden">
       {/* Decorative background elements */}
       <div className="absolute inset-0 opacity-10 pointer-events-none">
         <div className="absolute top-20 left-20 w-96 h-96 bg-brand-primary rounded-full blur-3xl"></div>
@@ -78,7 +73,7 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
       </div>
 
       <div className="container mx-auto max-w-7xl relative z-10 px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-col md:flex-row justify-between mb-8 pb-8 border-b border-white/20 gap-8 md:gap-0">
+        <div className="flex flex-col md:flex-row justify-between mb-6 pb-6 border-b border-white/20 gap-8 md:gap-0">
           <div className="mb-8 md:mb-0 md:w-1/3">
             <div className="mb-4">
               <Logo variant="white" className="h-12 sm:h-14 md:h-16 w-auto" />
@@ -263,11 +258,11 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
           </div>
         </div>
 
-        <div className="flex flex-col lg:flex-row justify-between items-center text-xs sm:text-sm text-gray-400 pt-6 gap-6 lg:gap-4 pb-24 lg:pb-10">
-          <div className="flex items-center w-full lg:w-1/3 justify-center lg:justify-start">
+        <div className="flex flex-col sm:flex-row justify-between items-center text-xs sm:text-sm text-gray-400 pt-4 gap-3 sm:gap-4">
+          <div className="flex items-center w-full sm:w-auto justify-center sm:justify-start">
             <LanguageSwitcher size="sm" variant="footer" />
           </div>
-          <div className="flex items-center justify-center lg:justify-end gap-2 sm:gap-3 text-center w-full lg:w-2/3 lg:pr-20">
+          <div className="flex flex-wrap items-center justify-center sm:justify-end gap-2 sm:gap-3 text-center">
             <p className="font-medium whitespace-nowrap">&copy; {new Date().getFullYear()} Local Cooks. {t("allRightsReserved")}</p>
             <span className="text-gray-600 hidden sm:inline">|</span>
             <a

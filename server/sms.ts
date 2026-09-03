@@ -1,5 +1,6 @@
 import { logger } from "./logger";
 import twilio from 'twilio';
+import { isE2eOutboundSuppressed } from "./e2e-outbound-guard";
 
 // SMS configuration
 const getSMSConfig = () => {
@@ -110,6 +111,13 @@ export const sendSMS = async (
   const startTime = Date.now();
   
   try {
+    if (isE2eOutboundSuppressed()) {
+      logger.info("[e2e-outbound-guard] skipped SMS send (harness active)", {
+        trackingId: options?.trackingId,
+      });
+      return true;
+    }
+
     const config = getSMSConfig();
     
     if (!config) {

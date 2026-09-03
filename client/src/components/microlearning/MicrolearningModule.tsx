@@ -23,6 +23,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'wouter';
 import { SKILLSPASS_OFFICIAL_CERT_URL } from '@/config/skillspass';
 import { QuietNotice } from '@/components/chef/ui';
@@ -291,6 +292,7 @@ export default function MicrolearningModule({
   onComplete,
   className = ""
 }: MicrolearningModuleProps) {
+  const { t } = useTranslation("microlearning");
   const { showAlert } = useCustomAlerts();
   const isPlayerFocused = className.includes('player-focused');
   const { user: firebaseUser } = useFirebaseAuth();
@@ -1233,7 +1235,7 @@ export default function MicrolearningModule({
                     </div>
                   </div>
                   
-                  <QuietNotice title="Your access includes">
+                  <QuietNotice title={t("yourAccessIncludes")}>
                     <ul className="space-y-2 mt-1">
                       <li>Complete 22-video curriculum</li>
                       <li>Both training modules</li>

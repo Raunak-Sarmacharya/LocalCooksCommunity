@@ -99,7 +99,7 @@ router.post("/bookings/checkout", async (req: Request, res: Response) => {
         const { createCheckoutSession } = await import('../services/stripe-checkout-service');
         const checkoutSession = await createCheckoutSession({
             bookingPriceInCents: feeCalculation.bookingPriceInCents,
-            platformFeeInCents: feeCalculation.totalPlatformFeeInCents,
+            platformFeeInCents: feeCalculation.platformCommissionInCents,
             managerStripeAccountId,
             customerEmail,
             bookingId,
@@ -123,7 +123,7 @@ router.post("/bookings/checkout", async (req: Request, res: Response) => {
             sessionId: checkoutSession.sessionId,
             booking: {
                 price: bookingPriceNum,
-                platformFee: feeCalculation.totalPlatformFeeInCents / 100,
+                platformFee: feeCalculation.platformCommissionInCents / 100,
                 total: feeCalculation.totalChargeInCents / 100,
             },
         });
@@ -1397,9 +1397,12 @@ router.post("/chef/storage-bookings/:id/extension-checkout", requireChef, requir
         const extensionTaxCents = Math.round((extensionBasePriceCents * taxRatePercent) / 100);
         const totalWithTaxCents = extensionBasePriceCents + extensionTaxCents;
 
-        // Calculate platform fees on total (base + tax) - deducted from manager's share
+        // Platform commission on subtotal only (not tax)
         const { calculateCheckoutFeesAsync } = await import('../services/stripe-checkout-fee-service');
-        const feeCalculation = await calculateCheckoutFeesAsync(totalWithTaxCents);
+        const feeCalculation = await calculateCheckoutFeesAsync(extensionBasePriceCents, {
+            taxAmountCents: extensionTaxCents,
+        });
+        const extensionCustomerTotalCents = totalWithTaxCents + feeCalculation.platformCommissionInCents;
 
         const location = await locationService.getLocationById(kitchen.locationId);
         if (!location) {
@@ -1438,7 +1441,7 @@ router.post("/chef/storage-bookings/:id/extension-checkout", requireChef, requir
 
         const checkoutSession = await createCheckoutSession({
             bookingPriceInCents: totalWithTaxCents,
-            platformFeeInCents: feeCalculation.totalPlatformFeeInCents,
+            platformFeeInCents: feeCalculation.platformCommissionInCents,
             managerStripeAccountId,
             customerEmail: chefEmail,
             bookingId: id, // Using storage booking ID for legacy compatibility
@@ -1457,9 +1460,10 @@ router.post("/chef/storage-bookings/:id/extension-checkout", requireChef, requir
                 location_id: location.id.toString(),
                 manager_id: location.managerId.toString(),
                 extension_base_price_cents: extensionBasePriceCents.toString(),
-                extension_service_fee_cents: feeCalculation.totalPlatformFeeInCents.toString(),
+                extension_service_fee_cents: feeCalculation.platformCommissionInCents.toString(),
                 extension_total_price_cents: totalWithTaxCents.toString(),
-                manager_receives_cents: feeCalculation.managerReceivesInCents.toString(),
+                extension_customer_total_cents: extensionCustomerTotalCents.toString(),
+                manager_receives_cents: (extensionBasePriceCents + extensionTaxCents - feeCalculation.stripeProcessingFeeInCents).toString(),
                 tax_cents: extensionTaxCents.toString(),
                 tax_rate_percent: taxRatePercent.toString(),
             },
@@ -1477,13 +1481,16 @@ router.post("/chef/storage-bookings/:id/extension-checkout", requireChef, requir
                 extensionBasePrice: extensionBasePriceCents / 100,
                 taxRatePercent,
                 extensionTax: extensionTaxCents / 100,
+                serviceFee: feeCalculation.platformCommissionInCents / 100,
                 extensionTotalPrice: totalWithTaxCents / 100,
+                amountCharged: extensionCustomerTotalCents / 100,
                 newEndDate: newEndDateObj.toISOString(),
             },
             booking: {
                 price: extensionBasePriceCents / 100,
                 tax: extensionTaxCents / 100,
-                total: totalWithTaxCents / 100,
+                serviceFee: feeCalculation.platformCommissionInCents / 100,
+                total: extensionCustomerTotalCents / 100,
             },
         });
     } catch (error: any) {
@@ -2163,6 +2170,7 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
                 .select({
                     amount: paymentTransactions.amount,
                     serviceFee: paymentTransactions.serviceFee,
+                    taxAmount: paymentTransactions.taxAmount,
                     managerRevenue: paymentTransactions.managerRevenue,
                     status: paymentTransactions.status,
                     stripeProcessingFee: paymentTransactions.stripeProcessingFee,
@@ -2171,6 +2179,7 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
                     netAmount: paymentTransactions.netAmount,
                     refundedAt: paymentTransactions.refundedAt,
                     refundReason: paymentTransactions.refundReason,
+                    metadata: paymentTransactions.metadata,
                 })
                 .from(paymentTransactions)
                 .where(
@@ -2188,12 +2197,14 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
                     ...txn,
                     amount: txn.amount ? parseFloat(txn.amount) : null,
                     serviceFee: txn.serviceFee ? parseFloat(txn.serviceFee) : null,
+                    taxAmount: txn.taxAmount != null ? parseFloat(txn.taxAmount) : null,
                     managerRevenue: txn.managerRevenue ? parseFloat(txn.managerRevenue) : null,
                     stripeProcessingFee: txn.stripeProcessingFee ? parseFloat(txn.stripeProcessingFee) : null,
                     refundAmount: txn.refundAmount ? parseFloat(txn.refundAmount) : 0,
                     netAmount: txn.netAmount ? parseFloat(txn.netAmount) : null,
                     refundedAt: txn.refundedAt || null,
                     refundReason: txn.refundReason || null,
+                    metadata: txn.metadata || null,
                 };
             }
         } catch (err) {
@@ -2209,16 +2220,54 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
         // Use calculated price if available, otherwise fall back to stored totalPrice
         const kitchenOnlyPrice = calculatedKitchenPrice > 0 ? calculatedKitchenPrice : (booking.totalPrice || 0);
 
+        // Historical bookings must use their captured fee, never today's admin setting.
+        const capturedSubtotal = Math.max(0,
+            kitchenOnlyPrice
+            + storageBookingsWithDetails.filter((item: any) => item.paymentStatus !== 'failed').reduce((sum: number, item: any) => sum + Number(item.totalPrice || 0), 0)
+            + equipmentBookingsWithDetails.filter((item: any) => item.paymentStatus !== 'failed').reduce((sum: number, item: any) => sum + Number(item.totalPrice || 0), 0)
+        );
+        const capturedMetadata: any = paymentTransaction?.metadata || {};
+        const metadataTaxRate = capturedMetadata.taxRatePercent ?? capturedMetadata.tax_rate_percent;
+        const fallbackTaxRatePercent = metadataTaxRate != null
+            ? Number(metadataTaxRate)
+            : Number(kitchen?.taxRatePercent || 0);
+        const storedTaxValue = paymentTransaction?.taxAmount
+            ?? capturedMetadata.approvedTax
+            ?? capturedMetadata.approved_tax
+            ?? capturedMetadata.tax_cents;
+        // Authorized legacy transactions may not have tax_amount populated yet.
+        // Reconstruct the hold's tax instead of passing an explicit zero to the UI.
+        const storedTaxAmount = storedTaxValue != null ? Number(storedTaxValue) : null;
+        const capturedTaxAmount = storedTaxAmount != null && (storedTaxAmount > 0 || fallbackTaxRatePercent <= 0)
+            ? storedTaxAmount
+            : Math.round(capturedSubtotal * fallbackTaxRatePercent / 100);
+        const historicalTaxRatePercent = metadataTaxRate != null
+            ? Number(metadataTaxRate)
+            : capturedSubtotal > 0 && capturedTaxAmount > 0
+                ? (capturedTaxAmount * 100) / capturedSubtotal
+                : fallbackTaxRatePercent;
+        const chargedAmount = Number(paymentTransaction?.amount || 0);
+        const reconciledServiceFee = chargedAmount >= capturedSubtotal + capturedTaxAmount
+            ? chargedAmount - capturedSubtotal - capturedTaxAmount
+            : Number(booking.serviceFee || paymentTransaction?.serviceFee || 0);
+        const historicalCommissionRate = capturedSubtotal > 0 ? reconciledServiceFee / capturedSubtotal : 0;
+        if (paymentTransaction) {
+            paymentTransaction.taxAmount = capturedTaxAmount;
+            paymentTransaction.serviceFee = reconciledServiceFee;
+        }
+
         res.json({
             ...booking,
             totalPrice: kitchenOnlyPrice, // Override with calculated kitchen-only price
+            serviceFee: reconciledServiceFee,
+            platformCommissionRate: historicalCommissionRate,
             kitchen: kitchen ? {
                 id: kitchen.id,
                 name: kitchen.name,
                 description: kitchen.description,
                 photos: kitchen.galleryImages || (kitchen.imageUrl ? [kitchen.imageUrl] : []),
                 locationId: kitchen.locationId,
-                taxRatePercent: kitchen.taxRatePercent || 0,
+                taxRatePercent: historicalTaxRatePercent,
             } : null,
             location,
             storageBookings: storageBookingsWithDetails,
@@ -3103,12 +3152,13 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
         //   The webhook (payment_intent.succeeded) reads balance_transaction.fee
         //   and calls stripe.transfers.create() to send (charge − actualFee − commission)
         //   to the manager's Connect account.
-        // calculateCheckoutFeesAsync is used here only for display estimates and logs.
+        // Platform commission is on subtotal only (not tax).
         const { calculateCheckoutFeesAsync } = await import('../services/stripe-checkout-fee-service');
-        const feeCalculation = await calculateCheckoutFeesAsync(totalWithTaxCents);
+        const feeCalculation = await calculateCheckoutFeesAsync(totalPriceCents, { taxAmountCents: taxCents });
         const applicationFeeAmountCents = undefined;
+        const chefChargeCents = totalWithTaxCents + feeCalculation.platformCommissionInCents;
 
-        logger.info(`[Payment] Creating intent (separate charges + transfers): Subtotal=${totalPriceCents}, Tax=${taxCents} (${taxRatePercent}%), Total=${totalWithTaxCents}, Expected=${expectedAmountCents}, EstimatedStripeFee=${feeCalculation.stripeProcessingFeeInCents}, EstimatedManagerReceives=${feeCalculation.managerReceivesInCents}`);
+        logger.info(`[Payment] Creating intent (separate charges + transfers): Subtotal=${totalPriceCents}, Tax=${taxCents} (${taxRatePercent}%), ServiceFee=${feeCalculation.platformCommissionInCents}, Total=${chefChargeCents}, Expected=${expectedAmountCents}, EstimatedStripeFee=${feeCalculation.stripeProcessingFeeInCents}, EstimatedManagerReceives=${feeCalculation.managerReceivesInCents}`);
 
         // Create Metadata
         const metadata = {
@@ -3125,7 +3175,7 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
 
         // Create payment intent
         const paymentIntent = await createPaymentIntent({
-            amount: totalWithTaxCents,
+            amount: chefChargeCents,
             currency: kitchenPricing.currency.toLowerCase(),
             chefId,
             kitchenId,
@@ -3139,9 +3189,12 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
                 booking_date: bookingDate,
                 start_time: startTime,
                 end_time: endTime,
-                expected_amount: totalWithTaxCents.toString(),
+                expected_amount: chefChargeCents.toString(),
                 tax_cents: String(taxCents),
                 tax_rate_percent: String(taxRatePercent),
+                platform_fee_cents: String(feeCalculation.platformCommissionInCents),
+                approved_subtotal: String(totalPriceCents),
+                approved_tax: String(taxCents),
                 has_storage: selectedStorage && selectedStorage.length > 0 ? "true" : "false",
                 has_equipment: selectedEquipmentIds && selectedEquipmentIds.length > 0 ? "true" : "false",
                 kitchen_id: String(kitchenId),
@@ -3153,13 +3206,14 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
             clientSecret: paymentIntent.clientSecret || (paymentIntent as any).client_secret,
             paymentIntentId: paymentIntent.id,
             id: paymentIntent.id,
-            amount: totalWithTaxCents,
+            amount: chefChargeCents,
             currency: kitchenPricing.currency.toUpperCase(),
             breakdown: {
                 subtotal: totalPriceCents,
                 tax: taxCents,
+                serviceFee: feeCalculation.platformCommissionInCents,
                 taxRatePercent: taxRatePercent,
-                total: totalWithTaxCents
+                total: chefChargeCents
             }
         });
 
@@ -3463,9 +3517,9 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
         // Booking will be created in webhook when payment succeeds
         // This follows Stripe's recommended pattern and eliminates orphan bookings
 
-        // Calculate fees for Stripe Checkout
+        // Platform commission on subtotal only (not tax). Checkout line items add tax + fee separately.
         const { calculateCheckoutFeesAsync } = await import('../services/stripe-checkout-fee-service');
-        const feeCalculation = await calculateCheckoutFeesAsync(totalWithTaxCents);
+        const feeCalculation = await calculateCheckoutFeesAsync(totalPriceCents, { taxAmountCents: taxCents });
 
         // Get base URL for success/cancel URLs
         const baseUrl = getBaseUrl(req);
@@ -3479,8 +3533,8 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
         const taxLabel = taxRatePercent > 0 ? `Tax (${taxRatePercent}%)` : 'Tax';
 
         const checkoutSession = await createPendingCheckoutSession({
-            bookingPriceInCents: feeCalculation.totalChargeInCents,
-            platformFeeInCents: feeCalculation.totalPlatformFeeInCents,
+            bookingPriceInCents: totalPriceCents + taxCents + feeCalculation.platformCommissionInCents,
+            platformFeeInCents: feeCalculation.platformCommissionInCents,
             managerStripeAccountId,
             customerEmail: chefEmail,
             currency: 'cad',
@@ -3498,6 +3552,7 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
                 selectedEquipmentIds: selectedEquipmentIds || [],
                 totalPriceCents,
                 taxCents,
+                taxRatePercent,
                 hourlyRateCents: kitchenPricing.hourlyRateCents,
                 durationHours: effectiveDurationHours,
                 platform_fee_cents: feeCalculation.platformCommissionInCents,
@@ -3520,13 +3575,14 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
 
         // Return checkout URL for redirect
         // Note: No bookingId returned since booking doesn't exist yet
+        const chefTotalCents = totalPriceCents + taxCents + feeCalculation.platformCommissionInCents;
         res.json({
             sessionUrl: checkoutSession.sessionUrl,
             sessionId: checkoutSession.sessionId,
             booking: {
                 price: totalWithTaxCents / 100,
-                platformFee: feeCalculation.totalPlatformFeeInCents / 100,
-                total: feeCalculation.totalChargeInCents / 100,
+                platformFee: feeCalculation.platformCommissionInCents / 100,
+                total: chefTotalCents / 100,
             },
         });
     } catch (error: any) {
@@ -3943,15 +3999,21 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
                             amount: parseInt(metadata.booking_price_cents || "0"),
                             baseAmount: parseInt(metadata.total_price_cents || "0") + parseInt(metadata.tax_cents || "0"),
                             serviceFee: parseInt(metadata.platform_fee_cents || "0"),
-                            managerRevenue: parseInt(metadata.booking_price_cents || "0") - parseInt(metadata.platform_fee_cents || "0"),
+                            taxAmount: parseInt(metadata.tax_cents || "0"),
+                            managerRevenue:
+                                parseInt(metadata.total_price_cents || "0")
+                                + parseInt(metadata.tax_cents || "0")
+                                - parseInt(metadata.stripe_fee_cents || "0"),
                             currency: "CAD",
                             paymentIntentId,
-                            status: "succeeded",
-                            stripeStatus: "succeeded",
+                            status: fallbackIsManualCapture ? "authorized" : "succeeded",
+                            stripeStatus: fallbackIsManualCapture ? "authorized" : "succeeded",
                             metadata: {
                                 checkout_session_id: sessionId,
                                 booking_id: newBooking.id.toString(),
                                 created_via: "fallback_endpoint",
+                                tax_cents: metadata.tax_cents || "0",
+                                tax_rate_percent: metadata.tax_rate_percent || "0",
                             },
                         }, db);
                         

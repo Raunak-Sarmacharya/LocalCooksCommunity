@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { mt } from "@/i18n/manager";
 import {
   Sheet,
   SheetContent,
@@ -65,6 +66,7 @@ export interface BookingForAction {
   equipmentItems?: EquipmentItemForAction[];
   // Payment info for refund preview
   transactionAmount?: number; // total charged in cents
+  serviceFee?: number; // Local Cooks fee included in the authorization
   stripeProcessingFee?: number; // Stripe fee in cents
   managerRevenue?: number; // manager received in cents
   taxRatePercent?: number; // tax rate (e.g. 13 for 13%)
@@ -136,6 +138,7 @@ export function BookingActionSheet({
   isLoading = false,
   onSubmit,
 }: BookingActionSheetProps) {
+  
   const sheetKey = booking ? `${booking.id}` : "empty";
 
   return (
@@ -151,7 +154,7 @@ export function BookingActionSheet({
       ) : open ? (
         <SheetContent className="sm:max-w-[480px] flex flex-col items-center justify-center p-6">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          <p className="text-sm text-muted-foreground mt-3">Loading booking details…</p>
+          <p className="text-sm text-muted-foreground mt-3">{mt("loadingBookingDetails")}</p>
         </SheetContent>
       ) : null}
     </Sheet>
@@ -364,6 +367,7 @@ function BookingActionSheetContent({
 
     const kitchenPriceCents = booking.totalPrice || 0;
     const transactionAmount = booking.transactionAmount || 0;
+    const originalServiceFee = booking.serviceFee || 0;
     const taxRatePercent = booking.taxRatePercent || 0;
 
     // Kitchen is approved when kitchenAction === 'confirmed'
@@ -391,14 +395,23 @@ function BookingActionSheetContent({
 
     const approvedSubtotal = approvedKitchenCents + approvedStorageCents + approvedEquipmentCents;
     const approvedTax = Math.round((approvedSubtotal * taxRatePercent) / 100);
-    const captureAmount = approvedSubtotal + approvedTax;
+    const originalSubtotal = Math.max(
+      0,
+      kitchenPriceCents
+        + (booking.storageItems || []).reduce((sum, item) => sum + (item.rejected ? 0 : item.totalPrice), 0)
+        + (booking.equipmentItems || []).reduce((sum, item) => sum + (item.rejected ? 0 : item.totalPrice), 0),
+    );
+    const approvedServiceFee = originalSubtotal > 0
+      ? Math.round(originalServiceFee * approvedSubtotal / originalSubtotal)
+      : 0;
+    const captureAmount = approvedSubtotal + approvedTax + approvedServiceFee;
     const releaseAmount = Math.max(0, transactionAmount - captureAmount);
 
     // Estimated Stripe fee on capture amount (2.9% + $0.30)
     const estimatedStripeFee = captureAmount > 0
       ? Math.round(captureAmount * 0.029 + 30)
       : 0;
-    const estimatedManagerNet = Math.max(0, captureAmount - estimatedStripeFee);
+    const estimatedManagerNet = Math.max(0, approvedSubtotal + approvedTax - estimatedStripeFee);
     const isPartialCapture = captureAmount > 0 && captureAmount < transactionAmount;
 
     return {
@@ -407,6 +420,7 @@ function BookingActionSheetContent({
       approvedEquipmentCents,
       approvedSubtotal,
       approvedTax,
+      approvedServiceFee,
       captureAmount,
       releaseAmount,
       estimatedStripeFee,
@@ -493,13 +507,11 @@ function BookingActionSheetContent({
       {/* Header */}
       <SheetHeader className="px-6 pt-6 pb-4 border-b bg-muted/30 shrink-0">
         <SheetTitle className="flex items-center gap-2 text-lg">
-          <RefreshCcw className="h-5 w-5 text-primary" />
-          Take Action on Booking
-        </SheetTitle>
+          <RefreshCcw className="h-5 w-5 text-primary" />{mt("takeActionOnBooking")}</SheetTitle>
         <SheetDescription className="text-sm">
           {isAuthorized
-            ? "Payment is held but not yet charged. Approve to charge, reject to release the hold."
-            : "Review and decide on each item individually. Rejected items will be automatically refunded."}
+            ? mt("paymentHeldApproveToCharge")
+            : mt("reviewDecideEachItem")}
         </SheetDescription>
       </SheetHeader>
 
@@ -509,7 +521,7 @@ function BookingActionSheetContent({
         <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 border">
           <div className="flex-1 min-w-0">
             <TruncatedText as="p" className="font-semibold text-sm truncate">
-              {booking.kitchenName || "Kitchen Booking"}
+              {booking.kitchenName || mt("kitchenBooking")}
             </TruncatedText>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-muted-foreground">
               {booking.chefName && (
@@ -549,9 +561,7 @@ function BookingActionSheetContent({
         {/* Kitchen Booking — toggleable */}
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-            <ChefHat className="h-3.5 w-3.5" />
-            Kitchen Session
-          </p>
+            <ChefHat className="h-3.5 w-3.5" />{mt("kitchenSession")}</p>
           <button
             type="button"
             onClick={toggleKitchenAction}
@@ -578,7 +588,7 @@ function BookingActionSheetContent({
                 />
               </div>
               <div>
-                <p className="text-sm font-medium">Kitchen Booking</p>
+                <p className="text-sm font-medium">{mt("kitchenBooking")}</p>
                 <p className="text-xs text-muted-foreground">
                   {formatTime(booking.startTime)} – {formatTime(booking.endTime)}
                 </p>
@@ -600,14 +610,10 @@ function BookingActionSheetContent({
               >
                 {kitchenAction === "confirmed" ? (
                   <>
-                    <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
-                    Approve
-                  </>
+                    <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />{mt("approve")}</>
                 ) : (
                   <>
-                    <XCircle className="h-2.5 w-2.5 mr-0.5" />
-                    Reject
-                  </>
+                    <XCircle className="h-2.5 w-2.5 mr-0.5" />{mt("reject")}</>
                 )}
               </Badge>
             </div>
@@ -620,9 +626,7 @@ function BookingActionSheetContent({
             <Separator />
             <div className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                <Boxes className="h-3.5 w-3.5" />
-                Storage Rentals
-              </p>
+                <Boxes className="h-3.5 w-3.5" />{mt("storageRentals")}</p>
 
               {/* Actionable storage items — toggleable */}
               {actionableStorageItems.map((item) => {
@@ -695,14 +699,10 @@ function BookingActionSheetContent({
                       >
                         {isApproved ? (
                           <>
-                            <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
-                            Approve
-                          </>
+                            <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />{mt("approve")}</>
                         ) : (
                           <>
-                            <XCircle className="h-2.5 w-2.5 mr-0.5" />
-                            Reject
-                          </>
+                            <XCircle className="h-2.5 w-2.5 mr-0.5" />{mt("reject")}</>
                         )}
                       </Badge>
                     </div>
@@ -728,17 +728,13 @@ function BookingActionSheetContent({
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="text-xs font-mono text-gray-400 line-through">{formatPrice(item.totalPrice)}</span>
                     <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                      <XCircle className="h-2.5 w-2.5 mr-0.5" />
-                      Rejected
-                    </Badge>
+                      <XCircle className="h-2.5 w-2.5 mr-0.5" />{mt("rejected")}</Badge>
                   </div>
                 </div>
               ))}
 
               {actionableStorageItems.length > 0 && !kitchenIsRejected && (
-                <p className="text-[11px] text-muted-foreground italic pl-1">
-                  Click each item to toggle between approve and reject
-                </p>
+                <p className="text-[11px] text-muted-foreground italic pl-1">{mt("clickEachItemToToggleBetweenApproveAndReject")}</p>
               )}
             </div>
           </>
@@ -750,9 +746,7 @@ function BookingActionSheetContent({
             <Separator />
             <div className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                <Package className="h-3.5 w-3.5" />
-                Equipment Rentals
-              </p>
+                <Package className="h-3.5 w-3.5" />{mt("equipmentRentals")}</p>
 
               {/* Actionable equipment items — toggleable */}
               {actionableEquipmentItems.map((item) => {
@@ -808,14 +802,10 @@ function BookingActionSheetContent({
                       >
                         {isApproved ? (
                           <>
-                            <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
-                            Approve
-                          </>
+                            <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />{mt("approve")}</>
                         ) : (
                           <>
-                            <XCircle className="h-2.5 w-2.5 mr-0.5" />
-                            Reject
-                          </>
+                            <XCircle className="h-2.5 w-2.5 mr-0.5" />{mt("reject")}</>
                         )}
                       </Badge>
                     </div>
@@ -838,17 +828,13 @@ function BookingActionSheetContent({
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="text-xs font-mono text-gray-400 line-through">{formatPrice(item.totalPrice)}</span>
                     <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                      <XCircle className="h-2.5 w-2.5 mr-0.5" />
-                      Rejected
-                    </Badge>
+                      <XCircle className="h-2.5 w-2.5 mr-0.5" />{mt("rejected")}</Badge>
                   </div>
                 </div>
               ))}
 
               {actionableEquipmentItems.length > 0 && !kitchenIsRejected && (
-                <p className="text-[11px] text-muted-foreground italic pl-1">
-                  Click each item to toggle between approve and reject
-                </p>
+                <p className="text-[11px] text-muted-foreground italic pl-1">{mt("clickEachItemToToggleBetweenApproveAndReject")}</p>
               )}
             </div>
           </>
@@ -861,15 +847,12 @@ function BookingActionSheetContent({
             <div className="p-4 rounded-lg border border-red-200 bg-red-50/50 space-y-2">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 text-red-600" />
-                <p className="text-sm font-semibold text-red-800">
-                  Entire Booking Will Be Cancelled
-                </p>
+                <p className="text-sm font-semibold text-red-800">{mt("entireBookingWillBeCancelled")}</p>
               </div>
-              <p className="text-xs text-red-700">
-                Rejecting the kitchen session cancels the <strong>entire booking</strong> including all storage and equipment add-ons.
+              <p className="text-xs text-red-700">{mt("rejectingTheKitchenSessionCancelsThe")}<strong>{mt("entireBookingStrong")}</strong> {mt("includingAllAddons")}
                 {isAuthorized
-                  ? " The payment hold will be fully released — the chef will not be charged anything."
-                  : " A refund will be processed for the full booking amount."}
+                  ? mt("paymentHoldFullyReleased")
+                  : mt("fullBookingRefundProcessed")}
               </p>
             </div>
           </>
@@ -883,12 +866,12 @@ function BookingActionSheetContent({
               <div className="flex items-center gap-2">
                 <Info className="h-4 w-4 text-blue-600" />
                 <p className="text-sm font-semibold text-blue-800">
-                  No Charge — Authorization Will Be Released
+                  {mt("noChargeAuthReleased")}
                 </p>
               </div>
               <p className="text-xs text-blue-700">
-                The chef&apos;s card has a temporary hold of {booking.transactionAmount ? formatPrice(booking.transactionAmount) : "the booking amount"}.
-                Rejecting will release the entire hold — the chef will <strong>not be charged anything</strong> and no Stripe fees apply.
+                {mt("chefCardHoldAmount", { amount: booking.transactionAmount ? formatPrice(booking.transactionAmount) : mt("theBookingAmount") })}
+                {" "}{mt("rejectingReleaseHoldNote")}
               </p>
             </div>
           </>
@@ -901,29 +884,50 @@ function BookingActionSheetContent({
             <div className="space-y-3 p-4 rounded-lg border border-blue-200 bg-blue-50/50">
               <div className="flex items-center gap-2">
                 <DollarSign className="h-4 w-4 text-blue-600" />
-                <p className="text-sm font-semibold text-blue-800">
-                  Payment Will Be Captured
-                </p>
+                <p className="text-sm font-semibold text-blue-800">{mt("paymentWillBeCaptured")}</p>
               </div>
               <div className="space-y-1 text-xs p-2.5 rounded-md bg-white/60 border border-blue-100">
-                <p className="text-[10px] font-medium text-blue-700 uppercase tracking-wide mb-1">Capture Breakdown</p>
+                <p className="text-[10px] font-medium text-blue-700 uppercase tracking-wide mb-1">{mt("captureBreakdown")}</p>
+                {captureCalc.approvedSubtotal > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>{mt("kitchenSession2")}</span>
+                    <span className="font-mono">{formatPrice(captureCalc.approvedSubtotal)}</span>
+                  </div>
+                )}
+                {captureCalc.approvedTax > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>{mt("taxPercentLabel", { percent: captureCalc.taxRatePercent })}</span>
+                    <span className="font-mono">+{formatPrice(captureCalc.approvedTax)}</span>
+                  </div>
+                )}
+                {captureCalc.approvedServiceFee > 0 && (
+                  <div className="flex justify-between text-blue-600">
+                    <span>Local Cooks service fee</span>
+                    <span className="font-mono">+{formatPrice(captureCalc.approvedServiceFee)}</span>
+                  </div>
+                )}
+                <Separator className="my-1" />
                 <div className="flex justify-between text-muted-foreground">
-                  <span>Chef will be charged</span>
+                  <span>{mt("chefWillBeCharged2")}</span>
                   <span className="font-mono font-medium">{formatPrice(captureCalc.captureAmount)}</span>
                 </div>
                 <div className="flex justify-between text-muted-foreground">
-                  <span>Est. Stripe fee</span>
+                  <span>{mt("estStripeFee")}</span>
                   <span className="font-mono text-red-600">-{formatPrice(captureCalc.estimatedStripeFee)}</span>
                 </div>
+                {captureCalc.approvedServiceFee > 0 && (
+                  <div className="flex justify-between text-blue-600">
+                    <span>Local Cooks service fee</span>
+                    <span className="font-mono">-{formatPrice(captureCalc.approvedServiceFee)}</span>
+                  </div>
+                )}
                 <Separator className="my-1" />
                 <div className="flex justify-between font-semibold text-sm">
-                  <span>Est. you receive</span>
+                  <span>{mt("estYouReceive")}</span>
                   <span className="font-mono text-green-700">{formatPrice(captureCalc.estimatedManagerNet)}</span>
                 </div>
               </div>
-              <p className="text-[10px] text-blue-600 italic">
-                Stripe fee is estimated. Actual fee confirmed after capture.
-              </p>
+              <p className="text-[10px] text-blue-600 italic">{mt("stripeFeeIsEstimatedActualFeeConfirmedAfterCapture")}</p>
             </div>
           </>
         )}
@@ -936,63 +940,69 @@ function BookingActionSheetContent({
               <div className="flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 text-amber-600" />
                 <p className="text-sm font-semibold text-amber-800">
-                  Partial Capture — Only Approved Items Charged
+                  {mt("partialCaptureApprovedOnly")}
                 </p>
               </div>
               <p className="text-xs text-amber-700">
-                The chef&apos;s card has a hold of {formatPrice(captureCalc.transactionAmount)}.
-                Only the approved portion will be charged — the rest is <strong>automatically released</strong> (no refund needed).
+                {mt("chefCardHoldAmount", { amount: formatPrice(captureCalc.transactionAmount) })}{" "}
+                {mt("partialCaptureReleasedNote")}
               </p>
 
               {/* Capture Breakdown */}
               <div className="space-y-1 text-xs p-2.5 rounded-md bg-white/60 border border-amber-100">
-                <p className="text-[10px] font-medium text-amber-700 uppercase tracking-wide mb-1">Capture Breakdown</p>
+                <p className="text-[10px] font-medium text-amber-700 uppercase tracking-wide mb-1">{mt("captureBreakdown")}</p>
                 {captureCalc.approvedKitchenCents > 0 && (
                   <div className="flex justify-between text-muted-foreground">
-                    <span>Kitchen session</span>
+                    <span>{mt("kitchenSession2")}</span>
                     <span className="font-mono">{formatPrice(captureCalc.approvedKitchenCents)}</span>
                   </div>
                 )}
                 {captureCalc.approvedStorageCents > 0 && (
                   <div className="flex justify-between text-muted-foreground">
-                    <span>Approved storage</span>
+                    <span>{mt("approvedStorage")}</span>
                     <span className="font-mono">{formatPrice(captureCalc.approvedStorageCents)}</span>
                   </div>
                 )}
                 {captureCalc.approvedEquipmentCents > 0 && (
                   <div className="flex justify-between text-muted-foreground">
-                    <span>Approved equipment</span>
+                    <span>{mt("approvedEquipment")}</span>
                     <span className="font-mono">{formatPrice(captureCalc.approvedEquipmentCents)}</span>
                   </div>
                 )}
                 {captureCalc.approvedTax > 0 && (
                   <div className="flex justify-between text-muted-foreground">
-                    <span>Tax ({captureCalc.taxRatePercent}%)</span>
+                    <span>{mt("taxPercentLabel", { percent: captureCalc.taxRatePercent })}</span>
                     <span className="font-mono">+{formatPrice(captureCalc.approvedTax)}</span>
+                  </div>
+                )}
+                {captureCalc.approvedServiceFee > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Local Cooks service fee</span>
+                    <span className="font-mono">+{formatPrice(captureCalc.approvedServiceFee)}</span>
                   </div>
                 )}
                 <Separator className="my-1" />
                 <div className="flex justify-between font-medium text-foreground">
-                  <span>Will be charged</span>
+                  <span>{mt("willBeCharged")}</span>
                   <span className="font-mono">{formatPrice(captureCalc.captureAmount)}</span>
                 </div>
                 <div className="flex justify-between text-muted-foreground">
-                  <span>Est. Stripe fee</span>
+                  <span>{mt("estStripeFee")}</span>
                   <span className="font-mono text-red-600">-{formatPrice(captureCalc.estimatedStripeFee)}</span>
                 </div>
                 <div className="flex justify-between font-semibold text-sm text-green-700">
-                  <span>Est. you receive</span>
+                  <span>{mt("estYouReceive")}</span>
                   <span className="font-mono">{formatPrice(captureCalc.estimatedManagerNet)}</span>
                 </div>
               </div>
 
               {/* Release Info */}
               <div className="flex justify-between text-xs p-2 rounded-md bg-blue-50/80 border border-blue-100">
-                <span className="text-blue-700">Released back to chef</span>
+                <span className="text-blue-700">{mt("releasedBackToChef")}</span>
                 <span className="font-mono font-medium text-blue-700">{formatPrice(captureCalc.releaseAmount)}</span>
               </div>
               <p className="text-[10px] text-amber-600 italic">
-                Stripe fee is estimated (2.9% + $0.30). Actual fee confirmed after capture.
+                {mt("stripeFeeEstimatedCaptureNote")}
               </p>
             </div>
           </>
@@ -1005,25 +1015,23 @@ function BookingActionSheetContent({
             <div className="space-y-3 p-4 rounded-lg border border-amber-200 bg-amber-50/50">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 text-amber-600" />
-                <p className="text-sm font-semibold text-amber-800">
-                  Automatic Refund Preview
-                </p>
+                <p className="text-sm font-semibold text-amber-800">{mt("automaticRefundPreview")}</p>
               </div>
 
               {/* Transaction Breakdown */}
               {refundCalc.transactionAmount > 0 && (
                 <div className="space-y-1 text-xs p-2.5 rounded-md bg-white/60 border border-amber-100">
-                  <p className="text-[10px] font-medium text-amber-700 uppercase tracking-wide mb-1">Transaction Breakdown</p>
+                  <p className="text-[10px] font-medium text-amber-700 uppercase tracking-wide mb-1">{mt("transactionBreakdown")}</p>
                   <div className="flex justify-between text-muted-foreground">
-                    <span>Total charged</span>
+                    <span>{mt("totalCharged3")}</span>
                     <span className="font-mono">{formatPrice(refundCalc.transactionAmount)}</span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
-                    <span>Stripe fee (already deducted)</span>
+                    <span>{mt("stripeFeeAlreadyDeducted")}</span>
                     <span className="font-mono text-red-600">-{formatPrice(refundCalc.stripeFee)}</span>
                   </div>
                   <div className="flex justify-between font-medium text-foreground">
-                    <span>Available in kitchen account</span>
+                    <span>{mt("availableInKitchenAccount")}</span>
                     <span className="font-mono">{formatPrice(refundCalc.managerRevenue)}</span>
                   </div>
                 </div>
@@ -1031,44 +1039,44 @@ function BookingActionSheetContent({
 
               {/* Refund Breakdown */}
               <div className="space-y-1.5 text-xs">
-                <p className="text-[10px] font-medium text-amber-700 uppercase tracking-wide">Refund Breakdown</p>
+                <p className="text-[10px] font-medium text-amber-700 uppercase tracking-wide">{mt("refundBreakdown")}</p>
                 {refundCalc.rejectedKitchenCents > 0 && (
                   <div className="flex justify-between text-muted-foreground">
-                    <span>Kitchen session (rejected)</span>
+                    <span>{mt("kitchenSessionRejected")}</span>
                     <span className="font-mono">{formatPrice(refundCalc.rejectedKitchenCents)}</span>
                   </div>
                 )}
                 {refundCalc.rejectedStorageCents > 0 && (
                   <div className="flex justify-between text-muted-foreground">
-                    <span>Storage ({refundCalc.rejectedStorageCount} item{refundCalc.rejectedStorageCount !== 1 ? "s" : ""} rejected)</span>
+                    <span>{mt("storageItemsRejectedCount", { count: refundCalc.rejectedStorageCount })}</span>
                     <span className="font-mono">{formatPrice(refundCalc.rejectedStorageCents)}</span>
                   </div>
                 )}
                 {refundCalc.rejectedEquipmentCents > 0 && (
                   <div className="flex justify-between text-muted-foreground">
-                    <span>Equipment ({refundCalc.rejectedEquipmentCount} item{refundCalc.rejectedEquipmentCount !== 1 ? "s" : ""} rejected)</span>
+                    <span>{mt("equipmentItemsRejectedCount", { count: refundCalc.rejectedEquipmentCount })}</span>
                     <span className="font-mono">{formatPrice(refundCalc.rejectedEquipmentCents)}</span>
                   </div>
                 )}
                 {refundCalc.proportionalTax > 0 && (
                   <div className="flex justify-between text-muted-foreground">
-                    <span>Tax ({refundCalc.taxRatePercent}%)</span>
+                    <span>{mt("taxPercentLabel", { percent: refundCalc.taxRatePercent })}</span>
                     <span className="font-mono">+{formatPrice(refundCalc.proportionalTax)}</span>
                   </div>
                 )}
                 {refundCalc.grossRefund > 0 && (
                   <div className="flex justify-between text-muted-foreground font-medium">
-                    <span>Gross refund</span>
+                    <span>{mt("grossRefund")}</span>
                     <span className="font-mono">{formatPrice(refundCalc.grossRefund)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-muted-foreground">
-                  <span>Stripe fee (proportional)</span>
+                  <span>{mt("stripeFeeProportional")}</span>
                   <span className="font-mono text-red-600">-{formatPrice(refundCalc.proportionalStripeFee)}</span>
                 </div>
                 <Separator className="my-1" />
                 <div className="flex justify-between font-semibold text-sm">
-                  <span>Customer receives</span>
+                  <span>{mt("customerReceives2")}</span>
                   <span className="font-mono text-green-700">{formatPrice(effectiveRefundAmount)}</span>
                 </div>
                 {effectiveRefundAmount < refundCalc.netRefund && (
@@ -1087,12 +1095,10 @@ function BookingActionSheetContent({
                     onClick={handleEditRefund}
                     className="h-7 text-xs text-muted-foreground hover:text-foreground px-2"
                   >
-                    <Pencil className="h-3 w-3 mr-1" />
-                    Modify refund amount
-                  </Button>
+                    <Pencil className="h-3 w-3 mr-1" />{mt("modifyRefundAmount")}</Button>
                 ) : (
                   <div className="space-y-1.5">
-                    <Label className="text-xs text-amber-700">Custom refund amount</Label>
+                    <Label className="text-xs text-amber-700">{mt("customRefundAmount")}</Label>
                     <div className="flex items-center gap-2">
                       <CurrencyInput
                         size="sm"
@@ -1106,9 +1112,7 @@ function BookingActionSheetContent({
                         size="sm"
                         onClick={handleResetRefund}
                         className="h-8 text-xs px-2"
-                      >
-                        Reset
-                      </Button>
+                      >{mt("reset")}</Button>
                     </div>
                     <p className="text-[10px] text-amber-600">
                       Max: {formatPrice(refundCalc.maxRefundable)} (manager&apos;s available balance)
@@ -1121,7 +1125,7 @@ function BookingActionSheetContent({
               <div className="flex items-start gap-1.5 text-[10px] text-amber-600">
                 <Info className="h-3 w-3 mt-0.5 shrink-0" />
                 <span>
-                  Stripe fee and tax are proportionally included in the refund calculation.
+                  {mt("stripeFeeTaxProportionalRefund")}
                   Refund is processed automatically from the kitchen account upon confirmation.
                 </span>
               </div>
@@ -1137,7 +1141,7 @@ function BookingActionSheetContent({
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-green-600" />
                 <p className="text-sm font-medium text-green-800">
-                  All items approved — no refund needed
+                  {mt("allItemsApprovedNoRefund")}
                 </p>
               </div>
             </div>
@@ -1168,9 +1172,7 @@ function BookingActionSheetContent({
             </Badge>
           )}
           {isAuthorized && refundCalc.hasAnyRejection && (
-            <Badge variant="info" className="text-xs ml-auto">
-              No charge
-            </Badge>
+            <Badge variant="info" className="text-xs ml-auto">{mt("noCharge2")}</Badge>
           )}
         </div>
 
@@ -1181,9 +1183,7 @@ function BookingActionSheetContent({
             onClick={onCancel}
             disabled={isLoading}
             className="flex-1"
-          >
-            Cancel
-          </Button>
+          >{mt("cancel")}</Button>
           <Button
             onClick={handleSubmit}
             disabled={isLoading}
@@ -1200,12 +1200,12 @@ function BookingActionSheetContent({
               <RefreshCcw className="h-4 w-4 mr-2" />
             )}
             {isLoading
-              ? "Processing..."
+              ? mt("processingEllipsis")
               : kitchenIsRejected
-              ? (hasAddons ? "Reject Entire Booking" : "Reject Booking")
+              ? (hasAddons ? mt("rejectEntireBooking") : mt("rejectBooking"))
               : allApproved
-              ? "Approve All"
-              : "Confirm Decisions"}
+              ? mt("approveAll")
+              : mt("confirmDecisions")}
           </Button>
         </div>
       </SheetFooter>

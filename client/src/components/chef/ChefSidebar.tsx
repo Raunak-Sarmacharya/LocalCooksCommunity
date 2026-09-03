@@ -10,9 +10,11 @@ import {
     MessageCircle,
     Search,
     AlertTriangle,
-    ChefHat,
     DollarSign,
     Store,
+    ChevronsUpDown,
+    LogOut,
+    User as UserIcon,
 } from "lucide-react"
 
 import {
@@ -32,10 +34,17 @@ import {
 import { cn } from "@/lib/utils"
 import Logo from "@/components/ui/logo"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { useFirebaseAuth } from "@/hooks/use-auth"
 import { useTranslation } from "react-i18next"
 import type { TFunction } from "i18next"
-import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher"
+import { LanguageMenuSection } from "@/components/i18n/LanguageSwitcher"
 
 function sectionHasHeader(title: string | undefined, itemCount: number) {
     return Boolean(title) && itemCount > 1
@@ -101,10 +110,10 @@ export function ChefSidebar({
     hiddenItems = [],
     ...props
 }: ChefSidebarProps) {
-    const { user } = useFirebaseAuth()
+    const { user, logout } = useFirebaseAuth()
     const { t } = useTranslation("chef")
     const tr = t as unknown as TFunction
-    const { isMobile, setOpenMobile } = useSidebar()
+    const { isMobile, setOpenMobile, state } = useSidebar()
 
     // Get user initials for avatar fallback
     const getInitials = (name: string | null | undefined) => {
@@ -224,38 +233,77 @@ export function ChefSidebar({
                 ))}
             </SidebarContent>
 
-            {/* Footer with User Avatar */}
+            {/* Footer with account menu */}
             <SidebarFooter>
                 <SidebarMenu>
-                    <SidebarMenuItem className="px-2 pb-2 group-data-[collapsible=icon]:hidden">
-                        <LanguageSwitcher className="w-full justify-start h-9 border-border bg-background shadow-sm" />
-                    </SidebarMenuItem>
                     <SidebarMenuItem>
-                        <SidebarMenuButton
-                            size="lg"
-                            onClick={() => handleViewChange("profile")}
-                            tooltip={t("shellProfile")}
-                            className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-                        >
-                            <Avatar className="h-8 w-8 rounded-lg">
-                                <AvatarImage
-                                    src={user?.photoURL || ""}
-                                    alt={user?.displayName || "Chef"}
-                                />
-                                <AvatarFallback className="rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                                    {getInitials(user?.displayName)}
-                                </AvatarFallback>
-                            </Avatar>
-                            <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
-                                <span className="truncate font-semibold">
-                                    {user?.displayName || "Chef"}
-                                </span>
-                                <span className="truncate text-xs text-muted-foreground">
-                                    {user?.email || "chef@localcooks.ca"}
-                                </span>
-                            </div>
-                            <ChefHat className="ml-auto size-4 text-muted-foreground group-data-[collapsible=icon]:hidden" />
-                        </SidebarMenuButton>
+                        <DropdownMenu modal={false}>
+                            <DropdownMenuTrigger asChild>
+                                <SidebarMenuButton
+                                    size="lg"
+                                    tooltip={t("shellProfile")}
+                                    className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                                >
+                                    <Avatar className="h-8 w-8 rounded-lg">
+                                        <AvatarImage
+                                            src={user?.photoURL || ""}
+                                            alt={user?.displayName || "Chef"}
+                                        />
+                                        <AvatarFallback className="rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+                                            {getInitials(user?.displayName)}
+                                        </AvatarFallback>
+                                    </Avatar>
+                                    <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
+                                        <span className="truncate font-semibold">
+                                            {user?.displayName || "Chef"}
+                                        </span>
+                                        <span className="truncate text-xs text-muted-foreground">
+                                            {user?.email || "chef@localcooks.ca"}
+                                        </span>
+                                    </div>
+                                    <ChevronsUpDown className="ml-auto size-4 text-muted-foreground group-data-[collapsible=icon]:hidden" />
+                                </SidebarMenuButton>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                                className="w-64 p-2 rounded-lg"
+                                align="end"
+                                side={isMobile ? "bottom" : state === "collapsed" ? "right" : "top"}
+                                sideOffset={4}
+                            >
+                                <div className="px-3 py-2.5 mb-1">
+                                    <p className="text-sm font-medium text-foreground leading-tight">
+                                        {user?.displayName || "Chef"}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground leading-tight">
+                                        {user?.email}
+                                    </p>
+                                </div>
+
+                                <DropdownMenuSeparator />
+
+                                <DropdownMenuItem
+                                    onClick={() => handleViewChange("profile")}
+                                    className="cursor-pointer"
+                                >
+                                    <UserIcon className="mr-2 h-4 w-4" />
+                                    {t("shellProfile")}
+                                </DropdownMenuItem>
+
+                                <DropdownMenuSeparator />
+
+                                <LanguageMenuSection />
+
+                                <DropdownMenuSeparator />
+
+                                <DropdownMenuItem
+                                    onClick={() => logout()}
+                                    className="cursor-pointer text-destructive focus:text-destructive"
+                                >
+                                    <LogOut className="mr-2 h-4 w-4" />
+                                    {t("shellSignOut")}
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     </SidebarMenuItem>
                 </SidebarMenu>
             </SidebarFooter>

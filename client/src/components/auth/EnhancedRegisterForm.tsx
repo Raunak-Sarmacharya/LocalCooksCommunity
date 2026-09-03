@@ -14,6 +14,7 @@ import AnimatedInput from "./AnimatedInput";
 import EmailVerificationScreen from "./EmailVerificationScreen";
 import TermsAcceptanceInline from "./TermsAcceptanceInline";
 import LoadingOverlay from "./LoadingOverlay";
+import { getEmailContinueMessage } from "./EmailContinueHint";
 import { ArrowLeft, ArrowRight, Lock, Mail, Phone, User } from "lucide-react";
 import { phoneNumberSchema } from "@shared/phone-validation";
 
@@ -29,6 +30,7 @@ const registerSchema = z.object({
   businessType: z.string().optional(),
   experience: z.string().optional(),
   businessDescription: z.string().optional(),
+  usageFrequency: z.string().optional(),
 });
 
 function useRegisterSchema() {
@@ -45,6 +47,7 @@ function useRegisterSchema() {
     businessType: z.string().optional(),
     experience: z.string().optional(),
     businessDescription: z.string().optional(),
+    usageFrequency: z.string().optional(),
   });
 }
 
@@ -54,10 +57,15 @@ interface EnhancedRegisterFormProps {
   onSuccess?: () => void;
   setHasAttemptedLogin?: (v: boolean) => void;
   onRegistrationStart?: () => void; // Called when registration starts, parent shows loading overlay
-  onRegistrationComplete?: (email: string) => void; // Called when registration succeeds, parent handles verification screen
+  onRegistrationComplete?: (email: string, data?: RegisterFormData) => void; // Called when registration succeeds
   onRegistrationError?: () => void; // Called when registration fails, parent hides loading overlay
   onSwitchToLogin?: () => void; // Switch to login tab
   forceApplying?: boolean;
+  /** Hide the "I'm ready to apply" checkbox (e.g. tour-only signup). */
+  hideApplyingToggle?: boolean;
+  reviewAfterRegistration?: boolean;
+  /** Wizard previous-step control (footer), e.g. return to booking prefs. */
+  onPreviousStep?: () => void;
 }
 
 type AuthState = 'idle' | 'loading' | 'success' | 'error' | 'email-verification';
@@ -79,7 +87,7 @@ const itemVariants = {
   visible: { opacity: 1, y: 0 }
 };
 
-export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, onRegistrationStart, onRegistrationComplete, onRegistrationError, onSwitchToLogin, forceApplying }: EnhancedRegisterFormProps) {
+export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, onRegistrationStart, onRegistrationComplete, onRegistrationError, onSwitchToLogin, forceApplying, hideApplyingToggle, reviewAfterRegistration, onPreviousStep }: EnhancedRegisterFormProps) {
   const { t } = useTranslation("auth");
   const registerSchema = useRegisterSchema();
   const { signup, signInWithGoogle, loading, error, updateUserVerification } = useFirebaseAuth();
@@ -112,9 +120,17 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       businessDescription: "",
       kitchenPreference: "commercial",
       foodSafetyLicense: "notSure",
-      foodEstablishmentCert: "notSure"
+      foodEstablishmentCert: "notSure",
+      usageFrequency: "",
     },
   });
+
+  // Applying to a commercial kitchen — don't ask preference; lock to commercial.
+  useEffect(() => {
+    if (forceApplying || isApplying) {
+      form.setValue("kitchenPreference", "commercial");
+    }
+  }, [forceApplying, isApplying, form]);
 
   const handleNextStep = async () => {
     const isStep1Valid = await form.trigger(['displayName', 'email', 'phone']);
@@ -151,7 +167,8 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
         businessDescription: data.businessDescription || undefined,
         kitchenPreference: data.kitchenPreference,
         foodSafetyLicense: data.foodSafetyLicense,
-        foodEstablishmentCert: data.foodEstablishmentCert
+        foodEstablishmentCert: data.foodEstablishmentCert,
+        usageFrequency: data.usageFrequency || undefined,
       };
 
       if (isApplying) {
@@ -178,8 +195,13 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       setAuthState('success');
       setShowLoadingOverlay(false);
 
-      if (onRegistrationComplete) {
-        onRegistrationComplete(data.email);
+      if (reviewAfterRegistration && onRegistrationComplete) {
+        onRegistrationComplete(data.email, data);
+        // Hard refresh clears stale auth/modal state; pending flow restores from storage.
+        window.location.reload();
+        return;
+      } else if (onRegistrationComplete) {
+        onRegistrationComplete(data.email, data);
       } else {
         setEmailForVerification(data.email);
         setShowEmailVerification(true);
@@ -382,22 +404,21 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
           }
         }}
         onCheckVerified={async () => {
-          // If the user clicks "I have verified my email", reload their state to check
           try {
-            await updateUserVerification();
-            const currentUser = auth.currentUser;
-            if (currentUser && currentUser.emailVerified) {
-              if (onSuccess) onSuccess();
-              setShowEmailVerification(false);
-              return;
-            } else if (currentUser) {
-              showAlert({
-                title: "Not verified yet",
-                description: "We haven't detected your verification yet. Please click the link in your email, or wait a few seconds and try again.",
-                type: "warning"
-              });
+            const updatedUser = await updateUserVerification();
+            const verified =
+              !!(updatedUser?.is_verified || updatedUser?.isVerified || updatedUser?.emailVerified) ||
+              !!auth.currentUser?.emailVerified;
+            if (verified) {
+              window.location.reload();
               return;
             }
+            showAlert({
+              title: "Not verified yet",
+              description:
+                "We haven't detected your verification yet. Please click the link in your email, or wait a few seconds and try again.",
+              type: "warning",
+            });
           } catch (err) {
             logger.error("Error checking verification status:", err);
           }
@@ -412,7 +433,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       <LoadingOverlay
         isVisible={showLoadingOverlay}
         message={authState === 'loading' ? t("overlayCreatingAccount", "Creating your account...") : t("overlayAccountCreated", "Account created!")}
-        submessage={authState === 'loading' ? t("overlaySettingUpAccount", "Please wait while we set up your account securely.") : t("overlayCheckEmailVerify", "Check your email to verify your account.")}
+        submessage={authState === 'loading' ? t("overlaySettingUpAccount", "Please wait while we set up your account securely.") : t("overlayCheckEmailVerify", getEmailContinueMessage("verify"))}
         type={authState === 'success' ? 'success' : 'loading'}
       />
 
@@ -459,7 +480,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
               exit={{ opacity: 0, x: 20 }}
               className="space-y-5"
             >
-              <div className="mb-2 text-sm text-gray-500 font-medium">{isApplying ? "Step 1 of 2: Basic Info" : "Basic Info"}</div>
+              <div className="mb-2 text-sm text-gray-500 font-medium">{isApplying ? "Request to apply · Basic info" : "Basic Info"}</div>
               {/* Name Field */}
               <AnimatedInput
                 label={t("fullNameLabel", "Full Name")}
@@ -502,30 +523,45 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
                 })}
               />
 
-              <div className="flex items-center space-x-2 my-4">
-                <input
-                  type="checkbox"
-                  id="isApplying"
-                  checked={isApplying}
-                  onChange={(e) => setIsApplying(e.target.checked)}
-                  className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4"
-                />
-                <label htmlFor="isApplying" className="text-sm font-medium text-gray-700 cursor-pointer select-none">
-                  I'm ready to apply for a kitchen
-                </label>
-              </div>
+              {!forceApplying && !hideApplyingToggle && (
+                <div className="flex items-center space-x-2 my-4">
+                  <input
+                    type="checkbox"
+                    id="isApplying"
+                    checked={isApplying}
+                    onChange={(e) => setIsApplying(e.target.checked)}
+                    className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4"
+                  />
+                  <label htmlFor="isApplying" className="text-sm font-medium text-gray-700 cursor-pointer select-none">
+                    I'm ready to apply for a kitchen
+                  </label>
+                </div>
+              )}
 
-              {/* Next / Submit Button */}
+              {/* Step actions — Previous + Next when parent provides wizard navigation */}
               {isApplying ? (
-                <AnimatedButton
-                  type="button"
-                  onClick={handleNextStep}
-                  state="idle"
-                >
-                  <div className="flex items-center gap-2">
-                    {t("btnNext", "Next")} <ArrowRight className="w-4 h-4" />
-                  </div>
-                </AnimatedButton>
+                <div className={onPreviousStep ? "flex gap-3" : undefined}>
+                  {onPreviousStep ? (
+                    <button
+                      type="button"
+                      onClick={onPreviousStep}
+                      className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                    >
+                      <ArrowLeft className="h-4 w-4" aria-hidden />
+                      {t("btnPrevious", "Previous")}
+                    </button>
+                  ) : null}
+                  <AnimatedButton
+                    type="button"
+                    onClick={handleNextStep}
+                    state="idle"
+                    className={onPreviousStep ? "flex-1" : undefined}
+                  >
+                    <div className="flex items-center gap-2">
+                      {t("btnNext", "Next")} <ArrowRight className="w-4 h-4" />
+                    </div>
+                  </AnimatedButton>
+                </div>
               ) : (
                 <AnimatedButton
                   type="submit"
@@ -554,23 +590,65 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
                 </button>
                 <div className="text-sm text-gray-500 font-medium">Step 2 of 2: Application Info</div>
               </div>
-              
-              <AnimatedInput
-                label={t("shopNameLabel", "Shop Name (Optional)")}
-                type="text"
-                validationState={getFieldValidationState('shopName')}
-                error={form.formState.errors.shopName?.message}
-                {...form.register('shopName')}
-              />
 
-              <AnimatedInput
-                label={t("shopAddressLabel", "Shop Address (Optional)")}
-                type="text"
-                validationState={getFieldValidationState('shopAddress')}
-                error={form.formState.errors.shopAddress?.message}
-                {...form.register('shopAddress')}
-              />
+              {/* Required first */}
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">
+                  How often will you use the kitchen? <span className="text-red-500">*</span>
+                </label>
+                <select
+                  className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 text-gray-900 bg-white"
+                  {...form.register('usageFrequency', {
+                    required: forceApplying ? t("requiredField", "This field is required") : false,
+                  })}
+                >
+                  <option value="">-- Select frequency --</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="few-times-month">A few times a month</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="occasionally">Occasionally</option>
+                  <option value="not-sure">Not sure yet</option>
+                </select>
+                {form.formState.errors.usageFrequency && (
+                  <p className="text-sm text-red-500 mt-1">{form.formState.errors.usageFrequency.message}</p>
+                )}
+              </div>
 
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">
+                  Do you have a Food Safety License? <span className="text-red-500">*</span>
+                </label>
+                <select 
+                  className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 text-gray-900 bg-white"
+                  {...form.register('foodSafetyLicense')}
+                >
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                  <option value="notSure">Not sure</option>
+                </select>
+                {form.formState.errors.foodSafetyLicense && (
+                  <p className="text-sm text-red-500 mt-1">{form.formState.errors.foodSafetyLicense.message}</p>
+                )}
+              </div>
+
+              {(forceApplying || isApplying) ? null : (
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Kitchen Preference</label>
+                <select 
+                  className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 text-gray-900 bg-white"
+                  {...form.register('kitchenPreference')}
+                >
+                  <option value="notSure">Not sure</option>
+                  <option value="commercial">Commercial Kitchen</option>
+                  <option value="home">Home Kitchen</option>
+                </select>
+                {form.formState.errors.kitchenPreference && (
+                  <p className="text-sm text-red-500 mt-1">{form.formState.errors.kitchenPreference.message}</p>
+                )}
+              </div>
+              )}
+
+              {/* Optional after required */}
               <div className="space-y-1">
                 <label className="block text-sm font-medium text-gray-700">Type of Food Business (Optional)</label>
                 <select 
@@ -589,20 +667,6 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
                 </select>
               </div>
 
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-gray-700">Years of Experience (Optional)</label>
-                <select 
-                  className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 text-gray-900 bg-white"
-                  {...form.register('experience')}
-                >
-                  <option value="">-- Select experience level --</option>
-                  <option value="0-2">Just Starting (0-2 years)</option>
-                  <option value="2-5">Growing (2-5 years)</option>
-                  <option value="5-10">Established (5-10 years)</option>
-                  <option value="10+">Expert (10+ years)</option>
-                </select>
-              </div>
-
               <AnimatedInput
                 label="Tell Us About Your Business (Optional)"
                 type="text"
@@ -610,51 +674,6 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
                 error={form.formState.errors.businessDescription?.message}
                 {...form.register('businessDescription')}
               />
-
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-gray-700">Do you have a Food Safety License?</label>
-                <select 
-                  className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 text-gray-900 bg-white"
-                  {...form.register('foodSafetyLicense')}
-                >
-                  <option value="notSure">Not sure</option>
-                  <option value="yes">Yes</option>
-                  <option value="no">No</option>
-                </select>
-                {form.formState.errors.foodSafetyLicense && (
-                  <p className="text-sm text-red-500 mt-1">{form.formState.errors.foodSafetyLicense.message}</p>
-                )}
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-gray-700">Do you have a Food Establishment Certificate?</label>
-                <select 
-                  className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 text-gray-900 bg-white"
-                  {...form.register('foodEstablishmentCert')}
-                >
-                  <option value="notSure">Not sure</option>
-                  <option value="yes">Yes</option>
-                  <option value="no">No</option>
-                </select>
-                {form.formState.errors.foodEstablishmentCert && (
-                  <p className="text-sm text-red-500 mt-1">{form.formState.errors.foodEstablishmentCert.message}</p>
-                )}
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-gray-700">Kitchen Preference</label>
-                <select 
-                  className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 text-gray-900 bg-white"
-                  {...form.register('kitchenPreference')}
-                >
-                  <option value="notSure">Not sure</option>
-                  <option value="commercial">Commercial Kitchen</option>
-                  <option value="home">Home Kitchen</option>
-                </select>
-                {form.formState.errors.kitchenPreference && (
-                  <p className="text-sm text-red-500 mt-1">{form.formState.errors.kitchenPreference.message}</p>
-                )}
-              </div>
 
               {/* Submit Button */}
               <AnimatedButton

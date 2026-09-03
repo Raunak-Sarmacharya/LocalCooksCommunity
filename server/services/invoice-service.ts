@@ -5,6 +5,10 @@ import { db } from "../db";
 import { paymentTransactions } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { getStripePaymentAmounts } from "./stripe-service";
+import {
+  buildChefBookingReceiptBreakdown,
+  buildKitchenPayoutStatementBreakdown,
+} from "@shared/booking-pricing-breakdown";
 
 /**
  * Generate invoice PDF for a booking
@@ -23,13 +27,13 @@ export async function generateInvoicePDF(
   const invoiceViewer = options?.viewer ?? 'chef';
   const locale = options?.locale || 'en';
   // Get Stripe-synced amounts from payment_transactions if available
-  let stripePlatformFee = 0; // Platform fee from Stripe (in cents)
+  let stripePlatformFee = 0; // Platform service fee (in cents)
   let stripeTotalAmount = 0; // Total amount from Stripe (in cents)
-  let stripeBaseAmount = 0; // Base amount from Stripe (in cents) - for kitchen booking
-  let stripeNetAmount = 0; // Net amount after fees from Stripe (in cents)
-  // Note: Stripe processing fee is handled internally by Stripe, not tracked here
-  const stripeStorageBaseAmounts: Map<number, number> = new Map(); // Storage booking ID -> base amount
-  const stripeEquipmentBaseAmounts: Map<number, number> = new Map(); // Equipment booking ID -> base amount
+  let stripeBaseAmount = 0; // Manager gross = subtotal + tax (in cents)
+  let stripeProcessingFeeCents = 0;
+  let managerRevenueCents = 0;
+  let storedTaxAmountCents = 0;
+  let ptMetadata: Record<string, unknown> = {};
 
   if (paymentIntentId) {
     try {
@@ -42,18 +46,32 @@ export async function generateInvoicePDF(
       if (paymentTransaction) {
         // Use Stripe-synced values
         stripeTotalAmount = parseInt(String(paymentTransaction.amount)) || 0;
-        stripePlatformFee = parseInt(String(paymentTransaction.serviceFee)) || 0; // Platform fee from Stripe
-        stripeBaseAmount = parseInt(String(paymentTransaction.baseAmount)) || 0; // Base amount from Stripe
-        // Note: Stripe processing fee is handled internally by Stripe, not extracted from metadata
+        stripePlatformFee = parseInt(String(paymentTransaction.serviceFee)) || 0;
+        stripeBaseAmount = parseInt(String(paymentTransaction.baseAmount)) || 0;
+        stripeProcessingFeeCents = parseInt(String(paymentTransaction.stripeProcessingFee || "0")) || 0;
+        managerRevenueCents = parseInt(String(paymentTransaction.managerRevenue || "0")) || 0;
+        storedTaxAmountCents = parseInt(String((paymentTransaction as any).taxAmount || (paymentTransaction as any).tax_amount || "0")) || 0;
+        ptMetadata = paymentTransaction.metadata
+          ? (typeof paymentTransaction.metadata === "string"
+            ? JSON.parse(paymentTransaction.metadata)
+            : (paymentTransaction.metadata as Record<string, unknown>))
+          : {};
+        if (storedTaxAmountCents <= 0 && ptMetadata.approvedTax != null) {
+          storedTaxAmountCents = parseInt(String(ptMetadata.approvedTax)) || 0;
+        }
 
-        // For bundle bookings, we need to get individual booking base amounts
-        // The base_amount in payment_transactions is the total base for the bundle
-        // We'll calculate proportions from the booking data
-        logger.info(`[Invoice] Using Stripe-synced amounts: total=${stripeTotalAmount}, base=${stripeBaseAmount}, platformFee=${stripePlatformFee}`);
+        logger.info(`[Invoice] Using Stripe-synced amounts: total=${stripeTotalAmount}, base=${stripeBaseAmount}, platformFee=${stripePlatformFee}, stripeFee=${stripeProcessingFeeCents}, managerRevenue=${managerRevenueCents}, tax=${storedTaxAmountCents}`);
       }
     } catch (error) {
       logger.warn('[Invoice] Could not fetch payment transaction, will calculate fees:', error);
     }
+  }
+  // kitchen_bookings.service_fee has always represented the booking's platform
+  // commission. Prefer it for legacy rows where payment_transactions.service_fee
+  // may contain Stripe fee + commission from the former destination-charge model.
+  const bookingPlatformFeeCents = parseInt(String(booking.serviceFee || booking.service_fee || "0")) || 0;
+  if (bookingPlatformFeeCents > 0) {
+    stripePlatformFee = bookingPlatformFeeCents;
   }
   // Calculate pricing first (async operations)
   let totalAmount = 0;
@@ -259,50 +277,53 @@ export async function generateInvoicePDF(
   // Note: Stripe processing fee is handled internally by Stripe and should not be shown on invoices
   // The platform fee (service fee) is what we charge, Stripe's fees are separate
 
-  // Tax calculation
+  // Tax calculation — tax is on booking subtotal (line items), not tax-inclusive reverse math
   let taxRatePercent = 0;
-  if (kitchen && (kitchen.taxRatePercent || kitchen.tax_rate_percent)) {
+  if (ptMetadata.taxRatePercent != null) {
+      taxRatePercent = parseFloat(String(ptMetadata.taxRatePercent)) || 0;
+  } else if (kitchen && (kitchen.taxRatePercent || kitchen.tax_rate_percent)) {
       taxRatePercent = parseFloat(String(kitchen.taxRatePercent || kitchen.tax_rate_percent));
   }
   
-  // Try to get tax from payment metadata first
   let taxAmount = 0;
-  let taxFromMetadata = false;
-  
-  // Try transaction metadata
-  // We need to access the `paymentTransaction` object we fetched earlier.
-  // It was fetched into local scope variables (stripeBaseAmount etc) but the object itself wasn't saved to a variable accessible here?
-  // Re-checking the original code... 
-  // Line 39: if (paymentTransaction) ... 
-  // Error: I cannot access 'paymentTransaction' here if I didn't save it outside the if block.
-  // But wait, the original code I am replacing ENDS at line 417. Use 'paymentTransaction' logic if I can.
-  // Actually, I can calculcate tax from taxRatePercent * totalAmount.
-  
-  const taxCents = Math.round((totalAmount * 100 * taxRatePercent) / 100);
-  taxAmount = taxCents / 100;
+  if (storedTaxAmountCents > 0) {
+    taxAmount = storedTaxAmountCents / 100;
+  } else {
+    const taxCents = Math.round((totalAmount * 100 * taxRatePercent) / 100);
+    taxAmount = taxCents / 100;
+  }
+  const taxCents = Math.round(taxAmount * 100);
 
   // Calculate totals
   const subtotalCents = Math.round(totalAmount * 100);
-  const subtotalWithTaxCents = subtotalCents + taxCents;
+  if (ptMetadata.taxRatePercent == null && storedTaxAmountCents > 0 && subtotalCents > 0) {
+    taxRatePercent = (storedTaxAmountCents * 100) / subtotalCents;
+  }
+  let platformFeeCents = stripePlatformFee > 0
+    ? stripePlatformFee
+    : Math.round((platformFee || 0) * 100);
+  // The captured Stripe total is authoritative. Reconcile stale legacy fee
+  // columns from: total charged = subtotal + kitchen tax + platform fee.
+  if (stripeTotalAmount >= subtotalCents + taxCents) {
+    platformFeeCents = stripeTotalAmount - subtotalCents - taxCents;
+  }
+  const platformFeeDollars = platformFeeCents / 100;
+
+  // Chef pays subtotal + tax + service fee. Manager invoice uses earnings breakdown below.
+  const chefTotalCents = subtotalCents + taxCents + platformFeeCents;
+  const grandTotal = invoiceViewer === 'manager'
+    ? (managerRevenueCents > 0
+      ? managerRevenueCents / 100
+      : (subtotalCents + taxCents - stripeProcessingFeeCents) / 100)
+    : chefTotalCents / 100;
 
   // PARTIAL CAPTURE VERIFICATION: Cross-check invoice total with actual Stripe captured amount
-  // If they differ significantly, log a warning — the invoice breakdown may be stale
-  if (stripeTotalAmount > 0) {
-    const diff = Math.abs(subtotalWithTaxCents - stripeTotalAmount);
-    if (diff > 1) { // Allow 1 cent rounding tolerance
-      logger.warn(`[Invoice] MISMATCH: Calculated total (${subtotalWithTaxCents}) differs from Stripe captured amount (${stripeTotalAmount}) by ${diff} cents. Items: ${items.length}, Subtotal: ${subtotalCents}, Tax: ${taxCents}`);
+  if (stripeTotalAmount > 0 && invoiceViewer === 'chef') {
+    const diff = Math.abs(chefTotalCents - stripeTotalAmount);
+    if (diff > 1) {
+      logger.warn(`[Invoice] MISMATCH: Calculated chef total (${chefTotalCents}) differs from Stripe captured amount (${stripeTotalAmount}) by ${diff} cents. Items: ${items.length}, Subtotal: ${subtotalCents}, Tax: ${taxCents}, ServiceFee: ${platformFeeCents}`);
     }
   }
-  
-  // Platform fees for Manager Payout View
-  const platformFeeCents = Math.round(platformFee * 100);
-  const platformFeeForInvoice = invoiceViewer === 'manager' ? platformFee : 0;
-  
-  const totalForInvoice = invoiceViewer === 'manager'
-    ? (subtotalWithTaxCents - platformFeeCents) / 100
-    : (subtotalWithTaxCents) / 100;
-
-  const grandTotal = totalForInvoice;
 
   // For manager invoices: Fetch actual Stripe fees before PDF generation
   let stripeDataForManager: {
@@ -319,7 +340,9 @@ export async function generateInvoicePDF(
         // Use actual Stripe data - all values in cents, convert to dollars
         stripeDataForManager = {
           stripeProcessingFee: stripeData.stripeProcessingFee / 100,
-          stripeNetPayout: stripeData.stripeNetAmount / 100,
+          // stripeNetAmount is the platform charge net in the separate-charge model;
+          // it still includes our commission and is not the Connect transfer.
+          stripeNetPayout: Math.max(0, subtotalCents + taxCents - stripeData.stripeProcessingFee) / 100,
           actualPlatformFee: stripeData.stripePlatformFee / 100,
           dataSource: 'stripe'
         };
@@ -346,8 +369,11 @@ export async function generateInvoicePDF(
       });
       doc.on('error', reject);
 
-      // Header Section
-      doc.fontSize(28).font('Helvetica-Bold').text(tLocale(locale, "invoiceTitle", { ns: "chef", defaultValue: "INVOICE" }), 50, 50);
+      // Header Section — chef booking receipt (not a Local Cooks tax invoice)
+      const docTitle = invoiceViewer === 'manager'
+        ? tLocale(locale, "payoutStatementTitle", { ns: "chef", defaultValue: "PAYOUT STATEMENT" })
+        : tLocale(locale, "bookingReceiptTitle", { ns: "chef", defaultValue: "BOOKING RECEIPT" });
+      doc.fontSize(28).font('Helvetica-Bold').text(docTitle, 50, 50);
       doc.fontSize(10).font('Helvetica');
 
       // Invoice details (right-aligned)
@@ -539,89 +565,164 @@ export async function generateInvoicePDF(
       };
 
       if (invoiceViewer === 'manager') {
-        // Manager Invoice: Show earnings breakdown with net revenue from Stripe
-        // ENTERPRISE STANDARD: For Stripe Connect destination charges, only application_fee_amount
-        // is deducted from the manager's payout. The actual Stripe processing fee comes from the
-        // platform's balance, NOT the manager's. Showing both as deductions is double-counting.
-        // - actualPlatformFee = application_fee_amount = what manager actually paid (single deduction)
-        // - stripeProcessingFee = informational only (what Stripe charged the platform)
-        // - stripeNetPayout = amount - application_fee_amount = what manager received in Stripe
-        const grossRevenue = totalAmount + taxAmount; // What customer paid
+        const payout = buildKitchenPayoutStatementBreakdown({
+          kitchenBaseSubtotalCents: subtotalCents,
+          kitchenHstRatePercent: taxRatePercent,
+          platformFeeRate: subtotalCents > 0 ? platformFeeCents / subtotalCents : 0,
+          platformFeeAmountCents: platformFeeCents,
+          paymentProcessorFeeCents: stripeProcessingFeeCents,
+          kitchenNetPayoutCents: managerRevenueCents,
+          refundAmountCents: 0,
+        });
 
         let stripeProcessingFee: number;
         let stripeNetPayout: number;
-        let actualPlatformFee: number;
         let dataSource: 'stripe' | 'calculated' | 'pending_sync';
 
-        if (stripeDataForManager) {
+        if (managerRevenueCents > 0 || stripeProcessingFeeCents > 0) {
+          stripeProcessingFee = stripeProcessingFeeCents / 100;
+          stripeNetPayout = managerRevenueCents > 0
+            ? managerRevenueCents / 100
+            : payout.kitchenNetPayoutCents / 100;
+          dataSource = 'stripe';
+        } else if (stripeDataForManager) {
           stripeProcessingFee = stripeDataForManager.stripeProcessingFee;
-          stripeNetPayout = stripeDataForManager.stripeNetPayout;
-          actualPlatformFee = stripeDataForManager.actualPlatformFee;
+          stripeNetPayout = managerRevenueCents > 0
+            ? managerRevenueCents / 100
+            : stripeDataForManager.stripeNetPayout;
           dataSource = stripeDataForManager.dataSource;
         } else {
-          actualPlatformFee = platformFee;
           stripeProcessingFee = 0;
-          stripeNetPayout = grossRevenue - actualPlatformFee;
+          stripeNetPayout = payout.kitchenNetPayoutCents / 100;
           dataSource = 'pending_sync';
         }
 
-        // Section header for earnings breakdown
         doc.fontSize(11).font('Helvetica-Bold').fillColor('#1f2937');
-        doc.text(tLocale(locale, "earningsBreakdown", { ns: "chef", defaultValue: "EARNINGS BREAKDOWN" }), 60, currentY);
+        doc.text(tLocale(locale, "payoutStatementBreakdown", { ns: "chef", defaultValue: "KITCHEN PAYOUT STATEMENT" }), 60, currentY);
         currentY += 25;
         doc.fontSize(10).font('Helvetica').fillColor('#000000');
 
-        addTotalRow(tLocale(locale, "subtotalServices", { ns: "chef", defaultValue: "Subtotal (Services):" }), totalAmount);
-        if (taxAmount > 0) {
-          addTotalRow(tLocale(locale, "taxCollected", { ns: "chef", defaultValue: "Tax Collected:" }), taxAmount);
+        addTotalRow(tLocale(locale, "bookingSubtotal", { ns: "chef", defaultValue: "Booking subtotal:" }), totalAmount);
+        if (payout.kitchenHstRegistered && taxAmount > 0) {
+          addTotalRow(
+            tLocale(locale, "hstChargedByKitchen", {
+              ns: "chef",
+              defaultValue: "HST charged by kitchen ({percent}%):",
+              percent: payout.kitchenHstRatePercent,
+            }),
+            taxAmount
+          );
+        }
+        addTotalRow(
+          tLocale(locale, "bookingAmountPaidByChef", { ns: "chef", defaultValue: "Booking amount paid by chef:" }),
+          payout.kitchenGrossCollectedCents / 100,
+          false,
+          true
+        );
+        currentY += 5;
+
+        if (platformFeeDollars > 0) {
+          addTotalRow(
+            tLocale(locale, "localCooksPlatformFeeLine", {
+              ns: "chef",
+              defaultValue: "Local Cooks platform fee ({percent}% of subtotal, excl. HST):",
+              percent: Math.round(payout.platformFeeRate * 100),
+            }),
+            platformFeeDollars
+          );
+          doc.fontSize(8).fillColor('#6b7280');
+          doc.text(
+            tLocale(locale, "platformFeePaidByChefNote", {
+              ns: "chef",
+              defaultValue: "Paid by the chef — not deducted from your payout.",
+            }),
+            60,
+            currentY
+          );
+          currentY += 14;
+          doc.fillColor('#000000').fontSize(10);
+          doc.text(
+            tLocale(locale, "localCooksNotHstRegistered", {
+              ns: "chef",
+              defaultValue: "Local Cooks is not currently HST-registered — no HST on the platform fee.",
+            }),
+            60,
+            currentY
+          );
+          currentY += 14;
         }
 
-        // Gross revenue line
-        doc.moveTo(380, currentY - 5).lineTo(550, currentY - 5).stroke('#e5e7eb');
-        currentY += 5;
-        addTotalRow(tLocale(locale, "grossRevenue", { ns: "chef", defaultValue: "Gross Revenue:" }), grossRevenue, false, true);
-        currentY += 5;
+        if (stripeProcessingFee > 0) {
+          doc.fillColor('#000000').fontSize(10);
+          const stripeFeeLabel = dataSource === 'pending_sync'
+            ? tLocale(locale, "stripeFeePending", { ns: "chef", defaultValue: "Stripe Fee (pending sync):" })
+            : tLocale(locale, "paymentProcessingFee", { ns: "chef", defaultValue: "Payment-processing fee:" });
+          addTotalRow(stripeFeeLabel, stripeProcessingFee, true);
+        }
 
-        // Deductions section — single line for what Stripe actually deducted from payout
-        doc.fontSize(10).fillColor('#6b7280');
-        doc.text(tLocale(locale, "deductions", { ns: "chef", defaultValue: "Deductions:" }), 60, currentY);
-        currentY += 18;
-        doc.fillColor('#000000');
-
-        // Show actual Stripe processing fee (from BalanceTransaction API)
-        const stripeFeeLabel = dataSource === 'pending_sync'
-          ? tLocale(locale, "stripeFeePending", { ns: "chef", defaultValue: "Stripe Fee (pending sync):" })
-          : tLocale(locale, "stripeFee", { ns: "chef", defaultValue: "Stripe Fee:" });
-        addTotalRow(stripeFeeLabel, stripeProcessingFee, true);
-
-        // Net payout (bold, highlighted) — what was actually deposited to manager's Stripe account
         doc.moveTo(50, currentY - 5).lineTo(550, currentY - 5).stroke();
         currentY += 10;
         doc.fontSize(12).font('Helvetica-Bold').fillColor('#059669');
-        doc.text(tLocale(locale, "netPayout", { ns: "chef", defaultValue: "Net Payout:" }), 380, currentY, { align: 'right', width: 110 });
+        doc.text(tLocale(locale, "netPayoutToKitchen", { ns: "chef", defaultValue: "Net payout to kitchen:" }), 380, currentY, { align: 'right', width: 110 });
         doc.text(`$${stripeNetPayout.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
         doc.font('Helvetica').fontSize(10).fillColor('#000000');
 
-        // Add data source note for transparency
         currentY += 20;
         doc.fontSize(8).fillColor('#6b7280');
         if (dataSource === 'stripe') {
-          doc.text('* Net Payout is the actual amount Stripe transferred to your Connect account', 60, currentY);
-          currentY += 12;
-          doc.text('* Stripe Fee = actual processing fee charged by Stripe (from Balance Transaction)', 60, currentY);
+          doc.text('* Net payout is the amount transferred to your Stripe Connect account', 60, currentY);
           currentY += 12;
         }
         if (taxAmount > 0) {
-          doc.text('* Tax collected is your responsibility to remit to tax authorities', 60, currentY);
+          doc.text('* HST collected belongs to your business — remit to tax authorities separately', 60, currentY);
+          currentY += 12;
+          doc.text(`* Your rental revenue before HST on this booking: $${totalAmount.toFixed(2)}`, 60, currentY);
         }
         doc.fillColor('#000000').fontSize(10);
       } else {
-        // Chef Invoice: Transparent view showing base amount + tax breakdown
-        addTotalRow('Subtotal (Services):', totalAmount);
-        if (taxAmount > 0 && taxRatePercent > 0) {
-          addTotalRow(`Tax (${taxRatePercent}%):`, taxAmount);
-        } else if (taxAmount > 0) {
-          addTotalRow('Tax:', taxAmount);
+        // Chef booking receipt: kitchen supply + Local Cooks service fee (never label fee as tax/HST)
+        const kitchenName = kitchen?.name || tLocale(locale, "kitchenDefault", { ns: "chef", defaultValue: "Kitchen" });
+        const receipt = buildChefBookingReceiptBreakdown({
+          kitchenBaseSubtotalCents: subtotalCents,
+          kitchenHstRatePercent: taxRatePercent,
+          platformFeeRate: subtotalCents > 0 ? platformFeeCents / subtotalCents : 0,
+          platformFeeAmountCents: platformFeeCents,
+        });
+
+        addTotalRow('Kitchen-use charge (subtotal):', totalAmount);
+        if (receipt.kitchenHstRegistered && receipt.kitchenHstAmountCents > 0) {
+          addTotalRow(
+            tLocale(locale, "kitchenHstOnReceipt", {
+              ns: "chef",
+              defaultValue: "HST ({percent}%) charged by {kitchen}",
+              percent: receipt.kitchenHstRatePercent,
+              kitchen: kitchenName,
+            }),
+            taxAmount
+          );
+        }
+        if (platformFeeDollars > 0) {
+          addTotalRow(
+            tLocale(locale, "localCooksServiceFeeReceipt", {
+              ns: "chef",
+              defaultValue: "Local Cooks service fee ({percent}%)",
+              percent: Math.round(receipt.platformFeeRate * 100),
+            }),
+            platformFeeDollars
+          );
+        }
+        if (!receipt.kitchenHstRegistered) {
+          doc.fontSize(8).fillColor('#6b7280');
+          doc.text(
+            tLocale(locale, "noKitchenHstReceipt", {
+              ns: "chef",
+              defaultValue: "No HST was charged by this kitchen.",
+            }),
+            60,
+            currentY
+          );
+          currentY += 14;
+          doc.fillColor('#000000').fontSize(10);
         }
         
         // Total (bold and larger)
@@ -829,28 +930,19 @@ export async function generateStorageInvoicePDF(
 
       // MANAGER VIEW: Show earnings breakdown with tax collected and Stripe fee deduction
       if (invoiceViewer === 'manager') {
-        // ENTERPRISE STANDARD: For Stripe Connect destination charges:
-        // - serviceFee = application_fee_amount = what Stripe withheld from payout (single deduction)
-        // - managerRevenue = amount - application_fee_amount = actual amount received in Stripe account
-        // - stripeProcessingFee = informational only (actual fee Stripe charged the platform)
+        // serviceFee = platform commission (kept by platform; chef paid it)
+        // managerRevenue = Connect transfer = (subtotal+tax) − stripe fee
         const stripeProcessingFee = parseInt(String(transaction.stripeProcessingFee || transaction.stripe_processing_fee || '0')) || 0;
         const managerRevenue = parseInt(String(transaction.managerRevenue || transaction.manager_revenue || '0')) || 0;
         const serviceFee = parseInt(String(transaction.serviceFee || transaction.service_fee || '0')) || 0;
 
-        // Use serviceFee (application_fee) as the actual deduction. Fall back to amount-managerRevenue.
-        const actualDeduction = serviceFee > 0
-          ? serviceFee
-          : (managerRevenue > 0 ? Math.max(0, displayTotalAmount - managerRevenue) : stripeProcessingFee);
-
         currentY += 10;
 
-        // Section header for earnings breakdown
         doc.fontSize(11).font('Helvetica-Bold').fillColor('#1f2937');
         doc.text('EARNINGS BREAKDOWN', 60, currentY);
         currentY += 20;
         doc.fontSize(10).font('Helvetica').fillColor('#000000');
 
-        // Show base amount and tax collected
         doc.text('Base Amount:', 380, currentY);
         doc.text(`$${(displayBaseAmount / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
         currentY += 18;
@@ -861,64 +953,50 @@ export async function generateStorageInvoicePDF(
           currentY += 18;
         }
 
-        // Gross revenue line
         doc.moveTo(380, currentY - 5).lineTo(550, currentY - 5).stroke('#e5e7eb');
         currentY += 5;
         doc.font('Helvetica-Bold');
         doc.text('Gross Revenue:', 380, currentY);
-        doc.text(`$${(displayTotalAmount / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
+        const managerGrossCents = displayBaseAmount + Math.max(0, displayTaxAmount);
+        doc.text(`$${(managerGrossCents / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
         doc.font('Helvetica');
         currentY += 20;
 
-        // Deductions section — single deduction = application_fee_amount (what Stripe withheld)
         doc.fontSize(10).fillColor('#6b7280');
         doc.text('Deductions:', 60, currentY);
         currentY += 18;
         doc.fillColor('#000000');
 
         doc.text('Stripe Fee:', 380, currentY);
-        doc.fillColor('#dc2626'); // Red color for deduction
-        if (actualDeduction > 0) {
-          doc.text(`-$${(actualDeduction / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
+        doc.fillColor('#dc2626');
+        if (stripeProcessingFee > 0) {
+          doc.text(`-$${(stripeProcessingFee / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
         } else {
           doc.text('(pending sync)', 480, currentY, { align: 'right' });
         }
         doc.fillColor('#000000');
         currentY += 20;
 
-        // Show actual processing fee as informational sub-line if it differs (international cards / AMEX)
-        if (
-          stripeProcessingFee > 0 &&
-          actualDeduction > 0 &&
-          Math.abs(stripeProcessingFee - actualDeduction) > 1
-        ) {
-          doc.fontSize(8).fillColor('#9ca3af').font('Helvetica-Oblique');
-          doc.text(
-            `(actual Stripe processing fee: $${(stripeProcessingFee / 100).toFixed(2)})`,
-            300,
-            currentY - 8,
-            { width: 250, align: 'right' }
-          );
-          doc.font('Helvetica').fontSize(10).fillColor('#000000');
-          currentY += 6;
-        }
-
-        // Net payout (bold, highlighted) — actual amount in manager's Stripe account
         doc.moveTo(380, currentY - 5).lineTo(550, currentY - 5).stroke('#e5e7eb');
         currentY += 5;
-        doc.fontSize(12).font('Helvetica-Bold').fillColor('#059669'); // Green for net
+        doc.fontSize(12).font('Helvetica-Bold').fillColor('#059669');
         doc.text('You Receive:', 380, currentY);
-        const netAmount = managerRevenue > 0 ? managerRevenue : (displayTotalAmount - actualDeduction);
+        const netAmount = managerRevenue > 0
+          ? managerRevenue
+          : Math.max(0, managerGrossCents - stripeProcessingFee);
         doc.text(`$${(netAmount / 100).toFixed(2)} CAD`, 480, currentY, { align: 'right' });
         doc.fillColor('#000000');
         currentY += 25;
 
-        // Add notes
         doc.fontSize(8).fillColor('#6b7280');
         doc.text('* You Receive is the actual amount Stripe transferred to your Connect account', 60, currentY);
         currentY += 12;
+        if (serviceFee > 0) {
+          doc.text(`* Platform service fee ($${(serviceFee / 100).toFixed(2)}) was paid by the chef and kept by the platform`, 60, currentY);
+          currentY += 12;
+        }
         if (taxAmount > 0 || displayTaxAmount > 0) {
-          doc.text('* Tax collected is your responsibility to remit to tax authorities', 60, currentY);
+          doc.text('* Tax collected is included in your payout — remit to tax authorities', 60, currentY);
         }
         doc.fillColor('#000000').fontSize(10);
       }

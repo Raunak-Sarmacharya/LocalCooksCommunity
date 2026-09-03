@@ -1,4 +1,5 @@
 import React from 'react';
+import { mt } from "@/i18n/manager";
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { 
@@ -29,6 +30,7 @@ export function OnboardingStatusBanner({
   onContinueSetup,
   className
 }: OnboardingStatusBannerProps) {
+  
   
   // Setup Incomplete Banner
   if (showSetupBanner) {
@@ -66,9 +68,7 @@ export function OnboardingStatusBanner({
               
               {/* Text content */}
               <div className="min-w-0">
-                <h3 className="text-base font-semibold text-white tracking-tight">
-                  Complete your kitchen setup
-                </h3>
+                <h3 className="text-base font-semibold text-white tracking-tight">{mt("completeYourKitchenSetup")}</h3>
                 <p className="text-sm text-slate-400 mt-0.5 truncate">
                   {stepsRemaining === 1 
                     ? `Just 1 step remaining to start accepting bookings`
@@ -100,9 +100,7 @@ export function OnboardingStatusBanner({
               <Button
                 onClick={onContinueSetup}
                 className="bg-white text-slate-900 hover:bg-slate-100 font-medium shadow-lg shadow-white/10 transition-all hover:shadow-white/20"
-              >
-                Continue Setup
-                <ChevronRight className="ml-1.5 h-4 w-4" />
+              >{mt("continueSetup")}<ChevronRight className="ml-1.5 h-4 w-4" />
               </Button>
             </div>
           </div>
@@ -145,16 +143,10 @@ export function OnboardingStatusBanner({
               {/* Text content */}
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-base font-semibold text-amber-900 dark:text-amber-100 tracking-tight">
-                    License Under Review
-                  </h3>
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 ring-1 ring-amber-200 dark:ring-amber-700">
-                    Pending
-                  </span>
+                  <h3 className="text-base font-semibold text-amber-900 dark:text-amber-100 tracking-tight">{mt("licenseUnderReview")}</h3>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 ring-1 ring-amber-200 dark:ring-amber-700">{mt("pending")}</span>
                 </div>
-                <p className="text-sm text-amber-700/80 dark:text-amber-300/70 mt-0.5">
-                  Your kitchen license is being reviewed. You'll be able to accept bookings once approved.
-                </p>
+                <p className="text-sm text-amber-700/80 dark:text-amber-300/70 mt-0.5">{mt("yourKitchenLicenseIsBeingReviewedYouLlBeAbleToAcceptBookings")}</p>
               </div>
             </div>
             
@@ -163,7 +155,7 @@ export function OnboardingStatusBanner({
               <div className="flex items-center gap-3 px-4 py-2.5 rounded-lg bg-white/60 dark:bg-amber-950/40 ring-1 ring-amber-200/60 dark:ring-amber-800/40 w-full sm:w-auto">
                 <Shield className="w-5 h-5 text-amber-600 dark:text-amber-400" />
                 <div className="text-left">
-                  <p className="text-xs font-medium text-amber-900 dark:text-amber-200">Typical review time</p>
+                  <p className="text-xs font-medium text-amber-900 dark:text-amber-200">{mt("typicalReviewTime")}</p>
                   <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">1-2 business days</p>
                 </div>
               </div>
@@ -177,21 +169,21 @@ export function OnboardingStatusBanner({
                 <div className="w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                 </div>
-                <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Setup Complete</span>
+                <span className="text-xs font-medium text-slate-600 dark:text-slate-400">{mt("setupComplete")}</span>
               </div>
               <ArrowRight className="w-4 h-4 text-slate-300 dark:text-slate-600" />
               <div className="flex items-center gap-2">
                 <div className="w-6 h-6 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center ring-2 ring-amber-400/50">
                   <FileCheck className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                 </div>
-                <span className="text-xs font-medium text-amber-700 dark:text-amber-300">License Review</span>
+                <span className="text-xs font-medium text-amber-700 dark:text-amber-300">{mt("licenseReview")}</span>
               </div>
               <ArrowRight className="w-4 h-4 text-slate-300 dark:text-slate-600" />
               <div className="flex items-center gap-2 opacity-50">
                 <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
                   <Rocket className="w-3.5 h-3.5 text-slate-400" />
                 </div>
-                <span className="text-xs font-medium text-slate-400">Ready for Bookings</span>
+                <span className="text-xs font-medium text-slate-400">{mt("readyForBookings")}</span>
               </div>
             </div>
           </div>

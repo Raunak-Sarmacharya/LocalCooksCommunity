@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/tooltip";
 import { getAuthHeaders } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { bt } from "@/i18n/booking-ns";
 
 interface PendingExtension {
   id: number;
@@ -264,7 +265,7 @@ export function PendingStorageExtensions() {
       const headers = await getAuthHeaders();
       const response = await fetch('/api/chef/storage-extensions/pending', { headers });
       if (!response.ok) {
-        throw new Error('Failed to fetch pending extensions');
+        throw new Error(bt("failedToFetchPendingExtensions"));
       }
       return response.json() as Promise<PendingExtension[]>;
     },

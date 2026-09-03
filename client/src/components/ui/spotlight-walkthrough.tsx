@@ -21,9 +21,22 @@ const POPOVER_WIDTH = 248;
 const GAP = 10;
 const PAD = 4;
 
+export function walkthroughStorageKey(base: string, uid?: string | null) {
+  return uid ? `${base}:${uid}` : base;
+}
+
 function hasCompletedTour(storageKey: string) {
   try {
-    return localStorage.getItem(storageKey) === "1";
+    if (localStorage.getItem(storageKey) === "1") return true;
+    const scopedAt = storageKey.lastIndexOf(":");
+    if (scopedAt > 0) {
+      const unscoped = storageKey.slice(0, scopedAt);
+      if (localStorage.getItem(unscoped) === "1") {
+        localStorage.setItem(storageKey, "1");
+        return true;
+      }
+    }
+    return false;
   } catch {
     return true;
   }
@@ -196,11 +209,18 @@ export function SpotlightWalkthrough({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, close]);
 
+  // Pause when a dialog covers the page. Do not treat that as "never started"
+  // or the tour restarts from step 1 after every modal.
   useEffect(() => {
     if (!enabled && open) {
       setOpen(false);
     }
   }, [enabled, open]);
+
+  useEffect(() => {
+    if (!open || !highlight || highlight.width === 0) return;
+    markTourComplete(storageKey);
+  }, [open, highlight, storageKey]);
 
   useLayoutEffect(() => {
     if (!open || !step) {

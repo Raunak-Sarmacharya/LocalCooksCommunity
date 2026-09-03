@@ -10,17 +10,9 @@ import {
     BreadcrumbPage,
     BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { useFirebaseAuth } from "@/hooks/use-auth"
 import { useChefSidebarHiddenItems } from "@/hooks/use-chef-sidebar-hidden-items"
-import { LogOut, User as UserIcon, ChevronDown, Command, Headphones, Languages } from "lucide-react"
+import { Command, Headphones } from "lucide-react"
 import ChefNotificationCenter from "@/components/chef/ChefNotificationCenter"
 import { CommandMenu } from "@/components/command-menu"
 import { Button } from "@/components/ui/button"
@@ -66,7 +58,7 @@ export default function ChefDashboardLayout({
     breadcrumbs,
     hiddenItems = [],
 }: ChefDashboardLayoutProps) {
-    const { user, logout } = useFirebaseAuth()
+    const { logout } = useFirebaseAuth()
     const { t } = useTranslation("chef")
     const tr = t as unknown as TFunction
     const [isCommandOpen, setIsCommandOpen] = React.useState(false)
@@ -81,16 +73,6 @@ export default function ChefDashboardLayout({
         { label: t("shellDashboard"), href: "#" },
         { label: viewLabelKeys[activeView] ? tr(viewLabelKeys[activeView] as never) : activeView },
     ]
-
-    // Get user initials for avatar fallback
-    const getInitials = (name: string | null | undefined) => {
-        if (!name) return "CH"
-        const parts = name.split(" ")
-        if (parts.length >= 2) {
-            return `${parts[0][0]}${parts[1][0]}`.toUpperCase()
-        }
-        return name.slice(0, 2).toUpperCase()
-    }
 
     return (
         <SidebarProvider>
@@ -167,62 +149,7 @@ export default function ChefDashboardLayout({
                             <span className="hidden sm:inline">{t("shellSupport")}</span>
                         </button>
 
-                        {/* Notification Bell */}
                         <ChefNotificationCenter />
-                        
-                        <DropdownMenu modal={false}>
-                            <DropdownMenuTrigger asChild>
-                                <div className="flex items-center gap-2 cursor-pointer hover:bg-accent/50 p-1.5 rounded-lg transition-colors group">
-                                    <Avatar className="h-8 w-8 rounded-lg border">
-                                        <AvatarImage
-                                            src={user?.photoURL || ""}
-                                            alt={user?.displayName || "Chef"}
-                                        />
-                                        <AvatarFallback className="rounded-lg">
-                                            {getInitials(user?.displayName)}
-                                        </AvatarFallback>
-                                    </Avatar>
-                                    <ChevronDown className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-                                </div>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent
-                                align="end"
-                                sideOffset={4}
-                                forceMount
-                                className="w-64 p-2 bg-background/95 backdrop-blur-sm border border-border/60 rounded-lg shadow-xl shadow-foreground/5"
-                            >
-                                <div className="px-3 py-2.5 mb-1">
-                                    <p className="text-sm font-medium text-foreground tracking-tight leading-tight">
-                                        {user?.displayName || "Chef"}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground tracking-tight leading-tight">
-                                        {user?.email}
-                                    </p>
-                                </div>
-
-                                <DropdownMenuSeparator className="my-2 bg-gradient-to-r from-transparent via-border to-transparent" />
-
-                                <div className="space-y-1">
-                                    <DropdownMenuItem
-                                        onClick={() => onViewChange("profile")}
-                                        className="flex items-center p-3 rounded-md transition-all duration-200 cursor-pointer group hover:shadow-sm border border-transparent hover:border-border/50"
-                                    >
-                                        <UserIcon className="mr-2 h-4 w-4" />
-                                        <span className="text-sm font-medium tracking-tight">{t("shellProfile")}</span>
-                                    </DropdownMenuItem>
-                                </div>
-
-                                <DropdownMenuSeparator className="my-2 bg-gradient-to-r from-transparent via-border to-transparent" />
-
-                                <DropdownMenuItem
-                                    onClick={() => logout()}
-                                    className="flex items-center gap-3 p-3 rounded-md duration-200 bg-destructive/10 hover:bg-destructive/20 cursor-pointer border border-transparent hover:border-destructive/30 hover:shadow-sm transition-all group"
-                                >
-                                    <LogOut className="h-4 w-4 text-destructive group-hover:text-destructive" />
-                                    <span className="text-sm font-medium text-destructive">{t("shellSignOut")}</span>
-                                </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
                     </div>
                 </header>
                 <main className="flex-1 p-4 md:p-6 lg:p-8 bg-muted/30">

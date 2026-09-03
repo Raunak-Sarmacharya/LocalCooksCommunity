@@ -1,7 +1,9 @@
 import { logger } from "@/lib/logger";
 import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, Package, Wrench, DollarSign, ChefHat, ArrowLeft, CreditCard, Loader2 } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
+import { estimateBookingCheckoutTotal } from "@/lib/booking-price-estimate";
 import { useState, useEffect, useMemo, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { useKitchenBookings } from "../hooks/use-kitchen-bookings";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -10,8 +12,10 @@ import { useLocation } from "wouter";
 import { useStoragePricing } from "@/hooks/use-storage-pricing";
 import { useQuery } from "@tanstack/react-query";
 import { SmartImage } from "@/components/ui/smart-image";
+import { tt } from "@/i18n/common-ns";
 
 export default function BookingConfirmationPage() {
+  const { t } = useTranslation("booking");
   const [location, setLocation] = useLocation();
   const { kitchens, createBooking } = useKitchenBookings();
   const { toast } = useToast();
@@ -49,7 +53,8 @@ export default function BookingConfirmationPage() {
     hourlyRate: number | null;
     currency: string;
     minimumBookingHours: number;
-    taxRatePercent?: number;
+    taxRatePercent: number;
+    platformCommissionRate: number;
   } | null>(null);
 
   // Payment state
@@ -129,7 +134,8 @@ export default function BookingConfirmationPage() {
               hourlyRate,
               currency: pricing.currency || 'CAD',
               minimumBookingHours: pricing.minimumBookingHours || 1,
-              taxRatePercent: pricing.taxRatePercent || 0,
+              taxRatePercent: Math.max(0, Number(pricing.taxRatePercent) || 0),
+              platformCommissionRate: Math.max(0, Number(pricing.platformCommissionRate) || 0),
             });
 
             // Calculate estimated price in CENTS
@@ -249,24 +255,22 @@ export default function BookingConfirmationPage() {
     return kitchenBase + storageBaseCents + equipmentBaseCents;
   }, [estimatedPrice?.basePrice, storagePricing.subtotal, equipmentPricing.subtotal]);
 
-  // Calculate tax on combined subtotal
-  const tax = useMemo(() => {
-    const subtotalCents = combinedSubtotal;
-    if (subtotalCents <= 0) return 0;
-    
-    // Tax rate is stored as a percentage
-    // If not set, default to 0
-    const taxRatePercent = selectedKitchen?.taxRatePercent || 0;
-    
-    // Calculate tax: (subtotal * taxRate) / 100
-    // Result is in cents
-    return Math.round((subtotalCents * taxRatePercent) / 100);
-  }, [combinedSubtotal, selectedKitchen?.taxRatePercent]);
+  const taxRatePercent =
+    kitchenPricing?.taxRatePercent ?? selectedKitchen?.taxRatePercent ?? 0;
+  const platformCommissionRate = kitchenPricing?.platformCommissionRate ?? 0;
 
-  // Calculate grand total
-  const grandTotal = useMemo(() => {
-    return combinedSubtotal + tax;
-  }, [combinedSubtotal, tax]);
+  const checkoutTotals = useMemo(() => {
+    if (combinedSubtotal <= 0) return null;
+    return estimateBookingCheckoutTotal({
+      subtotalCents: combinedSubtotal,
+      taxRatePercent,
+      platformCommissionRate,
+    });
+  }, [combinedSubtotal, taxRatePercent, platformCommissionRate]);
+
+  const tax = checkoutTotals?.taxCents ?? 0;
+  const serviceFee = checkoutTotals?.serviceFeeCents ?? 0;
+  const grandTotal = checkoutTotals?.totalCents ?? 0;
 
   // Helper functions
   const formatTime = (timeStr: string) => {
@@ -381,12 +385,12 @@ export default function BookingConfirmationPage() {
         document.body.style.pointerEvents = '';
         window.location.href = data.sessionUrl;
       } else {
-        throw new Error('No checkout URL returned');
+        throw new Error(tt("noCheckoutUrl"));
       }
     } catch (error: any) {
       toast({
-        title: "Checkout Failed",
-        description: error.message || "Failed to start checkout. Please try again.",
+        title: t("toastCheckoutFailedTitle"),
+        description: error.message || t("toastCheckoutFailedDefaultDesc"),
         variant: "destructive",
       });
       setIsRedirectingToCheckout(false);
@@ -442,15 +446,15 @@ export default function BookingConfirmationPage() {
           const addonsCount = selectedEquipmentIds.length;
           const addonsMsg = addonsCount > 0 ? ` with ${addonsCount} equipment add-on${addonsCount > 1 ? 's' : ''}` : '';
           toast({
-            title: "Booking Created!",
-            description: `Your ${selectedSlots.length} hour${selectedSlots.length > 1 ? 's' : ''} kitchen booking${addonsMsg} has been submitted successfully.`,
+            title: t("toastBookingCreatedTitle"),
+            description: t("toastBookingCreatedDesc", { count: selectedSlots.length }),
           });
           setLocation('/book-kitchen');
         },
         onError: (error: any) => {
           toast({
-            title: "Booking Failed",
-            description: error.message || "Failed to create booking. Please try again.",
+            title: t("toastBookingFailedTitle"),
+            description: error.message || t("toastBookingFailedDefaultDesc"),
             variant: "destructive",
           });
         },
@@ -480,13 +484,13 @@ export default function BookingConfirmationPage() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <div className="text-center">
                 <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">Invalid Booking Data</h2>
-                <p className="text-gray-600 mb-4">Missing required booking information.</p>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">{t("bcpInvalidDataTitle")}</h2>
+                <p className="text-gray-600 mb-4">{t("bcpInvalidDataDesc")}</p>
                 <button
                   onClick={() => setLocation('/book-kitchen')}
                   className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
                 >
-                  Go to Booking Page
+                  {t("bcpGoToBookingPage")}
                 </button>
               </div>
             </div>
@@ -506,7 +510,7 @@ export default function BookingConfirmationPage() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <div className="text-center">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mx-auto mb-4" />
-                <p className="text-gray-600">Loading kitchen information...</p>
+                <p className="text-gray-600">{t("bcpLoadingKitchen")}</p>
               </div>
             </div>
           </div>
@@ -521,13 +525,13 @@ export default function BookingConfirmationPage() {
       <Header />
       <main className="flex-1 pt-24 pb-8">
         <div className="max-w-2xl mx-auto px-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full p-6">
+          <div className="bg-white rounded-xl shadow-2xl w-full p-6" data-testid="booking-confirmation">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-gray-900">Confirm Your Booking</h2>
+              <h2 className="text-2xl font-bold text-gray-900">{t("bcpPageTitle")}</h2>
               <button
                 onClick={handleBack}
                 className="text-gray-400 hover:text-gray-600"
-                aria-label="Close"
+                aria-label={tt("close")}
               >
                 <X className="h-6 w-6" />
               </button>
@@ -634,7 +638,7 @@ export default function BookingConfirmationPage() {
                                   </p>
                                 </div>
                               ) : (
-                                <p>Calculating price...</p>
+                                <p>{t("bcpCalculatingPrice")}</p>
                               )}
                             </div>
                           </div>
@@ -740,9 +744,17 @@ export default function BookingConfirmationPage() {
                           {tax > 0 && (
                             <div className="flex justify-between border-t border-gray-200 pt-2 mt-2">
                               <span className="text-gray-600">
-                                {`Tax ${kitchenPricing?.taxRatePercent ? `(${kitchenPricing.taxRatePercent}%)` : ''}:`}
+                                {`Tax ${taxRatePercent > 0 ? `(${taxRatePercent}%)` : ''}:`}
                               </span>
                               <span className="font-medium text-gray-900">{formatCurrency(tax)} {kitchenPricing?.currency || 'CAD'}</span>
+                            </div>
+                          )}
+                          {serviceFee > 0 && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">
+                                {`Service fee (${Math.round(platformCommissionRate * 100)}%):`}
+                              </span>
+                              <span className="font-medium text-gray-900">{formatCurrency(serviceFee)} {kitchenPricing?.currency || 'CAD'}</span>
                             </div>
                           )}
                         </div>
@@ -777,9 +789,10 @@ export default function BookingConfirmationPage() {
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
+                  data-testid="booking-notes"
                   rows={3}
                   maxLength={500}
-                  placeholder="Any special requirements or notes..."
+                  placeholder={t("bcpSpecialNotesPlaceholder")}
                   className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
                 {notes && (
@@ -799,12 +812,13 @@ export default function BookingConfirmationPage() {
                 <button
                   onClick={grandTotal > 0 ? redirectToStripeCheckout : handleBookingSubmit}
                   disabled={createBooking.isPending || isRedirectingToCheckout}
+                  data-testid="booking-submit"
                   className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium transition-colors flex items-center justify-center gap-2"
                 >
                   {createBooking.isPending || isRedirectingToCheckout ? (
                     <span className="flex items-center justify-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      {isRedirectingToCheckout ? 'Redirecting to checkout...' : 'Booking...'}
+                      {isRedirectingToCheckout ? t("bcpRedirectingToCheckout") : t("bcpBookingEllipsis")}
                     </span>
                   ) : grandTotal > 0 ? (
                     <>
@@ -812,7 +826,7 @@ export default function BookingConfirmationPage() {
                       Checkout
                     </>
                   ) : (
-                    "Confirm Booking"
+                    t("sheetConfirmBookingButton")
                   )}
                 </button>
               </div>
@@ -824,4 +838,3 @@ export default function BookingConfirmationPage() {
     </div>
   );
 }
-

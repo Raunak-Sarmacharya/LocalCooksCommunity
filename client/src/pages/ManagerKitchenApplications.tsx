@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { mt } from "@/i18n/manager";
 /**
  * Manager Kitchen Applications Page - Enterprise Edition
  * 
@@ -72,6 +73,7 @@ import { getConversationForApplication, createConversation } from "@/services/ch
 import { useLocation } from "wouter";
 import { SecureDocumentLink } from "@/components/common/SecureDocumentLink";
 import { parseBusinessInfo } from "@/utils/parseBusinessInfo";
+import { tt } from "@/i18n/common-ns";
 
 /**
  * @deprecated Legacy Manager Kitchen Applications Page - Use default export instead
@@ -84,8 +86,8 @@ function ManagerKitchenApplicationsLegacy() {
   const [, setLocation] = useLocation();
   return (
     <ManagerPageLayout
-      title="Chef Applications"
-      description="Review and manage chef applications to your kitchen locations."
+      title={mt("chefApplications")}
+      description={mt("reviewAndManageChefApplicationsToYourKitchenLocations")}
       showKitchenSelector={false} // Applications are currently location-based, so kitchen filter is not needed. [BUSINESS LOGIC]
     >
       {({ selectedLocationId, isLoading: isLayoutLoading }) => (
@@ -191,13 +193,13 @@ function ManagerKitchenApplicationsContentLegacy({
     queryFn: async () => {
       const { auth } = await import('@/lib/firebase');
       const currentUser = auth.currentUser;
-      if (!currentUser) throw new Error('Not authenticated');
+      if (!currentUser) throw new Error(tt("notAuthenticated"));
       const token = await currentUser.getIdToken();
       const response = await fetch('/api/firebase/user/me', {
         headers: { Authorization: `Bearer ${token}` },
         credentials: 'include',
       });
-      if (!response.ok) throw new Error('Failed to get user info');
+      if (!response.ok) throw new Error(tt("failedToGetUserInfo"));
       return response.json();
     },
   });
@@ -304,9 +306,8 @@ function ManagerKitchenApplicationsContentLegacy({
 
   const openChat = async (application: any) => {
     if (!managerId) {
-      toast({
-        title: "Error",
-        description: "Unable to identify manager. Please refresh the page.",
+      toast({ title: mt("error"),
+        description: mt("unableToIdentifyManagerPleaseRefreshThePage"),
         variant: "destructive",
       });
       return;
@@ -338,9 +339,8 @@ function ManagerKitchenApplicationsContentLegacy({
         );
       } catch (error) {
         logger.error('Error initializing chat:', error);
-        toast({
-          title: "Error",
-          description: "Failed to open chat. Please try again.",
+        toast({ title: mt("error"),
+          description: mt("failedToOpenChatPleaseTryAgain"),
           variant: "destructive",
         });
         return;
@@ -360,16 +360,14 @@ function ManagerKitchenApplicationsContentLegacy({
         status: 'approved',
         feedback: reviewFeedback || undefined,
       });
-      toast({
-        title: "Application Approved",
-        description: "Chef's application is approved. They can book kitchens once they complete all application tiers.",
+      toast({ title: mt("applicationApproved"),
+        description: mt("toastChefApplicationApprovedTiers"),
       });
       setShowReviewDialog(false);
       setSelectedApplication(null);
       setReviewFeedback("");
     } catch (error: any) {
-      toast({
-        title: "Error",
+      toast({ title: mt("error"),
         description: error.message || "Failed to approve application",
         variant: "destructive",
       });
@@ -384,16 +382,14 @@ function ManagerKitchenApplicationsContentLegacy({
         currentTier: 3,
         feedback: reviewFeedback || undefined,
       });
-      toast({
-        title: "Step 2 Approved",
-        description: "Chef has been advanced to Step 3.",
+      toast({ title: mt("step2Approved"),
+        description: mt("chefHasBeenAdvancedToStep3"),
       });
       setShowReviewDialog(false);
       setSelectedApplication(null);
       setReviewFeedback("");
     } catch (error: any) {
-      toast({
-        title: "Error",
+      toast({ title: mt("error"),
         description: error.message || "Failed to approve Step 2",
         variant: "destructive",
       });
@@ -402,9 +398,8 @@ function ManagerKitchenApplicationsContentLegacy({
 
   const handleReject = async (applicationId: number) => {
     if (!reviewFeedback.trim()) {
-      toast({
-        title: "Feedback Required",
-        description: "Please provide feedback when rejecting an application.",
+      toast({ title: mt("feedbackRequired"),
+        description: mt("pleaseProvideFeedbackWhenRejectingAnApplication"),
         variant: "destructive",
       });
       return;
@@ -416,16 +411,14 @@ function ManagerKitchenApplicationsContentLegacy({
         status: 'rejected',
         feedback: reviewFeedback,
       });
-      toast({
-        title: "Application Rejected",
-        description: "Chef has been notified.",
+      toast({ title: mt("applicationRejected"),
+        description: mt("chefHasBeenNotified"),
       });
       setShowReviewDialog(false);
       setSelectedApplication(null);
       setReviewFeedback("");
     } catch (error: any) {
-      toast({
-        title: "Error",
+      toast({ title: mt("error"),
         description: error.message || "Failed to reject application",
         variant: "destructive",
       });
@@ -451,15 +444,13 @@ function ManagerKitchenApplicationsContentLegacy({
         locationId: application.locationId,
       });
 
-      toast({
-        title: "Access Revoked",
-        description: "Chef access has been revoked successfully.",
+      toast({ title: mt("accessRevoked"),
+        description: mt("chefAccessHasBeenRevokedSuccessfully"),
       });
       setShowReviewDialog(false);
       setSelectedApplication(null);
     } catch (error: any) {
-      toast({
-        title: "Error",
+      toast({ title: mt("error"),
         description: error.message || "Failed to revoke access",
         variant: "destructive",
       });
@@ -486,7 +477,7 @@ function ManagerKitchenApplicationsContentLegacy({
 
   // Helper to render custom field value based on type
   const renderCustomFieldValue = (field: any, value: any) => {
-    if (value === undefined || value === null || value === '') return <span className="text-gray-400 italic">Not provided</span>;
+    if (value === undefined || value === null || value === '') return <span className="text-gray-400 italic">{mt("notProvided")}</span>;
 
     if (field.type === 'checkbox') {
       if (Array.isArray(value)) {
@@ -526,10 +517,8 @@ function ManagerKitchenApplicationsContentLegacy({
       <div className="mb-8">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Chef Applications</h1>
-            <p className="text-gray-600">
-              Review and manage chef applications to your kitchen locations.
-            </p>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">{mt("chefApplications")}</h1>
+            <p className="text-gray-600">{mt("reviewAndManageChefApplicationsToYourKitchenLocations")}</p>
           </div>
           <Button
             variant="outline"
@@ -539,16 +528,14 @@ function ManagerKitchenApplicationsContentLegacy({
             }}
             className="flex items-center gap-2"
           >
-            <Settings className="h-4 w-4" />
-            Configure Application Requirements
-            <ExternalLink className="h-3 w-3" />
+            <Settings className="h-4 w-4" />{mt("configureApplicationRequirements")}<ExternalLink className="h-3 w-3" />
           </Button>
         </div>
         <div className="mt-4 p-3 bg-primary/5 border border-primary/10 rounded-lg">
           <div className="flex items-start gap-2">
             <AlertCircle className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
             <div className="flex-1">
-              <p className="text-sm text-foreground font-medium mb-1">Customize Application Requirements</p>
+              <p className="text-sm text-foreground font-medium mb-1">{mt("customizeApplicationRequirements")}</p>
               <p className="text-xs text-muted-foreground">
                 Control which fields are required when chefs apply to your kitchens. You can make fields optional to streamline the application process.
               </p>
@@ -561,7 +548,7 @@ function ManagerKitchenApplicationsContentLegacy({
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Pending Review</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{mt("pendingReview")}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-yellow-600">{pendingCount}</div>
@@ -569,25 +556,25 @@ function ManagerKitchenApplicationsContentLegacy({
         </Card>
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Awaiting Step 2</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{mt("awaitingStep2")}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-blue-600">{awaitingStep2Count}</div>
-            <p className="text-xs text-gray-500 mt-1">Chat enabled</p>
+            <p className="text-xs text-gray-500 mt-1">{mt("chatEnabled")}</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Approved</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{mt("approved")}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-green-600">{fullyApprovedCount}</div>
-            <p className="text-xs text-gray-500 mt-1">Can book kitchens</p>
+            <p className="text-xs text-gray-500 mt-1">{mt("canBookKitchens")}</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Rejected</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{mt("rejected")}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-red-600">{rejectedCount}</div>
@@ -634,8 +621,8 @@ function ManagerKitchenApplicationsContentLegacy({
             <Card>
               <CardContent className="py-12 text-center">
                 <CheckCircle className="h-12 w-12 text-green-400 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">All Caught Up!</h3>
-                <p className="text-muted-foreground">No pending applications to review.</p>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">{mt("allCaughtUp")}</h3>
+                <p className="text-muted-foreground">{mt("noPendingApplicationsToReview")}</p>
               </CardContent>
             </Card>
           )}
@@ -659,8 +646,8 @@ function ManagerKitchenApplicationsContentLegacy({
             <Card>
               <CardContent className="py-12 text-center">
                 <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">No Applications Awaiting Step 2</h3>
-                <p className="text-muted-foreground">Chefs who passed Step 1 and still need to submit Step 2 will appear here.</p>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">{mt("noApplicationsAwaitingStep2")}</h3>
+                <p className="text-muted-foreground">{mt("chefsWhoPassedStep1AndStillNeedToSubmitStep2WillAppearHere")}</p>
               </CardContent>
             </Card>
           )}
@@ -684,8 +671,8 @@ function ManagerKitchenApplicationsContentLegacy({
             <Card>
               <CardContent className="py-12 text-center">
                 <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">No Approved Applications</h3>
-                <p className="text-muted-foreground">Fully approved chef applications will appear here.</p>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">{mt("noApprovedApplications")}</h3>
+                <p className="text-muted-foreground">{mt("fullyApprovedChefApplicationsWillAppearHere")}</p>
               </CardContent>
             </Card>
           )}
@@ -709,8 +696,8 @@ function ManagerKitchenApplicationsContentLegacy({
             <Card>
               <CardContent className="py-12 text-center">
                 <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">No Rejected Applications</h3>
-                <p className="text-muted-foreground">Rejected applications will appear here.</p>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">{mt("noRejectedApplications")}</h3>
+                <p className="text-muted-foreground">{mt("rejectedApplicationsWillAppearHere")}</p>
               </CardContent>
             </Card>
           )}
@@ -722,9 +709,7 @@ function ManagerKitchenApplicationsContentLegacy({
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <ChefHat className="h-5 w-5 text-primary" />
-              Review Chef Application
-            </DialogTitle>
+              <ChefHat className="h-5 w-5 text-primary" />{mt("reviewChefApplication")}</DialogTitle>
             <DialogDescription>
               Review the chef&apos;s application details and documents.
             </DialogDescription>
@@ -736,7 +721,7 @@ function ManagerKitchenApplicationsContentLegacy({
               <div className="bg-gray-50 rounded-lg p-4">
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <Building2 className="h-4 w-4" />
-                  <span className="font-medium">Applying to:</span>
+                  <span className="font-medium">{mt("applyingTo")}</span>
                   <span>{selectedApplication.location?.name || 'Unknown Location'}</span>
                 </div>
               </div>
@@ -744,30 +729,28 @@ function ManagerKitchenApplicationsContentLegacy({
               {/* Personal Info */}
               <div>
                 <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                  <User className="h-4 w-4" />
-                  Personal Information
-                </h3>
+                  <User className="h-4 w-4" />{mt("personalInformation")}</h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="p-3 bg-gray-50 rounded-lg">
-                    <div className="text-xs text-gray-500 mb-1">Full Name</div>
+                    <div className="text-xs text-gray-500 mb-1">{mt("fullName")}</div>
                     <div className="font-medium">{selectedApplication.fullName}</div>
                   </div>
                   <div className="p-3 bg-gray-50 rounded-lg">
-                    <div className="text-xs text-gray-500 mb-1">Email</div>
+                    <div className="text-xs text-gray-500 mb-1">{mt("email")}</div>
                     <div className="flex items-center gap-2">
                       <Mail className="h-3 w-3 text-gray-400" />
                       <span className="font-medium text-sm">{selectedApplication.email}</span>
                     </div>
                   </div>
                   <div className="p-3 bg-gray-50 rounded-lg">
-                    <div className="text-xs text-gray-500 mb-1">Phone</div>
+                    <div className="text-xs text-gray-500 mb-1">{mt("phone")}</div>
                     <div className="flex items-center gap-2">
                       <Phone className="h-3 w-3 text-gray-400" />
                       <span className="font-medium">{selectedApplication.phone}</span>
                     </div>
                   </div>
                   <div className="p-3 bg-gray-50 rounded-lg">
-                    <div className="text-xs text-gray-500 mb-1">Applied</div>
+                    <div className="text-xs text-gray-500 mb-1">{mt("applied")}</div>
                     <div className="flex items-center gap-2">
                       <Calendar className="h-3 w-3 text-gray-400" />
                       <span className="font-medium">{new Date(selectedApplication.createdAt).toLocaleDateString()}</span>
@@ -780,49 +763,47 @@ function ManagerKitchenApplicationsContentLegacy({
               {selectedApplication.businessDescription && (
                 <div>
                   <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                    <Briefcase className="h-4 w-4" />
-                    Business Information
-                  </h3>
+                    <Briefcase className="h-4 w-4" />{mt("businessInformation")}</h3>
                   <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
                     {(() => {
                       const info = parseBusinessInfo(selectedApplication.businessDescription);
-                      if (!info) return <p className="text-gray-600">No business information provided.</p>;
+                      if (!info) return <p className="text-gray-600">{mt("noBusinessInformationProvided")}</p>;
 
                       return (
                         <div className="grid grid-cols-2 gap-3 text-sm">
                           {info.businessName && (
                             <div>
-                              <span className="text-gray-500">Business:</span>
+                              <span className="text-gray-500">{mt("business")}</span>
                               <span className="ml-2 font-medium">{info.businessName}</span>
                             </div>
                           )}
                           {info.businessType && (
                             <div>
-                              <span className="text-gray-500">Type:</span>
+                              <span className="text-gray-500">{mt("type2")}</span>
                               <span className="ml-2 font-medium capitalize">{info.businessType}</span>
                             </div>
                           )}
                           {info.experience && (
                             <div>
-                              <span className="text-gray-500">Experience:</span>
+                              <span className="text-gray-500">{mt("experience2")}</span>
                               <span className="ml-2 font-medium">{info.experience} years</span>
                             </div>
                           )}
                           {info.usageFrequency && (
                             <div>
-                              <span className="text-gray-500">Frequency:</span>
+                              <span className="text-gray-500">{mt("frequency")}</span>
                               <span className="ml-2 font-medium capitalize">{info.usageFrequency}</span>
                             </div>
                           )}
                           {info.sessionDuration && (
                             <div>
-                              <span className="text-gray-500">Session Length:</span>
+                              <span className="text-gray-500">{mt("sessionLength")}</span>
                               <span className="ml-2 font-medium">{info.sessionDuration} hours</span>
                             </div>
                           )}
                           {info.description && (
                             <div className="col-span-2 pt-2 border-t">
-                              <span className="text-gray-500">Description:</span>
+                              <span className="text-gray-500">{mt("description2")}</span>
                               <p className="mt-1 text-gray-700">{info.description}</p>
                             </div>
                           )}
@@ -836,9 +817,7 @@ function ManagerKitchenApplicationsContentLegacy({
               {/* ========== STEP 1 SECTION ========== */}
               <div className="border-2 border-blue-200 rounded-lg p-4 bg-blue-50/30">
                 <div className="flex items-center gap-2 mb-4">
-                  <Badge variant="info">
-                    Step 1: Initial Application
-                  </Badge>
+                  <Badge variant="info">{mt("step1InitialApplication")}</Badge>
                   {selectedApplication.tier1_completed_at && (
                     <span className="text-xs text-gray-500">
                       Submitted: {new Date(selectedApplication.createdAt).toLocaleDateString()}
@@ -849,9 +828,7 @@ function ManagerKitchenApplicationsContentLegacy({
                 {/* Step 1 Documents */}
                 <div className="mb-4">
                   <h4 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
-                    <Shield className="h-4 w-4" />
-                    Food Safety Documents
-                  </h4>
+                    <Shield className="h-4 w-4" />{mt("foodSafetyDocuments")}</h4>
                   <div className="space-y-2">
                     {/* Food Safety License */}
                     <div className={`flex items-center justify-between p-3 rounded-lg border ${selectedApplication.foodSafetyLicenseUrl
@@ -861,17 +838,17 @@ function ManagerKitchenApplicationsContentLegacy({
                       <div className="flex items-center gap-3">
                         <FileText className={`h-4 w-4 ${selectedApplication.foodSafetyLicenseUrl ? 'text-green-600' : 'text-gray-400'}`} />
                         <div>
-                          <p className="font-medium text-gray-900 text-sm">Food Handler Certificate</p>
+                          <p className="font-medium text-gray-900 text-sm">{mt("foodSafetyLicense")}</p>
                           <p className="text-xs text-gray-500">
-                            {selectedApplication.foodSafetyLicense === 'yes' ? 'Has certificate' : 'Certificate status: ' + selectedApplication.foodSafetyLicense}
+                            {selectedApplication.foodSafetyLicense === 'yes' ? 'Has license' : 'License status: ' + selectedApplication.foodSafetyLicense}
                           </p>
                         </div>
                       </div>
                       {selectedApplication.foodSafetyLicenseUrl && (
                         <SecureDocumentLink
                           url={selectedApplication.foodSafetyLicenseUrl}
-                          fileName="Food Handler Certificate"
-                          label="Download"
+                          fileName="Food Safety License"
+                          label={mt("download")}
                         />
                       )}
                     </div>
@@ -884,9 +861,7 @@ function ManagerKitchenApplicationsContentLegacy({
                   locationRequirements.tier1_custom_fields.length > 0 && (
                     <div>
                       <h4 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
-                        <FileText className="h-4 w-4" />
-                        Additional Step 1 Information
-                      </h4>
+                        <FileText className="h-4 w-4" />{mt("additionalStep1Information")}</h4>
                       <div className="grid grid-cols-2 gap-3">
                         {locationRequirements.tier1_custom_fields.map((field: any) => {
                           const customData = selectedApplication.customFieldsData || {};
@@ -907,18 +882,12 @@ function ManagerKitchenApplicationsContentLegacy({
               {selectedApplication.tier2_completed_at && (
                 <div className="border-2 border-orange-200 rounded-lg p-4 bg-orange-50/30">
                   <div className="flex items-center gap-2 mb-4">
-                    <Badge variant="warning">
-                      Step 2: Kitchen Coordination
-                    </Badge>
+                    <Badge variant="warning">{mt("step2KitchenCoordination")}</Badge>
                     {selectedApplication.current_tier === 2 && (
-                      <Badge variant="warning">
-                        Awaiting Review
-                      </Badge>
+                      <Badge variant="warning">{mt("awaitingReview")}</Badge>
                     )}
                     {selectedApplication.current_tier >= 3 && (
-                      <Badge variant="success">
-                        Approved
-                      </Badge>
+                      <Badge variant="success">{mt("approved")}</Badge>
                     )}
                     <span className="text-xs text-gray-500 ml-auto">
                       Submitted: {new Date(selectedApplication.tier2_completed_at).toLocaleDateString()}
@@ -928,9 +897,7 @@ function ManagerKitchenApplicationsContentLegacy({
                   {/* Step 2 Documents */}
                   <div className="mb-4">
                     <h4 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
-                      <Shield className="h-4 w-4" />
-                      Step 2 Documents
-                    </h4>
+                      <Shield className="h-4 w-4" />{mt("step2Documents")}</h4>
                     <div className="space-y-2">
                       {/* Insurance Document */}
                       {(() => {
@@ -943,22 +910,22 @@ function ManagerKitchenApplicationsContentLegacy({
                             <div className="flex items-center gap-3">
                               <FileText className="h-4 w-4 text-purple-600" />
                               <div>
-                                <p className="font-medium text-gray-900 text-sm">Insurance Document</p>
-                                <p className="text-xs text-gray-500">Uploaded with Step 2 submission</p>
+                                <p className="font-medium text-gray-900 text-sm">{mt("insuranceDocument")}</p>
+                                <p className="text-xs text-gray-500">{mt("uploadedWithStep2Submission")}</p>
                               </div>
                             </div>
                             <SecureDocumentLink
                               url={insuranceUrl}
                               fileName="Insurance Document"
-                              label="Download"
+                              label={mt("download")}
                             />
                           </div>
                         ) : locationRequirements?.tier2_insurance_document_required ? (
                           <div className="flex items-center p-3 rounded-lg border bg-red-50 border-red-200">
                             <FileText className="h-4 w-4 text-red-400 mr-3" />
                             <div>
-                              <p className="font-medium text-red-900 text-sm">Insurance Document</p>
-                              <p className="text-xs text-red-600">Required but not uploaded</p>
+                              <p className="font-medium text-red-900 text-sm">{mt("insuranceDocument")}</p>
+                              <p className="text-xs text-red-600">{mt("requiredButNotUploaded")}</p>
                             </div>
                           </div>
                         ) : null;
@@ -970,7 +937,7 @@ function ManagerKitchenApplicationsContentLegacy({
                           <div className="flex items-center gap-3">
                             <FileText className="h-4 w-4 text-blue-600" />
                             <div>
-                              <p className="font-medium text-gray-900 text-sm">Food Establishment Certificate</p>
+                              <p className="font-medium text-gray-900 text-sm">{mt("foodEstablishmentCertificate")}</p>
                               <p className="text-xs text-gray-500">
                                 {selectedApplication.foodEstablishmentCertExpiry
                                   ? `Expires: ${new Date(selectedApplication.foodEstablishmentCertExpiry).toLocaleDateString()}`
@@ -981,7 +948,7 @@ function ManagerKitchenApplicationsContentLegacy({
                           <SecureDocumentLink
                             url={selectedApplication.foodEstablishmentCertUrl}
                             fileName="Establishment Certificate"
-                            label="Download"
+                            label={mt("download")}
                           />
                         </div>
                       )}
@@ -994,9 +961,7 @@ function ManagerKitchenApplicationsContentLegacy({
                     locationRequirements.tier2_custom_fields.length > 0 && (
                       <div>
                         <h4 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
-                          <FileText className="h-4 w-4" />
-                          Additional Step 2 Information
-                        </h4>
+                          <FileText className="h-4 w-4" />{mt("additionalStep2Information")}</h4>
                         <div className="grid grid-cols-2 gap-3">
                           {locationRequirements.tier2_custom_fields.map((field: any) => {
                             // Step 2 custom fields are stored in tier_data.tier2_custom_fields_data
@@ -1024,7 +989,7 @@ function ManagerKitchenApplicationsContentLegacy({
                 <Textarea
                   value={reviewFeedback}
                   onChange={(e) => setReviewFeedback(e.target.value)}
-                  placeholder="Provide feedback for the applicant..."
+                  placeholder={mt("provideFeedbackForTheApplicant")}
                   rows={4}
                   className="w-full"
                 />
@@ -1040,9 +1005,7 @@ function ManagerKitchenApplicationsContentLegacy({
                     setReviewFeedback("");
                   }}
                   className="flex-1"
-                >
-                  Cancel
-                </Button>
+                >{mt("cancel")}</Button>
                 {selectedApplication.status === 'inReview' && (
                   <>
                     <Button
@@ -1051,17 +1014,13 @@ function ManagerKitchenApplicationsContentLegacy({
                       disabled={updateApplicationStatus.isPending || !reviewFeedback.trim()}
                       className="flex-1 border-red-300 text-red-700 hover:bg-red-50"
                     >
-                      <XCircle className="mr-2 h-4 w-4" />
-                      Reject
-                    </Button>
+                      <XCircle className="mr-2 h-4 w-4" />{mt("reject")}</Button>
                     <Button
                       onClick={() => handleApprove(selectedApplication.id)}
                       disabled={updateApplicationStatus.isPending}
                       className="flex-1 bg-[#208D80] hover:bg-[#1A7470]"
                     >
-                      <CheckCircle className="mr-2 h-4 w-4" />
-                      Approve
-                    </Button>
+                      <CheckCircle className="mr-2 h-4 w-4" />{mt("approve")}</Button>
                   </>
                 )}
                 {selectedApplication.status === 'approved' && (
@@ -1071,9 +1030,7 @@ function ManagerKitchenApplicationsContentLegacy({
                     disabled={updateApplicationStatus.isPending || revokeAccess.isPending}
                     className="flex-1 border-red-300 text-red-700 hover:bg-red-50"
                   >
-                    <Ban className="mr-2 h-4 w-4" />
-                    Revoke Access
-                  </Button>
+                    <Ban className="mr-2 h-4 w-4" />{mt("revokeAccess")}</Button>
                 )}
                 {selectedApplication.status === 'approved' && selectedApplication.current_tier === 2 && selectedApplication.tier2_completed_at && (
                   <Button
@@ -1081,9 +1038,7 @@ function ManagerKitchenApplicationsContentLegacy({
                     disabled={updateApplicationStatus.isPending}
                     className="flex-1 bg-orange-600 hover:bg-orange-700 text-white"
                   >
-                    <CheckCircle className="mr-2 h-4 w-4" />
-                    Approve Step 2
-                  </Button>
+                    <CheckCircle className="mr-2 h-4 w-4" />{mt("approveStep2")}</Button>
                 )}
               </div>
             </div>
@@ -1134,9 +1089,7 @@ function ApplicationCard({
       case 'inReview':
         return (
           <Badge variant="warning">
-            <Clock className="h-3 w-3 mr-1" />
-            Pending
-          </Badge>
+            <Clock className="h-3 w-3 mr-1" />{mt("pending")}</Badge>
         );
       case 'approved': {
         const tier = application.current_tier ?? 1;
@@ -1146,9 +1099,7 @@ function ApplicationCard({
         if (tier === 2 && application.tier2_completed_at) {
           return (
             <Badge variant="warning">
-              <Clock className="h-3 w-3 mr-1" />
-              Step 2 Needs Review
-            </Badge>
+              <Clock className="h-3 w-3 mr-1" />{mt("step2NeedsReview")}</Badge>
           );
         }
 
@@ -1157,9 +1108,7 @@ function ApplicationCard({
         if (tier === 1) {
           return (
             <Badge variant="info">
-              <Check className="h-3 w-3 mr-1" />
-              Step 1 Done
-            </Badge>
+              <Check className="h-3 w-3 mr-1" />{mt("step1Done")}</Badge>
           );
         }
 
@@ -1168,26 +1117,20 @@ function ApplicationCard({
         if (tier >= 3) {
           return (
             <Badge variant="success">
-              <CheckCircle className="h-3 w-3 mr-1" />
-              Fully Approved
-            </Badge>
+              <CheckCircle className="h-3 w-3 mr-1" />{mt("fullyApproved")}</Badge>
           );
         }
 
         // Fallback for any edge cases (e.g., tier=2 without tier2_completed_at)
         return (
           <Badge variant="info">
-            <Clock className="h-3 w-3 mr-1" />
-            In Progress
-          </Badge>
+            <Clock className="h-3 w-3 mr-1" />{mt("inProgress")}</Badge>
         );
       }
       case 'rejected':
         return (
           <Badge variant="outline" className="text-destructive border-destructive/30">
-            <XCircle className="h-3 w-3 mr-1" />
-            Rejected
-          </Badge>
+            <XCircle className="h-3 w-3 mr-1" />{mt("rejected")}</Badge>
         );
       default:
         return null;
@@ -1232,15 +1175,11 @@ function ApplicationCard({
         <div className="flex items-center gap-2 pt-2">
           {application.foodSafetyLicenseUrl && (
             <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-50 text-green-700 rounded text-xs">
-              <FileText className="h-3 w-3" />
-              Certificate
-            </span>
+              <FileText className="h-3 w-3" />{mt("certificate")}</span>
           )}
           {application.foodEstablishmentCertUrl && (
             <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs">
-              <FileText className="h-3 w-3" />
-              License
-            </span>
+              <FileText className="h-3 w-3" />{mt("navLicense")}</span>
           )}
         </div>
 
@@ -1264,7 +1203,7 @@ function ApplicationCard({
               onClick={onOpenChat}
               variant="outline"
               className="relative"
-              title="Open Chat"
+              title={mt("openChat")}
             >
               <MessageCircle className="h-4 w-4" />
               {unreadCount > 0 && (

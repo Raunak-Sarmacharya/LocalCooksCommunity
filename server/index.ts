@@ -13,6 +13,10 @@ import { pinoInstance } from "./logger.js";
 import pinoHttp from 'pino-http';
 import { localeMiddleware } from "./i18n/middleware.js";
 import { ensureServerI18n } from "./i18n/index.js";
+import {
+  e2eOutboundGuardMiddleware,
+  logE2eOutboundEnvBanner,
+} from "./e2e-outbound-guard.js";
 
 const app = express();
 // Set environment explicitly to match NODE_ENV
@@ -33,6 +37,10 @@ registerSecurityMiddleware(app);
 // Locale negotiation → req.locale (cookie / Accept-Language / later user)
 app.use(localeMiddleware);
 void ensureServerI18n();
+
+// E2E harness: suppress outbound email/SMS on flagged local requests (dev only)
+app.use(e2eOutboundGuardMiddleware);
+logE2eOutboundEnvBanner();
 
 // Initialize Firebase Admin SDK
 initializeFirebaseAdmin();

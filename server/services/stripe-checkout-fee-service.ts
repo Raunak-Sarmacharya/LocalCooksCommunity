@@ -87,10 +87,9 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
  * Admin-configurable via platform_settings table
  */
 export async function getFeeConfig(): Promise<FeeConfig> {
-  // Check cache first
-  if (feeConfigCache && Date.now() - feeConfigCache.timestamp < CACHE_TTL_MS) {
-    return feeConfigCache.config;
-  }
+  // Monetary operations must observe the administrator's current setting.
+  // Process-local caches can remain stale across server instances after an
+  // update, so the database is the source of truth on every calculation.
 
   try {
     // Fetch all fee-related settings from database
@@ -265,16 +264,17 @@ export function calculateCheckoutFeesWithRates(
   }
 
   const bookingPriceInCents = Math.round(bookingPrice * 100);
-  const stripeProcessingFeeInCents = Math.round(
-    bookingPriceInCents * stripePercentage + stripeFlatCents
-  );
   const platformCommissionInCents = Math.round(bookingPriceInCents * platformCommissionRate);
+  const totalChargeInCents = bookingPriceInCents + platformCommissionInCents;
+  const stripeProcessingFeeInCents = Math.round(
+    totalChargeInCents * stripePercentage + stripeFlatCents
+  );
   let totalPlatformFeeInCents = stripeProcessingFeeInCents + platformCommissionInCents;
   
   // Ensure minimum application fee
   totalPlatformFeeInCents = Math.max(totalPlatformFeeInCents, minimumFeeCents);
   
-  const managerReceivesInCents = bookingPriceInCents - totalPlatformFeeInCents;
+  const managerReceivesInCents = bookingPriceInCents - stripeProcessingFeeInCents;
 
   if (managerReceivesInCents <= 0) {
     throw new Error('Total fees exceed booking price');
@@ -285,7 +285,7 @@ export function calculateCheckoutFeesWithRates(
     stripeProcessingFeeInCents,
     platformCommissionInCents,
     totalPlatformFeeInCents,
-    totalChargeInCents: bookingPriceInCents,
+    totalChargeInCents,
     managerReceivesInCents,
     percentageFeeInCents: stripeProcessingFeeInCents,
     flatFeeInCents: stripeFlatCents,
@@ -305,7 +305,8 @@ export function calculateCheckoutFeesWithRates(
  * @returns Fee breakdown with all amounts in cents (estimates only)
  */
 export async function calculateCheckoutFeesAsync(
-  bookingPriceInCents: number
+  bookingPriceInCents: number,
+  options?: { taxAmountCents?: number }
 ): Promise<FeeCalculationResult> {
   if (bookingPriceInCents <= 0) {
     throw new Error('Booking price must be greater than 0');
@@ -313,20 +314,24 @@ export async function calculateCheckoutFeesAsync(
 
   const config = await getFeeConfig();
 
-  // Estimated Stripe fee (display only — real fee read from balance_transaction at transfer time)
-  const stripeProcessingFeeInCents = Math.round(
-    bookingPriceInCents * config.stripePercentageFee + config.stripeFlatFeeCents
-  );
   const platformCommissionInCents = Math.round(
     bookingPriceInCents * config.platformCommissionRate
   );
 
-  let totalPlatformFeeInCents = stripeProcessingFeeInCents + platformCommissionInCents;
+  const taxAmountInCents = Math.max(0, Math.round(options?.taxAmountCents || 0));
+  const totalChargeInCents = bookingPriceInCents + taxAmountInCents + platformCommissionInCents;
+
+  // Stripe charges its processing fee on everything collected from the chef,
+  // including kitchen tax and the platform service fee.
+  const actualChargeEstimateFeeInCents = Math.round(
+    totalChargeInCents * config.stripePercentageFee + config.stripeFlatFeeCents
+  );
+
+  let totalPlatformFeeInCents = actualChargeEstimateFeeInCents + platformCommissionInCents;
   totalPlatformFeeInCents = Math.max(totalPlatformFeeInCents, config.minimumApplicationFeeCents);
 
-  // Chef pays booking price + commission; manager receives booking price minus Stripe's fee.
-  const totalChargeInCents = bookingPriceInCents + platformCommissionInCents;
-  const managerReceivesInCents = bookingPriceInCents - stripeProcessingFeeInCents;
+  // Kitchen owns subtotal + tax. The service fee was added on top for the chef.
+  const managerReceivesInCents = bookingPriceInCents + taxAmountInCents - actualChargeEstimateFeeInCents;
 
   if (managerReceivesInCents <= 0) {
     throw new Error(
@@ -336,12 +341,12 @@ export async function calculateCheckoutFeesAsync(
 
   return {
     bookingPriceInCents,
-    stripeProcessingFeeInCents,
+    stripeProcessingFeeInCents: actualChargeEstimateFeeInCents,
     platformCommissionInCents,
     totalPlatformFeeInCents,
     totalChargeInCents,
     managerReceivesInCents,
-    percentageFeeInCents: stripeProcessingFeeInCents,
+    percentageFeeInCents: actualChargeEstimateFeeInCents,
     flatFeeInCents: config.stripeFlatFeeCents,
   };
 }
@@ -359,18 +364,8 @@ export function resolveChefChargedAmountCents(
   if (!Number.isFinite(storedAmountCents) || storedAmountCents <= 0) {
     return Math.max(0, bookingSubtotalCents + Math.max(0, platformCommissionCents));
   }
-  if (platformCommissionCents <= 0 || bookingSubtotalCents <= 0) {
-    return storedAmountCents;
-  }
-  const expectedCharged = bookingSubtotalCents + platformCommissionCents;
-  if (storedAmountCents >= expectedCharged - 1) {
-    return storedAmountCents;
-  }
-  const rate = platformCommissionCents / bookingSubtotalCents;
-  const isChefPaidCommission = rate >= 0.06 && rate <= 0.08;
-  if (isChefPaidCommission) {
-    return expectedCharged;
-  }
+  // A recorded Stripe charge is financial truth. Never fabricate an extra fee
+  // for legacy payments that did not actually collect it.
   return storedAmountCents;
 }
 
@@ -384,10 +379,7 @@ export function resolvePlatformCommissionCents(
   bookingCommissionCents: number,
 ): number {
   if (bookingCommissionCents > 0 && bookingSubtotalCents > 0) {
-    const rate = bookingCommissionCents / bookingSubtotalCents;
-    if (rate >= 0.06 && rate <= 0.08) {
-      return bookingCommissionCents;
-    }
+    return Math.max(0, bookingCommissionCents);
   }
   return Math.max(0, storedServiceFeeCents || 0);
 }

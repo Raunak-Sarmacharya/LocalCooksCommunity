@@ -4,6 +4,7 @@ import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { Award, CheckCircle, Circle, Clock, Lock, TrendingUp } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface VideoProgress {
   id: string;
@@ -46,6 +47,7 @@ export default function CompletionTracker({
   currentModuleVideos = [],
   userProgress = []
 }: CompletionTrackerProps) {
+  const { t } = useTranslation('chef');
   const allCompleted = completedCount === totalCount;
   const { showAlert } = useCustomAlerts();
 
@@ -57,13 +59,13 @@ export default function CompletionTracker({
             <TrendingUp className="h-4 w-4 lg:h-5 lg:w-5 text-muted-foreground" />
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="font-semibold text-foreground">Your Progress</h3>
-            <p className="text-sm text-muted-foreground">Complete all videos to earn your food safety certification</p>
+            <h3 className="font-semibold text-foreground">{t('ctYourProgress')}</h3>
+            <p className="text-sm text-muted-foreground">{t('ctCompleteAllVideos')}</p>
           </div>
           {allCompleted && (
             <Badge variant="success" className="self-start">
               <Award className="h-4 w-4 mr-1 flex-shrink-0" />
-              <span className="whitespace-nowrap">Completed</span>
+              <span className="whitespace-nowrap">{t('ctCompletedBadge')}</span>
             </Badge>
           )}
         </div>
@@ -71,7 +73,7 @@ export default function CompletionTracker({
         <div className="space-y-3 lg:space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-xl lg:text-2xl font-bold text-foreground">{Math.round(overallProgress)}%</span>
-            <span className="text-xs lg:text-sm text-muted-foreground">{completedCount} of {totalCount} complete</span>
+            <span className="text-xs lg:text-sm text-muted-foreground">{t('ctOfComplete', { done: completedCount, total: totalCount })}</span>
           </div>
           
           <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
@@ -121,8 +123,8 @@ export default function CompletionTracker({
                       onVideoClick?.(video.id, index);
                     } else if (isClickable && accessLevel === 'full' && !canAccess) {
                       showAlert({
-                        title: "Access Restricted",
-                        description: "Please complete the previous video before accessing this one.",
+                        title: t('ctAccessRestricted'),
+                        description: t('ctCompletePreviousBody'),
                         type: "warning"
                       });
                       return;
@@ -178,26 +180,26 @@ export default function CompletionTracker({
                       <div className="mt-2">
                         <Progress value={video.progress} className="h-1.5" />
                         <span className="text-xs text-muted-foreground mt-1 block">
-                          {Math.round(video.progress)}% watched
+                          {t('ctWatched', { percent: Math.round(video.progress) })}
                         </span>
                       </div>
                     )}
 
                     {video.completed && video.completedAt && (
                       <p className="text-xs text-muted-foreground mt-1 break-words">
-                        Completed on {new Date(video.completedAt).toLocaleDateString()}
+                        {t('ctCompletedOn', { date: new Date(video.completedAt).toLocaleDateString() })}
                       </p>
                     )}
 
                     {isAccessLocked && accessLevel === 'limited' && (
                       <p className="text-xs text-muted-foreground mt-1 break-words">
-                        Complete application to access
+                        {t('ctCompleteAppToAccess')}
                       </p>
                     )}
                     
                     {isAccessLocked && accessLevel === 'full' && index > 0 && (
                       <p className="text-xs text-muted-foreground mt-1 break-words">
-                        Complete previous video first
+                        {t('ctCompletePreviousFirst')}
                       </p>
                     )}
                   </div>
@@ -215,10 +217,10 @@ export default function CompletionTracker({
               <Award className="h-5 w-5 text-success flex-shrink-0 mt-0.5" />
               <div className="flex-1 min-w-0">
                 <h4 className="font-medium text-foreground break-words">
-                  Congratulations! Training Complete
+                  {t('ctTrainingCompleteTitle')}
                 </h4>
                 <p className="text-sm text-muted-foreground mt-1 break-words leading-relaxed">
-                  You have completed all food safety training videos. You can now proceed and download your completion certificate.
+                  {t('ctTrainingCompleteBody')}
                 </p>
               </div>
             </div>

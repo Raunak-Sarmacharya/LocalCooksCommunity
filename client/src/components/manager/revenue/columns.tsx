@@ -1,4 +1,6 @@
 "use client"
+import { mt } from "@/i18n/manager";
+import { tt } from "@/i18n/common-ns";
 
 import { ColumnDef } from "@tanstack/react-table"
 import { ArrowUpDown, MoreHorizontal, Download, Eye, CheckCircle, Clock, XCircle, AlertCircle, RotateCcw } from "lucide-react"
@@ -24,63 +26,66 @@ import type { Transaction, Invoice, Payout, PaymentStatus } from "./types"
 import { getTransactionRevenueBreakdown } from "./revenue-calculations"
 
 // Payment status badge configuration
-const paymentStatusConfig: Record<PaymentStatus, {
+function getPaymentStatusConfig(): Record<PaymentStatus, {
     label: string;
     variant: "default" | "secondary" | "destructive" | "outline";
     icon: typeof CheckCircle;
     tooltip?: string;
-}> = {
+}> {
+    return {
     authorized: {
-        label: 'Payment Held',
+        label: mt("paymentHeldStatus"),
         variant: 'outline',
         icon: Clock,
-        tooltip: 'Payment is authorized but not yet captured — awaiting manager approval'
+        tooltip: mt("paymentAuthorizedTooltip")
     },
     paid: {
-        label: 'Paid',
+        label: mt("paidStatus"),
         variant: 'default',
         icon: CheckCircle,
-        tooltip: 'Payment completed and in your account'
+        tooltip: mt("paymentPaidTooltip")
     },
     pending: {
-        label: 'Pending',
+        label: tt("pending"),
         variant: 'secondary',
         icon: Clock,
-        tooltip: 'Payment pending - will be processed after booking'
+        tooltip: mt("paymentPendingTooltip")
     },
     processing: {
-        label: 'Processing',
+        label: mt("processing"),
         variant: 'outline',
         icon: Clock,
-        tooltip: 'Payment is being processed'
+        tooltip: mt("paymentProcessingTooltip")
     },
     failed: {
-        label: 'Failed',
+        label: mt("failedStatus"),
         variant: 'destructive',
         icon: XCircle,
-        tooltip: 'Payment failed'
+        tooltip: mt("paymentFailedTooltip")
     },
     refunded: {
-        label: 'Refunded',
+        label: mt("refunded"),
         variant: 'outline',
         icon: AlertCircle,
-        tooltip: 'Payment was refunded'
+        tooltip: mt("paymentRefundedTooltip")
     },
     partially_refunded: {
-        label: 'Partial Refund',
+        label: mt("partialRefundStatus"),
         variant: 'outline',
         icon: AlertCircle,
-        tooltip: 'Payment was partially refunded'
+        tooltip: mt("paymentPartialRefundTooltip")
     },
     canceled: {
-        label: 'Canceled',
+        label: mt("canceledStatus"),
         variant: 'outline',
         icon: XCircle,
-        tooltip: 'Booking was canceled'
+        tooltip: mt("paymentCanceledTooltip")
     },
+};
 }
 
 function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
+    const paymentStatusConfig = getPaymentStatusConfig();
     const config = paymentStatusConfig[status] || paymentStatusConfig.pending
     const Icon = config.icon
 
@@ -149,7 +154,7 @@ export function getTransactionColumns({
         },
         {
             id: "reference",
-            header: "Ref",
+            header: mt("ref"),
             cell: ({ row }) => {
                 const ref = row.original.referenceCode || row.original.bookingId || row.original.id;
                 return (
@@ -165,9 +170,7 @@ export function getTransactionColumns({
                 <Button
                     variant="ghost"
                     onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-                >
-                    Date
-                    <ArrowUpDown className="ml-2 h-4 w-4" />
+                >{mt("date")}<ArrowUpDown className="ml-2 h-4 w-4" />
                 </Button>
             ),
             cell: ({ row }) => (
@@ -178,16 +181,16 @@ export function getTransactionColumns({
         },
         {
             accessorKey: "chefName",
-            header: "Chef",
+            header: mt("chefHeader"),
             cell: ({ row }) => (
                 <span className="text-sm">
-                    {row.getValue("chefName") || "Guest"}
+                    {row.getValue("chefName") || tt("guest")}
                 </span>
             ),
         },
         {
             accessorKey: "locationName",
-            header: "Location",
+            header: mt("locationHeader"),
             cell: ({ row }) => {
                 const bookingType = row.original.bookingType;
                 const isDamageClaim = bookingType === 'damage_claim';
@@ -209,7 +212,7 @@ export function getTransactionColumns({
                         </span>
                         <span className="text-xs text-muted-foreground">
                             {isDamageClaim ? (
-                                <span className="text-green-600">Claim Payment</span>
+                                <span className="text-green-600">{mt("claimPayment")}</span>
                             ) : (
                                 row.getValue("locationName")
                             )}
@@ -225,9 +228,7 @@ export function getTransactionColumns({
                     variant="ghost"
                     onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
                     className="justify-end w-full"
-                >
-                    Total
-                    <ArrowUpDown className="ml-2 h-4 w-4" />
+                >{mt("total")}<ArrowUpDown className="ml-2 h-4 w-4" />
                 </Button>
             ),
             cell: ({ row }) => (
@@ -239,7 +240,7 @@ export function getTransactionColumns({
         {
             accessorKey: "taxAmount",
             header: () => (
-                <div className="text-right">Tax</div>
+                <div className="text-right">{mt("taxHeader")}</div>
             ),
             cell: ({ row }) => {
                 const taxRate = row.original.taxRatePercent ?? 0;
@@ -253,7 +254,7 @@ export function getTransactionColumns({
                                 </div>
                             </TooltipTrigger>
                             <TooltipContent>
-                                <p className="text-sm">Tax rate: {taxRate}%</p>
+                                <p className="text-sm">{mt("taxRateTooltip", { rate: taxRate })}</p>
                             </TooltipContent>
                         </Tooltip>
                     </TooltipProvider>
@@ -263,7 +264,7 @@ export function getTransactionColumns({
         {
             accessorKey: "stripeFee",
             header: () => (
-                <div className="text-right">Stripe Fee</div>
+                <div className="text-right">{mt("stripeFee")}</div>
             ),
             cell: ({ row }) => {
                 const { stripeFee } = getTransactionRevenueBreakdown(row.original);
@@ -277,7 +278,7 @@ export function getTransactionColumns({
                                 </div>
                             </TooltipTrigger>
                             <TooltipContent>
-                                <p className="text-sm">Stripe processing fee (from Stripe API)</p>
+                                <p className="text-sm">{mt("stripeProcessingFeeFromStripeAPI")}</p>
                             </TooltipContent>
                         </Tooltip>
                     </TooltipProvider>
@@ -287,7 +288,7 @@ export function getTransactionColumns({
         {
             accessorKey: "refundAmount",
             header: () => (
-                <div className="text-right">Refunded</div>
+                <div className="text-right">{mt("refunded")}</div>
             ),
             cell: ({ row }) => {
                 const refundAmount = row.original.refundAmount ?? 0;
@@ -303,7 +304,7 @@ export function getTransactionColumns({
                                 </div>
                             </TooltipTrigger>
                             <TooltipContent>
-                                <p className="text-sm">Amount refunded to customer</p>
+                                <p className="text-sm">{mt("amountRefundedToCustomer")}</p>
                             </TooltipContent>
                         </Tooltip>
                     </TooltipProvider>
@@ -318,9 +319,7 @@ export function getTransactionColumns({
                     variant="ghost"
                     onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
                     className="justify-end w-full"
-                >
-                    Net Revenue
-                    <ArrowUpDown className="ml-2 h-4 w-4" />
+                >{mt("netRevenue")}<ArrowUpDown className="ml-2 h-4 w-4" />
                 </Button>
             ),
             cell: ({ row }) => {
@@ -341,15 +340,15 @@ export function getTransactionColumns({
                             </TooltipTrigger>
                             <TooltipContent>
                                 {!isRevenueEligible ? (
-                                    <p className="text-sm">Canceled, pending, held, failed, and fully refunded transactions are excluded from net revenue.</p>
+                                    <p className="text-sm">{mt("canceledPendingHeldFailedAndFullyRefundedTransactionsAreExcl")}</p>
                                 ) : hasRefund ? (
                                     <div className="text-sm space-y-1">
                                         <p>Original: {formatCurrency(grossNetRevenue)}</p>
-                                        <p className="text-red-500">Refund: -{formatCurrency(refundAmount)}</p>
-                                        <p className="font-semibold">Effective: {formatCurrency(netRevenue)}</p>
+                                        <p className="text-red-500">{mt("refundMinus", { amount: formatCurrency(refundAmount) })}</p>
+                                        <p className="font-semibold">{mt("effectiveAmount", { amount: formatCurrency(netRevenue) })}</p>
                                     </div>
                                 ) : (
-                                    <p className="text-sm">Net revenue after tax and Stripe fees</p>
+                                    <p className="text-sm">{mt("netRevenueAfterTaxAndStripeFees")}</p>
                                 )}
                             </TooltipContent>
                         </Tooltip>
@@ -359,7 +358,7 @@ export function getTransactionColumns({
         },
         {
             accessorKey: "paymentStatus",
-            header: "Status",
+            header: mt("statusHeader"),
             cell: ({ row }) => (
                 <PaymentStatusBadge status={row.getValue("paymentStatus")} />
             ),
@@ -381,12 +380,12 @@ export function getTransactionColumns({
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <Button variant="ghost" className="h-8 w-8 p-0">
-                                <span className="sr-only">Open menu</span>
+                                <span className="sr-only">{mt("openMenu")}</span>
                                 <MoreHorizontal className="h-4 w-4" />
                             </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                            <DropdownMenuLabel>{mt("actions")}</DropdownMenuLabel>
                             <DropdownMenuItem
                                 onClick={() => onDownloadInvoice(
                                     transaction.bookingId,
@@ -395,31 +394,23 @@ export function getTransactionColumns({
                                 )}
                                 disabled={!canDownloadInvoice}
                             >
-                                <Download className="mr-2 h-4 w-4" />
-                                Download Invoice
-                            </DropdownMenuItem>
+                                <Download className="mr-2 h-4 w-4" />{mt("downloadInvoice")}</DropdownMenuItem>
                             {onViewDetails && (
                                 <DropdownMenuItem onClick={() => onViewDetails(transaction)}>
-                                    <Eye className="mr-2 h-4 w-4" />
-                                    View Details
-                                </DropdownMenuItem>
+                                    <Eye className="mr-2 h-4 w-4" />{mt("viewDetails")}</DropdownMenuItem>
                             )}
                             {onRefund && (
                                 <DropdownMenuItem
                                     onClick={() => onRefund(transaction)}
                                     disabled={!canRefund}
                                 >
-                                    <RotateCcw className="mr-2 h-4 w-4" />
-                                    Issue Refund
-                                </DropdownMenuItem>
+                                    <RotateCcw className="mr-2 h-4 w-4" />{mt("issueRefund")}</DropdownMenuItem>
                             )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                                 onClick={() => navigator.clipboard.writeText(transaction.paymentIntentId || '')}
                                 disabled={!transaction.paymentIntentId}
-                            >
-                                Copy Payment ID
-                            </DropdownMenuItem>
+                            >{mt("copyPaymentID")}</DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
                 )
@@ -440,7 +431,7 @@ export function getInvoiceColumns({ onDownload }: InvoiceColumnsProps): ColumnDe
     return [
         {
             accessorKey: "invoiceNumber",
-            header: "Invoice #",
+            header: mt("invoiceNumberHeader"),
             cell: ({ row }) => (
                 <span className="font-mono text-sm font-medium">
                     {generateInvoiceNumber(row.original.bookingId, new Date(row.original.bookingDate))}
@@ -453,16 +444,14 @@ export function getInvoiceColumns({ onDownload }: InvoiceColumnsProps): ColumnDe
                 <Button
                     variant="ghost"
                     onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-                >
-                    Date
-                    <ArrowUpDown className="ml-2 h-4 w-4" />
+                >{mt("date")}<ArrowUpDown className="ml-2 h-4 w-4" />
                 </Button>
             ),
             cell: ({ row }) => formatDate(row.getValue("bookingDate")),
         },
         {
             accessorKey: "kitchenName",
-            header: "Kitchen",
+            header: mt("kitchenHeader"),
             cell: ({ row }) => (
                 <div className="flex flex-col">
                     <span className="text-sm font-medium">{row.getValue("kitchenName")}</span>
@@ -472,7 +461,7 @@ export function getInvoiceColumns({ onDownload }: InvoiceColumnsProps): ColumnDe
         },
         {
             accessorKey: "totalPrice",
-            header: "Amount",
+            header: mt("amountHeader"),
             cell: ({ row }) => (
                 <div className="font-medium">
                     {formatCurrency(row.getValue("totalPrice"))}
@@ -481,7 +470,7 @@ export function getInvoiceColumns({ onDownload }: InvoiceColumnsProps): ColumnDe
         },
         {
             accessorKey: "paymentStatus",
-            header: "Status",
+            header: mt("statusHeader"),
             cell: ({ row }) => (
                 <PaymentStatusBadge status={row.getValue("paymentStatus")} />
             ),
@@ -495,9 +484,7 @@ export function getInvoiceColumns({ onDownload }: InvoiceColumnsProps): ColumnDe
                     onClick={() => onDownload(row.original.bookingId, row.original.bookingType)}
                     className="gap-2"
                 >
-                    <Download className="h-4 w-4" />
-                    Download
-                </Button>
+                    <Download className="h-4 w-4" />{mt("download")}</Button>
             ),
         },
     ]
@@ -519,16 +506,14 @@ export function getPayoutColumns({ onDownloadStatement }: PayoutColumnsProps): C
                 <Button
                     variant="ghost"
                     onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-                >
-                    Arrival Date
-                    <ArrowUpDown className="ml-2 h-4 w-4" />
+                >{mt("arrivalDate")}<ArrowUpDown className="ml-2 h-4 w-4" />
                 </Button>
             ),
             cell: ({ row }) => formatDate(row.getValue("arrivalDate")),
         },
         {
             accessorKey: "amount",
-            header: "Amount",
+            header: mt("amountHeader"),
             cell: ({ row }) => (
                 <div className="font-semibold">
                     {formatCurrency(row.getValue("amount"), row.original.currency.toUpperCase())}
@@ -537,16 +522,16 @@ export function getPayoutColumns({ onDownloadStatement }: PayoutColumnsProps): C
         },
         {
             accessorKey: "method",
-            header: "Method",
+            header: mt("methodHeader"),
             cell: ({ row }) => (
                 <span className="text-sm text-muted-foreground">
-                    {row.getValue("method") || 'Bank Transfer'}
+                    {row.getValue("method") || mt("bankTransfer")}
                 </span>
             ),
         },
         {
             accessorKey: "status",
-            header: "Status",
+            header: mt("statusHeader"),
             cell: ({ row }) => <PayoutStatusBadge status={row.getValue("status")} />,
         },
         {
@@ -558,9 +543,7 @@ export function getPayoutColumns({ onDownloadStatement }: PayoutColumnsProps): C
                     onClick={() => onDownloadStatement(row.original.id)}
                     className="gap-2"
                 >
-                    <Download className="h-4 w-4" />
-                    Statement
-                </Button>
+                    <Download className="h-4 w-4" />{mt("statement")}</Button>
             ),
         },
     ]

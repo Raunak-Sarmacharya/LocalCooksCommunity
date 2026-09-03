@@ -877,6 +877,7 @@ async function handleCheckoutSessionCompleted(
                 amount: amountTotal,
                 baseAmount: baseAmount,
                 serviceFee: platformFeeCents,
+                taxAmount: taxCents,
                 stripeProcessingFee: stripeFeeCents > 0 ? stripeFeeCents : undefined,
                 managerRevenue: managerRevenue,
                 currency: "CAD",
@@ -1333,6 +1334,10 @@ async function handleStorageExtensionPaymentCompleted(
     const extensionBasePriceCents = parseInt(metadata.extension_base_price_cents || "0");
     const extensionServiceFeeCents = parseInt(metadata.extension_service_fee_cents || "0");
     const extensionTotalPriceCents = parseInt(metadata.extension_total_price_cents || "0");
+    const extensionCustomerTotalCents = parseInt(
+      metadata.extension_customer_total_cents || String(extensionTotalPriceCents + extensionServiceFeeCents),
+    );
+    const extensionTaxCents = parseInt(metadata.tax_cents || "0");
     const managerReceivesCents = parseInt(metadata.manager_receives_cents || "0");
 
     if (
@@ -1407,9 +1412,10 @@ async function handleStorageExtensionPaymentCompleted(
         bookingType: "storage",
         chefId: isNaN(chefId) ? null : chefId,
         managerId: isNaN(managerId) ? null : managerId,
-        amount: extensionTotalPriceCents,
+        amount: extensionCustomerTotalCents,
         baseAmount: extensionBasePriceCents,
         serviceFee: extensionServiceFeeCents,
+        taxAmount: extensionTaxCents,
         managerRevenue: managerReceivesCents || (extensionTotalPriceCents - extensionServiceFeeCents),
         currency: "CAD",
         paymentIntentId, // CRITICAL: Must be saved for Stripe fee syncing
@@ -1424,6 +1430,8 @@ async function handleStorageExtensionPaymentCompleted(
           new_end_date: newEndDate.toISOString(),
           // Include base price for accurate tax calculation in transaction history
           extension_base_price_cents: extensionBasePriceCents.toString(),
+          taxAmount: extensionTaxCents.toString(),
+          taxRatePercent: metadata.tax_rate_percent || "0",
         },
       }, db);
 
@@ -1654,8 +1662,10 @@ async function handlePaymentIntentSucceeded(
         const serviceFeeCents = booking.serviceFee != null ? parseInt(String(booking.serviceFee)) : 0;
         const taxRatePercent = booking.taxRatePercent != null ? Number(booking.taxRatePercent) : 0;
         const taxCents = Math.round((subtotalCents * taxRatePercent) / 100);
-        const totalAmountCents = subtotalCents + taxCents;
-        const managerRevenueCents = Math.max(0, subtotalCents - serviceFeeCents);
+        const managerGrossCents = subtotalCents + taxCents;
+        const totalAmountCents = managerGrossCents + serviceFeeCents;
+        // Provisional until transfer syncs actual Stripe fee into manager_revenue
+        const managerRevenueCents = managerGrossCents;
 
         transaction = await createPaymentTransaction({
           bookingId: booking.id,
@@ -1663,8 +1673,9 @@ async function handlePaymentIntentSucceeded(
           chefId: booking.chefId ?? null,
           managerId: booking.managerId ?? null,
           amount: totalAmountCents,
-          baseAmount: subtotalCents,
+          baseAmount: managerGrossCents,
           serviceFee: serviceFeeCents,
+          taxAmount: taxCents,
           managerRevenue: managerRevenueCents,
           currency: (booking.currency || 'CAD').toUpperCase(),
           paymentIntentId: paymentIntent.id,
@@ -1674,6 +1685,9 @@ async function handlePaymentIntentSucceeded(
             createdFrom: 'webhook_upsert',
             taxRatePercent,
             taxCents,
+            approvedSubtotal: subtotalCents,
+            approvedTax: taxCents,
+            platformCommission: serviceFeeCents,
           },
         }, db);
 

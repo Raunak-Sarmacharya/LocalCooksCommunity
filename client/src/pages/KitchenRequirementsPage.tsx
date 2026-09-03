@@ -17,9 +17,12 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { useChefKitchenApplicationForLocation } from "@/hooks/use-chef-kitchen-applications";
+import { hasStep2BeenSubmitted } from "@/components/chef/applications/status";
 import ScheduleViewingWidget from "@/components/chef/ScheduleViewingWidget";
 import { SmartImage } from "@/components/ui/smart-image";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { tt } from "@/i18n/common-ns";
+import { kt } from "@/i18n/kitchen-ns";
 
 export default function KitchenRequirementsPage() {
     const { t: tAuth } = useTranslation("auth");
@@ -94,7 +97,7 @@ export default function KitchenRequirementsPage() {
         queryKey: [`/api/public/locations/${locationId}/details`],
         queryFn: async () => {
             const response = await fetch(`/api/public/locations/${locationId}/details`);
-            if (!response.ok) throw new Error('Failed to fetch location');
+            if (!response.ok) throw new Error(kt("failedToFetchLocation"));
             return response.json();
         },
         enabled: !!locationId,
@@ -105,7 +108,7 @@ export default function KitchenRequirementsPage() {
         queryKey: [`/api/public/locations/${locationId}/requirements`],
         queryFn: async () => {
             const response = await fetch(`/api/public/locations/${locationId}/requirements`);
-            if (!response.ok) throw new Error('Failed to fetch requirements');
+            if (!response.ok) throw new Error(tt("failedToFetchRequirements"));
             return response.json();
         },
         enabled: !!locationId,
@@ -118,7 +121,7 @@ export default function KitchenRequirementsPage() {
         queryKey: [`/api/public/kitchens`],
         queryFn: async () => {
             const response = await fetch(`/api/public/kitchens`);
-            if (!response.ok) throw new Error('Failed to fetch kitchens');
+            if (!response.ok) throw new Error(tt("failedToFetchKitchens"));
             return response.json();
         },
     });
@@ -139,10 +142,12 @@ export default function KitchenRequirementsPage() {
 
     // Determine the current tier for label purposes
     const chefCurrentTier = (existingApplication as any)?.current_tier ?? 1;
-    // Step 2 is actionable when Step 1 is approved (status approved, still on tier 1 => needs step 2)
-    const isReadyForStep2 = isStep1Done &&
-        existingApplication?.status === 'approved' &&
-        chefCurrentTier < 3;
+    // Step 2 is actionable when Step 1 is approved and Step 2 docs aren't submitted yet
+    const isReadyForStep2 =
+        isStep1Done &&
+        existingApplication?.status === "approved" &&
+        chefCurrentTier < 3 &&
+        !hasStep2BeenSubmitted(existingApplication);
 
     // Loading state with proper layout
     const loadingContent = (
@@ -173,7 +178,7 @@ export default function KitchenRequirementsPage() {
         const items = [
             t("personalInformation", "Personal Information"),
             (requirements.requireBusinessName || requirements.requireBusinessType) && t("businessInformation", "Business Information"),
-            requirements.requireFoodHandlerCert && t("foodHandlerCertificate", "Food Handler Certificate"),
+            // Food handler upload is collected in Step 2 after request-to-apply approval
             requirements.tier1_years_experience_required && t("professionalExperience", "Professional Experience"),
             ...(Array.isArray(requirements.tier1_custom_fields)
                 ? requirements.tier1_custom_fields
@@ -187,13 +192,17 @@ export default function KitchenRequirementsPage() {
     const getStep2Items = () => {
         if (!requirements) return [];
         const items = [
+            // Always required on Step 2 (request-to-apply only collects yes/no)
+            t("foodSafetyLicense", "Food Safety License"),
+            t("foodSafetyLicenseExpiry", "Food Safety License Expiry Date"),
             requirements.tier2_food_establishment_cert_required && t("foodEstablishmentCertificate", "Food Establishment Certificate"),
+            requirements.tier2_food_establishment_expiry_required && t("foodEstablishmentExpiry", "Food Establishment License Expiry"),
             (requirements.tier2_insurance_document_required || requirements.tier2_insurance_minimum_amount > 0) &&
             t("insuranceDocument", "Insurance Document") + (requirements.tier2_insurance_minimum_amount > 0 ? t("minAmount", { defaultValue: " (min ${amount})", amount: requirements.tier2_insurance_minimum_amount }) : ''),
             requirements.tier2_kitchen_experience_required && t("kitchenExperienceDescription", "Kitchen Experience Description"),
             ...(Array.isArray(requirements.tier2_custom_fields)
                 ? requirements.tier2_custom_fields
-                    .filter((f: { required?: boolean }) => f.required)
+                    .filter((f: { required?: boolean }) => f.required !== false)
                     .map((f: { label: string }) => f.label)
                 : [])
         ].filter(Boolean);
@@ -214,10 +223,13 @@ export default function KitchenRequirementsPage() {
                     </div>
                     <div className="flex-1 space-y-1">
                         <p className="text-sm font-medium leading-none text-foreground">
-                            Booking dates saved: {formatDateRange()}
+                            {t("bookingDatesSaved", { range: formatDateRange(), defaultValue: `Booking dates saved: ${formatDateRange()}` })}
                         </p>
                         <p className="text-sm text-muted-foreground">
-                            Complete your application below to secure your kitchen time.
+                            {t(
+                              "completeApplicationSecureTime",
+                              "Complete your application below to secure your kitchen time."
+                            )}
                         </p>
                     </div>
                 </div>
@@ -264,7 +276,7 @@ export default function KitchenRequirementsPage() {
                             </div>
                             <div className="flex-1">
                                 <div className="flex items-center gap-2">
-                                    <CardTitle className="text-lg">{t("applicationRequirements", "Application Requirements")}</CardTitle>
+                                    <CardTitle className="text-lg">{t("requestToApply", "Request to apply")}</CardTitle>
                                     {isStep1Done && (
                                         <Badge variant="success" className="text-xs font-medium">
                                             {t("completed", "Completed")}
@@ -272,7 +284,7 @@ export default function KitchenRequirementsPage() {
                                     )}
                                 </div>
                                 <CardDescription className="text-xs">
-                                    {isStep1Done ? t("step1ApplicationSubmitted", "Your Step 1 application was submitted") : t("initialApplicationDocuments", "Initial application documents")}
+                                    {isStep1Done ? t("step1ApplicationSubmitted", "Your request to apply was submitted") : t("initialApplicationDocuments", "Initial application documents")}
                                 </CardDescription>
                             </div>
                         </div>
@@ -289,7 +301,7 @@ export default function KitchenRequirementsPage() {
                                     </li>
                                 ))
                             ) : (
-                                <li className="text-sm text-muted-foreground italic">{t("noDocsRequiredStep1", "No specific documents required for Step 1.")}</li>
+                                <li className="text-sm text-muted-foreground italic">{t("noDocsRequiredStep1", "No specific documents required for your request to apply.")}</li>
                             )}
                         </ul>
                     </CardContent>
@@ -334,7 +346,6 @@ export default function KitchenRequirementsPage() {
                     locationName={locationData?.location?.name || kitchen?.name}
                     targetedKitchenId={kitchen?.id} 
                     targetedKitchenName={kitchen?.name}
-                    mode="modal"
                     open={showTourModal}
                     onClose={() => setShowTourModal(false)}
                 />
@@ -351,7 +362,7 @@ export default function KitchenRequirementsPage() {
                     </div>
                     {isReadyForStep2 ? (
                         <>
-                            <h3 className="text-xl font-semibold mb-2">{t("step1CompleteTimeForStep2", "Step 1 Complete — Time for Step 2!")}</h3>
+                            <h3 className="text-xl font-semibold mb-2">{t("step1CompleteTimeForStep2", "Request to apply approved — next up: kitchen documents")}</h3>
                             <p className="text-muted-foreground mb-6 max-w-md mx-auto">
                                 {t("initialApplicationApprovedSubmitStep2", "Your initial application was approved. Submit your Step 2 documents to unlock full kitchen access.")}
                             </p>
@@ -369,11 +380,11 @@ export default function KitchenRequirementsPage() {
                         <>
                             <h3 className="text-xl font-semibold mb-2">{t("applicationUnderReview", "Application Under Review")}</h3>
                             <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                                {t("step1ApplicationUnderReview", "Your Step 1 application is being reviewed by the platform Admins. You'll be notified once a decision is made.")}
+                                {t("step1ApplicationUnderReview", "Your request to apply is being reviewed by Our Team. You’ll be notified once a decision is made.")}
                             </p>
                             <Button 
                                 size="lg" 
-                                onClick={() => setLocation(`/apply-kitchen/${locationId}`)}
+                                onClick={() => setLocation(chefDashboardHref("applications"))}
                             >
                                 {t("viewApplicationBtn", "View application")}
                             </Button>
@@ -392,11 +403,12 @@ export default function KitchenRequirementsPage() {
                                         onClick={() => setShowTourModal(true)}
                                     >
                                         <Calendar />
-                                        {t("applyFlowScheduleTourButton", "Schedule tour")}
+                                        {t("applyFlowScheduleTourButton", "Request tour")}
                                     </Button>
                                 )}
                                 <Button 
                                     size="lg" 
+                                    data-testid="kitchen-requirements-start-apply"
                                     onClick={() => {
                                         if (user) {
                                             setLocation(`/apply-kitchen/${locationId}`);

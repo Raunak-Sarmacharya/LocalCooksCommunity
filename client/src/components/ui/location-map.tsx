@@ -31,7 +31,7 @@ export function LocationMap({
 }: LocationMapProps) {
   const { i18n } = useTranslation();
   const encodedAddress = encodeURIComponent(address);
-  const embedUrl = `https://maps.google.com/maps?q=${encodedAddress}&z=${zoom}&t=m&output=embed&iwloc=B&hl=${i18n.language}`;
+  const embedUrl = `https://maps.google.com/maps?q=${encodedAddress}&z=${zoom}&t=m&output=embed&hl=${i18n.language}`;
 
   return (
     <div
@@ -46,8 +46,8 @@ export function LocationMap({
           src={embedUrl}
           className="absolute inset-0 w-full h-full border-0"
           loading="lazy"
+          tabIndex={-1}
           referrerPolicy="no-referrer-when-downgrade"
-          allowFullScreen
         />
       </div>
 

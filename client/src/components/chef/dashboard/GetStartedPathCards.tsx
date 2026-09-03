@@ -31,6 +31,7 @@ function GetStartedPathCard({
   steps,
   ctaLabel,
   onCta,
+  ctaTestId,
   loading = "lazy",
   compact = false,
 }: {
@@ -43,6 +44,7 @@ function GetStartedPathCard({
   steps: PathItem[];
   ctaLabel: string;
   onCta: () => void;
+  ctaTestId?: string;
   loading?: "lazy" | "eager";
   compact?: boolean;
 }) {
@@ -78,7 +80,7 @@ function GetStartedPathCard({
           </ol>
         </CardContent>
         <CardFooter className="mt-auto flex-row justify-end gap-2">
-          <Button size="sm" onClick={onCta}>
+          <Button size="sm" onClick={onCta} data-testid={ctaTestId}>
             {ctaLabel}
             <ArrowRight />
           </Button>
@@ -133,7 +135,7 @@ function GetStartedPathCard({
       </CardContent>
 
       <CardFooter className="mt-auto flex-row justify-end gap-2">
-        <Button size="sm" onClick={onCta}>
+        <Button size="sm" onClick={onCta} data-testid={ctaTestId}>
           {ctaLabel}
           <ArrowRight />
         </Button>
@@ -179,6 +181,7 @@ export function SellerPathEmptyCard({
       description={t("sellerApplicationDesc", "List homemade food on LocalCooks after approval.")}
       steps={SELLER_STEPS}
       ctaLabel={t("applyToSell", "Apply to sell")}
+      ctaTestId="seller-application-start"
       onCta={onApply}
       loading={loading}
       compact={compact}

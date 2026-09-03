@@ -5,6 +5,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { mt } from "@/i18n/manager";
+import { tt } from "@/i18n/common-ns";
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { StatusButton } from '@/components/ui/status-button';
@@ -48,7 +50,7 @@ interface FacilityDocsSettingsProps {
 async function getAuthHeaders(): Promise<HeadersInit> {
   const currentFirebaseUser = auth.currentUser;
   if (!currentFirebaseUser) {
-    throw new Error('Firebase user not available');
+    throw new Error(tt('firebaseUserNotAvailable'));
   }
   const token = await currentFirebaseUser.getIdToken();
   return {
@@ -75,6 +77,7 @@ function AuthenticatedDocumentLink({ url, className, children }: { url: string |
 }
 
 export default function FacilityDocsSettings({ location }: FacilityDocsSettingsProps) {
+  
   const { toast } = useToast();
   const queryClient = useQueryClient();
   
@@ -87,14 +90,12 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
     maxSize: 4.5 * 1024 * 1024,
     allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'],
     onSuccess: (response) => {
-      toast({
-        title: 'File uploaded successfully',
+      toast({ title: mt("fileUploadedSuccessfully"),
         description: `${response.fileName} has been uploaded.`,
       });
     },
     onError: (error) => {
-      toast({
-        title: 'Upload failed',
+      toast({ title: mt("uploadFailed2"),
         description: error,
         variant: 'destructive',
       });
@@ -110,7 +111,7 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
         credentials: 'include',
         headers,
       });
-      if (!response.ok) throw new Error('Failed to fetch requirements');
+      if (!response.ok) throw new Error(tt('failedToFetchRequirements'));
       return response.json();
     },
     enabled: !!location.id,
@@ -143,14 +144,12 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/manager/locations/${location.id}/requirements`] });
       setHasUnsavedChanges(false);
-      toast({
-        title: 'Saved',
-        description: 'Facility documents updated successfully.',
+      toast({ title: mt("saved"),
+        description: mt("facilityDocumentsUpdatedSuccessfully"),
       });
     },
     onError: (error: Error) => {
-      toast({
-        title: 'Save Failed',
+      toast({ title: mt("saveFailed"),
         description: error.message,
         variant: 'destructive',
       });
@@ -202,7 +201,7 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
       <div className="flex items-center justify-center py-16">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">Loading facility documents...</p>
+          <p className="text-sm text-muted-foreground">{mt("loadingFacilityDocuments")}</p>
         </div>
       </div>
     );
@@ -211,7 +210,7 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">Facility Documents</h2>
+        <h2 className="text-2xl font-bold tracking-tight">{mt("facilityDocuments")}</h2>
         <p className="text-muted-foreground">
           Manage floor plans and ventilation specifications for {location.name}. These documents are automatically shared with approved chefs.
         </p>
@@ -225,8 +224,8 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
           <div className="flex items-center gap-3">
             <FileText className="h-5 w-5 text-slate-500" />
             <div>
-              <CardTitle className="text-lg">Floor Plans</CardTitle>
-              <CardDescription>Upload your kitchen layout to help chefs navigate the space</CardDescription>
+              <CardTitle className="text-lg">{mt("floorPlans")}</CardTitle>
+              <CardDescription>{mt("uploadYourKitchenLayoutToHelpChefsNavigateTheSpace")}</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -238,13 +237,11 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
                 <CheckCircle2 className="h-5 w-5 text-emerald-600" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-emerald-800">Floor Plans Uploaded</p>
+                <p className="text-sm font-medium text-emerald-800">{mt("floorPlansUploaded")}</p>
                 <AuthenticatedDocumentLink
                   url={requirements.floor_plans_url}
                   className="text-xs text-emerald-600 hover:underline truncate block"
-                >
-                  View Document
-                </AuthenticatedDocumentLink>
+                >{mt("viewDocument")}</AuthenticatedDocumentLink>
               </div>
               <Button
                 onClick={handleRemoveFloorPlans}
@@ -277,7 +274,7 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
                     <p className="text-sm font-medium text-slate-700">
                       {floorPlansFile ? floorPlansFile.name : 'Choose floor plans file'}
                     </p>
-                    <p className="text-xs text-slate-500">PDF, JPG, PNG, or WebP (max 4.5MB)</p>
+                    <p className="text-xs text-slate-500">{mt("pDFJPGPNGOrWebPMax45MB")}</p>
                   </div>
                 </div>
                 {floorPlansFile && (
@@ -309,9 +306,7 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
                   </>
                 ) : (
                   <>
-                    <Upload className="mr-2 h-4 w-4" />
-                    Upload Floor Plans
-                  </>
+                    <Upload className="mr-2 h-4 w-4" />{mt("uploadFloorPlans")}</>
                 )}
               </Button>
             )}
@@ -325,15 +320,15 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
           <div className="flex items-center gap-3">
             <Wind className="h-5 w-5 text-slate-500" />
             <div>
-              <CardTitle className="text-lg">Ventilation Specifications</CardTitle>
-              <CardDescription>Document your ventilation system for compliance and chef awareness</CardDescription>
+              <CardTitle className="text-lg">{mt("ventilationSpecifications")}</CardTitle>
+              <CardDescription>{mt("documentYourVentilationSystemForComplianceAndChefAwareness")}</CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-5">
           {/* Description */}
           <div className="space-y-2">
-            <Label htmlFor="ventilation_specs">Ventilation Description</Label>
+            <Label htmlFor="ventilation_specs">{mt("ventilationDescription")}</Label>
             <Textarea
               id="ventilation_specs"
               value={ventilationSpecs}
@@ -341,20 +336,18 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
                 setVentilationSpecs(e.target.value);
                 setHasUnsavedChanges(true);
               }}
-              placeholder="Describe your kitchen's ventilation system (CFM, type, exhaust locations, etc.)"
+              placeholder={mt("placeholderVentilationSystem")}
               rows={4}
               className="resize-none"
             />
-            <p className="text-xs text-muted-foreground">
-              Include details about CFM capacity, hood type, and exhaust locations
-            </p>
+            <p className="text-xs text-muted-foreground">{mt("includeDetailsAboutCFMCapacityHoodTypeAndExhaustLocations")}</p>
           </div>
 
           {hasUnsavedChanges && (
             <StatusButton
               status={saveVentilationAction.status}
               onClick={saveVentilationAction.execute}
-              labels={{ idle: "Save Description", loading: "Saving", success: "Saved" }}
+              labels={{ idle: tt("saveDescription"), loading: mt("savingShort"), success: mt("saved") }}
             />
           )}
 
@@ -364,7 +357,7 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
               <div className="w-full border-t border-slate-200" />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white px-3 text-slate-400">And/Or Upload Document</span>
+              <span className="bg-white px-3 text-slate-400">{mt("andOrUploadDocument")}</span>
             </div>
           </div>
 
@@ -375,13 +368,11 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
                 <CheckCircle2 className="h-5 w-5 text-emerald-600" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-emerald-800">Ventilation Document Uploaded</p>
+                <p className="text-sm font-medium text-emerald-800">{mt("ventilationDocumentUploaded")}</p>
                 <AuthenticatedDocumentLink
                   url={requirements.ventilation_specs_url}
                   className="text-xs text-emerald-600 hover:underline truncate block"
-                >
-                  View Document
-                </AuthenticatedDocumentLink>
+                >{mt("viewDocument")}</AuthenticatedDocumentLink>
               </div>
               <Button
                 onClick={handleRemoveVentilationDoc}
@@ -397,7 +388,7 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
 
           {/* Upload Ventilation Document */}
           <div className="space-y-3">
-            <Label>Upload Documentation (Optional)</Label>
+            <Label>{mt("uploadDocumentationOptional")}</Label>
             <div className="relative">
               <input
                 id="ventilation_file"
@@ -415,7 +406,7 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
                     <p className="text-sm font-medium text-slate-700">
                       {ventilationFile ? ventilationFile.name : 'Choose document'}
                     </p>
-                    <p className="text-xs text-slate-500">PDF, JPG, PNG, or WebP (max 4.5MB)</p>
+                    <p className="text-xs text-slate-500">{mt("pDFJPGPNGOrWebPMax45MB")}</p>
                   </div>
                 </div>
                 {ventilationFile && (
@@ -447,9 +438,7 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
                   </>
                 ) : (
                   <>
-                    <Upload className="mr-2 h-4 w-4" />
-                    Upload Document
-                  </>
+                    <Upload className="mr-2 h-4 w-4" />{mt("uploadDocument")}</>
                 )}
               </Button>
             )}

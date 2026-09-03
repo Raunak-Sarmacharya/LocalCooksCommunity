@@ -6,9 +6,12 @@
  */
 
 import { OverstayPenaltyQueue } from "@/components/manager/overstays/OverstayPenaltyQueue";
+import { useTranslation } from "react-i18next";
 import ManagerHeader from "@/components/layout/ManagerHeader";
 
 export default function ManagerOverstaysPage() {
+  const { t } = useTranslation("manager");
+
   return (
     <div className="min-h-screen bg-background">
       <ManagerHeader />

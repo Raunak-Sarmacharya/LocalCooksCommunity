@@ -5,6 +5,12 @@ import path from "path";
 import { defineConfig } from "vite";
 
 export default defineConfig({
+  define: {
+    // Expose Vercel deploy env to the client (preview → dev-* redirects).
+    'import.meta.env.VITE_VERCEL_ENV': JSON.stringify(
+      process.env.VITE_VERCEL_ENV || process.env.VERCEL_ENV || ''
+    ),
+  },
   plugins: [
     react(),
     runtimeErrorOverlay(),

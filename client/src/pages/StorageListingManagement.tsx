@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { mt } from "@/i18n/manager";
 import { 
   Package, Plus, Check, Loader2, Pencil, Trash2, Search,
   Thermometer, Snowflake, Grid3X3, DollarSign, PlusCircle, SearchX,
@@ -118,10 +119,11 @@ interface LocationDefaults {
 }
 
 export default function StorageListingManagement() {
+  
   return (
     <ManagerPageLayout
-      title="Storage Management"
-      description="Manage your kitchen storage listings"
+      title={mt("storageManagement")}
+      description={mt("manageYourKitchenStorageListings")}
       showKitchenSelector={true}
     >
       {({ selectedLocationId, selectedKitchenId, isLoading }) => {
@@ -227,7 +229,7 @@ function StorageListingContent({
       const data = await apiGet(`/manager/kitchens/${selectedLocationId}`);
       setKitchens(data);
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to load kitchens", variant: "destructive" });
+      toast({ title: mt("error"), description: error.message || "Failed to load kitchens", variant: "destructive" });
     }
   };
 
@@ -253,7 +255,7 @@ function StorageListingContent({
       })) : [];
       setListings(mappedData);
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to load storage listings", variant: "destructive" });
+      toast({ title: mt("error"), description: error.message || "Failed to load storage listings", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -275,11 +277,11 @@ function StorageListingContent({
     // Use searchQuery as fallback if customStorage.name is empty (intuitive flow)
     const storageName = (customStorage.name.trim() || searchQuery.trim());
     if (!selectedKitchenId || !storageName) {
-      toast({ title: "Error", description: "Please enter a storage name", variant: "destructive" });
+      toast({ title: mt("error"), description: mt("pleaseEnterAStorageName"), variant: "destructive" });
       return;
     }
     if (!customStorage.dailyRate || customStorage.dailyRate <= 0) {
-      toast({ title: "Error", description: "Please enter a daily rate", variant: "destructive" });
+      toast({ title: mt("error"), description: mt("pleaseEnterADailyRate"), variant: "destructive" });
       return;
     }
     setIsSaving(true);
@@ -303,7 +305,7 @@ function StorageListingContent({
         overstayPenaltyRate: customStorage.overstayPenaltyRate,
         overstayMaxPenaltyDays: customStorage.overstayMaxPenaltyDays,
       });
-      toast({ title: "Storage Added", description: `Successfully added "${storageName}"` });
+      toast({ title: mt("storageAdded"), description: `Successfully added "${storageName}"` });
       setCustomStorage({ 
         name: '', 
         storageType: 'dry' as StorageTypeId, 
@@ -322,7 +324,7 @@ function StorageListingContent({
       loadListings();
       queryClient.invalidateQueries({ queryKey: [`/api/manager/storage-listings`] });
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to add storage", variant: "destructive" });
+      toast({ title: mt("error"), description: error.message || "Failed to add storage", variant: "destructive" });
     } finally {
       setIsSaving(false);
     }
@@ -397,13 +399,13 @@ function StorageListingContent({
     }
     setIsSaving(false);
     if (successCount > 0) {
-      toast({ title: "Storage Added", description: `Successfully added ${successCount} storage listing${successCount > 1 ? 's' : ''}.` });
+      toast({ title: mt("storageAdded"), description: `Successfully added ${successCount} storage listing${successCount > 1 ? 's' : ''}.` });
       setSelectedStorage({});
       setActiveTab('list');
       loadListings();
       queryClient.invalidateQueries({ queryKey: [`/api/manager/storage-listings`] });
     } else {
-      toast({ title: "Error", description: "Failed to add storage listings.", variant: "destructive" });
+      toast({ title: mt("error"), description: mt("failedToAddStorageListings"), variant: "destructive" });
     }
   };
 
@@ -420,13 +422,13 @@ function StorageListingContent({
         ...editingListing,
         basePrice: Math.round((editingListing.basePrice || 0) * 100), // Convert to cents
       });
-      toast({ title: "Success", description: "Storage listing updated successfully" });
+      toast({ title: mt("success"), description: mt("storageListingUpdatedSuccessfully") });
       setEditDialogOpen(false);
       setEditingListing(null);
       loadListings();
       queryClient.invalidateQueries({ queryKey: [`/api/manager/storage-listings`] });
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to update listing", variant: "destructive" });
+      toast({ title: mt("error"), description: error.message || "Failed to update listing", variant: "destructive" });
     } finally {
       setIsSaving(false);
     }
@@ -436,12 +438,12 @@ function StorageListingContent({
     if (!pendingDeleteId) return;
     try {
       await apiDelete(`/manager/storage-listings/${pendingDeleteId}`);
-      toast({ title: "Success", description: "Storage listing deleted successfully" });
+      toast({ title: mt("success"), description: mt("storageListingDeletedSuccessfully") });
       setDeleteDialogOpen(false);
       setPendingDeleteId(null);
       loadListings();
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to delete listing", variant: "destructive" });
+      toast({ title: mt("error"), description: error.message || "Failed to delete listing", variant: "destructive" });
     }
   };
 
@@ -461,11 +463,11 @@ function StorageListingContent({
       await apiPut(`/manager/storage-listings/${id}`, { isActive });
       queryClient.invalidateQueries({ queryKey: [`/api/manager/storage-listings`] });
       loadListings();
-      toast({ title: "Status Updated", description: `Storage listing is now ${isActive ? 'active' : 'inactive'}` });
+      toast({ title: mt("statusUpdated"), description: `Storage listing is now ${isActive ? 'active' : 'inactive'}` });
       setToggleDialogOpen(false);
       setPendingToggle(null);
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to update status", variant: "destructive" });
+      toast({ title: mt("error"), description: error.message || "Failed to update status", variant: "destructive" });
     } finally {
       setIsToggling(false);
     }
@@ -478,8 +480,8 @@ function StorageListingContent({
       <Card className="border-dashed h-full">
         <CardContent className="flex flex-col items-center justify-center p-12 text-center text-muted-foreground h-full">
           <Package className="h-12 w-12 mb-4 opacity-20" />
-          <h3 className="text-lg font-medium text-foreground mb-1">No Kitchen Selected</h3>
-          <p>Select a location and kitchen from the sidebar to manage storage.</p>
+          <h3 className="text-lg font-medium text-foreground mb-1">{mt("noKitchenSelected")}</h3>
+          <p>{mt("selectALocationAndKitchenFromTheSidebarToManageStorage")}</p>
         </CardContent>
       </Card>
     );
@@ -490,8 +492,8 @@ function StorageListingContent({
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'list' | 'add')}>
         <div className="flex items-center justify-between mb-4">
           <TabsList className="grid w-[300px] grid-cols-2">
-            <TabsTrigger value="list" className="flex items-center gap-2"><Package className="h-4 w-4" />My Storage</TabsTrigger>
-            <TabsTrigger value="add" className="flex items-center gap-2"><Plus className="h-4 w-4" />Add Storage</TabsTrigger>
+            <TabsTrigger value="list" className="flex items-center gap-2"><Package className="h-4 w-4" />{mt("myStorage")}</TabsTrigger>
+            <TabsTrigger value="add" className="flex items-center gap-2"><Plus className="h-4 w-4" />{mt("addStorage")}</TabsTrigger>
           </TabsList>
           {selectedKitchen && <Badge variant="outline" className="text-sm">{selectedKitchen.name}</Badge>}
         </div>
@@ -499,7 +501,7 @@ function StorageListingContent({
         <TabsContent value="list" className="mt-0">
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Storage Inventory</CardTitle>
+              <CardTitle className="text-lg">{mt("storageInventory")}</CardTitle>
               <CardDescription>{listings.length} storage listing{listings.length !== 1 ? 's' : ''} for this kitchen</CardDescription>
             </CardHeader>
             <CardContent>
@@ -508,9 +510,9 @@ function StorageListingContent({
               ) : listings.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
                   <Package className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                  <p className="font-medium">No storage listed yet</p>
+                  <p className="font-medium">{mt("noStorageListedYet")}</p>
                   <p className="text-sm mt-1">Click "Add Storage" to get started</p>
-                  <Button className="mt-4" onClick={() => setActiveTab('add')}><Plus className="h-4 w-4 mr-2" />Add Storage</Button>
+                  <Button className="mt-4" onClick={() => setActiveTab('add')}><Plus className="h-4 w-4 mr-2" />{mt("addStorage")}</Button>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -533,8 +535,8 @@ function StorageListingContent({
                         </div>
                         <div className="flex items-center gap-2 ml-4">
                           <Switch checked={listing.isActive !== false} onCheckedChange={() => handleToggleActive(listing.id!, listing.isActive !== false)} disabled={isToggling} />
-                          <Button variant="ghost" size="icon" onClick={() => handleEdit(listing)} title="Edit storage details"><Pencil className="h-4 w-4" /></Button>
-                          <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => { setPendingDeleteId(listing.id!); setDeleteDialogOpen(true); }} title="Delete storage"><Trash2 className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleEdit(listing)} title={mt("editStorageDetails")}><Pencil className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => { setPendingDeleteId(listing.id!); setDeleteDialogOpen(true); }} title={mt("deleteStorage")}><Trash2 className="h-4 w-4" /></Button>
                         </div>
                       </div>
                       
@@ -543,7 +545,7 @@ function StorageListingContent({
                         <div className="flex items-center gap-3 text-sm">
                           <div className="flex items-center gap-1.5">
                             <AlertTriangle className={cn("h-4 w-4", listing.overstayGracePeriodDays !== undefined ? "text-orange-500" : "text-gray-300")} />
-                            <span className="text-muted-foreground">Overstay Penalties:</span>
+                            <span className="text-muted-foreground">{mt("overstayPenalties2")}</span>
                           </div>
                           {listing.overstayGracePeriodDays !== undefined ? (
                             <div className="flex items-center gap-2">
@@ -556,7 +558,7 @@ function StorageListingContent({
                               <span className="text-xs text-muted-foreground">max {listing.overstayMaxPenaltyDays || 30} days</span>
                             </div>
                           ) : (
-                            <span className="text-xs text-orange-600 italic">Not configured - using defaults</span>
+                            <span className="text-xs text-orange-600 italic">{mt("notConfiguredUsingDefaults")}</span>
                           )}
                         </div>
                         <Button 
@@ -564,9 +566,7 @@ function StorageListingContent({
                           size="sm" 
                           className="text-xs h-7 px-2 text-orange-600 hover:text-orange-700 hover:bg-orange-50"
                           onClick={() => handleEdit(listing)}
-                        >
-                          Configure
-                        </Button>
+                        >{mt("configure")}</Button>
                       </div>
                     </div>
                   ))}
@@ -579,15 +579,15 @@ function StorageListingContent({
         <TabsContent value="add" className="mt-0 space-y-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Search storage types..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
+            <Input placeholder={mt("searchStorageTypes")} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2"><Grid3X3 className="h-5 w-5" />Select Storage Type</CardTitle>
-                  <CardDescription>Choose from pre-defined storage options or add custom</CardDescription>
+                  <CardTitle className="text-lg flex items-center gap-2"><Grid3X3 className="h-5 w-5" />{mt("selectStorageType")}</CardTitle>
+                  <CardDescription>{mt("chooseFromPreDefinedStorageOptionsOrAddCustom")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <ScrollArea className="h-[500px] pr-4">
@@ -617,7 +617,7 @@ function StorageListingContent({
                                       <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2">
                                           <p className="text-sm font-medium">{template.name}</p>
-                                          {isAlreadyListed && <Badge variant="secondary" className="text-xs">Listed</Badge>}
+                                          {isAlreadyListed && <Badge variant="secondary" className="text-xs">{mt("listed")}</Badge>}
                                         </div>
                                         <p className="text-xs text-muted-foreground mt-0.5">{template.description}</p>
                                         <p className="text-xs text-blue-600 mt-1">~${template.suggestedDailyRate}/day</p>
@@ -636,23 +636,21 @@ function StorageListingContent({
                         <Card className="border-dashed border-primary/50 bg-primary/5">
                           <CardHeader className="pb-2">
                             <CardTitle className="text-base flex items-center gap-2">
-                              <SearchX className="h-4 w-4" />
-                              No matching storage found
-                            </CardTitle>
+                              <SearchX className="h-4 w-4" />{mt("noMatchingStorageFound")}</CardTitle>
                             <CardDescription>Add "{searchQuery}" as custom storage</CardDescription>
                           </CardHeader>
                           <CardContent className="space-y-3">
                             <div className="grid grid-cols-2 gap-3">
                               <div className="space-y-1">
-                                <Label className="text-xs">Storage Type</Label>
+                                <Label className="text-xs">{mt("storageType")}</Label>
                                 <Select value={customStorage.storageType} onValueChange={(v: StorageTypeId) => {
                                   setCustomStorage({ ...customStorage, storageType: v, temperatureRange: getDefaultTemperatureRange(v) || '' });
                                 }}>
                                   <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                                   <SelectContent>
-                                    <SelectItem value="dry">Dry Storage</SelectItem>
-                                    <SelectItem value="cold">Cold Storage</SelectItem>
-                                    <SelectItem value="freezer">Freezer</SelectItem>
+                                    <SelectItem value="dry">{mt("dryStorage")}</SelectItem>
+                                    <SelectItem value="cold">{mt("coldStorage")}</SelectItem>
+                                    <SelectItem value="freezer">{mt("freezer")}</SelectItem>
                                   </SelectContent>
                                 </Select>
                               </div>
@@ -663,11 +661,11 @@ function StorageListingContent({
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                               <div className="space-y-1">
-                                <Label className="text-xs">Size (cubic feet)</Label>
+                                <Label className="text-xs">{mt("sizeCubicFeet")}</Label>
                                 <Input type="number" min="0" value={customStorage.totalVolume || ''} onChange={(e) => setCustomStorage({ ...customStorage, totalVolume: parseFloat(e.target.value) || 0 })} placeholder="50" className="h-9" />
                               </div>
                               <div className="space-y-1">
-                                <Label className="text-xs">Access Type</Label>
+                                <Label className="text-xs">{mt("accessType")}</Label>
                                 <Select value={customStorage.accessType} onValueChange={(v) => setCustomStorage({ ...customStorage, accessType: v })}>
                                   <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                                   <SelectContent>
@@ -679,31 +677,29 @@ function StorageListingContent({
                               </div>
                             </div>
                             <div className="space-y-1">
-                              <Label className="text-xs">Minimum Booking (days)</Label>
+                              <Label className="text-xs">{mt("minimumBookingDays")}</Label>
                               <Input type="number" min="1" value={customStorage.minimumBookingDuration || 1} onChange={(e) => setCustomStorage({ ...customStorage, minimumBookingDuration: parseInt(e.target.value) || 1 })} placeholder="1" className="h-9" />
                             </div>
                             <div className="space-y-1">
-                              <Label className="text-xs">Description</Label>
-                              <Textarea value={customStorage.description} onChange={(e) => setCustomStorage({ ...customStorage, description: e.target.value })} placeholder="Describe the storage space..." rows={2} className="text-sm" />
+                              <Label className="text-xs">{mt("description")}</Label>
+                              <Textarea value={customStorage.description} onChange={(e) => setCustomStorage({ ...customStorage, description: e.target.value })} placeholder={mt("describeTheStorageSpace")} rows={2} className="text-sm" />
                             </div>
                             
                             {/* Overstay Penalty Configuration */}
                             <div className="border-t pt-3 mt-3">
                               <h4 className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
-                                <AlertTriangle className="h-3 w-3 text-orange-500" />
-                                Overstay Penalties
-                              </h4>
+                                <AlertTriangle className="h-3 w-3 text-orange-500" />{mt("navOverstayPenalties")}</h4>
                               <div className="grid grid-cols-3 gap-2">
                                 <div className="space-y-1">
-                                  <Label className="text-xs">Grace (days)</Label>
+                                  <Label className="text-xs">{mt("graceDays")}</Label>
                                   <Input type="number" min="0" max="14" value={customStorage.overstayGracePeriodDays} onChange={(e) => setCustomStorage({ ...customStorage, overstayGracePeriodDays: parseInt(e.target.value) || 0 })} className="h-8 text-xs" />
                                 </div>
                                 <div className="space-y-1">
-                                  <Label className="text-xs">Rate (%)</Label>
+                                  <Label className="text-xs">{mt("rate2")}</Label>
                                   <Input type="number" min="0" max="50" value={Math.round(parseFloat(customStorage.overstayPenaltyRate) * 100)} onChange={(e) => setCustomStorage({ ...customStorage, overstayPenaltyRate: ((parseInt(e.target.value) || 0) / 100).toString() })} className="h-8 text-xs" />
                                 </div>
                                 <div className="space-y-1">
-                                  <Label className="text-xs">Max Days</Label>
+                                  <Label className="text-xs">{mt("maxDays")}</Label>
                                   <Input type="number" min="1" max="90" value={customStorage.overstayMaxPenaltyDays} onChange={(e) => setCustomStorage({ ...customStorage, overstayMaxPenaltyDays: parseInt(e.target.value) || 1 })} className="h-8 text-xs" />
                                 </div>
                               </div>
@@ -728,14 +724,14 @@ function StorageListingContent({
             <div className="lg:col-span-1">
               <Card className="sticky top-4">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2"><DollarSign className="h-5 w-5" />Configure</CardTitle>
+                  <CardTitle className="text-lg flex items-center gap-2"><DollarSign className="h-5 w-5" />{mt("configure")}</CardTitle>
                   <CardDescription>{selectedStorageCount} storage{selectedStorageCount !== 1 ? 's' : ''} selected</CardDescription>
                 </CardHeader>
                 <CardContent>
                   {selectedStorageCount === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
                       <Package className="h-8 w-8 mx-auto mb-2 opacity-20" />
-                      <p className="text-sm">Select storage from the list to configure</p>
+                      <p className="text-sm">{mt("selectStorageFromTheListToConfigure")}</p>
                     </div>
                   ) : (
                     <ScrollArea className="h-[400px] pr-2">
@@ -752,11 +748,11 @@ function StorageListingContent({
                                 <Input type="number" step="0.01" min="0" value={storage.dailyRate} onChange={(e) => updateSelectedStorage(storage.templateId, { dailyRate: parseFloat(e.target.value) || 0 })} className="h-8" />
                               </div>
                               <div className="space-y-1">
-                                <Label className="text-xs">Size (cubic feet)</Label>
-                                <Input type="number" min="0" value={storage.totalVolume || ''} onChange={(e) => updateSelectedStorage(storage.templateId, { totalVolume: parseFloat(e.target.value) || 0 })} placeholder="Enter size" className="h-8" />
+                                <Label className="text-xs">{mt("sizeCubicFeet")}</Label>
+                                <Input type="number" min="0" value={storage.totalVolume || ''} onChange={(e) => updateSelectedStorage(storage.templateId, { totalVolume: parseFloat(e.target.value) || 0 })} placeholder={mt("enterSize")} className="h-8" />
                               </div>
                               <div className="space-y-1">
-                                <Label className="text-xs">Access Type</Label>
+                                <Label className="text-xs">{mt("accessType")}</Label>
                                 <Select value={storage.accessType} onValueChange={(v) => updateSelectedStorage(storage.templateId, { accessType: v })}>
                                   <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
                                   <SelectContent>
@@ -768,32 +764,30 @@ function StorageListingContent({
                               </div>
                               {(storage.storageType === 'cold' || storage.storageType === 'freezer') && (
                                 <div className="space-y-1">
-                                  <Label className="text-xs">Temperature Range</Label>
-                                  <Input value={storage.temperatureRange} onChange={(e) => updateSelectedStorage(storage.templateId, { temperatureRange: e.target.value })} placeholder="e.g., 35-40°F" className="h-8" />
+                                  <Label className="text-xs">{mt("temperatureRange")}</Label>
+                                  <Input value={storage.temperatureRange} onChange={(e) => updateSelectedStorage(storage.templateId, { temperatureRange: e.target.value })} placeholder={mt("eG3540F")} className="h-8" />
                                 </div>
                               )}
                               <div className="space-y-1">
-                                <Label className="text-xs">Minimum Booking (days)</Label>
+                                <Label className="text-xs">{mt("minimumBookingDays")}</Label>
                                 <Input type="number" min="1" value={storage.minimumBookingDuration || 1} onChange={(e) => updateSelectedStorage(storage.templateId, { minimumBookingDuration: parseInt(e.target.value) || 1 })} className="h-8" />
                               </div>
                               <div className="space-y-1">
-                                <Label className="text-xs">Description</Label>
+                                <Label className="text-xs">{mt("description")}</Label>
                                 <Textarea value={storage.description} onChange={(e) => updateSelectedStorage(storage.templateId, { description: e.target.value })} rows={2} className="text-sm" />
                               </div>
                               
                               {/* Overstay Penalty Configuration */}
                               <div className="border-t pt-2 mt-2">
                                 <h4 className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1">
-                                  <AlertTriangle className="h-3 w-3 text-orange-500" />
-                                  Overstay Penalties
-                                </h4>
+                                  <AlertTriangle className="h-3 w-3 text-orange-500" />{mt("navOverstayPenalties")}</h4>
                                 <div className="grid grid-cols-3 gap-1.5">
                                   <div className="space-y-0.5">
-                                    <Label className="text-[10px]">Grace (d)</Label>
+                                    <Label className="text-[10px]">{mt("graceD")}</Label>
                                     <Input type="number" min="0" max="14" value={storage.overstayGracePeriodDays} onChange={(e) => updateSelectedStorage(storage.templateId, { overstayGracePeriodDays: parseInt(e.target.value) || 0 })} className="h-7 text-xs" />
                                   </div>
                                   <div className="space-y-0.5">
-                                    <Label className="text-[10px]">Rate (%)</Label>
+                                    <Label className="text-[10px]">{mt("rate2")}</Label>
                                     <Input type="number" min="0" max="50" value={Math.round(parseFloat(storage.overstayPenaltyRate) * 100)} onChange={(e) => updateSelectedStorage(storage.templateId, { overstayPenaltyRate: ((parseInt(e.target.value) || 0) / 100).toString() })} className="h-7 text-xs" />
                                   </div>
                                   <div className="space-y-0.5">
@@ -833,8 +827,8 @@ function StorageListingContent({
                 {editingListing && <StorageTypeIcon type={editingListing.storageType} className="w-5 h-5 text-[#F51042]" />}
               </div>
               <div>
-                <SheetTitle className="text-lg">Edit Storage Listing</SheetTitle>
-                <SheetDescription>Update your storage details and penalty settings</SheetDescription>
+                <SheetTitle className="text-lg">{mt("editStorageListing")}</SheetTitle>
+                <SheetDescription>{mt("updateYourStorageDetailsAndPenaltySettings")}</SheetDescription>
               </div>
             </div>
           </SheetHeader>
@@ -843,25 +837,23 @@ function StorageListingContent({
             <div className="flex-1 overflow-y-auto p-6">
               <Tabs defaultValue="basic" className="w-full">
                 <TabsList className="grid w-full grid-cols-2 mb-4">
-                  <TabsTrigger value="basic">Basic Info</TabsTrigger>
+                  <TabsTrigger value="basic">{mt("basicInfo")}</TabsTrigger>
                   <TabsTrigger value="penalties" className="flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4" />
-                    Penalties
-                  </TabsTrigger>
+                    <AlertTriangle className="h-4 w-4" />{mt("penalties")}</TabsTrigger>
                 </TabsList>
 
                 {/* Basic Info Tab */}
                 <TabsContent value="basic" className="space-y-4 mt-0">
                   {/* Name Field */}
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">Storage Name</Label>
+                    <Label className="text-sm font-medium">{mt("storageName")}</Label>
                     <div className="relative">
                       <Package className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                       <Input 
                         value={editingListing.name} 
                         onChange={(e) => setEditingListing({ ...editingListing, name: e.target.value })}
                         className="pl-10"
-                        placeholder="e.g., Walk-in Cooler A"
+                        placeholder={mt("eGWalkInCoolerA")}
                       />
                     </div>
                   </div>
@@ -869,7 +861,7 @@ function StorageListingContent({
                   {/* Storage Type & Access Type Row */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label className="text-sm font-medium">Storage Type</Label>
+                      <Label className="text-sm font-medium">{mt("storageType")}</Label>
                       <Select 
                         value={editingListing.storageType} 
                         onValueChange={(v: 'dry' | 'cold' | 'freezer') => setEditingListing({ ...editingListing, storageType: v })}
@@ -878,20 +870,20 @@ function StorageListingContent({
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="dry">Dry Storage</SelectItem>
-                          <SelectItem value="cold">Cold Storage</SelectItem>
-                          <SelectItem value="freezer">Freezer</SelectItem>
+                          <SelectItem value="dry">{mt("dryStorage")}</SelectItem>
+                          <SelectItem value="cold">{mt("coldStorage")}</SelectItem>
+                          <SelectItem value="freezer">{mt("freezer")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-sm font-medium">Access Type</Label>
+                      <Label className="text-sm font-medium">{mt("accessType")}</Label>
                       <Select 
                         value={editingListing.accessType || ''} 
                         onValueChange={(v) => setEditingListing({ ...editingListing, accessType: v })}
                       >
                         <SelectTrigger className="h-10">
-                          <SelectValue placeholder="Select access type" />
+                          <SelectValue placeholder={mt("selectAccessType")} />
                         </SelectTrigger>
                         <SelectContent>
                           {Object.entries(ACCESS_TYPE_LABELS).map(([value, label]) => (
@@ -920,7 +912,7 @@ function StorageListingContent({
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-sm font-medium">Size (cubic feet)</Label>
+                      <Label className="text-sm font-medium">{mt("sizeCubicFeet")}</Label>
                       <div className="relative">
                         <Grid3X3 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                         <Input 
@@ -929,7 +921,7 @@ function StorageListingContent({
                           value={editingListing.totalVolume || ''} 
                           onChange={(e) => setEditingListing({ ...editingListing, totalVolume: parseFloat(e.target.value) || undefined })}
                           className="pl-10"
-                          placeholder="e.g., 50"
+                          placeholder={mt("eG50")}
                         />
                       </div>
                     </div>
@@ -938,7 +930,7 @@ function StorageListingContent({
                   {/* Minimum Booking & Temperature Row */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label className="text-sm font-medium">Minimum Booking (days)</Label>
+                      <Label className="text-sm font-medium">{mt("minimumBookingDays")}</Label>
                       <Input 
                         type="number" 
                         min="1" 
@@ -949,14 +941,14 @@ function StorageListingContent({
                     </div>
                     {(editingListing.storageType === 'cold' || editingListing.storageType === 'freezer') && (
                       <div className="space-y-2">
-                        <Label className="text-sm font-medium">Temperature Range</Label>
+                        <Label className="text-sm font-medium">{mt("temperatureRange")}</Label>
                         <div className="relative">
                           <Thermometer className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                           <Input 
                             value={editingListing.temperatureRange || ''} 
                             onChange={(e) => setEditingListing({ ...editingListing, temperatureRange: e.target.value })}
                             className="pl-10"
-                            placeholder="e.g., 35-40°F"
+                            placeholder={mt("eG3540F")}
                           />
                         </div>
                       </div>
@@ -965,11 +957,11 @@ function StorageListingContent({
 
                   {/* Description */}
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">Description</Label>
+                    <Label className="text-sm font-medium">{mt("description")}</Label>
                     <Textarea 
                       value={editingListing.description || ''} 
                       onChange={(e) => setEditingListing({ ...editingListing, description: e.target.value })}
-                      placeholder="Optional description of the storage space..."
+                      placeholder={mt("optionalDescriptionOfTheStorageSpace")}
                       rows={3}
                       className="min-h-[80px] resize-none"
                     />
@@ -990,7 +982,7 @@ function StorageListingContent({
 
                   <div className="grid grid-cols-3 gap-4">
                     <div className="space-y-2">
-                      <Label className="text-sm font-medium">Grace Period (days)</Label>
+                      <Label className="text-sm font-medium">{mt("gracePeriodDays2")}</Label>
                       <Input 
                         type="number" 
                         min="0" 
@@ -999,10 +991,10 @@ function StorageListingContent({
                         onChange={(e) => setEditingListing({ ...editingListing, overstayGracePeriodDays: parseInt(e.target.value) || 0 })}
                         className="h-10"
                       />
-                      <p className="text-xs text-muted-foreground">Days before penalties apply</p>
+                      <p className="text-xs text-muted-foreground">{mt("daysBeforePenaltiesApply")}</p>
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-sm font-medium">Penalty Rate (%)</Label>
+                      <Label className="text-sm font-medium">{mt("penaltyRate2")}</Label>
                       <Input 
                         type="number" 
                         min="0" 
@@ -1015,7 +1007,7 @@ function StorageListingContent({
                       <p className="text-xs text-muted-foreground">% of daily rate per day</p>
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-sm font-medium">Max Penalty Days</Label>
+                      <Label className="text-sm font-medium">{mt("maxPenaltyDays")}</Label>
                       <Input 
                         type="number" 
                         min="1" 
@@ -1024,22 +1016,20 @@ function StorageListingContent({
                         onChange={(e) => setEditingListing({ ...editingListing, overstayMaxPenaltyDays: parseInt(e.target.value) || 1 })}
                         className="h-10"
                       />
-                      <p className="text-xs text-muted-foreground">Maximum days to charge</p>
+                      <p className="text-xs text-muted-foreground">{mt("maximumDaysToCharge")}</p>
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">Policy Text (optional)</Label>
+                    <Label className="text-sm font-medium">{mt("policyTextOptional2")}</Label>
                     <Textarea 
                       value={editingListing.overstayPolicyText || ''} 
                       onChange={(e) => setEditingListing({ ...editingListing, overstayPolicyText: e.target.value })}
-                      placeholder="Custom overstay policy message shown to chefs..."
+                      placeholder={mt("customOverstayPolicyMessageShownToChefs")}
                       rows={3}
                       className="min-h-[80px] resize-none"
                     />
-                    <p className="text-xs text-muted-foreground">
-                      This message will be displayed to chefs when they book this storage.
-                    </p>
+                    <p className="text-xs text-muted-foreground">{mt("thisMessageWillBeDisplayedToChefsWhenTheyBookThisStorage")}</p>
                   </div>
                 </TabsContent>
               </Tabs>
@@ -1047,9 +1037,7 @@ function StorageListingContent({
           )}
           
           <SheetFooter className="p-6 pt-4 border-t gap-2">
-            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
-              Cancel
-            </Button>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>{mt("cancel")}</Button>
             <StatusButton 
               onClick={() => { setActiveSavingAction('edit'); saveEditedListing(); }} 
               status={activeSavingAction === 'edit' && isSaving ? "loading" : "idle"}
@@ -1063,12 +1051,12 @@ function StorageListingContent({
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Storage Listing?</DialogTitle>
-            <DialogDescription>This action cannot be undone. The storage listing will be permanently deleted.</DialogDescription>
+            <DialogTitle>{mt("deleteStorageListing")}</DialogTitle>
+            <DialogDescription>{mt("thisActionCannotBeUndoneTheStorageListingWillBePermanentlyDe")}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete}>Delete</Button>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>{mt("cancel")}</Button>
+            <Button variant="destructive" onClick={handleDelete}>{mt("delete")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1077,11 +1065,11 @@ function StorageListingContent({
       <Dialog open={toggleDialogOpen} onOpenChange={setToggleDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Deactivate Storage Listing?</DialogTitle>
-            <DialogDescription>This storage listing will no longer be available for booking. You can reactivate it at any time.</DialogDescription>
+            <DialogTitle>{mt("deactivateStorageListing")}</DialogTitle>
+            <DialogDescription>{mt("thisStorageListingWillNoLongerBeAvailableForBookingYouCanRea")}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setToggleDialogOpen(false); setPendingToggle(null); }} disabled={isToggling}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setToggleDialogOpen(false); setPendingToggle(null); }} disabled={isToggling}>{mt("cancel")}</Button>
             <StatusButton
               variant="destructive"
               onClick={() => pendingToggle && doToggleActive(pendingToggle.id, pendingToggle.isActive)}

@@ -76,15 +76,29 @@ export class ChefApplicationService {
      */
     async updateApplicationStatus(applicationId: number, status: "inReview" | "approved" | "rejected" | "cancelled", feedback?: string, reviewedBy?: number) {
         try {
+            const current = await this.getApplicationById(applicationId);
+            const setData: Record<string, unknown> = {
+                status,
+                feedback,
+                reviewedBy,
+                reviewedAt: new Date(),
+                updatedAt: new Date(),
+            };
+
+            // Step 1 admin approval: stamp tier1 complete while staying on tier 1
+            // so chef UI / progress bars unlock Step 2 without bumping current_tier.
+            if (
+                status === "approved" &&
+                current &&
+                (current.current_tier ?? 1) <= 1 &&
+                !current.tier1_completed_at
+            ) {
+                setData.tier1_completed_at = new Date();
+            }
+
             const [updatedApp] = await db
                 .update(chefKitchenApplications)
-                .set({
-                    status,
-                    feedback,
-                    reviewedBy,
-                    reviewedAt: new Date(),
-                    updatedAt: new Date()
-                })
+                .set(setData)
                 .where(eq(chefKitchenApplications.id, applicationId))
                 .returning();
 
@@ -359,10 +373,18 @@ export class ChefApplicationService {
 
             if (existing) {
                 // Determine the appropriate status for the update:
-                // - If existing is 'approved' (Step 1 approved, chef submitting Step 2), preserve 'approved' status
+                // - If existing is 'approved' (Step 1 approved, chef submitting Step 2), preserve 'approved'
+                // - If chef is submitting Step 2 (tier ≥ 2 / tier2_completed_at), set 'approved'
+                //   so managers can review (covers legacy buggy Step 1 approvals left as inReview)
                 // - If existing is 'rejected' or 'cancelled', reset to 'inReview' for resubmission
-                // - If existing is 'inReview', keep 'inReview'
-                const newStatus = existing.status === 'approved' ? 'approved' : 'inReview';
+                // - If existing is 'inReview' (Step 1 still pending), keep 'inReview'
+                const incomingTier = (data as any).current_tier ?? 1;
+                const isStep2Submit =
+                    incomingTier >= 2 || Boolean((data as any).tier2_completed_at);
+                const newStatus =
+                    existing.status === 'approved' || isStep2Submit
+                        ? 'approved'
+                        : 'inReview';
                 
                 // Only clear feedback if this is a true resubmission (rejected/cancelled -> inReview)
                 const shouldClearFeedback = existing.status === 'rejected' || existing.status === 'cancelled';

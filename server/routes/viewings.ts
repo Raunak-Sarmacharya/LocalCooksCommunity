@@ -778,6 +778,26 @@ router.post(
       const tourDuration = durationMinutes || settings.defaultDurationMinutes;
       const scheduledDate = new Date(scheduledAt as string);
 
+      const [existingActiveTour] = await db
+        .select({ id: kitchenViewings.id })
+        .from(kitchenViewings)
+        .where(
+          and(
+            eq(kitchenViewings.chefId, chefId),
+            eq(kitchenViewings.locationId, locationId),
+            sql`${kitchenViewings.status} IN ('pending', 'confirmed')`
+          )
+        )
+        .limit(1);
+
+      if (existingActiveTour) {
+        return res.status(409).json({
+          error:
+            "You already have an active tour request for this kitchen. Check My Tours for status.",
+          code: "ACTIVE_TOUR_EXISTS",
+        });
+      }
+
       // Server-side advance notice validation
       const now = new TZDate(new Date(), timezone);
       const hoursUntil = differenceInHours(scheduledDate, now);

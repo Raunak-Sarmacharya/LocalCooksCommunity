@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { mt } from "@/i18n/manager";
 import { Mail, Phone } from 'lucide-react';
 import { StatusButton } from '@/components/ui/status-button';
 import { useStatusButton } from '@/hooks/use-status-button';
@@ -24,6 +25,7 @@ interface NotificationsSettingsProps {
 }
 
 export default function NotificationsSettings({ location, onSave }: NotificationsSettingsProps) {
+  
   const [notificationEmail, setNotificationEmail] = useState(location.notificationEmail || '');
   const [notificationPhone, setNotificationPhone] = useState(location.notificationPhone || '');
 
@@ -45,7 +47,7 @@ export default function NotificationsSettings({ location, onSave }: Notification
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">Notifications</h2>
+        <h2 className="text-2xl font-bold tracking-tight">{mt("navNotifications")}</h2>
         <p className="text-muted-foreground">
           Configure where booking notifications will be sent for {location.name}.
         </p>
@@ -56,16 +58,14 @@ export default function NotificationsSettings({ location, onSave }: Notification
           <div className="flex items-center gap-3">
             <Mail className="h-5 w-5 text-purple-600" />
             <div>
-              <CardTitle className="text-lg">Notification Settings</CardTitle>
-              <CardDescription>
-                Configure where booking notifications will be sent. If left empty, notifications will go to the manager's account email.
-              </CardDescription>
+              <CardTitle className="text-lg">{mt("notificationSettings")}</CardTitle>
+              <CardDescription>{mt("configureWhereBookingNotificationsWillBeSentIfLeftEmptyNotif")}</CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
           <div>
-            <Label htmlFor="notification-email">Email Address</Label>
+            <Label htmlFor="notification-email">{mt("emailAddress")}</Label>
             <div className="flex items-center gap-2 mt-1.5">
               <Mail className="h-4 w-4 text-muted-foreground" />
               <Input
@@ -73,17 +73,15 @@ export default function NotificationsSettings({ location, onSave }: Notification
                 type="email"
                 value={notificationEmail}
                 onChange={(e) => setNotificationEmail(e.target.value)}
-                placeholder="notifications@localcooks.com"
+                placeholder={mt("notificationsLocalcooksCom")}
                 className="max-w-md"
               />
             </div>
-            <p className="text-xs text-muted-foreground mt-1.5">
-              All booking notifications for this location will be sent to this email address
-            </p>
+            <p className="text-xs text-muted-foreground mt-1.5">{mt("allBookingNotificationsForThisLocationWillBeSentToThisEmailA")}</p>
           </div>
 
           <div>
-            <Label htmlFor="notification-phone">Phone Number (for SMS notifications)</Label>
+            <Label htmlFor="notification-phone">{mt("phoneNumberForSMSNotifications")}</Label>
             <div className="flex items-center gap-2 mt-1.5">
               <Phone className="h-4 w-4 text-muted-foreground" />
               <Input
@@ -95,13 +93,11 @@ export default function NotificationsSettings({ location, onSave }: Notification
                 className="max-w-md"
               />
             </div>
-            <p className="text-xs text-muted-foreground mt-1.5">
-              SMS notifications for bookings and cancellations will be sent to this phone number. If left empty, SMS will not be sent.
-            </p>
+            <p className="text-xs text-muted-foreground mt-1.5">{mt("sMSNotificationsForBookingsAndCancellationsWillBeSentToThisP")}</p>
           </div>
 
           <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
-            <h4 className="font-medium text-purple-900 mb-2">Notification Types</h4>
+            <h4 className="font-medium text-purple-900 mb-2">{mt("notificationTypes")}</h4>
             <ul className="text-sm text-purple-800 space-y-1">
               <li>• New booking confirmations</li>
               <li>• Booking cancellations</li>
@@ -113,7 +109,7 @@ export default function NotificationsSettings({ location, onSave }: Notification
           <StatusButton
             status={saveAction.status}
             onClick={saveAction.execute}
-            labels={{ idle: "Save Notification Settings", loading: "Saving", success: "Saved" }}
+            labels={{ idle: mt("saveNotificationSettings"), loading: mt("savingShort"), success: mt("saved") }}
           />
         </CardContent>
       </Card>

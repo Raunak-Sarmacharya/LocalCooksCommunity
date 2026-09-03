@@ -169,6 +169,8 @@ function PathCard({
     <button
       type="button"
       onClick={onClick}
+      data-testid={`chef-onboarding-path-${accent === "primary" ? "localcooks" : "kitchen"}`}
+      aria-pressed={selected}
       className={cn(
         "w-full p-5 rounded-2xl border-2 text-left transition-all",
         selected

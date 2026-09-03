@@ -6,6 +6,7 @@ import enLanding from "@shared/i18n/locales/en-CA/landing.json";
 import enBooking from "@shared/i18n/locales/en-CA/booking.json";
 import enChef from "@shared/i18n/locales/en-CA/chef.json";
 import enKitchen from "@shared/i18n/locales/en-CA/kitchen.json";
+import enManager from "@shared/i18n/locales/en-CA/manager.json";
 import enAdmin from "@shared/i18n/locales/en-CA/admin.json";
 import enEmail from "@shared/i18n/locales/en-CA/email.json";
 import enSms from "@shared/i18n/locales/en-CA/sms.json";
@@ -24,6 +25,7 @@ export const enCaResources = {
   booking: enBooking,
   chef: enChef,
   kitchen: enKitchen,
+  manager: enManager,
   admin: enAdmin,
   email: enEmail,
   sms: enSms,

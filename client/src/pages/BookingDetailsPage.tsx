@@ -56,6 +56,11 @@ import {
 } from "@/components/manager/bookings/BookingManagementSheet";
 import { KitchenCheckinTracker } from "@/components/booking/KitchenCheckinTracker";
 import { SmartImage } from "@/components/ui/smart-image";
+import { tt } from "@/i18n/common-ns";
+import {
+  ChefBookingReceiptBreakdown,
+  KitchenPayoutStatementBreakdown,
+} from "@/components/booking/BookingPricingBreakdown";
 
 interface BookingDetails {
   id: number;
@@ -72,7 +77,10 @@ interface BookingDetails {
   totalPrice?: number;
   hourlyRate?: number;
   durationHours?: number;
-  serviceFee?: number;
+    serviceFee?: number;
+    taxAmount?: number;
+  /** Admin-configured service fee rate (fraction, e.g. 0.07) */
+  platformCommissionRate?: number;
   currency?: string;
   createdAt: string;
   updatedAt?: string;
@@ -126,6 +134,7 @@ interface BookingDetails {
   paymentTransaction?: {
     amount: number;
     serviceFee: number;
+    taxAmount?: number;
     managerRevenue: number;
     status: string;
     stripeProcessingFee?: number;
@@ -274,7 +283,7 @@ export default function BookingDetailsPage() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to generate invoice");
+        throw new Error(tt("failedToGenerateInvoice"));
       }
 
       const blob = await response.blob();
@@ -286,7 +295,9 @@ export default function BookingDetailsPage() {
       const bookingDate = booking.bookingDate
         ? new Date(booking.bookingDate).toISOString().split("T")[0]
         : "unknown";
-      a.download = `LocalCooks-Invoice-${booking.id}-${bookingDate}.pdf`;
+      a.download = isManagerView
+        ? `LocalCooks-Payout-Statement-${booking.id}-${bookingDate}.pdf`
+        : `LocalCooks-Booking-Receipt-${booking.id}-${bookingDate}.pdf`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -587,6 +598,35 @@ export default function BookingDetailsPage() {
     };
   }, [booking]);
 
+  const pricingBreakdownInput = useMemo(() => {
+    if (!booking) return null;
+    const subtotal = totals.subtotal || 0;
+    const serviceFee = totals.serviceFee || booking.paymentTransaction?.serviceFee || 0;
+    // Label the fee with the admin-configured rate. Deriving it from the stored
+    // amount over the displayed subtotal rounds wrong whenever an add-on was
+    // voided after checkout (the fee was charged on the original subtotal).
+    const platformFeeRate =
+      booking.platformCommissionRate != null
+        ? Number(booking.platformCommissionRate)
+        : subtotal > 0 && serviceFee > 0
+          ? serviceFee / subtotal
+          : 0;
+
+    return {
+      kitchenBaseSubtotalCents: subtotal,
+      kitchenHstRatePercent: Number(booking.kitchen?.taxRatePercent) || 0,
+      kitchenHstAmountCents: booking.paymentTransaction?.taxAmount,
+      platformFeeRate,
+      platformFeeAmountCents: serviceFee,
+      paymentProcessorFeeCents: booking.paymentTransaction?.stripeProcessingFee || 0,
+      kitchenNetPayoutCents: booking.paymentTransaction?.managerRevenue,
+      refundAmountCents: booking.paymentTransaction?.refundAmount || 0,
+      hourlyRateCents: booking.hourlyRate,
+      bookedHours: booking.durationHours,
+      showPaymentProcessorFee: (booking.paymentTransaction?.stripeProcessingFee || 0) > 0,
+    };
+  }, [booking, totals]);
+
   // Show ALL storage/equipment bookings including rejected ones for full audit trail
   const allStorageBookings = booking?.storageBookings || [];
   const allEquipmentBookings = booking?.equipmentBookings || [];
@@ -616,6 +656,7 @@ export default function BookingDetailsPage() {
     endTime: booking.endTime,
     totalPrice: booking.totalPrice,
     transactionAmount: booking.paymentTransaction?.amount,
+    serviceFee: totals.serviceFee || booking.paymentTransaction?.serviceFee || 0,
     stripeProcessingFee: booking.paymentTransaction?.stripeProcessingFee,
     managerRevenue: booking.paymentTransaction?.managerRevenue,
     taxRatePercent: booking.kitchen?.taxRatePercent ? Number(booking.kitchen.taxRatePercent) : undefined,
@@ -858,7 +899,7 @@ export default function BookingDetailsPage() {
           break;
         }
         case "accept-storage-cancel": {
-          if (!params.storageCancellationId) throw new Error("No storage booking ID");
+          if (!params.storageCancellationId) throw new Error(tt("noStorageBookingId"));
           const res = await fetch(`/api/manager/storage-bookings/${params.storageCancellationId}/cancellation-request`, {
             method: 'PUT', headers, credentials: "include",
             body: JSON.stringify({ action: 'accept' }),
@@ -869,7 +910,7 @@ export default function BookingDetailsPage() {
           break;
         }
         case "decline-storage-cancel": {
-          if (!params.storageCancellationId) throw new Error("No storage booking ID");
+          if (!params.storageCancellationId) throw new Error(tt("noStorageBookingId"));
           const res = await fetch(`/api/manager/storage-bookings/${params.storageCancellationId}/cancellation-request`, {
             method: 'PUT', headers, credentials: "include",
             body: JSON.stringify({ action: 'decline' }),
@@ -1442,27 +1483,58 @@ export default function BookingDetailsPage() {
                   </div>
                 )}
 
-                <Separator className="my-3" />
-
-                <div className="flex justify-between items-baseline">
-                  <span className="text-sm font-medium">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">
                     {booking.paymentStatus === 'failed' && booking.status === 'cancelled'
                       ? t("bdOriginalQuote")
-                      : isRefunded
+                      : isRefunded || isPartiallyRefunded
                         ? t("bdAmountCharged")
-                        : isPartiallyRefunded
-                          ? t("bdAmountCharged")
-                          : t("bdSubtotal")}
+                        : t("bdSubtotal")}
                   </span>
-                  <span className={`text-lg font-semibold font-mono ${
+                  <span className={`font-mono tabular-nums ${
                     (booking.paymentStatus === 'failed' && booking.status === 'cancelled') || isRefunded
                       ? 'text-muted-foreground line-through'
                       : ''
                   }`}>
                     {formatCurrency(totals.subtotal)}
-                    <span className="text-xs font-normal text-muted-foreground ml-1">{booking.currency || "CAD"}</span>
                   </span>
                 </div>
+
+                {/* Taxes, fees and total continue the same list — no second header */}
+                {/* VOIDED AUTH: skip entirely — no money was captured */}
+                {booking.paymentTransaction && pricingBreakdownInput && !(booking.paymentStatus === 'failed' && booking.status === 'cancelled') && (
+                  isManagerView ? (
+                    <KitchenPayoutStatementBreakdown
+                      {...pricingBreakdownInput}
+                      currency={booking.currency || "CAD"}
+                      title={
+                        booking.paymentStatus === 'authorized'
+                          ? t("bdEstimatedPayout", { defaultValue: "Estimated payout" })
+                          : t("bdYourPayout", { defaultValue: "Your payout" })
+                      }
+                      showProcessorFee={pricingBreakdownInput.showPaymentProcessorFee}
+                    />
+                  ) : (
+                    <ChefBookingReceiptBreakdown
+                      {...pricingBreakdownInput}
+                      currency={booking.currency || "CAD"}
+                      kitchenName={booking.kitchen?.name}
+                      totalLabel={booking.paymentStatus === 'authorized' ? t("bdAmountAuthorized") : t("bdAmountCharged")}
+                      noHstDisclosure={t("bdNoKitchenHst", { defaultValue: "No HST was charged by this kitchen." })}
+                      platformFeeLabel={t("bdLocalCooksServiceFee", {
+                        percent: Math.round((pricingBreakdownInput.platformFeeRate || 0) * 100),
+                        defaultValue: "Local Cooks service fee ({percent}%)",
+                      })}
+                    />
+                  )
+                )}
+
+                {!isManagerView && refundAmount > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-warning">{t("bdRefundedLine")}</span>
+                    <span className="font-mono tabular-nums text-warning">−{formatCurrency(refundAmount)}</span>
+                  </div>
+                )}
               </div>
 
               {/* VOIDED AUTH: Show when booking was cancelled before capture — no money moved */}
@@ -1540,165 +1612,6 @@ export default function BookingDetailsPage() {
                 </div>
               )}
 
-              {/* Chef View - Payment Breakdown (without Stripe fee) */}
-              {/* VOIDED AUTH: Skip breakdown entirely — no money was captured */}
-              {!isManagerView && booking.paymentTransaction && !(booking.paymentStatus === 'failed' && booking.status === 'cancelled') && (
-                <>
-                  <Separator className="my-4" />
-                  <div className="space-y-2">
-                    <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">{t("bdBreakdown")}</h3>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">{t("bdSubtotal")}</span>
-                      <span className="font-mono">{formatCurrency(totals.subtotal)}</span>
-                    </div>
-                    {(() => {
-                      const taxRatePercent = booking.kitchen?.taxRatePercent || 0;
-                      const subtotal = totals.subtotal || 0;
-                      const taxAmount = Math.round((subtotal * taxRatePercent) / 100);
-                      
-                      return taxRatePercent > 0 ? (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">{t("bdTax", { percent: taxRatePercent })}</span>
-                          <span className="font-mono">{formatCurrency(taxAmount)}</span>
-                        </div>
-                      ) : null;
-                    })()}
-                    {(() => {
-                      const serviceFee = totals.serviceFee || 0;
-                      
-                      return serviceFee > 0 ? (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">{t("bdServiceFee")}</span>
-                          <span className="font-mono">{formatCurrency(serviceFee)}</span>
-                        </div>
-                      ) : null;
-                    })()}
-                    <Separator className="my-2" />
-                    <div className="flex justify-between text-sm font-medium">
-                      <span>
-                        {booking.paymentStatus === 'authorized' ? t("bdAmountAuthorized") : t("bdAmountCharged")}
-                      </span>
-                      <span className="font-mono">
-                    {(() => {
-                      const serviceFee = totals.serviceFee || 0;
-                      const ptAmount = booking.paymentTransaction.amount || 0;
-                      const expectedCharged = (totals.subtotal || 0) + serviceFee;
-                      const amountCharged = ptAmount >= expectedCharged - 1
-                        ? ptAmount
-                        : ptAmount + serviceFee;
-                      return formatCurrency(amountCharged);
-                    })()}
-                      </span>
-                    </div>
-                    {refundAmount > 0 && (
-                      <>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-warning">{t("bdRefundedLine")}</span>
-                          <span className="font-mono text-warning">−{formatCurrency(refundAmount)}</span>
-                        </div>
-                        <Separator className="my-2" />
-                        <div className="flex justify-between text-sm font-medium">
-                          <span>{t("bdNetCharged")}</span>
-                          <span className="font-mono">
-                            {(() => {
-                              const serviceFee = totals.serviceFee || 0;
-                              const ptAmount = booking.paymentTransaction.amount || 0;
-                              const expectedCharged = (totals.subtotal || 0) + serviceFee;
-                              const amountCharged = ptAmount >= expectedCharged - 1
-                                ? ptAmount
-                                : ptAmount + serviceFee;
-                              return formatCurrency(amountCharged - refundAmount);
-                            })()}
-                          </span>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </>
-              )}
-
-              {/* Manager View - Revenue Breakdown (with Stripe fee) */}
-              {/* VOIDED AUTH: Skip breakdown entirely — no money was captured */}
-              {isManagerView && booking.paymentTransaction && !(booking.paymentStatus === 'failed' && booking.status === 'cancelled') && (
-                <>
-                  <Separator className="my-4" />
-                  <div className="space-y-2">
-                    <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
-                      {booking.paymentStatus === 'authorized' ? t("bdAuthorization") : t("bdRevenue")}
-                    </h3>
-                    {booking.paymentStatus !== 'authorized' && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">{t("bdGross")}</span>
-                        <span className="font-mono">{formatCurrency(totals.subtotal)}</span>
-                      </div>
-                    )}
-                    {(() => {
-                      const amount = booking.paymentTransaction.amount || 0;
-                      // ENTERPRISE STANDARD: Use actual values from payment_transactions table
-                      // - serviceFee = application_fee_amount = what platform retained (live Stripe fee after reconciliation)
-                      // - managerRevenue = amount - serviceFee = what Stripe actually paid the manager's Connect account
-                      // - stripeProcessingFee = informational only (Stripe's actual processing fee deducted from platform balance)
-                      const platformFee = booking.paymentTransaction.serviceFee || 0;
-                      const managerRevenue = booking.paymentTransaction.managerRevenue || 0;
-                      const stripeProcessingFee = booking.paymentTransaction.stripeProcessingFee || 0;
-                      const taxRatePercent = booking.kitchen?.taxRatePercent || 0;
-                      const subtotal = totals.subtotal || 0;
-                      const taxAmount = Math.round((subtotal * taxRatePercent) / 100);
-                      // Net keepable revenue = what manager received from Stripe minus tax they remit
-                      const netRevenue = managerRevenue - taxAmount;
-                      const isAuthorized = booking.paymentStatus === 'authorized';
-                      const ptRefundAmount = booking.paymentTransaction.refundAmount || 0;
-
-                      return (
-                        <>
-                          {taxRatePercent > 0 && (
-                            <div className="flex justify-between text-sm">
-                              <span className="text-muted-foreground">
-                                {t("bdTax", { percent: taxRatePercent })}
-                              </span>
-                              <span className="font-mono text-muted-foreground">
-                                {isAuthorized ? `+${formatCurrency(taxAmount)}` : `−${formatCurrency(taxAmount)}`}
-                              </span>
-                            </div>
-                          )}
-                          {!isAuthorized && stripeProcessingFee > 0 && (
-                            <div className="flex justify-between text-sm">
-                              <span className="text-muted-foreground">{t("bdStripeFee")}</span>
-                              <span className="font-mono text-muted-foreground">−{formatCurrency(stripeProcessingFee)}</span>
-                            </div>
-                          )}
-                          {!isAuthorized && ptRefundAmount > 0 && (
-                            <div className="flex justify-between text-sm">
-                              <span className="text-warning">{t("bdRefundedLine")}</span>
-                              <span className="font-mono text-warning">−{formatCurrency(ptRefundAmount)}</span>
-                            </div>
-                          )}
-                          <Separator className="my-2" />
-                          <div className="flex justify-between text-sm font-medium">
-                            <span>
-                              {isAuthorized ? t("bdTotalPayment") : t("bdNetRevenue")}
-                            </span>
-                            <span className="font-mono">
-                              {formatCurrency(isAuthorized ? (totals.subtotal || amount) : netRevenue - ptRefundAmount)}
-                            </span>
-                          </div>
-                          {!isAuthorized && managerRevenue > 0 && (
-                            <p className="text-[10px] text-muted-foreground italic mt-1">
-                              {t("bdManagerRevenueNote", {
-                                revenue: formatCurrency(managerRevenue),
-                                tax: formatCurrency(taxAmount),
-                                net: formatCurrency(netRevenue - ptRefundAmount),
-                                refundPart: ptRefundAmount > 0 ? t("bdRefundPart", { amount: formatCurrency(ptRefundAmount) }) : '',
-                              })}
-                            </p>
-                          )}
-                        </>
-                      );
-                    })()}
-                  </div>
-                </>
-              )}
-
               {(booking.paymentStatus === "paid" || booking.paymentStatus === "partially_refunded" || booking.paymentStatus === "refunded") && (
                 <Button
                   onClick={handleDownloadInvoice}
@@ -1715,7 +1628,9 @@ export default function BookingDetailsPage() {
                   ) : (
                     <>
                       <Download className="mr-1.5 h-3.5 w-3.5" />
-                      {t("bdDownloadInvoice")}
+                      {isManagerView
+                        ? t("bdDownloadPayoutStatement", { defaultValue: "Download payout statement" })
+                        : t("bdDownloadReceipt", { defaultValue: "Download booking receipt" })}
                     </>
                   )}
                 </Button>

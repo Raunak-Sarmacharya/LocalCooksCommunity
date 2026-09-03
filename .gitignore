@@ -386,3 +386,24 @@ scripts/.sync-cache/
 .windsurf/skills/firebase-auth/templates/auth-context.tsx
 .windsurf/skills/firebase-auth/templates/middleware.ts
 .windsurf/skills/firebase-auth/templates/protected-route.tsx
+testsprite_tests/
+.claude/
+.cursor/
+# Graphify — keep tip outputs; ignore local/ephemeral
+graphify-out/cache/
+graphify-out/20*/
+graphify-out/.graphify_python
+graphify-out/.graphify_root
+graphify-out/.graphify_chunk_*.json
+graphify-out/.graphify_detect.json
+graphify-out/.graphify_extract.json
+graphify-out/.graphify_ast.json
+graphify-out/.graphify_semantic*.json
+graphify-out/.graphify_analysis.json
+graphify-out/.graphify_cached.json
+graphify-out/.graphify_uncached.txt
+graphify-out/.graphify_incremental.json
+graphify-out/.graphify_agent_ids.txt
+graphify-out/.graphify_loco_extract_*.png
+graphify-out/.needs_update
+graphify-out/cost.json

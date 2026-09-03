@@ -78,12 +78,21 @@ router.get("/chef/kitchens/:kitchenId/pricing", requireChef, async (req: Request
 
         const kitchen = await kitchenService.getKitchenById(kitchenId);
 
+        const { getFeeConfig } = await import("../services/stripe-checkout-fee-service");
+        const feeConfig = await getFeeConfig();
+        const taxRatePercent =
+            kitchen.taxRatePercent !== null && kitchen.taxRatePercent !== undefined
+                ? Number(kitchen.taxRatePercent)
+                : 0;
+
         // Map to pricing object expected by frontend
         const pricing = {
             hourlyRate: kitchen.hourlyRate,
             currency: kitchen.currency,
             pricingModel: kitchen.pricingModel,
-            minimumBookingHours: kitchen.minimumBookingHours
+            minimumBookingHours: kitchen.minimumBookingHours,
+            taxRatePercent: Number.isFinite(taxRatePercent) ? taxRatePercent : 0,
+            platformCommissionRate: feeConfig.platformCommissionRate,
         };
 
         res.json(pricing);
@@ -302,7 +311,7 @@ router.get("/chef/kitchens/:kitchenId/month-availability", requireChef, async (r
             return res.status(400).json({ error: "Invalid year or month (month must be 0-11)" });
         }
 
-        const availability = await kitchenService.getMonthAvailability(kitchenId, yearNum, monthNum);
+        const availability = await bookingService.getMonthBookableAvailability(kitchenId, yearNum, monthNum);
         res.json(availability);
     } catch (error: any) {
         logger.error("Error fetching month availability:", error);
@@ -470,6 +479,131 @@ router.put("/chef/my-profile", requireChef, async (req: Request, res: Response) 
     } catch (error: any) {
         logger.error("[Chef Profile] PUT error:", error);
         res.status(500).json({ error: error.message || "Failed to update chef profile" });
+    }
+});
+
+// Public month availability for kitchen preview calendar (no auth)
+router.get("/public/kitchens/:kitchenId/month-availability", async (req: Request, res: Response) => {
+    try {
+        const kitchenId = parseInt(req.params.kitchenId);
+        if (isNaN(kitchenId) || kitchenId <= 0) {
+            return res.status(400).json({ error: "Invalid kitchen ID" });
+        }
+
+        const kitchen = await kitchenService.getKitchenById(kitchenId);
+        if (!kitchen || !kitchen.isActive) {
+            return res.status(404).json({ error: "Kitchen not found" });
+        }
+
+        const { year, month } = req.query;
+        if (year === undefined || month === undefined) {
+            return res.status(400).json({ error: "Year and month parameters are required" });
+        }
+
+        const yearNum = parseInt(year as string);
+        const monthNum = parseInt(month as string);
+        if (isNaN(yearNum) || isNaN(monthNum) || monthNum < 0 || monthNum > 11) {
+            return res.status(400).json({ error: "Invalid year or month (month must be 0-11)" });
+        }
+
+        const availability = await bookingService.getMonthBookableAvailability(kitchenId, yearNum, monthNum);
+        res.json(availability);
+    } catch (error: any) {
+        logger.error("Error fetching public month availability:", error);
+        res.status(500).json({
+            error: "Failed to fetch month availability",
+            message: error.message,
+        });
+    }
+});
+
+// Public time slots for kitchen preview (no auth — browse before sign-up)
+router.get("/public/kitchens/:kitchenId/slots", async (req: Request, res: Response) => {
+    try {
+        const kitchenId = parseInt(req.params.kitchenId);
+        const { date } = req.query;
+
+        if (isNaN(kitchenId) || kitchenId <= 0) {
+            return res.status(400).json({ error: "Invalid kitchen ID" });
+        }
+        if (!date) {
+            return res.status(400).json({ error: "Date parameter is required" });
+        }
+
+        const kitchen = await kitchenService.getKitchenById(kitchenId);
+        if (!kitchen || !kitchen.isActive) {
+            return res.status(404).json({ error: "Kitchen not found" });
+        }
+
+        const [year, month, day] = (date as string).split("-").map(Number);
+        const bookingDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+        if (isNaN(bookingDate.getTime())) {
+            return res.status(400).json({ error: "Invalid date format" });
+        }
+
+        const slotsInfo = await bookingService.getAllTimeSlotsWithBookingInfo(kitchenId, bookingDate);
+        res.json(slotsInfo);
+    } catch (error: any) {
+        logger.error("Error fetching public time slots:", error);
+        res.status(500).json({
+            error: "Failed to fetch time slots",
+            message: error.message,
+        });
+    }
+});
+
+/** Public booking estimate inputs for apply-flow price preview (no auth). */
+router.get("/public/kitchens/:kitchenId/booking-estimate", async (req: Request, res: Response) => {
+    try {
+        const kitchenId = parseInt(req.params.kitchenId);
+        if (isNaN(kitchenId) || kitchenId <= 0) {
+            return res.status(400).json({ error: "Invalid kitchen ID" });
+        }
+
+        const kitchen = await kitchenService.getKitchenById(kitchenId);
+        if (!kitchen || !kitchen.isActive) {
+            return res.status(404).json({ error: "Kitchen not found" });
+        }
+
+        const locationId = kitchen.locationId;
+        let maxSlotsPerChef = 2;
+        if (locationId) {
+            try {
+                const location = await locationService.getLocationById(locationId);
+                maxSlotsPerChef = location?.defaultDailyBookingLimit ?? 2;
+            } catch {
+                maxSlotsPerChef = 2;
+            }
+        }
+
+        const { getFeeConfig } = await import("../services/stripe-checkout-fee-service");
+        const feeConfig = await getFeeConfig();
+
+        const hourlyRate =
+            kitchen.hourlyRate !== null && kitchen.hourlyRate !== undefined
+                ? typeof kitchen.hourlyRate === "string"
+                    ? parseFloat(kitchen.hourlyRate)
+                    : Number(kitchen.hourlyRate)
+                : null;
+        const taxRatePercent =
+            kitchen.taxRatePercent !== null && kitchen.taxRatePercent !== undefined
+                ? Number(kitchen.taxRatePercent)
+                : 0;
+
+        res.json({
+            hourlyRate: Number.isFinite(hourlyRate) ? hourlyRate : null,
+            currency: kitchen.currency || "CAD",
+            minimumBookingHours: kitchen.minimumBookingHours ?? 1,
+            taxRatePercent: Number.isFinite(taxRatePercent) ? taxRatePercent : 0,
+            maxSlotsPerChef,
+            platformCommissionRate: feeConfig.platformCommissionRate,
+        });
+    } catch (error: any) {
+        logger.error("Error fetching public booking estimate:", error);
+        res.status(500).json({
+            error: "Failed to fetch booking estimate",
+            message: error.message,
+        });
     }
 });
 

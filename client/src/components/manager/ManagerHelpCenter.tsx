@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { mt } from "@/i18n/manager";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,18 +26,19 @@ interface HelpCenterProps {
 }
 
 export default function ManagerHelpCenter({ isOpen, onClose }: HelpCenterProps) {
+  
   const [activeSection, setActiveSection] = useState<string | null>(null);
 
   const helpSections = [
     {
       id: "setup",
-      title: "Onboarding Wizard",
+      title: mt("helpOnboardingWizardTitle"),
       icon: <ClipboardList className="h-5 w-5" />,
-      description: "Complete step-by-step guide to setting up your kitchen",
+      description: mt("helpOnboardingWizardDesc"),
       content: (
         <div className="space-y-4">
           <p className="text-sm text-gray-700">
-            The onboarding wizard will walk you through everything you need to get your kitchen ready for bookings, including location setup, kitchen license upload, and creating your first kitchen.
+            {mt("helpOnboardingWizardIntro")}
           </p>
           <Button
             onClick={() => {
@@ -49,31 +51,29 @@ export default function ManagerHelpCenter({ isOpen, onClose }: HelpCenterProps) 
             }}
             className="w-full"
           >
-            <BookOpen className="h-4 w-4 mr-2" />
-            Open Onboarding Wizard
-          </Button>
+            <BookOpen className="h-4 w-4 mr-2" />{mt("openOnboardingWizard")}</Button>
         </div>
       )
     },
     {
       id: "locations",
-      title: "Managing Locations",
+      title: mt("helpManagingLocationsTitle"),
       icon: <Building2 className="h-5 w-5" />,
-      description: "How to add and manage your kitchen locations",
+      description: mt("helpManagingLocationsDesc"),
       content: (
         <div className="space-y-4 text-sm text-gray-700">
           <div>
-            <h4 className="font-semibold mb-2">What is a Location?</h4>
+            <h4 className="font-semibold mb-2">{mt("whatIsALocation")}</h4>
             <p className="mb-3">
-              A location is your business address where your kitchen is located. This is what chefs will see when searching for kitchen spaces.
+              {mt("helpLocationWhatIsDesc")}
             </p>
-            <h4 className="font-semibold mb-2">Adding a Location</h4>
+            <h4 className="font-semibold mb-2">{mt("addingALocation")}</h4>
             <ol className="list-decimal list-inside space-y-2 ml-2">
-              <li>Go to Settings in your dashboard</li>
-              <li>Click "Add Location" or edit an existing location</li>
-              <li>Enter your location name and full address</li>
-              <li>Configure notification preferences</li>
-              <li>Save your changes</li>
+              <li>{mt("goToSettingsInYourDashboard")}</li>
+              <li>{mt("clickAddLocationOrEdit")}</li>
+              <li>{mt("enterYourLocationNameAndFullAddress")}</li>
+              <li>{mt("configureNotificationPreferences")}</li>
+              <li>{mt("saveYourChanges")}</li>
             </ol>
           </div>
         </div>
@@ -81,23 +81,23 @@ export default function ManagerHelpCenter({ isOpen, onClose }: HelpCenterProps) 
     },
     {
       id: "kitchens",
-      title: "Creating Kitchens",
+      title: mt("helpCreatingKitchensTitle"),
       icon: <Settings className="h-5 w-5" />,
-      description: "Understanding kitchens and how to create them",
+      description: mt("helpCreatingKitchensDesc"),
       content: (
         <div className="space-y-4 text-sm text-gray-700">
           <div>
-            <h4 className="font-semibold mb-2">What is a Kitchen?</h4>
+            <h4 className="font-semibold mb-2">{mt("whatIsAKitchen")}</h4>
             <p className="mb-3">
-              A kitchen is a specific space within your location where chefs can book time. If you have multiple kitchen spaces at one location, create separate kitchens for each.
+              {mt("helpKitchenWhatIsDesc")}
             </p>
-            <h4 className="font-semibold mb-2">Creating a Kitchen</h4>
+            <h4 className="font-semibold mb-2">{mt("creatingAKitchen")}</h4>
             <ol className="list-decimal list-inside space-y-2 ml-2">
-              <li>Navigate to your location settings</li>
-              <li>Click "Add Kitchen"</li>
-              <li>Enter a descriptive name (e.g., "Main Kitchen", "Prep Kitchen")</li>
-              <li>Add an optional description</li>
-              <li>Save to create the kitchen</li>
+              <li>{mt("navigateToYourLocationSettings")}</li>
+              <li>{mt("clickAddKitchen")}</li>
+              <li>{mt("enterDescriptiveKitchenName")}</li>
+              <li>{mt("addAnOptionalDescription")}</li>
+              <li>{mt("saveToCreateTheKitchen")}</li>
             </ol>
           </div>
         </div>
@@ -105,27 +105,27 @@ export default function ManagerHelpCenter({ isOpen, onClose }: HelpCenterProps) 
     },
     {
       id: "license",
-      title: "Kitchen License",
+      title: mt("helpKitchenLicenseTitle"),
       icon: <FileText className="h-5 w-5" />,
-      description: "Uploading and managing your kitchen license",
+      description: mt("helpKitchenLicenseDesc"),
       content: (
         <div className="space-y-4 text-sm text-gray-700">
           <div>
-            <h4 className="font-semibold mb-2">Why is a License Required?</h4>
+            <h4 className="font-semibold mb-2">{mt("whyIsALicenseRequired")}</h4>
             <p className="mb-3">
-              Your kitchen license must be approved by an admin before bookings can be activated. This ensures all kitchens on the platform meet safety and regulatory requirements.
+              {mt("licenseRequiredDescription")}
             </p>
-            <h4 className="font-semibold mb-2">Uploading Your License</h4>
+            <h4 className="font-semibold mb-2">{mt("uploadingYourLicense")}</h4>
             <ol className="list-decimal list-inside space-y-2 ml-2">
-              <li>Go to Settings → Location Settings</li>
-              <li>Find the "Kitchen License" section</li>
-              <li>Click "Upload License"</li>
-              <li>Select your license file (PDF, JPG, or PNG, max 10MB)</li>
-              <li>Submit for admin review</li>
+              <li>{mt("goToSettingsLocationSettings")}</li>
+              <li>{mt("findKitchenLicenseSection")}</li>
+              <li>{mt("clickUploadLicense")}</li>
+              <li>{mt("selectYourLicenseFilePDFJPGOrPNGMax10MB")}</li>
+              <li>{mt("submitForAdminReview")}</li>
             </ol>
             <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
               <p className="text-xs text-yellow-800">
-                <strong>Note:</strong> Bookings will remain disabled until your license is approved. You'll receive an email notification when your license is reviewed.
+                <strong>{mt("note")}</strong> {mt("licenseApprovalNote")}
               </p>
             </div>
           </div>
@@ -134,25 +134,25 @@ export default function ManagerHelpCenter({ isOpen, onClose }: HelpCenterProps) 
     },
     {
       id: "storage",
-      title: "Storage Listings",
+      title: mt("helpStorageListingsTitle"),
       icon: <Package className="h-5 w-5" />,
-      description: "Adding storage options for chefs to book",
+      description: mt("helpStorageListingsDesc"),
       content: (
         <div className="space-y-4 text-sm text-gray-700">
           <div>
-            <h4 className="font-semibold mb-2">What are Storage Listings?</h4>
+            <h4 className="font-semibold mb-2">{mt("whatAreStorageListings")}</h4>
             <p className="mb-3">
-              Storage listings allow chefs to book dry storage, cold storage, or freezer space at your kitchen. You can add multiple storage options with different sizes and prices.
+              {mt("helpStorageWhatIsDesc")}
             </p>
-            <h4 className="font-semibold mb-2">Adding Storage Listings</h4>
+            <h4 className="font-semibold mb-2">{mt("addingStorageListings")}</h4>
             <ol className="list-decimal list-inside space-y-2 ml-2">
-              <li>Navigate to Storage Listings in your dashboard</li>
-              <li>Select the kitchen where storage is available</li>
-              <li>Click "Add Storage Listing"</li>
-              <li>Choose storage type (dry, cold, or freezer)</li>
-              <li>Enter name, description, and pricing</li>
-              <li>Upload photos (optional but recommended)</li>
-              <li>Save your listing</li>
+              <li>{mt("navigateToStorageListingsInYourDashboard")}</li>
+              <li>{mt("selectTheKitchenWhereStorageIsAvailable")}</li>
+              <li>{mt("clickAddStorageListing")}</li>
+              <li>{mt("chooseStorageTypeDryColdOrFreezer")}</li>
+              <li>{mt("enterNameDescriptionAndPricing")}</li>
+              <li>{mt("uploadPhotosOptionalButRecommended")}</li>
+              <li>{mt("saveYourListing")}</li>
             </ol>
           </div>
         </div>
@@ -160,26 +160,26 @@ export default function ManagerHelpCenter({ isOpen, onClose }: HelpCenterProps) 
     },
     {
       id: "equipment",
-      title: "Equipment Listings",
+      title: mt("helpEquipmentListingsTitle"),
       icon: <Wrench className="h-5 w-5" />,
-      description: "Adding equipment that chefs can use or rent",
+      description: mt("helpEquipmentListingsDesc"),
       content: (
         <div className="space-y-4 text-sm text-gray-700">
           <div>
-            <h4 className="font-semibold mb-2">What are Equipment Listings?</h4>
+            <h4 className="font-semibold mb-2">{mt("whatAreEquipmentListings")}</h4>
             <p className="mb-3">
-              Equipment listings let chefs know what equipment is available. You can offer equipment as included with bookings or as paid add-ons (rentals).
+              {mt("helpEquipmentWhatIsDesc")}
             </p>
-            <h4 className="font-semibold mb-2">Adding Equipment Listings</h4>
+            <h4 className="font-semibold mb-2">{mt("addingEquipmentListings")}</h4>
             <ol className="list-decimal list-inside space-y-2 ml-2">
-              <li>Navigate to Equipment Listings in your dashboard</li>
-              <li>Select the kitchen where equipment is available</li>
-              <li>Click "Add Equipment Listing"</li>
-              <li>Choose category (cooking, prep, refrigeration, baking, other)</li>
-              <li>Select availability type (included or rental)</li>
-              <li>Enter name, description, condition, and pricing (if rental)</li>
-              <li>Upload photos (optional but recommended)</li>
-              <li>Save your listing</li>
+              <li>{mt("navigateToEquipmentListingsInYourDashboard")}</li>
+              <li>{mt("selectTheKitchenWhereEquipmentIsAvailable")}</li>
+              <li>{mt("clickAddEquipmentListing")}</li>
+              <li>{mt("chooseCategoryCookingPrepRefrigerationBakingOther")}</li>
+              <li>{mt("selectAvailabilityTypeIncludedOrRental")}</li>
+              <li>{mt("enterNameDescriptionConditionAndPricingIfRental")}</li>
+              <li>{mt("uploadPhotosOptionalButRecommended")}</li>
+              <li>{mt("saveYourListing")}</li>
             </ol>
           </div>
         </div>
@@ -193,12 +193,8 @@ export default function ManagerHelpCenter({ isOpen, onClose }: HelpCenterProps) 
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-2xl flex items-center gap-2">
-              <HelpCircle className="h-6 w-6" />
-              Help Center
-            </DialogTitle>
-            <DialogDescription>
-              Find answers and guides for managing your kitchen
-            </DialogDescription>
+              <HelpCircle className="h-6 w-6" />{mt("helpCenter")}</DialogTitle>
+            <DialogDescription>{mt("findAnswersAndGuidesForManagingYourKitchen")}</DialogDescription>
           </DialogHeader>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
@@ -247,12 +243,8 @@ export default function ManagerHelpCenter({ isOpen, onClose }: HelpCenterProps) 
 
           <div className="mt-6 pt-6 border-t border-gray-200">
             <div className="flex items-center justify-between">
-              <p className="text-sm text-gray-600">
-                Need more help? Contact support for assistance.
-              </p>
-              <Button variant="outline" onClick={onClose}>
-                Close
-              </Button>
+              <p className="text-sm text-gray-600">{mt("needMoreHelpContactSupportForAssistance")}</p>
+              <Button variant="outline" onClick={onClose}>{mt("close")}</Button>
             </div>
           </div>
         </DialogContent>

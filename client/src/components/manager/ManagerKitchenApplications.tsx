@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { mt } from "@/i18n/manager";
 import { useManagerKitchenApplications } from "@/hooks/use-manager-kitchen-applications";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -27,6 +28,7 @@ import { Badge } from "@/components/ui/badge";
 // New Modular Imports
 import { ApplicationsTable } from "./applications";
 import { Application } from "./applications/types";
+import { tt } from "@/i18n/common-ns";
 
 interface ManagerKitchenApplicationsProps {
   embedded?: boolean;
@@ -37,6 +39,7 @@ export default function ManagerKitchenApplications({
   embedded = false,
   locationId,
 }: ManagerKitchenApplicationsProps) {
+  
   const {
     applications,
     isLoading,
@@ -62,13 +65,13 @@ export default function ManagerKitchenApplications({
     queryFn: async () => {
       const { auth } = await import('@/lib/firebase');
       const currentUser = auth.currentUser;
-      if (!currentUser) throw new Error('Not authenticated');
+      if (!currentUser) throw new Error(tt("notAuthenticated"));
       const token = await currentUser.getIdToken();
       const response = await fetch('/api/firebase/user/me', {
         headers: { Authorization: `Bearer ${token}` },
         credentials: 'include',
       });
-      if (!response.ok) throw new Error('Failed to get user info');
+      if (!response.ok) throw new Error(tt("failedToGetUserInfo"));
       return response.json();
     },
   });
@@ -77,9 +80,8 @@ export default function ManagerKitchenApplications({
 
   const openChat = async (application: Application) => {
     if (!managerId) {
-      toast({
-        title: "Error",
-        description: "Unable to identify manager. Please refresh the page.",
+      toast({ title: mt("error"),
+        description: mt("unableToIdentifyManagerPleaseRefreshThePage"),
         variant: "destructive",
       });
       return;
@@ -123,9 +125,8 @@ export default function ManagerKitchenApplications({
         }
       } catch (error) {
         logger.error('Error initializing chat:', error);
-        toast({
-          title: "Error",
-          description: "Failed to open chat. Please try again.",
+        toast({ title: mt("error"),
+          description: mt("failedToOpenChatPleaseTryAgain"),
           variant: "destructive",
         });
         return;
@@ -155,9 +156,8 @@ export default function ManagerKitchenApplications({
           status: "approved",
           feedback: reviewFeedback || undefined,
         });
-        toast({
-          title: "Application Fully Approved!",
-          description: "Chef's application is now fully approved.",
+        toast({ title: mt("applicationFullyApproved"),
+          description: mt("toastChefApplicationFullyApproved"),
         });
       } else {
         await updateApplicationStatus.mutateAsync({
@@ -176,8 +176,7 @@ export default function ManagerKitchenApplications({
       setSelectedApplication(null);
       setReviewFeedback("");
     } catch (error: any) {
-      toast({
-        title: "Error",
+      toast({ title: mt("error"),
         description: error.message || "Failed to approve application",
         variant: "destructive",
       });
@@ -188,9 +187,8 @@ export default function ManagerKitchenApplications({
     if (!selectedApplication) return;
 
     if (!reviewFeedback.trim()) {
-      toast({
-        title: "Feedback Required",
-        description: "Please provide feedback when rejecting an application.",
+      toast({ title: mt("feedbackRequired"),
+        description: mt("pleaseProvideFeedbackWhenRejectingAnApplication"),
         variant: "destructive",
       });
       return;
@@ -202,16 +200,14 @@ export default function ManagerKitchenApplications({
         status: "rejected",
         feedback: reviewFeedback,
       });
-      toast({
-        title: "Application Rejected",
-        description: "Chef has been notified.",
+      toast({ title: mt("applicationRejected"),
+        description: mt("chefHasBeenNotified"),
       });
       setShowReviewDialog(false);
       setSelectedApplication(null);
       setReviewFeedback("");
     } catch (error: any) {
-      toast({
-        title: "Error",
+      toast({ title: mt("error"),
         description: error.message || "Failed to reject application",
         variant: "destructive",
       });
@@ -232,11 +228,11 @@ export default function ManagerKitchenApplications({
   function getDocStatusBadge(status: string) {
     switch (status) {
       case "pending":
-        return <Badge variant="outline" className="text-yellow-600 border-yellow-300">Pending</Badge>;
+        return <Badge variant="outline" className="text-yellow-600 border-yellow-300">{mt("pending")}</Badge>;
       case "approved":
-        return <Badge variant="outline" className="text-green-600 border-green-300">Verified</Badge>;
+        return <Badge variant="outline" className="text-green-600 border-green-300">{mt("verified")}</Badge>;
       case "rejected":
-        return <Badge variant="outline" className="text-red-600 border-red-300">Rejected</Badge>;
+        return <Badge variant="outline" className="text-red-600 border-red-300">{mt("rejected")}</Badge>;
       default:
         return null;
     }
@@ -298,7 +294,7 @@ export default function ManagerKitchenApplications({
       <Dialog open={showReviewDialog} onOpenChange={setShowReviewDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Review Application</DialogTitle>
+            <DialogTitle>{mt("reviewApplication")}</DialogTitle>
             <DialogDescription>
               Review {selectedApplication?.fullName}'s application for{" "}
               {selectedApplication?.location?.name}
@@ -309,22 +305,22 @@ export default function ManagerKitchenApplications({
             <div className="space-y-4">
               <div className="p-4 bg-gray-50 rounded-lg space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Email:</span>
+                  <span className="text-gray-600">{mt("email2")}</span>
                   <span>{selectedApplication.email}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Phone:</span>
+                  <span className="text-gray-600">{mt("phone2")}</span>
                   <span>{selectedApplication.phone}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Kitchen Type:</span>
+                  <span className="text-gray-600">{mt("kitchenType")}</span>
                   <span className="capitalize">{selectedApplication.kitchenPreference}</span>
                 </div>
               </div>
 
               {selectedApplication.businessDescription && (
                 <div>
-                  <p className="text-sm font-medium text-gray-700 mb-1">Business Description:</p>
+                  <p className="text-sm font-medium text-gray-700 mb-1">{mt("businessDescription")}</p>
                   <p className="text-sm text-gray-600 p-3 bg-gray-50 rounded-lg">
                     {selectedApplication.businessDescription}
                   </p>
@@ -332,13 +328,11 @@ export default function ManagerKitchenApplications({
               )}
 
               <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1">
-                  Feedback (required for rejection)
-                </label>
+                <label className="text-sm font-medium text-gray-700 block mb-1">{mt("feedbackRequiredForRejection")}</label>
                 <Textarea
                   value={reviewFeedback}
                   onChange={(e) => setReviewFeedback(e.target.value)}
-                  placeholder="Enter feedback..."
+                  placeholder={mt("enterFeedback")}
                   rows={3}
                 />
               </div>
@@ -348,18 +342,12 @@ export default function ManagerKitchenApplications({
           <DialogFooter className="flex flex-col items-stretch sm:flex-row sm:items-center gap-2">
             {selectedApplication?.current_tier === 1 ? (
               <div className="flex flex-1 items-center justify-between">
-                <Badge variant="outline" className="bg-yellow-100 text-yellow-800">
-                  Awaiting Admin Approval
-                </Badge>
-                <Button variant="outline" onClick={() => setShowReviewDialog(false)}>
-                  Close
-                </Button>
+                <Badge variant="outline" className="bg-yellow-100 text-yellow-800">{mt("awaitingAdminApproval")}</Badge>
+                <Button variant="outline" onClick={() => setShowReviewDialog(false)}>{mt("close")}</Button>
               </div>
             ) : (
               <>
-                <Button variant="outline" onClick={() => setShowReviewDialog(false)}>
-                  Cancel
-                </Button>
+                <Button variant="outline" onClick={() => setShowReviewDialog(false)}>{mt("cancel")}</Button>
                 <Button
                   variant="destructive"
                   onClick={handleReject}
@@ -384,7 +372,7 @@ export default function ManagerKitchenApplications({
       <Dialog open={showDocumentsDialog} onOpenChange={setShowDocumentsDialog}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Application Documents</DialogTitle>
+            <DialogTitle>{mt("applicationDocuments")}</DialogTitle>
             <DialogDescription>
               Review documents submitted by {documentsApplication?.fullName}
             </DialogDescription>
@@ -397,7 +385,7 @@ export default function ManagerKitchenApplications({
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <Shield className="h-5 w-5 text-blue-600" />
-                      <span className="font-medium">Food Safety License</span>
+                      <span className="font-medium">{mt("foodSafetyLicense")}</span>
                     </div>
                     {getDocStatusBadge(documentsApplication.foodSafetyLicenseStatus)}
                   </div>
@@ -408,9 +396,7 @@ export default function ManagerKitchenApplications({
                       rel="noopener noreferrer"
                     >
                       <Button variant="outline" size="sm">
-                        <ExternalLink className="h-4 w-4 mr-1" />
-                        View
-                      </Button>
+                        <ExternalLink className="h-4 w-4 mr-1" />{mt("view")}</Button>
                     </a>
                   </div>
                 </div>
@@ -420,7 +406,7 @@ export default function ManagerKitchenApplications({
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <Shield className="h-5 w-5 text-blue-600" />
-                      <span className="font-medium">Establishment Cert</span>
+                      <span className="font-medium">{mt("establishmentCert")}</span>
                     </div>
                     {getDocStatusBadge(documentsApplication.foodEstablishmentCertStatus)}
                   </div>
@@ -431,9 +417,7 @@ export default function ManagerKitchenApplications({
                       rel="noopener noreferrer"
                     >
                       <Button variant="outline" size="sm">
-                        <ExternalLink className="h-4 w-4 mr-1" />
-                        View
-                      </Button>
+                        <ExternalLink className="h-4 w-4 mr-1" />{mt("view")}</Button>
                     </a>
                   </div>
                 </div>

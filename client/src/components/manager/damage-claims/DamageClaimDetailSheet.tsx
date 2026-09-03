@@ -6,6 +6,7 @@
  */
 
 import { useState, useCallback } from "react";
+import { mt } from "@/i18n/manager";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { apiRequest } from "@/lib/queryClient";
@@ -168,6 +169,7 @@ export function DamageClaimDetailSheet({
   onOpenChange,
   onClaimUpdated,
 }: DamageClaimDetailSheetProps) {
+  
   const { toast } = useToast();
   
   // Evidence upload form state
@@ -212,14 +214,12 @@ export function DamageClaimDetailSheet({
     onSuccess: (response) => {
       setUploadedFileUrl(response.url);
       setUploadedFileName(response.fileName);
-      toast({
-        title: "File uploaded",
-        description: "Now add details and save the evidence.",
+      toast({ title: mt("fileUploaded"),
+        description: mt("nowAddDetailsAndSaveTheEvidence"),
       });
     },
     onError: (error) => {
-      toast({
-        title: "Upload failed",
+      toast({ title: mt("uploadFailed2"),
         description: error,
         variant: "destructive",
       });
@@ -230,7 +230,7 @@ export function DamageClaimDetailSheet({
   const addEvidenceMutation = useMutation({
     mutationFn: async () => {
       if (!uploadedFileUrl || !claimId) {
-        throw new Error("Please upload a file first");
+        throw new Error(mt("pleaseUploadFileFirst"));
       }
 
       const response = await apiRequest('POST', `/api/manager/damage-claims/${claimId}/evidence`, {
@@ -244,13 +244,13 @@ export function DamageClaimDetailSheet({
       return response.json();
     },
     onSuccess: () => {
-      toast({ title: "Evidence added", description: "Evidence has been added to the claim." });
+      toast({ title: mt("evidenceAdded"), description: mt("evidenceHasBeenAddedToTheClaim") });
       resetUploadForm();
       refetch();
       onClaimUpdated?.();
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: mt("error"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -261,12 +261,12 @@ export function DamageClaimDetailSheet({
       return response.json();
     },
     onSuccess: () => {
-      toast({ title: "Evidence removed", description: "Evidence has been removed from the claim." });
+      toast({ title: mt("evidenceRemoved"), description: mt("evidenceHasBeenRemovedFromTheClaim") });
       refetch();
       onClaimUpdated?.();
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: mt("error"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -277,12 +277,12 @@ export function DamageClaimDetailSheet({
       return response.json();
     },
     onSuccess: () => {
-      toast({ title: "Claim deleted", description: "Draft claim has been deleted." });
+      toast({ title: mt("claimDeleted"), description: mt("draftClaimHasBeenDeleted") });
       onOpenChange(false);
       onClaimUpdated?.();
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: mt("error"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -308,9 +308,8 @@ export function DamageClaimDetailSheet({
 
   const handleSaveEvidence = () => {
     if (!uploadedFileUrl) {
-      toast({
-        title: "No file uploaded",
-        description: "Please upload a file first",
+      toast({ title: mt("noFileUploaded"),
+        description: mt("pleaseUploadAFileFirst"),
         variant: "destructive",
       });
       return;
@@ -327,10 +326,8 @@ export function DamageClaimDetailSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>Damage Claim Details</SheetTitle>
-          <SheetDescription>
-            View and manage evidence for this damage claim
-          </SheetDescription>
+          <SheetTitle>{mt("damageClaimDetails")}</SheetTitle>
+          <SheetDescription>{mt("viewAndManageEvidenceForThisDamageClaim")}</SheetDescription>
         </SheetHeader>
 
         {isLoading ? (
@@ -351,19 +348,19 @@ export function DamageClaimDetailSheet({
             {/* Claim Info */}
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <Label className="text-xs text-muted-foreground">Chef</Label>
+                <Label className="text-xs text-muted-foreground">{mt("chef")}</Label>
                 <p>{claim.chefName || claim.chefEmail || 'Unknown'}</p>
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Damage Date</Label>
+                <Label className="text-xs text-muted-foreground">{mt("damageDate")}</Label>
                 <p>{format(new Date(claim.damageDate), 'MMM d, yyyy')}</p>
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Claimed Amount</Label>
+                <Label className="text-xs text-muted-foreground">{mt("claimedAmount")}</Label>
                 <p className="font-semibold">{formatCurrency(claim.claimedAmountCents)}</p>
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Booking Type</Label>
+                <Label className="text-xs text-muted-foreground">{mt("bookingType")}</Label>
                 <p>{claim.bookingType === 'storage' ? 'Storage' : 'Kitchen'}</p>
               </div>
             </div>
@@ -392,7 +389,7 @@ export function DamageClaimDetailSheet({
             {/* Chef Response */}
             {claim.chefResponse && (
               <div className="bg-muted/50 rounded-lg p-3">
-                <Label className="text-xs text-muted-foreground">Chef Response</Label>
+                <Label className="text-xs text-muted-foreground">{mt("chefResponse")}</Label>
                 <p className="text-sm mt-1">{claim.chefResponse}</p>
                 {claim.chefRespondedAt && (
                   <p className="text-xs text-muted-foreground mt-1">
@@ -420,9 +417,7 @@ export function DamageClaimDetailSheet({
                 </div>
                 {canAddEvidence && !showUploadForm && (
                   <Button size="sm" onClick={() => setShowUploadForm(true)}>
-                    <Upload className="h-4 w-4 mr-2" />
-                    Add Evidence
-                  </Button>
+                    <Upload className="h-4 w-4 mr-2" />{mt("addEvidence")}</Button>
                 )}
               </div>
 
@@ -431,7 +426,7 @@ export function DamageClaimDetailSheet({
                 <Card className="mb-4">
                   <CardContent className="pt-4 space-y-4">
                     <div className="flex items-center justify-between">
-                      <h5 className="font-medium">Upload Evidence</h5>
+                      <h5 className="font-medium">{mt("uploadEvidence")}</h5>
                       <Button variant="ghost" size="sm" onClick={resetUploadForm}>
                         <X className="h-4 w-4" />
                       </Button>
@@ -467,8 +462,8 @@ export function DamageClaimDetailSheet({
                           ) : (
                             <>
                               <Camera className="h-8 w-8 text-muted-foreground mb-2" />
-                              <span className="text-sm font-medium">Click to upload photo or document</span>
-                              <span className="text-xs text-muted-foreground">JPG, PNG, WebP, or PDF (max 4.5MB)</span>
+                              <span className="text-sm font-medium">{mt("clickToUploadPhotoOrDocument")}</span>
+                              <span className="text-xs text-muted-foreground">{mt("jPGPNGWebPOrPDFMax45MB")}</span>
                             </>
                           )}
                         </label>
@@ -478,7 +473,7 @@ export function DamageClaimDetailSheet({
                         <FileText className="h-8 w-8 text-primary" />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{uploadedFileName}</p>
-                          <p className="text-xs text-green-600">Uploaded successfully</p>
+                          <p className="text-xs text-green-600">{mt("uploadedSuccessfully")}</p>
                         </div>
                         <Button variant="ghost" size="sm" onClick={() => {
                           setUploadedFileUrl(null);
@@ -492,7 +487,7 @@ export function DamageClaimDetailSheet({
                     {/* Evidence Details */}
                     <div className="space-y-3">
                       <div>
-                        <Label>Evidence Type</Label>
+                        <Label>{mt("evidenceType")}</Label>
                         <Select
                           value={evidenceForm.evidenceType}
                           onValueChange={(value) => setEvidenceForm({ ...evidenceForm, evidenceType: value })}
@@ -514,9 +509,9 @@ export function DamageClaimDetailSheet({
                       </div>
 
                       <div>
-                        <Label>Description (optional)</Label>
+                        <Label>{mt("descriptionOptional2")}</Label>
                         <Textarea
-                          placeholder="Describe this evidence..."
+                          placeholder={mt("describeThisEvidence")}
                           value={evidenceForm.description}
                           onChange={(e) => setEvidenceForm({ ...evidenceForm, description: e.target.value })}
                           rows={2}
@@ -526,7 +521,7 @@ export function DamageClaimDetailSheet({
                       {(evidenceForm.evidenceType === 'receipt' || evidenceForm.evidenceType === 'quote') && (
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <Label>Amount</Label>
+                            <Label>{mt("amount")}</Label>
                             <CurrencyInput
                               placeholder="0.00"
                               value={evidenceForm.amountCents}
@@ -534,9 +529,9 @@ export function DamageClaimDetailSheet({
                             />
                           </div>
                           <div>
-                            <Label>Vendor Name</Label>
+                            <Label>{mt("vendorName")}</Label>
                             <Input
-                              placeholder="Company name"
+                              placeholder={mt("companyName")}
                               value={evidenceForm.vendorName}
                               onChange={(e) => setEvidenceForm({ ...evidenceForm, vendorName: e.target.value })}
                             />
@@ -546,9 +541,7 @@ export function DamageClaimDetailSheet({
                     </div>
 
                     <div className="flex justify-end gap-2">
-                      <Button variant="outline" onClick={resetUploadForm}>
-                        Cancel
-                      </Button>
+                      <Button variant="outline" onClick={resetUploadForm}>{mt("cancel")}</Button>
                       <Button 
                         onClick={handleSaveEvidence}
                         disabled={!uploadedFileUrl || addEvidenceMutation.isPending}
@@ -567,11 +560,9 @@ export function DamageClaimDetailSheet({
               {claim.evidence.length === 0 ? (
                 <div className="text-center py-8 border-2 border-dashed rounded-lg">
                   <AlertTriangle className="h-8 w-8 text-amber-500 mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">No evidence uploaded yet</p>
+                  <p className="text-sm text-muted-foreground">{mt("noEvidenceUploadedYet")}</p>
                   {claim.status === 'draft' && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      You need at least 2 pieces of evidence to submit this claim
-                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">{mt("youNeedAtLeast2PiecesOfEvidenceToSubmitThisClaim")}</p>
                   )}
                 </div>
               ) : (
@@ -653,9 +644,7 @@ export function DamageClaimDetailSheet({
                 <div className="flex items-start gap-2">
                   <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5" />
                   <div>
-                    <p className="text-sm font-medium text-amber-800">
-                      More evidence needed
-                    </p>
+                    <p className="text-sm font-medium text-amber-800">{mt("moreEvidenceNeeded")}</p>
                     <p className="text-xs text-amber-700">
                       Upload at least {2 - claim.evidence.length} more piece(s) of evidence before you can submit this claim.
                     </p>
@@ -673,7 +662,7 @@ export function DamageClaimDetailSheet({
                 Claim History ({history.length})
               </h4>
               {history.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No history available</p>
+                <p className="text-sm text-muted-foreground">{mt("noHistoryAvailable")}</p>
               ) : (
                 <div className="space-y-3">
                   {history.map((entry) => (
@@ -724,9 +713,7 @@ export function DamageClaimDetailSheet({
             )}
           </div>
         ) : (
-          <div className="text-center py-12 text-muted-foreground">
-            Claim not found
-          </div>
+          <div className="text-center py-12 text-muted-foreground">{mt("claimNotFound")}</div>
         )}
       </SheetContent>
     </Sheet>

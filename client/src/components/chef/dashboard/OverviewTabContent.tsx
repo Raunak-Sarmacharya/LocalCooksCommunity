@@ -44,6 +44,7 @@ import type {
 import { KitchenPathEmptyCard, SellerPathEmptyCard } from "./GetStartedPathCards";
 import { TruncatedText } from "@/components/common/TruncatedText";
 import { requestDiscoverKitchensWalkthrough } from "@/components/kitchen-application/DiscoverKitchensButtonTour";
+import { tt } from "@/i18n/common-ns";
 
 interface OverviewTabContentProps {
   user: {
@@ -209,7 +210,7 @@ export default function OverviewTabContent({
         const res = await fetch("/api/viewings/chef", {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (!res.ok) throw new Error("Failed to fetch viewings");
+        if (!res.ok) throw new Error(tt("failedToFetchViewings"));
         return res.json();
       } catch (error) {
         console.error(error);

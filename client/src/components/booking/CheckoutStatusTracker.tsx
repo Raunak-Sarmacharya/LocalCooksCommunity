@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow, format, isPast } from "date-fns";
+import { bt } from "@/i18n/booking-ns";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -136,9 +137,12 @@ export function CheckoutStatusTracker({
   checkoutStatus: propCheckoutStatus,
 }: CheckoutStatusTrackerProps) {
   const { t: tStrict } = useTranslation("chef");
-  const t = (key: string, defaultText?: string): string => {
+  const t = (key: string, defaultTextOrOptions?: string | Record<string, unknown>): string => {
+    if (defaultTextOrOptions && typeof defaultTextOrOptions === "object") {
+      return String(tStrict(key as any, defaultTextOrOptions as any));
+    }
     const val = tStrict(key as any) as string;
-    return val !== key ? val : (defaultText || key);
+    return val !== key ? val : (defaultTextOrOptions || key);
   };
 
   const { data, isLoading } = useQuery<CheckoutStatusData>({
@@ -149,7 +153,7 @@ export function CheckoutStatusTracker({
         `/api/chef/storage-bookings/${storageBookingId}/checkout-status`,
         { headers, credentials: "include" }
       );
-      if (!response.ok) throw new Error("Failed to fetch checkout status");
+      if (!response.ok) throw new Error(bt("failedToFetchCheckoutStatus"));
       return response.json();
     },
     enabled: open && !!storageBookingId,
@@ -167,10 +171,12 @@ export function CheckoutStatusTracker({
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <ShieldCheck className="h-5 w-5 text-muted-foreground" />
-            Checkout Status
+            {t("costTitle")}
           </SheetTitle>
           <SheetDescription>
-            {storageName || "Storage Unit"} — Checkout Progress
+            {t("costMoveOutProgress", {
+              name: storageName || t("cstStorageUnitFallback"),
+            })}
           </SheetDescription>
         </SheetHeader>
 

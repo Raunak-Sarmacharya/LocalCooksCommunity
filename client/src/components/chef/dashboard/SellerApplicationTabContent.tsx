@@ -250,7 +250,7 @@ export default function SellerApplicationTabContent({
               </Badge>
             ) : null}
           </div>
-          <Card className="flex flex-1 flex-col shadow-none">
+          <Card className="flex flex-1 flex-col shadow-none" data-testid="seller-application-card">
             <CardContent className="flex-1 pt-4">
               {current && foodSafety && establishment ? (
                 <div className="space-y-4">

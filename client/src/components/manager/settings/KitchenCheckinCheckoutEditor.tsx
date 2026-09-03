@@ -12,6 +12,8 @@
  */
 
 import { useCallback, useMemo, useState, useRef } from "react";
+import { mt } from "@/i18n/manager";
+import { tt } from "@/i18n/common-ns";
 import {
   Plus,
   Trash2,
@@ -364,7 +366,7 @@ function ChefPreviewSheet({
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <ChefHat className="h-5 w-5 text-primary" />
-            {stage === "checkin" ? "Kitchen Check-In" : "Kitchen Check-Out"}
+            {stage === "checkin" ? mt("kitchenCheckInTitle") : mt("kitchenCheckOutTitle")}
           </SheetTitle>
           <SheetDescription>
             This is exactly what the chef sees — updates as you edit.
@@ -375,9 +377,7 @@ function ChefPreviewSheet({
           {/* Manager Instructions */}
           {instructions && (
             <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
-              <p className="text-xs text-blue-800 font-medium mb-1">
-                Instructions from Manager
-              </p>
+              <p className="text-xs text-blue-800 font-medium mb-1">{mt("instructionsFromManager")}</p>
               <p className="text-xs text-blue-700 whitespace-pre-line">
                 {instructions}
               </p>
@@ -389,9 +389,7 @@ function ChefPreviewSheet({
             <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 space-y-2">
               <div className="flex items-center gap-1.5">
                 <Lock className="size-3.5 text-violet-600" />
-                <p className="text-xs text-violet-800 font-medium">
-                  Smart Lock Access
-                </p>
+                <p className="text-xs text-violet-800 font-medium">{mt("smartLockAccess")}</p>
               </div>
               <p className="text-xs text-violet-700 whitespace-pre-line">
                 {smartLockInstructions}
@@ -401,7 +399,7 @@ function ChefPreviewSheet({
                   A1B2C3
                 </span>
                 <span className="text-[10px] text-violet-600 ml-auto">
-                  (sample code)
+                  {mt("sampleCode")}
                 </span>
               </div>
             </div>
@@ -411,7 +409,7 @@ function ChefPreviewSheet({
           {filledItems.length > 0 && (
             <div className="space-y-2">
               <Label className="text-sm font-medium">
-                {stage === "checkin" ? "Checklist" : "Checkout Checklist"}
+                {stage === "checkin" ? mt("checklist") : mt("checkoutChecklist")}
               </Label>
               {filledItems.map((item, index) => (
                 <div
@@ -435,9 +433,7 @@ function ChefPreviewSheet({
                         variant="outline"
                         className="mt-1 text-[10px] bg-amber-50 text-amber-800 border-amber-200"
                       >
-                        <Camera className="size-2.5 mr-1" />
-                        Photo required
-                      </Badge>
+                        <Camera className="size-2.5 mr-1" />{mt("photoRequired")}</Badge>
                     )}
                   </div>
                 </div>
@@ -449,11 +445,8 @@ function ChefPreviewSheet({
           {filledPhotoItems.length > 0 && (
             <div className="space-y-2">
               <Label className="text-sm font-medium flex items-center gap-1.5">
-                <Camera className="h-4 w-4" /> Photos Required
-              </Label>
-              <p className="text-[11px] text-muted-foreground">
-                One photo per item. Chef uploads these as part of the form.
-              </p>
+                <Camera className="h-4 w-4" />{mt("photosRequired")}</Label>
+              <p className="text-[11px] text-muted-foreground">{mt("onePhotoPerItemChefUploadsTheseAsPartOfTheForm")}</p>
               {filledPhotoItems.map((item) => (
                 <div key={`preview-photo-${item.id}`} className="space-y-1">
                   <p className="text-sm font-medium">
@@ -462,9 +455,7 @@ function ChefPreviewSheet({
                   </p>
                   <div className="border-2 border-dashed border-border rounded-lg p-4 flex flex-col items-center justify-center opacity-60">
                     <Upload className="h-5 w-5 text-muted-foreground mb-1" />
-                    <span className="text-[11px] text-muted-foreground">
-                      Chef uploads this photo
-                    </span>
+                    <span className="text-[11px] text-muted-foreground">{mt("chefUploadsThisPhoto")}</span>
                   </div>
                 </div>
               ))}
@@ -473,14 +464,13 @@ function ChefPreviewSheet({
 
           {/* Notes textarea */}
           <div className="space-y-1">
-            <Label className="text-sm font-medium">Notes (optional)</Label>
+            <Label className="text-sm font-medium">{mt("notesOptional")}</Label>
             <Textarea
               disabled
               rows={2}
               placeholder={
                 stage === "checkin"
-                  ? "Optional check-in notes..."
-                  : "Checkout notes (e.g., kitchen condition)..."
+                  ? mt("optionalCheckInNotes") : mt("checkoutNotesPlaceholder")
               }
               className="opacity-60"
             />
@@ -490,10 +480,8 @@ function ChefPreviewSheet({
           {!hasAnyContent && (
             <div className="text-center py-8 text-sm text-muted-foreground border border-dashed rounded-lg">
               <Info className="size-5 mx-auto mb-2" />
-              <p>Nothing configured yet.</p>
-              <p className="text-xs mt-1">
-                Add items to the left to see the chef view.
-              </p>
+              <p>{mt("nothingConfiguredYet")}</p>
+              <p className="text-xs mt-1">{mt("addItemsToTheLeftToSeeTheChefView")}</p>
             </div>
           )}
 
@@ -504,7 +492,7 @@ function ChefPreviewSheet({
             ) : (
               <LogOut className="h-4 w-4 mr-2" />
             )}
-            {stage === "checkin" ? "Confirm Check-In" : "Submit Checkout"}
+            {stage === "checkin" ? mt("confirmCheckIn") : mt("submitCheckout")}
           </Button>
           <p className="text-[10px] text-center text-muted-foreground">
             Chef cannot submit until all items are checked and all photos are
@@ -556,7 +544,7 @@ function StageHeader({
   photoCount,
   onOpenPreview,
 }: StageHeaderProps) {
-  const title = stage === "checkin" ? "Check-In" : "Check-Out";
+  const title = stage === "checkin" ? mt("checkInStage") : mt("checkOutStage");
   const StageIcon = stage === "checkin" ? LogIn : LogOut;
   const panelClass = enabled
     ? stage === "checkin"
@@ -604,8 +592,7 @@ function StageHeader({
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">
               {stage === "checkin"
-                ? "Confirmed by chefs on arrival"
-                : "Confirmed by chefs before leaving"}
+                ? mt("confirmedByChefsOnArrival") : mt("confirmedByChefsBeforeLeaving")}
             </p>
           </div>
         </div>
@@ -618,9 +605,7 @@ function StageHeader({
               className="h-7 text-xs"
               onClick={onOpenPreview}
             >
-              <Eye className="size-3 mr-1" />
-              Preview
-            </Button>
+              <Eye className="size-3 mr-1" />{mt("preview")}</Button>
           )}
           <Switch
             checked={enabled}
@@ -639,7 +624,7 @@ function StageHeader({
               className="text-xs font-medium text-muted-foreground"
             >
               Instructions for Chefs{" "}
-              <span className="font-normal">(optional)</span>
+              <span className="font-normal">{mt("optionalLabel")}</span>
             </Label>
             <Textarea
               id={`${stage}-instructions`}
@@ -647,8 +632,7 @@ function StageHeader({
               onChange={(e) => onInstructionsChange(e.target.value || null)}
               placeholder={
                 stage === "checkin"
-                  ? "Shown before chefs check in..."
-                  : "Shown before chefs check out..."
+                  ? mt("shownBeforeChefsCheckIn") : mt("shownBeforeChefsCheckOut")
               }
               rows={2}
               className="mt-1 text-xs bg-background"
@@ -669,7 +653,7 @@ function StageHeader({
                 >
                   Smart Lock Instructions{" "}
                   <span className="text-violet-500 font-normal">
-                    (optional)
+                    {mt("optionalLabel")}
                   </span>
                 </Label>
               </div>
@@ -679,7 +663,7 @@ function StageHeader({
                 onChange={(e) =>
                   onSmartLockInstructionsChange(e.target.value || null)
                 }
-                placeholder="e.g. 'Enter the 6-digit access code on the keypad next to the front door'"
+                placeholder={mt("smartLockAccessPlaceholder")}
                 rows={2}
                 className="text-xs border-violet-200 bg-white"
               />
@@ -786,9 +770,7 @@ function ChecklistTable({
               column.toggleSorting(column.getIsSorted() === "asc")
             }
           >
-            <ClipboardCheck className="size-3.5" />
-            Item
-            <ArrowUpDown className="size-3" />
+            <ClipboardCheck className="size-3.5" />{mt("item")}<ArrowUpDown className="size-3" />
           </button>
         ),
         cell: ({ row }) => {
@@ -800,7 +782,7 @@ function ChecklistTable({
                 onChange={(e) =>
                   updateItem(item.id, { ...item, label: e.target.value })
                 }
-                placeholder="e.g. Wipe down all counters"
+                placeholder={mt("eGWipeDownAllCounters")}
                 className="h-8 text-sm font-medium"
               />
               <Input
@@ -811,7 +793,7 @@ function ChecklistTable({
                     description: e.target.value || undefined,
                   })
                 }
-                placeholder="Optional hint for chefs"
+                placeholder={mt("optionalHintForChefs")}
                 className="h-7 text-xs text-muted-foreground"
               />
             </div>
@@ -825,7 +807,7 @@ function ChecklistTable({
         header: () => (
           <div className="flex items-center justify-center gap-1 text-emerald-700">
             <LogIn className="size-3.5" />
-            <span>Check-In</span>
+            <span>{mt("checkIn")}</span>
           </div>
         ),
         cell: ({ row }) => {
@@ -836,11 +818,10 @@ function ChecklistTable({
             <StageCheckbox
               checked={item.requiredOnCheckin}
               disabled={onlyStage}
-              disabledTooltip="Add to Check-Out first, or delete the item instead."
+              disabledTooltip={tt("addToCheckoutFirst")}
               tooltip={
                 item.requiredOnCheckin
-                  ? "Required when the chef checks in. Click to remove."
-                  : "Add to the Check-In checklist"
+                  ? mt("requiredWhenChefChecksIn") : mt("addToCheckInChecklist")
               }
               onToggle={() =>
                 updateItem(item.id, {
@@ -849,7 +830,7 @@ function ChecklistTable({
                 })
               }
               accent="emerald"
-              ariaLabel="Required on check-in"
+              ariaLabel={tt("requiredOnCheckin")}
             />
           );
         },
@@ -861,7 +842,7 @@ function ChecklistTable({
         header: () => (
           <div className="flex items-center justify-center gap-1 text-primary">
             <LogOut className="size-3.5" />
-            <span>Check-Out</span>
+            <span>{mt("checkOut")}</span>
           </div>
         ),
         cell: ({ row }) => {
@@ -872,11 +853,10 @@ function ChecklistTable({
             <StageCheckbox
               checked={item.requiredOnCheckout}
               disabled={onlyStage}
-              disabledTooltip="Add to Check-In first, or delete the item instead."
+              disabledTooltip={tt("addToCheckoutFirst")}
               tooltip={
                 item.requiredOnCheckout
-                  ? "Required when the chef checks out. Click to remove."
-                  : "Add to the Check-Out checklist"
+                  ? mt("requiredWhenChefChecksOut") : mt("addToCheckoutChecklist")
               }
               onToggle={() =>
                 updateItem(item.id, {
@@ -885,7 +865,7 @@ function ChecklistTable({
                 })
               }
               accent="primary"
-              ariaLabel="Required on check-out"
+              ariaLabel={tt("requiredOnCheckout")}
             />
           );
         },
@@ -897,7 +877,7 @@ function ChecklistTable({
         header: () => (
           <div className="flex items-center justify-center gap-1 text-amber-700">
             <Camera className="size-3.5" />
-            <span>Photo</span>
+            <span>{mt("photo")}</span>
           </div>
         ),
         cell: ({ row }) => {
@@ -907,8 +887,7 @@ function ChecklistTable({
               checked={item.photoRequired}
               tooltip={
                 item.photoRequired
-                  ? "Chef must upload a photo for this item. Click to remove."
-                  : "Require the chef to upload a photo alongside ticking this item"
+                  ? mt("chefMustUploadPhotoRemove") : mt("requirePhotoAlongsideTick")
               }
               onToggle={() =>
                 updateItem(item.id, {
@@ -917,7 +896,7 @@ function ChecklistTable({
                 })
               }
               accent="amber"
-              ariaLabel="Photo required"
+              ariaLabel={mt("photoRequired")}
             />
           );
         },
@@ -925,7 +904,7 @@ function ChecklistTable({
       },
       {
         id: "actions",
-        header: () => <span className="sr-only">Actions</span>,
+        header: () => <span className="sr-only">{mt("actions")}</span>,
         cell: ({ row }) => (
           <Button
             type="button"
@@ -933,7 +912,7 @@ function ChecklistTable({
             size="icon"
             className="size-7 text-muted-foreground hover:text-destructive"
             onClick={() => removeItem(row.original.id)}
-            aria-label="Delete item"
+            aria-label={mt("deleteItem")}
           >
             <Trash2 className="size-3.5" />
           </Button>
@@ -972,7 +951,7 @@ function ChecklistTable({
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2 min-w-0">
           <ClipboardCheck className="size-4 text-muted-foreground shrink-0" />
-          <span className="text-sm font-medium">Checklist Items</span>
+          <span className="text-sm font-medium">{mt("checklistItems")}</span>
           <span className="text-xs text-muted-foreground hidden sm:inline">
             — tick the columns to assign each item to a flow
           </span>
@@ -981,7 +960,7 @@ function ChecklistTable({
           <Input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            placeholder="Search items..."
+            placeholder={mt("searchItems")}
             className="h-8 max-w-[220px] text-xs"
           />
         )}
@@ -991,9 +970,7 @@ function ChecklistTable({
       {items.length === 0 ? (
         <div className="text-center py-10 text-xs text-muted-foreground border border-dashed rounded-lg">
           <ClipboardCheck className="size-6 mx-auto mb-2 text-muted-foreground/40" />
-          <p className="font-medium text-sm text-foreground">
-            No checklist items yet
-          </p>
+          <p className="font-medium text-sm text-foreground">{mt("noChecklistItemsYet")}</p>
           <p className="mt-0.5">
             Add your first item below and use the Check-In / Check-Out / Photo
             columns to assign it.
@@ -1087,9 +1064,7 @@ function ChecklistTable({
         onClick={addItem}
         className="w-full h-8 text-xs"
       >
-        <Plus className="size-3.5 mr-1.5" />
-        Add Checklist Item
-      </Button>
+        <Plus className="size-3.5 mr-1.5" />{mt("addChecklistItem")}</Button>
     </div>
   );
 }
@@ -1132,6 +1107,7 @@ export function KitchenCheckinCheckoutEditor({
   onSmartLockInstructionsChange,
   smartLockAvailable,
 }: KitchenCheckinCheckoutEditorProps) {
+  
   const [previewStage, setPreviewStage] = useState<Stage | null>(null);
 
   const checkinItemCount = useMemo(
@@ -1159,9 +1135,7 @@ export function KitchenCheckinCheckoutEditor({
             <ClipboardCheck className="size-5 text-primary" />
           </div>
           <div className="min-w-0">
-            <CardTitle className="text-lg">
-              Check-In / Check-Out Checklists
-            </CardTitle>
+            <CardTitle className="text-lg">{mt("checkInCheckOutChecklists")}</CardTitle>
 
           </div>
         </div>

@@ -71,13 +71,14 @@ function AuthenticatedDocumentLink({ url, className, children }: { url: string |
 
 // Base schema for kitchen application form (used as fallback)
 // Make experience optional by default since it's conditional based on requirements
+// Business name/type are optional — request-to-apply does not require them
 const baseKitchenApplicationSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
   email: z.string().email("Please enter a valid email address"),
   phone: phoneNumberSchema,
-  businessName: z.string().min(1, "Business name is required"),
-  businessType: z.string().min(1, "Please select a business type"),
+  businessName: z.string().optional().or(z.literal("")),
+  businessType: z.string().optional().or(z.literal("")),
   experience: z.string().optional(), // Make optional by default
   businessDescription: z.string().optional(),
   foodHandlerCertExpiry: z.string().optional(), // Moved to Tier 2 (cannot upload in registration)
@@ -119,32 +120,30 @@ interface KitchenApplicationFormProps {
   onCancel?: () => void;
 }
 
-// Business type options
-const businessTypes = [
-  { value: "catering", label: "Catering & Events" },
-  { value: "bakery", label: "Bakery & Baked Goods" },
-  { value: "meal-prep", label: "Meal Prep & Meal Plans" },
-  { value: "specialty", label: "Specialty/Artisanal Foods" },
-  { value: "pasta", label: "Pasta & Noodles" },
-  { value: "sauce", label: "Sauces & Condiments" },
-  { value: "prepared", label: "Prepared Meals" },
-  { value: "other", label: "Other" },
-];
+// Business type / frequency options — shared with registration “Request to apply” modal
+import {
+  REQUEST_TO_APPLY_BUSINESS_TYPES,
+  REQUEST_TO_APPLY_FREQUENCIES,
+} from "./request-to-apply-fields";
 
-// Experience options
+const businessTypes = REQUEST_TO_APPLY_BUSINESS_TYPES.map((o) => ({
+  value: o.value,
+  label: o.fallback,
+  key: o.key,
+}));
+
+const usageFrequencies = REQUEST_TO_APPLY_FREQUENCIES.map((o) => ({
+  value: o.value,
+  label: o.fallback,
+  key: o.key,
+}));
+
+// Experience options (Step 2 / location-requirement only)
 const experienceLevels = [
   { value: "0-2", label: "0-2 years (Just starting)" },
   { value: "2-5", label: "2-5 years (Growing)" },
   { value: "5-10", label: "5-10 years (Established)" },
   { value: "10+", label: "10+ years (Expert)" },
-];
-
-// Frequency options
-const usageFrequencies = [
-  { value: "weekly", label: "Weekly (regular user)" },
-  { value: "biweekly", label: "Bi-weekly (every 2 weeks)" },
-  { value: "monthly", label: "Monthly or less" },
-  { value: "as-needed", label: "As-needed (event-based)" },
 ];
 
 // Duration options
@@ -171,10 +170,13 @@ export default function KitchenApplicationForm({
   // Get current tier from application
   // If status is 'approved' but still on tier 1, we should effectively be on tier 2 for the form
   // unless we've reached the max tier (which is currently 2)
+  // Also unlock Step 2 for the legacy buggy state: inReview + tier >= 2 (admin approve used to bump tier without setting approved).
   const dbTier = application?.current_tier ?? 1;
-  const effectiveTier = (application?.status === 'approved' && dbTier < 2)
-    ? dbTier + 1
-    : dbTier;
+  const effectiveTier =
+    (application?.status === 'approved' && dbTier < 2) ||
+    (application?.status === 'inReview' && dbTier >= 2 && !application?.tier2_completed_at)
+      ? Math.max(dbTier, 2)
+      : dbTier;
 
   // Use effectiveTier for all UI logic, but keep dbTier for submission logic if needed
   const currentTier = effectiveTier;
@@ -220,87 +222,135 @@ export default function KitchenApplicationForm({
 
     // For Tier 2+, make all Tier 1 fields optional since they're already submitted
     const isTier2OrHigher = currentTier >= 2 || !!globalApp;
+    // Phone is optional on request-to-apply — collect it on Step 2 if still missing
+    const needsPhoneOnStep2 =
+      isTier2OrHigher && !(application?.phone && String(application.phone).trim());
+
+    const optionalText = z.string().optional().or(z.literal(''));
+    const requiredPhone = z.string()
+      .min(1, t("valPhoneReq", { defaultValue: "Phone number is required" }))
+      .refine(
+        (val) => {
+          const normalized = normalizePhoneNumber(val);
+          return normalized !== null && isValidNorthAmericanPhone(normalized);
+        },
+        { message: t("valPhoneInvalid", { defaultValue: "Please enter a valid phone number" }) }
+      )
+      .transform((val) => normalizePhoneNumber(val) || val);
+    const optionalPhone = z.string()
+      .optional()
+      .or(z.literal(''))
+      .refine(
+        (val) => {
+          if (!val || val.trim() === '') return true;
+          const normalized = normalizePhoneNumber(val);
+          return normalized !== null && isValidNorthAmericanPhone(normalized);
+        },
+        { message: t("valPhoneInvalid", { defaultValue: "Please enter a valid phone number" }) }
+      )
+      .transform((val) => {
+        if (!val || val.trim() === '') return null;
+        return normalizePhoneNumber(val) || val;
+      });
+
+    // Step 2 allowlist: only phone-if-missing, food-safety expiry, and manager Step 2 reqs.
+    // Never re-require request-to-apply fields (business name/type/desc/experience/usage/etc).
+    if (isTier2OrHigher) {
+      const step2Fields: Record<string, z.ZodTypeAny> = {
+        firstName: optionalText,
+        lastName: optionalText,
+        email: z.string().email().optional().or(z.literal('')),
+        phone: needsPhoneOnStep2 ? requiredPhone : optionalPhone,
+        businessName: optionalText,
+        businessType: optionalText,
+        experience: optionalText,
+        businessDescription: z.string().optional(),
+        foodHandlerCertExpiry: z.string().min(1, t("valFoodSafetyExpiryReq", { defaultValue: "Food Safety License expiry date is required" })),
+        foodEstablishmentCertExpiry: requirements.tier2_food_establishment_expiry_required
+          ? z.string().min(1, t("valFoodEstExpiryReq", { defaultValue: "Food establishment certificate expiry is required" }))
+          : z.string().optional(),
+        usageFrequency: optionalText,
+        sessionDuration: optionalText,
+        termsAgree: z.boolean().default(true).optional(),
+        accuracyAgree: z.boolean().default(true).optional(),
+        kitchenExperienceDescription: requirements.tier2_kitchen_experience_required
+          ? z.string().min(1, t("valKitchenExpReq", { defaultValue: "Kitchen experience description is required" }))
+          : z.string().optional(),
+      };
+
+      const customFieldsSchema: Record<string, z.ZodTypeAny> = {};
+      const tier2Fields = Array.isArray(requirements.tier2_custom_fields) ? requirements.tier2_custom_fields : [];
+      tier2Fields.forEach((field: CustomField) => {
+        if (field.required) {
+          switch (field.type) {
+            case 'text':
+            case 'textarea':
+              customFieldsSchema[`custom_${field.id}`] = z.string().min(1, t("valFieldReq", { defaultValue: "{label} is required", label: field.label }));
+              break;
+            case 'number':
+              customFieldsSchema[`custom_${field.id}`] = z.number({ required_error: t("valFieldReq", { defaultValue: "{label} is required", label: field.label }) });
+              break;
+            case 'select':
+              customFieldsSchema[`custom_${field.id}`] = z.string().min(1, t("valSelectFieldReq", { defaultValue: "Please select {label}", label: field.label }));
+              break;
+            case 'checkbox':
+              if (field.options && field.options.length > 0) {
+                customFieldsSchema[`custom_${field.id}`] = z.array(z.string()).min(1, t("valSelectOptionReq", { defaultValue: "Please select at least one option for {label}", label: field.label }));
+              } else {
+                customFieldsSchema[`custom_${field.id}`] = z.boolean().refine(val => val === true, t("valFieldReq", { defaultValue: "{label} is required", label: field.label }));
+              }
+              break;
+            case 'date':
+              customFieldsSchema[`custom_${field.id}`] = z.string().min(1, t("valFieldReq", { defaultValue: "{label} is required", label: field.label }));
+              break;
+            case 'file':
+            case 'cloudflare_upload':
+              customFieldsSchema[`custom_${field.id}`] = z.string().min(1, t("valFieldReq", { defaultValue: "{label} is required", label: field.label }));
+              break;
+          }
+        } else {
+          customFieldsSchema[`custom_${field.id}`] = z.any().optional();
+        }
+      });
+
+      return z.object({ ...step2Fields, ...customFieldsSchema });
+    }
 
     const baseFields = {
-      firstName: (!isTier2OrHigher && requirements.requireFirstName)
+      firstName: requirements.requireFirstName
         ? z.string().min(1, t("valFirstNameReq", { defaultValue: "First name is required" }))
-        : z.string().optional().or(z.literal('')),
-      lastName: (!isTier2OrHigher && requirements.requireLastName)
+        : optionalText,
+      lastName: requirements.requireLastName
         ? z.string().min(1, t("valLastNameReq", { defaultValue: "Last name is required" }))
-        : z.string().optional().or(z.literal('')),
-      email: (!isTier2OrHigher && requirements.requireEmail)
+        : optionalText,
+      email: requirements.requireEmail
         ? z.string().email(t("valEmailReq", { defaultValue: "Please enter a valid email address" }))
         : z.string().email().optional().or(z.literal('')),
-      phone: (!isTier2OrHigher && requirements.requirePhone)
-        ? z.string()
-            .min(1, t("valPhoneReq", { defaultValue: "Phone number is required" }))
-            .refine(
-              (val) => {
-                const normalized = normalizePhoneNumber(val);
-                return normalized !== null && isValidNorthAmericanPhone(normalized);
-              },
-              { message: t("valPhoneInvalid", { defaultValue: "Please enter a valid phone number" }) }
-            )
-            .transform((val) => normalizePhoneNumber(val) || val)
-        : z.string()
-            .optional()
-            .or(z.literal(''))
-            .refine(
-              (val) => {
-                if (!val || val.trim() === '') return true;
-                const normalized = normalizePhoneNumber(val);
-                return normalized !== null && isValidNorthAmericanPhone(normalized);
-              },
-              { message: t("valPhoneInvalid", { defaultValue: "Please enter a valid phone number" }) }
-            )
-            .transform((val) => {
-              if (!val || val.trim() === '') return null;
-              return normalizePhoneNumber(val) || val;
-            }),
-      businessName: (!isTier2OrHigher && requirements.requireBusinessName)
-        ? z.string().min(1, t("valBusinessNameReq", { defaultValue: "Business name is required" }))
-        : z.string().optional().or(z.literal('')),
-      businessType: (!isTier2OrHigher && requirements.requireBusinessType)
-        ? z.string().min(1, t("valBusinessTypeReq", { defaultValue: "Please select a business type" }))
-        : z.string().optional().or(z.literal('')),
-      experience: (!isTier2OrHigher && requirements.tier1_years_experience_required)
+      phone: requirements.requirePhone ? requiredPhone : optionalPhone,
+      // Request-to-apply treats these as optional — never block on them
+      businessName: optionalText,
+      businessType: optionalText,
+      experience: requirements.tier1_years_experience_required
         ? z.string().min(1, t("valExpReq", { defaultValue: "Please select your experience level" }))
-        : z.string().optional().or(z.literal('')),
-      businessDescription: (!isTier2OrHigher && requirements.requireBusinessDescription)
+        : optionalText,
+      businessDescription: requirements.requireBusinessDescription
         ? z.string().min(1, t("valBusinessDescReq", { defaultValue: "Business description is required" }))
         : z.string().optional(),
-      foodHandlerCertExpiry: (
-        (isTier2OrHigher && requirements.requireFoodHandlerExpiry)
-      )
-        ? z.string().min(1, t("valCertExpiryReq", { defaultValue: "Certificate expiry date is required" }))
-        : z.string().optional(),
-      foodEstablishmentCertExpiry: (
-        (!isTier2OrHigher && requirements.requireFoodEstablishmentExpiry) ||
-        (isTier2OrHigher && requirements.tier2_food_establishment_expiry_required)
-      )
+      foodHandlerCertExpiry: z.string().optional(),
+      foodEstablishmentCertExpiry: requirements.requireFoodEstablishmentExpiry
         ? z.string().min(1, t("valFoodEstExpiryReq", { defaultValue: "Food establishment certificate expiry is required" }))
         : z.string().optional(),
-      usageFrequency: (!isTier2OrHigher && requirements.requireUsageFrequency)
-        ? z.string().min(1, t("valFreqReq", { defaultValue: "Please select usage frequency" })).optional().or(z.literal(''))
-        : z.string().optional().or(z.literal('')),
-      sessionDuration: (!isTier2OrHigher && requirements.requireSessionDuration)
-        ? z.string().min(1, t("valDurationReq", { defaultValue: "Please select session duration" })).optional().or(z.literal(''))
-        : z.string().optional().or(z.literal('')),
+      usageFrequency: optionalText,
+      sessionDuration: optionalText,
       termsAgree: z.boolean().default(true).optional(),
       accuracyAgree: z.boolean().default(true).optional(),
-      // Tier 2: Kitchen Experience Description
-      kitchenExperienceDescription: (isTier2OrHigher && requirements.tier2_kitchen_experience_required)
-        ? z.string().min(1, t("valKitchenExpReq", { defaultValue: "Kitchen experience description is required" }))
-        : z.string().optional(),
+      kitchenExperienceDescription: z.string().optional(),
     };
 
     // Merge custom fields based on tier
-    // For Tier 1, use tier1_custom_fields; for Tier 2, use tier2_custom_fields
     let fieldsToUse: CustomField[] = [];
     if (currentTier === 1 && requirements.tier1_custom_fields && Array.isArray(requirements.tier1_custom_fields)) {
       fieldsToUse = requirements.tier1_custom_fields;
-    } else if (currentTier >= 2 && requirements.tier2_custom_fields && Array.isArray(requirements.tier2_custom_fields)) {
-      fieldsToUse = requirements.tier2_custom_fields;
     }
 
     // Add custom fields to schema
@@ -362,9 +412,11 @@ export default function KitchenApplicationForm({
     });
 
     return z.object({ ...baseFields, ...customFieldsSchema });
-  }, [requirements, currentTier, t]);
+  }, [requirements, currentTier, t, application?.phone, globalApp]);
 
-  // Initialize default values for custom fields
+  // Phone is optional on request-to-apply — ask on Step 2 if still missing
+  const needsPhoneOnStep2 =
+    currentTier >= 2 && !(application?.phone && String(application.phone).trim());
   const getDefaultValues = useMemo(() => {
     // Start with default values from user data
     const defaults: any = {
@@ -618,33 +670,40 @@ export default function KitchenApplicationForm({
     // from the registration modal, so we must not block submission on missing
     // document uploads. These are collected later in Tier 2.
     if (currentTier >= 2) {
-      // Food Handler Certificate (now required at Tier 2, not Tier 1)
-      if (
-        requirements?.requireFoodHandlerCert !== false &&
-        !foodHandlerFile &&
-        !existingFoodHandlerUrl
-      ) {
+      // Food Safety License is always mandatory on Step 2 (yes/no only on request-to-apply;
+      // file upload lives here). Distinct from establishment license / insurance.
+      if (!foodHandlerFile && !existingFoodHandlerUrl) {
         toast({
           title: t("missingDoc", { defaultValue: "Missing Document" }),
-          description: t("uploadFoodHandler", { defaultValue: "Please upload your Food Handler Certificate" }),
+          description: t("uploadFoodSafetyLicense", { defaultValue: "Please upload your Food Safety License" }),
           variant: "destructive",
         });
         return;
       }
 
-      // Validate expiry date (Tier 2 only) - certificate must not be expired
-      if (requirements?.requireFoodHandlerExpiry !== false && data.foodHandlerCertExpiry) {
-        const expiryDate = new Date(data.foodHandlerCertExpiry);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        if (expiryDate < today) {
-          toast({
-            title: t("certExpired", { defaultValue: "Certificate Expired" }),
-            description: t("uploadValidCert", { defaultValue: "Your certificate has expired. Please upload a valid certificate." }),
-            variant: "destructive",
-          });
-          return;
-        }
+      if (!data.foodHandlerCertExpiry?.trim()) {
+        form.setError("foodHandlerCertExpiry", {
+          type: "required",
+          message: t("valFoodSafetyExpiryReq", { defaultValue: "Food Safety License expiry date is required" }),
+        });
+        toast({
+          title: t("missingDoc", { defaultValue: "Missing Document" }),
+          description: t("valFoodSafetyExpiryReq", { defaultValue: "Food Safety License expiry date is required" }),
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const expiryDate = new Date(data.foodHandlerCertExpiry);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (expiryDate < today) {
+        toast({
+          title: t("certExpired", { defaultValue: "Certificate Expired" }),
+          description: t("uploadValidFoodSafetyLicense", { defaultValue: "Your Food Safety License has expired. Please upload a valid license." }),
+          variant: "destructive",
+        });
+        return;
       }
     }
 
@@ -672,26 +731,57 @@ export default function KitchenApplicationForm({
       const formData = new FormData();
 
       // Core fields (handle optional fields)
-      formData.append("locationId", location.id.toString());
-      formData.append("fullName", `${data.firstName || ''} ${data.lastName || ''}`.trim() || 'N/A');
-      formData.append("email", data.email || '');
-      formData.append("phone", data.phone || '');
-      formData.append("kitchenPreference", "commercial"); // Default for new form
+      // Step 2: prefer existing application values for Tier 1 fields the form no longer shows
+      const existingFullName =
+        application?.fullName && application.fullName !== "N/A" ? application.fullName : "";
+      const submittedFullName = `${data.firstName || ""} ${data.lastName || ""}`.trim();
+      formData.append(
+        "locationId",
+        location.id.toString(),
+      );
+      formData.append(
+        "fullName",
+        submittedFullName || existingFullName || "N/A",
+      );
+      formData.append("email", data.email || application?.email || "");
+      formData.append("phone", data.phone || application?.phone || "");
+      formData.append("kitchenPreference", application?.kitchenPreference || "commercial");
 
       // Business info - store in businessDescription field
+      let existingBusinessInfo: Record<string, any> = {};
+      if (application?.businessDescription) {
+        try {
+          existingBusinessInfo =
+            typeof application.businessDescription === "string"
+              ? JSON.parse(application.businessDescription)
+              : (application.businessDescription as Record<string, any>);
+        } catch {
+          existingBusinessInfo = {};
+        }
+      }
       const businessInfo = JSON.stringify({
-        businessName: data.businessName || "",
-        businessType: data.businessType || "",
-        experience: data.experience || "",
-        description: data.businessDescription || "",
-        usageFrequency: data.usageFrequency || "",
-        sessionDuration: data.sessionDuration || "",
-        foodHandlerCertExpiry: data.foodHandlerCertExpiry || null,
-        foodEstablishmentCertExpiry: data.foodEstablishmentCertExpiry || null,
+        businessName: data.businessName || existingBusinessInfo.businessName || application?.shopName || "",
+        businessType: data.businessType || existingBusinessInfo.businessType || "",
+        experience: data.experience || existingBusinessInfo.experience || "",
+        description: data.businessDescription || existingBusinessInfo.description || "",
+        usageFrequency: data.usageFrequency || existingBusinessInfo.usageFrequency || "",
+        sessionDuration: data.sessionDuration || existingBusinessInfo.sessionDuration || "",
+        foodHandlerCertExpiry: data.foodHandlerCertExpiry || existingBusinessInfo.foodHandlerCertExpiry || null,
+        foodEstablishmentCertExpiry:
+          data.foodEstablishmentCertExpiry || existingBusinessInfo.foodEstablishmentCertExpiry || null,
       });
       formData.append("businessDescription", businessInfo);
-      if (data.experience) {
-        formData.append("cookingExperience", data.experience);
+      if (data.businessName || existingBusinessInfo.businessName || application?.shopName) {
+        formData.append(
+          "shopName",
+          data.businessName || existingBusinessInfo.businessName || application?.shopName || "Shop Not Named",
+        );
+      }
+      if (data.experience || existingBusinessInfo.experience || application?.cookingExperience) {
+        formData.append(
+          "cookingExperience",
+          data.experience || existingBusinessInfo.experience || application?.cookingExperience || "",
+        );
       }
 
       // Certification status — "yes" if new file uploaded OR existing cert already on record
@@ -900,16 +990,20 @@ export default function KitchenApplicationForm({
   }
 
   // Check if user already has an application for this location
-  // Only block form if application is inReview or fully approved (tier 4 completed)
-  // Allow tier progression if approved but not fully complete
-  // Allow re-application if rejected or cancelled
-  if (hasApplication && application && application.status === "inReview") {
+  // Only block form while Step 1 is awaiting admin review (inReview + tier 1).
+  // Allow Step 2 when approved, or when legacy buggy state left inReview with tier >= 2.
+  if (
+    hasApplication &&
+    application &&
+    application.status === "inReview" &&
+    (application.current_tier ?? 1) < 2
+  ) {
     const statusConfig = {
       inReview: {
         icon: Clock,
         color: "text-warning bg-muted",
         title: t("applicationPending", { defaultValue: "Application Pending" }),
-        description: t("applicationPendingDesc", { defaultValue: "Your application is being reviewed by the kitchen manager." }),
+        description: t("applicationPendingDesc", { defaultValue: "Your request to apply is being reviewed by the LocalCooks team." }),
       },
     };
 
@@ -1058,8 +1152,11 @@ export default function KitchenApplicationForm({
 
       {/* Header */}
       <ChefPageHeader
-        title={t("kitchenAppTitle", { defaultValue: "Kitchen application" })}
-        description={t("applyToCookAt", { defaultValue: "Apply to cook at {name}", name: location.name })}
+        title={t("requestToApply", { defaultValue: "Request to apply" })}
+        description={t("requestToApplyAt", {
+          defaultValue: "Request to apply at {name}",
+          name: location.name,
+        })}
         className="mb-8"
       />
 
@@ -1068,7 +1165,11 @@ export default function KitchenApplicationForm({
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-medium text-muted-foreground">{t("appProgress", { defaultValue: "Application Progress" })}</h3>
-            <span className="text-xs text-muted-foreground">{t("stepOf", { defaultValue: "Step {current} of 2", current: currentTier })}</span>
+            <span className="text-xs text-muted-foreground">
+              {currentTier === 1
+                ? t("requestToApplyProgress", { defaultValue: "Request to apply" })
+                : t("step2Of2KitchenDocs", { defaultValue: "Kitchen documents (Step 2)" })}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             {[1, 2].map((tier) => {
@@ -1092,8 +1193,8 @@ export default function KitchenApplicationForm({
             })}
           </div>
           <div className="flex justify-between mt-2 text-xs text-muted-foreground">
-            <span>{t("step1Submit", { defaultValue: "Step 1: Submit" })}</span>
-            <span>{t("step2Coordinate", { defaultValue: "Step 2: Coordinate" })}</span>
+            <span>{t("step1Submit", { defaultValue: "Request to apply" })}</span>
+            <span>{t("step2Coordinate", { defaultValue: "Kitchen documents" })}</span>
           </div>
         </div>
       )}
@@ -1230,8 +1331,8 @@ export default function KitchenApplicationForm({
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel className="text-sm font-medium">
-                            {t("businessName", { defaultValue: "Business Name" })} {requirements?.requireBusinessName !== false && <span className="text-destructive">*</span>}
-                            {requirements?.requireBusinessName === false && <span className="text-muted-foreground text-xs ml-2">{t("optional", { defaultValue: "(Optional)" })}</span>}
+                            {t("businessName", { defaultValue: "Business Name" })}{" "}
+                            <span className="text-muted-foreground text-xs ml-2">{t("optional", { defaultValue: "(Optional)" })}</span>
                           </FormLabel>
                           <FormControl>
                             <Input
@@ -1254,8 +1355,8 @@ export default function KitchenApplicationForm({
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel className="text-sm font-medium">
-                            {t("typeOfFoodBusiness", { defaultValue: "Type of Food Business" })} {requirements?.requireBusinessType !== false && <span className="text-destructive">*</span>}
-                            {requirements?.requireBusinessType === false && <span className="text-muted-foreground text-xs ml-2">{t("optional", { defaultValue: "(Optional)" })}</span>}
+                            {t("typeOfFoodBusiness", { defaultValue: "Type of Food Business" })}{" "}
+                            <span className="text-muted-foreground text-xs ml-2">{t("optional", { defaultValue: "(Optional)" })}</span>
                           </FormLabel>
                           <FormControl>
                             <Select onValueChange={field.onChange} value={field.value}>
@@ -1265,7 +1366,7 @@ export default function KitchenApplicationForm({
                               <SelectContent>
                                 {businessTypes.map((type) => (
                                   <SelectItem key={type.value} value={type.value}>
-                                    {t({"catering": "btCatering", "bakery": "btBakery", "meal-prep": "btMealPrep", "specialty": "btSpecialty", "pasta": "btPasta", "sauce": "btSauce", "prepared": "btPrepared", "other": "btOther"}[type.value] || "btOther", { defaultValue: type.label })}
+                                    {t(type.key, { defaultValue: type.label })}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
@@ -1359,7 +1460,7 @@ export default function KitchenApplicationForm({
                           </p>
                           <p>
                             {t("docsRequiredForStep2Desc", {
-                              defaultValue: "All chefs must have a current Food Handler Certification to use our kitchens. You will be asked to upload your certificate and its expiry date after your Step 1 application is approved."
+                              defaultValue: "All chefs must upload a current Food Safety License (and any other documents this kitchen requires) in Step 2 after your request to apply is approved."
                             })}
                           </p>
                         </div>
@@ -1397,7 +1498,7 @@ export default function KitchenApplicationForm({
                               <SelectContent>
                                 {usageFrequencies.map((freq) => (
                                   <SelectItem key={freq.value} value={freq.value}>
-                                    {t({"weekly": "freqWeekly", "biweekly": "freqBiweekly", "monthly": "freqMonthly", "as-needed": "freqAsNeeded"}[freq.value] || "freqWeekly", { defaultValue: freq.label })}
+                                    {t(freq.key, { defaultValue: freq.label })}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
@@ -1451,6 +1552,13 @@ export default function KitchenApplicationForm({
 
                 if (fieldsToRender.length === 0) return null;
 
+                // Required custom fields first, then optional
+                const orderedFields = [...fieldsToRender].sort((a, b) => {
+                  const ar = a.required ? 0 : 1;
+                  const br = b.required ? 0 : 1;
+                  return ar - br;
+                });
+
                 return (
                   <Card className="shadow-none">
                     <CardContent className="p-6">
@@ -1459,7 +1567,7 @@ export default function KitchenApplicationForm({
                       </div>
 
                       <div className="space-y-4">
-                        {fieldsToRender.map((field: CustomField) => {
+                        {orderedFields.map((field: CustomField) => {
                           if (!field || !field.id || !field.type) return null;
 
                           const fieldName = `custom_${field.id}` as keyof KitchenApplicationFormData;
@@ -1815,34 +1923,55 @@ export default function KitchenApplicationForm({
                         </p>
                       </div>
 
-                      {/* Food Handler Certification - MOVED from Step 1. Users cannot upload files
-                          from the registration modal (auto-submit of Step 1), so document uploads
-                          are collected here in Step 2 before manager review. */}
+                      {needsPhoneOnStep2 && (
+                        <FormField
+                          control={form.control}
+                          name="phone"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-sm font-medium">
+                                {t("phoneNumber", { defaultValue: "Phone Number" })}{" "}
+                                <span className="text-destructive">*</span>
+                              </FormLabel>
+                              <p className="text-xs text-muted-foreground mb-2">
+                                {t("phoneNeededForStep2", {
+                                  defaultValue: "We don’t have a phone number on your request to apply. Please add one so the kitchen can reach you.",
+                                })}
+                              </p>
+                              <FormControl>
+                                <Input type="tel" placeholder="(709) 000-0000" {...field} value={field.value ?? ""} className="h-11" />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      )}
+
+                      {/* Food Safety License — mandatory on Step 2 (request-to-apply only asks yes/no).
+                          Stored in foodSafetyLicenseUrl; distinct from establishment license / insurance. */}
                       <div>
                         <div className="mb-6 rounded-lg border p-4">
                           <div className="flex gap-2">
                             <Check className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
                             <p className="text-sm text-muted-foreground">
-                              {requirements?.requireFoodHandlerCert === false
-                                ? <>{t("uploadFoodHandlerOptional", { defaultValue: "Upload your Food Handler Certification if you have one." })}</>
-                                : <>{t("allChefsMustHaveFoodHandler", { defaultValue: "All chefs must have current Food Handler Certification to use our kitchens." })}</>}
+                              {t("allChefsMustHaveFoodSafetyLicense", { defaultValue: "All chefs must upload a current Food Safety License to use our kitchens." })}
                             </p>
                           </div>
                         </div>
 
                         <Label className="text-sm font-medium block mb-2">
-                          {t("foodHandlerCertLabel", { defaultValue: "Food Handler Certification" })} {requirements?.requireFoodHandlerCert && <span className="text-destructive">*</span>}
-                          {!requirements?.requireFoodHandlerCert && <span className="text-muted-foreground text-xs ml-2">{t("optional", { defaultValue: "(Optional)" })}</span>}
+                          {t("foodSafetyLicenseLabel", { defaultValue: "Food Safety License" })}{" "}
+                          <span className="text-destructive">*</span>
                         </Label>
                         <p className="text-xs text-muted-foreground mb-3">
-                          {t("uploadFoodHandlerDesc", { defaultValue: "Upload a photo or PDF of your current food handler certificate (must be valid and current)" })}
+                          {t("uploadFoodSafetyLicenseDesc", { defaultValue: "Upload a photo or PDF of your current Food Safety License (must be valid and current)" })}
                         </p>
 
                         {existingFoodHandlerUrl && !foodHandlerFile && (
                           <div className="flex items-center gap-3 p-3 border rounded-lg mb-3">
                             <Check className="h-5 w-5 text-success" />
                             <div className="flex-1">
-                              <p className="text-sm font-medium">{t("foodHandlerCert", { defaultValue: "Food Handler Certificate" })}</p>
+                              <p className="text-sm font-medium">{t("foodSafetyLicense", { defaultValue: "Food Safety License" })}</p>
                               <p className="text-xs text-muted-foreground">{t("previouslyUploadedApproved", { defaultValue: "Previously uploaded - approved" })}</p>
                               <a
                                 href={existingFoodHandlerUrl}
@@ -1850,14 +1979,14 @@ export default function KitchenApplicationForm({
                                 rel="noopener noreferrer"
                                 className="text-xs text-primary hover:underline"
                               >
-                                {t("viewCertificate", { defaultValue: "View certificate" })}
+                                {t("viewLicense", { defaultValue: "View license" })}
                               </a>
                             </div>
                           </div>
                         )}
 
                         <label
-                          htmlFor="step2-foodHandlerCert"
+                          htmlFor="step2-foodSafetyLicense"
                           className={`flex items-center justify-center gap-3 p-5 border-2 border-dashed rounded-lg cursor-pointer transition-all
                             ${foodHandlerFile
                               ? 'border-success/40 bg-success/10'
@@ -1866,14 +1995,14 @@ export default function KitchenApplicationForm({
                                 : 'border-border bg-muted hover:border-foreground/30 hover:bg-muted'
                             }`}
                         >
-                          <FileText className={`h-5 w-5 ${foodHandlerFile || existingFoodHandlerUrl ? 'text-muted-foreground' : 'text-muted-foreground'}`} />
+                          <FileText className={`h-5 w-5 text-muted-foreground`} />
                           <div className="text-left">
                             <p className="text-sm font-medium">
                               {foodHandlerFile
                                 ? foodHandlerFile.name
                                 : existingFoodHandlerUrl
-                                  ? t("replaceExistingCertificate", { defaultValue: "Replace existing certificate" })
-                                  : t("clickToUploadCertificate", { defaultValue: "Click to upload certificate" })
+                                  ? t("replaceExistingLicense", { defaultValue: "Replace existing license" })
+                                  : t("clickToUploadLicense", { defaultValue: "Click to upload license" })
                               }
                             </p>
                             <p className="text-xs text-muted-foreground">
@@ -1884,7 +2013,7 @@ export default function KitchenApplicationForm({
                         </label>
                         <input
                           type="file"
-                          id="step2-foodHandlerCert"
+                          id="step2-foodSafetyLicense"
                           accept=".pdf,.jpg,.jpeg,.png"
                           onChange={handleFoodHandlerFileChange}
                           className="hidden"
@@ -1893,26 +2022,25 @@ export default function KitchenApplicationForm({
                         {foodHandlerFile && (
                           <div className="flex items-center gap-2 mt-2 p-2 bg-muted rounded text-muted-foreground text-sm">
                             <Check className="h-4 w-4" />
-                            {t("newFoodHandlerUploaded", { defaultValue: "New Food Handler Certificate uploaded - will replace existing" })}
+                            {t("newFoodSafetyLicenseUploaded", { defaultValue: "New Food Safety License uploaded - will replace existing" })}
                           </div>
                         )}
                       </div>
 
-                      {/* Food Handler Expiry Date (moved from Step 1 to Step 2) */}
                       <FormField
                         control={form.control}
                         name="foodHandlerCertExpiry"
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel className="text-sm font-medium">
-                              {t("foodHandlerExpiryLabel", { defaultValue: "Food Handler Certificate Expiry Date" })} {requirements?.requireFoodHandlerExpiry && <span className="text-destructive">*</span>}
-                              {!requirements?.requireFoodHandlerExpiry && <span className="text-muted-foreground text-xs ml-2">{t("optional", { defaultValue: "(Optional)" })}</span>}
+                              {t("foodSafetyLicenseExpiryLabel", { defaultValue: "Food Safety License Expiry Date" })}{" "}
+                              <span className="text-destructive">*</span>
                             </FormLabel>
                             <FormControl>
                               <Input type="date" {...field} className="h-11" />
                             </FormControl>
                             <p className="text-xs text-muted-foreground mt-1">
-                              {t("certValid6Months", { defaultValue: "Your certification must be valid for at least 6 months" })}
+                              {t("licenseValid6Months", { defaultValue: "Your license must be valid for at least 6 months" })}
                             </p>
                             <FormMessage />
                           </FormItem>
@@ -2318,6 +2446,7 @@ export default function KitchenApplicationForm({
             </Button>
             <Button
               type="submit"
+              data-testid="kitchen-application-submit"
               disabled={isSubmitting}
               className="flex-1 h-12 text-base font-semibold"
             >

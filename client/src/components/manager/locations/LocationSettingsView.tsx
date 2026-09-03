@@ -1,4 +1,6 @@
 import { logger } from "@/lib/logger";
+import { mt } from "@/i18n/manager";
+import { tt } from "@/i18n/common-ns";
 
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -68,6 +70,7 @@ interface SettingsViewProps {
 }
 
 export function LocationSettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewProps) {
+  
     const { toast } = useToast();
     const queryClient = useQueryClient();
 
@@ -77,7 +80,7 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
     // Form State - Controlled by local state, updated when location prop changes
     const [cancellationHours, setCancellationHours] = useState(location.cancellationPolicyHours || 24);
     const [cancellationMessage, setCancellationMessage] = useState(
-        location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time."
+        location.cancellationPolicyMessage || mt("cancellationPolicyDefaultMessage")
     );
     const [dailyBookingLimit, setDailyBookingLimit] = useState(location.defaultDailyBookingLimit || 2);
     const [minimumBookingWindowHours, setMinimumBookingWindowHours] = useState(location.minimumBookingWindowHours || 1);
@@ -107,7 +110,7 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
     useEffect(() => {
         setCancellationHours(location.cancellationPolicyHours || 24);
         setCancellationMessage(
-            location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time."
+            location.cancellationPolicyMessage || mt("cancellationPolicyDefaultMessage")
         );
         setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
         setMinimumBookingWindowHours(location.minimumBookingWindowHours || 1);
@@ -122,13 +125,13 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
         queryKey: ['managerKitchens', location.id],
         queryFn: async () => {
             const currentFirebaseUser = auth.currentUser;
-            if (!currentFirebaseUser) throw new Error("Firebase user not available");
+            if (!currentFirebaseUser) throw new Error(tt("firebaseUserNotAvailable"));
             const token = await currentFirebaseUser.getIdToken();
 
             const response = await fetch(`/api/manager/kitchens/${location.id}`, {
                 headers: { 'Authorization': `Bearer ${token}` },
             });
-            if (!response.ok) throw new Error('Failed to fetch kitchens');
+            if (!response.ok) throw new Error(tt('failedToFetchKitchens'));
             return response.json();
         },
         enabled: !!location.id,
@@ -196,13 +199,13 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
 
     const handleLicenseUpload = async (file: File, expiryDate: string) => {
         if (!expiryDate) {
-            toast({ title: "Date Required", description: "Please provide an expiration date.", variant: "destructive" });
+            toast({ title: mt("dateRequired"), description: mt("pleaseProvideAnExpirationDate"), variant: "destructive" });
             return;
         }
         setIsUploadingLicense(true);
         try {
             const currentFirebaseUser = auth.currentUser;
-            if (!currentFirebaseUser) throw new Error("Auth failed");
+            if (!currentFirebaseUser) throw new Error(tt("authFailed"));
             const token = await currentFirebaseUser.getIdToken();
 
             const formData = new FormData();
@@ -212,7 +215,7 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                 headers: { 'Authorization': `Bearer ${token}` },
                 body: formData,
             });
-            if (!uploadRes.ok) throw new Error("Upload failed");
+            if (!uploadRes.ok) throw new Error(tt("uploadFailed"));
             const { url } = await uploadRes.json();
 
             const updateRes = await fetch(`/api/manager/locations/${location.id}`, {
@@ -224,13 +227,13 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                     kitchenLicenseExpiry: expiryDate,
                 }),
             });
-            if (!updateRes.ok) throw new Error("Update failed");
+            if (!updateRes.ok) throw new Error(tt("updateFailed"));
 
             queryClient.invalidateQueries({ queryKey: ['/api/manager/locations'] });
-            toast({ title: "License Uploaded", description: "Submitted for approval." });
+            toast({ title: mt("licenseUploaded"), description: mt("submittedForApproval") });
             setLicenseFile(null);
         } catch (err: any) {
-            toast({ title: "Error", description: err.message, variant: "destructive" });
+            toast({ title: mt("error"), description: err.message, variant: "destructive" });
         } finally {
             setIsUploadingLicense(false);
         }
@@ -240,7 +243,7 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
         setIsUploadingTerms(true);
         try {
             const currentFirebaseUser = auth.currentUser;
-            if (!currentFirebaseUser) throw new Error("Auth failed");
+            if (!currentFirebaseUser) throw new Error(tt("authFailed"));
             const token = await currentFirebaseUser.getIdToken();
 
             const formData = new FormData();
@@ -250,7 +253,7 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                 headers: { 'Authorization': `Bearer ${token}` },
                 body: formData,
             });
-            if (!uploadRes.ok) throw new Error("Upload failed");
+            if (!uploadRes.ok) throw new Error(tt("uploadFailed"));
             const { url } = await uploadRes.json();
 
             const updateRes = await fetch(`/api/manager/locations/${location.id}`, {
@@ -260,13 +263,13 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                     kitchenTermsUrl: url,
                 }),
             });
-            if (!updateRes.ok) throw new Error("Update failed");
+            if (!updateRes.ok) throw new Error(tt("updateFailed"));
 
             queryClient.invalidateQueries({ queryKey: ['/api/manager/locations'] });
-            toast({ title: "Terms Uploaded", description: "Kitchen terms & policies saved successfully." });
+            toast({ title: mt("termsUploaded"), description: mt("kitchenTermsPoliciesSavedSuccessfully") });
             setTermsFile(null);
         } catch (err: any) {
-            toast({ title: "Error", description: err.message, variant: "destructive" });
+            toast({ title: mt("error"), description: err.message, variant: "destructive" });
         } finally {
             setIsUploadingTerms(false);
         }
@@ -276,26 +279,26 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
         <div className="space-y-6">
             <div className="bg-card rounded-lg shadow-sm border border-border">
                 <div className="p-6 border-b border-border">
-                    <h2 className="text-xl font-semibold text-foreground">Location Settings</h2>
+                    <h2 className="text-xl font-semibold text-foreground">{mt("locationSettings")}</h2>
                     <p className="text-sm text-muted-foreground mt-1">{location.name}</p>
                 </div>
 
                 <div className="p-6">
                     <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                         <TabsList className="w-full gap-1 mb-6">
-                            <TabsTrigger value="setup" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">Docs</TabsTrigger>
-                            <TabsTrigger value="branding" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">Kitchen</TabsTrigger>
+                            <TabsTrigger value="setup" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">{mt("docs")}</TabsTrigger>
+                            <TabsTrigger value="branding" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">{mt("kitchen")}</TabsTrigger>
                             <TabsTrigger value="notifications" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
-                                <span className="hidden sm:inline">Notifications</span>
-                                <span className="sm:hidden">Notif</span>
+                                <span className="hidden sm:inline">{mt("navNotifications")}</span>
+                                <span className="sm:hidden">{mt("notif")}</span>
                             </TabsTrigger>
-                            <TabsTrigger value="booking-rules" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">Rules</TabsTrigger>
+                            <TabsTrigger value="booking-rules" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">{mt("rules")}</TabsTrigger>
                             <TabsTrigger value="application-requirements" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
-                                <span className="hidden sm:inline">App Req</span>
+                                <span className="hidden sm:inline">{mt("appReq")}</span>
                                 <span className="sm:hidden">Req</span>
                             </TabsTrigger>
                             <TabsTrigger value="location" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
-                                <span className="hidden sm:inline">Location</span>
+                                <span className="hidden sm:inline">{mt("navLocation")}</span>
                                 <span className="sm:hidden">Loc</span>
                             </TabsTrigger>
                         </TabsList>
@@ -305,12 +308,8 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                             <Card>
                                 <CardHeader>
                                     <CardTitle className="text-lg flex items-center gap-2">
-                                        <FileText className="h-5 w-5 text-primary" />
-                                        Kitchen License
-                                    </CardTitle>
-                                    <CardDescription>
-                                        Upload or update your kitchen license. Bookings are paused until approved.
-                                    </CardDescription>
+                                        <FileText className="h-5 w-5 text-primary" />{mt("kitchenLicense")}</CardTitle>
+                                    <CardDescription>{mt("uploadOrUpdateYourKitchenLicenseBookingsArePausedUntilApprov")}</CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-4">
                                     {/* Status Blocks */}
@@ -327,8 +326,8 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                                 </div>
                                             </div>
                                             <div className="text-sm space-y-1">
-                                                <p>Document: <span className="font-medium">{getDocumentFilename(location.kitchenLicenseUrl)}</span></p>
-                                                <p>Expires: <span className="font-medium">{location.kitchenLicenseExpiry ? new Date(location.kitchenLicenseExpiry).toLocaleDateString() : 'N/A'}</span></p>
+                                                <p>{mt("document")}<span className="font-medium">{getDocumentFilename(location.kitchenLicenseUrl)}</span></p>
+                                                <p>{mt("expires")}<span className="font-medium">{location.kitchenLicenseExpiry ? new Date(location.kitchenLicenseExpiry).toLocaleDateString() : 'N/A'}</span></p>
                                             </div>
                                         </div>
                                     )}
@@ -336,7 +335,7 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                     {shouldShowUpload && (
                                         <div className="space-y-4 border rounded-lg p-4 bg-muted/20">
                                             <div className="space-y-2">
-                                                <Label>License Expiration Date <span className="text-destructive">*</span></Label>
+                                                <Label>{mt("licenseExpirationDate")}<span className="text-destructive">*</span></Label>
                                                 <Input
                                                     type="date"
                                                     value={licenseExpiryDate}
@@ -345,7 +344,7 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                                 />
                                             </div>
                                             <div className="space-y-2">
-                                                <Label>Upload License Document</Label>
+                                                <Label>{mt("uploadLicenseDocument")}</Label>
                                                 <div className="border-2 border-dashed border-border rounded-lg p-6 text-center hover:border-primary/50 transition-colors">
                                                     <input
                                                         type="file"
@@ -360,13 +359,11 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                                     />
                                                     <label htmlFor="license-upload-input" className="cursor-pointer flex flex-col items-center gap-2">
                                                         {isUploadingLicense ? <Loader2 className="h-8 w-8 animate-spin text-primary" /> : <Upload className="h-8 w-8 text-muted-foreground" />}
-                                                        <span className="text-sm font-medium">{licenseFile ? licenseFile.name : "Click to upload"}</span>
-                                                        <span className="text-xs text-muted-foreground">PDF, JPG, PNG (max 10MB)</span>
+                                                        <span className="text-sm font-medium">{licenseFile ? licenseFile.name : mt("clickToUpload")}</span>
+                                                        <span className="text-xs text-muted-foreground">{mt("pDFJPGPNGMax10MB")}</span>
                                                     </label>
                                                     {licenseFile && !isUploadingLicense && (
-                                                        <Button size="sm" className="mt-4" onClick={() => handleLicenseUpload(licenseFile, licenseExpiryDate)}>
-                                                            Upload Selected File
-                                                        </Button>
+                                                        <Button size="sm" className="mt-4" onClick={() => handleLicenseUpload(licenseFile, licenseExpiryDate)}>{mt("uploadSelectedFile")}</Button>
                                                     )}
                                                 </div>
                                             </div>
@@ -379,12 +376,8 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                             <Card>
                                 <CardHeader>
                                     <CardTitle className="text-lg flex items-center gap-2">
-                                        <FileText className="h-5 w-5 text-primary" />
-                                        Kitchen Terms & Policies
-                                    </CardTitle>
-                                    <CardDescription>
-                                        Upload your kitchen-specific terms, house rules, and policies that chefs must review when applying.
-                                    </CardDescription>
+                                        <FileText className="h-5 w-5 text-primary" />{mt("kitchenTermsPolicies")}</CardTitle>
+                                    <CardDescription>{mt("uploadYourKitchenSpecificTermsHouseRulesAndPoliciesThatChefs")}</CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-4">
                                     {/* Show existing terms if uploaded */}
@@ -392,12 +385,12 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                                             <div className="flex items-center gap-2 font-medium text-blue-800 mb-2">
                                                 <CheckCircle className="h-5 w-5 text-blue-600" />
-                                                <span>Terms Document Uploaded</span>
+                                                <span>{mt("termsDocumentUploaded")}</span>
                                             </div>
                                             <div className="text-sm text-blue-700">
-                                                <p>Document: <span className="font-medium">{getDocumentFilename(location.kitchenTermsUrl)}</span></p>
+                                                <p>{mt("document")}<span className="font-medium">{getDocumentFilename(location.kitchenTermsUrl)}</span></p>
                                                 {location.kitchenTermsUploadedAt && (
-                                                    <p>Uploaded: <span className="font-medium">{new Date(location.kitchenTermsUploadedAt).toLocaleDateString()}</span></p>
+                                                    <p>{mt("uploaded")}<span className="font-medium">{new Date(location.kitchenTermsUploadedAt).toLocaleDateString()}</span></p>
                                                 )}
                                             </div>
                                             <a 
@@ -415,9 +408,7 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                     <div className="space-y-4 border rounded-lg p-4 bg-muted/20">
                                         <div className="space-y-2">
                                             <Label>{location.kitchenTermsUrl ? 'Replace Terms Document' : 'Upload Terms Document'}</Label>
-                                            <p className="text-xs text-muted-foreground">
-                                                Include house rules, equipment usage policies, liability waivers, and any other terms chefs should agree to.
-                                            </p>
+                                            <p className="text-xs text-muted-foreground">{mt("includeHouseRulesEquipmentUsagePoliciesLiabilityWaiversAndAn")}</p>
                                             <div className="border-2 border-dashed border-border rounded-lg p-6 text-center hover:border-primary/50 transition-colors">
                                                 <input
                                                     type="file"
@@ -432,13 +423,11 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                                 />
                                                 <label htmlFor="terms-upload-input" className="cursor-pointer flex flex-col items-center gap-2">
                                                     {isUploadingTerms ? <Loader2 className="h-8 w-8 animate-spin text-primary" /> : <Upload className="h-8 w-8 text-muted-foreground" />}
-                                                    <span className="text-sm font-medium">{termsFile ? termsFile.name : "Click to upload"}</span>
-                                                    <span className="text-xs text-muted-foreground">PDF, JPG, PNG, DOC (max 10MB)</span>
+                                                    <span className="text-sm font-medium">{termsFile ? termsFile.name : mt("clickToUpload")}</span>
+                                                    <span className="text-xs text-muted-foreground">{mt("pDFJPGPNGDOCMax10MB")}</span>
                                                 </label>
                                                 {termsFile && !isUploadingTerms && (
-                                                    <Button size="sm" className="mt-4" onClick={() => handleTermsUpload(termsFile)}>
-                                                        Upload Terms Document
-                                                    </Button>
+                                                    <Button size="sm" className="mt-4" onClick={() => handleTermsUpload(termsFile)}>{mt("uploadTermsDocument")}</Button>
                                                 )}
                                             </div>
                                         </div>
@@ -451,7 +440,7 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                         <TabsContent value="branding" className="space-y-6">
                             <Card>
                                 <CardHeader>
-                                    <CardTitle>Location Logo</CardTitle>
+                                    <CardTitle>{mt("locationLogo")}</CardTitle>
                                 </CardHeader>
                                 <CardContent>
                                     <div className="max-w-md">
@@ -476,26 +465,25 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                             <Card>
                                 <CardHeader className="flex flex-row items-center justify-between">
                                     <div>
-                                        <CardTitle>Kitchen Spaces</CardTitle>
-                                        <CardDescription>Manage your kitchen spaces and galleries.</CardDescription>
+                                        <CardTitle>{mt("kitchenSpaces")}</CardTitle>
+                                        <CardDescription>{mt("manageYourKitchenSpacesAndGalleries")}</CardDescription>
                                     </div>
                                     {!showCreateKitchen && (
                                         <Button onClick={() => setShowCreateKitchen(true)} size="sm" className="gap-2">
-                                            <Plus className="h-4 w-4" /> Add Kitchen
-                                        </Button>
+                                            <Plus className="h-4 w-4" />{mt("addKitchen")}</Button>
                                     )}
                                 </CardHeader>
                                 <CardContent className="space-y-4">
                                     {showCreateKitchen && (
                                         <div className="border rounded-lg p-4 bg-muted/20 space-y-4 animate-in fade-in slide-in-from-top-2">
-                                            <h4 className="font-medium">New Kitchen</h4>
+                                            <h4 className="font-medium">{mt("newKitchen")}</h4>
                                             <div className="space-y-2">
-                                                <Label>Name</Label>
-                                                <Input value={newKitchenName} onChange={e => setNewKitchenName(e.target.value)} placeholder="e.g. Main Kitchen" />
+                                                <Label>{mt("name")}</Label>
+                                                <Input value={newKitchenName} onChange={e => setNewKitchenName(e.target.value)} placeholder={mt("eGMainKitchen")} />
                                             </div>
                                             <div className="space-y-2">
-                                                <Label>Description</Label>
-                                                <Textarea value={newKitchenDescription} onChange={e => setNewKitchenDescription(e.target.value)} placeholder="Describe the space..." />
+                                                <Label>{mt("description")}</Label>
+                                                <Textarea value={newKitchenDescription} onChange={e => setNewKitchenDescription(e.target.value)} placeholder={mt("describeTheSpace")} />
                                             </div>
                                             <div className="flex gap-2">
                                                 <StatusButton
@@ -516,9 +504,9 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                                         } catch (e) { logger.error("Failed to create kitchen", e); } finally { setIsCreatingKitchen(false); }
                                                     }}
                                                     status={isCreatingKitchen ? "loading" : "idle"}
-                                                    labels={{ idle: "Create", loading: "Creating", success: "Created" }}
+                                                    labels={{ idle: mt("createBtn"), loading: mt("creating"), success: mt("created") }}
                                                 />
-                                                <Button variant="outline" onClick={() => setShowCreateKitchen(false)}>Cancel</Button>
+                                                <Button variant="outline" onClick={() => setShowCreateKitchen(false)}>{mt("cancel")}</Button>
                                             </div>
                                         </div>
                                     )}
@@ -529,14 +517,14 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                                 <div className="flex-1 space-y-4">
                                                     <h4 className="font-semibold text-lg">{kitchen.name}</h4>
                                                     <div className="space-y-2">
-                                                        <Label>Description</Label>
+                                                        <Label>{mt("description")}</Label>
                                                         <Textarea
                                                             value={kitchenDescriptions[kitchen.id] ?? kitchen.description ?? ''}
                                                             onChange={e => setKitchenDescriptions(prev => ({ ...prev, [kitchen.id]: e.target.value }))}
                                                             onBlur={async (e) => {
                                                                 if (e.target.value !== kitchen.description) {
                                                                     const token = await auth.currentUser?.getIdToken();
-                                                                    await fetch(`/api/manager/kitchens/${kitchen.id}`, {
+                                                                    await fetch(`/api/manager/kitchens/${kitchen.id}/details`, {
                                                                         method: 'PUT',
                                                                         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                                                                         body: JSON.stringify({ description: e.target.value })
@@ -547,7 +535,7 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                                     </div>
                                                 </div>
                                                 <div className="w-full md:w-48">
-                                                    <Label className="mb-2 block">Main Image</Label>
+                                                    <Label className="mb-2 block">{mt("mainImage")}</Label>
                                                     <ImageWithReplace
                                                         imageUrl={(kitchen as any).imageUrl}
                                                         onImageChange={async url => {
@@ -565,7 +553,7 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                                 </div>
                                             </div>
                                             <div className="pt-4 border-t">
-                                                <Label className="mb-3 block">Gallery</Label>
+                                                <Label className="mb-3 block">{mt("gallery")}</Label>
                                                 <KitchenGalleryImages
                                                     kitchenId={kitchen.id}
                                                     galleryImages={kitchen.galleryImages || []}
@@ -583,8 +571,8 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                                         <div className="flex items-center gap-2">
                                                             <KeyRound className="h-4 w-4 text-muted-foreground" />
                                                             <div>
-                                                                <Label className="text-sm">Smart Door Lock</Label>
-                                                                <p className="text-xs text-muted-foreground">Enable if this kitchen has a keypad/smart lock. You can set access codes per booking.</p>
+                                                                <Label className="text-sm">{mt("smartDoorLock")}</Label>
+                                                                <p className="text-xs text-muted-foreground">{mt("enableIfThisKitchenHasAKeypadSmartLockYouCanSetAccessCodesPe")}</p>
                                                             </div>
                                                         </div>
                                                         <button
@@ -600,10 +588,10 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                                                         body: JSON.stringify({ smartLockEnabled: newVal })
                                                                     });
                                                                     queryClient.invalidateQueries({ queryKey: ['managerKitchens', location.id] });
-                                                                    toast({ title: newVal ? "Smart lock enabled" : "Smart lock disabled" });
+                                                                    toast({ title: newVal ? mt("smartLockEnabledToast") : mt("smartLockDisabledToast") });
                                                                 } catch (e) {
                                                                     logger.error("Failed to update smart lock setting", e);
-                                                                    toast({ title: "Failed to update", variant: "destructive" });
+                                                                    toast({ title: mt("failedToUpdate"), variant: "destructive" });
                                                                 }
                                                             }}
                                                             className={cn(
@@ -628,19 +616,18 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                         {/* NOTIFICATIONS TAB */}
                         <TabsContent value="notifications">
                             <Card>
-                                <CardHeader><CardTitle>Notification Settings</CardTitle></CardHeader>
+                                <CardHeader><CardTitle>{mt("notificationSettings")}</CardTitle></CardHeader>
                                 <CardContent className="space-y-4">
                                     <div className="space-y-2">
-                                        <Label>Email Address</Label>
+                                        <Label>{mt("emailAddress")}</Label>
                                         <Input value={notificationEmail} onChange={e => setNotificationEmail(e.target.value)} type="email" />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>Phone Number</Label>
+                                        <Label>{mt("phoneNumber")}</Label>
                                         <Input value={notificationPhone} onChange={e => setNotificationPhone(e.target.value)} type="tel" />
                                     </div>
                                     <Button onClick={() => handleSave()} disabled={isUpdating} className="mt-4">
-                                        <Save className="h-4 w-4 mr-2" /> Save Changes
-                                    </Button>
+                                        <Save className="h-4 w-4 mr-2" />{mt("saveChanges")}</Button>
                                 </CardContent>
                             </Card>
                         </TabsContent>
@@ -648,27 +635,26 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                         {/* BOOKING RULES TAB */}
                         <TabsContent value="booking-rules">
                             <Card>
-                                <CardHeader><CardTitle>Booking Rules</CardTitle></CardHeader>
+                                <CardHeader><CardTitle>{mt("navBookingRules")}</CardTitle></CardHeader>
                                 <CardContent className="space-y-6">
                                     <div className="space-y-2">
-                                        <Label>Cancellation Window</Label>
+                                        <Label>{mt("cancellationWindow")}</Label>
                                         <NumericInput suffix="hours" value={String(cancellationHours)} onValueChange={(val) => setCancellationHours(parseInt(val) || 0)} />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>Policy Message</Label>
+                                        <Label>{mt("policyMessage")}</Label>
                                         <Textarea value={cancellationMessage} onChange={e => setCancellationMessage(e.target.value)} />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>Default Daily Limit</Label>
+                                        <Label>{mt("defaultDailyLimit")}</Label>
                                         <NumericInput suffix="hours" value={String(dailyBookingLimit)} onValueChange={(val) => setDailyBookingLimit(parseInt(val) || 0)} />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>Minimum Advance Notice</Label>
+                                        <Label>{mt("minimumAdvanceNotice")}</Label>
                                         <NumericInput suffix="hours" value={String(minimumBookingWindowHours)} onValueChange={(val) => setMinimumBookingWindowHours(parseInt(val) || 0)} />
                                     </div>
                                     <Button onClick={() => handleSave()} disabled={isUpdating}>
-                                        <Save className="h-4 w-4 mr-2" /> Save All Settings
-                                    </Button>
+                                        <Save className="h-4 w-4 mr-2" />{mt("saveAllSettings")}</Button>
                                 </CardContent>
                             </Card>
                         </TabsContent>
@@ -681,14 +667,12 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                         {/* LOCATION TAB */}
                         <TabsContent value="location">
                             <Card>
-                                <CardHeader><CardTitle>Location</CardTitle></CardHeader>
+                                <CardHeader><CardTitle>{mt("navLocation")}</CardTitle></CardHeader>
                                 <CardContent>
                                     <div className="space-y-2">
-                                        <Label>Timezone</Label>
+                                        <Label>{mt("timezone")}</Label>
                                         <div className="border rounded-md p-3 bg-muted text-muted-foreground flex items-center gap-2">
-                                            <Globe className="h-4 w-4" />
-                                            Newfoundland Time (GMT-3:30) (Locked)
-                                        </div>
+                                            <Globe className="h-4 w-4" />{mt("newfoundlandTimeGMT330Locked")}</div>
                                     </div>
                                 </CardContent>
                             </Card>

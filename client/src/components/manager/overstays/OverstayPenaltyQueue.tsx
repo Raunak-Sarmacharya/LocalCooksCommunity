@@ -6,6 +6,7 @@
  */
 
 import { useState, useMemo } from "react";
+import { mt } from "@/i18n/manager";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ColumnDef,
@@ -139,23 +140,23 @@ const getStatusBadge = (status: string) => {
   switch (status) {
     case 'detected':
     case 'grace_period':
-      return <Badge variant="warning"><Clock className="w-3 h-3 mr-1" />Grace Period</Badge>;
+      return <Badge variant="warning"><Clock className="w-3 h-3 mr-1" />{mt("gracePeriod")}</Badge>;
     case 'pending_review':
-      return <Badge variant="warning"><AlertTriangle className="w-3 h-3 mr-1" />Pending Review</Badge>;
+      return <Badge variant="warning"><AlertTriangle className="w-3 h-3 mr-1" />{mt("pendingReview")}</Badge>;
     case 'penalty_approved':
-      return <Badge variant="info"><CheckCircle className="w-3 h-3 mr-1" />Approved</Badge>;
+      return <Badge variant="info"><CheckCircle className="w-3 h-3 mr-1" />{mt("approved")}</Badge>;
     case 'penalty_waived':
-      return <Badge variant="success"><XCircle className="w-3 h-3 mr-1" />Waived</Badge>;
+      return <Badge variant="success"><XCircle className="w-3 h-3 mr-1" />{mt("waived")}</Badge>;
     case 'charge_pending':
-      return <Badge variant="info"><CreditCard className="w-3 h-3 mr-1" />Charging...</Badge>;
+      return <Badge variant="info"><CreditCard className="w-3 h-3 mr-1" />{mt("charging")}</Badge>;
     case 'charge_succeeded':
-      return <Badge variant="success"><DollarSign className="w-3 h-3 mr-1" />Charged</Badge>;
+      return <Badge variant="success"><DollarSign className="w-3 h-3 mr-1" />{mt("charged")}</Badge>;
     case 'charge_failed':
-      return <Badge variant="destructive"><AlertTriangle className="w-3 h-3 mr-1" />Charge Failed</Badge>;
+      return <Badge variant="destructive"><AlertTriangle className="w-3 h-3 mr-1" />{mt("chargeFailed")}</Badge>;
     case 'resolved':
-      return <Badge variant="outline" className="text-muted-foreground"><CheckCircle className="w-3 h-3 mr-1" />Resolved</Badge>;
+      return <Badge variant="outline" className="text-muted-foreground"><CheckCircle className="w-3 h-3 mr-1" />{mt("resolved")}</Badge>;
     case 'escalated':
-      return <Badge variant="destructive"><AlertTriangle className="w-3 h-3 mr-1" />Escalated</Badge>;
+      return <Badge variant="destructive"><AlertTriangle className="w-3 h-3 mr-1" />{mt("escalated")}</Badge>;
     default:
       return <Badge variant="outline">{status}</Badge>;
   }
@@ -228,22 +229,22 @@ function OverstayCard({
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
             <div>
-              <p className="text-xs text-muted-foreground">End Date</p>
+              <p className="text-xs text-muted-foreground">{mt("endDate")}</p>
               <p className="font-medium">{format(new Date(overstay.bookingEndDate), 'MMM d, yyyy')}</p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Grace Period</p>
+              <p className="text-xs text-muted-foreground">{mt("gracePeriod")}</p>
               <p className="font-medium">{overstay.gracePeriodDays} day{overstay.gracePeriodDays !== 1 ? 's' : ''} (ends {format(new Date(overstay.gracePeriodEndsAt), 'MMM d')})</p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Billable Days</p>
+              <p className="text-xs text-muted-foreground">{mt("billableDays")}</p>
               <p className="font-medium text-orange-600">{penaltyDays} day{penaltyDays !== 1 ? 's' : ''}</p>
               {!isInGracePeriod && penaltyDays > 0 && (
                 <p className="text-[10px] text-muted-foreground">{overstay.daysOverdue} overdue − {overstay.gracePeriodDays} grace{penaltyDays === overstay.maxPenaltyDays ? ' (capped)' : ''}</p>
               )}
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Calculated Penalty</p>
+              <p className="text-xs text-muted-foreground">{mt("calculatedPenalty")}</p>
               <p className="font-medium text-orange-600">{formatCurrency(overstay.calculatedPenaltyCents)}</p>
             </div>
           </div>
@@ -251,7 +252,7 @@ function OverstayCard({
           {/* Transparent formula breakdown */}
           {!isInGracePeriod && penaltyDays > 0 && (
             <div className="bg-muted/40 border rounded-md p-3 mb-2 text-sm">
-              <p className="text-xs font-medium text-muted-foreground mb-2">Penalty Calculation</p>
+              <p className="text-xs font-medium text-muted-foreground mb-2">{mt("penaltyCalculation")}</p>
               <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm">
                 <span className="font-mono">{formatCurrency(overstay.dailyRateCents)}/day</span>
                 <span className="text-muted-foreground">×</span>
@@ -269,7 +270,7 @@ function OverstayCard({
           {/* Tax breakdown summary */}
           {overstay.kitchenTaxRatePercent > 0 && (
             <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md p-3 mb-2">
-              <p className="text-xs font-medium text-amber-800 dark:text-amber-200">Chef Total Charge (with tax):</p>
+              <p className="text-xs font-medium text-amber-800 dark:text-amber-200">{mt("chefTotalChargeWithTax")}</p>
               <div className="flex items-baseline gap-2 mt-1">
                 <span className="text-lg font-bold text-amber-700 dark:text-amber-300">
                   {formatCurrency(Math.round(overstay.calculatedPenaltyCents * (1 + overstay.kitchenTaxRatePercent / 100)))}
@@ -296,38 +297,38 @@ function OverstayCard({
             <div className="mt-4 pt-4 border-t space-y-2 text-sm">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-muted-foreground">Kitchen</p>
+                  <p className="text-muted-foreground">{mt("kitchen")}</p>
                   <p>{overstay.kitchenName}</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Storage Type</p>
+                  <p className="text-muted-foreground">{mt("storageType")}</p>
                   <p className="capitalize">{overstay.storageType}</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Penalty Rate</p>
+                  <p className="text-muted-foreground">{mt("penaltyRate")}</p>
                   <p>{(parseFloat(overstay.penaltyRate) * 100).toFixed(0)}% per day</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Max Penalty Days</p>
+                  <p className="text-muted-foreground">{mt("maxPenaltyDays")}</p>
                   <p>{overstay.maxPenaltyDays} days</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Booking Total</p>
+                  <p className="text-muted-foreground">{mt("bookingTotal")}</p>
                   <p>{formatCurrency(parseInt(overstay.bookingTotalPrice))}</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Tax Rate</p>
+                  <p className="text-muted-foreground">{mt("taxRate")}</p>
                   <p>{overstay.kitchenTaxRatePercent > 0 ? `${overstay.kitchenTaxRatePercent.toFixed(1)}% HST` : 'No tax'}</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Payment Method</p>
+                  <p className="text-muted-foreground">{mt("paymentMethod")}</p>
                   <p className={hasPaymentMethod ? 'text-green-600' : 'text-red-600'}>
                     {hasPaymentMethod ? '✓ Saved' : '✗ Not saved'}
                   </p>
                 </div>
               </div>
               <div className="pt-2">
-                <p className="text-muted-foreground">Detected</p>
+                <p className="text-muted-foreground">{mt("detected")}</p>
                 <p>{formatDistanceToNow(new Date(overstay.detectedAt), { addSuffix: true })}</p>
               </div>
             </div>
@@ -337,9 +338,7 @@ function OverstayCard({
           <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t">
             {isInGracePeriod && (
               <p className="text-sm text-yellow-600 flex items-center gap-1 w-full mb-2">
-                <Shield className="w-4 h-4" />
-                Chef is in grace period. No action required yet.
-              </p>
+                <Shield className="w-4 h-4" />{mt("chefIsInGracePeriodNoActionRequiredYet")}</p>
             )}
             
             {canApprove && (
@@ -348,9 +347,7 @@ function OverstayCard({
                 onClick={() => setShowApproveDialog(true)}
                 disabled={isProcessing}
               >
-                <CheckCircle className="w-4 h-4 mr-1" />
-                Approve Penalty
-              </Button>
+                <CheckCircle className="w-4 h-4 mr-1" />{mt("approvePenalty")}</Button>
             )}
             
             {canCharge && (
@@ -360,9 +357,7 @@ function OverstayCard({
                 onClick={() => onCharge(overstay.overstayId)}
                 disabled={isProcessing || !hasPaymentMethod}
               >
-                <CreditCard className="w-4 h-4 mr-1" />
-                Charge Now
-              </Button>
+                <CreditCard className="w-4 h-4 mr-1" />{mt("chargeNow")}</Button>
             )}
             
             {canApprove && (
@@ -372,9 +367,7 @@ function OverstayCard({
                 onClick={() => setShowWaiveDialog(true)}
                 disabled={isProcessing}
               >
-                <XCircle className="w-4 h-4 mr-1" />
-                Waive Penalty
-              </Button>
+                <XCircle className="w-4 h-4 mr-1" />{mt("waivePenalty")}</Button>
             )}
             
             {canResolve && (
@@ -383,9 +376,7 @@ function OverstayCard({
                 variant="ghost"
                 onClick={() => setShowResolveDialog(true)}
                 disabled={isProcessing}
-              >
-                Mark Resolved
-              </Button>
+              >{mt("markResolved")}</Button>
             )}
           </div>
         </CardContent>
@@ -395,14 +386,14 @@ function OverstayCard({
       <Sheet open={showApproveDialog} onOpenChange={setShowApproveDialog}>
         <SheetContent className="w-full sm:max-w-md overflow-y-auto">
           <SheetHeader>
-            <SheetTitle>Approve Penalty</SheetTitle>
+            <SheetTitle>{mt("approvePenalty")}</SheetTitle>
             <SheetDescription>
               Review and approve the penalty amount for {overstay.storageName}.
             </SheetDescription>
           </SheetHeader>
           <div className="space-y-4 py-4">
             <div>
-              <label className="text-sm font-medium">Penalty Amount (CAD)</label>
+              <label className="text-sm font-medium">{mt("penaltyAmountCAD")}</label>
               <CurrencyInput
                 value={adjustedAmount}
                 onValueChange={(val) => {
@@ -425,12 +416,10 @@ function OverstayCard({
             {parseFloat(adjustedAmount) > 0 && (
               <div className="bg-muted/50 border rounded-lg p-4 space-y-2">
                 <p className="text-sm font-medium flex items-center gap-2">
-                  <DollarSign className="w-4 h-4" />
-                  Chef Will Be Charged:
-                </p>
+                  <DollarSign className="w-4 h-4" />{mt("chefWillBeCharged")}</p>
                 <div className="space-y-1 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Base Penalty:</span>
+                    <span className="text-muted-foreground">{mt("basePenalty")}</span>
                     <span>${parseFloat(adjustedAmount).toFixed(2)}</span>
                   </div>
                   {overstay.kitchenTaxRatePercent > 0 && (
@@ -442,7 +431,7 @@ function OverstayCard({
                     </div>
                   )}
                   <div className="flex justify-between font-semibold pt-2 border-t">
-                    <span>Total Charge:</span>
+                    <span>{mt("totalCharge")}</span>
                     <span className="text-primary">
                       ${(parseFloat(adjustedAmount) * (1 + overstay.kitchenTaxRatePercent / 100)).toFixed(2)} CAD
                     </span>
@@ -455,17 +444,17 @@ function OverstayCard({
             )}
 
             <div>
-              <label className="text-sm font-medium">Notes (optional)</label>
+              <label className="text-sm font-medium">{mt("notesOptional")}</label>
               <Textarea
                 value={managerNotes}
                 onChange={(e) => setManagerNotes(e.target.value)}
-                placeholder="Add any notes about this decision..."
+                placeholder={mt("addAnyNotesAboutThisDecision")}
                 className="mt-1"
               />
             </div>
           </div>
           <SheetFooter className="mt-6">
-            <Button variant="outline" onClick={() => setShowApproveDialog(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setShowApproveDialog(false)}>{mt("cancel")}</Button>
             <Button 
               onClick={() => {
                 const amountCents = Math.round(parseFloat(adjustedAmount) * 100);
@@ -476,9 +465,7 @@ function OverstayCard({
               }}
               disabled={isProcessing || parseFloat(adjustedAmount) * 100 > overstay.calculatedPenaltyCents}
             >
-              <CreditCard className="w-4 h-4 mr-1" />
-              Approve & Charge
-            </Button>
+              <CreditCard className="w-4 h-4 mr-1" />{mt("approveCharge")}</Button>
           </SheetFooter>
         </SheetContent>
       </Sheet>
@@ -487,7 +474,7 @@ function OverstayCard({
       <Sheet open={showWaiveDialog} onOpenChange={setShowWaiveDialog}>
         <SheetContent className="w-full sm:max-w-md overflow-y-auto">
           <SheetHeader>
-            <SheetTitle>Waive Penalty</SheetTitle>
+            <SheetTitle>{mt("waivePenalty")}</SheetTitle>
             <SheetDescription>
               Waive the penalty for {overstay.storageName}. A reason is required.
             </SheetDescription>
@@ -498,32 +485,30 @@ function OverstayCard({
               <Textarea
                 value={waiveReason}
                 onChange={(e) => setWaiveReason(e.target.value)}
-                placeholder="e.g., First-time offense, good customer relationship, items already removed..."
+                placeholder={mt("eGFirstTimeOffenseGoodCustomerRelationshipItemsAlreadyRemove")}
                 className="mt-1"
                 required
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Additional Notes (optional)</label>
+              <label className="text-sm font-medium">{mt("additionalNotesOptional")}</label>
               <Textarea
                 value={managerNotes}
                 onChange={(e) => setManagerNotes(e.target.value)}
-                placeholder="Any additional notes..."
+                placeholder={mt("anyAdditionalNotes")}
                 className="mt-1"
               />
             </div>
           </div>
           <SheetFooter className="mt-6">
-            <Button variant="outline" onClick={() => setShowWaiveDialog(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setShowWaiveDialog(false)}>{mt("cancel")}</Button>
             <Button 
               onClick={() => {
                 onWaive(overstay.overstayId, waiveReason, managerNotes);
                 setShowWaiveDialog(false);
               }}
               disabled={isProcessing || !waiveReason.trim()}
-            >
-              Waive Penalty
-            </Button>
+            >{mt("waivePenalty")}</Button>
           </SheetFooter>
         </SheetContent>
       </Sheet>
@@ -532,10 +517,8 @@ function OverstayCard({
       <AlertDialog open={showResolveDialog} onOpenChange={setShowResolveDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Mark as Resolved</AlertDialogTitle>
-            <AlertDialogDescription>
-              How was this overstay resolved?
-            </AlertDialogDescription>
+            <AlertDialogTitle>{mt("markAsResolved")}</AlertDialogTitle>
+            <AlertDialogDescription>{mt("howWasThisOverstayResolved")}</AlertDialogDescription>
           </AlertDialogHeader>
           <div className="py-4 space-y-4">
             <div className="flex flex-col gap-2">
@@ -546,9 +529,7 @@ function OverstayCard({
                   value="extended"
                   checked={resolutionType === 'extended'}
                   onChange={(e) => setResolutionType(e.target.value)}
-                />
-                Chef extended their booking
-              </label>
+                />{mt("chefExtendedTheirBooking")}</label>
               <label className="flex items-center gap-2">
                 <input
                   type="radio"
@@ -556,9 +537,7 @@ function OverstayCard({
                   value="removed"
                   checked={resolutionType === 'removed'}
                   onChange={(e) => setResolutionType(e.target.value)}
-                />
-                Chef removed their items
-              </label>
+                />{mt("chefRemovedTheirItems")}</label>
               <label className="flex items-center gap-2">
                 <input
                   type="radio"
@@ -566,21 +545,17 @@ function OverstayCard({
                   value="escalated"
                   checked={resolutionType === 'escalated'}
                   onChange={(e) => setResolutionType(e.target.value)}
-                />
-                Escalate to legal/collections
-              </label>
+                />{mt("escalateToLegalCollections")}</label>
             </div>
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{mt("cancel")}</AlertDialogCancel>
             <AlertDialogAction 
               onClick={() => {
                 onResolve(overstay.overstayId, resolutionType);
                 setShowResolveDialog(false);
               }}
-            >
-              Confirm
-            </AlertDialogAction>
+            >{mt("confirm")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -590,6 +565,7 @@ function OverstayCard({
 
 // Main component
 export function OverstayPenaltyQueue() {
+  
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -623,10 +599,9 @@ export function OverstayPenaltyQueue() {
     },
     onSuccess: (data) => {
       if (data?.chargeResult?.success) {
-        toast({ title: "Penalty approved & charged", description: "The penalty has been approved and the chef's card has been charged." });
+        toast({ title: mt("penaltyApprovedCharged"), description: mt("toastPenaltyApprovedChargedDesc") });
       } else {
-        toast({ 
-          title: "Penalty approved — charge failed", 
+        toast({ title: mt("penaltyApprovedChargeFailed"), 
           description: data?.chargeResult?.error || "Auto-charge failed. A payment link has been sent to the chef's email.",
           variant: "destructive",
         });
@@ -634,7 +609,7 @@ export function OverstayPenaltyQueue() {
       queryClient.invalidateQueries({ queryKey: ['/api/manager/overstays'] });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: mt("error"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -648,11 +623,11 @@ export function OverstayPenaltyQueue() {
       return response.json();
     },
     onSuccess: () => {
-      toast({ title: "Penalty waived", description: "The penalty has been waived." });
+      toast({ title: mt("penaltyWaived"), description: mt("thePenaltyHasBeenWaived") });
       queryClient.invalidateQueries({ queryKey: ['/api/manager/overstays'] });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: mt("error"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -663,11 +638,11 @@ export function OverstayPenaltyQueue() {
       return response.json();
     },
     onSuccess: () => {
-      toast({ title: "Charge successful", description: "The penalty has been charged to the chef's card." });
+      toast({ title: mt("chargeSuccessful"), description: mt("toastPenaltyChargedToChefCard") });
       queryClient.invalidateQueries({ queryKey: ['/api/manager/overstays'] });
     },
     onError: (error: Error) => {
-      toast({ title: "Charge failed", description: error.message, variant: "destructive" });
+      toast({ title: mt("chargeFailed2"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -681,11 +656,11 @@ export function OverstayPenaltyQueue() {
       return response.json();
     },
     onSuccess: () => {
-      toast({ title: "Resolved", description: "The overstay has been marked as resolved." });
+      toast({ title: mt("resolved"), description: mt("theOverstayHasBeenMarkedAsResolved") });
       queryClient.invalidateQueries({ queryKey: ['/api/manager/overstays'] });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: mt("error"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -707,9 +682,7 @@ export function OverstayPenaltyQueue() {
         <CardContent className="pt-6">
           <p className="text-destructive">Error loading overstays: {(error as Error).message}</p>
           <Button onClick={() => refetch()} className="mt-4">
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Retry
-          </Button>
+            <RefreshCw className="w-4 h-4 mr-2" />{mt("retry")}</Button>
         </CardContent>
       </Card>
     );
@@ -726,7 +699,7 @@ export function OverstayPenaltyQueue() {
                 <AlertTriangle className="w-5 h-5 text-orange-500" />
                 <div>
                   <p className="text-2xl font-bold">{stats.pendingReview}</p>
-                  <p className="text-xs text-muted-foreground">Pending Review</p>
+                  <p className="text-xs text-muted-foreground">{mt("pendingReview")}</p>
                 </div>
               </div>
             </CardContent>
@@ -737,7 +710,7 @@ export function OverstayPenaltyQueue() {
                 <Clock className="w-5 h-5 text-yellow-500" />
                 <div>
                   <p className="text-2xl font-bold">{stats.inGracePeriod}</p>
-                  <p className="text-xs text-muted-foreground">In Grace Period</p>
+                  <p className="text-xs text-muted-foreground">{mt("inGracePeriod")}</p>
                 </div>
               </div>
             </CardContent>
@@ -748,7 +721,7 @@ export function OverstayPenaltyQueue() {
                 <DollarSign className="w-5 h-5 text-green-500" />
                 <div>
                   <p className="text-2xl font-bold">{formatCurrency(stats.totalPenaltiesCollected)}</p>
-                  <p className="text-xs text-muted-foreground">Collected</p>
+                  <p className="text-xs text-muted-foreground">{mt("collected")}</p>
                 </div>
               </div>
             </CardContent>
@@ -759,7 +732,7 @@ export function OverstayPenaltyQueue() {
                 <XCircle className="w-5 h-5 text-gray-500" />
                 <div>
                   <p className="text-2xl font-bold">{formatCurrency(stats.totalPenaltiesWaived)}</p>
-                  <p className="text-xs text-muted-foreground">Waived</p>
+                  <p className="text-xs text-muted-foreground">{mt("waived")}</p>
                 </div>
               </div>
             </CardContent>
@@ -770,8 +743,8 @@ export function OverstayPenaltyQueue() {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold">Overstay Penalties</h2>
-          <p className="text-muted-foreground">Review and manage storage overstay situations</p>
+          <h2 className="text-2xl font-bold">{mt("navOverstayPenalties")}</h2>
+          <p className="text-muted-foreground">{mt("reviewAndManageStorageOverstaySituations")}</p>
         </div>
         <div className="flex gap-2">
           <Button 
@@ -781,9 +754,7 @@ export function OverstayPenaltyQueue() {
             {showPastPenalties ? "Hide" : "Show"} Past Penalties
           </Button>
           <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
+            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />{mt("refresh")}</Button>
         </div>
       </div>
 
@@ -792,8 +763,8 @@ export function OverstayPenaltyQueue() {
         <Card>
           <CardContent className="pt-6 text-center">
             <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
-            <h3 className="text-lg font-medium">No Overstays</h3>
-            <p className="text-muted-foreground">All storage bookings are within their rental period.</p>
+            <h3 className="text-lg font-medium">{mt("noOverstays")}</h3>
+            <p className="text-muted-foreground">{mt("allStorageBookingsAreWithinTheirRentalPeriod")}</p>
           </CardContent>
         </Card>
       ) : (
@@ -802,9 +773,7 @@ export function OverstayPenaltyQueue() {
           {overstays.filter(o => o.status === 'pending_review' || o.status === 'charge_failed').length > 0 && (
             <div className="mb-6">
               <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-orange-500" />
-                Action Required
-              </h3>
+                <AlertTriangle className="w-5 h-5 text-orange-500" />{mt("actionRequired")}</h3>
               {overstays
                 .filter(o => o.status === 'pending_review' || o.status === 'charge_failed')
                 .map(overstay => (
@@ -825,9 +794,7 @@ export function OverstayPenaltyQueue() {
           {overstays.filter(o => o.status === 'grace_period' || o.status === 'detected').length > 0 && (
             <div className="mb-6">
               <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                <Clock className="w-5 h-5 text-yellow-500" />
-                In Grace Period
-              </h3>
+                <Clock className="w-5 h-5 text-yellow-500" />{mt("inGracePeriod")}</h3>
               {overstays
                 .filter(o => o.status === 'grace_period' || o.status === 'detected')
                 .map(overstay => (
@@ -848,9 +815,7 @@ export function OverstayPenaltyQueue() {
           {overstays.filter(o => o.status === 'penalty_approved' || o.status === 'charge_pending').length > 0 && (
             <div className="mb-6">
               <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                <CreditCard className="w-5 h-5 text-blue-500" />
-                Ready to Charge
-              </h3>
+                <CreditCard className="w-5 h-5 text-blue-500" />{mt("readyToCharge")}</h3>
               {overstays
                 .filter(o => o.status === 'penalty_approved' || o.status === 'charge_pending')
                 .map(overstay => (
@@ -941,7 +906,7 @@ export function OverstayPenaltyQueue() {
       {showPastPenalties && pastOverstays.length === 0 && (
         <Card className="mt-8 border-gray-200">
           <CardContent className="pt-6 text-center">
-            <p className="text-muted-foreground">No past penalties found.</p>
+            <p className="text-muted-foreground">{mt("noPastPenaltiesFound")}</p>
           </CardContent>
         </Card>
       )}

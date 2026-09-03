@@ -18,6 +18,7 @@ import { logger } from "@/lib/logger";
  */
 
 import { applyActionCode } from "firebase/auth";
+import { clearAuthIntent, getAuthIntent, resolveVerificationReturnPath } from "@/lib/auth-intent";
 import { motion } from "framer-motion";
 import { CheckCircle2, Loader2, XCircle, ArrowRight } from "lucide-react";
 import { useEffect, useState, useRef, useCallback } from "react";
@@ -37,9 +38,10 @@ type ActionMode = 'verifyEmail' | 'resetPassword' | 'recoverEmail' | 'signIn';
 
 /**
  * Detects if the current hostname is a staging/dev environment
- * Returns true for dev-chef.*, dev-kitchen.*, dev-admin.* patterns
+ * Preview = VITE_VERCEL_ENV=preview, or already on a `dev-*` host.
  */
 function isStagingEnvironment(): boolean {
+  if (import.meta.env.VITE_VERCEL_ENV === 'preview') return true;
   const hostname = window.location.hostname.toLowerCase();
   const parts = hostname.split('.');
   if (parts.length >= 3) {
@@ -263,6 +265,21 @@ function detectRoleFromCurrentHostname(): 'manager' | 'chef' | 'admin' | null {
  * @param databaseRole - Role fetched from the database (overrides continueUrl)
  * @param forSignIn - If true, use post-sign-in paths (dashboard) instead of verification paths
  */
+function isKitchenFlowPath(pathOrUrl: string): boolean {
+  try {
+    const path = pathOrUrl.startsWith("http")
+      ? new URL(pathOrUrl).pathname
+      : pathOrUrl.split("?")[0];
+    return (
+      path.includes("/kitchen-preview") ||
+      path.includes("/apply-kitchen") ||
+      path.includes("/book-kitchen")
+    );
+  } catch {
+    return false;
+  }
+}
+
 function buildRedirectUrl(
   continueUrl: string | null,
   databaseRole?: 'manager' | 'chef' | 'admin' | null,
@@ -286,29 +303,79 @@ function buildRedirectUrl(
     '127.0.0.1',
   ];
 
-  // If we have a valid continueUrl from a trusted domain, and NO databaseRole to override, use it directly
-  if (continueUrl && !databaseRole) {
+  const trustedContinueUrl = (raw: string | null): string | null => {
+    if (!raw) return null;
     try {
-      const url = new URL(decodeURIComponent(continueUrl));
+      const url = new URL(decodeURIComponent(raw));
       const isTrusted = TRUSTED_DOMAINS.some(domain =>
         url.hostname === domain || url.hostname.endsWith(`.${domain}`)
       );
-
       if (isTrusted) {
-        logger.info('✅ Using trusted continueUrl:', continueUrl);
-        return decodeURIComponent(continueUrl);
-      } else {
-        logger.warn('⚠️ ContinueUrl not from trusted domain, ignoring:', url.hostname);
+        return decodeURIComponent(raw);
       }
-    } catch (error) {
-      logger.error('❌ Failed to parse continueUrl:', error);
+    } catch {
+      /* ignore */
+    }
+    return null;
+  };
+
+  // Saved kitchen tour/book intent — survives magic-link AND verification redirects.
+  const intent = getAuthIntent();
+  if (intent?.returnPath && isKitchenFlowPath(intent.returnPath)) {
+    logger.info('✅ Using pendingAuthIntent return path:', intent.returnPath);
+    return intent.returnPath;
+  }
+
+  const pendingReturn = resolveVerificationReturnPath();
+  if (pendingReturn && isKitchenFlowPath(pendingReturn)) {
+    logger.info('✅ Using pendingApplicationModal return path:', pendingReturn);
+    return pendingReturn;
+  }
+
+  // Honour continueUrl for kitchen flows even when databaseRole is known.
+  if (continueUrl) {
+    const trusted = trustedContinueUrl(continueUrl);
+    if (trusted) {
+      try {
+        const path = new URL(trusted).pathname;
+        if (forSignIn && isKitchenFlowPath(path)) {
+          logger.info('✅ Using kitchen-flow continueUrl:', trusted);
+          return trusted;
+        }
+        if (!forSignIn && isKitchenFlowPath(path)) {
+          logger.info('✅ Using kitchen-flow continueUrl (verification):', trusted);
+          return trusted;
+        }
+        if (!databaseRole) {
+          logger.info('✅ Using trusted continueUrl:', trusted);
+          return trusted;
+        }
+      } catch {
+        /* fall through */
+      }
     }
   }
 
-  // Fallback: Build URL based on detected or provided role
-  const role = databaseRole || (continueUrl
+  // Fallback: Build URL based on detected or provided role.
+  // Never send kitchen-flow users to admin when DB role is wrong.
+  let role = databaseRole || (continueUrl
     ? detectRoleFromContinueUrl(continueUrl)
     : detectRoleFromCurrentHostname());
+
+  const kitchenFlowActive =
+    (intent?.type === "book" || intent?.type === "tour") ||
+    (intent?.returnPath && isKitchenFlowPath(intent.returnPath)) ||
+    (pendingReturn && isKitchenFlowPath(pendingReturn)) ||
+    (continueUrl && isKitchenFlowPath(continueUrl));
+
+  if (role === "admin" && kitchenFlowActive) {
+    logger.warn("⚠️ Overriding admin redirect — active kitchen book/tour flow");
+    role = "chef";
+  }
+
+  if (role !== "manager" && role !== "chef" && role !== "admin") {
+    role = "chef";
+  }
 
   logger.info('🔍 Detected role for redirect:', role);
 
@@ -412,6 +479,17 @@ export default function EmailAction() {
           allParams: Object.fromEntries(urlParams.entries())
         });
 
+        const e2eDevBypass = urlParams.get('e2eDevBypass') === '1';
+        const bypassEmail = urlParams.get('email');
+        const isLocalDevHost =
+          window.location.hostname === 'localhost' ||
+          window.location.hostname.endsWith('.localhost');
+        if (e2eDevBypass && bypassEmail && isLocalDevHost) {
+          setActionType('verifyEmail');
+          await handleE2eDevEmailVerification(bypassEmail, continueUrl);
+          return;
+        }
+
         if (!mode || !oobCode) {
           throw new Error('Invalid email action link');
         }
@@ -460,6 +538,34 @@ export default function EmailAction() {
           performRedirect(fallbackUrl, setLocation);
         }, 5000);
       }
+    };
+
+    /**
+     * Dev/TestSprite only: complete verification when Firebase throttled oob generation.
+     */
+    const handleE2eDevEmailVerification = async (
+      emailAddress: string,
+      continueUrl: string | null
+    ) => {
+      const syncResponse = await fetch('/api/user/verify-email-complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailAddress }),
+      });
+      if (!syncResponse.ok) {
+        const errorData = await syncResponse.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to sync email verification');
+      }
+      const syncResult = await syncResponse.json();
+      const databaseRole = syncResult.role ?? null;
+      try {
+        await updateUserVerification();
+      } catch {
+        /* user may not be signed in */
+      }
+      setStatus('success');
+      setMessage('Your email has been verified! You can now log in. If you were expecting another email, check your spam folder.');
+      setRedirectUrl(buildRedirectUrl(continueUrl, databaseRole));
     };
 
     /**
@@ -539,7 +645,7 @@ export default function EmailAction() {
         }
 
         setStatus('success');
-        setMessage('Your email has been verified successfully! You can now log in to your account.');
+        setMessage('Your email has been verified! You can now log in. If you were expecting another email, check your spam folder.');
 
         // Build the redirect URL based on continueUrl or detected role
         const finalRedirectUrl = buildRedirectUrl(continueUrl, databaseRole);
@@ -670,11 +776,11 @@ export default function EmailAction() {
         if (!email) {
           logger.info('📧 Email resolution step 3: prompting user (cross-device / standard Firebase UX)');
           const userProvided = window.prompt(
-            'To complete sign-in, enter the email address you used to request this magic link.\n\nThis confirmation protects your account from phishing.'
+            'To complete sign-in, enter the email address you used to request the sign-in link.\n\nThis confirmation protects your account from phishing.'
           );
           email = userProvided ? userProvided.trim() : null;
           if (!email) {
-            throw new Error('Email confirmation is required to sign in with a magic link. Please request a new link and try again.');
+            throw new Error('Email confirmation is required to sign in. Please request a new sign-in email and try again.');
           }
           logger.info(`📧 Email resolution step 3 (prompt): user provided → ${email}`);
         }
@@ -780,12 +886,14 @@ export default function EmailAction() {
         logger.info('✅ Magic link sign-in successful (email verified implicitly)');
 
         setStatus('success');
-        setMessage('Sign-in successful! Redirecting you to your dashboard...');
+        setMessage('Sign-in successful! Taking you back to continue where you left off...');
 
-        // Build redirect URL to the correct dashboard
         const finalRedirectUrl = buildRedirectUrl(continueUrl, databaseRole, true);
+        if (isKitchenFlowPath(finalRedirectUrl)) {
+          clearAuthIntent();
+        }
         setRedirectUrl(finalRedirectUrl);
-        logger.info('🎯 Will redirect to dashboard:', finalRedirectUrl);
+        logger.info('🎯 Will redirect after sign-in:', finalRedirectUrl);
 
       } catch (signInError: any) {
         logger.error('❌ Magic link sign-in failed:', signInError);
@@ -797,7 +905,7 @@ export default function EmailAction() {
           signInError.code === 'auth/invalid-email'
             ? 'The email address provided does not match this sign-in link. Please request a new link or verify the email you entered.'
             : isInvalidOrExpired
-              ? 'This sign-in link has expired or is invalid. Magic links expire after 10 minutes for your security — please request a new one.'
+              ? 'This sign-in link has expired or is invalid. Links expire after 10 minutes for your security — please request a new one.'
               : signInError.message && !signInError.message.includes('prompt')
                 ? signInError.message
                 : 'Failed to complete sign-in. Please try again or request a new link.';

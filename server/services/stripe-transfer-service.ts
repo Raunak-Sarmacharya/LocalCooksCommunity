@@ -178,14 +178,93 @@ export async function transferToManagerForBooking(
       .limit(1);
     if (existing?.transferId) {
       logger.info(
-        `[StripeTransferService] PT ${params.paymentTransactionId} already has transfer ${existing.transferId}, skipping`,
+        `[StripeTransferService] PT ${params.paymentTransactionId} already has transfer ${existing.transferId}, reconciling`,
       );
-      return {
-        ...baseResult,
-        transferred: false,
-        transferId: existing.transferId,
-        reason: 'Already transferred (idempotency)',
-      };
+      try {
+        const existingTransfer = await stripe.transfers.retrieve(existing.transferId);
+        const transferredCents = existingTransfer.amount;
+        const platformCommissionRate = await fetchPlatformCommission();
+        const split = await resolveManagerGrossAndCommission({
+          paymentTransactionId: params.paymentTransactionId,
+          chargeAmountCents: params.chargeAmountCents,
+          platformCommissionRate,
+          existingMetadata: params.existingMetadata,
+        });
+        const expectedTransferCents = Math.max(0, split.managerGrossCents - params.actualStripeFeeCents);
+
+        // A previously-created underpayment cannot be edited in Stripe. Replace
+        // it atomically (idempotent reversal + idempotent corrected transfer) so
+        // the DB continues tracking one authoritative transfer for refunds.
+        if (expectedTransferCents > transferredCents) {
+          const existingDestination = typeof existingTransfer.destination === 'string'
+            ? existingTransfer.destination
+            : existingTransfer.destination?.id;
+          if (!existingDestination) {
+            throw new Error(`Existing transfer ${existing.transferId} has no destination`);
+          }
+          await stripe.transfers.createReversal(
+            existing.transferId,
+            {
+              amount: transferredCents,
+              metadata: {
+                reason: 'automatic_payout_reconciliation',
+                corrected_transfer_amount_cents: String(expectedTransferCents),
+              },
+            },
+            { idempotencyKey: `transfer-reconcile-reversal:${params.paymentIntentId}:${expectedTransferCents}` },
+          );
+
+          const correctedTransfer = await stripe.transfers.create(
+            {
+              amount: expectedTransferCents,
+              currency: existingTransfer.currency,
+              destination: existingDestination,
+              source_transaction: params.chargeId,
+              transfer_group: params.transferGroup,
+              description: `Corrected manager payout for ${params.paymentIntentId}`,
+              metadata: {
+                payment_intent_id: params.paymentIntentId,
+                payment_transaction_id: String(params.paymentTransactionId),
+                replaces_transfer_id: existing.transferId,
+                transferred_cents: String(expectedTransferCents),
+              },
+            },
+            { idempotencyKey: `transfer-reconcile-create:${params.paymentIntentId}:${expectedTransferCents}` },
+          );
+
+          await db
+            .update(paymentTransactions)
+            .set({ transferId: correctedTransfer.id, updatedAt: new Date() })
+            .where(eq(paymentTransactions.id, params.paymentTransactionId));
+
+          return {
+            transferred: true,
+            transferId: correctedTransfer.id,
+            reason: `Replaced underpaid transfer ${existing.transferId}`,
+            actualStripeFeeCents: params.actualStripeFeeCents,
+            platformCommissionCents: split.platformCommissionCents,
+            feeWithheldCents: params.chargeAmountCents - expectedTransferCents,
+            transferredCents: expectedTransferCents,
+          };
+        }
+        const feeWithheldCents = Math.max(0, params.chargeAmountCents - transferredCents);
+        return {
+          transferred: true,
+          transferId: existing.transferId,
+          reason: 'Already transferred; reconciled existing transfer',
+          actualStripeFeeCents: params.actualStripeFeeCents,
+          platformCommissionCents: Math.max(0, feeWithheldCents - params.actualStripeFeeCents),
+          feeWithheldCents,
+          transferredCents,
+        };
+      } catch (retrieveErr) {
+        logger.warn(`[StripeTransferService] Could not retrieve existing transfer ${existing.transferId}:`, retrieveErr as Error);
+        return {
+          ...baseResult,
+          transferId: existing.transferId,
+          reason: 'Already transferred; reconciliation pending',
+        };
+      }
     }
   } catch (err) {
     logger.warn(`[StripeTransferService] Could not check existing transfer for PT ${params.paymentTransactionId}:`, err as Error);
@@ -200,16 +279,21 @@ export async function transferToManagerForBooking(
   }
 
   const platformCommissionRate = await fetchPlatformCommission();
-  
-  // Under the new model, the chef paid: Base Price + (Base Price * Commission Rate)
-  // Therefore, Base Price = Total Charge / (1 + Commission Rate)
-  const baseBookingPriceCents = Math.round(params.chargeAmountCents / (1 + platformCommissionRate));
-  const platformCommissionCents = params.chargeAmountCents - baseBookingPriceCents;
-  
-  // The manager receives the base booking price minus the actual Stripe fees
-  const transferredCents = baseBookingPriceCents - params.actualStripeFeeCents;
-  
-  // The amount the platform keeps in its Stripe balance
+
+  // Prefer capture-engine values (metadata / PT columns) over reverse-engineering.
+  // Chef paid: subtotal + tax + serviceFee(on subtotal). Manager keeps (subtotal + tax) − Stripe fee.
+  // Platform keeps serviceFee. Never reverse from charge/(1+rate) when we already stored the split.
+  const { managerGrossCents, platformCommissionCents } = await resolveManagerGrossAndCommission({
+    paymentTransactionId: params.paymentTransactionId,
+    chargeAmountCents: params.chargeAmountCents,
+    platformCommissionRate,
+    existingMetadata: params.existingMetadata,
+  });
+
+  // The manager receives subtotal + tax minus the actual Stripe fee
+  const transferredCents = managerGrossCents - params.actualStripeFeeCents;
+
+  // The amount the platform keeps in its Stripe balance (service fee + stripe fee withheld from transfer)
   const feeWithheldCents = params.chargeAmountCents - transferredCents;
   if (transferredCents <= 0) {
     return {
@@ -293,6 +377,65 @@ export async function transferToManagerForBooking(
     logger.error(`[StripeTransferService] Error creating transfer for ${params.paymentIntentId}:`, err);
     throw err;
   }
+}
+
+import { computeManagerGrossAndCommission } from "./manager-payout-math";
+
+export { computeManagerGrossAndCommission } from "./manager-payout-math";
+
+/**
+ * Resolve manager gross (subtotal + tax) and platform commission for a transfer.
+ * Prefer capture metadata / PT columns; fall back to charge / (1 + rate).
+ */
+async function resolveManagerGrossAndCommission(params: {
+  paymentTransactionId: number;
+  chargeAmountCents: number;
+  platformCommissionRate: number;
+  existingMetadata?: Record<string, unknown> | null;
+}): Promise<{ managerGrossCents: number; platformCommissionCents: number }> {
+  const meta: Record<string, unknown> = { ...(params.existingMetadata || {}) };
+  let storedBaseAmountCents = 0;
+  let storedServiceFeeCents = 0;
+
+  try {
+    const [pt] = await db
+      .select({
+        baseAmount: paymentTransactions.baseAmount,
+        serviceFee: paymentTransactions.serviceFee,
+        metadata: paymentTransactions.metadata,
+      })
+      .from(paymentTransactions)
+      .where(eq(paymentTransactions.id, params.paymentTransactionId))
+      .limit(1);
+
+    if (pt) {
+      storedBaseAmountCents = parseInt(String(pt.baseAmount || "0"), 10) || 0;
+      storedServiceFeeCents = parseInt(String(pt.serviceFee || "0"), 10) || 0;
+      if (pt.metadata) {
+        const parsed =
+          typeof pt.metadata === "string" ? JSON.parse(pt.metadata) : pt.metadata;
+        for (const [k, v] of Object.entries(parsed || {})) {
+          if (meta[k] === undefined || meta[k] === null) meta[k] = v;
+        }
+      }
+    }
+  } catch (err) {
+    logger.warn(
+      `[StripeTransferService] Could not load PT ${params.paymentTransactionId} for fee split:`,
+      err as Error,
+    );
+  }
+
+  return computeManagerGrossAndCommission({
+    chargeAmountCents: params.chargeAmountCents,
+    platformCommissionRate: params.platformCommissionRate,
+    approvedSubtotalCents: Number(meta.approvedSubtotal) || undefined,
+    approvedTaxCents: Number(meta.approvedTax) || undefined,
+    platformCommissionCents:
+      Number(meta.platformCommission ?? meta.applicationFee) || undefined,
+    storedBaseAmountCents,
+    storedServiceFeeCents,
+  });
 }
 
 /**

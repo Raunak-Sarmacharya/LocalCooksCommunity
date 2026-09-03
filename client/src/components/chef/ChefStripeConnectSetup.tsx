@@ -1,11 +1,12 @@
 /**
  * Chef Stripe Connect Setup Component
- * 
+ *
  * Links chefs to the PHP app where they can set up Stripe Connect
  * to receive payments when selling on the LocalCooks platform.
  * This is only shown after their seller application has been approved.
  */
 
+import { useTranslation } from "react-i18next";
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -21,6 +22,7 @@ interface ChefStripeConnectSetupProps {
 }
 
 export default function ChefStripeConnectSetup({ isApproved = false, isShopCreated = false }: ChefStripeConnectSetupProps) {
+  const { t } = useTranslation("chef");
   const { data: shopStatus, isLoading: statusLoading } = useShopStatus(isApproved && isShopCreated);
   const dashboardLinkMutation = useStripeDashboardLink();
 
@@ -46,18 +48,23 @@ export default function ChefStripeConnectSetup({ isApproved = false, isShopCreat
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-muted-foreground">
             <Lock className="h-5 w-5" />
-            Payment Setup
+            {t("stripePaymentSetupTitle", "Payment Setup")}
           </CardTitle>
           <CardDescription>
-            Connect your Stripe account to receive payments when you sell on LocalCooks.
+            {t(
+              "stripePaymentSetupLockedDesc",
+              "Connect your Stripe account to receive payments when you sell on LocalCooks."
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              Payment setup will be available once your seller application on LocalCooks is approved and your shop is created.
-              This is required to receive payments from customers when you sell food on our platform.
+              {t(
+                "stripePaymentSetupLockedAlert",
+                "Payment setup will be available once your seller application on LocalCooks is approved and your shop is created. This is required to receive payments from customers when you sell food on our platform."
+              )}
             </AlertDescription>
           </Alert>
         </CardContent>
@@ -71,12 +78,17 @@ export default function ChefStripeConnectSetup({ isApproved = false, isShopCreat
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <CreditCard className="h-5 w-5" />
-          {isConnected ? "Stripe Dashboard" : "Set Up Payments"}
+          {isConnected
+            ? t("stripeDashboardTitle", "Stripe Dashboard")
+            : t("stripeSetUpPaymentsTitle", "Set Up Payments")}
         </CardTitle>
         <CardDescription>
-          {isConnected 
-            ? "View your payouts and manage your Stripe account."
-            : "Connect your Stripe account to start receiving payments when customers order your food."}
+          {isConnected
+            ? t("stripeDashboardDesc", "View your payouts and manage your Stripe account.")
+            : t(
+                "stripeConnectDesc",
+                "Connect your Stripe account to start receiving payments when customers order your food."
+              )}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -85,11 +97,17 @@ export default function ChefStripeConnectSetup({ isApproved = false, isShopCreat
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
               {isConnected
-                ? "You will be redirected to your Stripe Express Dashboard to view your earnings and payouts securely."
-                : "You will be redirected to LocalCooks to complete your Stripe Connect setup. This process takes about 5 minutes and is required to receive payments."}
+                ? t(
+                    "stripeDashboardAlert",
+                    "You will be redirected to your Stripe Express Dashboard to view your earnings and payouts securely."
+                  )
+                : t(
+                    "stripeConnectAlert",
+                    "You will be redirected to LocalCooks to complete your Stripe Connect setup. This process takes about 5 minutes and is required to receive payments."
+                  )}
             </AlertDescription>
           </Alert>
-          <Button 
+          <Button
             onClick={handleAction}
             className="w-full"
             disabled={statusLoading || dashboardLinkMutation.isPending}
@@ -99,10 +117,15 @@ export default function ChefStripeConnectSetup({ isApproved = false, isShopCreat
             ) : (
               <ExternalLink className="mr-2 h-4 w-4" />
             )}
-            {isConnected ? "View Stripe Dashboard" : "Connect Stripe Account"}
+            {isConnected
+              ? t("stripeViewDashboardBtn", "View Stripe Dashboard")
+              : t("stripeConnectAccountBtn", "Connect Stripe Account")}
           </Button>
           <p className="text-xs text-muted-foreground text-center">
-            Opens in a new tab. {isConnected ? "You will be securely authenticated." : "You'll be guided through the Stripe Connect setup process."}
+            {t("stripeOpensNewTab", "Opens in a new tab.")}{" "}
+            {isConnected
+              ? t("stripeAuthenticatedNote", "You will be securely authenticated.")
+              : t("stripeGuidedSetupNote", "You'll be guided through the Stripe Connect setup process.")}
           </p>
         </div>
       </CardContent>

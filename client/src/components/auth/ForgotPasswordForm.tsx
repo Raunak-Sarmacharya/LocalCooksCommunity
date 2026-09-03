@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import AnimatedButton from "./AnimatedButton";
+import { EmailContinueHint } from "./EmailContinueHint";
 import AnimatedInput from "./AnimatedInput";
 
 const forgotPasswordSchema = z.object({
@@ -19,6 +20,10 @@ interface ForgotPasswordFormProps {
   onSuccess?: () => void;
   onGoBack?: () => void;
   role?: string; // 'manager' for manager password reset
+  /** Prefill when user already typed an email on the login challenge screen. */
+  initialEmail?: string;
+  /** Compact layout when embedded inside the login modal/page. */
+  embedded?: boolean;
 }
 
 const containerVariants = {
@@ -38,7 +43,13 @@ const itemVariants = {
   visible: { opacity: 1, y: 0 }
 };
 
-export default function ForgotPasswordForm({ onSuccess, onGoBack, role }: ForgotPasswordFormProps) {
+export default function ForgotPasswordForm({
+  onSuccess,
+  onGoBack,
+  role,
+  initialEmail = "",
+  embedded = false,
+}: ForgotPasswordFormProps) {
   const [formState, setFormState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -54,7 +65,7 @@ export default function ForgotPasswordForm({ onSuccess, onGoBack, role }: Forgot
 
   const form = useForm<ForgotPasswordFormData>({
     resolver: zodResolver(forgotPasswordSchema),
-    defaultValues: { email: "" },
+    defaultValues: { email: initialEmail },
   });
 
   const handleSubmit = async (data: ForgotPasswordFormData) => {
@@ -106,14 +117,14 @@ export default function ForgotPasswordForm({ onSuccess, onGoBack, role }: Forgot
       animate="visible"
     >
       {/* Title */}
-      <motion.div variants={itemVariants} className="text-center mb-8">
-        <h2 className="text-2xl font-bold text-gray-900 mb-3">
-          Reset your password
+      <motion.div variants={itemVariants} className={embedded ? "text-center mb-5" : "text-center mb-8"}>
+        <h2 className={embedded ? "text-xl font-bold text-gray-900 mb-2" : "text-2xl font-bold text-gray-900 mb-3"}>
+          {embedded ? "Forgot password?" : "Reset your password"}
         </h2>
-        <p className="text-gray-600">
-          {isManager 
-            ? "Enter your username and we'll send you a link to reset your password."
-            : "Enter your email address and we'll send you a link to reset your password."}
+        <p className="text-gray-600 text-sm">
+          {isManager
+            ? "Enter your username and we'll send you a link to reset your password — or set one up for the first time."
+            : "Enter your email and we'll send a link to reset your password, or set one up if you haven't yet."}
         </p>
       </motion.div>
 
@@ -167,12 +178,25 @@ export default function ForgotPasswordForm({ onSuccess, onGoBack, role }: Forgot
             exit={{ opacity: 0, y: 10 }}
             className="mt-6 p-4 bg-green-50 rounded-lg border border-green-100"
           >
-            <p className="text-sm text-green-800">
+            <p className="text-sm text-green-800 mb-3">
               <strong>Check your email!</strong> We've sent a password reset link to your email address.
             </p>
+            <EmailContinueHint variant="reset" className="!p-3 !bg-white/80" />
           </motion.div>
         )}
       </AnimatePresence>
+
+      {onGoBack && (
+        <motion.div variants={itemVariants} className="mt-6 text-center">
+          <button
+            type="button"
+            onClick={onGoBack}
+            className="text-sm text-gray-600 hover:text-gray-900 font-medium"
+          >
+            Back to sign in
+          </button>
+        </motion.div>
+      )}
     </motion.div>
   );
 } 

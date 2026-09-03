@@ -1,12 +1,12 @@
 import { logger } from "@/lib/logger";
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useKitchenBookings } from "@/hooks/use-kitchen-bookings";
 import { useStoragePricing } from "@/hooks/use-storage-pricing";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
-import { formatCurrency } from "@/lib/formatters";
+import { formatCurrency, formatHourSlotRange } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 import { StorageSelection } from "./StorageSelection";
 import { PendingOverstayPenalties } from "../chef/PendingOverstayPenalties";
@@ -20,6 +20,16 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -52,6 +62,9 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { SmartImage } from "@/components/ui/smart-image";
+import { findPersistedBookingForKitchens, notifyBookingPrefsChanged } from "@/lib/persisted-booking-prefs";
+import { tt } from "@/i18n/common-ns";
+import { bt } from "@/i18n/booking-ns";
 
 interface KitchenBookingSheetProps {
   open: boolean;
@@ -134,6 +147,9 @@ export default function KitchenBookingSheet({
   // Payment state
   const [isRedirectingToCheckout, setIsRedirectingToCheckout] = useState(false);
   const [isProcessingBooking, setIsProcessingBooking] = useState(false);
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
+  /** When true, sheet may close without the cancel confirmation (checkout / confirmed cancel). */
+  const allowCloseRef = useRef(false);
   
   // Penalty check
   const { data: penaltyData, isLoading: isCheckingPenalties } = useUnpaidPenaltiesCheck(open);
@@ -162,6 +178,7 @@ export default function KitchenBookingSheet({
     hourlyRate: number | null;
     currency: string;
     minimumBookingHours: number;
+    platformCommissionRate: number;
   } | null>(null);
   const [estimatedPrice, setEstimatedPrice] = useState<{
     basePrice: number;
@@ -224,8 +241,8 @@ export default function KitchenBookingSheet({
 
   const serviceFee = useMemo(() => {
     if (combinedSubtotal <= 0) return 0;
-    return Math.round(combinedSubtotal * 0.07); // 7% service fee
-  }, [combinedSubtotal]);
+    return Math.round(combinedSubtotal * (kitchenPricing?.platformCommissionRate ?? 0));
+  }, [combinedSubtotal, kitchenPricing?.platformCommissionRate]);
 
   const grandTotal = useMemo(() => combinedSubtotal + tax + serviceFee, [combinedSubtotal, tax, serviceFee]);
 
@@ -243,17 +260,9 @@ export default function KitchenBookingSheet({
     return `${y}-${m}-${day}`;
   };
 
-  // Reset state when sheet opens/closes
+  // Reset / restore when sheet opens/closes
   useEffect(() => {
-    if (open) {
-      // Auto-select if only one kitchen
-      if (locationKitchens.length === 1) {
-        handleKitchenSelect(locationKitchens[0]);
-      } else {
-        setCurrentStep('kitchen');
-      }
-    } else {
-      // Reset all state when closing
+    if (!open) {
       setSelectedKitchen(null);
       setSelectedDate(null);
       setSelectedSlots([]);
@@ -267,10 +276,35 @@ export default function KitchenBookingSheet({
       setStorageListings([]);
       setEquipmentListings({ all: [], included: [], rental: [] });
       setCurrentStep('kitchen');
-      // Reset payment state
       setIsRedirectingToCheckout(false);
       setIsProcessingBooking(false);
+      return;
     }
+
+    if (locationKitchens.length === 0) return;
+
+    const persisted = findPersistedBookingForKitchens(locationKitchens.map((k: any) => k.id));
+    if (persisted) {
+      const kitchen = locationKitchens.find((k: any) => String(k.id) === persisted.kitchenId);
+      if (kitchen) {
+        void (async () => {
+          // Prefill date/slots but always start at the first booking step (add-ons)
+          await handleKitchenSelect(kitchen, {
+            dateIso: persisted.dateIso,
+            slots: persisted.slots,
+            step: "addons",
+          });
+        })();
+        return;
+      }
+    }
+
+    if (locationKitchens.length === 1) {
+      void handleKitchenSelect(locationKitchens[0]);
+    } else {
+      setCurrentStep('kitchen');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- open/locationKitchens gate only
   }, [open, locationKitchens]);
 
   // Load slots when date changes
@@ -424,7 +458,7 @@ export default function KitchenBookingSheet({
       });
 
       if (!response.ok) {
-        throw new Error("Failed to fetch slots");
+        throw new Error(bt("failedToFetchSlots"));
       }
 
       const slots = await response.json();
@@ -528,7 +562,14 @@ export default function KitchenBookingSheet({
     }
   };
 
-  const handleKitchenSelect = async (kitchen: any) => {
+  const handleKitchenSelect = async (
+    kitchen: any,
+    restore?: {
+      dateIso: string;
+      slots: string[];
+      step?: "addons" | "calendar" | "slots" | "confirm";
+    }
+  ) => {
     setSelectedKitchen(kitchen);
     setSelectedDate(null);
     setSelectedSlots([]);
@@ -570,17 +611,30 @@ export default function KitchenBookingSheet({
           hourlyRate: hourlyRateCents,
           currency: pricing.currency || 'CAD',
           minimumBookingHours: pricing.minimumBookingHours ?? 0,
+          platformCommissionRate: Math.max(0, Number(pricing.platformCommissionRate) || 0),
         });
       } else {
-        setKitchenPricing({ hourlyRate: null, currency: 'CAD', minimumBookingHours: 0 });
+        setKitchenPricing({ hourlyRate: null, currency: 'CAD', minimumBookingHours: 0, platformCommissionRate: 0 });
       }
 
       // Fetch addons
       await fetchKitchenAddons(kitchen.id, authHeader);
-      setCurrentStep('addons');
+
+      if (restore?.dateIso) {
+        const [y, m, d] = restore.dateIso.split("-").map(Number);
+        const restoredDate = new Date(y, m - 1, d);
+        setSelectedDate(restoredDate);
+        setCurrentYear(y);
+        setCurrentMonth(m - 1);
+        if (restore.slots?.length) {
+          setSelectedSlots([...restore.slots].sort());
+        }
+      }
+      // Always land on first content step; persisted date/slots stay selected for later steps
+      setCurrentStep(restore?.step || "addons");
     } catch (error) {
       logger.error('Error fetching kitchen data:', error);
-      setKitchenPricing({ hourlyRate: null, currency: 'CAD', minimumBookingHours: 0 });
+      setKitchenPricing({ hourlyRate: null, currency: 'CAD', minimumBookingHours: 0, platformCommissionRate: 0 });
     }
   };
 
@@ -699,10 +753,7 @@ export default function KitchenBookingSheet({
   };
 
   const formatSlotRange = (slotStartTime: string) => {
-    const [hours, minutes] = slotStartTime.split(':').map(Number);
-    const endHour = hours + 1;
-    const endTimeStr = `${endHour.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-    return `${formatTime(slotStartTime)} - ${formatTime(endTimeStr)}`;
+    return formatHourSlotRange(slotStartTime, i18n.language);
   };
 
   const formatDate = (date: Date) => {
@@ -833,6 +884,7 @@ export default function KitchenBookingSheet({
       if (data.sessionUrl) {
         // Close the Sheet BEFORE redirecting to prevent Radix UI from leaving
         // pointer-events: none on document.body (known Radix Dialog cleanup issue)
+        allowCloseRef.current = true;
         onOpenChange(false);
         // Small delay to let Radix clean up body styles before navigation
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -840,7 +892,7 @@ export default function KitchenBookingSheet({
         document.body.style.pointerEvents = '';
         window.location.href = data.sessionUrl;
       } else {
-        throw new Error('No checkout URL returned');
+        throw new Error(tt("noCheckoutUrl"));
       }
     } catch (error: any) {
       toast({
@@ -926,6 +978,7 @@ export default function KitchenBookingSheet({
             description: t("toastBookingCreatedDesc", { count: selectedSlots.length, defaultValue: `Your ${selectedSlots.length} hour kitchen booking has been submitted successfully.` }),
           });
           setIsProcessingBooking(false);
+          allowCloseRef.current = true;
           onOpenChange(false); // Close the sheet
         },
         onError: (error: any) => {
@@ -1505,7 +1558,7 @@ export default function KitchenBookingSheet({
                   {/* Tax */}
                   {tax > 0 && (
                     <div className="flex justify-between pt-2 border-t">
-                      <span className="text-muted-foreground">{t("sheetTaxLabel", "Tax")}</span>
+                      <span className="text-muted-foreground">{t("sheetKitchenHstLabel", { percent: selectedKitchen?.taxRatePercent || 0, kitchen: selectedKitchen?.name, defaultValue: `HST (${selectedKitchen?.taxRatePercent || 0}%) charged by kitchen` })}</span>
                       <span className="font-medium">{formatCurrency(tax)}</span>
                     </div>
                   )}
@@ -1513,7 +1566,7 @@ export default function KitchenBookingSheet({
                   {/* Service Fee */}
                   {serviceFee > 0 && (
                     <div className="flex justify-between pt-2 border-t">
-                      <span className="text-muted-foreground">{t("sheetServiceFeeLabel", { percent: 7, defaultValue: "Service Fee (7%)" })}</span>
+                      <span className="text-muted-foreground">{t("sheetLocalCooksServiceFeeLabel", { percent: Math.round((kitchenPricing?.platformCommissionRate ?? 0) * 100), defaultValue: "Local Cooks service fee ({{percent}}%)" })}</span>
                       <span className="font-medium">{formatCurrency(serviceFee)}</span>
                     </div>
                   )}
@@ -1606,7 +1659,7 @@ export default function KitchenBookingSheet({
           )}
           {serviceFee > 0 && (
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">{t("sheetServiceFeeLabel", { percent: 7, defaultValue: "Service Fee (7%)" })}</span>
+              <span className="text-muted-foreground">{t("sheetServiceFeeLabel", { percent: Math.round((kitchenPricing?.platformCommissionRate ?? 0) * 100), defaultValue: "Service Fee ({{percent}}%)" })}</span>
               <span className="font-medium">{formatCurrency(serviceFee)}</span>
             </div>
           )}
@@ -1619,34 +1672,129 @@ export default function KitchenBookingSheet({
     );
   };
 
+  const clearPersistedBookingPrefs = () => {
+    for (const kitchen of locationKitchens) {
+      const id = kitchen?.id;
+      if (id == null) continue;
+      try {
+        sessionStorage.removeItem(`kitchen_dates_${id}`);
+        sessionStorage.removeItem(`kitchen_booking_prefs_${id}`);
+        notifyBookingPrefsChanged(String(id));
+      } catch {
+        /* ignore */
+      }
+    }
+  };
+
+  const handleSheetOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen && !allowCloseRef.current) {
+      setCancelConfirmOpen(true);
+      return;
+    }
+    allowCloseRef.current = false;
+    onOpenChange(nextOpen);
+  };
+
+  const confirmCancelBooking = () => {
+    clearPersistedBookingPrefs();
+    setCancelConfirmOpen(false);
+    allowCloseRef.current = true;
+    onOpenChange(false);
+  };
+
   // Get action button for current step
-  const renderActionButton = () => {
+  const goToPreviousStep = () => {
+    if (currentStep === "confirm") {
+      setCurrentStep("slots");
+      return;
+    }
+    if (currentStep === "slots") {
+      setCurrentStep("calendar");
+      return;
+    }
+    if (currentStep === "calendar") {
+      setCurrentStep("addons");
+      return;
+    }
+    if (currentStep === "addons" && locationKitchens.length > 1) {
+      setSelectedKitchen(null);
+      setSelectedDate(null);
+      setSelectedSlots([]);
+      setCurrentStep("kitchen");
+    }
+  };
+
+  const canGoPrevious =
+    currentStep === "confirm" ||
+    currentStep === "slots" ||
+    currentStep === "calendar" ||
+    (currentStep === "addons" && locationKitchens.length > 1);
+
+  const previousButton = canGoPrevious ? (
+    <Button
+      type="button"
+      variant="outline"
+      className="min-h-[44px] flex-1"
+      onClick={goToPreviousStep}
+      disabled={isRedirectingToCheckout || isProcessingBooking || createBooking.isPending}
+    >
+      <ArrowLeft className="mr-1.5 h-4 w-4 shrink-0 sm:mr-2" />
+      {t("sheetPreviousButton", "Previous")}
+    </Button>
+  ) : null;
+
+  const cancelButton = (
+    <Button
+      type="button"
+      variant="ghost"
+      className="min-h-[44px] shrink-0"
+      onClick={() => setCancelConfirmOpen(true)}
+      disabled={isRedirectingToCheckout || isProcessingBooking || createBooking.isPending}
+    >
+      {t("sheetCancelButton", "Cancel")}
+    </Button>
+  );
+
+  const renderStepActions = () => {
     if (currentStep === 'addons' && selectedKitchen && !isLoadingAddons) {
+      const hasSchedule = !!selectedDate && selectedSlots.length > 0;
       return (
         <>
           {renderRunningTotal()}
-          <Button className="w-full" onClick={() => setCurrentStep('calendar')}>
-            {t("sheetContinueButton", "Continue")}
-            <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
+          <div className="flex gap-3">
+            {cancelButton}
+            {previousButton}
+            <Button
+              className="min-h-[44px] flex-1"
+              onClick={() => setCurrentStep(hasSchedule ? "confirm" : "calendar")}
+            >
+              {hasSchedule
+                ? t("sheetContinueToConfirmButton", "Continue to confirm")
+                : t("sheetContinueButton", "Continue")}
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
         </>
       );
     }
 
     if (currentStep === 'calendar') {
-      // Show running total if add-ons selected, even without date
-      const hasAddons = selectedEquipmentIds.length > 0 || selectedStorage.length > 0;
+      const hasAddonsSelected = selectedEquipmentIds.length > 0 || selectedStorage.length > 0;
       return (
         <>
-          {hasAddons && renderRunningTotal()}
-          <Button 
-            className="w-full" 
-            onClick={() => setCurrentStep('slots')}
-            disabled={!selectedDate}
-          >
-            {selectedDate ? t("sheetSelectTimeSlotsButton", "Select Time Slots") : t("sheetSelectDateToContinueButton", "Select a date to continue")}
-            <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
+          {hasAddonsSelected && renderRunningTotal()}
+          <div className="flex gap-3">
+            {cancelButton}
+            {previousButton}
+            <Button
+              className="min-h-[44px] flex-1"
+              onClick={() => setCurrentStep('slots')}
+              disabled={!selectedDate}
+            >
+              {selectedDate ? t("sheetSelectTimeSlotsButton", "Select Time Slots") : t("sheetSelectDateToContinueButton", "Select a date to continue")}
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
         </>
       );
     }
@@ -1655,14 +1803,18 @@ export default function KitchenBookingSheet({
       return (
         <>
           {renderRunningTotal()}
-          <Button 
-            className="w-full" 
-            onClick={() => setCurrentStep('confirm')}
-            disabled={selectedSlots.length === 0}
-          >
-            {selectedSlots.length > 0 ? t("sheetReviewAndConfirmButton", "Review & Confirm") : t("sheetSelectTimeSlotsToContinueButton", "Select time slots to continue")}
-            <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
+          <div className="flex gap-3">
+            {cancelButton}
+            {previousButton}
+            <Button
+              className="min-h-[44px] flex-1"
+              onClick={() => setCurrentStep('confirm')}
+              disabled={selectedSlots.length === 0}
+            >
+              {selectedSlots.length > 0 ? t("sheetReviewAndConfirmButton", "Review & Confirm") : t("sheetSelectTimeSlotsToContinueButton", "Select time slots to continue")}
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
         </>
       );
     }
@@ -1670,17 +1822,10 @@ export default function KitchenBookingSheet({
     if (currentStep === 'confirm') {
       return (
         <div className="flex gap-3">
-          <Button 
-            variant="outline"
-            className="flex-1 min-h-[44px]" 
-            onClick={() => setCurrentStep('slots')}
-          >
-            <ArrowLeft className="mr-1.5 sm:mr-2 h-4 w-4 flex-shrink-0" />
-            <span className="hidden sm:inline">{t("sheetBackButton", "Back")}</span>
-            <span className="sm:hidden">{t("sheetBackButton", "Back")}</span>
-          </Button>
-          <Button 
-            className="flex-1 min-h-[44px]" 
+          {cancelButton}
+          {previousButton}
+          <Button
+            className="flex-1 min-h-[44px]"
             onClick={grandTotal > 0 ? redirectToStripeCheckout : handleFreeBookingSubmit}
             disabled={createBooking.isPending || isRedirectingToCheckout || isProcessingBooking}
           >
@@ -1705,18 +1850,29 @@ export default function KitchenBookingSheet({
       );
     }
 
-    return null;
+    // Kitchen pick / loading — cancel only
+    return <div className="flex gap-3">{cancelButton}</div>;
   };
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent 
-        side="right" 
+    <>
+    <Sheet open={open} onOpenChange={handleSheetOpenChange}>
+      <SheetContent
+        side="right"
+        hideClose
         className="w-full sm:max-w-2xl lg:max-w-3xl p-0 flex flex-col"
+        onEscapeKeyDown={(e) => {
+          e.preventDefault();
+          setCancelConfirmOpen(true);
+        }}
+        onPointerDownOutside={(e) => {
+          e.preventDefault();
+          setCancelConfirmOpen(true);
+        }}
       >
         {/* Header */}
         <div className="flex-shrink-0 px-6 pt-6 pb-4 border-b">
-          <div className="flex items-center justify-between mb-4 pr-10">
+          <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-lg font-semibold">{locationName}</h2>
               {selectedKitchen && currentStep !== 'kitchen' ? (
@@ -1796,12 +1952,35 @@ export default function KitchenBookingSheet({
         </div>
 
         {/* Footer Action */}
-        {renderActionButton() && (
-          <div className="flex-shrink-0 px-6 py-4 border-t bg-background">
-            {renderActionButton()}
-          </div>
-        )}
+        <div className="flex-shrink-0 px-6 py-4 border-t bg-background">
+          {renderStepActions()}
+        </div>
       </SheetContent>
     </Sheet>
+
+    <AlertDialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {t("sheetCancelConfirmTitle", "Cancel this booking?")}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {t(
+              "sheetCancelConfirmDesc",
+              "Your booking progress will be cleared and you’ll start over next time."
+            )}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>
+            {t("sheetKeepBookingButton", "Keep booking")}
+          </AlertDialogCancel>
+          <AlertDialogAction onClick={confirmCancelBooking}>
+            {t("sheetConfirmCancelButton", "Yes, cancel")}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }

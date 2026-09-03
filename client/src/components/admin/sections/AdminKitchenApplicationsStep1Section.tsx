@@ -143,36 +143,23 @@ export function AdminKitchenApplicationsStep1Section({
     if (!selectedApplication) return;
 
     try {
-      const currentTier = selectedApplication.current_tier ?? 1;
-      const nextTier = currentTier + 1;
-      const isFinalTier = nextTier > 4;
-
-      if (isFinalTier) {
-        await updateApplicationStatus.mutateAsync({
-          applicationId: selectedApplication.id,
-          status: "approved",
-          feedback: reviewFeedback || undefined,
-        });
-        toast({
-          title: "Application Fully Approved!",
-          description: "Chef's application is now fully approved.",
-        });
-      } else {
-        await updateApplicationStatus.mutateAsync({
-          applicationId: selectedApplication.id,
-          status: "inReview",
-          feedback: reviewFeedback || undefined,
-          currentTier: nextTier,
-        });
-        toast({
-          title: `Tier ${currentTier} Approved!`,
-          description: `Application progressed to Tier ${nextTier}.`,
-        });
-      }
+      // Step 1 (request-to-apply) approval: set status approved, keep tier at 1.
+      // Chef UI unlocks Step 2 when status===approved && current_tier===1.
+      // Managers then approve Step 2 (tier → 3) so the chef can book.
+      await updateApplicationStatus.mutateAsync({
+        applicationId: selectedApplication.id,
+        status: "approved",
+        feedback: reviewFeedback || undefined,
+      });
+      toast({
+        title: "Request to apply approved",
+        description: "Chef can now complete Step 2 kitchen documents.",
+      });
 
       setShowReviewDialog(false);
       setSelectedApplication(null);
       setReviewFeedback("");
+      refetch();
     } catch (error: any) {
       toast({
         title: "Error",

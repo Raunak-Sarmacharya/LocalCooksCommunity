@@ -355,7 +355,7 @@ export default function CertificationsForm() {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8" data-testid="seller-application-step-3">
         {/* Info Banner */}
         <div className="mb-8 bg-gradient-to-r from-indigo-50 to-blue-50 border-l-4 border-indigo-400 rounded-lg overflow-hidden">
           <div className="p-5">
@@ -402,8 +402,9 @@ export default function CertificationsForm() {
             <div className="ml-10">
               <p className="mb-4 text-gray-700 font-medium">{t("sellerApp_foodSafetyQuestion")}</p>
               <div className="flex flex-col space-y-4">
-                <div 
-                  className="flex items-start space-x-3 py-2 cursor-pointer" 
+                <div
+                  className="flex items-start space-x-3 py-2 cursor-pointer"
+                  data-testid="seller-food-safety-yes"
                   onClick={() => form.setValue("foodSafetyLicense", "yes")}
                 >
                   <div className="relative flex-shrink-0 mt-1">
@@ -483,8 +484,9 @@ export default function CertificationsForm() {
                     )}
                   </div>
                 </div>
-                <div 
-                  className="flex items-start space-x-3 py-2 cursor-pointer" 
+                <div
+                  className="flex items-start space-x-3 py-2 cursor-pointer"
+                  data-testid="seller-food-safety-no"
                   onClick={() => form.setValue("foodSafetyLicense", "no")}
                 >
                   <div className="relative flex-shrink-0 mt-1">
@@ -620,8 +622,9 @@ export default function CertificationsForm() {
                     )}
                   </div>
                 </div>
-                <div 
-                  className="flex items-start space-x-3 py-2 cursor-pointer" 
+                <div
+                  className="flex items-start space-x-3 py-2 cursor-pointer"
+                  data-testid="seller-establishment-cert-no"
                   onClick={() => form.setValue("foodEstablishmentCert", "no")}
                 >
                   <div className="relative flex-shrink-0 mt-1">
@@ -700,6 +703,7 @@ export default function CertificationsForm() {
 
           <Button
             type="submit"
+            data-testid="seller-application-submit"
             disabled={isPending || isUploading}
             className="bg-primary text-white font-medium py-2.5 px-6 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center relative overflow-hidden group"
           >

@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { mt } from "@/i18n/manager";
 import { format } from "date-fns";
 import {
   AlertTriangle,
@@ -97,6 +98,7 @@ export function PendingCancellationRequests({
   onDeclineStorageCancellation,
   isProcessing = false,
 }: PendingCancellationRequestsProps) {
+  
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
     action: "accept" | "decline";
@@ -160,17 +162,15 @@ export function PendingCancellationRequests({
               <AlertTriangle className="h-4 w-4 text-muted-foreground" />
             </div>
             <div>
-              <CardTitle className="text-base">Cancellation Requests</CardTitle>
-              <CardDescription className="text-xs">
-                Chef-initiated cancellation requests awaiting your review
-              </CardDescription>
+              <CardTitle className="text-base">{mt("cancellationRequests")}</CardTitle>
+              <CardDescription className="text-xs">{mt("chefInitiatedCancellationRequestsAwaitingYourReview")}</CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col items-center justify-center py-6 text-center">
             <CheckCircle className="h-8 w-8 text-muted-foreground/40 mb-2" />
-            <p className="text-sm text-muted-foreground">No pending cancellation requests</p>
+            <p className="text-sm text-muted-foreground">{mt("noPendingCancellationRequests")}</p>
           </div>
         </CardContent>
       </Card>
@@ -210,12 +210,8 @@ export function PendingCancellationRequests({
                 <AlertTriangle className="h-4 w-4 text-amber-600" />
               </div>
               <div>
-                <CardTitle className="text-base">
-                  Cancellation Requests
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  Chef-initiated cancellation requests awaiting your review
-                </CardDescription>
+                <CardTitle className="text-base">{mt("cancellationRequests")}</CardTitle>
+                <CardDescription className="text-xs">{mt("chefInitiatedCancellationRequestsAwaitingYourReview")}</CardDescription>
               </div>
             </div>
             <Badge
@@ -281,18 +277,14 @@ export function PendingCancellationRequests({
                   onClick={() => handleAction("decline", req)}
                   disabled={isProcessing}
                 >
-                  <XCircle className="h-3.5 w-3.5 mr-1" />
-                  Decline
-                </Button>
+                  <XCircle className="h-3.5 w-3.5 mr-1" />{mt("decline")}</Button>
                 <Button
                   size="sm"
                   className="h-8"
                   onClick={() => handleAction("accept", req)}
                   disabled={isProcessing}
                 >
-                  <CheckCircle className="h-3.5 w-3.5 mr-1" />
-                  Accept
-                </Button>
+                  <CheckCircle className="h-3.5 w-3.5 mr-1" />{mt("accept")}</Button>
               </div>
             </div>
           ))}
@@ -312,14 +304,10 @@ export function PendingCancellationRequests({
             <AlertDialogTitle className="flex items-center gap-2">
               {confirmDialog.action === "accept" ? (
                 <>
-                  <CheckCircle className="h-5 w-5 text-green-600" />
-                  Accept Cancellation Request
-                </>
+                  <CheckCircle className="h-5 w-5 text-green-600" />{mt("acceptCancellationRequest")}</>
               ) : (
                 <>
-                  <XCircle className="h-5 w-5 text-red-600" />
-                  Decline Cancellation Request
-                </>
+                  <XCircle className="h-5 w-5 text-red-600" />{mt("declineCancellationRequest")}</>
               )}
             </AlertDialogTitle>
             <AlertDialogDescription className="pt-2 space-y-3">
@@ -358,9 +346,7 @@ export function PendingCancellationRequests({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isProcessing}>
-              Go Back
-            </AlertDialogCancel>
+            <AlertDialogCancel disabled={isProcessing}>{mt("goBack")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirm}
               disabled={isProcessing}

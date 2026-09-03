@@ -1,4 +1,5 @@
 "use client"
+import { mt } from "@/i18n/manager";
 
 import { useState, useEffect } from "react"
 import { Application } from "../types"
@@ -88,6 +89,7 @@ export function ApplicationDetailPanel({
     reviewFeedback,
     onFeedbackChange
 }: ApplicationDetailPanelProps) {
+  
     const [activeAction, setActiveAction] = useState<string | null>(null);
 
     // Reset activeAction when the operation completes
@@ -108,7 +110,7 @@ export function ApplicationDetailPanel({
     // Helper to render custom field value
     const renderCustomFieldValue = (field: any, value: any) => {
         if (value === undefined || value === null || value === '') {
-            return <span className="text-gray-400 italic text-sm">Not provided</span>;
+            return <span className="text-gray-400 italic text-sm">{mt("notProvided")}</span>;
         }
 
         if (field.type === 'checkbox') {
@@ -142,11 +144,11 @@ export function ApplicationDetailPanel({
                     <SecureDocumentLink
                         url={value}
                         fileName={field.label}
-                        label="View Document"
+                        label={mt("viewDocument")}
                     />
                 );
             }
-            return <span className="text-amber-600 text-sm">{String(value)} (not uploaded)</span>;
+            return <span className="text-amber-600 text-sm">{String(value)} {mt("notUploaded")}</span>;
         }
 
         return <span className="text-gray-900">{String(value)}</span>;
@@ -158,7 +160,9 @@ export function ApplicationDetailPanel({
             return (
                 <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
                     <Clock className="h-4 w-4 text-amber-600" />
-                    <span className="text-sm font-medium text-amber-700">Pending Review</span>
+                    <span className="text-sm font-medium text-amber-700">
+                        {mt("awaitingAdminApproval")}
+                    </span>
                 </div>
             );
         }
@@ -166,7 +170,7 @@ export function ApplicationDetailPanel({
             return (
                 <div className="flex items-center gap-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg">
                     <AlertCircle className="h-4 w-4 text-orange-600" />
-                    <span className="text-sm font-medium text-orange-700">Step 2 Awaiting Review</span>
+                    <span className="text-sm font-medium text-orange-700">{mt("step2AwaitingReview")}</span>
                 </div>
             );
         }
@@ -174,7 +178,7 @@ export function ApplicationDetailPanel({
             return (
                 <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg">
                     <CheckCircle className="h-4 w-4 text-emerald-600" />
-                    <span className="text-sm font-medium text-emerald-700">Fully Approved</span>
+                    <span className="text-sm font-medium text-emerald-700">{mt("fullyApproved")}</span>
                 </div>
             );
         }
@@ -182,7 +186,7 @@ export function ApplicationDetailPanel({
             return (
                 <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
                     <Clock className="h-4 w-4 text-blue-600" />
-                    <span className="text-sm font-medium text-blue-700">Awaiting Chef's Step 2</span>
+                    <span className="text-sm font-medium text-blue-700">{mt("awaitingChefSStep2")}</span>
                 </div>
             );
         }
@@ -190,7 +194,7 @@ export function ApplicationDetailPanel({
             return (
                 <div className="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg">
                     <X className="h-4 w-4 text-red-600" />
-                    <span className="text-sm font-medium text-red-700">Rejected</span>
+                    <span className="text-sm font-medium text-red-700">{mt("rejected")}</span>
                 </div>
             );
         }
@@ -247,9 +251,7 @@ export function ApplicationDetailPanel({
                         onClick={onOpenChat}
                         className="mt-4 gap-2"
                     >
-                        <MessageCircle className="h-4 w-4" />
-                        Open Chat
-                    </Button>
+                        <MessageCircle className="h-4 w-4" />{mt("openChat")}</Button>
                 )}
             </div>
 
@@ -266,9 +268,7 @@ export function ApplicationDetailPanel({
                                         : "bg-amber-100 text-amber-700"
                                 )}>
                                     {application.status !== 'inReview' ? <Check className="h-3 w-3" /> : '1'}
-                                </div>
-                                Initial Application
-                            </TabsTrigger>
+                                </div>{mt("initialApplication")}</TabsTrigger>
                             <TabsTrigger 
                                 value="step2" 
                                 className="gap-2"
@@ -283,9 +283,7 @@ export function ApplicationDetailPanel({
                                             : "bg-gray-100 text-gray-500"
                                 )}>
                                     {isFullyApproved ? <Check className="h-3 w-3" /> : '2'}
-                                </div>
-                                Kitchen Coordination
-                            </TabsTrigger>
+                                </div>{mt("kitchenCoordination")}</TabsTrigger>
                         </TabsList>
 
                         {/* STEP 1 CONTENT */}
@@ -294,29 +292,27 @@ export function ApplicationDetailPanel({
                             {businessInfo && (
                                 <div className="space-y-3">
                                     <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                        <Briefcase className="h-4 w-4 text-[#208D80]" />
-                                        Business Information
-                                    </h3>
+                                        <Briefcase className="h-4 w-4 text-[#208D80]" />{mt("businessInformation")}</h3>
                                     <div className="grid grid-cols-2 gap-3">
                                         {businessInfo.businessName && (
-                                            <InfoCard label="Business Name" value={businessInfo.businessName} />
+                                            <InfoCard label={mt("businessName")} value={businessInfo.businessName} />
                                         )}
                                         {businessInfo.businessType && (
-                                            <InfoCard label="Type" value={businessInfo.businessType} className="capitalize" />
+                                            <InfoCard label={mt("type")} value={businessInfo.businessType} className="capitalize" />
                                         )}
                                         {businessInfo.experience && (
-                                            <InfoCard label="Experience" value={`${businessInfo.experience} years`} />
+                                            <InfoCard label={mt("experience")} value={mt("yearsExperience", { count: businessInfo.experience })} />
                                         )}
                                         {businessInfo.usageFrequency && (
-                                            <InfoCard label="Usage Frequency" value={businessInfo.usageFrequency} className="capitalize" />
+                                            <InfoCard label={mt("usageFrequency")} value={businessInfo.usageFrequency} className="capitalize" />
                                         )}
                                         {businessInfo.sessionDuration && (
-                                            <InfoCard label="Session Duration" value={`${businessInfo.sessionDuration} hours`} />
+                                            <InfoCard label={mt("sessionDuration")} value={mt("hoursSession", { count: businessInfo.sessionDuration })} />
                                         )}
                                     </div>
                                     {businessInfo.description && (
                                         <div className="p-3 bg-gray-50 rounded-lg border">
-                                            <div className="text-xs text-gray-500 mb-1">Description</div>
+                                            <div className="text-xs text-gray-500 mb-1">{mt("description")}</div>
                                             <p className="text-sm text-gray-700">{businessInfo.description}</p>
                                         </div>
                                     )}
@@ -328,12 +324,10 @@ export function ApplicationDetailPanel({
                             {/* Food Safety Documents */}
                             <div className="space-y-3">
                                 <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                    <Shield className="h-4 w-4 text-[#208D80]" />
-                                    Food Safety Documents
-                                </h3>
+                                    <Shield className="h-4 w-4 text-[#208D80]" />{mt("foodSafetyDocuments")}</h3>
                                 <DocumentCard
-                                    title="Food Handler Certificate"
-                                    subtitle={application.foodSafetyLicense === 'yes' ? 'Certificate provided' : 'No certificate'}
+                                    title={mt("foodSafetyLicense")}
+                                    subtitle={application.foodSafetyLicense === 'yes' ? 'License provided' : 'No license'}
                                     url={application.foodSafetyLicenseUrl}
                                     status={application.foodSafetyLicenseUrl ? 'complete' : 'missing'}
                                     expiry={application.foodSafetyLicenseExpiry}
@@ -347,9 +341,7 @@ export function ApplicationDetailPanel({
                                         <Separator />
                                         <div className="space-y-3">
                                             <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                                <FileText className="h-4 w-4 text-[#208D80]" />
-                                                Additional Information
-                                            </h3>
+                                                <FileText className="h-4 w-4 text-[#208D80]" />{mt("additionalInformation")}</h3>
                                             <div className="grid grid-cols-2 gap-3">
                                                 {locationRequirements.tier1_custom_fields.map((field) => {
                                                     const customData = (application.customFieldsData || {}) as Record<string, any>;
@@ -377,10 +369,9 @@ export function ApplicationDetailPanel({
                                     <div className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center mb-4">
                                         <Clock className="h-8 w-8 text-blue-500" />
                                     </div>
-                                    <h3 className="text-lg font-medium text-gray-900 mb-2">Awaiting Chef Submission</h3>
+                                    <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("awaitingChefSubmission")}</h3>
                                     <p className="text-sm text-gray-500 max-w-sm">
-                                        The chef has been approved for Step 1 and can now submit their Step 2 documents.
-                                        Chat is available to coordinate.
+                                        {mt("chefApprovedStep1Desc")} {mt("openChat")}.
                                     </p>
                                 </div>
                             ) : (
@@ -400,9 +391,18 @@ export function ApplicationDetailPanel({
                                     {/* Step 2 Documents */}
                                     <div className="space-y-3">
                                         <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                            <Shield className="h-4 w-4 text-[#208D80]" />
-                                            Step 2 Documents
-                                        </h3>
+                                            <Shield className="h-4 w-4 text-[#208D80]" />{mt("step2Documents")}</h3>
+
+                                        {/* Food Safety License (uploaded on Step 2) */}
+                                        <DocumentCard
+                                            title={mt("foodSafetyLicense")}
+                                            subtitle={application.foodSafetyLicenseExpiry
+                                                ? mt("expiresLabel", { date: new Date(application.foodSafetyLicenseExpiry).toLocaleDateString() })
+                                                : mt("requiredOnStep2", { defaultValue: "Required on Step 2" })}
+                                            url={application.foodSafetyLicenseUrl}
+                                            status={application.foodSafetyLicenseUrl ? 'complete' : 'required'}
+                                            variant="blue"
+                                        />
 
                                         {/* Insurance Document */}
                                         {(() => {
@@ -413,8 +413,8 @@ export function ApplicationDetailPanel({
 
                                             return (
                                                 <DocumentCard
-                                                    title="Insurance Document"
-                                                    subtitle="Commercial liability insurance"
+                                                    title={mt("insuranceDocument")}
+                                                    subtitle={mt("commercialLiabilityInsurance")}
                                                     url={insuranceUrl}
                                                     status={insuranceUrl ? 'complete' : isRequired ? 'required' : 'optional'}
                                                     variant="purple"
@@ -424,9 +424,9 @@ export function ApplicationDetailPanel({
 
                                         {/* Food Establishment Certificate */}
                                         <DocumentCard
-                                            title="Food Establishment Certificate"
+                                            title={mt("foodEstablishmentCertificate")}
                                             subtitle={application.foodEstablishmentCertExpiry
-                                                ? `Expires: ${new Date(application.foodEstablishmentCertExpiry).toLocaleDateString()}`
+                                                ? mt("expiresLabel", { date: new Date(application.foodEstablishmentCertExpiry).toLocaleDateString() })
                                                 : 'Step 2 requirement'}
                                             url={application.foodEstablishmentCertUrl}
                                             status={application.foodEstablishmentCertUrl ? 'complete' : 'optional'}
@@ -441,9 +441,7 @@ export function ApplicationDetailPanel({
                                                 <Separator />
                                                 <div className="space-y-3">
                                                     <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                                        <FileText className="h-4 w-4 text-[#208D80]" />
-                                                        Additional Step 2 Information
-                                                    </h3>
+                                                        <FileText className="h-4 w-4 text-[#208D80]" />{mt("additionalStep2Information")}</h3>
                                                     <div className="grid grid-cols-2 gap-3">
                                                         {locationRequirements.tier2_custom_fields.map((field) => {
                                                             const tierData = (application.tier_data || {}) as Record<string, any>;
@@ -472,16 +470,16 @@ export function ApplicationDetailPanel({
 
             {/* Footer Actions */}
             <div className="flex-shrink-0 p-6 border-t bg-gray-50/50">
-                {/* Feedback textarea for pending/rejection */}
-                {(isPending || isStep2NeedsReview) && (
+                {/* Feedback textarea for Step 2 review / rejection notes */}
+                {isStep2NeedsReview && (
                     <div className="mb-4">
                         <label className="text-sm font-medium text-gray-700 mb-2 block">
-                            Feedback {isPending ? '(Required for rejection)' : '(Optional)'}
+                            {mt("feedbackLabel")} {mt("feedbackOptional")}
                         </label>
                         <Textarea
                             value={reviewFeedback}
                             onChange={(e) => onFeedbackChange(e.target.value)}
-                            placeholder="Provide feedback for the applicant..."
+                            placeholder={mt("provideFeedbackForTheApplicant")}
                             rows={3}
                             className="resize-none"
                         />
@@ -489,28 +487,15 @@ export function ApplicationDetailPanel({
                 )}
 
                 <div className="flex gap-3">
-                    <Button variant="outline" onClick={onClose} className="flex-1">
-                        Close
-                    </Button>
+                    <Button variant="outline" onClick={onClose} className="flex-1">{mt("close")}</Button>
 
                     {isPending && (
-                        <>
-                            <StatusButton
-                                variant="outline"
-                                onClick={() => { setActiveAction('reject'); onReject(); }}
-                                status={activeAction === 'reject' && isUpdating ? "loading" : "idle"}
-                                disabled={isUpdating || !reviewFeedback.trim()}
-                                className="flex-1 border-red-200 text-red-700 hover:bg-red-50 hover:border-red-300"
-                                labels={{ idle: "Reject", loading: "Rejecting", success: "Rejected" }}
-                            />
-                            <StatusButton
-                                onClick={() => { setActiveAction('approve'); onApprove(); }}
-                                status={activeAction === 'approve' && isUpdating ? "loading" : "idle"}
-                                disabled={isUpdating && activeAction !== 'approve'}
-                                className="flex-1"
-                                labels={{ idle: "Approve Step 1", loading: "Approving", success: "Approved" }}
-                            />
-                        </>
+                        <div className="flex-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                            {mt("awaitingAdminStep1Review", {
+                                defaultValue:
+                                    "Awaiting LocalCooks admin review of this request to apply. You can approve Step 2 once the chef submits kitchen documents.",
+                            })}
+                        </div>
                     )}
 
                     {isStep2NeedsReview && (
@@ -521,14 +506,14 @@ export function ApplicationDetailPanel({
                                 status={activeAction === 'revoke' && isUpdating ? "loading" : "idle"}
                                 disabled={isUpdating && activeAction !== 'revoke'}
                                 className="flex-1 border-red-200 text-red-700 hover:bg-red-50 hover:border-red-300"
-                                labels={{ idle: "Revoke Access", loading: "Revoking", success: "Revoked" }}
+                                labels={{ idle: mt("revokeAccess"), loading: mt("revoking"), success: mt("revokedSuccess") }}
                             />
                             <StatusButton
                                 onClick={() => { setActiveAction('approveTier2'); onApproveTier2(); }}
                                 status={activeAction === 'approveTier2' && isUpdating ? "loading" : "idle"}
                                 disabled={isUpdating && activeAction !== 'approveTier2'}
                                 className="flex-1"
-                                labels={{ idle: "Approve Step 2", loading: "Approving", success: "Approved" }}
+                                labels={{ idle: mt("approveStep2"), loading: mt("approving"), success: mt("approvedSuccess") }}
                             />
                         </>
                     )}
@@ -539,7 +524,7 @@ export function ApplicationDetailPanel({
                             onClick={() => { setActiveAction('revoke'); onRevokeAccess(); }}
                             status={activeAction === 'revoke' && isUpdating ? "loading" : "idle"}
                             className="flex-1 border-red-200 text-red-700 hover:bg-red-50 hover:border-red-300"
-                            labels={{ idle: "Revoke Access", loading: "Revoking", success: "Revoked" }}
+                            labels={{ idle: mt("revokeAccess"), loading: mt("revoking"), success: mt("revokedSuccess") }}
                         />
                     )}
                 </div>
@@ -598,7 +583,7 @@ function DocumentCard({
                     <p className="text-xs text-gray-500">{subtitle}</p>
                     {expiry && (
                         <p className="text-xs text-gray-500 mt-0.5">
-                            Expires: {new Date(expiry).toLocaleDateString()}
+                            {mt("expiresLabel", { date: new Date(expiry).toLocaleDateString() })}
                         </p>
                     )}
                 </div>
@@ -607,10 +592,10 @@ function DocumentCard({
                 <SecureDocumentLink
                     url={url}
                     fileName={title}
-                    label="View"
+                    label={mt("view")}
                 />
             ) : status === 'required' ? (
-                <Badge variant="destructive" className="text-xs">Required</Badge>
+                <Badge variant="destructive" className="text-xs">{mt("required")}</Badge>
             ) : null}
         </div>
     );

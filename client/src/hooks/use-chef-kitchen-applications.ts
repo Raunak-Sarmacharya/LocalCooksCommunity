@@ -2,6 +2,7 @@ import { logger } from "@/lib/logger";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChefKitchenApplication } from "@shared/schema";
 import { useFirebaseAuth } from "./use-auth";
+import { ct } from "@/i18n/chef-ns";
 
 // Types for kitchen applications
 interface KitchenApplicationWithLocation extends ChefKitchenApplication {
@@ -257,7 +258,7 @@ export function useGlobalMyApplications() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to fetch global applications");
+        throw new Error(ct("failedToFetchGlobalApplications"));
       }
 
       return await response.json();

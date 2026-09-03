@@ -69,6 +69,7 @@ export interface CreatePendingCheckoutSessionParams {
     selectedEquipmentIds?: number[];
     totalPriceCents: number;
     taxCents: number;
+    taxRatePercent?: number;
     hourlyRateCents: number;
     durationHours: number;
     platform_fee_cents?: number;
@@ -263,6 +264,7 @@ export async function createPendingCheckoutSession(
       end_time: bookingData.endTime,
       total_price_cents: bookingData.totalPriceCents.toString(),
       tax_cents: bookingData.taxCents.toString(),
+      tax_rate_percent: String(bookingData.taxRatePercent ?? 0),
       hourly_rate_cents: bookingData.hourlyRateCents.toString(),
       duration_hours: bookingData.durationHours.toString(),
       booking_price_cents: bookingPriceInCents.toString(),
@@ -374,13 +376,11 @@ export async function createCheckoutSession(
     throw new Error('Customer email is required');
   }
 
-  // Customer pays only the booking price (which includes base + tax)
-  // Platform fee is NOT added to customer total - it's deducted from manager's payout
-  const totalAmountInCents = bookingPriceInCents;
+  // The service fee is paid by the chef on top and retained by the platform.
+  const totalAmountInCents = bookingPriceInCents + platformFeeInCents;
 
   try {
-    // Build line items - customer sees only the booking price (base + tax)
-    // Platform fee is invisible to customer - deducted from manager's share via application_fee_amount
+    // Build explicit customer-facing booking and service-fee lines.
     const lineItems: Array<{
       price_data: {
         currency: string;
@@ -400,9 +400,16 @@ export async function createCheckoutSession(
         quantity: 1,
       },
     ];
-
-    // NOTE: Platform fee is NOT shown to customer as a line item
-    // It is only set as application_fee_amount which is deducted from manager's payout
+    if (platformFeeInCents > 0) {
+      lineItems.push({
+        price_data: {
+          currency: currency.toLowerCase(),
+          product_data: { name: 'Local Cooks service fee' },
+          unit_amount: platformFeeInCents,
+        },
+        quantity: 1,
+      });
+    }
 
     // ARCHITECTURE — Separate Charges and Transfers:
     //   Charge lands on platform balance. No transfer_data, no application_fee_amount.

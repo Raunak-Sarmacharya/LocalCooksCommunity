@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Languages } from "lucide-react";
+import { ChevronDown, Languages } from "lucide-react";
 import {
   LOCALE_META,
   SUPPORTED_LOCALES,
@@ -16,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu";
@@ -133,8 +135,11 @@ export function LanguageSwitcher({
  */
 export function LanguageMenuItems({
   persistToProfile = true,
+  nested = false,
 }: {
   persistToProfile?: boolean;
+  /** Smaller type + tighter — for LanguageMenuSection sub-drawer */
+  nested?: boolean;
 }) {
   const current = useCurrentLocale();
 
@@ -149,18 +154,90 @@ export function LanguageMenuItems({
         <DropdownMenuRadioItem
           key={locale}
           value={locale}
-          className="py-2.5"
+          className={cn(
+            nested
+              ? "py-1.5 pl-6 text-xs [&>span:first-child]:left-1.5 [&>span:first-child]:h-3 [&>span:first-child]:w-3 [&_svg]:h-1.5 [&_svg]:w-1.5"
+              : "py-2.5"
+          )}
         >
           <span className="flex flex-col leading-tight">
-            <span className="text-sm font-medium tracking-tight">
+            <span
+              className={cn(
+                "font-medium tracking-tight",
+                nested ? "text-xs" : "text-sm"
+              )}
+            >
               {LOCALE_META[locale].nativeName}
             </span>
-            <span className="text-[11px] text-muted-foreground">
+            <span
+              className={cn(
+                "text-muted-foreground",
+                nested ? "text-[10px]" : "text-[11px]"
+              )}
+            >
               {LOCALE_META[locale].englishName}
             </span>
           </span>
         </DropdownMenuRadioItem>
       ))}
     </DropdownMenuRadioGroup>
+  );
+}
+
+/** Collapsible language block for account menus. Closed by default; expands as a sub-drawer. */
+export function LanguageMenuSection({
+  persistToProfile = true,
+}: {
+  persistToProfile?: boolean;
+}) {
+  const { t } = useTranslation("common");
+  const current = useCurrentLocale();
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div>
+      <DropdownMenuItem
+        className="cursor-pointer"
+        aria-expanded={open}
+        onSelect={(event) => {
+          event.preventDefault();
+          setOpen((value) => !value);
+        }}
+      >
+        <Languages className="mr-2 h-4 w-4" />
+        <span className="flex-1">{t("language")}</span>
+        <span className="mr-1 text-xs text-muted-foreground">{baseName(current)}</span>
+        <ChevronDown
+          className={cn(
+            "h-4 w-4 text-muted-foreground transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
+            open && "rotate-180"
+          )}
+        />
+      </DropdownMenuItem>
+      {/* CSS grid 0fr→1fr: height animates without Radix accordion vars / mount jitter */}
+      <div
+        className={cn(
+          "grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
+          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+        )}
+        aria-hidden={!open}
+      >
+        <div className="min-h-0 overflow-hidden">
+          {/* ml-6: sit under Language label (past the parent icon column) */}
+          <div
+            className={cn(
+              "ml-6 mr-1 mb-1 origin-top rounded-md border border-border/40 bg-muted/30 transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+              open
+                ? "translate-y-0 opacity-100"
+                : "-translate-y-1 opacity-0 pointer-events-none"
+            )}
+          >
+            <div className="max-h-44 overflow-y-auto overscroll-contain py-0.5 pr-0.5">
+              <LanguageMenuItems persistToProfile={persistToProfile} nested />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

@@ -62,7 +62,7 @@ interface KitchenApplicationCardProps {
 const getDocStatusBadge = (status: string | null | undefined, t: ChefTFunction) => {
   if (!status || status === "N/A") return { variant: "outline" as const, label: t("apptabDocNotUploaded", "Not uploaded") };
   if (status === "approved") return { variant: "success" as const, label: t("apptabDocApproved", "Approved") };
-  if (status === "pending") return { variant: "outline" as const, label: t("apptabDocPending", "Pending") };
+  if (status === "pending") return { variant: "warning" as const, label: t("apptabDocPending", "Pending") };
   if (status === "rejected") return { variant: "destructive" as const, label: t("apptabDocRejected", "Rejected") };
   return { variant: "outline" as const, label: status };
 };
@@ -145,7 +145,7 @@ function KitchenApplicationDetails({
           <div className="flex h-6 w-6 items-center justify-center rounded-full bg-muted">
             <span className="text-xs font-medium text-muted-foreground">1</span>
           </div>
-          <p className="text-sm font-bold text-foreground">{t("apptabStep1Title", "Step 1 - Initial Application")}</p>
+          <p className="text-sm font-bold text-foreground">{t("apptabStep1Title", "Request to apply")}</p>
           {(app as any).tier1_completed_at && (
             <Badge variant="success">
               <CheckCircle className="mr-1 h-3 w-3" />

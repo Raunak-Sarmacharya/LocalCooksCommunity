@@ -2171,7 +2171,7 @@ router.get("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req
             documentation: {
                 stripePercentageFee: "Stripe's processing fee percentage for display estimates (e.g., 0.029 for 2.9%). Actual fee deducted from transfer is read from Stripe at capture time.",
                 stripeFlatFeeCents: "Stripe's flat fee per transaction in cents for display estimates (e.g., 30 for $0.30).",
-                platformCommissionRate: "Service fee rate (e.g., 0.05 for 5%). Deducted from manager's transfer along with the actual Stripe fee.",
+                platformCommissionRate: "Service fee rate (e.g., 0.05 for 5%). Charged to the chef on the pre-tax subtotal and retained by the platform.",
                 minimumApplicationFeeCents: "Minimum service fee floor in cents to ensure profitability.",
             },
         });
@@ -3330,7 +3330,10 @@ router.get("/transactions", requireFirebaseAuthWithUser, requireAdmin, async (re
             const kbTotal = parseFloat(tx.kb_total_price || '0');
             const kbCommission = parseFloat(tx.kb_service_fee || '0');
             const chargedAmount = resolveChefChargedAmountCents(storedAmount, kbTotal || storedAmount, kbCommission);
-            const platformCommission = resolvePlatformCommissionCents(storedServiceFee, kbTotal || storedAmount, kbCommission);
+            const baseAmountWithTax = parseFloat(tx.base_amount || '0');
+            const platformCommission = baseAmountWithTax > 0 && chargedAmount >= baseAmountWithTax
+                ? chargedAmount - baseAmountWithTax
+                : resolvePlatformCommissionCents(storedServiceFee, kbTotal || storedAmount, kbCommission);
             return {
             id: tx.id,
             bookingId: tx.booking_id,

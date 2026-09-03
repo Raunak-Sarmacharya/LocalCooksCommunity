@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { mt } from "@/i18n/manager";
 import {
   Building2, MapPin, ChefHat, Calendar, Clock,
   CheckCircle, AlertCircle, XCircle, Edit, Eye,
@@ -29,31 +30,31 @@ function getStatusConfig(status?: string) {
   switch (status) {
     case 'approved':
       return {
-        label: 'Approved',
+        label: mt("approved"),
         icon: CheckCircle,
         bgColor: 'bg-green-100',
         textColor: 'text-green-800',
         borderColor: 'border-green-200',
-        description: 'Your kitchen license has been approved. You can now accept bookings.'
+        description: mt("licenseApprovedCanAcceptBookings"),
       };
     case 'rejected':
       return {
-        label: 'Rejected',
+        label: mt("rejected"),
         icon: XCircle,
         bgColor: 'bg-red-100',
         textColor: 'text-red-800',
         borderColor: 'border-red-200',
-        description: 'Your kitchen license was rejected. Please review the feedback and resubmit.'
+        description: mt("licenseRejectedResubmit"),
       };
     case 'pending':
     default:
       return {
-        label: 'Pending Approval',
+        label: mt("pendingApproval"),
         icon: Clock,
         bgColor: 'bg-yellow-100',
         textColor: 'text-yellow-800',
         borderColor: 'border-yellow-200',
-        description: 'Your kitchen license is under review by the admin team.'
+        description: mt("licensePendingAdminReview"),
       };
   }
 }
@@ -67,6 +68,7 @@ export default function LocationCard({
   onManage,
   onViewDetails,
 }: LocationCardProps) {
+  
   const [isHovered, setIsHovered] = useState(false);
   const [logoError, setLogoError] = useState(false);
   const statusConfig = getStatusConfig(location.kitchenLicenseStatus);
@@ -138,7 +140,7 @@ export default function LocationCard({
                 <p className="text-sm">{statusConfig.description}</p>
                 {location.kitchenLicenseStatus === 'rejected' && location.kitchenLicenseFeedback && (
                   <div className="mt-2 pt-2 border-t border-gray-700">
-                    <p className="text-xs text-gray-400 mb-1">Admin Feedback:</p>
+                    <p className="text-xs text-gray-400 mb-1">{mt("adminFeedback2")}</p>
                     <p className="text-sm">{location.kitchenLicenseFeedback}</p>
                   </div>
                 )}
@@ -166,21 +168,21 @@ export default function LocationCard({
                 <ChefHat className="w-4 h-4" />
               </div>
               <p className="text-lg font-bold text-gray-900">{kitchenCount}</p>
-              <p className="text-xs text-gray-500">Kitchens</p>
+              <p className="text-xs text-gray-500">{mt("navKitchens")}</p>
             </div>
             <div className="text-center p-2.5 rounded-lg bg-gray-50">
               <div className="flex items-center justify-center gap-1 text-gray-500 mb-1">
                 <Calendar className="w-4 h-4" />
               </div>
               <p className="text-lg font-bold text-gray-900">{activeBookingsCount}</p>
-              <p className="text-xs text-gray-500">Bookings</p>
+              <p className="text-xs text-gray-500">{mt("navBookings")}</p>
             </div>
             <div className="text-center p-2.5 rounded-lg bg-gray-50">
               <div className="flex items-center justify-center gap-1 text-gray-500 mb-1">
                 <AlertCircle className="w-4 h-4" />
               </div>
               <p className="text-lg font-bold text-gray-900">{pendingApplicationsCount}</p>
-              <p className="text-xs text-gray-500">Pending</p>
+              <p className="text-xs text-gray-500">{mt("pending")}</p>
             </div>
           </div>
 
@@ -190,10 +192,8 @@ export default function LocationCard({
               <div className="flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-sm font-medium text-red-800">License Rejected</p>
-                  <p className="text-xs text-red-600 mt-0.5">
-                    Please edit this location to resubmit your kitchen license.
-                  </p>
+                  <p className="text-sm font-medium text-red-800">{mt("licenseRejected")}</p>
+                  <p className="text-xs text-red-600 mt-0.5">{mt("pleaseEditThisLocationToResubmitYourKitchenLicense")}</p>
                 </div>
               </div>
             </div>
@@ -205,10 +205,8 @@ export default function LocationCard({
               <div className="flex items-start gap-2">
                 <Clock className="w-4 h-4 text-yellow-600 flex-shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-sm font-medium text-yellow-800">Awaiting Approval</p>
-                  <p className="text-xs text-yellow-600 mt-0.5">
-                    Your location is being reviewed. You'll be notified when approved.
-                  </p>
+                  <p className="text-sm font-medium text-yellow-800">{mt("awaitingApproval")}</p>
+                  <p className="text-xs text-yellow-600 mt-0.5">{mt("yourLocationIsBeingReviewedYouLlBeNotifiedWhenApproved")}</p>
                 </div>
               </div>
             </div>
@@ -223,26 +221,20 @@ export default function LocationCard({
               onClick={() => onEdit(location)}
               className="flex-1 gap-1.5"
             >
-              <Edit className="w-4 h-4" />
-              Edit
-            </Button>
+              <Edit className="w-4 h-4" />{mt("edit")}</Button>
             <Button
               variant="outline"
               size="sm"
               onClick={() => onViewDetails(location)}
               className="flex-1 gap-1.5"
             >
-              <Eye className="w-4 h-4" />
-              Details
-            </Button>
+              <Eye className="w-4 h-4" />{mt("details")}</Button>
             <Button
               size="sm"
               onClick={() => onManage(location)}
               className="flex-1 gap-1.5"
               disabled={location.kitchenLicenseStatus !== 'approved'}
-            >
-              Manage
-              <ArrowRight className="w-4 h-4" />
+            >{mt("manage")}<ArrowRight className="w-4 h-4" />
             </Button>
           </div>
         </CardFooter>
@@ -253,6 +245,7 @@ export default function LocationCard({
 
 // Skeleton loader for loading state
 export function LocationCardSkeleton() {
+  
   return (
     <Card className="overflow-hidden">
       <div className="h-1 bg-gray-200 animate-pulse" />

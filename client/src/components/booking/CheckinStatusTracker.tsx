@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { bt } from "@/i18n/booking-ns";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -131,9 +132,12 @@ export function CheckinStatusTracker({
   checkinStatus: propCheckinStatus,
 }: CheckinStatusTrackerProps) {
   const { t: tStrict } = useTranslation("chef");
-  const t = (key: string, defaultText?: string): string => {
+  const t = (key: string, defaultTextOrOptions?: string | Record<string, unknown>): string => {
+    if (defaultTextOrOptions && typeof defaultTextOrOptions === "object") {
+      return String(tStrict(key as any, defaultTextOrOptions as any));
+    }
     const val = tStrict(key as any) as string;
-    return val !== key ? val : (defaultText || key);
+    return val !== key ? val : (defaultTextOrOptions || key);
   };
 
   const { data, isLoading } = useQuery<CheckinStatusData>({
@@ -144,7 +148,7 @@ export function CheckinStatusTracker({
         `/api/chef/storage-bookings/${storageBookingId}/checkin-status`,
         { headers, credentials: "include" }
       );
-      if (!response.ok) throw new Error("Failed to fetch check-in status");
+      if (!response.ok) throw new Error(bt("failedToFetchCheckinStatus"));
       return response.json();
     },
     enabled: open && !!storageBookingId,
@@ -160,10 +164,12 @@ export function CheckinStatusTracker({
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <LogIn className="h-5 w-5 text-muted-foreground" />
-            Check-In Status
+            {t("cstTitle")}
           </SheetTitle>
           <SheetDescription>
-            {storageName || "Storage Unit"} — Move-In Inspection Progress
+            {t("cstMoveInProgress", {
+              name: storageName || t("cstStorageUnitFallback"),
+            })}
           </SheetDescription>
         </SheetHeader>
 
@@ -274,7 +280,7 @@ export function CheckinStatusTracker({
             <div className="mt-3">
               <Separator className="my-4" />
               <div className="text-xs text-muted-foreground">
-                <span className="font-medium">Notes:</span>{" "}
+                <span className="font-medium">{t("cstNotesLabel")}</span>{" "}
                 {data.checkinNotes}
               </div>
             </div>
@@ -301,10 +307,10 @@ function buildSteps(
     status === "skipped";
 
   steps.push({
-    label: t("cstCheckInCompleted", "Check-In Completed"),
+    label: t("cstCheckInCompleted"),
     description: isCompleted
-      ? "You submitted your move-in inspection photos and checklist"
-      : "Submit photos and checklist documenting the storage unit condition",
+      ? t("cstDescSubmittedPhotos")
+      : t("cstDescSubmitPhotos"),
     state: isCompleted ? "completed" : "upcoming",
     timestamp: data?.checkinCompletedAt || data?.checkinRequestedAt,
     icon: <Camera className="h-4 w-4" />,
@@ -315,12 +321,12 @@ function buildSteps(
   const reviewDone = status === "checkin_completed" || status === "skipped";
 
   steps.push({
-    label: t("cstBaselineRecorded", "Baseline Recorded"),
+    label: t("cstBaselineRecorded"),
     description: isUnderReview
-      ? "Move-in inspection is submitted and awaiting finalisation"
+      ? t("cstDescAwaitingFinalisation")
       : reviewDone
-        ? "Your move-in baseline is recorded and protects you from unfair damage claims"
-        : "Submit your move-in inspection to establish the baseline condition",
+        ? t("cstDescBaselineRecorded")
+        : t("cstDescEstablishBaseline"),
     state: isUnderReview ? "active" : reviewDone ? "completed" : "upcoming",
     icon: <ShieldCheck className="h-4 w-4" />,
   });
@@ -328,8 +334,8 @@ function buildSteps(
   // Step 3: Outcome
   if (status === "checkin_completed") {
     steps.push({
-      label: t("cstCheckInApproved", "Check-In Approved"),
-      description: "Your move-in baseline is recorded — this protects you from unfair damage claims at checkout",
+      label: t("cstCheckInApproved"),
+      description: t("cstDescApprovedProtects"),
       state: "completed",
       timestamp: data?.checkinCompletedAt,
       icon: <CheckCircle className="h-4 w-4" />,
@@ -341,24 +347,24 @@ function buildSteps(
     });
   } else if (status === "skipped") {
     steps.push({
-      label: t("cstCheckInSkipped", "Check-In Skipped"),
-      description: "The move-in inspection step was skipped",
+      label: t("cstCheckInSkipped"),
+      description: t("cstDescSkipped"),
       state: "completed",
       timestamp: data?.checkinCompletedAt,
       icon: <CheckCircle className="h-4 w-4" />,
     });
   } else if (status === "not_checked_in") {
     steps.push({
-      label: t("cstAwaitingInspection", "Awaiting Inspection"),
-      description: "Submit your move-in inspection to establish the baseline condition",
+      label: t("cstAwaitingInspection"),
+      description: t("cstDescEstablishBaseline"),
       state: "upcoming",
       icon: <LogIn className="h-4 w-4" />,
     });
   } else {
     // checkin_requested — legacy status, still awaiting manager review
     steps.push({
-      label: t("cstAwaitingReview", "Awaiting Review"),
-      description: "Your move-in inspection is awaiting final confirmation",
+      label: t("cstAwaitingReview"),
+      description: t("cstDescAwaitingConfirmation"),
       state: "active",
       icon: <Clock className="h-4 w-4" />,
     });

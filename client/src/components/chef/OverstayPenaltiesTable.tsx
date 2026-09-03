@@ -53,6 +53,7 @@ import {
 import { auth } from "@/lib/firebase";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { ct } from "@/i18n/chef-ns";
 
 // Types
 interface OverstayPenalty {
@@ -308,7 +309,7 @@ export function OverstayPenaltiesTable() {
         headers,
         credentials: 'include',
       });
-      if (!response.ok) throw new Error('Failed to fetch penalties');
+      if (!response.ok) throw new Error(ct("failedToFetchPenalties"));
       return response.json();
     },
     refetchInterval: 30000,

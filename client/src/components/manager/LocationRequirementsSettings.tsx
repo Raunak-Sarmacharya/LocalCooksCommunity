@@ -17,6 +17,7 @@ export default function LocationRequirementsSettings({
   locationName,
   onSaveSuccess,
 }: LocationRequirementsSettingsProps) {
+  
   return (
     <ApplicationRequirementsWizard
       locationId={locationId}

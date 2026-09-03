@@ -1,4 +1,6 @@
 import React from "react";
+import { mt } from "@/i18n/manager";
+import { tt } from "@/i18n/common-ns";
 import { Card, CardContent } from "@/components/ui/card";
 import StripeConnectSetup from "@/components/manager/StripeConnectSetup";
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
@@ -8,6 +10,7 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 
 export default function PaymentSetupStep() {
+  
   const { handleNext, handleBack, isFirstStep, isStripeOnboardingComplete, skipCurrentStep } = useManagerOnboarding();
   const { user: firebaseUser } = useFirebaseAuth();
 
@@ -30,13 +33,13 @@ export default function PaymentSetupStep() {
   const getDisabledLabel = () => {
     const stage = stripeStatus?.verificationStage;
     switch (stage) {
-      case 'pending_verification': return 'Waiting for Stripe Verification...';
-      case 'requires_additional_info': return 'Provide Additional Info to Continue';
-      case 'past_due': return 'Update Overdue Info to Continue';
-      case 'details_needed': return 'Start Stripe Setup to Continue';
-      case 'payouts_disabled': return 'Add Bank Account to Continue';
-      case 'rejected': return 'Account Rejected — Contact Support';
-      default: return 'Complete Stripe Setup to Continue';
+      case 'pending_verification': return mt("stripeWaitingVerification");
+      case 'requires_additional_info': return mt("stripeProvideAdditionalInfo");
+      case 'past_due': return mt("stripeUpdateOverdueInfo");
+      case 'details_needed': return mt("stripeStartSetupToContinue");
+      case 'payouts_disabled': return mt("stripeAddBankAccountToContinue");
+      case 'rejected': return mt("stripeAccountRejectedContactSupport");
+      default: return mt("stripeCompleteSetupToContinue");
     }
   };
 
@@ -54,7 +57,7 @@ export default function PaymentSetupStep() {
         onBack={handleBack}
         showBack={!isFirstStep}
         isNextDisabled={!isStripeOnboardingComplete}
-        nextLabel={isStripeOnboardingComplete ? "Continue" : getDisabledLabel()}
+        nextLabel={isStripeOnboardingComplete ? tt("continue") : getDisabledLabel()}
       />
     </div>
   );

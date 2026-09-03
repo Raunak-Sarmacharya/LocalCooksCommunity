@@ -15,6 +15,7 @@ import { motion } from "framer-motion";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTranslation } from "react-i18next";
+import { kt } from "@/i18n/kitchen-ns";
 
 interface PublicLocation {
   id: number;
@@ -104,14 +105,14 @@ export default function ApplyToKitchen() {
   const { data: location, isLoading: locationLoading, error: locationError } = useQuery<PublicLocation>({
     queryKey: ["/api/public/locations", locationId, "details"],
     queryFn: async () => {
-      if (!locationId) throw new Error("No location ID provided");
+      if (!locationId) throw new Error(kt("noLocationIdProvided"));
 
       const response = await fetch(`/api/public/locations/${locationId}/details`);
       if (!response.ok) {
         if (response.status === 404) {
-          throw new Error("Location not found");
+          throw new Error(kt("locationNotFound"));
         }
-        throw new Error("Failed to fetch location");
+        throw new Error(kt("failedToFetchLocation"));
       }
       return response.json();
     },
@@ -128,6 +129,14 @@ export default function ApplyToKitchen() {
   // onboarding. We just check if they already submitted for THIS location.
   const { application: locationApplication, hasApplication: hasKitchenApp } =
     useChefKitchenApplicationForLocation(user && locationId ? locationId : null);
+
+  // Only block the form while Step 1 is awaiting LocalCooks admin review.
+  // After approval, chefs must reach KitchenApplicationForm for Step 2 docs.
+  const isAwaitingStep1Review =
+    hasKitchenApp &&
+    !!locationApplication &&
+    locationApplication.status === "inReview" &&
+    (locationApplication.current_tier ?? 1) < 2;
 
   const isLoading = authLoading || locationLoading || globalLoading;
 
@@ -168,24 +177,32 @@ export default function ApplyToKitchen() {
       animate={{ opacity: 1, y: 0 }}
       className="space-y-6"
     >
-      {hasKitchenApp && locationApplication ? (
+      {isAwaitingStep1Review ? (
         <Card className="shadow-none border-dashed border-2">
           <CardContent className="p-12 flex flex-col items-center justify-center text-center">
             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-6">
               <ClipboardList className="h-8 w-8 text-primary" />
             </div>
-            <h2 className="text-2xl font-bold text-foreground mb-2">Application Already Submitted</h2>
+            <h2 className="text-2xl font-bold text-foreground mb-2">
+              {t("applicationAlreadySubmittedTitle", "Application Already Submitted")}
+            </h2>
             <p className="text-muted-foreground max-w-md">
-              You have already submitted an application for this kitchen. We will notify you once a decision is made.
+              {t(
+                "applicationPendingAdminReviewDesc",
+                "Your request to apply is being reviewed by the LocalCooks team. We’ll notify you once a decision is made."
+              )}
             </p>
             <div className="mt-6 text-sm text-muted-foreground">
-              Status: <span className="font-semibold text-foreground">{locationApplication.status}</span>
+              {t("statusLabel", "Status")}:{" "}
+              <span className="font-semibold text-foreground">
+                {t("kdInReview", "In review")}
+              </span>
             </div>
             <Button
               className="mt-8"
-              onClick={() => navigate("/dashboard?view=applications")}
+              onClick={() => navigate("/dashboard?view=kitchen-applications")}
             >
-              Return to Dashboard
+              {t("backToDashboard")}
             </Button>
           </CardContent>
         </Card>
@@ -198,10 +215,13 @@ export default function ApplyToKitchen() {
           </div>
           <div className="flex-1 space-y-1">
             <p className="text-sm font-medium leading-none text-foreground">
-              Booking dates saved: {formatDateRange()}
+              {t("bookingDatesSaved", { range: formatDateRange(), defaultValue: `Booking dates saved: ${formatDateRange()}` })}
             </p>
             <p className="text-sm text-muted-foreground">
-              Complete your application below to secure your kitchen time.
+              {t(
+                "completeApplicationSecureTime",
+                "Complete your application below to secure your kitchen time."
+              )}
             </p>
           </div>
         </div>
@@ -224,7 +244,7 @@ export default function ApplyToKitchen() {
           } catch(e) {}
 
           if (hasIntent && locationId) {
-            navigate(`/book-kitchen?location=${locationId}`);
+            navigate(`/dashboard?bookLocation=${locationId}`);
           } else {
             navigate("/dashboard?view=kitchen-applications");
           }
@@ -272,7 +292,7 @@ export default function ApplyToKitchen() {
           { label: t("dashboard", { defaultValue: "Dashboard" }), onClick: () => navigate('/dashboard') },
           { label: t("discoverKitchens", { defaultValue: "Discover Kitchens" }), onClick: () => navigate('/dashboard?view=discover-kitchens') },
           { label: location?.name || t("applyFlowKitchenFallbackName", { defaultValue: "Kitchen" }), onClick: () => navigate(`/kitchen-requirements/${locationId}`) },
-          { label: t("applyBtn", { defaultValue: "Apply" }) },
+          { label: t("requestToApply", { defaultValue: "Request to apply" }) },
         ]}
       >
         {getContent()}

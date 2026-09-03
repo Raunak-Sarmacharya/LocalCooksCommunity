@@ -252,7 +252,7 @@ export default function PersonalInfoForm() {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6" data-testid="seller-application-step-1">
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2">
             <Label htmlFor="fullName">{t("sellerApp_fullName")}</Label>
@@ -319,7 +319,7 @@ export default function PersonalInfoForm() {
             <ArrowLeft className="mr-2 h-4 w-4" />
             {t("sellerApp_back")}
           </Button>
-          <Button type="submit">
+          <Button type="submit" data-testid="seller-application-continue">
             {t("sellerApp_continue")}
             <ArrowRight className="ml-2 h-4 w-4" />
           </Button>

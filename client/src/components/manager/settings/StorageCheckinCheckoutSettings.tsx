@@ -12,6 +12,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { mt } from "@/i18n/manager";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, AlertTriangle, Info } from "lucide-react";
 import { StatusButton } from "@/components/ui/status-button";
@@ -60,6 +61,7 @@ interface StorageCheckinCheckoutSettingsProps {
 export default function StorageCheckinCheckoutSettings({
   location,
 }: StorageCheckinCheckoutSettingsProps) {
+  
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -177,10 +179,8 @@ export default function StorageCheckinCheckoutSettings({
         queryKey: ["checkin-checkout-settings", location.id],
       });
 
-      toast({
-        title: "Settings Saved",
-        description:
-          "Storage check-in / check-out checklists updated successfully.",
+      toast({ title: mt("settingsSaved"),
+        description: mt("storageCheckInCheckOutChecklistsUpdatedSuccessfully"),
       });
     }, [
       location.id,
@@ -199,9 +199,7 @@ export default function StorageCheckinCheckoutSettings({
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">
-            Storage Check-In / Check-Out
-          </h2>
+          <h2 className="text-2xl font-bold tracking-tight">{mt("navStorageCheckinCheckout")}</h2>
           <p className="text-muted-foreground">
             Configure the move-in and move-out inspections chefs complete for
             storage bookings.
@@ -209,9 +207,7 @@ export default function StorageCheckinCheckoutSettings({
         </div>
         <div className="flex items-center justify-center py-16">
           <Loader2 className="size-6 animate-spin text-muted-foreground" />
-          <span className="ml-2 text-sm text-muted-foreground">
-            Loading settings...
-          </span>
+          <span className="ml-2 text-sm text-muted-foreground">{mt("loadingSettings")}</span>
         </div>
       </div>
     );
@@ -222,9 +218,7 @@ export default function StorageCheckinCheckoutSettings({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">
-            Storage Check-In / Check-Out
-          </h2>
+          <h2 className="text-2xl font-bold tracking-tight">{mt("navStorageCheckinCheckout")}</h2>
           <p className="text-muted-foreground">
             Define the move-in and move-out inspections chefs must document for
             storage bookings at this location.
@@ -234,9 +228,7 @@ export default function StorageCheckinCheckoutSettings({
           <Badge
             variant="outline"
             className="text-amber-700 bg-amber-50 border-amber-200"
-          >
-            Unsaved changes
-          </Badge>
+          >{mt("unsavedChanges")}</Badge>
         )}
       </div>
 
@@ -263,7 +255,7 @@ export default function StorageCheckinCheckoutSettings({
           disabled={
             (!isDirty && data?.id !== null) || validationErrors.length > 0
           }
-          labels={{ idle: "Save Storage Checklists", loading: "Saving", success: "Saved" }}
+          labels={{ idle: mt("saveStorageChecklists"), loading: mt("savingShort"), success: mt("saved") }}
         />
       </div>
 

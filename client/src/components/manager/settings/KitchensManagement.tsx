@@ -1,4 +1,6 @@
 import { logger } from "@/lib/logger";
+import { mt } from "@/i18n/manager";
+import { tt } from "@/i18n/common-ns";
 /**
  * Kitchens Management Component
  * Manages kitchen photos, descriptions, and gallery images
@@ -74,8 +76,7 @@ function KitchenGalleryImages({
       await updateGalleryImages(newGalleryImages);
     },
     onError: (error) => {
-      toast({
-        title: "Upload failed",
+      toast({ title: mt("uploadFailed2"),
         description: error,
         variant: "destructive",
       });
@@ -90,7 +91,7 @@ function KitchenGalleryImages({
     try {
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
-        throw new Error("Firebase user not available");
+        throw new Error(tt("firebaseUserNotAvailable"));
       }
 
       const token = await currentFirebaseUser.getIdToken();
@@ -114,15 +115,13 @@ function KitchenGalleryImages({
       setCurrentGalleryImages(newGalleryImages);
       queryClient.invalidateQueries({ queryKey: ['managerKitchens', locationId] });
 
-      toast({
-        title: "Success",
-        description: "Gallery images updated successfully",
+      toast({ title: mt("success"),
+        description: mt("galleryImagesUpdatedSuccessfully"),
       });
     } catch (error: any) {
       logger.error('Gallery images update error:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update gallery images",
+      toast({ title: mt("error"),
+        description: error.message || tt("failedToUpdateGalleryImages"),
         variant: "destructive",
       });
     }
@@ -229,8 +228,8 @@ function KitchenGalleryImages({
             <>
               <ImagePlus className="h-6 w-6 text-muted-foreground group-hover:text-primary/60 transition-colors" />
               <div className="text-center">
-                <span className="text-sm font-medium text-gray-700">Add photo</span>
-                <p className="text-xs text-muted-foreground mt-0.5">JPG, PNG, WebP · Max 4.5 MB</p>
+                <span className="text-sm font-medium text-gray-700">{mt("addPhoto")}</span>
+                <p className="text-xs text-muted-foreground mt-0.5">{mt("jpgPngWebpMaxSize")}</p>
               </div>
             </>
           )}
@@ -241,6 +240,7 @@ function KitchenGalleryImages({
 }
 
 export default function KitchensManagement({ location }: KitchensManagementProps) {
+  
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [kitchenDescriptions, setKitchenDescriptions] = useState<Record<number, string>>({});
@@ -255,7 +255,7 @@ export default function KitchensManagement({ location }: KitchensManagementProps
     queryFn: async () => {
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
-        throw new Error("Firebase user not available");
+        throw new Error(tt("firebaseUserNotAvailable"));
       }
 
       const token = await currentFirebaseUser.getIdToken();
@@ -266,7 +266,7 @@ export default function KitchensManagement({ location }: KitchensManagementProps
         },
         credentials: "include",
       });
-      if (!response.ok) throw new Error('Failed to fetch kitchens');
+      if (!response.ok) throw new Error(tt('failedToFetchKitchens'));
       return response.json();
     },
     enabled: !!location.id,
@@ -287,12 +287,12 @@ export default function KitchensManagement({ location }: KitchensManagementProps
     try {
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
-        throw new Error("Firebase user not available");
+        throw new Error(tt("firebaseUserNotAvailable"));
       }
 
       const token = await currentFirebaseUser.getIdToken();
 
-      const updateResponse = await fetch(`/api/manager/kitchens/${kitchenId}`, {
+      const updateResponse = await fetch(`/api/manager/kitchens/${kitchenId}/details`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -303,21 +303,19 @@ export default function KitchensManagement({ location }: KitchensManagementProps
       });
 
       if (!updateResponse.ok) {
-        const errorData = await updateResponse.json();
+        const errorData = await updateResponse.json().catch(() => ({}));
         throw new Error(errorData.error || 'Failed to update kitchen description');
       }
 
       queryClient.invalidateQueries({ queryKey: ['managerKitchens', location.id] });
 
-      toast({
-        title: "Success",
-        description: "Kitchen description updated successfully",
+      toast({ title: mt("success"),
+        description: mt("kitchenDescriptionUpdatedSuccessfully"),
       });
     } catch (error: any) {
       logger.error('Kitchen description update error:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update kitchen description",
+      toast({ title: mt("error"),
+        description: error.message || tt("failedToUpdateKitchenDescription"),
         variant: "destructive",
       });
     } finally {
@@ -327,9 +325,8 @@ export default function KitchensManagement({ location }: KitchensManagementProps
 
   const handleCreateKitchen = async () => {
     if (!newKitchenName.trim()) {
-      toast({
-        title: "Name Required",
-        description: "Please enter a name for the kitchen.",
+      toast({ title: mt("nameRequired"),
+        description: mt("pleaseEnterANameForTheKitchen"),
         variant: "destructive",
       });
       return;
@@ -339,7 +336,7 @@ export default function KitchensManagement({ location }: KitchensManagementProps
     try {
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
-        throw new Error("Firebase user not available");
+        throw new Error(tt("firebaseUserNotAvailable"));
       }
 
       const token = await currentFirebaseUser.getIdToken();
@@ -367,9 +364,8 @@ export default function KitchensManagement({ location }: KitchensManagementProps
       // Also refresh the all-kitchens cache used by ManagerPageLayout (Availability page sidebar)
       queryClient.invalidateQueries({ queryKey: ["/api/manager/all-kitchens"] });
 
-      toast({
-        title: "Success",
-        description: "Kitchen created successfully",
+      toast({ title: mt("success"),
+        description: mt("kitchenCreatedSuccessfully"),
       });
 
       setNewKitchenName('');
@@ -377,9 +373,8 @@ export default function KitchensManagement({ location }: KitchensManagementProps
       setShowCreateKitchen(false);
     } catch (error: any) {
       logger.error('Kitchen creation error:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create kitchen",
+      toast({ title: mt("error"),
+        description: error.message || tt("failedToCreateKitchen"),
         variant: "destructive",
       });
     } finally {
@@ -390,7 +385,7 @@ export default function KitchensManagement({ location }: KitchensManagementProps
   const handleDeleteKitchen = async (kitchenId: number) => {
     try {
       const currentFirebaseUser = auth.currentUser;
-      if (!currentFirebaseUser) throw new Error("Not authenticated");
+      if (!currentFirebaseUser) throw new Error(tt("notAuthenticated"));
       
       const token = await currentFirebaseUser.getIdToken();
       const response = await fetch(`/api/manager/kitchens/${kitchenId}`, {
@@ -398,14 +393,14 @@ export default function KitchensManagement({ location }: KitchensManagementProps
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
-      if (!response.ok) throw new Error("Failed to delete kitchen");
+      if (!response.ok) throw new Error(tt("failedToDeleteKitchen"));
       
       queryClient.invalidateQueries({ queryKey: ['managerKitchens', location.id] });
       // Also refresh the all-kitchens cache used by ManagerPageLayout (Availability page sidebar)
       queryClient.invalidateQueries({ queryKey: ["/api/manager/all-kitchens"] });
-      toast({ title: "Kitchen Deleted", description: "Kitchen has been successfully removed." });
+      toast({ title: mt("kitchenDeleted"), description: mt("kitchenHasBeenSuccessfullyRemoved") });
     } catch (e: any) {
-      toast({ title: "Error", description: e.message, variant: "destructive" });
+      toast({ title: mt("error"), description: e.message, variant: "destructive" });
     }
   };
 
@@ -413,7 +408,7 @@ export default function KitchensManagement({ location }: KitchensManagementProps
     try {
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
-        throw new Error("Firebase user not available");
+        throw new Error(tt("firebaseUserNotAvailable"));
       }
 
       const token = await currentFirebaseUser.getIdToken();
@@ -435,15 +430,13 @@ export default function KitchensManagement({ location }: KitchensManagementProps
 
       queryClient.invalidateQueries({ queryKey: ['managerKitchens', location.id] });
 
-      toast({
-        title: "Success",
-        description: imageUrl ? "Kitchen image updated successfully" : "Kitchen image removed",
+      toast({ title: mt("success"),
+        description: imageUrl ? mt("kitchenImageUpdatedSuccessfully") : mt("kitchenImageRemoved"),
       });
     } catch (error: any) {
       logger.error('Kitchen image update error:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update kitchen image",
+      toast({ title: mt("error"),
+        description: error.message || tt("failedToUpdateKitchenImage"),
         variant: "destructive",
       });
     }
@@ -456,42 +449,40 @@ export default function KitchensManagement({ location }: KitchensManagementProps
         <div className="flex items-center gap-3">
           <ChefHat className="h-5 w-5 text-primary" />
           <div>
-            <h2 className="text-2xl font-bold tracking-tight">Kitchens</h2>
+            <h2 className="text-2xl font-bold tracking-tight">{mt("navKitchens")}</h2>
             <p className="text-sm text-muted-foreground">
-              Manage photos and descriptions for {location.name}
+              {mt("managePhotosForLocation", { name: location.name })}
             </p>
           </div>
         </div>
         <Button onClick={() => setShowCreateKitchen(true)} size="sm">
-          <Plus className="mr-1.5 h-4 w-4" />
-          Add Kitchen
-        </Button>
+          <Plus className="mr-1.5 h-4 w-4" />{mt("addKitchen")}</Button>
       </div>
 
       {/* Create Kitchen Form */}
       {showCreateKitchen && (
         <Card className="border-primary/20 shadow-sm">
           <CardHeader className="pb-4">
-            <CardTitle className="text-base">New Kitchen</CardTitle>
-            <CardDescription>Add a new kitchen space to this location</CardDescription>
+            <CardTitle className="text-base">{mt("newKitchen")}</CardTitle>
+            <CardDescription>{mt("addANewKitchenSpaceToThisLocation")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="kitchen-name">Kitchen Name</Label>
+              <Label htmlFor="kitchen-name">{mt("kitchenName")}</Label>
               <Input
                 id="kitchen-name"
                 value={newKitchenName}
                 onChange={(e) => setNewKitchenName(e.target.value)}
-                placeholder="e.g., Main Kitchen, Prep Kitchen"
+                placeholder={mt("eGMainKitchenPrepKitchen")}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="kitchen-desc">Description <span className="text-muted-foreground font-normal">(optional)</span></Label>
+              <Label htmlFor="kitchen-desc">{mt("description")}<span className="text-muted-foreground font-normal">{mt("optionalLabel")}</span></Label>
               <Textarea
                 id="kitchen-desc"
                 value={newKitchenDescription}
                 onChange={(e) => setNewKitchenDescription(e.target.value)}
-                placeholder="Describe this kitchen's features, equipment, and capacity"
+                placeholder={mt("placeholderKitchenDescription")}
                 rows={3}
               />
             </div>
@@ -499,11 +490,9 @@ export default function KitchensManagement({ location }: KitchensManagementProps
               <StatusButton
                 onClick={handleCreateKitchen}
                 status={isCreatingKitchen ? "loading" : "idle"}
-                labels={{ idle: "Create Kitchen", loading: "Creating", success: "Created" }}
+                labels={{ idle: mt("createKitchen"), loading: mt("creating"), success: mt("created") }}
               />
-              <Button variant="ghost" onClick={() => setShowCreateKitchen(false)}>
-                Cancel
-              </Button>
+              <Button variant="ghost" onClick={() => setShowCreateKitchen(false)}>{mt("cancel")}</Button>
             </div>
           </CardContent>
         </Card>
@@ -520,14 +509,10 @@ export default function KitchensManagement({ location }: KitchensManagementProps
             <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
               <ChefHat className="h-6 w-6 text-muted-foreground" />
             </div>
-            <h3 className="text-base font-semibold mb-1">No kitchens yet</h3>
-            <p className="text-sm text-muted-foreground text-center mb-6 max-w-sm">
-              Add your first kitchen to start managing photos, descriptions, and accepting bookings.
-            </p>
+            <h3 className="text-base font-semibold mb-1">{mt("noKitchensYet")}</h3>
+            <p className="text-sm text-muted-foreground text-center mb-6 max-w-sm">{mt("addYourFirstKitchenToStartManagingPhotosDescriptionsAndAccep")}</p>
             <Button onClick={() => setShowCreateKitchen(true)} size="sm">
-              <Plus className="mr-1.5 h-4 w-4" />
-              Add Your First Kitchen
-            </Button>
+              <Plus className="mr-1.5 h-4 w-4" />{mt("addYourFirstKitchen")}</Button>
           </CardContent>
         </Card>
       ) : (
@@ -570,19 +555,17 @@ export default function KitchensManagement({ location }: KitchensManagementProps
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
-                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                        <AlertDialogTitle>{mt("areYouAbsolutelySure")}</AlertDialogTitle>
                         <AlertDialogDescription>
                           This will permanently delete the kitchen &ldquo;{kitchen.name}&rdquo; and all associated bookings, availability settings, and custom overrides. This action cannot be undone.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogCancel>{mt("cancel")}</AlertDialogCancel>
                         <AlertDialogAction
                           className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                           onClick={() => handleDeleteKitchen(kitchen.id)}
-                        >
-                          Delete Kitchen
-                        </AlertDialogAction>
+                        >{mt("deleteKitchen")}</AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
                   </AlertDialog>
@@ -590,7 +573,7 @@ export default function KitchensManagement({ location }: KitchensManagementProps
 
                 {/* Description Section */}
                 <div className="px-5 py-4">
-                  <Label className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Description</Label>
+                  <Label className="text-xs uppercase tracking-wider text-muted-foreground font-medium">{mt("description")}</Label>
                   <Textarea
                     value={kitchenDescriptions[kitchen.id] ?? kitchen.description ?? ''}
                     onChange={(e) => {
@@ -606,16 +589,14 @@ export default function KitchensManagement({ location }: KitchensManagementProps
                         handleKitchenDescriptionUpdate(kitchen.id, newDescription);
                       }
                     }}
-                    placeholder="Describe this kitchen's features, equipment, and what makes it special..."
+                    placeholder={mt("placeholderKitchenDescriptionLong")}
                     className="mt-2 resize-none"
                     rows={3}
                     disabled={updatingKitchenId === kitchen.id}
                   />
                   {updatingKitchenId === kitchen.id && (
                     <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      Saving changes...
-                    </p>
+                      <Loader2 className="h-3 w-3 animate-spin" />{mt("savingChanges")}</p>
                   )}
                 </div>
 
@@ -624,7 +605,7 @@ export default function KitchensManagement({ location }: KitchensManagementProps
                 {/* Gallery Section */}
                 <div className="px-5 py-4">
                   <div className="flex items-center justify-between mb-3">
-                    <Label className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Gallery</Label>
+                    <Label className="text-xs uppercase tracking-wider text-muted-foreground font-medium">{mt("gallery")}</Label>
                     {(kitchen.galleryImages || []).length > 0 && (
                       <span className="text-xs text-muted-foreground">
                         {(kitchen.galleryImages || []).length} photo{(kitchen.galleryImages || []).length !== 1 ? 's' : ''}
@@ -655,8 +636,8 @@ export default function KitchensManagement({ location }: KitchensManagementProps
                             <KeyRound className="h-4 w-4 text-blue-600" />
                           </div>
                           <div>
-                            <Label className="text-sm font-medium">Smart Door Lock</Label>
-                            <p className="text-xs text-muted-foreground">Enable if this kitchen has a keypad or smart lock. You can set access codes per booking.</p>
+                            <Label className="text-sm font-medium">{mt("smartDoorLock")}</Label>
+                            <p className="text-xs text-muted-foreground">{mt("enableIfThisKitchenHasAKeypadOrSmartLockYouCanSetAccessCodes")}</p>
                           </div>
                         </div>
                         <button
@@ -666,7 +647,7 @@ export default function KitchensManagement({ location }: KitchensManagementProps
                             const newVal = !kitchen.smartLockEnabled;
                             try {
                               const currentFirebaseUser = auth.currentUser;
-                              if (!currentFirebaseUser) throw new Error("Not authenticated");
+                              if (!currentFirebaseUser) throw new Error(tt("notAuthenticated"));
                               const token = await currentFirebaseUser.getIdToken();
                               const response = await fetch(`/api/manager/kitchens/${kitchen.id}/details`, {
                                 method: 'PUT',
@@ -674,12 +655,12 @@ export default function KitchensManagement({ location }: KitchensManagementProps
                                 credentials: 'include',
                                 body: JSON.stringify({ smartLockEnabled: newVal })
                               });
-                              if (!response.ok) throw new Error('Failed to update');
+                              if (!response.ok) throw new Error(tt('failedToUpdateGeneric'));
                               queryClient.invalidateQueries({ queryKey: ['managerKitchens', location.id] });
-                              toast({ title: newVal ? "Smart lock enabled" : "Smart lock disabled" });
+                              toast({ title: newVal ? mt("smartLockEnabledToast") : mt("smartLockDisabledToast") });
                             } catch (e: any) {
                               logger.error('Smart lock toggle error:', e);
-                              toast({ title: "Failed to update", variant: "destructive" });
+                              toast({ title: mt("failedToUpdate"), variant: "destructive" });
                             }
                           }}
                           className={cn(
@@ -702,8 +683,7 @@ export default function KitchensManagement({ location }: KitchensManagementProps
                       */}
                       {kitchen.smartLockEnabled && (
                         <p className="text-xs text-muted-foreground pl-11">
-                          Configure the access code and visibility in{" "}
-                          <span className="font-medium">Check-In / Out</span> settings.
+                          {mt("configureAccessCodeInCheckinSettings", { section: mt("navCheckinCheckout") })}
                         </p>
                       )}
                     </div>

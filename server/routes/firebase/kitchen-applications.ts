@@ -196,23 +196,9 @@ router.post('/firebase/chef/kitchen-applications',
 
             if (requirements.requirePhone) {
                 if (!phoneInput || phoneInput === '') {
-                    if (isTier1) {
-                        phoneValue = ''; // Save empty, let chef fill later
-                    } else {
-                        return res.status(400).json({
-                            error: 'Validation error',
-                            message: 'Phone number is required for this location',
-                            details: [{
-                                code: 'too_small',
-                                minimum: 1,
-                                type: 'string',
-                                inclusive: true,
-                                exact: false,
-                                message: 'Phone number is required',
-                                path: ['phone']
-                            }]
-                        });
-                    }
+                    // Tier 1: allow empty (request-to-apply phone is optional).
+                    // Tier 2: allow empty here and require-or-preserve after loading existingApp.
+                    phoneValue = '';
                 } else {
                     const { phoneNumberSchema } = await import('@shared/phone-validation');
                     const phoneValidation = phoneNumberSchema.safeParse(phoneInput);
@@ -275,116 +261,54 @@ router.post('/firebase/chef/kitchen-applications',
             const firstName = fullNameParts[0] || '';
             const lastName = fullNameParts.slice(1).join(' ') || '';
 
-            // Validate firstName
-            if (requirements.requireFirstName && (!firstName || firstName.trim() === '')) {
-                return res.status(400).json({
-                    error: 'Validation error',
-                    message: 'First name is required for this location',
-                    details: [{
-                        code: 'too_small',
-                        minimum: 1,
-                        type: 'string',
-                        message: 'First name is required',
-                        path: ['firstName']
-                    }]
-                });
-            }
+            // Tier 1 personal/business field requirements — Step 2 must not re-validate these.
+            // Request-to-apply leaves many optional; Step 2 only collects docs (+ phone if missing).
+            if (isTier1) {
+                if (requirements.requireFirstName && (!firstName || firstName.trim() === '')) {
+                    return res.status(400).json({
+                        error: 'Validation error',
+                        message: 'First name is required for this location',
+                        details: [{
+                            code: 'too_small',
+                            minimum: 1,
+                            type: 'string',
+                            message: 'First name is required',
+                            path: ['firstName']
+                        }]
+                    });
+                }
 
-            // Validate lastName
-            if (requirements.requireLastName && (!lastName || lastName.trim() === '')) {
-                return res.status(400).json({
-                    error: 'Validation error',
-                    message: 'Last name is required for this location',
-                    details: [{
-                        code: 'too_small',
-                        minimum: 1,
-                        type: 'string',
-                        message: 'Last name is required',
-                        path: ['lastName']
-                    }]
-                });
-            }
+                if (requirements.requireLastName && (!lastName || lastName.trim() === '')) {
+                    return res.status(400).json({
+                        error: 'Validation error',
+                        message: 'Last name is required for this location',
+                        details: [{
+                            code: 'too_small',
+                            minimum: 1,
+                            type: 'string',
+                            message: 'Last name is required',
+                            path: ['lastName']
+                        }]
+                    });
+                }
 
-            // Validate email
-            if (requirements.requireEmail && (!req.body.email || req.body.email.trim() === '')) {
-                return res.status(400).json({
-                    error: 'Validation error',
-                    message: 'Email is required for this location',
-                    details: [{
-                        code: 'too_small',
-                        minimum: 1,
-                        type: 'string',
-                        message: 'Email is required',
-                        path: ['email']
-                    }]
-                });
-            }
+                if (requirements.requireEmail && (!req.body.email || req.body.email.trim() === '')) {
+                    return res.status(400).json({
+                        error: 'Validation error',
+                        message: 'Email is required for this location',
+                        details: [{
+                            code: 'too_small',
+                            minimum: 1,
+                            type: 'string',
+                            message: 'Email is required',
+                            path: ['email']
+                        }]
+                    });
+                }
 
-            // Validate businessName
-            if (requirements.requireBusinessName && (!businessInfo.businessName || businessInfo.businessName.trim() === '')) {
-                return res.status(400).json({
-                    error: 'Validation error',
-                    message: 'Business name is required for this location',
-                    details: [{
-                        code: 'too_small',
-                        minimum: 1,
-                        type: 'string',
-                        message: 'Business name is required',
-                        path: ['businessName']
-                    }]
-                });
+                // Business name/type/description/experience are optional on request-to-apply.
+                // Do not hard-fail Step 1 when missing — chef can complete later.
             }
-
-            // Validate businessType
-            if (requirements.requireBusinessType && (!businessInfo.businessType || businessInfo.businessType.trim() === '')) {
-                return res.status(400).json({
-                    error: 'Validation error',
-                    message: 'Business type is required for this location',
-                    details: [{
-                        code: 'too_small',
-                        minimum: 1,
-                        type: 'string',
-                        message: 'Business type is required',
-                        path: ['businessType']
-                    }]
-                });
-            }
-
-            // Validate experience
-            if (requirements.tier1_years_experience_required && (!businessInfo.experience || businessInfo.experience.trim() === '') && (!req.body.cookingExperience || req.body.cookingExperience.trim() === '')) {
-                return res.status(400).json({
-                    error: 'Validation error',
-                    message: 'Experience level is required for this location',
-                    details: [{
-                        code: 'too_small',
-                        minimum: 1,
-                        type: 'string',
-                        message: 'Experience level is required',
-                        path: ['experience']
-                    }]
-                });
-            }
-
-            // Validate businessDescription
-            if (requirements.requireBusinessDescription && (!businessInfo.description || businessInfo.description.trim() === '')) {
-                return res.status(400).json({
-                    error: 'Validation error',
-                    message: 'Business description is required for this location',
-                    details: [{
-                        code: 'too_small',
-                        minimum: 1,
-                        type: 'string',
-                        message: 'Business description is required',
-                        path: ['businessDescription']
-                    }]
-                });
-            }
-
-            // NOTE: File uploads (food handler certificate FILE) and expiry dates are
-            // Step 2 requirements, not Step 1. The registration flow auto-submits Step 1
-            // from pendingRegistrationData and has no file upload UX. It also does not
-            // collect usage frequency or session length, so these must not block Step 1
-            // either.
 
             // Validate foodSafetyLicense (the RADIO answer, not the file upload).
             // This can still be required for Step 1 since the registration modal asks
@@ -394,24 +318,15 @@ router.post('/firebase/chef/kitchen-applications',
                 foodSafetyLicenseValue = req.body.foodSafetyLicense;
             }
 
-            // Food Handler Certificate FILE UPLOAD + EXPIRY DATE — Step 2 only.
-            // (Previously enforced here for Step 1; moved to Tier 2 per user request.)
-
             // Food establishment cert is still a Tier 2 requirement - not validated at initial application
             let foodEstablishmentCertValue: "yes" | "no" | "notSure" = "no";
             foodEstablishmentCertValue = req.body.foodEstablishmentCert || "no";
-
-            // Usage Frequency + Session Length — optional for Step 1. The registration
-            // flow does not ask these questions; chefs set them when needed in Step 2
-            // or in profile. Not a blocker for auto-submit from pending data.
-            //
-            // (Validation removed for Tier 1 initial submission.)
 
             const formData: any = {
                 chefId: req.neonUser!.id,
                 locationId: locationId,
                 fullName: req.body.fullName || `${firstName} ${lastName}`.trim() || 'N/A',
-                shopName: req.body.shopName || 'Shop Not Named',
+                shopName: req.body.shopName || businessInfo.businessName || 'Shop Not Named',
                 shopAddress: req.body.shopAddress || 'Address Not Provided',
                 email: req.body.email || '',
                 phone: phoneValue,
@@ -438,6 +353,80 @@ router.post('/firebase/chef/kitchen-applications',
             if (currentTierValue === 2) {
                 // Get existing application to preserve Step 1 custom fields
                 existingApp = await chefApplicationService.getChefApplication(req.neonUser!.id, locationId);
+
+                // Phone is optional on request-to-apply — require it here if still missing
+                if (!phoneValue || String(phoneValue).trim() === '') {
+                    const existingPhone = existingApp?.phone ? String(existingApp.phone).trim() : '';
+                    if (existingPhone) {
+                        formData.phone = existingPhone;
+                    } else {
+                        return res.status(400).json({
+                            error: 'Validation error',
+                            message: 'Phone number is required for Step 2',
+                            details: [{
+                                code: 'custom',
+                                message: 'Phone number is required',
+                                path: ['phone']
+                            }]
+                        });
+                    }
+                }
+
+                // Preserve Step 1 personal/business fields — Step 2 payload often sends empties
+                // for fields the form no longer shows (would otherwise wipe approved Step 1 data).
+                const isBlank = (v: unknown) =>
+                    v == null || String(v).trim() === '' ||
+                    v === 'N/A' || v === 'Shop Not Named' || v === 'Address Not Provided';
+
+                if (isBlank(formData.fullName) && existingApp?.fullName) {
+                    formData.fullName = existingApp.fullName;
+                }
+                if (isBlank(formData.email) && existingApp?.email) {
+                    formData.email = existingApp.email;
+                }
+                if (isBlank(formData.shopName) && existingApp?.shopName) {
+                    formData.shopName = existingApp.shopName;
+                }
+                if (isBlank(formData.shopAddress) && existingApp?.shopAddress) {
+                    formData.shopAddress = existingApp.shopAddress;
+                }
+                if ((!formData.businessDescription || formData.businessDescription === '{}' ||
+                    (typeof formData.businessDescription === 'string' &&
+                        (() => {
+                            try {
+                                const parsed = JSON.parse(formData.businessDescription);
+                                return !parsed?.businessName && !parsed?.businessType && !parsed?.description && !parsed?.experience;
+                            } catch {
+                                return false;
+                            }
+                        })()))
+                    && existingApp?.businessDescription) {
+                    formData.businessDescription = existingApp.businessDescription;
+                }
+                if (!formData.cookingExperience && existingApp?.cookingExperience) {
+                    formData.cookingExperience = existingApp.cookingExperience;
+                }
+                if (formData.foodSafetyLicense === 'no' && existingApp?.foodSafetyLicense && existingApp.foodSafetyLicense !== 'no') {
+                    // Keep prior yes/notSure unless a new license file is being set below
+                    if (!foodSafetyLicenseUrl && !req.body.foodSafetyLicenseUrl) {
+                        formData.foodSafetyLicense = existingApp.foodSafetyLicense;
+                    }
+                }
+                if (!formData.foodSafetyLicenseUrl && existingApp?.foodSafetyLicenseUrl) {
+                    formData.foodSafetyLicenseUrl = existingApp.foodSafetyLicenseUrl;
+                }
+                if (!formData.foodSafetyLicenseExpiry && existingApp?.foodSafetyLicenseExpiry) {
+                    formData.foodSafetyLicenseExpiry = existingApp.foodSafetyLicenseExpiry;
+                }
+                if (!formData.foodEstablishmentCertUrl && existingApp?.foodEstablishmentCertUrl) {
+                    formData.foodEstablishmentCertUrl = existingApp.foodEstablishmentCertUrl;
+                }
+                if (!formData.foodEstablishmentCertExpiry && existingApp?.foodEstablishmentCertExpiry) {
+                    formData.foodEstablishmentCertExpiry = existingApp.foodEstablishmentCertExpiry;
+                }
+                if (existingApp?.kitchenPreference) {
+                    formData.kitchenPreference = existingApp.kitchenPreference;
+                }
                 
                 // Build tier_data with proper structure for enterprise-grade data separation
                 const mergedTierData: Record<string, any> = {
@@ -472,69 +461,61 @@ router.post('/firebase/chef/kitchen-applications',
             }
 
             // Validate Tier 2 required documents when submitting Tier 2 application
+            // ALLOWLIST ONLY — never re-check Step 1 / request-to-apply fields here.
             const currentTier = parseInt(req.body.current_tier) || 1;
             if (currentTier === 2) {
-                // Check if Food Establishment Certificate is required and provided
+                const rejectStep2 = (message: string, path: string) => {
+                    logger.info(`❌ Step 2 validation failed: ${message}`);
+                    return res.status(400).json({
+                        error: 'Validation error',
+                        message,
+                        details: [{ code: 'custom', message, path: [path] }]
+                    });
+                };
+
+                // Food Safety License is always required on Step 2
+                const hasFoodSafetyLicense =
+                    foodSafetyLicenseUrl ||
+                    req.body.foodSafetyLicenseUrl ||
+                    existingApp?.foodSafetyLicenseUrl;
+                if (!hasFoodSafetyLicense) {
+                    return rejectStep2('Food Safety License is required for Step 2', 'foodSafetyLicenseFile');
+                }
+
+                const hasFoodSafetyExpiry =
+                    req.body.foodSafetyLicenseExpiry ||
+                    businessInfo.foodHandlerCertExpiry ||
+                    existingApp?.foodSafetyLicenseExpiry;
+                if (!hasFoodSafetyExpiry || String(hasFoodSafetyExpiry).trim() === '') {
+                    return rejectStep2('Food Safety License expiry date is required for Step 2', 'foodSafetyLicenseExpiry');
+                }
+
                 if (requirements.tier2_food_establishment_cert_required) {
                     const hasFoodEstablishmentCert = foodEstablishmentCertUrl || req.body.foodEstablishmentCertUrl || existingApp?.foodEstablishmentCertUrl;
                     if (!hasFoodEstablishmentCert) {
-                        return res.status(400).json({
-                            error: 'Validation error',
-                            message: 'Food Establishment Certificate is required for Tier 2',
-                            details: [{
-                                code: 'custom',
-                                message: 'Food Establishment Certificate is required',
-                                path: ['foodEstablishmentCert']
-                            }]
-                        });
+                        return rejectStep2('Food Establishment Certificate is required for Tier 2', 'foodEstablishmentCert');
                     }
                 }
 
                 if (requirements.tier2_food_establishment_expiry_required) {
                     const hasFoodEstablishmentExpiry = req.body.foodEstablishmentCertExpiry || businessInfo.foodEstablishmentCertExpiry || existingApp?.foodEstablishmentCertExpiry;
                     if (!hasFoodEstablishmentExpiry) {
-                        return res.status(400).json({
-                            error: 'Validation error',
-                            message: 'Food establishment license expiry date is required for Step 2',
-                            details: [{
-                                code: 'custom',
-                                message: 'Food establishment license expiry date is required',
-                                path: ['foodEstablishmentCertExpiry']
-                            }]
-                        });
+                        return rejectStep2('Food establishment license expiry date is required for Step 2', 'foodEstablishmentCertExpiry');
                     }
                 }
 
-                // Check if Insurance Document is required and provided
                 if (requirements.tier2_insurance_document_required) {
                     const existingTierFiles = (existingApp?.tier_data as Record<string, any> | undefined)?.tierFiles || {};
                     const hasInsuranceDoc = tierFileUrls['tier2_insurance_document'] || existingTierFiles.tier2_insurance_document;
                     if (!hasInsuranceDoc) {
-                        return res.status(400).json({
-                            error: 'Validation error',
-                            message: 'Insurance Document is required for Tier 2',
-                            details: [{
-                                code: 'custom',
-                                message: 'Insurance Document is required',
-                                path: ['tier2_insurance_document']
-                            }]
-                        });
+                        return rejectStep2('Insurance Document is required for Tier 2', 'tier2_insurance_document');
                     }
                 }
 
-                // Check if Kitchen Experience Description is required and provided
                 if (requirements.tier2_kitchen_experience_required) {
                     const kitchenExperienceDesc = tierData?.kitchen_experience_description;
                     if (!kitchenExperienceDesc || kitchenExperienceDesc.trim() === '') {
-                        return res.status(400).json({
-                            error: 'Validation error',
-                            message: 'Kitchen Experience Description is required for Tier 2',
-                            details: [{
-                                code: 'custom',
-                                message: 'Kitchen Experience Description is required',
-                                path: ['kitchenExperienceDescription']
-                            }]
-                        });
+                        return rejectStep2('Kitchen Experience Description is required for Tier 2', 'kitchenExperienceDescription');
                     }
                 }
             }
@@ -556,6 +537,15 @@ router.post('/firebase/chef/kitchen-applications',
             if (!parsedData.success) {
                 const validationError = fromZodError(parsedData.error);
                 logger.info('❌ Validation failed:', validationError.details);
+                logger.info('❌ Step payload context:', {
+                    currentTierValue,
+                    isTier1,
+                    fullName: formData.fullName,
+                    email: formData.email,
+                    shopName: formData.shopName,
+                    hasPhone: !!formData.phone,
+                    hasBusinessDescription: !!formData.businessDescription,
+                });
                 return res.status(400).json({
                     error: 'Validation error',
                     message: validationError.message,

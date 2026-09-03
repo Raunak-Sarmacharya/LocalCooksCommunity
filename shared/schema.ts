@@ -1638,11 +1638,12 @@ export const paymentTransactions = pgTable("payment_transactions", {
   chefId: integer("chef_id").references(() => users.id, { onDelete: "set null" }), // Chef who made the payment
   managerId: integer("manager_id").references(() => users.id, { onDelete: "set null" }), // Manager who receives the payment
   // Payment amounts (all in cents)
-  amount: numeric("amount").notNull(), // Total transaction amount (includes service fee)
-  baseAmount: numeric("base_amount").notNull(), // Base amount before service fee
-  serviceFee: numeric("service_fee").notNull().default("0"), // Platform service fee
+  amount: numeric("amount").notNull(), // Total charged to chef (subtotal + tax + service fee)
+  baseAmount: numeric("base_amount").notNull(), // Manager gross before Stripe fee (subtotal + tax)
+  serviceFee: numeric("service_fee").notNull().default("0"), // Platform service fee (kept by platform)
+  taxAmount: numeric("tax_amount").default("0"), // Tax collected (kept by manager)
   stripeProcessingFee: numeric("stripe_processing_fee").default("0"), // Actual Stripe processing fee from BalanceTransaction (in cents)
-  managerRevenue: numeric("manager_revenue").notNull(), // Manager earnings (base_amount - service_fee)
+  managerRevenue: numeric("manager_revenue").notNull(), // Connect transfer = base_amount - stripe_processing_fee
   refundAmount: numeric("refund_amount").default("0"), // Total refunded amount
   netAmount: numeric("net_amount").notNull(), // Final amount after refunds (amount - refund_amount)
   currency: text("currency").notNull().default("CAD"),

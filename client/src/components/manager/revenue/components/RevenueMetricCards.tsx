@@ -11,6 +11,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query"
+import { mt } from "@/i18n/manager"
 import { auth } from "@/lib/firebase"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -36,7 +37,9 @@ import {
 } from "lucide-react"
 import { formatCurrency, formatPercent } from "@/lib/formatters"
 import type { RevenueMetrics, Transaction } from "../types"
-import { getTransactionRevenueBreakdown } from "../revenue-calculations"
+import { getTransactionRevenueBreakdown, aggregateTransactionPayoutTotals } from "../revenue-calculations"
+import { KitchenPayoutSummaryTiles } from "@/components/booking/BookingPricingBreakdown"
+import { tt } from "@/i18n/common-ns";
 
 interface RevenueMetricCardsProps {
     metrics: RevenueMetrics | null
@@ -144,13 +147,14 @@ interface StripeBalanceData {
 }
 
 export function RevenueMetricCards({ metrics, isLoading, transactions }: RevenueMetricCardsProps) {
+  
     // Fetch live Stripe balance for real-time payout data
     const { data: stripeBalance, isLoading: isLoadingBalance } = useQuery<StripeBalanceData>({
         queryKey: ['stripeBalance'],
         queryFn: async () => {
             const currentFirebaseUser = auth.currentUser
             if (!currentFirebaseUser) {
-                throw new Error("Firebase user not available")
+                throw new Error(tt("firebaseUserNotAvailable"))
             }
             const token = await currentFirebaseUser.getIdToken()
             const response = await fetch('/api/manager/revenue/stripe-balance', {
@@ -161,7 +165,7 @@ export function RevenueMetricCards({ metrics, isLoading, transactions }: Revenue
                 credentials: 'include',
             })
             if (!response.ok) {
-                throw new Error('Failed to fetch Stripe balance')
+                throw new Error(tt("failedToFetchStripeBalance"))
             }
             return response.json()
         },
@@ -214,29 +218,34 @@ export function RevenueMetricCards({ metrics, isLoading, transactions }: Revenue
         // Fallback: use server-provided values (best effort without per-transaction data)
         taxAmount = metrics.taxAmount ?? 0;
         stripeFee = metrics.stripeFee ?? 0;
-        netRevenue = metrics.netRevenue ?? (metrics.totalRevenue - taxAmount - stripeFee);
+        netRevenue = metrics.netRevenue ?? Math.max(0, (metrics.managerRevenue ?? 0) - (metrics.refundedAmount ?? 0));
     }
 
     return (
         <div className="space-y-4">
+            {transactions && transactions.length > 0 && (
+                <KitchenPayoutSummaryTiles
+                    {...aggregateTransactionPayoutTotals(transactions)}
+                />
+            )}
             {/* Primary Revenue Cards - Hero Section */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <MetricCard
-                    title="Gross Revenue"
+                    title={mt("grossRevenue")}
                     value={formatCurrency(metrics.totalRevenue)}
-                    subtitle="Total amount charged"
+                    subtitle={mt("totalAmountCharged")}
                     icon={<DollarSign className="h-4 w-4 text-emerald-500" />}
                     iconBgClass="bg-emerald-100"
                     changePercent={metrics.revenueChangePercent}
-                    tooltip="Total gross revenue from all bookings before any deductions"
+                    tooltip={mt("grossRevenueTooltip")}
                 />
                 <MetricCard
-                    title="Net Revenue"
+                    title={mt("netRevenue")}
                     value={formatCurrency(netRevenue)}
-                    subtitle="After tax & fees"
+                    subtitle={mt("afterTaxFees")}
                     icon={<Wallet className="h-4 w-4 text-blue-500" />}
                     iconBgClass="bg-blue-100"
-                    tooltip="Your actual earnings after tax collected and Stripe processing fees"
+                    tooltip={mt("netRevenueTooltip")}
                 />
             </div>
 
@@ -245,21 +254,21 @@ export function RevenueMetricCards({ metrics, isLoading, transactions }: Revenue
                 <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-4">
                         <BarChart3 className="h-4 w-4 text-slate-600" />
-                        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Revenue Breakdown</h3>
+                        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">{mt("revenueBreakdown")}</h3>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
                         {/* Tax Collected */}
                         <div className="space-y-1">
                             <div className="flex items-center gap-1.5">
                                 <Receipt className="h-3.5 w-3.5 text-amber-600" />
-                                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Tax Collected</span>
+                                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{mt("taxCollected")}</span>
                                 <TooltipProvider>
                                     <Tooltip>
                                         <TooltipTrigger asChild>
                                             <Info className="h-3 w-3 text-muted-foreground cursor-help" />
                                         </TooltipTrigger>
                                         <TooltipContent className="max-w-xs">
-                                            <p className="text-sm">Total tax collected from all bookings based on your kitchen&apos;s tax rate. This amount is collected from customers and remitted to tax authorities.</p>
+                                            <p className="text-sm">{mt("taxCollectedTooltip")}</p>
                                         </TooltipContent>
                                     </Tooltip>
                                 </TooltipProvider>
@@ -267,8 +276,8 @@ export function RevenueMetricCards({ metrics, isLoading, transactions }: Revenue
                             <p className="text-xl font-bold text-amber-600">{formatCurrency(taxAmount)}</p>
                             <p className="text-xs text-muted-foreground">
                                 {metrics.taxRatePercent && metrics.taxRatePercent > 0
-                                    ? `${metrics.taxRatePercent}% tax rate`
-                                    : 'No tax applied'}
+                                    ? mt("taxRatePercentLabel", { rate: metrics.taxRatePercent })
+                                    : mt("noTaxApplied")}
                             </p>
                         </div>
 
@@ -276,27 +285,27 @@ export function RevenueMetricCards({ metrics, isLoading, transactions }: Revenue
                         <div className="space-y-1">
                             <div className="flex items-center gap-1.5">
                                 <CreditCard className="h-3.5 w-3.5 text-violet-600" />
-                                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Stripe Fee</span>
+                                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{mt("stripeFee")}</span>
                                 <TooltipProvider>
                                     <Tooltip>
                                         <TooltipTrigger asChild>
                                             <Info className="h-3 w-3 text-muted-foreground cursor-help" />
                                         </TooltipTrigger>
                                         <TooltipContent className="max-w-xs">
-                                            <p className="text-sm">Actual Stripe processing fee from Stripe Balance Transaction API. Falls back to estimate (~2.9% + $0.30) for older transactions.</p>
+                                            <p className="text-sm">{mt("stripeFeeTooltipDetail")}</p>
                                         </TooltipContent>
                                     </Tooltip>
                                 </TooltipProvider>
                             </div>
                             <p className="text-xl font-bold text-violet-600">{formatCurrency(stripeFee)}</p>
-                            <p className="text-xs text-muted-foreground">From Stripe API</p>
+                            <p className="text-xs text-muted-foreground">{mt("fromStripeAPI")}</p>
                         </div>
 
                         {/* Live Stripe Balance - Available for Payout */}
                         <div className="space-y-1">
                             <div className="flex items-center gap-1.5">
                                 <Banknote className="h-3.5 w-3.5 text-emerald-600" />
-                                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Available</span>
+                                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{mt("available")}</span>
                                 <TooltipProvider>
                                     <Tooltip>
                                         <TooltipTrigger asChild>
@@ -304,14 +313,14 @@ export function RevenueMetricCards({ metrics, isLoading, transactions }: Revenue
                                         </TooltipTrigger>
                                         <TooltipContent className="max-w-sm">
                                             <div className="space-y-2 text-sm">
-                                                <p className="font-medium">Live Stripe Balance</p>
-                                                <p className="text-muted-foreground">Real-time data from Stripe Balance API:</p>
+                                                <p className="font-medium">{mt("liveStripeBalance")}</p>
+                                                <p className="text-muted-foreground">{mt("realTimeDataFromStripeBalanceAPI")}</p>
                                                 <ul className="text-xs space-y-1 text-muted-foreground">
-                                                    <li>• Funds that have cleared and are ready for payout</li>
-                                                    <li>• Updated automatically as payments complete</li>
-                                                    <li>• Includes tax you collected</li>
+                                                    <li>• {mt("fundsReadyForPayout")}</li>
+                                                    <li>• {mt("balanceUpdatedAutomatically")}</li>
+                                                    <li>• {mt("includesTaxCollected")}</li>
                                                 </ul>
-                                                <p className="text-xs border-t pt-2 mt-2">You are responsible for remitting tax to the appropriate authorities.</p>
+                                                <p className="text-xs border-t pt-2 mt-2">{mt("youAreResponsibleForRemittingTaxToTheAppropriateAuthorities")}</p>
                                             </div>
                                         </TooltipContent>
                                     </Tooltip>
@@ -325,7 +334,7 @@ export function RevenueMetricCards({ metrics, isLoading, transactions }: Revenue
                                 </p>
                             )}
                             <p className="text-xs text-muted-foreground">
-                                {stripeBalance?.hasStripeAccount ? 'From Stripe' : 'No Stripe account'}
+                                {stripeBalance?.hasStripeAccount ? mt("fromStripe") : mt("noStripeAccount")}
                             </p>
                         </div>
 
@@ -333,7 +342,7 @@ export function RevenueMetricCards({ metrics, isLoading, transactions }: Revenue
                         <div className="space-y-1">
                             <div className="flex items-center gap-1.5">
                                 <Clock className="h-3.5 w-3.5 text-amber-600" />
-                                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Pending</span>
+                                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{mt("pending")}</span>
                                 <TooltipProvider>
                                     <Tooltip>
                                         <TooltipTrigger asChild>
@@ -341,12 +350,12 @@ export function RevenueMetricCards({ metrics, isLoading, transactions }: Revenue
                                         </TooltipTrigger>
                                         <TooltipContent className="max-w-sm">
                                             <div className="space-y-2 text-sm">
-                                                <p className="font-medium">Pending Balance</p>
-                                                <p className="text-muted-foreground">Funds from recent payments:</p>
+                                                <p className="font-medium">{mt("pendingBalance")}</p>
+                                                <p className="text-muted-foreground">{mt("fundsFromRecentPayments")}</p>
                                                 <ul className="text-xs space-y-1 text-muted-foreground">
-                                                    <li>• Payments still in processing period</li>
-                                                    <li>• Usually clears in 2-7 business days</li>
-                                                    <li>• Will move to Available when cleared</li>
+                                                    <li>• {mt("paymentsStillProcessing")}</li>
+                                                    <li>• {mt("clearsInBusinessDays")}</li>
+                                                    <li>• {mt("willMoveToAvailable")}</li>
                                                 </ul>
                                             </div>
                                         </TooltipContent>
@@ -360,17 +369,17 @@ export function RevenueMetricCards({ metrics, isLoading, transactions }: Revenue
                                     {formatCurrency(stripeBalance?.pending ?? 0)}
                                 </p>
                             )}
-                            <p className="text-xs text-muted-foreground">Processing</p>
+                            <p className="text-xs text-muted-foreground">{mt("processing")}</p>
                         </div>
 
                         {/* Average Booking */}
                         <div className="space-y-1">
                             <div className="flex items-center gap-1.5">
                                 <BarChart3 className="h-3.5 w-3.5 text-slate-600" />
-                                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Avg Booking</span>
+                                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{mt("avgBooking")}</span>
                             </div>
                             <p className="text-xl font-bold text-slate-700 dark:text-slate-300">{formatCurrency(metrics.averageBookingValue)}</p>
-                            <p className="text-xs text-muted-foreground">{metrics.bookingCount} total bookings</p>
+                            <p className="text-xs text-muted-foreground">{mt("totalBookingsCount", { count: metrics.bookingCount })}</p>
                         </div>
                     </div>
 
@@ -381,7 +390,7 @@ export function RevenueMetricCards({ metrics, isLoading, transactions }: Revenue
                             <div className="flex items-center justify-between p-3 bg-red-50 dark:bg-red-950/20 rounded-lg">
                                 <div className="flex items-center gap-2">
                                     <DollarSign className="h-4 w-4 text-red-500" />
-                                    <span className="text-sm font-medium text-red-700 dark:text-red-400">Refunded</span>
+                                    <span className="text-sm font-medium text-red-700 dark:text-red-400">{mt("refunded")}</span>
                                 </div>
                                 <span className="text-lg font-bold text-red-600">{formatCurrency(metrics.refundedAmount)}</span>
                             </div>

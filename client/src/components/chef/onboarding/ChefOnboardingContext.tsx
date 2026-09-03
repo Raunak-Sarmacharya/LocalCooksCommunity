@@ -1,6 +1,7 @@
 import { logger } from "@/lib/logger";
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef, ReactNode } from 'react';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ct } from "@/i18n/chef-ns";
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -70,7 +71,7 @@ const ChefOnboardingContext = createContext<ChefOnboardingContextType | undefine
 export function useChefOnboarding() {
   const context = useContext(ChefOnboardingContext);
   if (!context) {
-    throw new Error('useChefOnboarding must be used within a ChefOnboardingProvider');
+    throw new Error(ct("chefOnboardingProviderRequired"));
   }
   return context;
 }

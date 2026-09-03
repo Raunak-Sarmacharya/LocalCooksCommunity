@@ -373,7 +373,7 @@ export default function KitchenLanding() {
     <div className="min-h-screen flex flex-col overflow-x-hidden">
       <SEOHead
         title={t("seoKitchenTitle")}
-        description="List your commercial kitchen on LocalCooks and earn revenue from idle hours. Automated booking, Stripe payouts, compliance management, and damage protection. Serving St. John's, Newfoundland."
+        description={t("listYourCommercialKitchenSeo")}
         canonicalUrl="/"
         keywords={[
           "list commercial kitchen", "kitchen rental income", "rent out kitchen St Johns",

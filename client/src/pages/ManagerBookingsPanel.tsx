@@ -1,4 +1,7 @@
 import { logger } from "@/lib/logger";
+import { useTranslation } from "react-i18next";
+import { tt } from "@/i18n/common-ns";
+import { mt } from "@/i18n/manager";
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle, XCircle, Clock, Calendar, User, MapPin, AlertTriangle, Search, X } from "lucide-react";
@@ -80,6 +83,8 @@ interface ManagerBookingsPanelProps {
 }
 
 export default function ManagerBookingsPanel({ embedded = false }: ManagerBookingsPanelProps = {}) {
+  const { t } = useTranslation("manager");
+
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { locations } = useManagerDashboard();
@@ -123,7 +128,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
         logger.info('📋 ManagerBookingsPanel: Response status:', response.status);
 
         if (!response.ok) {
-          let errorMessage = 'Failed to fetch bookings';
+          let errorMessage = tt("failedToFetchBookings");
           try {
             const errorData = await response.json();
             errorMessage = errorData.message || errorData.error || errorMessage;
@@ -203,7 +208,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
         body: JSON.stringify({ status, storageActions, equipmentActions, refundOnCancel }),
       });
       if (!response.ok) {
-        let errorMessage = 'Failed to update booking status';
+        let errorMessage = mt("failedToUpdateBookingStatus");
         try {
           const errorData = await response.json();
           errorMessage = errorData.message || errorData.error || errorMessage;
@@ -230,39 +235,33 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
       // Handle different response scenarios
       if (data?.requiresManualRefund) {
         // Cancellation of confirmed booking - needs manual refund
-        toast({
-          title: "Booking Cancelled",
-          description: "Use 'Issue Refund' from the actions menu to process the refund.",
+        toast({ title: t("bookingCancelled"),
+          description: mt("useIssueRefundFromMenu"),
           variant: "default",
         });
       } else if (data?.refund && status === 'cancelled') {
         // Cancel & Refund — booking cancelled with auto-refund
-        toast({
-          title: "Booking Cancelled & Refunded",
+        toast({ title: t("bookingCancelledRefunded"),
           description: `Refund of $${(data.refund.amount / 100).toFixed(2)} processed successfully.`,
         });
       } else if (data?.refund) {
         // Rejection with auto-refund (from pending)
-        toast({
-          title: "Booking Rejected & Refunded",
+        toast({ title: t("bookingRejectedRefunded"),
           description: `Refund of $${(data.refund.amount / 100).toFixed(2)} processed (customer absorbs Stripe fee).`,
         });
       } else if (data?.authorizationVoided) {
         // Voided authorization — no money was captured
-        toast({
-          title: "Booking Rejected",
-          description: "Payment hold released — no charge was made to the chef.",
+        toast({ title: t("bookingRejected"),
+          description: t("paymentHoldReleasedNoChargeWasMadeToTheChef"),
         });
       } else {
-        toast({
-          title: "Success",
-          description: status === 'confirmed' ? "Booking confirmed!" : "Booking cancelled",
+        toast({ title: t("success"),
+          description: status === 'confirmed' ? mt("bookingConfirmedToast") : mt("bookingCancelledToast"),
         });
       }
     },
     onError: (error: Error) => {
-      toast({
-        title: "Error",
+      toast({ title: t("error"),
         description: error.message,
         variant: "destructive",
       });
@@ -283,7 +282,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to fetch booking details: ${response.status}`);
+      throw new Error(mt("failedToFetchBookingDetails", { status: response.status }));
     }
 
     const details = await response.json();
@@ -298,6 +297,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
       endTime: details.endTime,
       totalPrice: details.totalPrice,
       transactionAmount: details.paymentTransaction?.amount,
+      serviceFee: details.paymentTransaction?.serviceFee,
       stripeProcessingFee: details.paymentTransaction?.stripeProcessingFee,
       managerRevenue: details.paymentTransaction?.managerRevenue,
       taxRatePercent: details.kitchen?.taxRatePercent ? Number(details.kitchen.taxRatePercent) : undefined,
@@ -335,9 +335,8 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
       setBookingForAction(actionData);
     } catch (error: any) {
       logger.error('Error fetching booking details for action sheet:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load booking details. Please try again.",
+      toast({ title: t("error"),
+        description: t("failedToLoadBookingDetailsPleaseTryAgain"),
         variant: "destructive",
       });
       setActionSheetOpen(false);
@@ -419,24 +418,22 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
       });
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to process refund');
+        throw new Error(errorData.error || mt("failedToProcessRefund"));
       }
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['managerBookings'] });
       queryClient.invalidateQueries({ queryKey: ['/api/manager/revenue/transactions'] });
-      toast({
-        title: "Refund Processed",
-        description: "The refund has been successfully processed.",
+      toast({ title: t("refundProcessed"),
+        description: t("theRefundHasBeenSuccessfullyProcessed"),
       });
       setRefundDialogOpen(false);
       setBookingToRefund(null);
       setRefundAmount('');
     },
     onError: (error: Error) => {
-      toast({
-        title: "Refund Failed",
+      toast({ title: t("refundFailed"),
         description: error.message,
         variant: "destructive",
       });
@@ -458,9 +455,8 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
       if (transactionId && amountCents > 0) {
         refundMutation.mutate({ transactionId, amountCents });
       } else {
-        toast({
-          title: "Refund Error",
-          description: "No transaction ID found for this booking. Please use the Revenue Dashboard to process refunds.",
+        toast({ title: t("refundError"),
+          description: t("noTransactionIDFoundForThisBookingPleaseUseTheRevenueDashboa"),
           variant: "destructive",
         });
       }
@@ -485,27 +481,24 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
       });
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to process cancellation request');
+        throw new Error(errorData.error || mt("failedToProcessCancellation"));
       }
       return response.json();
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['managerBookings'] });
       if (data?.action === 'accepted') {
-        toast({
-          title: "Cancellation Accepted",
-          description: 'Booking cancelled. Use "Issue Refund" from the actions menu to process the refund.',
+        toast({ title: t("cancellationAccepted"),
+          description: mt("bookingCancelledUseRefund"),
         });
       } else {
-        toast({
-          title: "Cancellation Declined",
-          description: "The booking remains confirmed.",
+        toast({ title: t("cancellationDeclined"),
+          description: t("theBookingRemainsConfirmed"),
         });
       }
     },
     onError: (error: Error) => {
-      toast({
-        title: "Error",
+      toast({ title: t("error"),
         description: error.message,
         variant: "destructive",
       });
@@ -540,27 +533,24 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
       });
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to process storage cancellation request');
+        throw new Error(errorData.error || mt("failedToProcessStorageCancellation"));
       }
       return response.json();
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['managerBookings'] });
       if (data?.action === 'accepted') {
-        toast({
-          title: "Storage Cancellation Accepted",
-          description: 'Storage booking cancelled. Use "Issue Refund" to process the refund.',
+        toast({ title: t("storageCancellationAccepted"),
+          description: mt("storageCancelledUseRefund"),
         });
       } else {
-        toast({
-          title: "Storage Cancellation Declined",
-          description: "The storage booking remains confirmed.",
+        toast({ title: t("storageCancellationDeclined"),
+          description: t("theStorageBookingRemainsConfirmed"),
         });
       }
     },
     onError: (error: Error) => {
-      toast({
-        title: "Error",
+      toast({ title: t("error"),
         description: error.message,
         variant: "destructive",
       });
@@ -631,7 +621,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
       setBookingForManagement(mgmt);
     } catch (error: any) {
       logger.error('Error fetching management details:', error);
-      toast({ title: "Error", description: "Failed to load booking details.", variant: "destructive" });
+      toast({ title: t("error"), description: t("failedToLoadBookingDetails"), variant: "destructive" });
       setManagementSheetOpen(false);
     }
   };
@@ -649,8 +639,8 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
             method: 'PUT', headers, credentials: "include",
             body: JSON.stringify({ status: 'cancelled', storageActions: params.storageActions, equipmentActions: params.equipmentActions }),
           });
-          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to cancel booking'); }
-          toast({ title: "Booking Cancelled", description: 'Use "Issue Refund" or the management sheet to process a refund.' });
+          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || mt("failedToCancelBooking")); }
+          toast({ title: t("bookingCancelled"), description: mt("useIssueRefundOrManagement") });
           break;
         }
         case "cancel-booking-refund": {
@@ -659,11 +649,10 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
             method: 'PUT', headers, credentials: "include",
             body: JSON.stringify({ status: 'cancelled', refundOnCancel: true, storageActions: params.storageActions, equipmentActions: params.equipmentActions }),
           });
-          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to cancel booking'); }
+          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || mt("failedToCancelBooking")); }
           const data = await res.json().catch(() => ({}));
-          toast({
-            title: "Booking Cancelled & Refunded",
-            description: data?.refund ? `Refund of $${(data.refund.amount / 100).toFixed(2)} processed.` : "Booking cancelled with refund.",
+          toast({ title: t("bookingCancelledRefunded"),
+            description: data?.refund ? mt("refundProcessedAmount", { amount: (data.refund.amount / 100).toFixed(2) }) : mt("bookingCancelledWithRefund"),
           });
           break;
         }
@@ -674,7 +663,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
             method: 'PUT', headers, credentials: "include",
             body: JSON.stringify({ status: 'confirmed', storageActions: params.storageActions, equipmentActions: params.equipmentActions }),
           });
-          if (!statusRes.ok) { const d = await statusRes.json().catch(() => ({})); throw new Error(d.error || 'Failed to update booking'); }
+          if (!statusRes.ok) { const d = await statusRes.json().catch(() => ({})); throw new Error(d.error || mt("failedToUpdateBooking")); }
 
           // If refund requested, issue it separately
           if (params.action === "partial-cancel-refund" && params.refundAmountCents && params.refundAmountCents > 0 && bookingForManagement?.transactionId) {
@@ -682,23 +671,23 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
               method: 'POST', headers, credentials: "include",
               body: JSON.stringify({ amount: params.refundAmountCents, reason: 'Partial cancellation refund' }),
             });
-            if (!refundRes.ok) { const d = await refundRes.json().catch(() => ({})); throw new Error(d.error || 'Items cancelled but refund failed'); }
-            toast({ title: "Items Cancelled & Refunded", description: `Refund of $${(params.refundAmountCents / 100).toFixed(2)} processed.` });
+            if (!refundRes.ok) { const d = await refundRes.json().catch(() => ({})); throw new Error(d.error || mt("itemsCancelledRefundFailed")); }
+            toast({ title: t("itemsCancelledRefunded"), description: `Refund of $${(params.refundAmountCents / 100).toFixed(2)} processed.` });
           } else {
-            toast({ title: "Items Cancelled", description: "Selected items have been cancelled." });
+            toast({ title: t("itemsCancelled"), description: t("selectedItemsHaveBeenCancelled") });
           }
           break;
         }
         case "refund-only": {
           if (!bookingForManagement?.transactionId || !params.refundAmountCents) {
-            throw new Error("No transaction found for refund");
+            throw new Error(mt("noTransactionForRefund"));
           }
           const res = await fetch(`/api/manager/revenue/transactions/${bookingForManagement.transactionId}/refund`, {
             method: 'POST', headers, credentials: "include",
             body: JSON.stringify({ amount: params.refundAmountCents, reason: 'Refund issued by manager' }),
           });
-          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to process refund'); }
-          toast({ title: "Refund Processed", description: `$${(params.refundAmountCents / 100).toFixed(2)} refunded to chef.` });
+          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || mt("failedToProcessRefund")); }
+          toast({ title: t("refundProcessed"), description: `$${(params.refundAmountCents / 100).toFixed(2)} refunded to chef.` });
           break;
         }
         case "accept-cancellation": {
@@ -706,8 +695,8 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
             method: 'PUT', headers, credentials: "include",
             body: JSON.stringify({ action: 'accept' }),
           });
-          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to accept cancellation'); }
-          toast({ title: "Cancellation Accepted", description: "Booking cancelled per chef's request." });
+          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || mt("failedToAcceptCancellation")); }
+          toast({ title: t("cancellationAccepted"), description: t("toastBookingCancelledPerChefRequest") });
           break;
         }
         case "decline-cancellation": {
@@ -715,28 +704,28 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
             method: 'PUT', headers, credentials: "include",
             body: JSON.stringify({ action: 'decline' }),
           });
-          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to decline cancellation'); }
-          toast({ title: "Cancellation Declined", description: "Booking remains confirmed." });
+          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || mt("failedToDeclineCancellation")); }
+          toast({ title: t("cancellationDeclined"), description: t("bookingRemainsConfirmed") });
           break;
         }
         case "accept-storage-cancel": {
-          if (!params.storageCancellationId) throw new Error("No storage booking ID");
+          if (!params.storageCancellationId) throw new Error(mt("noStorageBookingId"));
           const res = await fetch(`/api/manager/storage-bookings/${params.storageCancellationId}/cancellation-request`, {
             method: 'PUT', headers, credentials: "include",
             body: JSON.stringify({ action: 'accept' }),
           });
-          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to accept storage cancellation'); }
-          toast({ title: "Storage Cancellation Accepted", description: "Storage booking cancelled." });
+          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || mt("failedToAcceptStorageCancellation")); }
+          toast({ title: t("storageCancellationAccepted"), description: t("storageBookingCancelled") });
           break;
         }
         case "decline-storage-cancel": {
-          if (!params.storageCancellationId) throw new Error("No storage booking ID");
+          if (!params.storageCancellationId) throw new Error(mt("noStorageBookingId"));
           const res = await fetch(`/api/manager/storage-bookings/${params.storageCancellationId}/cancellation-request`, {
             method: 'PUT', headers, credentials: "include",
             body: JSON.stringify({ action: 'decline' }),
           });
-          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to decline storage cancellation'); }
-          toast({ title: "Storage Cancellation Declined", description: "Storage booking remains active." });
+          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || mt("failedToDeclineStorageCancellation")); }
+          toast({ title: t("storageCancellationDeclined"), description: t("storageBookingRemainsActive") });
           break;
         }
       }
@@ -746,7 +735,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
       setManagementSheetOpen(false);
       setBookingForManagement(null);
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Something went wrong.", variant: "destructive" });
+      toast({ title: t("error"), description: error.message || mt("somethingWentWrong"), variant: "destructive" });
     } finally {
       setIsManagementProcessing(false);
     }
@@ -912,20 +901,20 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
     <main className={embedded ? "flex-1 py-4 sm:py-6" : "flex-1 pt-20 sm:pt-24 pb-6 sm:pb-8"}>
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Booking Requests</h1>
-          <p className="text-gray-600 mt-2">Review and manage chef booking requests</p>
+          <h1 className="text-3xl font-bold text-gray-900">{t("bookingRequests")}</h1>
+          <p className="text-gray-600 mt-2">{t("reviewAndManageChefBookingRequests")}</p>
         </div>
 
         {/* Location Filter (shown only when multiple locations exist) */}
         {locations.length > 1 && (
           <div className="flex items-center gap-3 mb-4">
-            <label className="text-sm font-medium text-gray-700">Location:</label>
+            <label className="text-sm font-medium text-gray-700">{t("location2")}</label>
             <select
               value={locationFilter}
               onChange={(e) => setLocationFilter(e.target.value)}
               className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
-              <option value="all">All Locations</option>
+              <option value="all">{t("cmdAllLocations")}</option>
               {locations.map((loc: any) => (
                 <option key={loc.id} value={loc.name}>
                   {loc.name}
@@ -941,7 +930,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               type="text"
-              placeholder="Search by ref code, booking ID, chef..."
+              placeholder={t("searchByRefCodeBookingIDChef")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9 pr-8"
@@ -963,11 +952,11 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
         <Tabs value={statusFilter} onValueChange={setStatusFilter} className="w-full mb-6">
           <TabsList className="w-full gap-1">
             {[
-              { key: 'all', label: 'All' },
-              { key: 'upcoming', label: 'Upcoming' },
-              { key: 'past', label: 'Past' },
-              { key: 'pending', label: 'Pending' },
-              { key: 'cancelled', label: 'Cancelled' },
+              { key: 'all', label: mt("filterAll") },
+              { key: 'upcoming', label: mt("upcoming") },
+              { key: 'past', label: mt("past") },
+              { key: 'pending', label: tt("pending") },
+              { key: 'cancelled', label: tt("cancelled") },
             ].map((filter) => {
               const baseBookings = locationFilter === 'all'
                 ? bookings
@@ -1013,9 +1002,8 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                 onDeclineStorageCancellation: handleDeclineStorageCancellation,
                 onTakeAction: (booking) => {
                   if (!hasApprovedLicense) {
-                    toast({
-                      title: "License Not Approved",
-                      description: "Your kitchen license must be approved by an admin before you can confirm bookings.",
+                    toast({ title: t("licenseNotApproved"),
+                      description: t("yourKitchenLicenseMustBeApprovedByAnAdminBeforeYouCanConfirm"),
                       variant: "destructive",
                     });
                     return;
@@ -1027,7 +1015,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
               })}
               data={filteredBookings}
               filterColumn="chefName" // filter by Chef name by default
-              filterPlaceholder="Filter by chef..."
+              filterPlaceholder={mt("filterByChef")}
               defaultSorting={[{ id: 'createdAt', desc: true }]}
               initialColumnVisibility={{ createdAt: false }}
               pageSize={15}
@@ -1055,40 +1043,38 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2 text-destructive">
               <AlertTriangle className="h-5 w-5" />
-              {bookingToCancel?.status === 'pending' ? 'Reject Booking Request' : 'Cancel Booking Confirmation'}
+              {bookingToCancel?.status === 'pending' ? mt("rejectBookingRequest") : mt("cancelBookingConfirmation")}
             </AlertDialogTitle>
             <AlertDialogDescription className="pt-4">
               <div className="space-y-3">
                 <p className="font-medium">
                   {bookingToCancel?.status === 'pending'
-                    ? "Are you sure you want to reject this request?"
-                    : "Are you sure you want to cancel this booking?"}
+                    ? mt("rejectRequestConfirm")
+                    : mt("cancelBookingConfirm")}
                 </p>
                 {bookingToCancel?.status === 'pending' ? (
-                  <p className="text-sm text-muted-foreground">
-                    The customer will receive an automatic refund (minus non-refundable Stripe processing fee).
-                  </p>
+                  <p className="text-sm text-muted-foreground">{t("theCustomerWillReceiveAnAutomaticRefundMinusNonRefundableStr")}</p>
                 ) : (
                   <p className="text-sm text-orange-600 font-medium">
-                    ⚠️ Refunds are not automatic for confirmed bookings. After cancellation, use the &quot;Issue Refund&quot; action to process the refund manually.
+                    ⚠️ {mt("refundsNotAutomaticConfirmed")}
                   </p>
                 )}
                 {bookingToCancel && (
                   <div className="bg-muted p-4 rounded-lg space-y-2 text-sm">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium">Chef:</span>
-                      <span>{bookingToCancel.chefName || `Chef #${bookingToCancel.chefId}`}</span>
+                      <span className="font-medium">{t("chef2")}</span>
+                      <span>{bookingToCancel.chefName || mt("chefNumber", { id: bookingToCancel.chefId })}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="font-medium">Kitchen:</span>
-                      <span>{bookingToCancel.kitchenName || 'Kitchen'}</span>
+                      <span className="font-medium">{t("kitchen2")}</span>
+                      <span>{bookingToCancel.kitchenName || mt("kitchenHeader")}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="font-medium">Date:</span>
+                      <span className="font-medium">{t("date2")}</span>
                       <span>{formatDate(bookingToCancel.bookingDate)}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="font-medium">Time:</span>
+                      <span className="font-medium">{t("time2")}</span>
                       <span>
                         {(() => {
                           const rawSlots = bookingToCancel.selectedSlots as Array<string | { startTime: string; endTime: string }> | undefined;
@@ -1124,20 +1110,18 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                     </div>
                   </div>
                 )}
-                <p className="text-muted-foreground mt-3">
-                  The chef will be notified via email.
-                </p>
+                <p className="text-muted-foreground mt-3">{t("theChefWillBeNotifiedViaEmail")}</p>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleCancelDialogClose}>Keep Booking</AlertDialogCancel>
+            <AlertDialogCancel onClick={handleCancelDialogClose}>{t("keepBooking")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleCancelConfirm}
               className="bg-destructive hover:bg-destructive/90 focus:ring-destructive"
               disabled={updateStatusMutation.isPending}
             >
-              {updateStatusMutation.isPending ? 'Processing...' : (bookingToCancel?.status === 'pending' ? 'Reject Request' : 'Yes, Cancel Booking')}
+              {updateStatusMutation.isPending ? mt("processingEllipsis") : (bookingToCancel?.status === 'pending' ? mt("rejectRequest") : mt("yesCancelBooking"))}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1171,31 +1155,27 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
       <AlertDialog open={refundDialogOpen} onOpenChange={setRefundDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2 text-orange-600">
-              Issue Refund
-            </AlertDialogTitle>
+            <AlertDialogTitle className="flex items-center gap-2 text-orange-600">{t("issueRefund")}</AlertDialogTitle>
             <AlertDialogDescription className="pt-4">
               <div className="space-y-4">
-                <p className="font-medium">
-                  Enter the refund amount for this booking:
-                </p>
+                <p className="font-medium">{t("enterTheRefundAmountForThisBooking")}</p>
                 {bookingToRefund && (
                   <div className="bg-muted p-4 rounded-lg space-y-2 text-sm">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium">Chef:</span>
-                      <span>{bookingToRefund.chefName || `Chef #${bookingToRefund.chefId}`}</span>
+                      <span className="font-medium">{t("chef2")}</span>
+                      <span>{bookingToRefund.chefName || mt("chefNumber", { id: bookingToRefund.chefId })}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="font-medium">Kitchen:</span>
-                      <span>{bookingToRefund.kitchenName || 'Kitchen'}</span>
+                      <span className="font-medium">{t("kitchen2")}</span>
+                      <span>{bookingToRefund.kitchenName || mt("kitchenHeader")}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="font-medium">Total Charged:</span>
+                      <span className="font-medium">{t("totalCharged2")}</span>
                       <span>${((bookingToRefund.transactionAmount || bookingToRefund.totalPrice || 0) / 100).toFixed(2)}</span>
                     </div>
                     {(bookingToRefund.refundAmount || 0) > 0 && (
                       <div className="flex items-center gap-2 text-orange-600">
-                        <span className="font-medium">Already Refunded:</span>
+                        <span className="font-medium">{t("alreadyRefunded2")}</span>
                         <span>${((bookingToRefund.refundAmount || 0) / 100).toFixed(2)}</span>
                       </div>
                     )}
@@ -1203,12 +1183,12 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                     <div className="border-t pt-3 mt-3 space-y-2">
                       {(bookingToRefund.stripeProcessingFee || 0) > 0 && (
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span>Stripe Fee (non-refundable):</span>
+                          <span>{t("stripeFeeNonRefundable")}</span>
                           <span>${((bookingToRefund.stripeProcessingFee || 0) / 100).toFixed(2)}</span>
                         </div>
                       )}
                       <div className="flex items-center justify-between font-semibold text-green-600 bg-green-50 p-2 rounded-md">
-                        <span>Available to Refund:</span>
+                        <span>{t("availableToRefund")}</span>
                         <span>${((bookingToRefund.refundableAmount || 0) / 100).toFixed(2)}</span>
                       </div>
                     </div>
@@ -1218,7 +1198,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                 {/* Refund Input with Real-time Preview */}
                 <div className="space-y-3">
                   <div className="space-y-2">
-                    <Label htmlFor="refundAmount">Refund Amount</Label>
+                    <Label htmlFor="refundAmount">{t("refundAmount")}</Label>
                     <CurrencyInput
                       id="refundAmount"
                       value={refundAmount}
@@ -1230,38 +1210,38 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                   {/* Real-time Refund Preview */}
                   {refundAmount && parseFloat(refundAmount) > 0 && (
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2">
-                      <div className="text-sm font-medium text-blue-800">Refund Preview</div>
+                      <div className="text-sm font-medium text-blue-800">{t("refundPreview")}</div>
                       <div className="grid grid-cols-2 gap-2 text-sm">
                         <div className="flex items-center justify-between">
-                          <span className="text-blue-700">Customer Receives:</span>
+                          <span className="text-blue-700">{t("customerReceives")}</span>
                           <span className="font-semibold text-blue-900">${parseFloat(refundAmount).toFixed(2)}</span>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="text-blue-700">Your Account Debited:</span>
+                          <span className="text-blue-700">{t("yourAccountDebited")}</span>
                           <span className="font-semibold text-blue-900">${parseFloat(refundAmount).toFixed(2)}</span>
                         </div>
                       </div>
                       <div className="text-xs text-blue-600 mt-1">
-                        ✓ Same amount for both — consistent with your Stripe dashboard
+                        ✓ {mt("sameAmountRefundNote")}
                       </div>
                     </div>
                   )}
                 </div>
                 
                 <p className="text-muted-foreground text-xs">
-                  Refunds typically arrive within 5-10 business days. The amount shown will be debited from your Stripe Connect balance and credited to the customer's original payment method.
+                  {mt("refundArrivalNote")}
                 </p>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleRefundDialogClose}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel onClick={handleRefundDialogClose}>{t("cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleRefundConfirm}
               className="bg-orange-600 hover:bg-orange-700 focus:ring-orange-500"
               disabled={refundMutation.isPending || !refundAmount || parseFloat(refundAmount) <= 0}
             >
-              {refundMutation.isPending ? 'Processing...' : 'Process Refund'}
+              {refundMutation.isPending ? mt("processingEllipsis") : mt("processRefund")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1273,11 +1253,9 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2 text-destructive">
               <AlertTriangle className="h-5 w-5" />
-              Cancel &amp; Refund Booking
+              {mt("cancelAndRefundBooking")}
             </SheetTitle>
-            <SheetDescription>
-              Cancel this booking and refund the chef up to your available balance.
-            </SheetDescription>
+            <SheetDescription>{t("cancelThisBookingAndRefundTheChefUpToYourAvailableBalance")}</SheetDescription>
           </SheetHeader>
 
           {bookingToCancelAndRefund && (
@@ -1285,19 +1263,19 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
               {/* Booking Details */}
               <div className="space-y-2 text-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Chef</span>
-                  <span className="font-medium">{bookingToCancelAndRefund.chefName || `Chef #${bookingToCancelAndRefund.chefId}`}</span>
+                  <span className="text-muted-foreground">{t("chef")}</span>
+                  <span className="font-medium">{bookingToCancelAndRefund.chefName || mt("chefNumber", { id: bookingToCancelAndRefund.chefId })}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Kitchen</span>
-                  <span className="font-medium">{bookingToCancelAndRefund.kitchenName || 'Kitchen'}</span>
+                  <span className="text-muted-foreground">{t("kitchen")}</span>
+                  <span className="font-medium">{bookingToCancelAndRefund.kitchenName || mt("kitchenHeader")}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Date</span>
+                  <span className="text-muted-foreground">{t("date")}</span>
                   <span className="font-medium">{formatDate(bookingToCancelAndRefund.bookingDate)}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Time</span>
+                  <span className="text-muted-foreground">{t("time")}</span>
                   <span className="font-medium">
                     {formatTime(bookingToCancelAndRefund.startTime)} - {formatTime(bookingToCancelAndRefund.endTime)}
                   </span>
@@ -1308,38 +1286,34 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
 
               {/* Refund Breakdown — capped at manager's available balance */}
               <div className="space-y-2 text-sm">
-                <p className="font-medium text-sm">Refund Breakdown</p>
+                <p className="font-medium text-sm">{t("refundBreakdown")}</p>
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Total Charged to Chef</span>
+                  <span className="text-muted-foreground">{t("totalChargedToChef")}</span>
                   <span>${((bookingToCancelAndRefund.transactionAmount || bookingToCancelAndRefund.totalPrice || 0) / 100).toFixed(2)}</span>
                 </div>
                 {(bookingToCancelAndRefund.managerRevenue || 0) > 0 && (
                   <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Your Revenue (after fees)</span>
+                    <span className="text-muted-foreground">{t("yourRevenueAfterFees")}</span>
                     <span>${((bookingToCancelAndRefund.managerRevenue || 0) / 100).toFixed(2)}</span>
                   </div>
                 )}
                 {(bookingToCancelAndRefund.refundAmount || 0) > 0 && (
                   <div className="flex items-center justify-between text-muted-foreground">
-                    <span>Already Refunded</span>
+                    <span>{t("alreadyRefunded")}</span>
                     <span>-${((bookingToCancelAndRefund.refundAmount || 0) / 100).toFixed(2)}</span>
                   </div>
                 )}
                 <Separator />
                 <div className="flex items-center justify-between font-semibold text-green-700 bg-green-50 p-2 rounded-md">
-                  <span>Max Refund (your available balance)</span>
+                  <span>{t("maxRefundYourAvailableBalance")}</span>
                   <span>${((bookingToCancelAndRefund.refundableAmount || bookingToCancelAndRefund.managerRemainingBalance || 0) / 100).toFixed(2)}</span>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  You can only refund up to what you received. Stripe processing fees are a sunk cost and are not refunded.
-                </p>
+                <p className="text-xs text-muted-foreground">{t("youCanOnlyRefundUpToWhatYouReceivedStripeProcessingFeesAreAS")}</p>
               </div>
 
               <Separator />
 
-              <p className="text-xs text-muted-foreground">
-                The chef will be notified via email. Refunds typically arrive within 5-10 business days.
-              </p>
+              <p className="text-xs text-muted-foreground">{t("theChefWillBeNotifiedViaEmailRefundsTypicallyArriveWithin510")}</p>
             </div>
           )}
 
@@ -1349,16 +1323,14 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
               className="flex-1"
               onClick={handleCancelAndRefundDialogClose}
               disabled={updateStatusMutation.isPending}
-            >
-              Keep Booking
-            </Button>
+            >{t("keepBooking")}</Button>
             <Button
               variant="destructive"
               className="flex-1"
               onClick={handleCancelAndRefundConfirm}
               disabled={updateStatusMutation.isPending}
             >
-              {updateStatusMutation.isPending ? 'Processing...' : 'Cancel & Refund'}
+              {updateStatusMutation.isPending ? mt("processingEllipsis") : mt("cancelAndRefundBooking")}
             </Button>
           </SheetFooter>
         </SheetContent>

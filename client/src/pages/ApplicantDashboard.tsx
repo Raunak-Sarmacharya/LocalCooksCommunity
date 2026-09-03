@@ -8,7 +8,7 @@ import { useChefKitchenApplications } from "@/hooks/use-chef-kitchen-application
 import ChatPanel from "@/components/chat/ChatPanel";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
 import { useSubdomain } from "@/hooks/use-subdomain";
-import { getRequiredSubdomainForRole, getSubdomainUrl } from "@shared/subdomain-utils";
+import { getRequiredSubdomainForRole, getSubdomainOriginForEnvironment } from "@shared/subdomain-utils";
 import ChefBookingsView from "@/components/booking/ChefBookingsView";
 import { PendingStorageExtensions } from "@/components/booking/PendingStorageExtensions";
 import { useKitchenBookings } from "@/hooks/use-kitchen-bookings";
@@ -62,6 +62,7 @@ import { useDocumentVerification } from "@/hooks/use-document-verification";
 import { applicationStatusVariant, hasStep2BeenSubmitted } from "@/components/chef/applications/status";
 import { ChefPageHeader } from "@/components/chef/ui";
 import { useTranslation } from "react-i18next";
+import { tt } from "@/i18n/common-ns";
 import {
   OverviewTabContent,
   MyKitchensTabContent,
@@ -188,13 +189,13 @@ export default function ApplicantDashboard() {
     queryKey: ['/api/firebase/user/me'],
     queryFn: async () => {
       const currentUser = auth.currentUser;
-      if (!currentUser) throw new Error('Not authenticated');
+      if (!currentUser) throw new Error(tt("notAuthenticated"));
       const token = await currentUser.getIdToken();
       const response = await fetch('/api/firebase/user/me', {
         headers: { Authorization: `Bearer ${token}` },
         credentials: 'include',
       });
-      if (!response.ok) throw new Error('Failed to get user info');
+      if (!response.ok) throw new Error(tt("failedToGetUserInfo"));
       return response.json();
     },
     enabled: !!user,
@@ -208,7 +209,7 @@ export default function ApplicantDashboard() {
     queryFn: async () => {
       const response = await fetch("/api/public/kitchens");
       if (!response.ok) {
-        throw new Error("Failed to fetch kitchens");
+        throw new Error(tt("failedToFetchKitchens"));
       }
       return response.json();
     },
@@ -349,8 +350,16 @@ export default function ApplicantDashboard() {
 
     const requiredSubdomain = getRequiredSubdomainForRole(effectiveRole);
 
-    if (requiredSubdomain && subdomain !== requiredSubdomain) {
-      const correctUrl = getSubdomainUrl(requiredSubdomain, 'localcooks.ca') + '/dashboard';
+    if (
+      requiredSubdomain &&
+      requiredSubdomain !== "main" &&
+      subdomain !== requiredSubdomain
+    ) {
+      const correctUrl =
+        getSubdomainOriginForEnvironment(requiredSubdomain, window.location.hostname, {
+          port: window.location.port,
+          protocol: window.location.protocol,
+        }) + '/dashboard';
       window.location.href = correctUrl;
       return;
     }
@@ -360,7 +369,7 @@ export default function ApplicantDashboard() {
     queryKey: ["/api/firebase/applications/my"],
     queryFn: async ({ queryKey }) => {
       if (!user?.uid) {
-        throw new Error("User not authenticated");
+        throw new Error(tt("userNotAuthenticated"));
       }
 
       if (user.role === "admin" || !user?.isChef) {
@@ -369,7 +378,7 @@ export default function ApplicantDashboard() {
 
       const firebaseUser = auth.currentUser;
       if (!firebaseUser) {
-        throw new Error("Firebase user not available");
+        throw new Error(tt("firebaseUserNotAvailable"));
       }
 
       const token = await firebaseUser.getIdToken();
@@ -388,7 +397,7 @@ export default function ApplicantDashboard() {
 
       if (!response.ok) {
         if (response.status === 401) {
-          throw new Error("Account sync required.");
+          throw new Error(tt("accountSyncRequired"));
         }
         try {
           const errorData = await response.json();
@@ -628,6 +637,29 @@ export default function ApplicantDashboard() {
 
   // Cast kitchen applications to the expected type for components
   const typedKitchenApplications = kitchenApplications as unknown as KitchenApplicationWithLocation[];
+
+  // Deep link: /dashboard?bookLocation=8 opens the booking side sheet
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const bookLocationRaw = params.get("bookLocation");
+    if (!bookLocationRaw) return;
+    const bookLocationId = Number(bookLocationRaw);
+    if (!Number.isFinite(bookLocationId)) return;
+
+    const app = typedKitchenApplications.find(
+      (a) => a.locationId === bookLocationId || a.location?.id === bookLocationId
+    );
+    setBookingLocation({
+      id: bookLocationId,
+      name: app?.location?.name || "Kitchen",
+      address: app?.location?.address,
+    });
+    setBookingSheetOpen(true);
+
+    params.delete("bookLocation");
+    const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}${window.location.hash}`;
+    window.history.replaceState({}, "", next);
+  }, [typedKitchenApplications]);
 
   const overviewTabContent = (
     <OverviewTabContent

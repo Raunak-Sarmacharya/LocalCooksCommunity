@@ -312,6 +312,10 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
             kitchens: sanitizedKitchens,
             // Kitchen terms and policies for chef applications
             kitchenTermsUrl: location.kitchenTermsUrl || null,
+            cancellationPolicyHours: location.cancellationPolicyHours ?? 24,
+            cancellationPolicyMessage:
+                location.cancellationPolicyMessage ||
+                "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
             // License status for application eligibility (enterprise-grade consistency)
             kitchenLicenseStatus: location.kitchenLicenseStatus || 'pending',
             canAcceptApplications,

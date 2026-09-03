@@ -1,4 +1,5 @@
 "use client"
+import { mt } from "@/i18n/manager";
 
 import { useState } from "react"
 import { DataTable } from "@/components/ui/data-table"
@@ -17,6 +18,7 @@ export function ApplicationsTable({
     onViewDocuments,
     onReview
 }: ApplicationsTableProps) {
+  
     const columns = getApplicationColumns({
         onApprove,
         onReject,
@@ -44,13 +46,13 @@ export function ApplicationsTable({
                 <div className="flex items-center gap-2 w-full max-w-sm">
                     <Select value={statusFilter} onValueChange={setStatusFilter}>
                         <SelectTrigger className="w-[180px]">
-                            <SelectValue placeholder="Filter by status" />
+                            <SelectValue placeholder={mt("filterByStatus")} />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="all">All Applications</SelectItem>
-                            <SelectItem value="pending">Pending Review</SelectItem>
-                            <SelectItem value="approved">Approved</SelectItem>
-                            <SelectItem value="rejected">Rejected</SelectItem>
+                            <SelectItem value="all">{mt("allApplications")}</SelectItem>
+                            <SelectItem value="pending">{mt("pendingReview")}</SelectItem>
+                            <SelectItem value="approved">{mt("approved")}</SelectItem>
+                            <SelectItem value="rejected">{mt("rejected")}</SelectItem>
                         </SelectContent>
                     </Select>
                 </div>
@@ -60,7 +62,7 @@ export function ApplicationsTable({
                 columns={columns}
                 data={filteredData}
                 filterColumn="fullName"
-                filterPlaceholder="Filter by applicant name..."
+                filterPlaceholder={mt("filterByApplicantName")}
             />
         </div>
     )

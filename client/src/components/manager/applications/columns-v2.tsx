@@ -1,4 +1,5 @@
 "use client"
+import { mt } from "@/i18n/manager";
 
 import { ColumnDef } from "@tanstack/react-table"
 import { ArrowUpDown, MoreHorizontal, Eye, MessageCircle, Check, X, ChefHat, Building2, FileText, Clock, Ban } from "lucide-react"
@@ -29,9 +30,7 @@ function ApplicationStatusBadge({ application }: { application: Application }) {
     if (status === "inReview") {
         return (
             <Badge variant="warning">
-                <Clock className="h-3 w-3 mr-1" />
-                Pending Review
-            </Badge>
+                <Clock className="h-3 w-3 mr-1" />{mt("pendingReview")}</Badge>
         )
     }
 
@@ -41,9 +40,7 @@ function ApplicationStatusBadge({ application }: { application: Application }) {
         if (tier === 2 && hasStep2) {
             return (
                 <Badge variant="warning">
-                    <Clock className="h-3 w-3 mr-1" />
-                    Step 2 Review
-                </Badge>
+                    <Clock className="h-3 w-3 mr-1" />{mt("step2Review")}</Badge>
             )
         }
 
@@ -51,9 +48,7 @@ function ApplicationStatusBadge({ application }: { application: Application }) {
         if (tier === 1) {
             return (
                 <Badge variant="info">
-                    <Check className="h-3 w-3 mr-1" />
-                    Step 1 Done
-                </Badge>
+                    <Check className="h-3 w-3 mr-1" />{mt("step1Done")}</Badge>
             )
         }
 
@@ -61,17 +56,13 @@ function ApplicationStatusBadge({ application }: { application: Application }) {
         if (tier >= 3) {
             return (
                 <Badge variant="success">
-                    <Check className="h-3 w-3 mr-1" />
-                    Approved
-                </Badge>
+                    <Check className="h-3 w-3 mr-1" />{mt("approved")}</Badge>
             )
         }
 
         // Edge case fallback
         return (
-            <Badge variant="info">
-                In Progress
-            </Badge>
+            <Badge variant="info">{mt("inProgress")}</Badge>
         )
     }
 
@@ -79,18 +70,14 @@ function ApplicationStatusBadge({ application }: { application: Application }) {
     if (status === "rejected") {
         return (
             <Badge variant="outline" className="text-destructive border-destructive/30">
-                <X className="h-3 w-3 mr-1" />
-                Rejected
-            </Badge>
+                <X className="h-3 w-3 mr-1" />{mt("rejected")}</Badge>
         )
     }
 
     // Cancelled
     if (status === "cancelled") {
         return (
-            <Badge variant="outline" className="text-muted-foreground">
-                Cancelled
-            </Badge>
+            <Badge variant="outline" className="text-muted-foreground">{mt("cancelled")}</Badge>
         )
     }
 
@@ -107,28 +94,22 @@ function DocumentIndicators({ application }: { application: Application }) {
     const hasInsurance = !!tierData.tierFiles?.['tier2_insurance_document'];
 
     if (!hasFoodSafety && !hasFoodEstablishment && !hasInsurance) {
-        return <span className="text-xs text-gray-400">No documents</span>;
+        return <span className="text-xs text-gray-400">{mt("noDocuments")}</span>;
     }
 
     return (
         <div className="flex items-center gap-1">
             {hasFoodSafety && (
                 <span className="inline-flex items-center px-1.5 py-0.5 bg-green-50 text-green-600 rounded text-[10px] font-medium">
-                    <FileText className="h-2.5 w-2.5 mr-0.5" />
-                    Cert
-                </span>
+                    <FileText className="h-2.5 w-2.5 mr-0.5" />{mt("cert")}</span>
             )}
             {hasFoodEstablishment && (
                 <span className="inline-flex items-center px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded text-[10px] font-medium">
-                    <FileText className="h-2.5 w-2.5 mr-0.5" />
-                    License
-                </span>
+                    <FileText className="h-2.5 w-2.5 mr-0.5" />{mt("navLicense")}</span>
             )}
             {hasInsurance && (
                 <span className="inline-flex items-center px-1.5 py-0.5 bg-purple-50 text-purple-600 rounded text-[10px] font-medium">
-                    <FileText className="h-2.5 w-2.5 mr-0.5" />
-                    Insurance
-                </span>
+                    <FileText className="h-2.5 w-2.5 mr-0.5" />{mt("insurance")}</span>
             )}
         </div>
     )
@@ -151,7 +132,7 @@ function StepProgress({ application }: { application: Application }) {
             <div className={cn(
                 "w-2 h-2 rounded-full",
                 step1Complete ? "bg-emerald-500" : "bg-gray-300"
-            )} title="Step 1" />
+            )} title={mt("step1")} />
             <div className={cn(
                 "w-4 h-0.5",
                 step1Complete ? "bg-emerald-500" : "bg-gray-300"
@@ -159,7 +140,7 @@ function StepProgress({ application }: { application: Application }) {
             <div className={cn(
                 "w-2 h-2 rounded-full",
                 step2Complete ? "bg-emerald-500" : hasStep2 ? "bg-amber-500" : "bg-gray-300"
-            )} title="Step 2" />
+            )} title={mt("step2")} />
         </div>
     )
 }
@@ -189,9 +170,7 @@ export function getApplicationColumnsV2({
                     variant="ghost"
                     onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
                     className="pl-0 font-semibold text-gray-700"
-                >
-                    Applicant
-                    <ArrowUpDown className="ml-2 h-3.5 w-3.5" />
+                >{mt("applicant")}<ArrowUpDown className="ml-2 h-3.5 w-3.5" />
                 </Button>
             ),
             cell: ({ row }) => {
@@ -279,9 +258,7 @@ export function getApplicationColumnsV2({
                     variant="ghost"
                     onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
                     className="font-semibold text-gray-700"
-                >
-                    Applied
-                    <ArrowUpDown className="ml-2 h-3.5 w-3.5" />
+                >{mt("applied")}<ArrowUpDown className="ml-2 h-3.5 w-3.5" />
                 </Button>
             ),
             cell: ({ row }) => (
@@ -326,17 +303,15 @@ export function getApplicationColumnsV2({
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" className="h-8 w-8 p-0">
-                                    <span className="sr-only">Open menu</span>
+                                    <span className="sr-only">{mt("openMenu")}</span>
                                     <MoreHorizontal className="h-4 w-4" />
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-48">
-                                <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                <DropdownMenuLabel>{mt("actions")}</DropdownMenuLabel>
                                 
                                 <DropdownMenuItem onClick={() => onSelect(app)}>
-                                    <Eye className="mr-2 h-4 w-4" />
-                                    View Details
-                                </DropdownMenuItem>
+                                    <Eye className="mr-2 h-4 w-4" />{mt("viewDetails")}</DropdownMenuItem>
 
                                 {canChat && onChat && (
                                     <DropdownMenuItem onClick={() => onChat(app)}>
@@ -350,27 +325,15 @@ export function getApplicationColumnsV2({
                                     </DropdownMenuItem>
                                 )}
 
-                                {app.status === "inReview" && (
+                                {/* Step 1 approve/reject is admin-only; managers only act on Step 2 */}
+                                {app.status === "approved" && tier === 2 && !!app.tier2_completed_at && onApprove && (
                                     <>
                                         <DropdownMenuSeparator />
-                                        {onApprove && (
-                                            <DropdownMenuItem 
-                                                onClick={() => onApprove(app)} 
-                                                className="text-emerald-600 focus:text-emerald-600"
-                                            >
-                                                <Check className="mr-2 h-4 w-4" />
-                                                Approve Step 1
-                                            </DropdownMenuItem>
-                                        )}
-                                        {onReject && (
-                                            <DropdownMenuItem 
-                                                onClick={() => onReject(app)} 
-                                                className="text-red-600 focus:text-red-600"
-                                            >
-                                                <X className="mr-2 h-4 w-4" />
-                                                Reject
-                                            </DropdownMenuItem>
-                                        )}
+                                        <DropdownMenuItem
+                                            onClick={() => onApprove(app)}
+                                            className="text-emerald-600 focus:text-emerald-600"
+                                        >
+                                            <Check className="mr-2 h-4 w-4" />{mt("approveStep2")}</DropdownMenuItem>
                                     </>
                                 )}
 
@@ -381,9 +344,7 @@ export function getApplicationColumnsV2({
                                             onClick={() => onRevoke(app)} 
                                             className="text-red-600 focus:text-red-600"
                                         >
-                                            <Ban className="mr-2 h-4 w-4" />
-                                            Revoke Access
-                                        </DropdownMenuItem>
+                                            <Ban className="mr-2 h-4 w-4" />{mt("revokeAccess")}</DropdownMenuItem>
                                     </>
                                 )}
                             </DropdownMenuContent>

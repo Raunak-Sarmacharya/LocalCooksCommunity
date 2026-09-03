@@ -21,6 +21,8 @@ import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChefPageHeader } from "@/components/chef/ui";
 import TrainingVideoPlayer from './TrainingVideoPlayer';
+import { tt } from "@/i18n/common-ns";
+import { ct } from "@/i18n/chef-ns";
 
 type ViewMode = 'overview' | 'player';
 
@@ -75,7 +77,7 @@ export default function TrainingOverviewPanel({ className, viewMode: controlledV
       try {
         const currentUser = auth.currentUser;
         if (!currentUser) {
-          throw new Error("No authenticated Firebase user found");
+          throw new Error(tt("noAuthenticatedUser"));
         }
 
         const token = await currentUser.getIdToken();
@@ -120,7 +122,7 @@ export default function TrainingOverviewPanel({ className, viewMode: controlledV
       try {
         const currentUser = auth.currentUser;
         if (!currentUser) {
-          throw new Error("No authenticated Firebase user found");
+          throw new Error(tt("noAuthenticatedUser"));
         }
 
         const token = await currentUser.getIdToken();
@@ -190,7 +192,7 @@ export default function TrainingOverviewPanel({ className, viewMode: controlledV
       });
 
       if (!response.ok) {
-        throw new Error('Failed to download certificate');
+        throw new Error(ct("failedToDownloadCertificate"));
       }
 
       const blob = await response.blob();

@@ -1,4 +1,5 @@
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
+import { mt } from "@/i18n/manager";
 import { CheckCircle, FileText, Upload, X, AlertCircle, Calendar, Mail, Phone, Building, Bell, Info, User } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ function formatFileSize(bytes: number): string {
 }
 
 export default function LocationStep() {
+  
   const {
     locationForm,
     licenseForm,
@@ -46,20 +48,17 @@ export default function LocationStep() {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      toast({
-        title: "Uploading license...",
+      toast({ title: mt("uploadingLicense"),
         description: file.name,
       });
       try {
         await licenseForm.uploadFile(file);
-        toast({
-          title: "License uploaded successfully",
+        toast({ title: mt("licenseUploadedSuccessfully"),
           description: file.name,
         });
       } catch (error) {
-        toast({
-          title: "Upload failed",
-          description: "Failed to upload license file. Please try again.",
+        toast({ title: mt("uploadFailed2"),
+          description: mt("failedToUploadLicenseFilePleaseTryAgain"),
           variant: "destructive",
         });
       }
@@ -69,20 +68,17 @@ export default function LocationStep() {
   const handleTermsFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      toast({
-        title: "Uploading terms...",
+      toast({ title: mt("uploadingTerms"),
         description: file.name,
       });
       try {
         await termsForm.uploadFile(file);
-        toast({
-          title: "Terms uploaded successfully",
+        toast({ title: mt("termsUploadedSuccessfully"),
           description: file.name,
         });
       } catch (error) {
-        toast({
-          title: "Upload failed",
-          description: "Failed to upload terms file. Please try again.",
+        toast({ title: mt("uploadFailed2"),
+          description: mt("failedToUploadTermsFilePleaseTryAgain"),
           variant: "destructive",
         });
       }
@@ -107,40 +103,30 @@ export default function LocationStep() {
               <CardTitle className="text-base font-semibold flex items-center gap-2 text-slate-900 dark:text-slate-100">
                 <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
                   <Building className="w-4 h-4 text-slate-600 dark:text-slate-400" />
-                </div>
-                Business Information
-              </CardTitle>
-              <CardDescription className="mt-1.5 text-slate-500 dark:text-slate-400">
-                Enter your kitchen business details
-              </CardDescription>
+                </div>{mt("businessInformation")}</CardTitle>
+              <CardDescription className="mt-1.5 text-slate-500 dark:text-slate-400">{mt("enterYourKitchenBusinessDetails")}</CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="space-y-2">
-            <Label htmlFor="business-name" className="text-sm font-medium text-slate-700 dark:text-slate-300">
-              Business Name
-            </Label>
+            <Label htmlFor="business-name" className="text-sm font-medium text-slate-700 dark:text-slate-300">{mt("businessName")}</Label>
             <Input
               id="business-name"
-              placeholder="e.g. Downtown Commercial Kitchen"
+              placeholder={mt("eGDowntownCommercialKitchen")}
               value={locationForm.name}
               onChange={(e) => locationForm.setName(e.target.value)}
               className="h-10"
             />
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              This name will be displayed to chefs browsing your kitchen
-            </p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{mt("thisNameWillBeDisplayedToChefsBrowsingYourKitchen")}</p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="business-address" className="text-sm font-medium text-slate-700 dark:text-slate-300">
-              Business Address
-            </Label>
+            <Label htmlFor="business-address" className="text-sm font-medium text-slate-700 dark:text-slate-300">{mt("businessAddress")}</Label>
             <AddressAutocomplete
               value={locationForm.address}
               onChange={(value) => locationForm.setAddress(value)}
-              placeholder="Start typing your address..."
+              placeholder={mt("startTypingYourAddress")}
               className="h-10"
               province="NL"
             />
@@ -159,12 +145,8 @@ export default function LocationStep() {
               <CardTitle className="text-base font-semibold flex items-center gap-2 text-slate-900 dark:text-slate-100">
                 <div className="w-8 h-8 rounded-lg bg-red-50 dark:bg-red-950/30 flex items-center justify-center">
                   <User className="w-4 h-4 text-[#F51042]" />
-                </div>
-                Primary Contact
-              </CardTitle>
-              <CardDescription className="mt-1.5 text-slate-500 dark:text-slate-400">
-                Your preferred method for business inquiries and support
-              </CardDescription>
+                </div>{mt("primaryContact")}</CardTitle>
+              <CardDescription className="mt-1.5 text-slate-500 dark:text-slate-400">{mt("yourPreferredMethodForBusinessInquiriesAndSupport")}</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -172,16 +154,14 @@ export default function LocationStep() {
           {/* Preferred Contact Method */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                Preferred Contact Method
-              </Label>
+              <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">{mt("preferredContactMethod")}</Label>
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Info className="w-3.5 h-3.5 text-slate-400 cursor-help" />
                   </TooltipTrigger>
                   <TooltipContent side="right" className="max-w-xs">
-                    <p className="text-xs">This is how we'll reach you for account-related matters and support inquiries.</p>
+                    <p className="text-xs">{mt("thisIsHowWeLlReachYouForAccountRelatedMattersAndSupportInqui")}</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -202,8 +182,7 @@ export default function LocationStep() {
               >
                 <RadioGroupItem value="email" id="contact-email" className="shrink-0" />
                 <span className="flex items-center gap-1.5 text-sm">
-                  <Mail className="w-3.5 h-3.5" /> Email
-                </span>
+                  <Mail className="w-3.5 h-3.5" />{mt("email")}</span>
               </label>
               <label 
                 htmlFor="contact-phone"
@@ -216,8 +195,7 @@ export default function LocationStep() {
               >
                 <RadioGroupItem value="phone" id="contact-phone" className="shrink-0" />
                 <span className="flex items-center gap-1.5 text-sm">
-                  <Phone className="w-3.5 h-3.5" /> Phone
-                </span>
+                  <Phone className="w-3.5 h-3.5" />{mt("phone")}</span>
               </label>
               <label 
                 htmlFor="contact-both"
@@ -229,7 +207,7 @@ export default function LocationStep() {
                 )}
               >
                 <RadioGroupItem value="both" id="contact-both" className="shrink-0" />
-                <span className="text-sm">Both</span>
+                <span className="text-sm">{mt("both")}</span>
               </label>
             </RadioGroup>
           </div>
@@ -249,7 +227,7 @@ export default function LocationStep() {
               <Input
                 id="contact-email"
                 type="email"
-                placeholder="you@business.com"
+                placeholder={mt("youBusinessCom")}
                 value={locationForm.contactEmail}
                 onChange={(e) => locationForm.setContactEmail(e.target.value)}
                 className="h-10"
@@ -288,12 +266,8 @@ export default function LocationStep() {
               <CardTitle className="text-base font-semibold flex items-center gap-2 text-slate-900 dark:text-slate-100">
                 <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/50 flex items-center justify-center">
                   <Bell className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                </div>
-                Platform Notifications
-              </CardTitle>
-              <CardDescription className="mt-1.5 text-slate-500 dark:text-slate-400">
-                Where you'll receive booking updates and chef applications
-              </CardDescription>
+                </div>{mt("platformNotifications")}</CardTitle>
+              <CardDescription className="mt-1.5 text-slate-500 dark:text-slate-400">{mt("whereYouLlReceiveBookingUpdatesAndChefApplications")}</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -301,22 +275,18 @@ export default function LocationStep() {
           {/* Notification Fields - Both always visible */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="notification-email" className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                Notification Email
-              </Label>
+              <Label htmlFor="notification-email" className="text-sm font-medium text-slate-700 dark:text-slate-300">{mt("notificationEmail")}</Label>
               <Input
                 id="notification-email"
                 type="email"
-                placeholder="bookings@business.com"
+                placeholder={mt("bookingsBusinessCom")}
                 value={locationForm.notificationEmail}
                 onChange={(e) => locationForm.setNotificationEmail(e.target.value)}
                 className="h-10"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="notification-phone" className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                Notification Phone
-                <span className="text-xs text-slate-400 dark:text-slate-500 ml-1">(Optional)</span>
+              <Label htmlFor="notification-phone" className="text-sm font-medium text-slate-700 dark:text-slate-300">{mt("notificationPhone")}<span className="text-xs text-slate-400 dark:text-slate-500 ml-1">(Optional)</span>
               </Label>
               <Input
                 id="notification-phone"
@@ -333,8 +303,7 @@ export default function LocationStep() {
           <Alert className="border-blue-100 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-900/50">
             <Bell className="h-4 w-4 text-blue-600 dark:text-blue-400" />
             <AlertDescription className="text-xs text-blue-700 dark:text-blue-300">
-              <span className="font-medium">You'll receive notifications for:</span> New booking requests, chef applications, booking confirmations, cancellations, and important platform updates.
-            </AlertDescription>
+              <span className="font-medium">{mt("youLlReceiveNotificationsFor")}</span>{mt("newBookingRequestsChefApplicationsBookingConfirmationsCancel")}</AlertDescription>
           </Alert>
         </CardContent>
       </Card>
@@ -347,14 +316,10 @@ export default function LocationStep() {
               <CardTitle className="text-base font-semibold flex items-center gap-2 text-slate-900 dark:text-slate-100">
                 <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 flex items-center justify-center">
                   <FileText className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                </div>
-                Commercial Kitchen License
-              </CardTitle>
-              <CardDescription className="mt-1.5 text-slate-500 dark:text-slate-400">
-                Upload your commercial kitchen license for verification
-              </CardDescription>
+                </div>{mt("commercialKitchenLicense")}</CardTitle>
+              <CardDescription className="mt-1.5 text-slate-500 dark:text-slate-400">{mt("uploadYourCommercialKitchenLicenseForVerification")}</CardDescription>
             </div>
-            <Badge variant="destructive" className="text-xs">Required</Badge>
+            <Badge variant="destructive" className="text-xs">{mt("required")}</Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -364,15 +329,13 @@ export default function LocationStep() {
               <Alert className="border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-300">
                 <CheckCircle className="h-4 w-4" />
                 <AlertDescription>
-                  <span className="font-medium">License Uploaded</span> — Status: {selectedLocation.kitchenLicenseStatus || "pending"}
+                  <span className="font-medium">{mt("licenseUploaded")}</span> — Status: {selectedLocation.kitchenLicenseStatus || "pending"}
                 </AlertDescription>
               </Alert>
             )}
 
           <div className="space-y-2">
-            <Label htmlFor="license-file" className="text-sm font-medium text-slate-700 dark:text-slate-300">
-              License File
-            </Label>
+            <Label htmlFor="license-file" className="text-sm font-medium text-slate-700 dark:text-slate-300">{mt("licenseFile")}</Label>
             {/* [ENTERPRISE] Read-only view when step is complete - no re-upload during onboarding */}
             {isReadOnly ? (
               <div className="border-2 border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20 dark:border-emerald-700 rounded-xl p-6">
@@ -381,9 +344,7 @@ export default function LocationStep() {
                     <CheckCircle className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
                   </div>
                   <div className="text-left">
-                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                      License on file
-                    </p>
+                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{mt("licenseOnFile")}</p>
                     <p className="text-xs text-emerald-600 dark:text-emerald-400">
                       Document uploaded • Update from Settings
                     </p>
@@ -420,9 +381,7 @@ export default function LocationStep() {
                           </p>
                         )}
                         {!licenseForm.file && (licenseForm.uploadedUrl || hasExistingLicense) && (
-                          <p className="text-xs text-emerald-600 dark:text-emerald-400">
-                            Uploaded to cloud
-                          </p>
+                          <p className="text-xs text-emerald-600 dark:text-emerald-400">{mt("uploadedToCloud")}</p>
                         )}
                       </div>
                       <Button
@@ -444,12 +403,8 @@ export default function LocationStep() {
                         <Upload className="w-6 h-6 text-slate-400 dark:text-slate-500" />
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                          Upload license file
-                        </p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                          PDF, JPG, or PNG (max 10MB)
-                        </p>
+                        <p className="text-sm font-medium text-slate-700 dark:text-slate-300">{mt("uploadLicenseFile")}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{mt("pDFJPGOrPNGMax10MB")}</p>
                       </div>
                     </div>
                   )}
@@ -486,14 +441,10 @@ export default function LocationStep() {
               <CardTitle className="text-base font-semibold flex items-center gap-2 text-slate-900 dark:text-slate-100">
                 <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/50 flex items-center justify-center">
                   <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                </div>
-                Terms & Policies
-              </CardTitle>
-              <CardDescription className="mt-1.5 text-slate-500 dark:text-slate-400">
-                House rules and policies chefs must agree to before booking
-              </CardDescription>
+                </div>{mt("termsPolicies")}</CardTitle>
+              <CardDescription className="mt-1.5 text-slate-500 dark:text-slate-400">{mt("houseRulesAndPoliciesChefsMustAgreeToBeforeBooking")}</CardDescription>
             </div>
-            <Badge variant="destructive" className="text-xs">Required</Badge>
+            <Badge variant="destructive" className="text-xs">{mt("required")}</Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -501,15 +452,13 @@ export default function LocationStep() {
             <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300">
               <CheckCircle className="h-4 w-4" />
               <AlertDescription>
-                <span className="font-medium">Terms Uploaded</span> — Document on file
+                <span className="font-medium">{mt("termsUploaded")}</span> — Document on file
               </AlertDescription>
             </Alert>
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="terms-file" className="text-sm font-medium text-slate-700 dark:text-slate-300">
-              Terms & Policies File
-            </Label>
+            <Label htmlFor="terms-file" className="text-sm font-medium text-slate-700 dark:text-slate-300">{mt("termsPoliciesFile")}</Label>
             {/* [ENTERPRISE] Read-only view when step is complete - no re-upload during onboarding */}
             {isReadOnly ? (
               <div className="border-2 border-amber-300 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-700 rounded-xl p-6">
@@ -518,9 +467,7 @@ export default function LocationStep() {
                     <CheckCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                   </div>
                   <div className="text-left">
-                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                      Terms on file
-                    </p>
+                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{mt("termsOnFile")}</p>
                     <p className="text-xs text-amber-600 dark:text-amber-400">
                       Document uploaded • Update from Settings
                     </p>
@@ -557,9 +504,7 @@ export default function LocationStep() {
                           </p>
                         )}
                         {!termsForm.file && (termsForm.uploadedUrl || hasExistingTerms) && (
-                          <p className="text-xs text-amber-600 dark:text-amber-400">
-                            Uploaded to cloud
-                          </p>
+                          <p className="text-xs text-amber-600 dark:text-amber-400">{mt("uploadedToCloud")}</p>
                         )}
                       </div>
                       <Button
@@ -581,12 +526,8 @@ export default function LocationStep() {
                         <Upload className="w-6 h-6 text-slate-400 dark:text-slate-500" />
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                          Upload terms document
-                        </p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                          PDF, JPG, PNG, or DOC (max 10MB)
-                        </p>
+                        <p className="text-sm font-medium text-slate-700 dark:text-slate-300">{mt("uploadTermsDocument2")}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{mt("pDFJPGPNGOrDOCMax10MB")}</p>
                       </div>
                     </div>
                   )}

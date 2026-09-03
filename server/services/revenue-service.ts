@@ -1020,15 +1020,18 @@ export async function getTransactionHistory(
       }
       
       // Manager revenue - use actual from payment_transactions if available
-      const calculatedManagerRevenue = totalPriceCents - serviceFeeCents;
+      // Provisional fallback: subtotal + tax (stripe fee applied when synced)
+      const calculatedManagerRevenue = totalPriceCents + taxCents - (actualStripeFee > 0 ? actualStripeFee : 0);
       const managerRevenue = ptManagerRevenue > 0 ? ptManagerRevenue : calculatedManagerRevenue;
       
       // ENTERPRISE STANDARD: Use actual Stripe fee only - do not estimate
       // If actual fee is 0, it will be synced via charge.updated webhook
       const stripeFee = actualStripeFee > 0 ? actualStripeFee : 0;
       
-      // Net revenue = total - tax - stripe fees
-      const grossNetRevenue = totalPriceCents - taxCents - stripeFee;
+      // Net revenue = manager payout (includes tax collected; Stripe fee already deducted)
+      const grossNetRevenue = managerRevenue > 0
+        ? managerRevenue
+        : Math.max(0, totalPriceCents + taxCents - stripeFee);
 
       // Determine booking type for UI display
       // ENTERPRISE STANDARD: Damage claims get their own type for distinct UI treatment

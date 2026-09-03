@@ -12,7 +12,7 @@ import { auth } from "./lib/firebase";
 import { queryClient } from "./lib/queryClient";
 import { useSubdomain } from "@/hooks/use-subdomain";
 import { useRadixBodyCleanup } from "@/hooks/use-radix-body-cleanup";
-import { getSubdomainFromHostname, isRouteAccessibleFromSubdomain, type SubdomainType } from "@shared/subdomain-utils";
+import { getSubdomainFromHostname, isRouteAccessibleFromSubdomain, getSubdomainOriginForEnvironment, type SubdomainType } from "@shared/subdomain-utils";
 import "@/i18n";
 import { DocumentLocaleSync } from "@/i18n/DocumentLocaleSync";
 import { LocaleProfileSync } from "@/i18n/LocaleProfileSync";
@@ -25,7 +25,6 @@ import AdminProtectedRoute from "@/components/admin/AdminProtectedRoute";
 import ManagerProtectedRoute from "@/components/manager/ManagerProtectedRoute";
 import { ProtectedRoute } from "@/lib/protected-route";
 import AdminLogin from "@/pages/AdminLogin";
-import AdminRegister from "@/pages/AdminRegister";
 import ManagerLogin from "@/pages/ManagerLogin";
 import EnhancedAuthPage from "@/pages/EnhancedAuthPage";
 import ForgotPasswordPage from "@/pages/ForgotPassword";
@@ -35,19 +34,18 @@ import PasswordReset from "@/pages/PasswordReset";
 import Privacy from "@/pages/Privacy";
 import Success from "@/pages/Success";
 import Terms from "@/pages/Terms";
-import WelcomeScreen from "@/pages/welcome-screen";
 import TermsAcceptanceScreen from "@/pages/TermsAcceptanceScreen";
 import ChefLanding from "@/pages/ChefLanding";
 import KitchenLanding from "@/pages/KitchenLanding";
 import AdminLanding from "@/pages/AdminLanding";
+// Eager: harnesses hit /dev-login first; lazy Suspense looks like a blank SPA under TestSprite.
+import DevLoginPage from "@/pages/DevLoginPage";
 
 // Lazy load larger components
 const ApplicationForm = lazy(() => import("@/pages/ApplicationForm"));
 const Admin = lazy(() => import("@/pages/Admin"));
 const ApplicantDashboard = lazy(() => import("@/pages/ApplicantDashboard"));
-const DocumentVerification = lazy(() => import("@/pages/DocumentVerification"));
 const EmailAction = lazy(() => import("@/pages/EmailAction"));
-const Microlearning = lazy(() => import("@/pages/Microlearning"));
 const MicrolearningOverview = lazy(() => import("@/pages/MicrolearningOverview"));
 const MicrolearningPlayer = lazy(() => import("@/pages/MicrolearningPlayer"));
 const UnsubscribePage = lazy(() => import("@/pages/UnsubscribePage"));
@@ -62,7 +60,6 @@ const KitchenBookingCalendar = lazy(() => import("@/pages/KitchenBookingCalendar
 const BookingConfirmationPage = lazy(() => import("@/pages/BookingConfirmationPage"));
 const PaymentSuccessPage = lazy(() => import("@/pages/PaymentSuccessPage"));
 const BookingDetailsPage = lazy(() => import("@/pages/BookingDetailsPage"));
-const ShareProfile = lazy(() => import("@/pages/ShareProfile"));
 const ApplyToKitchen = lazy(() => import("@/pages/ApplyToKitchen"));
 
 const AdminManageLocations = lazy(() => import("@/pages/AdminManageLocations"));
@@ -121,8 +118,10 @@ function SubdomainRoute({ path, component, subdomain, children, ...props }: {
       }
 
       if (targetSubdomain && targetSubdomain !== currentSubdomain) {
-        const baseDomain = 'localcooks.ca';
-        const targetUrl = `https://${targetSubdomain}.${baseDomain}${path}`;
+        const targetUrl = `${getSubdomainOriginForEnvironment(targetSubdomain, window.location.hostname, {
+          port: window.location.port,
+          protocol: window.location.protocol,
+        })}${path}`;
         window.location.href = targetUrl;
       }
     }
@@ -174,22 +173,31 @@ function Router() {
 
     // Redirect admin routes to admin subdomain
     if ((path.startsWith('/admin') || path.startsWith('/admin/')) && subdomain !== 'admin') {
-      window.location.href = `https://admin.localcooks.ca${path}`;
+      window.location.href = `${getSubdomainOriginForEnvironment('admin', window.location.hostname, {
+        port: window.location.port,
+        protocol: window.location.protocol,
+      })}${path}`;
       return;
     }
 
     // Redirect chef routes to chef subdomain
     if ((path.startsWith('/apply') || path.startsWith('/dashboard') ||
-      path.startsWith('/book-kitchen') || path.startsWith('/share-profile') || path.startsWith('/kitchen-requirements')) &&
+      path.startsWith('/book-kitchen') || path.startsWith('/kitchen-requirements')) &&
       subdomain !== 'chef') {
-      window.location.href = `https://chef.localcooks.ca${path}`;
+      window.location.href = `${getSubdomainOriginForEnvironment('chef', window.location.hostname, {
+        port: window.location.port,
+        protocol: window.location.protocol,
+      })}${path}`;
       return;
     }
 
     // Redirect manager routes to kitchen subdomain
     if (path.startsWith('/manager') &&
       subdomain !== 'kitchen' && subdomain !== 'admin') {
-      window.location.href = `https://kitchen.localcooks.ca${path}`;
+      window.location.href = `${getSubdomainOriginForEnvironment('kitchen', window.location.hostname, {
+        port: window.location.port,
+        protocol: window.location.protocol,
+      })}${path}`;
       return;
     }
   }, [subdomain, location]);
@@ -221,6 +229,7 @@ function Router() {
         <Route path="/success" component={Success} />
         <Route path="/auth" component={EnhancedAuthPage} />
         {localePublicRoutes("/auth", EnhancedAuthPage)}
+        <Route path="/dev-login" component={DevLoginPage} />
 
         <Route path="/email-action" component={EmailAction} />
         <Route path="/forgot-password" component={ForgotPasswordPage} />
@@ -239,7 +248,6 @@ function Router() {
 
         <ProtectedRoute path="/dashboard" component={ApplicantDashboard} />
         <ProtectedRoute path="/chef-setup" component={ChefSetupPage} />
-        <ProtectedRoute path="/document-verification" component={DocumentVerification} />
         <ProtectedRoute path="/microlearning/overview" component={MicrolearningOverview} />
         <ProtectedRoute path="/microlearning/player" component={MicrolearningPlayer} />
         <ProtectedRoute path="/microlearning" component={MicrolearningOverview} />
@@ -249,10 +257,8 @@ function Router() {
         <SubdomainRoute path="/book-kitchen/confirm" component={BookingConfirmationPage} subdomain={subdomain} />
         <SubdomainRoute path="/payment-success" component={PaymentSuccessPage} subdomain={subdomain} />
         <SubdomainRoute path="/booking/:id" component={BookingDetailsPage} subdomain={subdomain} />
-        <ProtectedRoute path="/share-profile" component={ShareProfile} />
 
-        {/* Kitchen Application Routes (New - Replaces Share Profile) */}
-
+        {/* Kitchen Application Routes */}
         <SubdomainRoute path="/apply-kitchen/:locationId" component={ApplyToKitchen} subdomain={subdomain} />
         <SubdomainRoute path="/compare-kitchens" component={KitchenComparisonPage} subdomain={subdomain} />
         {localePublicRoutes("/compare-kitchens", KitchenComparisonPage)}
@@ -260,8 +266,6 @@ function Router() {
         {localePublicRoutes("/kitchen-requirements/:locationId", KitchenRequirementsPage)}
 
         <SubdomainRoute path="/admin/login" component={AdminLogin} subdomain={subdomain} />
-        <SubdomainRoute path="/admin-register" component={AdminRegister} subdomain={subdomain} />
-        <SubdomainRoute path="/admin/register" component={AdminRegister} subdomain={subdomain} />
         <Route path="/admin">
           {subdomain === 'admin' || !subdomain ? (
             <AdminProtectedRoute>

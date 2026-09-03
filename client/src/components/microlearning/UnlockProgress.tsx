@@ -10,6 +10,8 @@ import { motion } from 'framer-motion';
 import { AlertCircle, ArrowRight, Award, CheckCircle, Clock, FileText } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'wouter';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
 interface Application {
   id: number;
@@ -39,22 +41,23 @@ function stepBadgeVariant(status: StepStatus): 'success' | 'warning' | 'destruct
   }
 }
 
-function stepBadgeLabel(status: StepStatus): string {
+function stepBadgeLabel(status: StepStatus, t: TFunction<'chef'>): string {
   switch (status) {
     case 'completed':
-      return 'Done';
+      return t('upBadgeDone');
     case 'current':
-      return 'Action';
+      return t('upBadgeAction');
     case 'pending':
-      return 'Review';
+      return t('upBadgeReview');
     case 'rejected':
-      return 'Update';
+      return t('upBadgeUpdate');
     default:
-      return 'Wait';
+      return t('upBadgeWait');
   }
 }
 
 export default function UnlockProgress({ hasApprovedApplication, className = "" }: UnlockProgressProps) {
+  const { t } = useTranslation('chef');
   const { user } = useFirebaseAuth();
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,26 +133,26 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
   const steps = [
     {
       id: 1,
-      title: "Create Account",
-      description: "Sign up for LocalCooks",
+      title: t('upStepCreateAccount'),
+      description: t('upStepCreateAccountDesc'),
       status: "completed" as StepStatus,
       icon: CheckCircle,
       action: null as string | null,
     },
     {
       id: 2,
-      title: "Submit Application",
-      description: hasRejectedApplications ? "Submit a new application" :
-        hasCancelledApplications ? "Submit a new application" :
-          "Complete your chef application",
+      title: t('upStepSubmitApplication'),
+      description: hasRejectedApplications ? t('upStepSubmitNewApplication') :
+        hasCancelledApplications ? t('upStepSubmitNewApplication') :
+          t('upStepSubmitApplicationDesc'),
       status: (hasSubmittedApplication ? "completed" : "current") as StepStatus,
       icon: hasSubmittedApplication ? CheckCircle : FileText,
       action: !hasSubmittedApplication ? "/dashboard?view=applications&action=new" : null
     },
     {
       id: 3,
-      title: "Get Approved",
-      description: "Wait for application review",
+      title: t('upStepGetApproved'),
+      description: t('upStepGetApprovedDesc'),
       status: (isApplicationApproved ? "completed" :
         isApplicationPending ? "pending" :
           isApplicationRejected ? "rejected" : "waiting") as StepStatus,
@@ -160,19 +163,19 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
     }
   ];
 
-  const statusTitle = isApplicationApproved ? "Training now available"
-    : isApplicationPending ? "Application under review"
-      : hasSubmittedApplication ? "Application submitted"
-        : hasRejectedApplications ? "Ready to reapply"
-          : hasCancelledApplications ? "Ready to apply again"
-            : "Ready to apply";
+  const statusTitle = isApplicationApproved ? t('upStatusTrainingAvailable')
+    : isApplicationPending ? t('upStatusUnderReview')
+      : hasSubmittedApplication ? t('upStatusSubmitted')
+        : hasRejectedApplications ? t('upStatusReadyToReapply')
+          : hasCancelledApplications ? t('upStatusReadyToApplyAgain')
+            : t('upStatusReadyToApply');
 
-  const statusDescription = isApplicationApproved ? "You now have access to all training videos."
-    : isApplicationPending ? "Our team is reviewing your application. You'll be notified once approved."
-      : hasSubmittedApplication ? "Great! Your application is in our system."
-        : hasRejectedApplications ? "Your previous application was not approved. You can submit a new application anytime."
-          : hasCancelledApplications ? "Your previous application was cancelled. Feel free to submit a new one!"
-            : "Complete your chef application to access all training videos.";
+  const statusDescription = isApplicationApproved ? t('upDescTrainingAvailable')
+    : isApplicationPending ? t('upDescUnderReview')
+      : hasSubmittedApplication ? t('upDescSubmitted')
+        : hasRejectedApplications ? t('upDescRejected')
+          : hasCancelledApplications ? t('upDescCancelled')
+            : t('upDescReadyToApply');
 
   if (loading) {
     return (
@@ -188,30 +191,30 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Award className="h-5 w-5 text-primary flex-shrink-0" />
-            <span>Accessible Training Progress</span>
+            <span>{t('upTitle')}</span>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="space-y-3">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1">
-              <span className="font-medium text-sm">Application Progress</span>
+              <span className="font-medium text-sm">{t('upApplicationProgress')}</span>
               <Badge variant="outline" className="text-xs font-medium w-fit">
-                {progressPercentage}% Complete
+                {t('upPercentComplete', { percent: progressPercentage })}
               </Badge>
             </div>
             <Progress value={progressPercentage} className="h-2.5" />
             <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
               <div className="text-center">
-                <span className="block">Account</span>
-                <span className="block">Created</span>
+                <span className="block">{t('upAccountCreated')}</span>
+                <span className="block">{t('upCreated')}</span>
               </div>
               <div className="text-center">
-                <span className="block">Application</span>
-                <span className="block">Submitted</span>
+                <span className="block">{t('upApplicationSubmitted')}</span>
+                <span className="block">{t('upSubmitted')}</span>
               </div>
               <div className="text-center">
-                <span className="block">Approved</span>
-                <span className="block">Ready</span>
+                <span className="block">{t('upApprovedReady')}</span>
+                <span className="block">{t('upReady')}</span>
               </div>
             </div>
           </div>
@@ -251,7 +254,7 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
                     <div className="flex items-center gap-2 flex-wrap">
                       <h4 className="font-medium text-sm">{step.title}</h4>
                       <Badge variant={stepBadgeVariant(step.status)} className="text-xs px-2 py-0.5">
-                        {stepBadgeLabel(step.status)}
+                        {stepBadgeLabel(step.status, t)}
                       </Badge>
                     </div>
                     <p className="text-xs text-muted-foreground leading-relaxed">{step.description}</p>
@@ -259,7 +262,7 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
                     {step.action && step.status === 'current' && (
                       <Button asChild size="sm" className="mt-2 h-8 text-xs">
                         <Link href={step.action}>
-                          Start Application
+                          {t('upStartApplication')}
                           <ArrowRight className="h-3 w-3 ml-1" />
                         </Link>
                       </Button>
@@ -268,7 +271,7 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
                     {step.status === 'rejected' && (
                       <Button asChild size="sm" variant="outline" className="mt-2 h-8 text-xs">
                         <Link href="/dashboard?view=applications&action=new">
-                          Update Application
+                          {t('upUpdateApplication')}
                           <ArrowRight className="h-3 w-3 ml-1" />
                         </Link>
                       </Button>
@@ -286,13 +289,13 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
                   <Button asChild variant="outline" className="h-10 text-sm">
                     <Link href="/dashboard">
                       <FileText className="h-4 w-4 mr-2 flex-shrink-0" />
-                      Check Application Status
+                      {t('upCheckApplicationStatus')}
                     </Link>
                   </Button>
 
                   <Button asChild variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground">
                     <Link href="/">
-                      Learn More About LocalCooks
+                      {t('upLearnMoreAboutLocalCooks')}
                     </Link>
                   </Button>
                 </div>
@@ -301,31 +304,31 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
           )}
 
           {(hasRejectedApplications || hasCancelledApplications) && !hasSubmittedApplication && (
-            <QuietNotice title="Fresh start available">
+            <QuietNotice title={t('upFreshStartTitle')}>
               {hasRejectedApplications
-                ? "Submit a new application anytime with updated information."
-                : "You can submit a new application whenever you're ready!"}
+                ? t('upFreshStartRejected')
+                : t('upFreshStartCancelled')}
             </QuietNotice>
           )}
 
           <div className="rounded-lg border p-4">
-            <h4 className="font-semibold mb-3 text-sm">What you&apos;ll access</h4>
+            <h4 className="font-semibold mb-3 text-sm">{t('upWhatYouAccess')}</h4>
             <div className="grid grid-cols-1 gap-2.5 text-sm text-muted-foreground">
               <div className="flex items-start gap-2">
                 <CheckCircle className="h-4 w-4 text-success flex-shrink-0 mt-0.5" />
-                <span className="leading-relaxed">13 remaining videos from Food Safety Basics module</span>
+                <span className="leading-relaxed">{t('upAccessBasicsRemaining')}</span>
               </div>
               <div className="flex items-start gap-2">
                 <CheckCircle className="h-4 w-4 text-success flex-shrink-0 mt-0.5" />
-                <span className="leading-relaxed">1 additional training module (Safety & Hygiene How-To&apos;s)</span>
+                <span className="leading-relaxed">{t('upAccessHygieneModule')}</span>
               </div>
               <div className="flex items-start gap-2">
                 <CheckCircle className="h-4 w-4 text-success flex-shrink-0 mt-0.5" />
-                <span className="leading-relaxed">Food Safety Certification Preparation Content</span>
+                <span className="leading-relaxed">{t('upAccessCertPrep')}</span>
               </div>
               <div className="flex items-start gap-2">
                 <CheckCircle className="h-4 w-4 text-success flex-shrink-0 mt-0.5" />
-                <span className="leading-relaxed">Completion Certificate</span>
+                <span className="leading-relaxed">{t('upAccessCompletionCert')}</span>
               </div>
             </div>
           </div>

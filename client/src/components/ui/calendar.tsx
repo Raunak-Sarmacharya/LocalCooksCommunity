@@ -24,11 +24,11 @@ function Calendar({
         caption_label: "text-sm font-medium",
         nav: "space-x-1 flex items-center",
         nav_button: cn(
-          buttonVariants({ variant: "outline" }),
+          buttonVariants({ variant: "ghost" }),
           "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100"
         ),
-        nav_button_previous: "absolute left-1",
-        nav_button_next: "absolute right-1",
+        nav_button_previous: "absolute left-0",
+        nav_button_next: "absolute right-0",
         table: "w-full border-collapse table-fixed",
         head_row: "",
         head_cell:
@@ -49,7 +49,7 @@ function Calendar({
         ),
         day: cn(
           buttonVariants({ variant: "ghost" }),
-          "h-full w-full max-w-[40px] mx-auto p-0 font-normal aria-selected:opacity-100 rounded-full hover:bg-gray-100 transition-colors flex items-center justify-center text-gray-900"
+          "h-full w-full max-w-[40px] mx-auto p-0 font-semibold aria-selected:opacity-100 rounded-full hover:bg-gray-100 transition-colors flex items-center justify-center text-gray-900"
         ),
         day_range_start: "day-range-start aria-selected:text-[#F51042] aria-selected:bg-transparent font-medium",
         day_range_end: "day-range-end aria-selected:text-[#F51042] aria-selected:bg-transparent font-medium",
@@ -58,7 +58,7 @@ function Calendar({
         day_today: "font-semibold text-gray-900 rounded-full",
         day_outside:
           "day-outside text-muted-foreground aria-selected:text-[#F51042] opacity-50",
-        day_disabled: "text-gray-400 opacity-60 line-through decoration-gray-500 decoration-1",
+        day_disabled: "text-gray-300 opacity-40 font-normal line-through decoration-gray-300/80",
         day_range_middle:
           "aria-selected:bg-transparent aria-selected:text-[#F51042]",
         day_hidden: "invisible",

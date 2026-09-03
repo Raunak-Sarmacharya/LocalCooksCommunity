@@ -2818,55 +2818,67 @@ router.put(
   },
 );
 
-// Update kitchen details
+// Update kitchen details (description, name, amenities, smart lock).
+// PUT /kitchens/:id is aliased — clients used to hit it and got the HTML 404/DOCTYPE parse error.
+async function putKitchenDetails(req: Request, res: Response) {
+  try {
+    const user = req.neonUser!;
+    const kitchenId = parseInt(req.params.kitchenId);
+    const { name, description, features, smartLockEnabled } = req.body ?? {};
+
+    const kitchen = await kitchenService.getKitchenById(kitchenId);
+    if (!kitchen) {
+      return res.status(404).json({ error: "Kitchen not found" });
+    }
+
+    const location = await locationService.getLocationById(kitchen.locationId);
+    if (!location || location.managerId !== user.id) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    if (smartLockEnabled === true && !kitchen.smartLockAvailable) {
+      return res.status(403).json({
+        error:
+          "Smart door lock is not available for this kitchen. Please contact an administrator to enable it.",
+        code: "SMART_LOCK_UNAVAILABLE",
+      });
+    }
+
+    const patch: {
+      id: number;
+      name?: string;
+      description?: string;
+      amenities?: string[];
+      smartLockEnabled?: boolean;
+    } = { id: kitchenId };
+    if (name !== undefined) patch.name = name;
+    if (description !== undefined) patch.description = description;
+    if (features !== undefined) patch.amenities = features;
+    if (smartLockEnabled !== undefined) {
+      patch.smartLockEnabled = kitchen.smartLockAvailable ? smartLockEnabled : false;
+    }
+
+    const updated = await kitchenService.updateKitchen(patch);
+    res.json(updated);
+  } catch (error: any) {
+    logger.error("Error updating kitchen details:", error);
+    res
+      .status(500)
+      .json({ error: error.message || "Failed to update kitchen details" });
+  }
+}
+
 router.put(
   "/kitchens/:kitchenId/details",
   requireFirebaseAuthWithUser,
   requireManager,
-  async (req: Request, res: Response) => {
-    try {
-      const user = req.neonUser!;
-      const kitchenId = parseInt(req.params.kitchenId);
-      const { name, description, features, smartLockEnabled } = req.body;
-
-      const kitchen = await kitchenService.getKitchenById(kitchenId);
-      if (!kitchen) {
-        return res.status(404).json({ error: "Kitchen not found" });
-      }
-
-      const location = await locationService.getLocationById(
-        kitchen.locationId,
-      );
-      if (!location || location.managerId !== user.id) {
-        return res.status(403).json({ error: "Access denied" });
-      }
-
-      // Admin-gated capability: managers cannot enable smart lock unless admin
-      // has enabled the capability (`smartLockAvailable`) on this kitchen.
-      if (smartLockEnabled === true && !kitchen.smartLockAvailable) {
-        return res.status(403).json({
-          error: "Smart door lock is not available for this kitchen. Please contact an administrator to enable it.",
-          code: "SMART_LOCK_UNAVAILABLE",
-        });
-      }
-
-      const updated = await kitchenService.updateKitchen({
-        id: kitchenId,
-        name,
-        description,
-        amenities: features,
-        // Force-off if admin has not enabled the capability, regardless of payload.
-        smartLockEnabled: kitchen.smartLockAvailable ? smartLockEnabled : false,
-      });
-
-      res.json(updated);
-    } catch (error: any) {
-      logger.error("Error updating kitchen details:", error);
-      res
-        .status(500)
-        .json({ error: error.message || "Failed to update kitchen details" });
-    }
-  },
+  putKitchenDetails,
+);
+router.put(
+  "/kitchens/:kitchenId",
+  requireFirebaseAuthWithUser,
+  requireManager,
+  putKitchenDetails,
 );
 
 // ============================================================================
@@ -4195,6 +4207,7 @@ router.get(
             amount: paymentTransactions.amount,
             baseAmount: paymentTransactions.baseAmount, // Base amount before tax
             serviceFee: paymentTransactions.serviceFee,
+            taxAmount: paymentTransactions.taxAmount,
             managerRevenue: paymentTransactions.managerRevenue,
             status: paymentTransactions.status,
             stripeProcessingFee: paymentTransactions.stripeProcessingFee,
@@ -4203,6 +4216,7 @@ router.get(
             netAmount: paymentTransactions.netAmount,
             refundedAt: paymentTransactions.refundedAt,
             refundReason: paymentTransactions.refundReason,
+            metadata: paymentTransactions.metadata,
           })
           .from(paymentTransactions)
           .where(
@@ -4222,6 +4236,7 @@ router.get(
             amount: txn.amount ? parseFloat(txn.amount) : null,
             baseAmount: txn.baseAmount ? parseFloat(txn.baseAmount) : null, // Base before tax
             serviceFee: txn.serviceFee ? parseFloat(txn.serviceFee) : null,
+            taxAmount: txn.taxAmount != null ? parseFloat(txn.taxAmount) : null,
             managerRevenue: txn.managerRevenue
               ? parseFloat(txn.managerRevenue)
               : null,
@@ -4232,6 +4247,7 @@ router.get(
             netAmount: txn.netAmount ? parseFloat(txn.netAmount) : null,
             refundedAt: txn.refundedAt || null,
             refundReason: txn.refundReason || null,
+            metadata: txn.metadata || null,
           };
         }
       } catch (err) {
@@ -4246,10 +4262,44 @@ router.get(
       
       // Use calculated price if available, otherwise fall back to stored totalPrice
       const kitchenOnlyPrice = calculatedKitchenPrice > 0 ? calculatedKitchenPrice : (booking.totalPrice || 0);
+      const capturedSubtotal = Math.max(0,
+        kitchenOnlyPrice
+        + storageBookingsWithDetails.filter((item: any) => item.paymentStatus !== 'failed').reduce((sum: number, item: any) => sum + Number(item.totalPrice || 0), 0)
+        + equipmentBookingsWithDetails.filter((item: any) => item.paymentStatus !== 'failed').reduce((sum: number, item: any) => sum + Number(item.totalPrice || 0), 0)
+      );
+      const capturedMetadata: any = paymentTransaction?.metadata || {};
+      const metadataTaxRate = capturedMetadata.taxRatePercent ?? capturedMetadata.tax_rate_percent;
+      const fallbackTaxRatePercent = metadataTaxRate != null
+        ? Number(metadataTaxRate)
+        : Number(kitchen.taxRatePercent || 0);
+      const storedTaxValue = paymentTransaction?.taxAmount
+        ?? capturedMetadata.approvedTax
+        ?? capturedMetadata.approved_tax
+        ?? capturedMetadata.tax_cents;
+      const storedTaxAmount = storedTaxValue != null ? Number(storedTaxValue) : null;
+      const capturedTaxAmount = storedTaxAmount != null && (storedTaxAmount > 0 || fallbackTaxRatePercent <= 0)
+        ? storedTaxAmount
+        : Math.round(capturedSubtotal * fallbackTaxRatePercent / 100);
+      const historicalTaxRatePercent = metadataTaxRate != null
+        ? Number(metadataTaxRate)
+        : capturedSubtotal > 0 && capturedTaxAmount > 0
+          ? (capturedTaxAmount * 100) / capturedSubtotal
+          : fallbackTaxRatePercent;
+      const chargedAmount = Number(paymentTransaction?.amount || 0);
+      const reconciledServiceFee = chargedAmount >= capturedSubtotal + capturedTaxAmount
+        ? chargedAmount - capturedSubtotal - capturedTaxAmount
+        : Number(booking.serviceFee || paymentTransaction?.serviceFee || 0);
+      const historicalCommissionRate = capturedSubtotal > 0 ? reconciledServiceFee / capturedSubtotal : 0;
+      if (paymentTransaction) {
+        paymentTransaction.taxAmount = capturedTaxAmount;
+        paymentTransaction.serviceFee = reconciledServiceFee;
+      }
 
       res.json({
         ...booking,
         totalPrice: kitchenOnlyPrice, // Override with calculated kitchen-only price
+        serviceFee: reconciledServiceFee,
+        platformCommissionRate: historicalCommissionRate,
         kitchen: {
           id: kitchen.id,
           name: kitchen.name,
@@ -4258,7 +4308,7 @@ router.get(
             kitchen.galleryImages ||
             (kitchen.imageUrl ? [kitchen.imageUrl] : []),
           locationId: kitchen.locationId,
-          taxRatePercent: kitchen.taxRatePercent || 0, // Include tax rate for revenue calculation
+          taxRatePercent: historicalTaxRatePercent,
         },
         location: {
           id: location.id,
@@ -4546,13 +4596,16 @@ router.put(
             : 0;
           const approvedTaxCents = Math.round((approvedSubtotalCents * taxRatePercent) / 100);
 
-          // Chef pays platform commission on top of the approved booking subtotal.
-          // Capture must include that commission so Stripe's charge matches checkout.
-          const feeCalc = approvedSubtotalCents > 0
-            ? await calculateCheckoutFeesAsync(approvedSubtotalCents)
-            : null;
-          const platformCommissionCents = feeCalc?.platformCommissionInCents ?? 0;
-          const captureAmountCents = approvedSubtotalCents + approvedTaxCents + platformCommissionCents;
+          // Chef pays platform commission on subtotal only (not tax) — matches checkout.
+          // Capture must include that commission so Stripe's charge matches the authorized amount.
+          const managerGrossCents = approvedSubtotalCents + approvedTaxCents;
+          // Always use the current admin-configured rate at capture time.
+          // The chef may have been authorized at an older rate, but the platform
+          // commission should reflect the rate in effect now. If the current rate
+          // is lower, the difference is auto-released back to the chef (partial capture).
+          const feeCalc = await calculateCheckoutFeesAsync(approvedSubtotalCents, { taxAmountCents: approvedTaxCents });
+          const platformCommissionCents = feeCalc.platformCommissionInCents;
+          const captureAmountCents = managerGrossCents + platformCommissionCents;
 
           // Kept for metadata/audit; Separate Charges flow does not send this to Stripe.
           const newApplicationFeeCents = platformCommissionCents;
@@ -4587,27 +4640,37 @@ router.put(
           // causing syncStripeAmountsToBookings to overwrite kb.total_price with the Stripe
           // amount (includes tax), breaking all tax calculations downstream.
           // Solution: Set partialCapture flag in PT metadata BEFORE calling stripe.capture().
-          if (isPartialCapture) {
-            try {
-              const ptRecordPreCapture = await findPaymentTransactionByIntentId(bookingPaymentIntentId, db);
-              if (ptRecordPreCapture) {
-                const existingMeta = ptRecordPreCapture.metadata
-                  ? (typeof ptRecordPreCapture.metadata === 'string' ? JSON.parse(ptRecordPreCapture.metadata) : ptRecordPreCapture.metadata)
-                  : {};
-                await updatePaymentTransaction(ptRecordPreCapture.id, {
-                  metadata: {
-                    ...existingMeta,
-                    partialCapture: true,
-                    approvedSubtotal: approvedSubtotalCents,
-                    approvedTax: approvedTaxCents,
-                    taxRatePercent,
-                  },
-                }, db);
-                logger.info(`[Manager] Pre-set partialCapture metadata on PT ${ptRecordPreCapture.id} BEFORE stripe.capture()`);
-              }
-            } catch (preCapErr: any) {
-              logger.warn(`[Manager] Could not pre-set PT metadata (non-fatal, will retry in Step 9):`, preCapErr);
+          try {
+            const ptRecordPreCapture = await findPaymentTransactionByIntentId(bookingPaymentIntentId, db);
+            if (ptRecordPreCapture) {
+              const existingMeta = ptRecordPreCapture.metadata
+                ? (typeof ptRecordPreCapture.metadata === 'string' ? JSON.parse(ptRecordPreCapture.metadata) : ptRecordPreCapture.metadata)
+                : {};
+              await updatePaymentTransaction(ptRecordPreCapture.id, {
+                amount: captureAmountCents,
+                serviceFee: platformCommissionCents,
+                taxAmount: approvedTaxCents,
+                metadata: {
+                  ...existingMeta,
+                  partialCapture: isPartialCapture,
+                  approvedSubtotal: approvedSubtotalCents,
+                  approvedTax: approvedTaxCents,
+                  taxRatePercent,
+                  platformCommission: platformCommissionCents,
+                  applicationFee: platformCommissionCents,
+                },
+              }, db);
+              await db.execute(sql`
+                UPDATE payment_transactions
+                SET base_amount = ${managerGrossCents.toString()},
+                    tax_amount = ${approvedTaxCents.toString()}
+                WHERE id = ${ptRecordPreCapture.id}
+              `);
+              logger.info(`[Manager] Pre-set complete capture split on PT ${ptRecordPreCapture.id} BEFORE stripe.capture()`);
             }
+          } catch (preCapErr: any) {
+            logger.warn(`[Manager] Could not pre-set PT money split; capture aborted:`, preCapErr);
+            throw preCapErr;
           }
 
           // ── Step 7b: Capture via Stripe ─────────────────────────────────────────
@@ -4686,8 +4749,8 @@ router.put(
           try {
             const ptRecord = await findPaymentTransactionByIntentId(bookingPaymentIntentId, db);
             if (ptRecord) {
-              // Booking subtotal (manager gross) vs chef charged amount (includes commission).
-              const capturedBaseAmount = approvedSubtotalCents + approvedTaxCents;
+              // base_amount = manager gross (subtotal + tax). Platform commission is separate.
+              const capturedBaseAmount = managerGrossCents;
 
               // Build metadata with capture details for audit trail
               const existingMetadata = ptRecord.metadata
@@ -4716,20 +4779,22 @@ router.put(
                 paidAt: new Date(),
                 amount: captureAmountCents,
                 serviceFee: platformCommissionCents,
+                taxAmount: approvedTaxCents,
                 metadata: captureMetadata,
               }, db);
 
-              // Persist subtotal + charged total. Do NOT overwrite manager_revenue or
+              // Persist manager gross + tax + commission. Do NOT overwrite manager_revenue or
               // stripe_processing_fee — payment_intent.succeeded sets those from the transfer.
               await db.execute(sql`
                 UPDATE payment_transactions
                 SET base_amount = ${capturedBaseAmount.toString()},
                     service_fee = ${platformCommissionCents.toString()},
+                    tax_amount = ${approvedTaxCents.toString()},
                     net_amount = ${captureAmountCents.toString()}
                 WHERE id = ${ptRecord.id}
               `);
 
-              logger.info(`[Manager] Updated payment_transactions ${ptRecord.id}: charged=${captureAmountCents}, base=${capturedBaseAmount}, commission=${platformCommissionCents}`);
+              logger.info(`[Manager] Updated payment_transactions ${ptRecord.id}: charged=${captureAmountCents}, base=${capturedBaseAmount}, tax=${approvedTaxCents}, commission=${platformCommissionCents}`);
             }
           } catch (ptErr: any) {
             logger.warn(`[Manager] Could not update payment_transactions after capture:`, ptErr);

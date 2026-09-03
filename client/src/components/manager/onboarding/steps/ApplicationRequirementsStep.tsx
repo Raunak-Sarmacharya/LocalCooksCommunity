@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from "react";
+import { mt } from "@/i18n/manager";
 import { CheckCircle, ClipboardList } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ApplicationRequirementsWizard } from "@/components/manager/requirements";
@@ -10,6 +11,7 @@ import type { WizardStep } from "@/components/manager/requirements/types";
 const WIZARD_STEP_ORDER: WizardStep[] = ['step2'];
 
 export default function ApplicationRequirementsStep() {
+  
   const {
     selectedLocationId,
     handleNext,
@@ -95,9 +97,9 @@ export default function ApplicationRequirementsStep() {
   // - Last tab + unsaved: "Save & Continue"
   // - Last tab + saved: "Continue to Next Step"
   const getNextLabel = () => {
-    if (!isLastWizardStep) return "Next Tab";
-    if (!hasRequirements) return "Save & Continue";
-    return "Continue to Next Step";
+    if (!isLastWizardStep) return mt("nextTab");
+    if (!hasRequirements) return mt("saveAndContinue");
+    return mt("continueToNextStep");
   };
 
   // [ENTERPRISE] Only disable the button on the LAST wizard tab when requirements
@@ -112,14 +114,14 @@ export default function ApplicationRequirementsStep() {
         <Alert className="border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-emerald-900/50">
           <CheckCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
           <AlertDescription className="text-sm text-emerald-700 dark:text-emerald-300">
-            <span className="font-medium">Requirements saved</span> — Modify below or continue to next step.
+            <span className="font-medium">{mt("requirementsSaved2")}</span> — {mt("modifyBelowOrContinue")}
           </AlertDescription>
         </Alert>
       ) : (
         <Alert className="border-amber-200 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-900/50">
           <ClipboardList className="h-4 w-4 text-amber-600 dark:text-amber-400" />
           <AlertDescription className="text-sm text-amber-700 dark:text-amber-300">
-            <span className="font-medium">Configure requirements</span> — Save your settings to continue.
+            <span className="font-medium">{mt("configureRequirements2")}</span> — {mt("saveSettingsToContinue")}
           </AlertDescription>
         </Alert>
       )}

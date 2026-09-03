@@ -1,4 +1,6 @@
 import { logger } from "@/lib/logger";
+import { mt } from "@/i18n/manager";
+import { tt } from "@/i18n/common-ns";
 /**
  * Enterprise-Grade Notification Center Component
  * 
@@ -192,19 +194,15 @@ function ErrorNotificationState({ onRetry }: { onRetry: () => void }) {
       <div className="text-red-300 mb-4">
         <AlertTriangle className="h-12 w-12" />
       </div>
-      <h4 className="text-sm font-medium text-gray-700">Failed to load notifications</h4>
-      <p className="text-xs text-gray-500 mt-1 max-w-[200px]">
-        There was an error loading your notifications. Please try again.
-      </p>
+      <h4 className="text-sm font-medium text-gray-700">{mt("failedToLoadNotifications")}</h4>
+      <p className="text-xs text-gray-500 mt-1 max-w-[200px]">{mt("thereWasAnErrorLoadingYourNotificationsPleaseTryAgain")}</p>
       <Button 
         variant="outline" 
         size="sm" 
         className="mt-4"
         onClick={onRetry}
       >
-        <RefreshCw className="h-4 w-4 mr-2" />
-        Try Again
-      </Button>
+        <RefreshCw className="h-4 w-4 mr-2" />{mt("tryAgain")}</Button>
     </div>
   );
 }
@@ -214,23 +212,23 @@ function EmptyNotificationState({ filter }: { filter: FilterType }) {
   const messages: Record<FilterType, { icon: React.ReactNode; title: string; description: string }> = {
     all: {
       icon: <BellOff className="h-12 w-12" />,
-      title: "No notifications yet",
-      description: "When you receive notifications, they'll appear here."
+      title: mt("noNotificationsYet"),
+      description: mt("noNotificationsYetDesc")
     },
     unread: {
       icon: <CheckCheck className="h-12 w-12" />,
-      title: "All caught up!",
-      description: "You have no unread notifications."
+      title: mt("allCaughtUp"),
+      description: mt("allCaughtUpNoUnread")
     },
     read: {
       icon: <Bell className="h-12 w-12" />,
-      title: "No read notifications",
-      description: "Notifications you've read will appear here."
+      title: mt("noReadNotifications"),
+      description: mt("noReadNotificationsDesc")
     },
     archived: {
       icon: <Archive className="h-12 w-12" />,
-      title: "No archived notifications",
-      description: "Archived notifications will appear here."
+      title: mt("noArchivedNotifications"),
+      description: mt("noArchivedNotificationsDesc")
     }
   };
 
@@ -259,8 +257,8 @@ function groupNotificationsByStatus(notifications: Notification[]) {
     }
   });
 
-  if (unread.length > 0) groups.push({ label: "Unread", notifications: unread });
-  if (earlier.length > 0) groups.push({ label: "Earlier", notifications: earlier });
+  if (unread.length > 0) groups.push({ label: mt("groupUnread"), notifications: unread });
+  if (earlier.length > 0) groups.push({ label: mt("groupEarlier"), notifications: earlier });
 
   return groups;
 }
@@ -385,7 +383,7 @@ function NotificationItem({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => e.stopPropagation()}>
-                <span className="sr-only">Actions</span>
+                <span className="sr-only">{mt("actions")}</span>
                 <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
                   <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
                 </svg>
@@ -394,29 +392,21 @@ function NotificationItem({
             <DropdownMenuContent align="end" className="w-40">
               {!notification.is_read && (
                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onMarkRead(notification.id); }}>
-                  <Check className="h-4 w-4 mr-2" />
-                  Mark as read
-                </DropdownMenuItem>
+                  <Check className="h-4 w-4 mr-2" />{mt("markAsRead")}</DropdownMenuItem>
               )}
               {notification.is_archived ? (
                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onUnarchive(notification.id); }}>
-                  <Archive className="h-4 w-4 mr-2" />
-                  Restore
-                </DropdownMenuItem>
+                  <Archive className="h-4 w-4 mr-2" />{mt("restore")}</DropdownMenuItem>
               ) : (
                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onArchive(notification.id); }}>
-                  <Archive className="h-4 w-4 mr-2" />
-                  Archive
-                </DropdownMenuItem>
+                  <Archive className="h-4 w-4 mr-2" />{mt("archive")}</DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
               <DropdownMenuItem 
                 className="text-red-600"
                 onClick={(e) => { e.stopPropagation(); onDelete(notification.id); }}
               >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Delete
-              </DropdownMenuItem>
+                <Trash2 className="h-4 w-4 mr-2" />{mt("delete")}</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -427,6 +417,7 @@ function NotificationItem({
 
 // Main NotificationCenter component
 export default function NotificationCenter({ locationId }: { locationId?: number }) {
+  
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
   const [filter, setFilter] = useState<FilterType>("all");
@@ -479,7 +470,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
         headers,
         body: JSON.stringify({ notificationIds: ids }),
       });
-      if (!res.ok) throw new Error("Failed to mark as read");
+      if (!res.ok) throw new Error(tt("failedToMarkAsRead"));
       return res.json();
     },
     // Optimistic update: immediately mark as read in the UI
@@ -519,7 +510,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
       if (context?.previousUnreadCount) {
         queryClient.setQueryData(["/api/manager/notifications/unread-count", locationId], context.previousUnreadCount);
       }
-      toast.error("Failed to mark notification as read");
+      toast.error(tt("failedToMarkAsRead"));
     },
     // Always refetch after error or success to ensure consistency
     onSettled: () => {
@@ -537,7 +528,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
         headers,
         body: JSON.stringify({ locationId }),
       });
-      if (!res.ok) throw new Error("Failed to mark all as read");
+      if (!res.ok) throw new Error(mt("failedToMarkAllAsRead"));
       return res.json();
     },
     // Optimistic update: immediately mark all as read
@@ -569,10 +560,10 @@ export default function NotificationCenter({ locationId }: { locationId?: number
       if (context?.previousUnreadCount) {
         queryClient.setQueryData(["/api/manager/notifications/unread-count", locationId], context.previousUnreadCount);
       }
-      toast.error("Failed to mark all as read");
+      toast.error(tt("failedToMarkAllAsRead"));
     },
     onSuccess: () => {
-      toast.success("All notifications marked as read");
+      toast.success(tt("allNotificationsMarkedAsRead"));
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/manager/notifications"] });
@@ -589,7 +580,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
         headers,
         body: JSON.stringify({ notificationIds: ids }),
       });
-      if (!res.ok) throw new Error("Failed to archive");
+      if (!res.ok) throw new Error(mt("failedToArchive"));
       return res.json();
     },
     onMutate: async (ids: number[]) => {
@@ -629,10 +620,10 @@ export default function NotificationCenter({ locationId }: { locationId?: number
       if (context?.previousUnreadCount) {
         queryClient.setQueryData(["/api/manager/notifications/unread-count", locationId], context.previousUnreadCount);
       }
-      toast.error("Failed to archive notification");
+      toast.error(tt("failedToArchiveNotification"));
     },
     onSuccess: () => {
-      toast.success("Notification archived");
+      toast.success(tt("notificationArchived"));
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/manager/notifications"] });
@@ -649,7 +640,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
         headers,
         body: JSON.stringify({ notificationIds: ids }),
       });
-      if (!res.ok) throw new Error("Failed to unarchive");
+      if (!res.ok) throw new Error(mt("failedToUnarchive"));
       return res.json();
     },
     onMutate: async (ids: number[]) => {
@@ -672,10 +663,10 @@ export default function NotificationCenter({ locationId }: { locationId?: number
       if (context?.previousNotifications) {
         queryClient.setQueryData(["/api/manager/notifications", filter, locationId], context.previousNotifications);
       }
-      toast.error("Failed to unarchive notification");
+      toast.error(tt("failedToUnarchiveNotification"));
     },
     onSuccess: () => {
-      toast.success("Notification restored");
+      toast.success(tt("notificationRestored"));
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/manager/notifications"] });
@@ -691,7 +682,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
         method: "DELETE",
         headers,
       });
-      if (!res.ok) throw new Error("Failed to delete");
+      if (!res.ok) throw new Error(mt("failedToDeleteNotification"));
       return res.json();
     },
     onMutate: async (id: number) => {
@@ -729,10 +720,10 @@ export default function NotificationCenter({ locationId }: { locationId?: number
       if (context?.previousUnreadCount) {
         queryClient.setQueryData(["/api/manager/notifications/unread-count", locationId], context.previousUnreadCount);
       }
-      toast.error("Failed to delete notification");
+      toast.error(tt("failedToDeleteNotification"));
     },
     onSuccess: () => {
-      toast.success("Notification deleted");
+      toast.success(tt("notificationDeleted"));
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/manager/notifications"] });
@@ -805,7 +796,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
           size="icon"
           className="relative group"
           aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
-          title="Notifications (Ctrl+Shift+N)"
+          title={mt("notificationsCtrlShiftN")}
         >
           <Bell className={cn(
             "h-5 w-5 transition-transform",
@@ -826,13 +817,13 @@ export default function NotificationCenter({ locationId }: { locationId?: number
         align="end"
         sideOffset={8}
         role="dialog"
-        aria-label="Notifications panel"
+        aria-label={mt("notificationsPanel")}
         aria-describedby="notifications-description"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
           <div>
-            <h2 id="notifications-heading" className="font-semibold text-lg">Notifications</h2>
+            <h2 id="notifications-heading" className="font-semibold text-lg">{mt("navNotifications")}</h2>
             <p id="notifications-description" className="sr-only">
               {unreadCount > 0 
                 ? `You have ${unreadCount} unread notification${unreadCount !== 1 ? 's' : ''}`
@@ -846,7 +837,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
               className="h-8 w-8"
               onClick={() => refetch()}
               disabled={isLoading}
-              aria-label={isLoading ? "Refreshing notifications" : "Refresh notifications"}
+              aria-label={isLoading ? tt("refreshingNotifications") : tt("refreshNotifications")}
             >
               <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} aria-hidden="true" />
             </Button>
@@ -859,30 +850,28 @@ export default function NotificationCenter({ locationId }: { locationId?: number
                 disabled={markAllReadMutation.isPending}
                 aria-label={`Mark all ${unreadCount} notifications as read`}
               >
-                <CheckCheck className="h-4 w-4 mr-1" aria-hidden="true" />
-                Mark all read
-              </Button>
+                <CheckCheck className="h-4 w-4 mr-1" aria-hidden="true" />{mt("markAllRead")}</Button>
             )}
           </div>
         </div>
 
         {/* Filter tabs */}
-        <div className="px-4 py-2 border-b bg-gray-50" role="navigation" aria-label="Notification filters">
+        <div className="px-4 py-2 border-b bg-gray-50" role="navigation" aria-label={mt("notificationFilters")}>
           <Tabs value={filter} onValueChange={(v) => setFilter(v as FilterType)}>
-            <TabsList className="w-full gap-1" aria-label="Filter notifications by status">
+            <TabsList className="w-full gap-1" aria-label={mt("filterNotificationsByStatus")}>
               <TabsTrigger value="all" className="flex-1 text-xs px-2 py-1.5">All</TabsTrigger>
-              <TabsTrigger value="unread" className="flex-1 text-xs px-2 py-1.5">Unread</TabsTrigger>
-              <TabsTrigger value="read" className="flex-1 text-xs px-2 py-1.5">Read</TabsTrigger>
+              <TabsTrigger value="unread" className="flex-1 text-xs px-2 py-1.5">{mt("unread")}</TabsTrigger>
+              <TabsTrigger value="read" className="flex-1 text-xs px-2 py-1.5">{mt("read")}</TabsTrigger>
               <TabsTrigger value="archived" className="flex-1 text-xs px-2 py-1.5">
-                <span className="hidden sm:inline">Archived</span>
-                <span className="sm:hidden">Arch</span>
+                <span className="hidden sm:inline">{mt("archived")}</span>
+                <span className="sm:hidden">{mt("arch")}</span>
               </TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
 
         {/* Notification list */}
-        <ScrollArea className="h-[400px]" role="feed" aria-label="Notifications list" aria-busy={isLoading}>
+        <ScrollArea className="h-[400px]" role="feed" aria-label={mt("notificationsList")} aria-busy={isLoading}>
           {isLoading ? (
             <NotificationListSkeleton />
           ) : notificationsError || unreadError ? (
@@ -925,9 +914,8 @@ export default function NotificationCenter({ locationId }: { locationId?: number
               size="sm" 
               className="text-xs text-gray-600"
               onClick={() => {
-                toast({
-                  title: "All notifications shown",
-                  description: "Use the filters above to browse through your notifications.",
+                toast({ title: mt("allNotificationsShown"),
+                  description: mt("useTheFiltersAboveToBrowseThroughYourNotifications"),
                 });
               }}
             >

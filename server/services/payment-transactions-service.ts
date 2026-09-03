@@ -19,6 +19,7 @@ export interface CreatePaymentTransactionParams {
   amount: number; // Total amount in cents (includes service fee)
   baseAmount: number; // Base amount in cents (before service fee)
   serviceFee: number; // Service fee in cents
+  taxAmount?: number; // Tax collected for the manager, in cents
   stripeProcessingFee?: number; // Actual Stripe processing fee in cents
   managerRevenue: number; // Manager revenue in cents (baseAmount - serviceFee)
   currency?: string;
@@ -51,6 +52,7 @@ export interface UpdatePaymentTransactionParams {
   // serviceFee = application_fee withheld from manager's payout (in cents)
   // managerRevenue = actual amount received in manager's Stripe account (in cents)
   serviceFee?: number;
+  taxAmount?: number;
   managerRevenue?: number;
   // Stripe-synced amounts (optional - if provided, will override calculated amounts)
   stripeAmount?: number; // Actual Stripe amount in cents
@@ -68,6 +70,7 @@ export interface PaymentTransactionRecord {
   amount: string; // Numeric as string from PostgreSQL
   base_amount: string;
   service_fee: string;
+  tax_amount: string | null;
   manager_revenue: string;
   refund_amount: string;
   net_amount: string;
@@ -106,6 +109,7 @@ export async function createPaymentTransaction(
     amount,
     baseAmount,
     serviceFee,
+    taxAmount = 0,
     managerRevenue,
     stripeProcessingFee,
     currency = 'CAD',
@@ -130,6 +134,7 @@ export async function createPaymentTransaction(
       amount,
       base_amount,
       service_fee,
+      tax_amount,
       stripe_processing_fee,
       manager_revenue,
       refund_amount,
@@ -149,6 +154,7 @@ export async function createPaymentTransaction(
       ${amount.toString()},
       ${baseAmount.toString()},
       ${serviceFee.toString()},
+      ${taxAmount.toString()},
       ${stripeProcessingFeeCents.toString()},
       ${managerRevenue.toString()},
       '0',
@@ -243,6 +249,10 @@ export async function updatePaymentTransaction(
     updates.push(sql`service_fee = ${params.serviceFee.toString()}`);
   }
 
+  if (params.taxAmount !== undefined) {
+    updates.push(sql`tax_amount = ${params.taxAmount.toString()}`);
+  }
+
   if (params.managerRevenue !== undefined) {
     updates.push(sql`manager_revenue = ${params.managerRevenue.toString()}`);
   }
@@ -312,13 +322,10 @@ export async function updatePaymentTransaction(
       updates.push(sql`manager_revenue = ${params.stripeNetAmount.toString()}`);
     }
 
-    if (params.stripeAmount !== undefined) {
-      const platformFee = params.serviceFee
-        ?? ((params.stripePlatformFee && params.stripePlatformFee > 0) ? params.stripePlatformFee : 0);
-      if (platformFee > 0) {
-        updates.push(sql`base_amount = ${(params.stripeAmount - platformFee).toString()}`);
-      }
-    }
+    // base_amount (manager gross = subtotal + tax) is set by the capture engine
+    // or initial PT creation. Do NOT recalculate it from stripeAmount − serviceFee
+    // because that formula is only correct when serviceFee is exact, and rounding
+    // or webhook races can produce a stale serviceFee that corrupts base_amount.
 
     // Store Stripe fees in metadata for reference
     const currentMetadataResult = await db.execute(sql`

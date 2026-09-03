@@ -1,6 +1,7 @@
 import { logger } from "@/lib/logger";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { auth } from "@/lib/firebase";
+import { mt } from "@/i18n/manager";
 
 // Interface for kitchen applications with enriched data
 export interface KitchenApplicationForManager {
@@ -289,7 +290,7 @@ export function useManagerKitchenApplicationsForLocation(locationId: number | nu
   const applicationsQuery = useQuery<KitchenApplicationForManager[], Error>({
     queryKey: ["/api/manager/kitchen-applications/location", locationId],
     queryFn: async () => {
-      if (!locationId) throw new Error("No location ID provided");
+      if (!locationId) throw new Error(mt("noLocationIdProvided"));
 
       const headers = await getAuthHeaders();
       const response = await fetch(

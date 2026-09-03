@@ -4,6 +4,7 @@
  */
 
 import { useState } from 'react';
+import { mt } from "@/i18n/manager";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -53,6 +54,7 @@ export function FacilityInfoStep({
   onRequirementsChange,
   onUnsavedChange,
 }: FacilityInfoStepProps) {
+  
   const { toast } = useToast();
   const [floorPlansFile, setFloorPlansFile] = useState<File | null>(null);
   const [ventilationFile, setVentilationFile] = useState<File | null>(null);
@@ -61,14 +63,12 @@ export function FacilityInfoStep({
     maxSize: 4.5 * 1024 * 1024,
     allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'],
     onSuccess: (response) => {
-      toast({
-        title: 'File uploaded successfully',
+      toast({ title: mt("fileUploadedSuccessfully"),
         description: `${response.fileName} has been uploaded.`,
       });
     },
     onError: (error) => {
-      toast({
-        title: 'Upload failed',
+      toast({ title: mt("uploadFailed2"),
         description: error,
         variant: 'destructive',
       });
@@ -131,9 +131,7 @@ export function FacilityInfoStep({
               <Building2 className="h-5 w-5" />
             </div>
             <div className="flex-1">
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-                Facility Information
-              </h3>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{mt("facilityInformation")}</h3>
               <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
                 This information is automatically shared with chefs after they're approved. 
                 It helps them prepare for using your kitchen space efficiently.
@@ -143,9 +141,7 @@ export function FacilityInfoStep({
           
           <div className="mt-4 flex flex-wrap gap-2">
             <Badge variant="info">
-              <Info className="h-3 w-3 mr-1" />
-              Shared automatically with approved chefs
-            </Badge>
+              <Info className="h-3 w-3 mr-1" />{mt("sharedAutomaticallyWithApprovedChefs")}</Badge>
           </div>
         </div>
       </div>
@@ -155,13 +151,9 @@ export function FacilityInfoStep({
         <div className="px-5 py-4 border-b border-slate-200/80 dark:border-slate-700/80 bg-slate-50/50 dark:bg-slate-800/50">
           <div className="flex items-center gap-2">
             <FileText className="h-4 w-4 text-slate-500" />
-            <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-              Floor Plans
-            </h4>
+            <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{mt("floorPlans")}</h4>
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Upload your kitchen layout to help chefs navigate the space
-          </p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{mt("uploadYourKitchenLayoutToHelpChefsNavigateTheSpace")}</p>
         </div>
         
         <div className="p-5 space-y-4">
@@ -172,15 +164,11 @@ export function FacilityInfoStep({
                 <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-emerald-800 dark:text-emerald-200">
-                  Floor Plans Uploaded
-                </p>
+                <p className="text-sm font-medium text-emerald-800 dark:text-emerald-200">{mt("floorPlansUploaded")}</p>
                 <AuthenticatedDocumentLink
                   url={requirements.floor_plans_url}
                   className="text-xs text-emerald-600 dark:text-emerald-400 hover:underline truncate block"
-                >
-                  View Document
-                </AuthenticatedDocumentLink>
+                >{mt("viewDocument")}</AuthenticatedDocumentLink>
               </div>
               <Button
                 onClick={handleRemoveFloorPlans}
@@ -212,9 +200,7 @@ export function FacilityInfoStep({
                     <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
                       {floorPlansFile ? floorPlansFile.name : 'Choose floor plans file'}
                     </p>
-                    <p className="text-xs text-slate-500">
-                      PDF, JPG, PNG, or WebP (max 4.5MB)
-                    </p>
+                    <p className="text-xs text-slate-500">{mt("pDFJPGPNGOrWebPMax45MB")}</p>
                   </div>
                 </div>
                 {floorPlansFile && (
@@ -246,9 +232,7 @@ export function FacilityInfoStep({
                   </>
                 ) : (
                   <>
-                    <Upload className="mr-2 h-4 w-4" />
-                    Upload Floor Plans
-                  </>
+                    <Upload className="mr-2 h-4 w-4" />{mt("uploadFloorPlans")}</>
                 )}
               </Button>
             )}
@@ -261,32 +245,24 @@ export function FacilityInfoStep({
         <div className="px-5 py-4 border-b border-slate-200/80 dark:border-slate-700/80 bg-slate-50/50 dark:bg-slate-800/50">
           <div className="flex items-center gap-2">
             <Wind className="h-4 w-4 text-slate-500" />
-            <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-              Ventilation Specifications
-            </h4>
+            <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{mt("ventilationSpecifications")}</h4>
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Document your ventilation system for compliance and chef awareness
-          </p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{mt("documentYourVentilationSystemForComplianceAndChefAwareness")}</p>
         </div>
         
         <div className="p-5 space-y-5">
           {/* Description */}
           <div className="space-y-2">
-            <Label htmlFor="ventilation_specs" className="text-sm font-medium">
-              Ventilation Description
-            </Label>
+            <Label htmlFor="ventilation_specs" className="text-sm font-medium">{mt("ventilationDescription")}</Label>
             <Textarea
               id="ventilation_specs"
               value={requirements.ventilation_specs || ''}
               onChange={(e) => handleVentilationSpecsChange(e.target.value)}
-              placeholder="Describe your kitchen's ventilation system (CFM, type, exhaust locations, etc.)"
+              placeholder={mt("placeholderVentilationSystem")}
               rows={4}
               className="resize-none"
             />
-            <p className="text-xs text-slate-500">
-              Include details about CFM capacity, hood type, and exhaust locations
-            </p>
+            <p className="text-xs text-slate-500">{mt("includeDetailsAboutCFMCapacityHoodTypeAndExhaustLocations")}</p>
           </div>
 
           {/* Divider */}
@@ -295,9 +271,7 @@ export function FacilityInfoStep({
               <div className="w-full border-t border-slate-200 dark:border-slate-700" />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white dark:bg-slate-900 px-3 text-slate-400 dark:text-slate-500">
-                And/Or
-              </span>
+              <span className="bg-white dark:bg-slate-900 px-3 text-slate-400 dark:text-slate-500">{mt("andOr")}</span>
             </div>
           </div>
 
@@ -308,15 +282,11 @@ export function FacilityInfoStep({
                 <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-emerald-800 dark:text-emerald-200">
-                  Ventilation Document Uploaded
-                </p>
+                <p className="text-sm font-medium text-emerald-800 dark:text-emerald-200">{mt("ventilationDocumentUploaded")}</p>
                 <AuthenticatedDocumentLink
                   url={requirements.ventilation_specs_url}
                   className="text-xs text-emerald-600 dark:text-emerald-400 hover:underline truncate block"
-                >
-                  View Document
-                </AuthenticatedDocumentLink>
+                >{mt("viewDocument")}</AuthenticatedDocumentLink>
               </div>
               <Button
                 onClick={handleRemoveVentilationDoc}
@@ -331,7 +301,7 @@ export function FacilityInfoStep({
 
           {/* Upload Ventilation Document */}
           <div className="space-y-3">
-            <Label className="text-sm font-medium">Upload Documentation (Optional)</Label>
+            <Label className="text-sm font-medium">{mt("uploadDocumentationOptional")}</Label>
             <div className="relative">
               <input
                 id="ventilation_file"
@@ -349,9 +319,7 @@ export function FacilityInfoStep({
                     <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
                       {ventilationFile ? ventilationFile.name : 'Choose document'}
                     </p>
-                    <p className="text-xs text-slate-500">
-                      PDF, JPG, PNG, or WebP (max 4.5MB)
-                    </p>
+                    <p className="text-xs text-slate-500">{mt("pDFJPGPNGOrWebPMax45MB")}</p>
                   </div>
                 </div>
                 {ventilationFile && (
@@ -383,9 +351,7 @@ export function FacilityInfoStep({
                   </>
                 ) : (
                   <>
-                    <Upload className="mr-2 h-4 w-4" />
-                    Upload Ventilation Document
-                  </>
+                    <Upload className="mr-2 h-4 w-4" />{mt("uploadVentilationDocument")}</>
                 )}
               </Button>
             )}

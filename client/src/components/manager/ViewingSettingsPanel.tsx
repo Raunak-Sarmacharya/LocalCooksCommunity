@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect } from "react"
+import { mt } from "@/i18n/manager"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Settings,
@@ -157,6 +158,7 @@ interface ViewingSettingsPanelProps {
 }
 
 export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettingsPanelProps) {
+  
   const queryClient = useQueryClient()
 
   // Local state for settings form
@@ -239,13 +241,13 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
       })
       if (!response.ok) {
         const err = await response.json().catch(() => ({}))
-        throw new Error(err.error || "Failed to save settings")
+        throw new Error(err.error || mt("viewingSettingsSaveFailed"))
       }
       return response.json()
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/viewings/settings/${locationId}`] })
-      toast.success("Viewing settings saved!")
+      toast.success(mt("viewingSettingsSaved"))
     },
     onError: (error: Error) => toast.error(error.message),
   })
@@ -265,13 +267,13 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
       })
       if (!response.ok) {
         const err = await response.json().catch(() => ({}))
-        throw new Error(err.error || "Failed to save availability")
+        throw new Error(err.error || mt("weeklyAvailabilitySaveFailed"))
       }
       return response.json()
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/viewings/settings/${locationId}`] })
-      toast.success("Weekly availability saved!")
+      toast.success(mt("weeklyAvailabilitySaved"))
     },
     onError: (error: Error) => toast.error(error.message),
   })
@@ -279,7 +281,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
   // Add blackout mutation
   const addBlackoutMutation = useMutation({
     mutationFn: async () => {
-      if (!blackoutStart || !blackoutEnd) throw new Error("Select start and end dates")
+      if (!blackoutStart || !blackoutEnd) throw new Error(mt("selectStartAndEndDates"))
       const headers = await getAuthHeaders()
       const response = await fetch(`/api/viewings/blackouts/${locationId}`, {
         method: "POST",
@@ -293,7 +295,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
       })
       if (!response.ok) {
         const err = await response.json().catch(() => ({}))
-        throw new Error(err.error || "Failed to add blackout")
+        throw new Error(err.error || mt("blackoutAddFailed"))
       }
       return response.json()
     },
@@ -303,7 +305,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
       setBlackoutStart(undefined)
       setBlackoutEnd(undefined)
       setBlackoutReason("")
-      toast.success("Exception period added!")
+      toast.success(mt("exceptionPeriodAdded"))
     },
     onError: (error: Error) => toast.error(error.message),
   })
@@ -317,12 +319,12 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
         headers,
         credentials: "include",
       })
-      if (!response.ok) throw new Error("Failed to delete blackout")
+      if (!response.ok) throw new Error(mt("blackoutDeleteFailed"))
       return response.json()
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/viewings/settings/${locationId}`] })
-      toast.success("Exception removed!")
+      toast.success(mt("exceptionRemoved"))
     },
     onError: (error: Error) => toast.error(error.message),
   })
@@ -359,9 +361,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div>
               <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-                <Settings className="h-5 w-5" />
-                Viewing Settings
-              </CardTitle>
+                <Settings className="h-5 w-5" />{mt("viewingSettings")}</CardTitle>
               <CardDescription className="text-xs sm:text-sm">
                 Configure how chefs can book viewings at {locationName || "your location"}
               </CardDescription>
@@ -369,12 +369,10 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
             <div className="flex items-center gap-2">
               {isActive ? (
                 <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
-                  <Eye className="h-3 w-3 mr-1" /> Active
-                </Badge>
+                  <Eye className="h-3 w-3 mr-1" />{mt("active")}</Badge>
               ) : (
                 <Badge variant="secondary">
-                  <EyeOff className="h-3 w-3 mr-1" /> Inactive
-                </Badge>
+                  <EyeOff className="h-3 w-3 mr-1" />{mt("inactive")}</Badge>
               )}
               <Switch checked={isActive} onCheckedChange={setIsActive} />
             </div>
@@ -385,14 +383,14 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <div className="flex items-center gap-1.5">
-                <Label className="text-xs sm:text-sm">Viewing Duration</Label>
+                <Label className="text-xs sm:text-sm">{mt("viewingDuration")}</Label>
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger type="button" onClick={(e) => e.preventDefault()} className="cursor-help">
                       <Info className="h-4 w-4 text-muted-foreground" />
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>The length of each viewing appointment</p>
+                      <p>{mt("theLengthOfEachViewingAppointment")}</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -416,14 +414,14 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
 
             <div className="space-y-2">
               <div className="flex items-center gap-1.5">
-                <Label className="text-xs sm:text-sm">Advance Notice</Label>
+                <Label className="text-xs sm:text-sm">{mt("advanceNotice")}</Label>
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger type="button" onClick={(e) => e.preventDefault()} className="cursor-help">
                       <Info className="h-4 w-4 text-muted-foreground" />
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>The minimum lead time required before a chef can book a viewing</p>
+                      <p>{mt("theMinimumLeadTimeRequiredBeforeAChefCanBookAViewing")}</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -447,14 +445,14 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
 
             <div className="space-y-2">
               <div className="flex items-center gap-1.5">
-                <Label className="text-xs sm:text-sm">Buffer Before</Label>
+                <Label className="text-xs sm:text-sm">{mt("bufferBefore")}</Label>
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger type="button" onClick={(e) => e.preventDefault()} className="cursor-help">
                       <Info className="h-4 w-4 text-muted-foreground" />
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Preparation time automatically blocked before each viewing</p>
+                      <p>{mt("preparationTimeAutomaticallyBlockedBeforeEachViewing")}</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -478,14 +476,14 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
 
             <div className="space-y-2">
               <div className="flex items-center gap-1.5">
-                <Label className="text-xs sm:text-sm">Buffer After</Label>
+                <Label className="text-xs sm:text-sm">{mt("bufferAfter")}</Label>
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger type="button" onClick={(e) => e.preventDefault()} className="cursor-help">
                       <Info className="h-4 w-4 text-muted-foreground" />
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Buffer time automatically blocked after each viewing</p>
+                      <p>{mt("bufferTimeAutomaticallyBlockedAfterEachViewing")}</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -510,14 +508,14 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
 
           <div className="space-y-2">
             <div className="flex items-center gap-1.5">
-              <Label className="text-xs sm:text-sm">Max Advance Booking</Label>
+              <Label className="text-xs sm:text-sm">{mt("maxAdvanceBooking")}</Label>
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger type="button" onClick={(e) => e.preventDefault()} className="cursor-help">
                     <Info className="h-4 w-4 text-muted-foreground" />
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>How far in advance viewings can be scheduled</p>
+                    <p>{mt("howFarInAdvanceViewingsCanBeScheduled")}</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -557,16 +555,16 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
       {/* Tabs for Schedule vs Exceptions */}
       <Tabs defaultValue="weekly" value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full max-w-md grid-cols-2">
-          <TabsTrigger value="weekly">Weekly Schedule</TabsTrigger>
-          <TabsTrigger value="calendar">Exceptions & Calendar</TabsTrigger>
+          <TabsTrigger value="weekly">{mt("weeklySchedule")}</TabsTrigger>
+          <TabsTrigger value="calendar">{mt("exceptionsCalendar")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="weekly" className="space-y-4 mt-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
               <div className="space-y-1">
-                <CardTitle className="text-lg">Recurring Weekly Hours</CardTitle>
-                <CardDescription>Default hours available for kitchen viewings.</CardDescription>
+                <CardTitle className="text-lg">{mt("recurringWeeklyHours")}</CardTitle>
+                <CardDescription>{mt("defaultHoursAvailableForKitchenViewings")}</CardDescription>
               </div>
               <Button
                 onClick={() => saveAvailabilityMutation.mutate()}
@@ -586,8 +584,8 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-[100px]">Day</TableHead>
-                      <TableHead className="w-[100px]">Status</TableHead>
-                      <TableHead>Hours</TableHead>
+                      <TableHead className="w-[100px]">{mt("status")}</TableHead>
+                      <TableHead>{mt("hours")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -644,7 +642,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
                               </div>
                             ) : (
                               <div className="h-8 flex items-center">
-                                <span className="text-sm text-muted-foreground italic">Unavailable</span>
+                                <span className="text-sm text-muted-foreground italic">{mt("unavailable")}</span>
                               </div>
                             )}
                           </TableCell>
@@ -662,8 +660,8 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
           <div className="grid gap-6 xl:grid-cols-2">
             <Card className="overflow-hidden flex flex-col justify-between">
               <CardHeader>
-                <CardTitle>Calendar Overview</CardTitle>
-                <CardDescription>View dates blocked from receiving viewing bookings.</CardDescription>
+                <CardTitle>{mt("calendarOverview")}</CardTitle>
+                <CardDescription>{mt("viewDatesBlockedFromReceivingViewingBookings")}</CardDescription>
               </CardHeader>
               <CardContent className="p-4 flex justify-center items-center">
                 <Calendar
@@ -679,34 +677,33 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Badge variant="destructive" className="h-2 w-2 p-0 rounded-full" />
-                    <span>Exception Dates</span>
+                    <span>{mt("exceptionDates")}</span>
                   </div>
                   <Button variant="outline" size="sm" onClick={() => setIsBlackoutDialogOpen(true)}>
-                    <Plus className="h-4 w-4 mr-1" /> Add Exception
-                  </Button>
+                    <Plus className="h-4 w-4 mr-1" />{mt("addException")}</Button>
                 </div>
               </div>
             </Card>
 
             <Card className="flex flex-col h-full">
               <CardHeader>
-                <CardTitle>Upcoming Exceptions</CardTitle>
-                <CardDescription>Periods where viewings are completely disabled</CardDescription>
+                <CardTitle>{mt("upcomingExceptions")}</CardTitle>
+                <CardDescription>{mt("periodsWhereViewingsAreCompletelyDisabled")}</CardDescription>
               </CardHeader>
               <CardContent className="flex-1 overflow-auto p-0">
                 {!data?.blackouts || data.blackouts.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                     <CalendarIcon className="h-10 w-10 mb-2 opacity-20" />
-                    <p>No active exceptions.</p>
+                    <p>{mt("noActiveExceptions")}</p>
                   </div>
                 ) : (
                   <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
                     <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Dates</TableHead>
-                        <TableHead>Reason</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
+                        <TableHead>{mt("dates")}</TableHead>
+                        <TableHead>{mt("reason")}</TableHead>
+                        <TableHead className="text-right">{mt("actions")}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -733,19 +730,15 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
                               </AlertDialogTrigger>
                               <AlertDialogContent>
                                 <AlertDialogHeader>
-                                  <AlertDialogTitle>Remove exception?</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    This will make these dates available for viewings again.
-                                  </AlertDialogDescription>
+                                  <AlertDialogTitle>{mt("removeException2")}</AlertDialogTitle>
+                                  <AlertDialogDescription>{mt("thisWillMakeTheseDatesAvailableForViewingsAgain")}</AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogCancel>{mt("cancel")}</AlertDialogCancel>
                                   <AlertDialogAction
                                     onClick={() => deleteBlackoutMutation.mutate(blackout.id)}
                                     className="bg-destructive hover:bg-destructive/90"
-                                  >
-                                    Remove
-                                  </AlertDialogAction>
+                                  >{mt("remove")}</AlertDialogAction>
                                 </AlertDialogFooter>
                               </AlertDialogContent>
                             </AlertDialog>
@@ -768,7 +761,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
           <div className="flex gap-3">
             <AlertCircle className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
             <div className="text-xs sm:text-sm text-blue-800 space-y-1">
-              <p className="font-medium">How it works</p>
+              <p className="font-medium">{mt("howItWorks")}</p>
               <p>
                 When you enable viewings, chefs will see a "Schedule a Viewing" button
                 on your kitchen listing. They'll pick a date and time from the availability
@@ -787,13 +780,13 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
       <Dialog open={isBlackoutDialogOpen} onOpenChange={setIsBlackoutDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Exception Period</DialogTitle>
-            <DialogDescription>Block off dates when viewings are completely unavailable.</DialogDescription>
+            <DialogTitle>{mt("addExceptionPeriod")}</DialogTitle>
+            <DialogDescription>{mt("blockOffDatesWhenViewingsAreCompletelyUnavailable")}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2 flex flex-col">
-                <Label>Start Date</Label>
+                <Label>{mt("startDate")}</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -816,7 +809,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
               </div>
 
               <div className="space-y-2 flex flex-col">
-                <Label>End Date</Label>
+                <Label>{mt("endDate")}</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -840,19 +833,17 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
             </div>
 
             <div className="space-y-2">
-              <Label>Reason (optional)</Label>
+              <Label>{mt("reasonOptional")}</Label>
               <Input
                 value={blackoutReason}
                 onChange={(e) => setBlackoutReason(e.target.value)}
-                placeholder="e.g., Holiday, Facility Maintenance"
+                placeholder={mt("eGHolidayFacilityMaintenance")}
                 maxLength={200}
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsBlackoutDialogOpen(false)}>
-              Cancel
-            </Button>
+            <Button variant="outline" onClick={() => setIsBlackoutDialogOpen(false)}>{mt("cancel")}</Button>
             <Button onClick={() => addBlackoutMutation.mutate()} disabled={addBlackoutMutation.isPending || !blackoutStart || !blackoutEnd}>
               {addBlackoutMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Save Exception
