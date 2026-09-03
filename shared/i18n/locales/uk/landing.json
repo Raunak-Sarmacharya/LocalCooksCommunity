@@ -38,41 +38,41 @@
   "shareCulinarySkills": "Поділіться своїми кулінарними навичками зі спільнотою",
   "pilotBenefits": {
     "0": {
-      "text": "Reduced platform fees during trial phase",
-      "description": "Save on service fees while we grow together"
+      "text": "Знижені збори платформи на етапі випробування",
+      "description": "Економте на сервісних зборах, поки ми зростаємо разом"
     },
     "1": {
-      "text": "Priority placement in our app",
-      "description": "Get more visibility with featured chef status"
+      "text": "Пріоритетне розміщення в нашому застосунку",
+      "description": "Отримайте більше видимості зі статусом рекомендованого кухаря"
     },
     "2": {
-      "text": "Free professional photography for your dishes",
-      "description": "High-quality images to showcase your food"
+      "text": "Безкоштовна професійна фотозйомка ваших страв",
+      "description": "Якісні зображення, щоб показати вашу їжу"
     },
     "3": {
-      "text": "Personalized marketing support",
-      "description": "Custom promotions to attract more customers"
+      "text": "Персоналізована маркетингова підтримка",
+      "description": "Індивідуальні акції для залучення більше клієнтів"
     }
   },
   "chefBenefits": {
     "0": {
-      "title": "Financial Freedom",
-      "description": "Set your own prices and build a steady income stream without the overhead of a traditional restaurant"
+      "title": "Фінансова свобода",
+      "description": "Встановлюйте власні ціни й будуйте стабільний дохід без витрат традиційного ресторану"
     },
     "1": {
-      "title": "Flexible Schedule",
-      "description": "Work when you want – whether that's full-time, weekends only, or just a few days a month"
+      "title": "Гнучкий графік",
+      "description": "Працюйте коли зручно — повний день, лише вихідні або кілька днів на місяць"
     },
     "2": {
-      "title": "Weekly Payments",
-      "description": "Get paid directly to your bank account every week – no long waiting periods"
+      "title": "Щотижневі виплати",
+      "description": "Отримуйте оплату безпосередньо на банківський рахунок щотижня — без довгого очікування"
     },
     "3": {
-      "title": "Simple Tools",
-      "description": "Easy-to-use platform to manage orders, update your menu, and track your earnings"
+      "title": "Прості інструменти",
+      "description": "Зручна платформа для керування замовленнями, оновлення меню та відстеження заробітку"
     }
   },
-  "benefitsForCooks": "Benefits for Cooks",
-  "benefitsForCooksDesc": "Unlock your culinary potential and build a sustainable cooking business with Local Cooks",
-  "chefDeliveringImageAlt": "Chef delivering food to customer at doorstep"
+  "benefitsForCooks": "Переваги для кухарів",
+  "benefitsForCooksDesc": "Розкрийте кулінарний потенціал і побудуйте стійкий кулінарний бізнес з Local Cooks",
+  "chefDeliveringImageAlt": "Кухар доставляє їжу клієнту до дверей"
 }

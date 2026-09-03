@@ -495,10 +495,7 @@
   "forKitchenOwnersDreamBigger": "For Kitchen Owners Who Dream Bigger",
   "freqAsNeeded": "As-needed (event-based)",
   "freqBiweekly": "Bi-weekly (every 2 weeks)",
-  "freqFewTimesMonth": "A few times a month",
   "freqMonthly": "Monthly or less",
-  "freqNotSureYet": "Not sure yet",
-  "freqOccasionally": "Occasionally",
   "freqWeekly": "Weekly (regular user)",
   "fromIdleHoursAlone": "From idle hours alone",
   "fromLicensingToRisk": "From licensing and insurance to risk assessment and pricing — our comprehensive guide covers everything you need to operate a shared commercial kitchen.",
@@ -1212,7 +1209,6 @@
   "taxLine": "Tax ({percent}%)",
   "kitchenHstLine": "HST ({percent}%)",
   "localCooksServiceFeeLine": "Service fee ({percent}%)",
-  "serviceFeeLine": "Service fee ({percent}%)",
   "noKitchenHstDisclosure": "No HST was charged by this kitchen.",
   "taxesAndFees": "Taxes and fees",
   "taxesAndFeesBreakdown": "Taxes and fees breakdown",
@@ -1392,5 +1388,7 @@
   "failedToFetchLocation": "Failed to fetch location",
   "noLocationIdProvided": "No location ID provided",
   "listYourCommercialKitchenSeo": "List your commercial kitchen on LocalCooks and earn revenue from idle hours. Automated booking, Stripe payouts, compliance management, and damage protection. Serving St. John's, Newfoundland.",
-  "cancellationPolicyDefaultMessage": "Bookings cannot be cancelled within {hours} hours of the scheduled time."
+  "cancellationPolicyDefaultMessage": "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
+  "everyEmptyHourIs": "Every empty hour is",
+  "runYourKitchen": "Run Your Kitchen"
 }

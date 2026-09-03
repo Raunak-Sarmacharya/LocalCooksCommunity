@@ -1257,7 +1257,7 @@ function ExportReportModal({ orders }: { orders: SellerOrder[] }) {
       document.body.removeChild(a);
       
       toast({
-        title: "Report Downloaded",
+        title: t("reportDownloaded"),
         description: `Your custom ${format.toUpperCase()} report has been downloaded.`,
       });
       setOpen(false);

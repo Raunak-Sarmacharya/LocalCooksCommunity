@@ -1352,7 +1352,7 @@
   "poweredByCommunity": "Powered by community",
   "preOrder": "Pre-Order",
   "privacyLink": "Privacy",
-  "processing": "Processing...",
+  "processing": "Processing",
   "profileCancel": "Cancel",
   "profileChefBadge": "Chef",
   "profileDescription": "Manage your personal details and account security.",
@@ -2199,5 +2199,17 @@
   "failedToDownloadCertificate": "Failed to download certificate",
   "failedToFetchGlobalApplications": "Failed to fetch global applications",
   "failedToFetchShopStatus": "Failed to fetch shop status",
-  "chefOnboardingProviderRequired": "useChefOnboarding must be used within a ChefOnboardingProvider"
+  "chefOnboardingProviderRequired": "useChefOnboarding must be used within a ChefOnboardingProvider",
+  "dcClaimResolved": "Claim Resolved",
+  "reportDownloaded": "Report Downloaded",
+  "bdPaymentHoldTitle": "Payment Hold",
+  "bdPaymentHeldLower": "Payment held",
+  "paid": "Paid",
+  "resolved": "Resolved",
+  "bdPaymentHoldDesc": "This amount is held on your card. The charge will be finalized once the kitchen manager approves your booking.",
+  "noCharge": "No charge",
+  "storageDeclinedCount": "{count} storage declined",
+  "equipmentDeclinedCount": "{count} equipment declined",
+  "storagePendingCount": "{count} storage pending",
+  "partialRefund": "Partial refund"
 }

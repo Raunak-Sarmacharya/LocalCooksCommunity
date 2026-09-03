@@ -1362,7 +1362,7 @@
   "whenYouCanCook": "Коли ви можете готувати",
   "whenYourSpaceHasMore": "Коли ваш простір має більший потенціал, ніж проста погодинна ставка, ми допомагаємо вам розкрити його. Пропонуйте фіксоване щомісячне членство для серйозних харчових підприємств, дорогі майстер-класи та заходи або спеціальні пакети для поп-апів та кейтерингових команд. Якщо ви можете уявити варіант використання, ми допоможемо вам встановити ціну, структурувати та отримати бронювання.",
   "whereItIs": "Де це знаходиться",
-  "withConfidence": "З впевненістю",
+  "withConfidence": "з впевненістю",
   "withLocalCooks": "(З LocalCooks)",
   "yearsExperience": "Роки досвіду",
   "yearsOfExperience": "Роки досвіду",
@@ -1382,5 +1382,13 @@
   "failedToFetchLocation": "Не вдалося отримати локацію",
   "noLocationIdProvided": "ID локації не надано",
   "listYourCommercialKitchenSeo": "Розмістіть свою комерційну кухню на LocalCooks і заробляйте на простої. Автоматизоване бронювання, виплати Stripe, управління відповідністю та захист від пошкоджень. Обслуговуємо Сент-Джонс, Ньюфаундленд.",
-  "cancellationPolicyDefaultMessage": "Бронювання не можна скасувати протягом {hours} годин до запланованого часу."
+  "cancellationPolicyDefaultMessage": "Бронювання не можна скасувати протягом {hours} годин до запланованого часу.",
+  "kitchenHstLine": "HST ({percent}%)",
+  "localCooksServiceFeeLine": "Сервісний збір ({percent}%)",
+  "noKitchenHstDisclosure": "Ця кухня не стягнула HST.",
+  "requestToApplyAt": "Запит на подачу заявки в {name}",
+  "requestToApplyProgress": "Запит на подачу заявки",
+  "step2Of2KitchenDocs": "Документи кухні (крок 2)",
+  "everyEmptyHourIs": "Кожна порожня година — це",
+  "runYourKitchen": "Керуйте кухнею"
 }

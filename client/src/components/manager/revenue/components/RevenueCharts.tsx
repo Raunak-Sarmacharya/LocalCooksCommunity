@@ -56,22 +56,22 @@ const CHART_COLORS = {
 
 const revenueTrendConfig = {
     totalRevenue: {
-        label: "Total Revenue",
+        label: mt("totalRevenueTitleCase"),
         color: CHART_COLORS.emerald,
     },
     managerRevenue: {
-        label: "Your Earnings",
+        label: mt("yourEarnings"),
         color: CHART_COLORS.emeraldDark,
     },
 } satisfies ChartConfig
 
 const revenueByLocationConfig = {
     managerRevenue: {
-        label: "Your Earnings",
+        label: mt("yourEarnings"),
         color: CHART_COLORS.emerald,
     },
     platformFee: {
-        label: "Platform Fee",
+        label: mt("platformFee"),
         color: CHART_COLORS.violet,
     },
 } satisfies ChartConfig

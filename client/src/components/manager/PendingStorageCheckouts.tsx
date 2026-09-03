@@ -341,7 +341,7 @@ const getCheckoutColumns = ({
                   <span className="ml-1.5 hidden lg:inline">{mt("clear")}</span>
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>No issues found — complete checkout</TooltipContent>
+              <TooltipContent>{mt("noIssuesCompleteCheckout")}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
 
@@ -361,7 +361,7 @@ const getCheckoutColumns = ({
                 className="text-green-600 focus:text-green-600"
               >
                 <ShieldCheck className="h-4 w-4 mr-2" />
-                Clear Storage — No Issues
+                {mt("clearStorageNoIssues")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => onFileClaim(checkout)}
@@ -886,7 +886,7 @@ export function PendingStorageCheckouts() {
 
               {/* Claim Title */}
               <div className="space-y-1.5">
-                <Label htmlFor="claim-title">Claim Title *</Label>
+                <Label htmlFor="claim-title">{mt("claimTitleRequired")}</Label>
                 <Input
                   id="claim-title"
                   placeholder={mt("eGFoodResidueLeftInStorageUnit")}
@@ -899,7 +899,7 @@ export function PendingStorageCheckouts() {
 
               {/* Claim Description */}
               <div className="space-y-1.5">
-                <Label htmlFor="claim-desc">Description *</Label>
+                <Label htmlFor="claim-desc">{mt("descriptionRequired")}</Label>
                 <Textarea
                   id="claim-desc"
                   placeholder={tt("describeDamageDetail")}
@@ -914,7 +914,7 @@ export function PendingStorageCheckouts() {
 
               {/* Claimed Amount */}
               <div className="space-y-1.5">
-                <Label htmlFor="claim-amount">Claim Amount (CAD) *</Label>
+                <Label htmlFor="claim-amount">{mt("claimAmountCadRequired")}</Label>
                 <CurrencyInput
                   id="claim-amount"
                   placeholder="0.00"

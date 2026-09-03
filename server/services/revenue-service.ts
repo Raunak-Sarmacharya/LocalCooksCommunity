@@ -12,6 +12,7 @@ import { logger } from "../logger";
  */
 
 import { sql } from "drizzle-orm";
+import { resolveKitchenTransactionTaxAndSubtotal } from "./revenue-transaction-tax";
 
 export interface RevenueMetrics {
   totalRevenue: number;        // Total booking revenue (cents) - gross amount charged to customer
@@ -947,6 +948,9 @@ export async function getTransactionHistory(
         kb.reference_code,
         -- Actual amount from payment_transactions (what was actually charged to Stripe)
         pt.amount as pt_amount,
+        pt.base_amount as pt_base_amount,
+        -- Stored tax (source of truth — matches invoice + booking details)
+        COALESCE(pt.tax_amount, 0)::bigint as pt_tax_amount,
         -- Actual Stripe fee from payment_transactions (fetched from Stripe Balance Transaction API)
         COALESCE(pt.stripe_processing_fee, 0)::bigint as actual_stripe_fee,
         -- Service fee from payment_transactions
@@ -974,6 +978,8 @@ export async function getTransactionHistory(
     const kitchenTransactions = kitchenResult.rows.map((row: any) => {
       // Get values from payment_transactions (source of truth when available)
       const ptAmount = row.pt_amount != null ? parseInt(String(row.pt_amount)) : 0;
+      const ptBaseAmount = row.pt_base_amount != null ? parseInt(String(row.pt_base_amount)) : 0;
+      const ptTaxAmount = row.pt_tax_amount != null ? parseInt(String(row.pt_tax_amount)) : 0;
       const ptServiceFee = row.pt_service_fee != null ? parseInt(String(row.pt_service_fee)) : 0;
       const ptManagerRevenue = row.pt_manager_revenue != null ? parseInt(String(row.pt_manager_revenue)) : 0;
       const actualStripeFee = row.actual_stripe_fee != null ? parseInt(String(row.actual_stripe_fee)) : 0;
@@ -982,6 +988,9 @@ export async function getTransactionHistory(
       // Check if this is a damage claim (via payment transaction metadata)
       const ptMetadata = row.pt_metadata || {};
       const isDamageClaim = ptMetadata.type === 'damage_claim';
+      const approvedTaxCents = ptMetadata.approvedTax != null
+        ? parseInt(String(ptMetadata.approvedTax)) || 0
+        : 0;
       
       // Fallback values from kitchen_bookings
       const kbTotalPrice = row.kb_total_price != null ? parseInt(String(row.kb_total_price)) : 0;
@@ -998,16 +1007,17 @@ export async function getTransactionHistory(
       let serviceFeeCents: number;
       
       if (hasPaymentTransaction) {
-        // Manager-facing total is the booking subtotal (kb.total_price), not the chef's
-        // Stripe charge. Chefs pay platform commission on top; managers never see that extra.
-        totalPriceCents = !isDamageClaim && kbTotalPrice > 0 ? kbTotalPrice : ptAmount;
-        if (isDamageClaim) {
-          taxCents = 0;
-        } else if (ptMetadata.partialCapture && ptMetadata.approvedTax != null) {
-          taxCents = parseInt(String(ptMetadata.approvedTax)) || 0;
-        } else {
-          taxCents = Math.round((kbTotalPrice * taxRatePercent) / 100);
-        }
+        const resolved = resolveKitchenTransactionTaxAndSubtotal({
+          isDamageClaim,
+          ptAmount,
+          ptBaseAmount,
+          ptTaxAmount,
+          approvedTaxCents,
+          kbTotalPrice,
+          taxRatePercent,
+        });
+        taxCents = resolved.taxCents;
+        totalPriceCents = resolved.totalPriceCents;
         serviceFeeCents = kbServiceFee > 0 ? kbServiceFee : ptServiceFee;
       } else {
         // Fallback: use kitchen_bookings values
@@ -1097,6 +1107,7 @@ export async function getTransactionHistory(
         pt.booking_type,
         pt.amount as pt_amount,
         pt.base_amount as pt_base_amount,
+        COALESCE(pt.tax_amount, 0)::bigint as pt_tax_amount,
         pt.service_fee as pt_service_fee,
         pt.manager_revenue as pt_manager_revenue,
         pt.refund_amount as pt_refund_amount,
@@ -1135,6 +1146,7 @@ export async function getTransactionHistory(
     const storageTransactions = storageResult.rows.map((row: any) => {
       const ptAmount = row.pt_amount != null ? parseInt(String(row.pt_amount)) : 0;
       const ptBaseAmountFromDb = row.pt_base_amount != null ? parseInt(String(row.pt_base_amount)) : 0;
+      const ptTaxAmount = row.pt_tax_amount != null ? parseInt(String(row.pt_tax_amount)) : 0;
       const ptServiceFee = row.pt_service_fee != null ? parseInt(String(row.pt_service_fee)) : 0;
       const ptManagerRevenue = row.pt_manager_revenue != null ? parseInt(String(row.pt_manager_revenue)) : 0;
       const ptRefundAmount = row.pt_refund_amount != null ? parseInt(String(row.pt_refund_amount)) : 0;
@@ -1188,17 +1200,23 @@ export async function getTransactionHistory(
       // If actual fee is 0, it will be synced via charge.updated webhook
       const stripeFee = actualStripeFee > 0 ? actualStripeFee : 0;
       
-      // Calculate tax EXACTLY like kitchen bookings:
-      // Kitchen: taxCents = Math.round((kbTotalPrice * taxRatePercent) / 100)
-      // where kbTotalPrice is the SUBTOTAL before tax (from kitchen_bookings.total_price)
-      // 
-      // For storage: use pt.base_amount which is the SUBTOTAL before tax
-      // This matches how kitchen bookings use kb.total_price
+      // Prefer stored tax (matches invoice); else calculate from subtotal base.
       // EXCEPTION: Damage claims have NO TAX - they are reimbursements, not revenue
-      const taxCents = isDamageClaim ? 0 : Math.round((ptBaseAmount * taxRatePercent) / 100);
+      const taxCents = isDamageClaim
+        ? 0
+        : (ptTaxAmount > 0
+          ? ptTaxAmount
+          : Math.round((ptBaseAmount * taxRatePercent) / 100));
       
-      // Net revenue = total - tax - stripe fees
-      const grossNetRevenue = ptAmount - taxCents - stripeFee;
+      // Manager-facing total = subtotal before tax (not chef charge)
+      const totalPriceCents = isDamageClaim
+        ? ptAmount
+        : (taxCents > 0 && ptBaseAmountFromDb > taxCents
+          ? ptBaseAmountFromDb - taxCents
+          : (ptBaseAmount > 0 ? ptBaseAmount : ptAmount));
+
+      // Net revenue = manager payout basis − stripe fees
+      const grossNetRevenue = (ptManagerRevenue > 0 ? ptManagerRevenue : (totalPriceCents + taxCents - stripeFee));
 
       // Determine booking type for UI display
       // ENTERPRISE STANDARD: Damage claims get their own type for distinct UI treatment
@@ -1229,7 +1247,7 @@ export async function getTransactionHistory(
         startTime: null,
         endTime: null,
         chefId: row.chef_id != null ? parseInt(String(row.chef_id)) : null,
-        totalPrice: ptAmount,
+        totalPrice: totalPriceCents,
         serviceFee: ptServiceFee,
         platformFee: ptServiceFee,
         taxAmount: taxCents,

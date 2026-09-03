@@ -1,55 +1,55 @@
 # Graph Report - LocalCooksCommunity  (2026-09-03)
 
 ## Corpus Check
-- 805 files · ~1,744,239 words
+- 807 files · ~1,746,339 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 7929 nodes · 20015 edges · 460 communities (321 shown, 139 thin omitted)
+- 7932 nodes · 20037 edges · 464 communities (326 shown, 138 thin omitted)
 - Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 592 edges (avg confidence: 0.84)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `a130fffd`
+- Built from commit: `87cac2fe`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - schema.ts
 - index.js
-- ApplicationForm.tsx
-- onboarding/types.ts
-- LocationDetailSheet.tsx
+- KitchenApplicationForm.tsx
+- ManagerOnboardingContext.tsx
+- notification.service.ts
 - KitchenService
+- sendEmail
 - damage-claim-service.ts
-- storage-checkout-service.ts
 - Kitchen Manager Resources: The Complete Guide to Operating a Shared Commercial Kitchen
 - ChefService
 - 💰 Revenue Dashboard Implementation Plan
 - 🚀 Production Deployment Guide with Firebase Auth
-- ApplicantDashboard.tsx
+- TrainingOverviewPanel.tsx
 - InventoryService
-- custom-alerts.tsx
-- subdomain-utils.ts
-- stripe-connect-service.ts
-- notification.service.ts
+- lib/utils.ts
+- routes/manager.ts
+- revenue-service.ts
+- RevenueCharts.tsx
 - ChefSellerRevenue.tsx
-- ManagerBookingsPanel.tsx
+- utils/timezone-utils.ts
 - KitchenPreviewPage.tsx
-- server/logger.ts
+- routes.ts
 - @date-fns/tz
 - spotlight-walkthrough.tsx
-- booking.service.ts
-- routes/applications.ts
-- chefKitchenApplications
-- KitchenCheckinCheckoutEditor.tsx
+- BookingService
+- kitchen-applications.ts
+- DamageClaimDetailSheet.tsx
+- badge.tsx
 - KitchenBookingPreferencesPanel.tsx
-- ManagerProtectedRoute.tsx
+- preview-emails.ts
 - payment-transactions-service.ts
-- fileUpload.ts
+- routes/applications.ts
 - sidebar.tsx
 - "server/services/notification.service.ts"
-- lib/utils.ts
+- DamageClaimQueue.tsx
 - dev-journey-d-ready.ts
 - scripts
 - "server/routes/manager.ts"
@@ -58,71 +58,72 @@
 - Local Cooks Community Platform
 - postcss
 - kitchen-checkout-service.ts
-- DevLoginPage.tsx
+- DatabaseStorage
 - microlearning.types.ts
-- BookingControlPanel.tsx
+- ApplicantDashboard.tsx
 - functions/package.json
 - compilerOptions
 - ChefDashboardLayout.tsx
-- ForgotPasswordForm.tsx
+- stripe-connect-service.ts
 - requireFirebaseAuthWithUser
 - ChefApplicationService
-- Application
+- User
 - devDependencies
-- ChefResourcesPage_en.tsx
+- SEOHead.tsx
 - Chef Resources: Your Guide to Starting a Legal Food Business in Canada
 - Certificate Generation System
 - "server/services/overstay-penalty-service.ts"
 - AuthModalProvider.tsx
 - button.tsx
-- ManagerRevenueDashboard.tsx
+- use-revenue-data.ts
 - server/index.ts
-- OverviewTabContent.tsx
-- ApplicationRequirementsWizard.tsx
+- subdomain-utils.ts
+- SellerApplicationTabContent.tsx
 - src/i18n/index.ts
 - firebase.ts
-- useFirebaseAuth
+- Header.tsx
 - dependencies
 - ChefSetupPage.tsx
 - "server/routes/admin.ts"
 - email.ts
-- User
+- ResetPasswordForm.tsx
 - 🔍 Comprehensive Analysis: Multiple Kitchens/Locations Per Owner
-- storage-templates.ts
-- use-chef-kitchen-applications.ts
+- ApplicationForm.tsx
+- useFirebaseAuth
 - compilerOptions
-- stripe-checkout-service.ts
+- MemStorage
+- ApplicationFormPanel.tsx
 - EnhancedRegisterForm.tsx
-- Terms.tsx
-- sheet.tsx
-- KitchenApplicationCard.tsx
+- ChefNotificationCenter.tsx
+- StorageListingManagement.tsx
+- ui.tsx
 - Application Detail Card
-- DatabaseStorage
+- ChefViewingsList
 - EmailAction.tsx
 - components.json
 - Chef Application Status Card
 - EmailDesignStudio.tsx
-- use-chef-kitchen-access.ts
-- Admin.tsx
+- ManagerKitchenApplicationsContent
+- i18n/manager.ts
 - getR2Config
 - "server/routes/webhooks.ts"
 - LoCo Logo
-- TruncatedText.tsx
+- OutstandingDuesBanner.tsx
 - ChefLanding.tsx
-- KitchenDiscovery
-- LocationEditModal.tsx
+- tour-kitchen-select.ts
 - admin.ts
+- Application
 - compilerOptions
 - vercel.json
 - api-build.mjs
 - Kitchen Host Monetization Messaging
-- MemStorage
+- Common Issues
 - users Table
 - Application Card
 - ApplicationProgressTracker.tsx
 - LanguageSwitcher.tsx
 - server/tsconfig.json
-- BookingActionSheet.tsx
+- stripe-checkout-transactions-service.ts
 - php-bridge-service.ts
 - Empty Commercial Kitchen
 - overstay-penalty-service.ts
@@ -132,7 +133,7 @@
 - Early Bird Advantages
 - Do you have a Food Safety License?
 - users Table
-- StorageSelection.tsx
+- generateFullVerificationEmail
 - src/index.ts
 - dotenv
 - certificateGenerator.js
@@ -141,7 +142,7 @@
 - Rules Comparison Graphic
 - server/i18n/index.ts
 - 🚨 CRITICAL ISSUE ANALYSIS & FIX
-- phone-validation.ts
+- OverviewTabContent.tsx
 - Promotional Join Banner
 - Upload .SQL Database For Successful Migration Modal
 - Local Cooks Brand
@@ -153,11 +154,11 @@
 - package.json
 - Friendly Doorstep Food Handoff
 - Full Verification Email System
-- ManagerRepository
+- StorageSelection.tsx
 - Email Spam Prevention Guide
 - services/chat-service.ts
 - overstay-penalty-service.test.ts
-- use-performance-monitor.ts
+- BookingApprovalDialog.tsx
 - Dashboard Workspace Illustration
 - 3D Color Earnings Illustration
 - Gmail Logo
@@ -188,47 +189,47 @@
 - PublicLocaleRouter.tsx
 - Booking Affordance
 - Stripe Brand
-- SellerApplicationTabContent.tsx
+- SellerApplicationCard.tsx
 - ✅ COMPLETE FIX APPLIED - System Ready!
 - 🔴 CRITICAL: 404 ERROR ROOT CAUSE ANALYSIS
 - circle-radio.tsx
 - ErrorBoundary
 - tidio.d.ts
 - updatePaymentTransaction
-- Common Issues
+- 🔧 Technical Issues
 - cmdk
 - user-exists.js
 - Solid Black Square
 - circle-button.tsx
-- AdminDamageClaimsHistory.tsx
+- revenue/types.ts
 - 🔥 Firebase Auth → Backend API → Neon Database Architecture
-- ChefViewingsList
+- cn
 - @onboardjs/react
 - env.d.ts
 - apply-shop-creation-migration.ts
 - express.d.ts
 - Chef Kitchen Application System - Implementation Plan
 - /src/lib/firebase.ts
-- autoprefixer
+- phone-validation.ts
 - firebase-admin
-- routes/manager.ts
+- chart.tsx
 - KitchenBookingCalendar.tsx
-- Privacy.tsx
+- errors.ts
 - APIClient
-- IManagerService
-- InsertUser
-- NotificationItem
+- seller-report-service.ts
+- address-autocomplete.tsx
+- Admin.tsx
 - @eslint/js
-- HowItWorksSection.tsx
+- autoprefixer
 - eslint-plugin-react-refresh
 - firebase
-- Success
+- TermsContent_uk.tsx
 - eslint
 - @radix-ui/react-menubar
 - framer-motion
 - tailwindcss
 - helmet
-- date-utils.ts
+- revenue-calculations.ts
 - i18next-icu
 - i18next-resources-to-backend
 - input-otp
@@ -243,7 +244,7 @@
 - @onboardjs/core
 - typescript
 - openid-client
-- InsertApplication
+- ChefKitchenAccessManager.tsx
 - drizzle-orm
 - formidable
 - i18next
@@ -253,7 +254,7 @@
 - App.tsx
 - pino-pretty
 - @radix-ui/react-accordion
-- AboutSection.tsx
+- toggle-group.tsx
 - @radix-ui/react-aspect-ratio
 - @iconify-json/mdi
 - @radix-ui/react-checkbox
@@ -315,10 +316,15 @@
 - @hookform/resolvers
 - mapRowToTransaction
 - clsx
+- alwaysFoodSafeAPI.ts
 - esbuild
 - @aws-sdk/s3-request-presigner
+- ManagerRepository
 - @radix-ui/react-tooltip
-- stripe-checkout-transactions-service.ts
+- IManagerRepository
+- IManagerService
+- InsertUser
+- DateRange
 - ApplicationDTO Null vs Array Assignability
 - Vite createLogger createServer Missing
 - 🎯 COMPREHENSIVE FIX SUMMARY
@@ -390,7 +396,6 @@
 - 📊 8. Production Considerations
 - 2. Stripe Connect Service (`server/services/stripe-connect-service.ts`)
 - Environment Setup
-- 🔧 Technical Issues
 - 🎓 Microlearning & Training Endpoints
 - 🎨 BLOCK HOURS UI DESIGN
 - 🗄️ Database Schema
@@ -434,7 +439,7 @@
 - tailwindcss-animate
 - vaul
 - bcryptjs
-- cn
+- ChefResourcesPage_en.tsx
 - @jridgewell/trace-mapping
 - globals
 - @tailwindcss/typography
@@ -449,7 +454,7 @@
 
 ## God Nodes (most connected - your core abstractions)
 1. `cn()` - 537 edges
-2. `mt()` - 228 edges
+2. `mt()` - 235 edges
 3. `Button` - 203 edges
 4. `useFirebaseAuth()` - 163 edges
 5. `useToast()` - 155 edges
@@ -534,39 +539,39 @@
 - **Stripe Brand Identity** — client_public_stripe_logo_wordmark, client_public_stripe_logo_blurple, client_public_stripe_logo_diagonal_cuts, client_public_stripe_logo_stripe_brand [INFERRED 0.85]
 - **Vercel Deploy Configuration Flow** — attached_assets_image_1747073611142_github_import_localcookscommunity, attached_assets_image_1747073611142_project_name_local_cooks_community, attached_assets_image_1747073611142_framework_preset_vite, attached_assets_image_1747073611142_deploy_button [INFERRED 0.85]
 
-## Communities (460 total, 139 thin omitted)
+## Communities (464 total, 138 thin omitted)
 
 ### Community 0 - "schema.ts"
 Cohesion: 0.01
-Nodes (194): processExpiredCancellationRequests(), syncStorageItemStatusInKitchenBooking(), router, TimeSlot, getUserDisplayName(), adminDamageClaimDecisionSchema, applicationStatusEnum, applicationTypeEnum (+186 more)
+Nodes (188): adminDamageClaimDecisionSchema, applicationStatusEnum, applicationTypeEnum, bookingDurationUnitEnum, bookingTypeEnum, certificationStatusEnum, CheckinCheckoutChecklist, ChecklistItem (+180 more)
 
 ### Community 1 - "index.js"
 Cohesion: 0.01
 Nodes (42): calculateDurationHours(), calculateKitchenBookingPrice(), calculatePlatformFee(), calculatePlatformFeeDynamic(), calculateTax(), checkRateLimit(), createBookingDateTime(), createBookingDateTime2() (+34 more)
 
-### Community 2 - "ApplicationForm.tsx"
-Cohesion: 0.14
-Nodes (22): ApplicationFormContext, ApplicationFormContextProps, ApplicationFormProvider(), FormStep, useApplicationForm(), ApplicationFormPanelProps, FormStepContent(), CertificationsForm() (+14 more)
+### Community 2 - "KitchenApplicationForm.tsx"
+Cohesion: 0.06
+Nodes (46): ChangePasswordForm(), ChangePasswordFormData, ChangePasswordProps, changePasswordSchema, SetPasswordForm(), SetPasswordFormData, setPasswordSchema, syncPasswordToNeon() (+38 more)
 
-### Community 3 - "onboarding/types.ts"
-Cohesion: 0.43
-Nodes (6): ManagerOnboardingContextType, EquipmentListing, Kitchen, Location, OnboardingStep, StorageListing
+### Community 3 - "ManagerOnboardingContext.tsx"
+Cohesion: 0.12
+Nodes (19): ManagerOnboardingWizard(), ManagerOnboardingContext, ManagerOnboardingContextType, NUMERIC_TO_STRING_MAP, NOTE: Location save is handled in handleNextAction, NOT here, NOTE: has_seen_welcome is for CHEF onboarding only, not managers, NOTE: We do NOT include dbCompletedSteps here for required steps., STEP_ID_MAP (+11 more)
 
-### Community 4 - "LocationDetailSheet.tsx"
-Cohesion: 0.22
-Nodes (9): DAY_NAMES, formatCents(), formatDate(), KitchenDetailCard(), LicenseSection(), LocationDetailSheet(), LocationDetailSheetProps, LocationInfoSection() (+1 more)
+### Community 4 - "notification.service.ts"
+Cohesion: 0.05
+Nodes (67): ApplicationNotificationData, BookingNotificationData, broadcastChefAnnouncement(), broadcastSystemAnnouncement(), ChefBookingNotificationData, createChefNotification(), CreateChefNotificationParams, createManagerNotification() (+59 more)
 
 ### Community 5 - "KitchenService"
-Cohesion: 0.07
-Nodes (15): KitchenRepository, KitchenService, EquipmentAvailabilityType, EquipmentCategory, EquipmentCondition, EquipmentPricingModel, KitchenDTO, KitchenOverrideDTO (+7 more)
+Cohesion: 0.05
+Nodes (37): mockApp, mockRepository, KitchenRepository, KitchenService, mockRepository, CreateKitchenDTO, CreateKitchenOverrideDTO, EquipmentAvailabilityType (+29 more)
 
-### Community 6 - "damage-claim-service.ts"
-Cohesion: 0.09
-Nodes (28): createTransporter(), getEmailConfig(), sendEmail(), adminDecision, chargeApprovedClaim(), ChargeResult, ChefClaimResponse, chefRespondToClaim() (+20 more)
+### Community 6 - "sendEmail"
+Cohesion: 0.16
+Nodes (22): createTransporter(), generateDamageClaimChargedEmail(), generateDamageClaimDecisionEmail(), generateDamageClaimDisputedAdminEmail(), generateDamageClaimFiledEmail(), generateDamageClaimResponseEmail(), getEmailConfig(), persistEmailLog() (+14 more)
 
-### Community 7 - "storage-checkout-service.ts"
-Cohesion: 0.07
-Nodes (35): canFileClaimForBooking(), DamageClaimLimits, damageClaimLimitsService, DEFAULTS, getDamageClaimLimits(), STORAGE_CHECKOUT_DEFAULTS, StorageCheckoutSettings, validateClaimAmount() (+27 more)
+### Community 7 - "damage-claim-service.ts"
+Cohesion: 0.04
+Nodes (46): requireNoUnpaidPenalties(), canFileClaimForBooking(), DamageClaimLimits, damageClaimLimitsService, DEFAULTS, getDamageClaimLimits(), STORAGE_CHECKOUT_DEFAULTS, StorageCheckoutSettings (+38 more)
 
 ### Community 8 - "Kitchen Manager Resources: The Complete Guide to Operating a Shared Commercial Kitchen"
 Cohesion: 0.04
@@ -584,93 +589,89 @@ Nodes (48): 1. Revenue Split Logic, 2. Invoice Visibility, 3. Stripe Connect Pay
 Cohesion: 0.04
 Nodes (47): **1. Check Vercel Function Logs**, **1. Firebase Console Setup**, **1. Health Checks**, **2. Authentication Flow**, **2. Test Individual Components**, **2. Vercel Setup**, **3. API Endpoints**, **3. Environment Variables** (+39 more)
 
-### Community 12 - "ApplicantDashboard.tsx"
-Cohesion: 0.12
-Nodes (29): ApplicationFormPanel(), applicationStatusVariant(), ChefCommandPalette(), ChefSellerAccount(), SELLER_ACTIONS(), STRIPE_ACTIONS(), ChefStripeConnectSetup(), MyKitchensTabContent() (+21 more)
-
-### Community 13 - "InventoryService"
-Cohesion: 0.11
-Nodes (11): InventoryRepository, InventoryService, CreateEquipmentListingDTO, createEquipmentListingSchema, CreateStorageListingDTO, createStorageListingSchema, EquipmentListing, InsertEquipmentListing (+3 more)
-
-### Community 14 - "custom-alerts.tsx"
-Cohesion: 0.11
-Nodes (25): BookingForCancellation, CancellationRequest, formatTime(), PendingCancellationRequests(), PendingCancellationRequestsProps, StorageItemWithCancel, AlertDialogAction, AlertDialogCancel (+17 more)
-
-### Community 15 - "subdomain-utils.ts"
-Cohesion: 0.21
-Nodes (15): SubdomainRoute(), useSubdomain(), useSubdomainUrl(), getRequiredSubdomainForRole(), getSubdomainFromHeaders(), getSubdomainFromHostname(), getSubdomainOriginForEnvironment(), getSubdomainUrlForEnvironment() (+7 more)
-
-### Community 16 - "stripe-connect-service.ts"
+### Community 12 - "TrainingOverviewPanel.tsx"
 Cohesion: 0.05
-Nodes (23): { pool }, ManagerService, InvoiceFilters, InvoiceQuery, handleAccountUpdated(), getPayoutSummary(), PayoutProcessingResult, processManagerPayout() (+15 more)
+Nodes (40): CompletionTracker(), CompletionTrackerProps, VideoProgress, foodSafetyBasicsVideos, MicrolearningModule(), MicrolearningModuleProps, safetyHygieneVideos, UserProgress (+32 more)
 
-### Community 17 - "notification.service.ts"
-Cohesion: 0.05
-Nodes (67): ApplicationNotificationData, BookingNotificationData, broadcastChefAnnouncement(), broadcastSystemAnnouncement(), ChefBookingNotificationData, createChefNotification(), CreateChefNotificationParams, createManagerNotification() (+59 more)
+### Community 14 - "lib/utils.ts"
+Cohesion: 0.04
+Nodes (100): BrandingConfig, ColorPalette, ColorSystemConfig, DesignSystemConfig, EmailCanvasDesignerProps, EmailContent, EmailDesignData, EmailMetadata (+92 more)
+
+### Community 15 - "routes/manager.ts"
+Cohesion: 0.03
+Nodes (85): getAppBaseUrl(), SubdomainType, createBookingDateTime(), getHoursUntilBooking(), isBookingTimePast(), BookingExtensionResult, BookingPricingResult, BookingStatus (+77 more)
+
+### Community 16 - "revenue-service.ts"
+Cohesion: 0.10
+Nodes (14): ManagerService, getCompleteRevenueMetrics(), getRevenueByDate(), getRevenueByLocation(), getRevenueMetrics(), getTransactionHistory(), IMPORTANT: Exclude fully refunded transactions - manager shouldn't pay Stripe…, IMPORTANT: For revenue metrics, we want to show ALL bookings (past, present,… (+6 more)
+
+### Community 17 - "RevenueCharts.tsx"
+Cohesion: 0.16
+Nodes (16): CHART_COLORS, PaymentStatusChart(), PaymentStatusChartProps, RevenueByLocationChart(), RevenueByLocationChartProps, revenueByLocationConfig, RevenueTrendChart(), RevenueTrendChartProps (+8 more)
 
 ### Community 18 - "ChefSellerRevenue.tsx"
-Cohesion: 0.11
-Nodes (38): ChefRevenueMatrix(), ChefSellerRevenue(), ChefTFunction, EarningsSummaryCards(), exportOrdersCSV(), ExportReportModal(), fmtDate(), fmtDateTime() (+30 more)
+Cohesion: 0.14
+Nodes (31): ChefRevenueMatrix(), ChefSellerRevenue(), ChefTFunction, EarningsSummaryCards(), exportOrdersCSV(), ExportReportModal(), fmtDate(), fmtDateTime() (+23 more)
 
-### Community 19 - "ManagerBookingsPanel.tsx"
-Cohesion: 0.12
+### Community 19 - "utils/timezone-utils.ts"
+Cohesion: 0.11
 Nodes (28): BookingControlPanel(), getAuthHeaders(), canCancelBooking(), ChefBookingsView(), formatBookingTimeSlots(), formatDate(), formatTime(), getAuthHeaders() (+20 more)
 
 ### Community 20 - "KitchenPreviewPage.tsx"
 Cohesion: 0.04
-Nodes (56): LocationMap(), LocationMapProps, EQUIPMENT_RULES, normalize(), resolveEquipmentIcon(), resolveStorageIcon(), STORAGE_ICONS, pickPreviewActiveSectionId() (+48 more)
+Nodes (53): KitchenPreviewPage, KitchenActionKind, KitchenDisplayStatus, LocationMap(), LocationMapProps, EQUIPMENT_RULES, normalize(), resolveEquipmentIcon() (+45 more)
 
-### Community 21 - "server/logger.ts"
-Cohesion: 0.03
-Nodes (86): AlwaysFoodSafeResponse, AlwaysFoodSafeSubmission, getIntegrationStatus(), isAlwaysFoodSafeConfigured(), submitToAlwaysFoodSafe(), errorResponse(), generateCertificatePDF(), db (+78 more)
+### Community 21 - "routes.ts"
+Cohesion: 0.04
+Nodes (78): errorResponse(), generateCertificatePDF(), db, pool, isLocalTestFixtureEmail(), BackupRow, FixtureGrantResult, FixtureRevokeResult (+70 more)
 
 ### Community 23 - "spotlight-walkthrough.tsx"
-Cohesion: 0.19
-Nodes (17): useAuthModal(), consumeDiscoverKitchensWalkthroughRequest(), DiscoverKitchensButtonTour(), peekDiscoverKitchensWalkthroughRequest(), KitchenPreviewWalkthrough(), clamp(), hasCompletedTour(), Highlight (+9 more)
+Cohesion: 0.26
+Nodes (13): useAuthModal(), KitchenPreviewWalkthrough(), clamp(), hasCompletedTour(), Highlight, markTourComplete(), readHighlight(), sameHighlight() (+5 more)
 
-### Community 24 - "booking.service.ts"
-Cohesion: 0.04
-Nodes (42): BookingRepository, getKitchenBookingSelection(), getStorageBookingSelection(), BookingService, BookingExtensionResult, BookingPricingResult, BookingStatus, CreateKitchenBookingDTO (+34 more)
-
-### Community 25 - "routes/applications.ts"
+### Community 24 - "BookingService"
 Cohesion: 0.06
-Nodes (32): ApplicationService, mockApp, mockRepository, ApplicationDTO, CreateApplicationDTO, UpdateApplicationStatusDTO, VerifyDocumentsDTO, mockRepository (+24 more)
+Nodes (7): BookingRepository, getKitchenBookingSelection(), getStorageBookingSelection(), BookingService, EquipmentBooking, InsertKitchenBooking, StorageBooking
 
-### Community 26 - "chefKitchenApplications"
-Cohesion: 0.21
-Nodes (11): CustomFieldValue, TierValidationService, ValidationResult, appComplete, appIncomplete, res1, res2, strictRequirements (+3 more)
+### Community 25 - "kitchen-applications.ts"
+Cohesion: 0.05
+Nodes (39): deleteConversation(), getAdminDb(), getUnreadCounts(), initializeConversation(), notifyTierTransition(), sendSystemNotification(), SystemMessageData, CustomFieldValue (+31 more)
 
-### Community 27 - "KitchenCheckinCheckoutEditor.tsx"
-Cohesion: 0.06
-Nodes (48): CheckinCheckoutSettings(), CheckinCheckoutSettingsData, CheckinCheckoutSettingsProps, CodeVisibility, KitchenForAccessCode, PlatformTimeWindowDefaults, TimeWindowSettings, ChecklistTable() (+40 more)
+### Community 26 - "DamageClaimDetailSheet.tsx"
+Cohesion: 0.05
+Nodes (53): DAY_NAMES, formatCents(), formatDate(), KitchenDetailCard(), LicenseSection(), LocationDetailSheet(), LocationDetailSheetProps, LocationInfoSection() (+45 more)
+
+### Community 27 - "badge.tsx"
+Cohesion: 0.05
+Nodes (75): CertificationsFormData, certificationsSchema, Booking, BookingColumnsProps, ChefBookingsViewProps, EquipmentBooking, FilterType, LooseTFunction (+67 more)
 
 ### Community 28 - "KitchenBookingPreferencesPanel.tsx"
-Cohesion: 0.12
-Nodes (26): AuthBookingContext, getCalendarDays(), getDaysInMonth(), getFirstDayOfMonth(), KitchenBookingSheet(), BookingEstimateMeta, EquipmentListingOption, formatDayLabel() (+18 more)
-
-### Community 29 - "ManagerProtectedRoute.tsx"
 Cohesion: 0.13
-Nodes (14): AdminProtectedRoute(), AdminProtectedRouteProps, ManagerOnboardingWizard(), ManagerProtectedRoute(), ManagerProtectedRouteProps, NOTE: If manager has started onboarding (has any step in…, ManagerOnboardingProvider(), TermsProtectedRoute() (+6 more)
+Nodes (25): AuthBookingContext, getCalendarDays(), getDaysInMonth(), getFirstDayOfMonth(), KitchenBookingSheet(), BookingEstimateMeta, EquipmentListingOption, formatDayLabel() (+17 more)
+
+### Community 29 - "preview-emails.ts"
+Cohesion: 0.14
+Nodes (32): app, generateAllTemplates(), sampleDate, sampleEndDate, TemplateEntry, templates, generateApplicationWithDocumentsEmail(), generateApplicationWithoutDocumentsEmail() (+24 more)
 
 ### Community 30 - "payment-transactions-service.ts"
 Cohesion: 0.05
 Nodes (47): main(), handleChargeRefunded(), handleChargeUpdated(), handleCheckoutSessionCompleted(), handleDamageClaimPaymentCompleted(), handleOverstayPenaltyPaymentCompleted(), handlePaymentIntentCanceled(), handlePaymentIntentFailed() (+39 more)
 
-### Community 31 - "fileUpload.ts"
-Cohesion: 0.11
-Nodes (30): cleanupApplicationDocuments(), deleteFile(), diskStorage, ensureUploadsDirExists(), Express, getFileUrl(), getUploadsDir(), memoryStorage (+22 more)
+### Community 31 - "routes/applications.ts"
+Cohesion: 0.06
+Nodes (44): ApplicationService, ApplicationDTO, CreateApplicationDTO, UpdateApplicationStatusDTO, VerifyDocumentsDTO, cleanupApplicationDocuments(), deleteFile(), diskStorage (+36 more)
 
 ### Community 32 - "sidebar.tsx"
-Cohesion: 0.09
-Nodes (42): AdminSidebarProps, NAV_GROUPS, AppSidebarProps, CollapsibleNavItem, navData, NavGroup, NavItem, ChefSidebar() (+34 more)
+Cohesion: 0.10
+Nodes (38): AdminSidebarProps, NAV_GROUPS, AppSidebarProps, CollapsibleNavItem, navData, NavGroup, NavItem, ChefSidebar() (+30 more)
 
 ### Community 33 - ""server/services/notification.service.ts""
 Cohesion: 0.08
 Nodes (46): broadcastChefAnnouncement(), broadcastSystemAnnouncement(), cancelApplication(), createChefNotification(), createManagerNotification(), createNotification(), getApplicationById(), handlePaymentIntentFailed() (+38 more)
 
-### Community 34 - "lib/utils.ts"
-Cohesion: 0.03
-Nodes (153): ClaimCard(), DamageClaim, DamageClaimReview(), DamageEvidence, formatCurrency(), getEvidenceTypeLabel(), getStatusBadge(), adminFetch() (+145 more)
+### Community 34 - "DamageClaimQueue.tsx"
+Cohesion: 0.04
+Nodes (108): AdminDamageClaimsHistory(), adminFetch(), ClaimHistoryEvent, DamageClaim, EVIDENCE_TYPE_LABELS, EvidenceItem, formatDateTimeSt(), getColumns() (+100 more)
 
 ### Community 35 - "dev-journey-d-ready.ts"
 Cohesion: 0.05
@@ -689,28 +690,24 @@ Cohesion: 0.28
 Nodes (7): EMPTY_REQUEST_TO_APPLY_DRAFT, REQUEST_TO_APPLY_BUSINESS_TYPES, REQUEST_TO_APPLY_FIELD_ORDER, REQUEST_TO_APPLY_FREQUENCIES, RequestToApplyDraft, RequestToApplyFields(), splitFullName()
 
 ### Community 39 - "command-menu.tsx"
-Cohesion: 0.19
-Nodes (16): ChefCommandPaletteProps, financialItems, navigationItems, quickActions, CommandMenuProps, PortalType, REFERENCE_TYPE_LABELS, Command (+8 more)
+Cohesion: 0.18
+Nodes (17): ChefCommandPalette(), ChefCommandPaletteProps, financialItems, navigationItems, quickActions, CommandMenuProps, PortalType, REFERENCE_TYPE_LABELS (+9 more)
 
 ### Community 40 - "Local Cooks Community Platform"
 Cohesion: 0.06
 Nodes (38): Local Cooks Branding Kit, Lobster Logo Font, Nunito Body Font, Primary Color #F51042, Cook Application Form Flow, Local Cooks Brand Identity, Bringing Communities Together Through Homemade Meals, Cook Application Product Brief (+30 more)
 
 ### Community 42 - "kitchen-checkout-service.ts"
-Cohesion: 0.07
-Nodes (43): AccessCodeAnalytics, AccessCodeExpiryResult, autoCleanExpiredKitchenCheckout(), AutoClearResult, CheckinResult, ChecklistValidationResult, CheckoutReviewResult, detectKitchenNoShows() (+35 more)
-
-### Community 43 - "DevLoginPage.tsx"
-Cohesion: 0.43
-Nodes (6): DevLoginPage(), getSharedLogin(), inflightBySearch, LoginOk, performDevLogin(), setDevLoginState()
+Cohesion: 0.06
+Nodes (47): generateKitchenCheckoutClearedChefEmail(), AccessCodeAnalytics, AccessCodeExpiryResult, autoCleanExpiredKitchenCheckout(), AutoClearResult, CheckinResult, ChecklistValidationResult, CheckoutReviewResult (+39 more)
 
 ### Community 44 - "microlearning.types.ts"
 Cohesion: 0.15
 Nodes (12): MicrolearningRepository, main(), MicrolearningService, createMicrolearningCompletionSchema, createVideoProgressSchema, InsertMicrolearningCompletion, InsertVideoProgress, MicrolearningCompletion (+4 more)
 
-### Community 45 - "BookingControlPanel.tsx"
-Cohesion: 0.09
-Nodes (29): Booking, BookingControlPanelProps, FilterType, ViewType, buildSteps(), CheckinStatusData, CheckinStatusTracker(), CheckinStatusTrackerProps (+21 more)
+### Community 45 - "ApplicantDashboard.tsx"
+Cohesion: 0.11
+Nodes (31): applicationTier(), getKitchenDisplayStatus(), hasStep2BeenSubmitted(), isActiveKitchenApplication(), kitchenLocationId(), KitchenStatusInput, StatusTranslator, TONE_TO_BADGE (+23 more)
 
 ### Community 46 - "functions/package.json"
 Cohesion: 0.06
@@ -721,12 +718,12 @@ Cohesion: 0.06
 Nodes (34): build, client/src/**/*, dom, dom.iterable, env.d.ts, esnext, node, **/*.test.tsx (+26 more)
 
 ### Community 48 - "ChefDashboardLayout.tsx"
-Cohesion: 0.12
-Nodes (29): AdminHeader(), AdminHeaderProps, SECTION_META, AdminLayout(), AdminLayoutProps, AdminSection, AdminSidebar(), AdminOverviewSectionProps (+21 more)
+Cohesion: 0.14
+Nodes (26): AdminHeader(), AdminHeaderProps, SECTION_META, AdminLayoutProps, AdminSection, AdminSidebar(), AdminOverviewSectionProps, AppSidebar() (+18 more)
 
-### Community 49 - "ForgotPasswordForm.tsx"
-Cohesion: 0.11
-Nodes (23): AnimatedButton(), AnimatedButtonProps, ButtonState, AnimatedInput, containerVariants, ForgotPasswordForm(), ForgotPasswordFormData, ForgotPasswordFormProps (+15 more)
+### Community 49 - "stripe-connect-service.ts"
+Cohesion: 0.10
+Nodes (9): { pool }, handleAccountUpdated(), getPayoutSummary(), PayoutProcessingResult, processManagerPayout(), processWeeklyPayouts(), ConnectAccountStatus, CreateConnectAccountParams (+1 more)
 
 ### Community 50 - "requireFirebaseAuthWithUser"
 Cohesion: 0.08
@@ -736,17 +733,13 @@ Nodes (33): archiveNotifications(), archiveNotifications2(), createNotification2
 Cohesion: 0.15
 Nodes (5): KitchenApplicationWithLocation, KitchenApplicationWithLocation, ChefApplicationService, ChefKitchenApplication, InsertChefKitchenApplication
 
-### Community 52 - "Application"
-Cohesion: 0.11
-Nodes (5): ChefOverviewProps, ApplicationRepository, Application, UpdateApplicationDocuments, UpdateDocumentVerification
-
 ### Community 53 - "devDependencies"
 Cohesion: 0.06
 Nodes (33): cross-env, drizzle-kit, eslint-plugin-react, eslint-plugin-react-hooks, firebase-tools, jsdom, devDependencies, cross-env (+25 more)
 
-### Community 54 - "ChefResourcesPage_en.tsx"
-Cohesion: 0.03
-Nodes (56): ChefResourcesPage, KitchenResourcesPage, SEOHead(), createBreadcrumbSchema(), createFAQSchema(), createLocalBusinessSchema(), createSiteNavigationSchema(), createWebPageSchema() (+48 more)
+### Community 54 - "SEOHead.tsx"
+Cohesion: 0.28
+Nodes (13): SEOHead(), createBreadcrumbSchema(), createFAQSchema(), createLocalBusinessSchema(), createSiteNavigationSchema(), createWebPageSchema(), createWebsiteSchema(), defaults (+5 more)
 
 ### Community 55 - "Chef Resources: Your Guide to Starting a Legal Food Business in Canada"
 Cohesion: 0.04
@@ -762,39 +755,39 @@ Nodes (28): chargeApprovedPenalty(), createOverstayHistoryEntry(), createPenalty
 
 ### Community 58 - "AuthModalProvider.tsx"
 Cohesion: 0.10
-Nodes (44): ApplyBookingPriceFooter(), ApplyDraft, ApplyGuideRail(), applyStepFromPhase(), ApplyUiStep, AuthModalContext, AuthModalContextType, AuthModalOptions (+36 more)
+Nodes (41): ApplyBookingPriceFooter(), ApplyDraft, ApplyGuideRail(), applyStepFromPhase(), ApplyUiStep, AuthModalContext, AuthModalContextType, AuthModalOptions (+33 more)
 
 ### Community 59 - "button.tsx"
-Cohesion: 0.03
-Nodes (160): DamageClaimLimits, defaultFormData, FormData, ColorPaletteProps, ColorSystemConfig, GradientCollection, SemanticColors, adminFetch() (+152 more)
+Cohesion: 0.04
+Nodes (92): DamageClaimLimits, defaultFormData, FormData, ColorPaletteProps, ColorSystemConfig, GradientCollection, SemanticColors, adminFetch() (+84 more)
 
-### Community 60 - "ManagerRevenueDashboard.tsx"
-Cohesion: 0.08
-Nodes (56): DateRangePicker(), DateRangePickerProps, presets, CHART_COLORS, PaymentStatusChart(), PaymentStatusChartProps, RevenueByLocationChart(), RevenueByLocationChartProps (+48 more)
+### Community 60 - "use-revenue-data.ts"
+Cohesion: 0.36
+Nodes (16): downloadInvoice(), downloadPayoutStatement(), getAuthHeaders(), getDefaultDateRange(), getPreviousPeriodRange(), refundTransaction(), useDateRangeParams(), useInvoices() (+8 more)
 
 ### Community 61 - "server/index.ts"
-Cohesion: 0.11
-Nodes (16): registerFirebaseRoutes(), app, initPromise, pinoInstance, cachedConfig, DEFAULT_RATE_LIMITS, getCorsOrigins(), getRateLimitConfig() (+8 more)
+Cohesion: 0.07
+Nodes (24): registerFirebaseRoutes(), app, initPromise, pinoInstance, adminEmailRouter, applicationsRouter, dashboardRouter, router (+16 more)
 
-### Community 62 - "OverviewTabContent.tsx"
-Cohesion: 0.14
-Nodes (17): MyKitchensTabContentProps, bookingStatusConfig, formatBookingWhen(), kitchenSummaryTone(), OverviewTabContentProps, sellerTone(), StatusDot(), UpcomingBookings() (+9 more)
+### Community 62 - "subdomain-utils.ts"
+Cohesion: 0.21
+Nodes (14): SubdomainRoute(), useSubdomain(), useSubdomainUrl(), getRequiredSubdomainForRole(), getSubdomainFromHeaders(), getSubdomainOriginForEnvironment(), getSubdomainUrlForEnvironment(), goToChefDashboard() (+6 more)
 
-### Community 63 - "ApplicationRequirementsWizard.tsx"
-Cohesion: 0.17
-Nodes (16): ApplicationRequirementsWizardHandle, ApplicationRequirementsWizardProps, STEP_ICONS, CustomFieldBuilder(), FacilityInfoStepProps, RequirementsStepTwo(), RequirementsStepTwoProps, SECTION_ICONS (+8 more)
+### Community 63 - "SellerApplicationTabContent.tsx"
+Cohesion: 0.16
+Nodes (20): KitchenApplicationCard(), documentToneFromLabel(), toneToBadgeVariant(), DocumentVerificationData, DocumentVerificationView(), DocumentVerificationViewProps, statusLabel(), EmptyApplicationState() (+12 more)
 
 ### Community 64 - "src/i18n/index.ts"
-Cohesion: 0.11
-Nodes (21): CustomTypeOptions, enCaResources, i18next, TranslationResources, initialLocale(), readCookie(), LocaleBoundPage(), IMPORTANT: This is a **plain function**, not a React component, so that (+13 more)
+Cohesion: 0.12
+Nodes (23): initialLocale(), readCookie(), LocaleBoundPage(), IMPORTANT: This is a **plain function**, not a React component, so that, RFC-7231, Express, localeMiddleware(), parseCookieHeader() (+15 more)
 
 ### Community 65 - "firebase.ts"
-Cohesion: 0.03
-Nodes (93): Location, AdminKitchenApplicationsStep1Section(), ManagerKitchenApplicationsProps, AuthenticatedFileLink(), ChatPanel(), ChatPanelProps, FacilityDocument, FacilityDocumentsPanel() (+85 more)
+Cohesion: 0.06
+Nodes (42): PaymentSuccessPage, AdminProtectedRouteProps, TermsAcceptanceInline(), TermsAcceptanceInlineProps, ManagerProtectedRouteProps, NOTE: If manager has started onboarding (has any step in…, CURRENT_POLICY_VERSION, AuthContext (+34 more)
 
-### Community 66 - "useFirebaseAuth"
-Cohesion: 0.03
-Nodes (87): ChangePassword(), LoginForm(), RegisterForm(), VerificationDebug(), BookingCalendarWidget(), CustomerManagementPanel(), CustomerManagementPanelProps, KitchenDashboardOverviewProps (+79 more)
+### Community 66 - "Header.tsx"
+Cohesion: 0.09
+Nodes (20): Footer, hasActiveApplication(), Header(), isApplicationActive(), PrivacyContent_fr(), PrivacyContent(), PrivacyContent_uk(), TermsContent_fr_1() (+12 more)
 
 ### Community 67 - "dependencies"
 Cohesion: 0.07
@@ -809,48 +802,56 @@ Cohesion: 0.11
 Nodes (23): calculateCheckoutFeesAsync(), canFileClaimForBooking(), clearFeeConfigCache(), comparePasswords(), emailPrefix(), getAuthenticatedUser2(), getDamageClaimLimits(), getDefaultLimits() (+15 more)
 
 ### Community 70 - "email.ts"
-Cohesion: 0.07
-Nodes (108): handler(), sendEmailUsingServerFunction(), RFC-5545, app, generateAllTemplates(), sampleDate, sampleEndDate, TemplateEntry (+100 more)
+Cohesion: 0.09
+Nodes (63): RFC-5545, createBookingDateTime(), CreateBookingDateTimeFn, detectEmailProvider(), EmailConfig, EmailContent, escapeIcalText(), formatDateForCalendar() (+55 more)
+
+### Community 71 - "ResetPasswordForm.tsx"
+Cohesion: 0.18
+Nodes (14): ForgotPasswordForm(), containerVariants, itemVariants, ResetPasswordForm(), ResetPasswordFormData, ResetPasswordFormProps, resetPasswordSchema, ForgotPassword() (+6 more)
 
 ### Community 72 - "🔍 Comprehensive Analysis: Multiple Kitchens/Locations Per Owner"
 Cohesion: 0.05
 Nodes (42): 10.1 Immediate Action (CRITICAL), 10.2 Future Enhancements, 10. Final Recommendations, 11. Conclusion, 1.1 Locations Table Schema, 1.2 Kitchens Table Schema, 1.3 Portal User Location Access Schema, 1. Database Schema Analysis (Source of Truth) (+34 more)
 
-### Community 73 - "storage-templates.ts"
-Cohesion: 0.24
-Nodes (9): SelectedStorage, getAllStorageTemplates(), getStorageCategoryById(), getStorageTemplateById(), getStorageTypeDisplayName(), STORAGE_CATEGORY_ICONS, StorageCategory, StorageTypeId (+1 more)
+### Community 73 - "ApplicationForm.tsx"
+Cohesion: 0.19
+Nodes (11): ApplicationForm, createPersonalInfoSchema(), PersonalInfoForm(), FadeInSection(), FadeInSectionProps, GradientHero(), GradientHeroProps, AdminLanding() (+3 more)
 
-### Community 74 - "use-chef-kitchen-applications.ts"
-Cohesion: 0.17
-Nodes (17): CreateKitchenApplicationData, getApiErrorMessage(), getAuthHeaders(), invalidateChefKitchenApplicationQueries(), KitchenAccessStatus, normalizeLocationApplicationResponse(), useChefApprovedKitchens(), useChefKitchenAccessForLocation() (+9 more)
+### Community 74 - "useFirebaseAuth"
+Cohesion: 0.07
+Nodes (39): LoginForm(), RegisterForm(), RegisterFormData, RegisterFormProps, registerSchema, VerificationDebug(), EmailVerificationTest(), AboutSection() (+31 more)
 
 ### Community 75 - "compilerOptions"
 Cohesion: 0.09
 Nodes (21): api, client, compilerOptions, allowImportingTsExtensions, esModuleInterop, module, moduleResolution, noEmit (+13 more)
 
-### Community 76 - "stripe-checkout-service.ts"
-Cohesion: 0.25
-Nodes (5): CheckoutSessionResult, CreateCheckoutSessionParams, CreatePendingCheckoutSessionParams, NOTE: invoice_creation removed — incompatible with capture_method:'manual', NOTE: invoice_creation removed — incompatible with capture_method:'manual'
+### Community 77 - "ApplicationFormPanel.tsx"
+Cohesion: 0.19
+Nodes (13): ApplicationFormContext, ApplicationFormContextProps, ApplicationFormProvider(), FormStep, useApplicationForm(), ApplicationFormPanel(), ApplicationFormPanelProps, FormStepContent() (+5 more)
 
 ### Community 78 - "EnhancedRegisterForm.tsx"
 Cohesion: 0.06
-Nodes (41): ACTION_COPY, EmailContinueHint(), EmailContinueHintProps, EmailContinueVariant, getEmailContinueMessage(), containerVariants, emailIconVariants, EmailVerificationScreen() (+33 more)
+Nodes (49): AnimatedButton(), AnimatedButtonProps, ButtonState, AnimatedInput, ACTION_COPY, EmailContinueHint(), EmailContinueHintProps, EmailContinueVariant (+41 more)
 
-### Community 79 - "Terms.tsx"
-Cohesion: 0.16
-Nodes (9): TermsContent_fr_1(), TermsContent_fr_2(), TermsContent_fr_3(), TermsContent_fr(), TermsContent(), TermsContent_uk_1(), TermsContent_uk_2(), TermsContent_uk_3() (+1 more)
+### Community 79 - "ChefNotificationCenter.tsx"
+Cohesion: 0.10
+Nodes (22): ChefNotificationCenter(), FilterType, formatNotificationTime(), getAuthHeaders(), getNotificationIcon(), getPriorityColor(), groupNotificationsByDate(), Notification (+14 more)
 
-### Community 80 - "sheet.tsx"
-Cohesion: 0.07
-Nodes (50): CancellationRequestSheet(), CancellationRequestSheetProps, CancellationTarget, CancellationTier, buildSteps(), formatTimestamp(), KitchenCheckinTracker(), KitchenCheckinTrackerProps (+42 more)
+### Community 80 - "StorageListingManagement.tsx"
+Cohesion: 0.05
+Nodes (78): Booking, BookingControlPanelProps, FilterType, ViewType, CancellationRequestSheet(), CancellationRequestSheetProps, CancellationTarget, CancellationTier (+70 more)
 
-### Community 81 - "KitchenApplicationCard.tsx"
-Cohesion: 0.17
-Nodes (17): ChefTFunction, formatYesNoNotSure(), getDocStatusBadge(), KitchenApplicationCardProps, KitchenApplicationDetails(), applicationTier(), getKitchenDisplayStatus(), hasStep2BeenSubmitted() (+9 more)
+### Community 81 - "ui.tsx"
+Cohesion: 0.12
+Nodes (19): ProgressIndicator(), ProgressIndicatorProps, StatusTone, QuietNotice(), StatTile(), StatusBadge(), StatusDot(), AllowedTag (+11 more)
 
 ### Community 82 - "Application Detail Card"
 Cohesion: 0.14
 Nodes (19): Applicant Contact Header, Application Detail Card, Application Details Dashboard, Application Details Section, Application ID #2, Application Document Tabs, Food Establishment Certificate Tab, Food Safety License Tab (+11 more)
+
+### Community 83 - "ChefViewingsList"
+Cohesion: 0.44
+Nodes (7): ChefViewingsList(), getTourColumns(), ChefTourRow, chefTourRowHasDetails(), formatTourWhen(), normalizeChefTourRow(), viewingStatusBadge
 
 ### Community 84 - "EmailAction.tsx"
 Cohesion: 0.22
@@ -865,16 +866,16 @@ Cohesion: 0.17
 Nodes (17): Applicant Raunak, Chef Application Status Card, Apply Again CTA, Cancelled Application Status, Card-Based Application Status Layout, Iconic Credential Status Indicators, Ready to Share Deploy Banner, Explore Opportunities CTA (+9 more)
 
 ### Community 87 - "EmailDesignStudio.tsx"
-Cohesion: 0.06
-Nodes (32): BrandingConfig, ColorPalette, ColorSystemConfig, DesignSystemConfig, EmailContent, EmailDesignData, EmailDesignStudioProps, EmailMetadata (+24 more)
+Cohesion: 0.05
+Nodes (37): BrandingConfig, ColorPalette, ColorSystemConfig, DesignSystemConfig, EmailContent, EmailDesignData, EmailDesignStudio(), EmailDesignStudioProps (+29 more)
 
-### Community 88 - "use-chef-kitchen-access.ts"
-Cohesion: 0.43
-Nodes (6): ChefLocationAccess, ChefProfile, getAuthHeaders(), useAdminChefKitchenAccess(), useChefKitchenAccessStatus(), useChefProfiles()
+### Community 88 - "ManagerKitchenApplicationsContent"
+Cohesion: 0.25
+Nodes (8): AdminKitchenApplicationsStep1Section(), KitchenApplicationForManager, useAdminKitchenApplications(), useManagerKitchenApplications(), ManagerKitchenApplicationsContentLegacy(), ManagerKitchenApplicationsContent(), createConversation(), getConversationForApplication()
 
-### Community 89 - "Admin.tsx"
-Cohesion: 0.04
-Nodes (86): BrandingConfig, ColorPalette, ColorSystemConfig, DesignSystemConfig, EmailCanvasDesignerProps, EmailContent, EmailDesignData, EmailMetadata (+78 more)
+### Community 89 - "i18n/manager.ts"
+Cohesion: 0.05
+Nodes (54): PlatformOverviewSection(), PlatformOverviewSectionProps, formatCurrency(), getBookingTypeIcon(), getBookingTypeLabel(), getStatusBadge(), getTransactionColumns(), Transaction (+46 more)
 
 ### Community 90 - "getR2Config"
 Cohesion: 0.20
@@ -888,25 +889,25 @@ Nodes (16): generateCode(), generateReferenceCode(), handleAccountUpdated(), han
 Cohesion: 0.31
 Nodes (9): LoCo Logo, Fork Negative Space, Heart Utensil Icon, Local Cooks Brand, Negative Space Motif, Passion for Cooking, Script Typography, Spoon Negative Space (+1 more)
 
-### Community 93 - "TruncatedText.tsx"
-Cohesion: 0.16
-Nodes (18): formatCurrency(), getStatusLabelKey(), getStatusVariant(), OutstandingDuesBanner(), AllowedTag, isOverflowing(), TruncatedText(), TruncatedTextProps (+10 more)
+### Community 93 - "OutstandingDuesBanner.tsx"
+Cohesion: 0.23
+Nodes (13): formatCurrency(), getStatusLabelKey(), getStatusVariant(), OutstandingDuesBanner(), getAuthHeaders(), OUTSTANDING_DUES_QUERY_KEY, OutstandingDueItem, OutstandingDuesResult (+5 more)
 
 ### Community 94 - "ChefLanding.tsx"
-Cohesion: 0.10
-Nodes (18): Carousel, CarouselApi, CarouselContent, CarouselContext, CarouselContextProps, CarouselItem, CarouselNext, CarouselOptions (+10 more)
+Cohesion: 0.11
+Nodes (17): Carousel, CarouselApi, CarouselContent, CarouselContext, CarouselContextProps, CarouselItem, CarouselNext, CarouselOptions (+9 more)
 
-### Community 95 - "KitchenDiscovery"
-Cohesion: 0.24
-Nodes (10): isActiveKitchenApplication(), kitchenLocationId(), kitchenStatusLabel(), KitchenDiscovery(), KitchenLike, kitchensForTourAtLocation(), resolveTourKitchenTarget(), shouldPromptTourKitchenSelect() (+2 more)
+### Community 95 - "tour-kitchen-select.ts"
+Cohesion: 0.39
+Nodes (6): KitchenLike, kitchensForTourAtLocation(), resolveTourKitchenTarget(), shouldPromptTourKitchenSelect(), kitchens, TourKitchenOption
 
-### Community 96 - "LocationEditModal.tsx"
-Cohesion: 0.18
-Nodes (14): getStatusConfig(), LocationCard(), LocationCardProps, LocationCardSkeleton(), basicInfoSchema, getAuthHeaders(), getLocationFormSchema(), getStatusConfig() (+6 more)
-
-### Community 97 - "admin.ts"
+### Community 96 - "admin.ts"
 Cohesion: 0.05
-Nodes (37): UserRepository, UserService, CompleteUserProfileDTO, CreateUserDTO, UpdateUserDTO, UserDTO, persistEmailLog(), comparePasswords() (+29 more)
+Nodes (37): UserRepository, UserService, CompleteUserProfileDTO, CreateUserDTO, UpdateUserDTO, UserDTO, comparePasswords(), hashPassword() (+29 more)
+
+### Community 97 - "Application"
+Cohesion: 0.13
+Nodes (3): ChefOverviewProps, ApplicationRepository, Application
 
 ### Community 98 - "compilerOptions"
 Cohesion: 0.13
@@ -923,6 +924,10 @@ Nodes (13): phoneValidationDestPath, phoneValidationFile, IMPORTANT: Keep packag
 ### Community 101 - "Kitchen Host Monetization Messaging"
 Cohesion: 0.16
 Nodes (14): Benefits-Led Copywriting Formula, Conversion Psychology Principles, Kitchen Host Monetization Messaging, Kitchen Landing Page Copy Guide, Multiple Kitchen Revenue Streams, Add-On and Bundling System, Booking and Checkout Flow, Platform Commission Pricing Model (+6 more)
+
+### Community 102 - "Common Issues"
+Cohesion: 0.22
+Nodes (9): 1. **"BLOB_READ_WRITE_TOKEN not found"**, 2. **"Upload failed: File too large"**, 3. **"Invalid file type"**, 4. **"Temporary files not cleaned up"**, 5. **"Document not accessible in admin panel"**, Common Issues, Debug Mode, Testing File Upload (+1 more)
 
 ### Community 103 - "users Table"
 Cohesion: 0.23
@@ -944,9 +949,9 @@ Nodes (18): baseName(), LanguageMenuItems(), LanguageMenuSection(), LanguageSwit
 Cohesion: 0.15
 Nodes (12): **/*, compilerOptions, baseUrl, paths, exclude, extends, include, node_modules (+4 more)
 
-### Community 108 - "BookingActionSheet.tsx"
-Cohesion: 0.19
-Nodes (13): BookingActionSheet(), BookingActionSheetContent(), BookingActionSheetProps, BookingForAction, EquipmentDecision, EquipmentItemForAction, formatDate(), formatPrice() (+5 more)
+### Community 108 - "stripe-checkout-transactions-service.ts"
+Cohesion: 0.39
+Nodes (7): createTransaction(), CreateTransactionParams, getTransactionBySessionId(), mapRowToTransaction(), TransactionRecord, updateTransactionBySessionId(), UpdateTransactionParams
 
 ### Community 109 - "php-bridge-service.ts"
 Cohesion: 0.22
@@ -957,8 +962,8 @@ Cohesion: 0.27
 Nodes (12): Empty Commercial Kitchen Photo, Far-Wall Grid Window, Empty Commercial Kitchen, Cool Fluorescent Plus Warm Natural Dual Lighting, Vacant Unused Kitchen Atmosphere, Stainless Steel Exhaust Hood, Overhead Fluorescent Light Fixtures, Industrial Stovetop and Oven Line (+4 more)
 
 ### Community 111 - "overstay-penalty-service.ts"
-Cohesion: 0.07
-Nodes (37): generateBulkCodes(), generateCode(), generateReferenceCode(), REFERENCE_PREFIXES, ReferenceType, requireNoUnpaidPenalties(), DEFAULTS, getEffectivePenaltyConfig() (+29 more)
+Cohesion: 0.06
+Nodes (40): generateBulkCodes(), generateCode(), generateReferenceCode(), REFERENCE_PREFIXES, ReferenceType, DEFAULTS, getEffectivePenaltyConfig(), getOverstayLocationDefaults() (+32 more)
 
 ### Community 112 - "status-design-system.ts"
 Cohesion: 0.18
@@ -984,9 +989,9 @@ Nodes (10): Mutually exclusive option cards, Food Safety License, Food Safety Li
 Cohesion: 0.33
 Nodes (10): applications Table, Hashed Password Storage, Neon Console Users Table View, neondb public Schema, Nested Relation Sub-View Pattern, OAuth Identity Columns (google_id, facebook_id), session Table, Filters Columns Add Record Toolbar (+2 more)
 
-### Community 118 - "StorageSelection.tsx"
-Cohesion: 0.23
-Nodes (9): calculatePrice(), formatCents(), SelectedStorage, StorageListing, StorageSelection(), StorageSelectionProps, Calendar(), CalendarProps (+1 more)
+### Community 118 - "generateFullVerificationEmail"
+Cohesion: 0.29
+Nodes (6): handler(), sendEmailUsingServerFunction(), generateFullVerificationEmail(), generateVendorCredentials(), getVendorDashboardUrl(), stripCountryCode()
 
 ### Community 119 - "src/index.ts"
 Cohesion: 0.33
@@ -1009,16 +1014,16 @@ Cohesion: 0.31
 Nodes (9): Checkmark Approval Icon, Claymorphism Soft 3D Style, Don'ts Column (Coral Panel), Dos Column (Lavender Panel), Placeholder List Rows, Rounded Dark Outer Frame, Rules Comparison Graphic, Two-Column Comparison Layout (+1 more)
 
 ### Community 125 - "server/i18n/index.ts"
-Cohesion: 0.25
-Nodes (14): buildResources(), catalogPath(), __dirname, ensureServerI18n(), initServerI18n(), loadNamespace(), require, resolveLocale() (+6 more)
+Cohesion: 0.16
+Nodes (19): CustomTypeOptions, enCaResources, i18next, TranslationResources, buildResources(), catalogPath(), __dirname, ensureServerI18n() (+11 more)
 
 ### Community 126 - "🚨 CRITICAL ISSUE ANALYSIS & FIX"
 Cohesion: 0.05
 Nodes (41): 1. Reverted Schema to Match Real Database, 1. Run Database Migration:, 2. Removed Invalid Manual Booking Endpoints, 2. Update Schema:, 3. Add Endpoints:, 3. Kept Working Manager Endpoints, After Deployment:, Check date overrides: (+33 more)
 
-### Community 127 - "phone-validation.ts"
-Cohesion: 0.73
-Nodes (5): formatPhoneForDisplay(), isValidNorthAmericanPhone(), normalizePhoneNumber(), optionalPhoneNumberSchema, phoneNumberSchema
+### Community 127 - "OverviewTabContent.tsx"
+Cohesion: 0.12
+Nodes (22): ChefSellerAccount(), SELLER_ACTIONS(), STRIPE_ACTIONS(), ChefStripeConnectSetup(), bookingStatusConfig, formatBookingWhen(), kitchenSummaryTone(), OverviewTabContent() (+14 more)
 
 ### Community 128 - "Promotional Join Banner"
 Cohesion: 0.36
@@ -1064,17 +1069,25 @@ Nodes (8): Friendly Doorstep Food Handoff, Tan Cook Apron, Delivery Person in Or
 Cohesion: 0.05
 Nodes (41): `api/index.js`, Business Impact, `client/src/components/test/StatusEmailTest.tsx`, Common Issues, Considerations, Content Sections, Credential Generation, Database Dependencies (+33 more)
 
+### Community 139 - "StorageSelection.tsx"
+Cohesion: 0.38
+Nodes (6): calculatePrice(), formatCents(), SelectedStorage, StorageListing, StorageSelection(), StorageSelectionProps
+
 ### Community 140 - "Email Spam Prevention Guide"
 Cohesion: 0.05
 Nodes (40): 1. Enhanced Email Headers, 1. Fix Email Configuration, 1. Regular Checks, 1. Use Email Testing Tools, 1. Use Professional Email Service, 1. Verify DKIM Record is Active, 2. Content Optimization, 2. Domain-Based Email Address (+32 more)
 
 ### Community 141 - "services/chat-service.ts"
-Cohesion: 0.18
-Nodes (15): ApplicationStatus, ConversationItem(), ConversationItemProps, ConversationList(), ConversationListProps, useChat(), UseChatOptions, ChatMessage (+7 more)
+Cohesion: 0.15
+Nodes (19): ApplicationStatus, ConversationItem(), ConversationItemProps, ConversationList(), ConversationListProps, ApplicationDetails, UnifiedChatView(), UnifiedChatViewProps (+11 more)
 
 ### Community 142 - "overstay-penalty-service.test.ts"
 Cohesion: 0.32
 Nodes (6): createMockOverstayRecord(), createMockStorageBooking(), daysAgo(), mockDbInsert, mockDbSelect, mockDbUpdate
+
+### Community 143 - "BookingApprovalDialog.tsx"
+Cohesion: 0.21
+Nodes (11): BookingApprovalDialogContent(), BookingApprovalDialogProps, BookingForApproval, EquipmentItemForApproval, formatDate(), formatPrice(), formatStorageDate(), formatTime() (+3 more)
 
 ### Community 144 - "Dashboard Workspace Illustration"
 Cohesion: 0.48
@@ -1185,8 +1198,8 @@ Cohesion: 0.47
 Nodes (6): LocalCooksCommunity Favicon, Community and Cooking Symbol, Integrated Fork Silhouette, Heart Cutlery Logo Mark, Monochrome Brand Mark, Integrated Spoon Silhouette
 
 ### Community 171 - "PublicLocaleRouter.tsx"
-Cohesion: 0.20
-Nodes (18): PublicLocaleRouter(), readCookie(), useLocalizedPath(), buildLocalizedPath(), isPublicLocalizedPath(), localeFromParam(), parseLocationLocale(), PUBLIC_SET (+10 more)
+Cohesion: 0.32
+Nodes (11): PublicLocaleRouter(), readCookie(), useLocalizedPath(), buildLocalizedPath(), isPublicLocalizedPath(), localeFromParam(), parseLocationLocale(), PUBLIC_SET (+3 more)
 
 ### Community 172 - "Booking Affordance"
 Cohesion: 0.60
@@ -1196,9 +1209,9 @@ Nodes (5): Booking Affordance, Desk Calendar Booking Icon, High-Contrast White S
 Cohesion: 0.60
 Nodes (5): Stripe Blurple, Lowercase Sans-Serif Wordmark Typography, Payment Processing, Stripe Brand, Stripe Wordmark (Blurple, Small)
 
-### Community 174 - "SellerApplicationTabContent.tsx"
-Cohesion: 0.11
-Nodes (29): KitchenApplicationCard(), ChefTFunction, docBadge(), SellerApplicationCard(), SellerApplicationCardProps, documentToneFromLabel(), toneToBadgeVariant(), ChefOverview() (+21 more)
+### Community 174 - "SellerApplicationCard.tsx"
+Cohesion: 0.21
+Nodes (14): ChefTFunction, docBadge(), SellerApplicationCard(), SellerApplicationCardProps, applicationStatusVariant(), ChefOverview(), StatusVariant, applicationSchema (+6 more)
 
 ### Community 175 - "✅ COMPLETE FIX APPLIED - System Ready!"
 Cohesion: 0.05
@@ -1216,65 +1229,81 @@ Nodes (4): Document, TidioChatApi, TidioEvent, Window
 Cohesion: 0.29
 Nodes (7): addPaymentHistory(), backfillPaymentTransactionsFromBookings(), createPaymentTransaction(), syncExistingPaymentTransactionsFromStripe(), syncStripeAmountsToBookings(), syncStripeFees(), updatePaymentTransaction()
 
-### Community 181 - "Common Issues"
-Cohesion: 0.22
-Nodes (9): 1. **"BLOB_READ_WRITE_TOKEN not found"**, 2. **"Upload failed: File too large"**, 3. **"Invalid file type"**, 4. **"Temporary files not cleaned up"**, 5. **"Document not accessible in admin panel"**, Common Issues, Debug Mode, Testing File Upload (+1 more)
+### Community 181 - "🔧 Technical Issues"
+Cohesion: 0.33
+Nodes (6): Q: Applications not showing in admin panel, Q: "Cannot connect to database" error, Q: File upload not working, Q: OAuth login not working, Q: "Session secret not set" error, 🔧 Technical Issues
 
 ### Community 184 - "Solid Black Square"
 Cohesion: 0.67
 Nodes (4): Featureless Image Asset, Kitchen Table Scene, Placeholder or Corrupt Asset, Solid Black Square
 
-### Community 186 - "AdminDamageClaimsHistory.tsx"
-Cohesion: 0.05
-Nodes (76): AdminDamageClaimsHistory(), adminFetch(), ClaimHistoryEvent, DamageClaim, EVIDENCE_TYPE_LABELS, EvidenceItem, formatDateTimeSt(), getColumns() (+68 more)
+### Community 186 - "revenue/types.ts"
+Cohesion: 0.12
+Nodes (15): TransactionColumnsProps, RevenueMetricCardsProps, TransactionTableProps, BookingType, ChartDataPoint, DateRangePreset, ExportOptions, Invoice (+7 more)
 
 ### Community 187 - "🔥 Firebase Auth → Backend API → Neon Database Architecture"
 Cohesion: 0.05
 Nodes (36): **1. Firebase Admin SDK** (`server/firebase-admin.ts`), **1. No Session Management**, **2. Scalability**, **2. Translation Middleware** (`server/firebase-auth-middleware.ts`), **3. Security**, **3. User Sync Service** (`server/firebase-user-sync.ts`), **4. Developer Experience**, **4. Session-Free Storage** (`server/storage-firebase.ts`) (+28 more)
 
-### Community 188 - "ChefViewingsList"
-Cohesion: 0.44
-Nodes (7): ChefViewingsList(), getTourColumns(), ChefTourRow, chefTourRowHasDetails(), formatTourWhen(), normalizeChefTourRow(), viewingStatusBadge
+### Community 188 - "cn"
+Cohesion: 0.03
+Nodes (97): PasswordStrengthIndicator(), StepIcon(), StepIcon(), BrandMark(), GetStartedPathCard(), InfoCard(), StageCheckbox(), StageCheckbox() (+89 more)
 
 ### Community 197 - "Chef Kitchen Application System - Implementation Plan"
 Cohesion: 0.06
 Nodes (35): 1.1 New Table: `chef_kitchen_applications`, 1.2 Schema Definition (shared/schema.ts), 2.1 New Endpoints, 2.2 Storage Functions (storage-firebase.ts), 2.3 Booking Validation Update (routes.ts), 3.1 New Components, 3.2 New Hooks, 3.3 ApplicantDashboard Changes (+27 more)
 
-### Community 201 - "routes/manager.ts"
-Cohesion: 0.03
-Nodes (74): deleteConversation(), getAdminDb(), getUnreadCounts(), initializeConversation(), notifyTierTransition(), sendSystemNotification(), SystemMessageData, getAppBaseUrl() (+66 more)
+### Community 199 - "phone-validation.ts"
+Cohesion: 0.73
+Nodes (5): formatPhoneForDisplay(), isValidNorthAmericanPhone(), normalizePhoneNumber(), optionalPhoneNumberSchema, phoneNumberSchema
+
+### Community 201 - "chart.tsx"
+Cohesion: 0.25
+Nodes (9): ChartConfig, ChartContainer, ChartContext, ChartContextProps, ChartLegendContent, ChartTooltipContent, getPayloadConfigFromPayload(), THEMES (+1 more)
 
 ### Community 202 - "KitchenBookingCalendar.tsx"
-Cohesion: 0.14
-Nodes (15): KitchenBookingCalendar, BookingPriceSummary(), BookingPriceSummaryProps, SelectedStorage, StorageListing, StoragePricing, StoragePricingItem, BookingPriceEstimate (+7 more)
+Cohesion: 0.10
+Nodes (26): BookingConfirmationPage, KitchenBookingCalendar, BookingPriceSummary(), BookingPriceSummaryProps, useChefSidebarHiddenItems(), Booking, CreateBookingData, getAuthHeaders() (+18 more)
 
-### Community 203 - "Privacy.tsx"
-Cohesion: 0.43
-Nodes (3): PrivacyContent_fr(), PrivacyContent(), PrivacyContent_uk()
+### Community 203 - "errors.ts"
+Cohesion: 0.33
+Nodes (7): useApiErrorMessage(), sendApiError(), API_ERROR_CODES, apiError(), ApiErrorBody, ApiErrorCode, isApiErrorCode()
 
-### Community 207 - "NotificationItem"
+### Community 205 - "seller-report-service.ts"
+Cohesion: 0.35
+Nodes (10): fmtDollars(), generateReportCSV(), generateReportPDF(), generateSingleOrderInvoicePDF(), getDeliveryLabel(), parseOrderItemsForReport(), parseStructuredOrderItems(), processScheduledReports() (+2 more)
+
+### Community 206 - "address-autocomplete.tsx"
 Cohesion: 0.50
-Nodes (4): formatNotificationTime(), getNotificationIcon(), getPriorityColor(), NotificationItem()
+Nodes (4): AddressAutocomplete(), AddressAutocompleteProps, Prediction, useDebounce()
 
-### Community 209 - "HowItWorksSection.tsx"
-Cohesion: 0.50
-Nodes (3): benefits, HowItWorksSection(), steps
+### Community 207 - "Admin.tsx"
+Cohesion: 0.04
+Nodes (68): ClaimCard(), DamageClaim, DamageClaimReview(), DamageEvidence, formatCurrency(), getEvidenceTypeLabel(), getStatusBadge(), AdminLayout() (+60 more)
 
-### Community 212 - "Success"
-Cohesion: 0.50
-Nodes (4): formatSubmittedAt(), kitchenLabel(), statusCopy(), Success()
+### Community 212 - "TermsContent_uk.tsx"
+Cohesion: 0.36
+Nodes (4): TermsContent_uk_1(), TermsContent_uk_2(), TermsContent_uk_3(), TermsContent_uk()
 
-### Community 218 - "date-utils.ts"
-Cohesion: 0.83
-Nodes (3): createBookingDateTime(), getHoursUntilBooking(), isBookingTimePast()
+### Community 218 - "revenue-calculations.ts"
+Cohesion: 0.39
+Nodes (7): aggregateTransactionPayoutTotals(), isRevenueEligiblePaymentStatus(), isRevenueEligibleTransaction(), REVENUE_ELIGIBLE_STATUSES, REVENUE_EXCLUDED_BOOKING_STATUSES, transactionToPayoutBreakdown(), aggregateKitchenPayoutTotals()
 
 ### Community 222 - "BookingPricingBreakdown.tsx"
-Cohesion: 0.18
-Nodes (17): BreakdownLine(), ChefBookingReceiptBreakdown(), ChefBookingReceiptBreakdownProps, KitchenPayoutStatementBreakdown(), KitchenPayoutStatementBreakdownProps, KitchenPayoutSummaryTilesProps, LineProps, generateInvoicePDF() (+9 more)
+Cohesion: 0.17
+Nodes (17): BreakdownLine(), ChefBookingReceiptBreakdown(), ChefBookingReceiptBreakdownProps, KitchenPayoutStatementBreakdown(), KitchenPayoutStatementBreakdownProps, KitchenPayoutSummaryTiles(), KitchenPayoutSummaryTilesProps, LineProps (+9 more)
+
+### Community 233 - "ChefKitchenAccessManager.tsx"
+Cohesion: 0.31
+Nodes (8): ChefKitchenAccessManager(), Location, ChefLocationAccess, ChefProfile, getAuthHeaders(), useAdminChefKitchenAccess(), useChefKitchenAccessStatus(), useChefProfiles()
 
 ### Community 240 - "App.tsx"
-Cohesion: 0.05
-Nodes (41): Admin, AdminManageLocations, App(), ApplicantDashboard, ApplicationForm, ApplyToKitchen, BookingConfirmationPage, BookingDetailsPage (+33 more)
+Cohesion: 0.04
+Nodes (49): Admin, AdminManageLocations, App(), ApplicantDashboard, ApplyToKitchen, BookingDetailsPage, KitchenAvailabilityManagement, KitchenComparisonPage (+41 more)
+
+### Community 243 - "toggle-group.tsx"
+Cohesion: 0.43
+Nodes (5): ToggleGroup, ToggleGroupContext, ToggleGroupItem, Toggle, toggleVariants
 
 ### Community 248 - "payment-tracking-service.ts"
 Cohesion: 0.36
@@ -1288,9 +1317,13 @@ Nodes (3): 4.1 Create Storage Pricing Hook, 4.2 Update Booking Submission Backen
 Cohesion: 0.67
 Nodes (4): createTransaction(), getTransactionBySessionId(), mapRowToTransaction(), updateTransactionBySessionId()
 
-### Community 311 - "stripe-checkout-transactions-service.ts"
-Cohesion: 0.39
-Nodes (7): createTransaction(), CreateTransactionParams, getTransactionBySessionId(), mapRowToTransaction(), TransactionRecord, updateTransactionBySessionId(), UpdateTransactionParams
+### Community 305 - "alwaysFoodSafeAPI.ts"
+Cohesion: 0.29
+Nodes (5): AlwaysFoodSafeResponse, AlwaysFoodSafeSubmission, getIntegrationStatus(), isAlwaysFoodSafeConfigured(), submitToAlwaysFoodSafe()
+
+### Community 313 - "DateRange"
+Cohesion: 0.50
+Nodes (4): DateRangePickerProps, UseRevenueMetricsOptions, UseTransactionsOptions, DateRange
 
 ### Community 339 - "🎯 COMPREHENSIVE FIX SUMMARY"
 Cohesion: 0.06
@@ -1405,8 +1438,8 @@ Cohesion: 0.12
 Nodes (16): 1. Fixed TypeScript Build Error ✅, 2. Added Missing Routes to server/routes.ts ✅, 3. Added Missing Firebase Routes to server/firebase-routes.ts ✅, 4. Unified Entry Point ✅, 5. Updated Build Process ✅, 6. Updated Configuration ✅, Actual Code Changes Made, Build Process Flow (+8 more)
 
 ### Community 370 - "shared/i18n/index.ts"
-Cohesion: 0.20
-Nodes (21): useApiErrorMessage(), sendApiError(), API_ERROR_CODES, apiError(), ApiErrorBody, ApiErrorCode, isApiErrorCode(), compareStrings() (+13 more)
+Cohesion: 0.36
+Nodes (14): compareStrings(), DateFormatStyle, DEFAULT_CURRENCY, DEFAULT_TIMEZONE, formatCurrency(), formatDate(), formatDateTime(), formatList() (+6 more)
 
 ### Community 371 - "Implementation Start Prompt"
 Cohesion: 0.13
@@ -1560,10 +1593,6 @@ Nodes (6): 2. Stripe Connect Service (`server/services/stripe-connect-service.ts
 Cohesion: 0.33
 Nodes (6): Backend (Server), Environment Setup, Frontend (Client), Getting Your Stripe Keys, Required Environment Variables, Stripe API Version
 
-### Community 421 - "🔧 Technical Issues"
-Cohesion: 0.33
-Nodes (6): Q: Applications not showing in admin panel, Q: "Cannot connect to database" error, Q: File upload not working, Q: OAuth login not working, Q: "Session secret not set" error, 🔧 Technical Issues
-
 ### Community 422 - "🎓 Microlearning & Training Endpoints"
 Cohesion: 0.40
 Nodes (5): Complete All Training, Get Certificate, Get User Progress, 🎓 Microlearning & Training Endpoints, Update Video Progress
@@ -1696,13 +1725,13 @@ Nodes (3): 9.1 Track OAuth Usage, 9.2 Monitor OAuth Errors, 📈 9. Analytics & 
 Cohesion: 0.67
 Nodes (3): Current State Analysis, ✅ What's Already Implemented, ❌ What's Missing
 
-### Community 488 - "cn"
-Cohesion: 0.02
-Nodes (101): PasswordStrengthIndicator(), StepIcon(), BrandMark(), GetStartedPathCard(), SidebarContent(), InfoCard(), ReviewDeadlineBadge(), StageCheckbox() (+93 more)
+### Community 488 - "ChefResourcesPage_en.tsx"
+Cohesion: 0.04
+Nodes (49): ChefResourcesPage, SECTION_ICONS, AccordionContent, AccordionItem, AccordionTrigger, ChatMessageList(), ChatMessageListProps, Checkbox (+41 more)
 
 ### Community 549 - "mt"
-Cohesion: 0.03
-Nodes (162): ChefKitchenAccessManager(), DecisionDialog(), DamageClaimSettings(), EmailCanvasDesigner(), EmailDesignStudio(), ColorPalette, PromoCodeSender(), KitchenLicenseApprovalSection() (+154 more)
+Cohesion: 0.02
+Nodes (191): ManagerSetupPage, DecisionDialog(), DamageClaimSettings(), EmailCanvasDesigner(), ColorPalette, adminFetch(), OverstayPenaltySettings(), KitchenLicenseApprovalSection() (+183 more)
 
 ## Ambiguous Edges - Review These
 - `Twelve-Point Starburst Seal` → `Verification Status Affordance`  [AMBIGUOUS]
@@ -1719,7 +1748,7 @@ Nodes (162): ChefKitchenAccessManager(), DecisionDialog(), DamageClaimSettings()
 ## Knowledge Gaps
 - **2983 isolated node(s):** `tempServerDir`, `tempSharedDir`, `serverFiles`, `schemaFile`, `schemaDestPath` (+2978 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **139 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **138 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
@@ -1734,7 +1763,7 @@ _Questions this graph is uniquely positioned to answer:_
   _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
 - **What is the exact relationship between `Kitchen Table Scene` and `Solid Black Square`?**
   _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
-- **Why does `cn()` connect `cn` to `ApplicationForm.tsx`, `ApplicantDashboard.tsx`, `services/chat-service.ts`, `custom-alerts.tsx`, `ChefSellerRevenue.tsx`, `ManagerBookingsPanel.tsx`, `KitchenPreviewPage.tsx`, `spotlight-walkthrough.tsx`, `KitchenCheckinCheckoutEditor.tsx`, `KitchenBookingPreferencesPanel.tsx`, `sidebar.tsx`, `KitchenApplicationJourneySteps.tsx`, `lib/utils.ts`, `mt`, `command-menu.tsx`, `BookingControlPanel.tsx`, `SellerApplicationTabContent.tsx`, `ChefDashboardLayout.tsx`, `ForgotPasswordForm.tsx`, `ChefResourcesPage_en.tsx`, `AuthModalProvider.tsx`, `AdminDamageClaimsHistory.tsx`, `button.tsx`, `ChefViewingsList`, `OverviewTabContent.tsx`, `ApplicationRequirementsWizard.tsx`, `ManagerRevenueDashboard.tsx`, `firebase.ts`, `useFirebaseAuth`, `ChefSetupPage.tsx`, `KitchenBookingCalendar.tsx`, `EnhancedRegisterForm.tsx`, `NotificationItem`, `sheet.tsx`, `KitchenApplicationCard.tsx`, `Admin.tsx`, `TruncatedText.tsx`, `BookingPricingBreakdown.tsx`, `KitchenDiscovery`, `LocationEditModal.tsx`, `ChefLanding.tsx`, `ApplicationProgressTracker.tsx`, `LanguageSwitcher.tsx`, `BookingActionSheet.tsx`, `StorageSelection.tsx`?**
-  _High betweenness centrality (0.059) - this node is a cross-community bridge._
-- **Why does `logger` connect `server/logger.ts` to `schema.ts`, `damage-claim-service.ts`, `storage-checkout-service.ts`, `stripe-connect-service.ts`, `notification.service.ts`, `booking.service.ts`, `routes/applications.ts`, `payment-transactions-service.ts`, `fileUpload.ts`, `dev-journey-d-ready.ts`, `kitchen-checkout-service.ts`, `server/index.ts`, `email.ts`, `routes/manager.ts`, `stripe-checkout-service.ts`, `admin.ts`, `php-bridge-service.ts`, `overstay-penalty-service.ts`, `payment-tracking-service.ts`?**
+- **Why does `cn()` connect `cn` to `KitchenApplicationForm.tsx`, `ManagerOnboardingContext.tsx`, `StorageSelection.tsx`, `TrainingOverviewPanel.tsx`, `services/chat-service.ts`, `lib/utils.ts`, `BookingApprovalDialog.tsx`, `ChefSellerRevenue.tsx`, `utils/timezone-utils.ts`, `KitchenPreviewPage.tsx`, `spotlight-walkthrough.tsx`, `DamageClaimDetailSheet.tsx`, `badge.tsx`, `KitchenBookingPreferencesPanel.tsx`, `sidebar.tsx`, `KitchenApplicationJourneySteps.tsx`, `DamageClaimQueue.tsx`, `mt`, `command-menu.tsx`, `ApplicantDashboard.tsx`, `SellerApplicationCard.tsx`, `ChefDashboardLayout.tsx`, `AuthModalProvider.tsx`, `button.tsx`, `SellerApplicationTabContent.tsx`, `Header.tsx`, `ChefSetupPage.tsx`, `ApplicationForm.tsx`, `KitchenBookingCalendar.tsx`, `chart.tsx`, `ApplicationFormPanel.tsx`, `EnhancedRegisterForm.tsx`, `ChefNotificationCenter.tsx`, `StorageListingManagement.tsx`, `ui.tsx`, `Admin.tsx`, `ChefViewingsList`, `address-autocomplete.tsx`, `i18n/manager.ts`, `BookingPricingBreakdown.tsx`, `ChefLanding.tsx`, `ChefResourcesPage_en.tsx`, `ApplicationProgressTracker.tsx`, `LanguageSwitcher.tsx`, `toggle-group.tsx`, `OverviewTabContent.tsx`?**
+  _High betweenness centrality (0.058) - this node is a cross-community bridge._
+- **Why does `logger` connect `routes.ts` to `notification.service.ts`, `KitchenService`, `damage-claim-service.ts`, `routes/manager.ts`, `revenue-service.ts`, `kitchen-applications.ts`, `payment-transactions-service.ts`, `routes/applications.ts`, `dev-journey-d-ready.ts`, `kitchen-checkout-service.ts`, `alwaysFoodSafeAPI.ts`, `stripe-connect-service.ts`, `server/index.ts`, `email.ts`, `seller-report-service.ts`, `admin.ts`, `php-bridge-service.ts`, `overstay-penalty-service.ts`, `payment-tracking-service.ts`?**
   _High betweenness centrality (0.016) - this node is a cross-community bridge._

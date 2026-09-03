@@ -443,8 +443,8 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
       if (hasBookings) {
         setAlertConfig({
           open: true,
-          title: "Conflict Warning",
-          description: "This date has existing bookings. Closing it will affect chefs. Continue?",
+          title: mt("conflictWarning"),
+          description: mt("conflictWarningClosingDate"),
           actionType: 'save',
           onConfirm: () => {
             if (selectedException) updateAvailability.mutate({ id: selectedException.id, data: payload });
@@ -467,8 +467,8 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
     if (!selectedException) return;
     setAlertConfig({
       open: true,
-      title: "Confirm Deletion",
-      description: "Are you sure you want to remove this exception? The schedule will revert to weekly defaults.",
+      title: mt("confirmDeletion"),
+      description: mt("removeExceptionConfirmDesc"),
       actionType: 'delete',
       onConfirm: () => {
         deleteAvailability.mutate(selectedException.id);
@@ -688,8 +688,8 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
                                 setSelectedException(ex);
                                 setAlertConfig({
                                   open: true,
-                                  title: "Confirm Deletion",
-                                  description: "Remove this exception?",
+                                  title: mt("confirmDeletion"),
+                                  description: mt("removeThisException"),
                                   actionType: 'delete',
                                   onConfirm: () => {
                                     deleteAvailability.mutate(ex.id);

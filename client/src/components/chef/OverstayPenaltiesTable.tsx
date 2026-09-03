@@ -111,21 +111,21 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 
 function getStatusBadge(penalty: OverstayPenalty) {
   if (penalty.chargeSucceededAt || penalty.isPaid) {
-    return <Badge variant="success">Paid</Badge>;
+    return <Badge variant="success">{ct("paid")}</Badge>;
   }
   if (penalty.isResolved) {
-    return <Badge variant="outline" className="bg-muted/50 text-muted-foreground border-border">Resolved</Badge>;
+    return <Badge variant="outline" className="bg-muted/50 text-muted-foreground border-border">{ct("resolved")}</Badge>;
   }
   if (penalty.status === 'escalated') {
-    return <Badge variant="destructive">Action Required</Badge>;
+    return <Badge variant="destructive">{ct("shellStatusActionRequired")}</Badge>;
   }
   if (penalty.status === 'charge_failed') {
-    return <Badge variant="destructive">Payment Failed</Badge>;
+    return <Badge variant="destructive">{ct("shellStatusPaymentFailed")}</Badge>;
   }
   if (penalty.status === 'charge_pending') {
-    return <Badge variant="warning">Processing</Badge>;
+    return <Badge variant="warning">{ct("processing")}</Badge>;
   }
-  return <Badge variant="destructive">Payment Required</Badge>;
+  return <Badge variant="destructive">{ct("dcStatusEscalated")}</Badge>;
 }
 
 // Column definitions

@@ -481,7 +481,7 @@ function OverstayCard({
           </SheetHeader>
           <div className="space-y-4 py-4">
             <div>
-              <label className="text-sm font-medium">Reason for Waiving *</label>
+              <label className="text-sm font-medium">{mt("reasonForWaivingRequired")}</label>
               <Textarea
                 value={waiveReason}
                 onChange={(e) => setWaiveReason(e.target.value)}

@@ -280,5 +280,8 @@
   "userNotAuthenticated": "User not authenticated",
   "accountSyncRequired": "Account sync required.",
   "noStorageBookingId": "No storage booking ID",
-  "failedToFetchExceptions": "Failed to fetch exceptions"
+  "failedToFetchExceptions": "Failed to fetch exceptions",
+  "managerDashboard": "Manager Dashboard",
+  "adminDashboardNamed": "{name}'s Admin Dashboard",
+  "chefDashboardNamed": "{name}'s Dashboard"
 }

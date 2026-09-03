@@ -235,17 +235,17 @@ export default function Header({ position = "fixed" }: { position?: "fixed" | "s
     if (user?.role === "admin") {
       return {
         href: "/admin",
-        text: `${displayName}'s Admin Dashboard`
+        text: t("adminDashboardNamed", { name: displayName })
       };
     } else if (user?.role === "manager") {
       return {
         href: "/manager/dashboard",
-        text: "Manager Dashboard"
+        text: t("managerDashboard")
       };
     } else {
       return {
         href: "/dashboard",
-        text: `${displayName}'s Dashboard`
+        text: t("chefDashboardNamed", { name: displayName })
       };
     }
   };

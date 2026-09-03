@@ -119,13 +119,13 @@ interface DamageClaimDetailSheetProps {
 }
 
 const EVIDENCE_TYPES = [
-  { value: 'photo_before', label: 'Photo (Before)', icon: Camera },
-  { value: 'photo_after', label: 'Photo (After/Damage)', icon: Camera },
-  { value: 'receipt', label: 'Receipt', icon: Receipt },
-  { value: 'invoice', label: 'Invoice/Quote', icon: FileText },
-  { value: 'video', label: 'Video', icon: File },
-  { value: 'document', label: 'Document', icon: File },
-  { value: 'third_party_report', label: 'Third Party Report', icon: FileText },
+  { value: 'photo_before', label: mt("photoBefore"), icon: Camera },
+  { value: 'photo_after', label: mt("photoAfterDamage"), icon: Camera },
+  { value: 'receipt', label: mt("receipt"), icon: Receipt },
+  { value: 'invoice', label: mt("invoiceQuote"), icon: FileText },
+  { value: 'video', label: mt("video"), icon: File },
+  { value: 'document', label: mt("documentLabel"), icon: File },
+  { value: 'third_party_report', label: mt("thirdPartyReport"), icon: FileText },
 ];
 
 function formatCurrency(cents: number): string {
@@ -137,20 +137,20 @@ function formatCurrency(cents: number): string {
 
 function getStatusBadge(status: string) {
   const statusConfig: Record<string, { variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning"; label: string }> = {
-    draft: { variant: "outline", label: "Draft" },
-    submitted: { variant: "warning", label: "Awaiting Chef Response" },
-    chef_accepted: { variant: "secondary", label: "Chef Accepted" },
-    chef_disputed: { variant: "destructive", label: "Disputed" },
-    under_review: { variant: "warning", label: "Under Admin Review" },
-    approved: { variant: "success", label: "Approved" },
-    partially_approved: { variant: "success", label: "Partially Approved" },
-    rejected: { variant: "destructive", label: "Rejected" },
-    charge_pending: { variant: "warning", label: "Charging..." },
-    charge_succeeded: { variant: "success", label: "Paid" },
-    charge_failed: { variant: "destructive", label: "Charge Failed" },
-    escalated: { variant: "destructive", label: "Escalated — Awaiting Chef Payment" },
-    resolved: { variant: "outline", label: "Resolved" },
-    expired: { variant: "outline", label: "Expired" },
+    draft: { variant: "outline", label: mt("draftStatus") },
+    submitted: { variant: "warning", label: mt("awaitingChefResponse") },
+    chef_accepted: { variant: "secondary", label: mt("chefAccepted") },
+    chef_disputed: { variant: "destructive", label: mt("disputed") },
+    under_review: { variant: "warning", label: mt("underAdminReview") },
+    approved: { variant: "success", label: mt("approved") },
+    partially_approved: { variant: "success", label: mt("partiallyApproved") },
+    rejected: { variant: "destructive", label: mt("rejected") },
+    charge_pending: { variant: "warning", label: mt("charging") },
+    charge_succeeded: { variant: "success", label: mt("paid") },
+    charge_failed: { variant: "destructive", label: mt("chargeFailed") },
+    escalated: { variant: "destructive", label: mt("escalatedAwaitingChefPayment") },
+    resolved: { variant: "outline", label: mt("resolved") },
+    expired: { variant: "outline", label: mt("expired") },
   };
 
   const config = statusConfig[status] || { variant: "outline" as const, label: status };

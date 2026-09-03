@@ -524,22 +524,22 @@ export function TodaysKitchenBookings() {
             <div className="flex gap-3 mt-3 flex-wrap">
               <Badge variant="outline" className="gap-1">
                 <Clock className="h-3 w-3" />
-                {notCheckedInCount} Awaiting
+                {mt("countAwaiting", { count: notCheckedInCount })}
               </Badge>
               <Badge className="bg-green-600 text-white gap-1">
                 <CheckCircle className="h-3 w-3" />
-                {checkedInCount} Active
+                {mt("countActive", { count: checkedInCount })}
               </Badge>
               {checkoutPendingCount > 0 && (
                 <Badge variant="info" className="gap-1">
                   <LogOut className="h-3 w-3" />
-                  {checkoutPendingCount} Checkout Pending
+                  {mt("countCheckoutPending", { count: checkoutPendingCount })}
                 </Badge>
               )}
               {noShowCount > 0 && (
                 <Badge variant="destructive" className="gap-1">
                   <XCircle className="h-3 w-3" />
-                  {noShowCount} No-Show
+                  {mt("countNoShow", { count: noShowCount })}
                 </Badge>
               )}
             </div>
@@ -642,7 +642,7 @@ export function TodaysKitchenBookings() {
                                   }
                                 >
                                   <ShieldCheck className="h-4 w-4 mr-2" />
-                                  Clear — No Issues
+                                  {mt("clearNoIssues")}
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() =>
@@ -755,9 +755,9 @@ export function TodaysKitchenBookings() {
             <>
               <SheetHeader>
                 <SheetTitle>
-                  {actionMode === "clear-checkout" && "Clear Checkout"}
-                  {actionMode === "file-claim" && "File Damage Claim"}
-                  {actionMode === "view" && "Booking Details"}
+                  {actionMode === "clear-checkout" && mt("clearCheckout")}
+                  {actionMode === "file-claim" && mt("fileDamageClaim")}
+                  {actionMode === "view" && mt("bookingDetailsTitle")}
                 </SheetTitle>
                 <SheetDescription>
                   {selectedBooking.kitchenName} ·{" "}
@@ -1088,7 +1088,7 @@ export function TodaysKitchenBookings() {
                       />
                     </div>
                     <div>
-                      <Label>Claim Amount ($)</Label>
+                      <Label>{mt("claimAmountDollars")}</Label>
                       <CurrencyInput
                         value={claimAmount}
                         onValueChange={(val: string) => setClaimAmount(val)}
@@ -1100,7 +1100,7 @@ export function TodaysKitchenBookings() {
                     <div className="space-y-2">
                       <Label className="flex items-center gap-2">
                         <Camera className="h-4 w-4" />
-                        Photo Evidence *
+                        {mt("photoEvidenceRequired")}
                       </Label>
                       <p className="text-xs text-muted-foreground">{mt("uploadPhotosDocumentingTheDamageOrIssueAtLeastOnePhotoIsRequ")}</p>
 
@@ -1189,7 +1189,7 @@ export function TodaysKitchenBookings() {
                       ) : (
                         <ShieldCheck className="h-4 w-4 mr-2" />
                       )}
-                      Clear — No Issues
+                      {mt("clearNoIssues")}
                     </Button>
                   )}
 

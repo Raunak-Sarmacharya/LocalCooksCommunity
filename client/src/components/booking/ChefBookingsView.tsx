@@ -470,13 +470,13 @@ const getChefBookingColumns = ({
           {isVoided && (
             <div className="flex items-center gap-1 text-xs text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded border border-border w-fit">
               <XCircle className="h-2.5 w-2.5" />
-              No charge
+              {t("noCharge")}
             </div>
           )}
           {isAuthHold && status === 'pending' && (
             <Badge variant="outline" className="items-center flex w-fit text-xs gap-1 text-muted-foreground">
               <Clock className="h-2.5 w-2.5" />
-              Payment held
+              {t("bdPaymentHeldLower")}
             </Badge>
           )}
           {/* Only show individual addon rejection badges when the booking itself was NOT fully voided.
@@ -485,25 +485,25 @@ const getChefBookingColumns = ({
           {!isVoided && rejectedStorageCount > 0 && (
             <Badge variant="destructive" className="items-center flex w-fit text-xs gap-1">
               <Package className="h-2.5 w-2.5" />
-              {rejectedStorageCount} storage declined
+              {t("storageDeclinedCount", { count: rejectedStorageCount })}
             </Badge>
           )}
           {!isVoided && rejectedEquipmentCount > 0 && (
             <Badge variant="destructive" className="items-center flex w-fit text-xs gap-1">
               <Package className="h-2.5 w-2.5" />
-              {rejectedEquipmentCount} equipment declined
+              {t("equipmentDeclinedCount", { count: rejectedEquipmentCount })}
             </Badge>
           )}
           {pendingStorageCount > 0 && status === 'confirmed' && (
             <Badge variant="warning" className="items-center flex w-fit text-xs gap-1">
               <Package className="h-2.5 w-2.5" />
-              {pendingStorageCount} storage pending
+              {t("storagePendingCount", { count: pendingStorageCount })}
             </Badge>
           )}
           {status === 'cancelled' && booking.paymentStatus === 'partially_refunded' && (
             <Badge variant="warning" className="items-center flex w-fit text-xs gap-1">
               <AlertTriangle className="h-2.5 w-2.5" />
-              Partial refund
+              {t("partialRefund")}
             </Badge>
           )}
         </div>
@@ -643,14 +643,14 @@ const getChefBookingColumns = ({
               <TooltipTrigger asChild>
                 <div className="text-right cursor-help">
                   <div className="font-medium text-sm">{formatPrice(totalPrice)}</div>
-                  <div className="text-xs text-muted-foreground">Payment held</div>
+                  <div className="text-xs text-muted-foreground">{t("bdPaymentHeldLower")}</div>
                 </div>
               </TooltipTrigger>
               <TooltipContent className="max-w-xs">
                 <div className="space-y-1 text-sm">
-                  <p className="font-medium">Payment Hold</p>
+                  <p className="font-medium">{t("bdPaymentHoldTitle")}</p>
                   <p className="text-xs text-muted-foreground">
-                    This amount is held on your card. The charge will be finalized once the kitchen manager approves your booking.
+                    {t("bdPaymentHoldDesc")}
                   </p>
                 </div>
               </TooltipContent>
@@ -1969,7 +1969,7 @@ export default function ChefBookingsView({
                     <TableCell colSpan={columns.length} className="h-48 text-center">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                        <p className="text-sm text-muted-foreground">Loading bookings...</p>
+                        <p className="text-sm text-muted-foreground">{t("bkLoadingBookings")}</p>
                       </div>
                     </TableCell>
                   </TableRow>

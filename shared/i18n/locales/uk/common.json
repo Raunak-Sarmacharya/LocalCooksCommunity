@@ -280,5 +280,8 @@
   "userNotAuthenticated": "Користувач не автентифікований",
   "accountSyncRequired": "Потрібна синхронізація облікового запису.",
   "noStorageBookingId": "Немає ID бронювання зберігання",
-  "failedToFetchExceptions": "Не вдалося отримати винятки"
+  "failedToFetchExceptions": "Не вдалося отримати винятки",
+  "managerDashboard": "Панель менеджера",
+  "adminDashboardNamed": "Адмін-панель {name}",
+  "chefDashboardNamed": "Панель {name}"
 }

@@ -280,5 +280,8 @@
   "userNotAuthenticated": "Utilisateur non authentifié",
   "accountSyncRequired": "Synchronisation du compte requise.",
   "noStorageBookingId": "Aucun ID de réservation d'entreposage",
-  "failedToFetchExceptions": "Échec de la récupération des exceptions"
+  "failedToFetchExceptions": "Échec de la récupération des exceptions",
+  "managerDashboard": "Tableau de bord gestionnaire",
+  "adminDashboardNamed": "Tableau de bord admin de {name}",
+  "chefDashboardNamed": "Tableau de bord de {name}"
 }

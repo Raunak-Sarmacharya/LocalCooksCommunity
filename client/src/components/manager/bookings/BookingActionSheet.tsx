@@ -902,7 +902,7 @@ function BookingActionSheetContent({
                 )}
                 {captureCalc.approvedServiceFee > 0 && (
                   <div className="flex justify-between text-blue-600">
-                    <span>Local Cooks service fee</span>
+                    <span>{mt("localCooksServiceFee")}</span>
                     <span className="font-mono">+{formatPrice(captureCalc.approvedServiceFee)}</span>
                   </div>
                 )}
@@ -917,7 +917,7 @@ function BookingActionSheetContent({
                 </div>
                 {captureCalc.approvedServiceFee > 0 && (
                   <div className="flex justify-between text-blue-600">
-                    <span>Local Cooks service fee</span>
+                    <span>{mt("localCooksServiceFee")}</span>
                     <span className="font-mono">-{formatPrice(captureCalc.approvedServiceFee)}</span>
                   </div>
                 )}
@@ -977,7 +977,7 @@ function BookingActionSheetContent({
                 )}
                 {captureCalc.approvedServiceFee > 0 && (
                   <div className="flex justify-between text-muted-foreground">
-                    <span>Local Cooks service fee</span>
+                    <span>{mt("localCooksServiceFee")}</span>
                     <span className="font-mono">+{formatPrice(captureCalc.approvedServiceFee)}</span>
                   </div>
                 )}

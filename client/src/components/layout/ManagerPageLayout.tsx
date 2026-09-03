@@ -12,6 +12,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
+import { mt } from "@/i18n/manager";
 
 interface ManagerPageLayoutProps {
   children: (props: {
@@ -162,7 +163,7 @@ export function ManagerPageLayout({
                 handleKitchenChange={handleKitchenChange}
               />
               <div className="mt-auto px-6 py-4 border-t bg-muted/20">
-                <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold opacity-50">Local Cooks Community</p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold opacity-50">{mt("localCooksCommunity")}</p>
               </div>
             </div>
           </ScrollArea>
@@ -222,22 +223,22 @@ function SidebarContent({
   return (
     <div className="flex flex-col h-full space-y-4 py-8">
       <div className="px-6 pb-2">
-        <h1 className="text-xl font-bold tracking-tight">Manager Dashboard</h1>
-        <p className="text-xs text-muted-foreground mt-0.5">Control your inventory & bookings</p>
+        <h1 className="text-xl font-bold tracking-tight">{mt("managerDashboard")}</h1>
+        <p className="text-xs text-muted-foreground mt-0.5">{mt("controlYourInventoryAndBookings")}</p>
       </div>
 
       <Separator orientation="horizontal" className="mx-6 w-auto" />
 
       <div className="flex-1 px-6 space-y-6">
         <div>
-          <h3 className="text-lg font-semibold mb-1 tracking-tight">Filters</h3>
-          <p className="text-xs text-muted-foreground">Manage your view selection</p>
+          <h3 className="text-lg font-semibold mb-1 tracking-tight">{mt("filters")}</h3>
+          <p className="text-xs text-muted-foreground">{mt("manageYourViewSelection")}</p>
         </div>
 
         {/* Location Selector */}
         <div className="space-y-2">
           <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-            <Building2 className="w-3 h-3" /> Location
+            <Building2 className="w-3 h-3" /> {mt("location")}
           </Label>
           {isLoadingLocations ? (
             <Skeleton className="h-10 w-full" />
@@ -247,7 +248,7 @@ function SidebarContent({
               onValueChange={handleLocationChange}
             >
               <SelectTrigger className="w-full bg-background transition-all hover:bg-accent/50">
-                <SelectValue placeholder="Select Location" />
+                <SelectValue placeholder={mt("shellSelectLocation")} />
               </SelectTrigger>
               <SelectContent>
                 {locations.map((loc) => (
@@ -264,13 +265,13 @@ function SidebarContent({
         {showKitchenSelector && (
           <div className={cn("space-y-2 transition-opacity duration-200", !selectedLocationId ? "opacity-50 pointer-events-none" : "opacity-100")}>
             <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-              <UtensilsCrossed className="w-3 h-3" /> Kitchen
+              <UtensilsCrossed className="w-3 h-3" /> {mt("kitchen")}
             </Label>
             {isLoadingKitchens ? (
               <Skeleton className="h-10 w-full" />
             ) : availableKitchens.length === 0 && selectedLocationId ? (
               <div className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-md border border-destructive/20">
-                No kitchens found here.
+                {mt("noKitchensFoundHere")}
               </div>
             ) : (
               <Select
@@ -279,7 +280,7 @@ function SidebarContent({
                 disabled={!selectedLocationId || availableKitchens.length === 0}
               >
                 <SelectTrigger className="w-full bg-background transition-all hover:bg-accent/50">
-                  <SelectValue placeholder={selectedLocationId ? "Select Kitchen" : "Choose Location First"} />
+                  <SelectValue placeholder={selectedLocationId ? mt("selectKitchen") : mt("chooseLocationFirst")} />
                 </SelectTrigger>
                 <SelectContent>
                   {availableKitchens.map((kitchen) => (

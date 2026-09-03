@@ -1,5 +1,6 @@
 import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
+import { useTranslation } from "react-i18next";
 import { useMemo, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -65,7 +66,7 @@ import {
 } from "recharts";
 import BookingCalendarWidget from "./BookingCalendarWidget";
 import { TodaysKitchenBookings } from "@/components/manager/TodaysKitchenBookings";
-import { formatCurrency } from "@/lib/formatters";
+import { formatCurrency, formatTime as formatTimeLocale, formatDate as formatDateLocale } from "@/lib/formatters";
 import { tt } from "@/i18n/common-ns";
 
 
@@ -116,6 +117,7 @@ export default function KitchenDashboardOverview({
   
   // Get Firebase user for authentication
   const { user: firebaseUser } = useFirebaseAuth();
+  const { i18n } = useTranslation();
   
   // Create a map of location names to location IDs for filtering bookings
   const locationNameToIdMap = useMemo(() => {
@@ -474,7 +476,9 @@ export default function KitchenDashboardOverview({
 
   // Generate chart data for weekly bookings (next 7 days including today)
   const weeklyChartData = useMemo(() => {
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const days = Array.from({ length: 7 }, (_, i) =>
+      new Intl.DateTimeFormat(i18n.language, { weekday: "short" }).format(new Date(2024, 0, 7 + i))
+    );
     const today = new Date();
     // Set to start of day in local timezone to avoid timezone issues
     today.setHours(0, 0, 0, 0);
@@ -510,7 +514,7 @@ export default function KitchenDashboardOverview({
       });
     }
     return data;
-  }, [filteredBookings]);
+  }, [filteredBookings, i18n.language]);
 
   // Get recent bookings for the table
   const recentBookings = useMemo(() => {
@@ -528,7 +532,7 @@ export default function KitchenDashboardOverview({
       actions.push({
         type: 'info',
         icon: CalendarDays,
-        title: "Today's Sessions",
+        title: mt("todaysSessions"),
         count: dashboardMetrics.todayBookings,
         action: 'bookings'
       });
@@ -537,21 +541,8 @@ export default function KitchenDashboardOverview({
     return actions;
   }, [dashboardMetrics]);
 
-  // Format time helper
-  const formatTime = (time: string) => {
-    if (!time) return '';
-    const [hours, minutes] = time.split(':');
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour % 12 || 12;
-    return `${displayHour}:${minutes} ${ampm}`;
-  };
-
-  // Format date helper
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
+  const formatTime = (time: string) => formatTimeLocale(time, i18n.language);
+  const formatDate = (dateStr: string) => formatDateLocale(dateStr, 'short', undefined, i18n.language);
 
   // Calculate per-location metrics for summary cards
   const locationMetrics = useMemo(() => {
@@ -631,13 +622,14 @@ export default function KitchenDashboardOverview({
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex-1">
           <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
-            Welcome back{selectedLocation ? `, ${selectedLocation.name}` : ''} 👋
+            {selectedLocation
+              ? mt("welcomeBackNamed", { name: selectedLocation.name })
+              : mt("welcomeBack")}
           </h1>
           <p className="text-gray-500 mt-1">
-            {selectedLocation 
-              ? `Here's what's happening with ${selectedLocation.name} today`
-              : "Here's what's happening across all your locations today"
-            }
+            {selectedLocation
+              ? mt("heresWhatsHappeningWith", { name: selectedLocation.name })
+              : mt("heresWhatsHappeningAcross")}
           </p>
         </div>
         <div className="flex items-center gap-4">
@@ -671,11 +663,11 @@ export default function KitchenDashboardOverview({
           )}
           <div className="flex items-center gap-2 text-sm text-gray-500">
             <CalendarDays className="h-4 w-4" />
-            {new Date().toLocaleDateString('en-US', { 
-              weekday: 'long', 
-              year: 'numeric', 
-              month: 'long', 
-              day: 'numeric' 
+            {new Date().toLocaleDateString(i18n.language, {
+              weekday: 'long',
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric'
             })}
           </div>
         </div>
@@ -814,10 +806,10 @@ export default function KitchenDashboardOverview({
                         }}
                         cursor={{ fill: 'rgba(0,0,0,0.03)' }}
                         formatter={(value: any, name: string) => [value, name]}
-                        labelFormatter={(label) => `Day: ${label}`}
+                        labelFormatter={(label) => mt("chartDayLabel", { label })}
                       />
-                      <Bar dataKey="confirmed" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} name="Confirmed" />
-                      <Bar dataKey="pending" stackId="a" fill="#f59e0b" radius={[3, 3, 0, 0]} name="Pending" />
+                      <Bar dataKey="confirmed" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} name={mt("confirmed")} />
+                      <Bar dataKey="pending" stackId="a" fill="#f59e0b" radius={[3, 3, 0, 0]} name={mt("pending")} />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
@@ -928,7 +920,7 @@ export default function KitchenDashboardOverview({
                     )}
                   </p>
                   <p className="text-gray-500 text-xs mt-1">
-                    {stripeBalance?.hasStripeAccount ? 'Ready for payout' : 'No Stripe account'}
+                    {stripeBalance?.hasStripeAccount ? mt("readyForPayout") : mt("noStripeAccount")}
                   </p>
                 </div>
                 <DollarSign className="h-4 w-4 text-blue-500" />
@@ -1135,7 +1127,7 @@ export default function KitchenDashboardOverview({
                       </div>
                       <div>
                         <p className="font-medium text-gray-900">
-                          {booking.chefName || booking.portalUserName || 'Guest Chef'}
+                          {booking.chefName || booking.portalUserName || mt("guestChef")}
                         </p>
                         <div className="flex items-center gap-2 text-sm text-gray-500">
                           <span>{formatDate(booking.bookingDate)}</span>
@@ -1157,7 +1149,11 @@ export default function KitchenDashboardOverview({
                         {booking.status === 'confirmed' && <CheckCircle2 className="h-3 w-3 mr-1" />}
                         {booking.status === 'pending' && <Clock className="h-3 w-3 mr-1" />}
                         {booking.status === 'cancelled' && <XCircle className="h-3 w-3 mr-1" />}
-                        {booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
+                        {booking.status === 'confirmed' ? mt("confirmed")
+                          : booking.status === 'pending' ? mt("pending")
+                          : booking.status === 'cancelled' ? mt("cancelled")
+                          : booking.status === 'completed' ? mt("completed")
+                          : booking.status}
                       </Badge>
                       <ArrowRight className="h-4 w-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                     </div>
@@ -1219,7 +1215,7 @@ function CustomerManagementPanel({ bookings, applications, onNavigate, isLoading
 
     bookings.forEach((booking: any) => {
       const chefId = booking.chefId || booking.userId || booking.portalUserId;
-      const chefName = booking.chefName || booking.portalUserName || 'Guest Chef';
+      const chefName = booking.chefName || booking.portalUserName || mt("guestChef");
       const chefEmail = booking.chefEmail || booking.portalUserEmail;
       const chefPhone = booking.chefPhone || booking.portalUserPhone;
       
@@ -1405,10 +1401,10 @@ function CustomerManagementPanel({ bookings, applications, onNavigate, isLoading
   }, [chefs, searchQuery, activeFilter]);
 
   const filterTabs = [
-    { id: 'all' as const, label: 'All', count: chefs.length },
-    { id: 'pending' as const, label: 'Pending', count: chefs.filter(c => c.isPending).length },
-    { id: 'active' as const, label: 'Active', count: chefs.filter(c => c.isActive).length },
-    { id: 'recent' as const, label: 'Recent', count: chefs.filter(c => {
+    { id: 'all' as const, label: mt("filterAll"), count: chefs.length },
+    { id: 'pending' as const, label: mt("pending"), count: chefs.filter(c => c.isPending).length },
+    { id: 'active' as const, label: mt("active"), count: chefs.filter(c => c.isActive).length },
+    { id: 'recent' as const, label: mt("filterRecent"), count: chefs.filter(c => {
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       const date = c.applicationDate || c.lastBookingDate;

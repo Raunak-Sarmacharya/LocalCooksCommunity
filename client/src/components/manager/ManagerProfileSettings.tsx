@@ -167,13 +167,13 @@ export default function ManagerProfileSettings() {
     const getStripeStatusDisplay = (status: string) => {
         switch (status) {
             case 'complete':
-                return { label: 'Connected', color: 'bg-green-50 text-green-700 border-green-200' };
+                return { label: mt("connected"), color: 'bg-green-50 text-green-700 border-green-200' };
             case 'in_progress':
-                return { label: 'In Progress', color: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
+                return { label: mt("inProgress"), color: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
             case 'failed':
                 return { label: 'Failed', color: 'bg-red-50 text-red-700 border-red-200' };
             default:
-                return { label: 'Not Started', color: 'bg-slate-50 text-slate-600 border-slate-200' };
+                return { label: mt("notStarted"), color: 'bg-slate-50 text-slate-600 border-slate-200' };
         }
     };
 

@@ -261,7 +261,7 @@ function ResponseDialog({
         {isEscalated && (
           <Alert className="border-destructive">
             <AlertTriangle className="h-4 w-4 text-destructive" />
-            <AlertTitle>Payment Required</AlertTitle>
+            <AlertTitle>{t("dcStatusEscalated")}</AlertTitle>
             <AlertDescription>
               <p className="mb-3">
                 We were unable to automatically charge your saved payment method for this damage claim.
@@ -305,7 +305,7 @@ function ResponseDialog({
               {claim.status === 'charge_succeeded' ? 'Payment Completed' : 
                claim.status === 'rejected' ? 'Claim Rejected' :
                claim.status === 'expired' ? 'Claim Expired' :
-               claim.status === 'charge_failed' ? 'Payment Failed' : 'Claim Resolved'}
+               claim.status === 'charge_failed' ? t("shellStatusPaymentFailed") : t("dcClaimResolved")}
             </AlertTitle>
             <AlertDescription className="text-muted-foreground">
               {claim.status === 'charge_succeeded' 
@@ -865,7 +865,7 @@ export function PendingDamageClaims() {
       {pendingClaims.length > 0 && (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Action Required</AlertTitle>
+          <AlertTitle>{t("shellStatusActionRequired")}</AlertTitle>
           <AlertDescription>
             You have {pendingClaims.length} damage claim{pendingClaims.length > 1 ? 's' : ''} awaiting your response.
             Please review and respond before the deadline.

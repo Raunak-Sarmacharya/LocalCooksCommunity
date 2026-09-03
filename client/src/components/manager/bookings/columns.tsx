@@ -618,11 +618,11 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
                                         <span className="font-medium font-mono">{formatPrice(displayAmount)}</span>
                                     </div>
                                     <div className="flex justify-between gap-4 text-muted-foreground">
-                                        <span>Booking subtotal</span>
+                                        <span>{mt("bookingSubtotal")}</span>
                                         <span>{formatPrice(subtotal)}</span>
                                     </div>
                                     {taxAmount > 0 && <div className="flex justify-between gap-4 text-amber-600"><span>{mt("taxPercentLabel", { percent: taxRatePercent })}</span><span>+{formatPrice(taxAmount)}</span></div>}
-                                    {serviceFee > 0 && <div className="flex justify-between gap-4 text-blue-600"><span>Local Cooks service fee</span><span>-{formatPrice(serviceFee)}</span></div>}
+                                    {serviceFee > 0 && <div className="flex justify-between gap-4 text-blue-600"><span>{mt("localCooksServiceFee")}</span><span>-{formatPrice(serviceFee)}</span></div>}
                                     {stripeFee > 0 && (
                                         <div className="flex justify-between gap-4 text-red-600">
                                             <span>{mt("stripeFee2")}</span>
@@ -693,7 +693,7 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
                                 </div>
                                 {hasTransactionData && (
                                     <div className="flex justify-between gap-4 text-muted-foreground">
-                                        <span>Booking subtotal</span>
+                                        <span>{mt("bookingSubtotal")}</span>
                                         <span>{formatPrice(subtotal)}</span>
                                     </div>
                                 )}
@@ -705,7 +705,7 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
                                 )}
                                 {hasTransactionData && serviceFee > 0 && (
                                     <div className="flex justify-between gap-4 text-blue-600">
-                                        <span>Local Cooks service fee</span>
+                                        <span>{mt("localCooksServiceFee")}</span>
                                         <span>-{formatPrice(serviceFee)}</span>
                                     </div>
                                 )}

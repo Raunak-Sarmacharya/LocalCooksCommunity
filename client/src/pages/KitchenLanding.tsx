@@ -766,7 +766,7 @@ export default function KitchenLanding() {
                   transition={{ duration: 0.7, delay: 0.1 }}
                   className="text-2xl md:text-3xl lg:text-4xl font-bold text-[#1A1A1A] leading-tight mb-6"
                 >
-                  Every empty hour is{" "}
+                  {t("everyEmptyHourIs")}{" "}
                   <span className="relative inline-block">
                     <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-500 via-red-500 to-rose-600">{t("moneyWalkingOut")}</span>
                     <motion.svg 
@@ -800,13 +800,13 @@ export default function KitchenLanding() {
                   className="max-w-2xl mx-auto"
                 >
                   <p className="text-sm md:text-base lg:text-lg text-[#6B6B6B] leading-relaxed mb-8">
-                    That cold storage sitting quiet overnight?{" "}
+                    {t("coldStorageQuestion")}{" "}
                     <span className="font-semibold text-[#2C2C2C] block sm:inline whitespace-nowrap">{t("lostRevenue")}</span>
                     <br />
-                    Equipment collecting dust?{" "}
+                    {t("equipmentDustQuestion")}{" "}
                     <span className="font-semibold text-[#2C2C2C] block sm:inline whitespace-nowrap">{t("depreciatingAssets")}</span>
                     <br />
-                    Empty afternoon shifts?{" "}
+                    {t("emptyAfternoonQuestion")}{" "}
                     <span className="font-semibold text-[#2C2C2C] block sm:inline whitespace-nowrap">{t("missedIncome")}</span>
                   </p>
                   
@@ -1109,7 +1109,7 @@ export default function KitchenLanding() {
               <div className="text-center mb-12 md:mb-16">
                 <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-white/80 mb-4 px-4 py-2 bg-white/10 rounded-full">{t("listKitchenToday")}</span>
                 <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold mb-4">
-                  From Idle Space to Active Revenue in{" "}
+                  {t("idleSpaceToRevenueIn")}{" "}
                   <span className="relative inline-block">
                     <span className="text-white">{t("threeSteps")}</span>
                     <motion.svg 
@@ -1497,7 +1497,7 @@ export default function KitchenLanding() {
                         size="lg"
                         className="bg-white text-[#F51042] hover:bg-gray-100 font-bold py-6 px-10 text-base md:text-lg rounded-full shadow-2xl hover:shadow-white/30 hover:-translate-y-1 transition-all whitespace-nowrap"
                       >
-                        List Your Kitchen
+                        {t("listYourKitchenWord")}
                         <ArrowRight className="ml-2 h-5 w-5" />
                       </Button>
                     </div>
@@ -1520,7 +1520,7 @@ export default function KitchenLanding() {
             <FadeInSection>
               <div className="text-center mb-16">
                 <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-[#F51042] mb-4 px-4 py-2 bg-rose-100 rounded-full">
-                  Knowledge Base
+                  {t("knowledgeBase")}
                 </span>
                 <motion.h2
                   initial={{ opacity: 0, y: 30 }}
@@ -1529,7 +1529,7 @@ export default function KitchenLanding() {
                   transition={{ duration: 0.7, delay: 0.1 }}
                   className="text-2xl md:text-3xl lg:text-4xl font-bold text-[#1A1A1A] leading-tight mb-4"
                 >
-                  Run Your Kitchen{" "}
+                  {t("runYourKitchen")}{" "}
                   <span className="relative inline-block">
                     <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-500 via-red-500 to-rose-600">{t("withConfidence")}</span>
                     <motion.svg

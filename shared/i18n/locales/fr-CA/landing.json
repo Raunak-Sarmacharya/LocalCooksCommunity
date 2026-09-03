@@ -38,41 +38,41 @@
   "shareCulinarySkills": "Partagez vos talents culinaires avec la communauté",
   "pilotBenefits": {
     "0": {
-      "text": "Reduced platform fees during trial phase",
-      "description": "Save on service fees while we grow together"
+      "text": "Frais de plateforme réduits pendant la phase d’essai",
+      "description": "Économisez sur les frais de service pendant que nous grandissons ensemble"
     },
     "1": {
-      "text": "Priority placement in our app",
-      "description": "Get more visibility with featured chef status"
+      "text": "Placement prioritaire dans notre application",
+      "description": "Obtenez plus de visibilité avec le statut de chef en vedette"
     },
     "2": {
-      "text": "Free professional photography for your dishes",
-      "description": "High-quality images to showcase your food"
+      "text": "Photographie professionnelle gratuite pour vos plats",
+      "description": "Des images de haute qualité pour mettre en valeur votre nourriture"
     },
     "3": {
-      "text": "Personalized marketing support",
-      "description": "Custom promotions to attract more customers"
+      "text": "Soutien marketing personnalisé",
+      "description": "Promotions personnalisées pour attirer plus de clients"
     }
   },
   "chefBenefits": {
     "0": {
-      "title": "Financial Freedom",
-      "description": "Set your own prices and build a steady income stream without the overhead of a traditional restaurant"
+      "title": "Liberté financière",
+      "description": "Fixez vos propres prix et créez un revenu stable sans les frais d’un restaurant traditionnel"
     },
     "1": {
-      "title": "Flexible Schedule",
-      "description": "Work when you want – whether that's full-time, weekends only, or just a few days a month"
+      "title": "Horaire flexible",
+      "description": "Travaillez quand vous voulez – à temps plein, seulement les week-ends, ou quelques jours par mois"
     },
     "2": {
-      "title": "Weekly Payments",
-      "description": "Get paid directly to your bank account every week – no long waiting periods"
+      "title": "Paiements hebdomadaires",
+      "description": "Soyez payé directement dans votre compte bancaire chaque semaine – sans longs délais d’attente"
     },
     "3": {
-      "title": "Simple Tools",
-      "description": "Easy-to-use platform to manage orders, update your menu, and track your earnings"
+      "title": "Outils simples",
+      "description": "Plateforme facile à utiliser pour gérer les commandes, mettre à jour votre menu et suivre vos revenus"
     }
   },
-  "benefitsForCooks": "Benefits for Cooks",
-  "benefitsForCooksDesc": "Unlock your culinary potential and build a sustainable cooking business with Local Cooks",
-  "chefDeliveringImageAlt": "Chef delivering food to customer at doorstep"
+  "benefitsForCooks": "Avantages pour les cuisiniers",
+  "benefitsForCooksDesc": "Libérez votre potentiel culinaire et bâtissez une entreprise de cuisine durable avec Local Cooks",
+  "chefDeliveringImageAlt": "Chef livrant de la nourriture à un client à la porte"
 }

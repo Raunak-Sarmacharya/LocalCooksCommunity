@@ -355,13 +355,11 @@ export default function StripeConnectSetup() {
   // booking before the transfer lands in their account (see stripe-transfer-service).
   const payoutFeeNote = (
     <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 px-3 py-2.5 space-y-1">
-      <p className="text-xs font-medium text-slate-700 dark:text-slate-200">How payouts work</p>
+      <p className="text-xs font-medium text-slate-700 dark:text-slate-200">{mt("howPayoutsWork")}</p>
       <p className="text-xs text-slate-500 dark:text-slate-400">
-        Stripe's payment-processing fee is deducted from each booking before the
-        transfer reaches your Stripe account, so your payout is your rate plus the HST
-        you charge, minus that fee.
+        {mt("howPayoutsWorkBody")}
         {serviceFeePercentage
-          ? ` The Local Cooks service fee (${serviceFeePercentage}%) is paid by the chef on top of your rate — it is not taken from your payout.`
+          ? ` ${mt("howPayoutsWorkServiceFeeNote", { percent: serviceFeePercentage })}`
           : ""}
       </p>
     </div>
@@ -410,7 +408,7 @@ export default function StripeConnectSetup() {
           )}
         </Button>
         <p className="text-xs text-slate-400 text-center">
-          Secure setup opens in a new tab (~5 min)
+          {mt("secureSetupOpensNewTab")}
         </p>
         {payoutFeeNote}
       </div>
@@ -475,96 +473,96 @@ export default function StripeConnectSetup() {
           icon: CreditCard,
           iconBg: 'bg-blue-100 dark:bg-blue-950/30',
           iconColor: 'text-blue-600 dark:text-blue-400',
-          title: 'Start Stripe Setup',
-          subtitle: 'Enter your business & bank details',
-          buttonLabel: 'Start Stripe Setup',
-          buttonLoadingLabel: 'Opening Setup...',
+          title: mt("startStripeSetup"),
+          subtitle: mt("enterYourBusinessAndBankDetails"),
+          buttonLabel: mt("startStripeSetup"),
+          buttonLoadingLabel: mt("openingSetupEllipsis"),
           buttonIcon: CreditCard,
-          helpText: 'Opens Stripe in a new tab (~5 min)',
+          helpText: mt("opensStripeNewTabAbout5Min"),
           isActionable: true,
         },
         requires_additional_info: {
           icon: AlertCircle,
           iconBg: 'bg-amber-100 dark:bg-amber-950/30',
           iconColor: 'text-amber-600 dark:text-amber-400',
-          title: 'Additional Info Needed',
-          subtitle: 'Stripe needs more details to verify your account',
-          buttonLabel: 'Provide Additional Information',
-          buttonLoadingLabel: 'Opening Stripe...',
+          title: mt("additionalInfoNeeded"),
+          subtitle: mt("additionalInfoNeededDesc"),
+          buttonLabel: mt("provideAdditionalInformation"),
+          buttonLoadingLabel: mt("openingStripeEllipsis"),
           buttonIcon: ExternalLink,
-          helpText: 'Stripe requires additional documents or details',
+          helpText: mt("stripeRequiresAdditionalDocumentsOrDetails"),
           isActionable: true,
         },
         pending_verification: {
           icon: Clock,
           iconBg: 'bg-blue-100 dark:bg-blue-950/30',
           iconColor: 'text-blue-600 dark:text-blue-400',
-          title: 'Verification In Progress',
-          subtitle: 'Stripe is reviewing your details',
-          buttonLabel: 'Check Verification Status',
-          buttonLoadingLabel: 'Opening Stripe...',
+          title: mt("verificationInProgress"),
+          subtitle: mt("verificationInProgressDesc"),
+          buttonLabel: mt("checkVerificationStatus"),
+          buttonLoadingLabel: mt("openingStripeEllipsis"),
           buttonIcon: Clock,
-          helpText: 'Usually takes a few minutes — we\'ll auto-refresh',
+          helpText: mt("usuallyTakesFewMinutesAutoRefresh"),
           isActionable: true,
         },
         past_due: {
           icon: ShieldAlert,
           iconBg: 'bg-red-100 dark:bg-red-950/30',
           iconColor: 'text-red-600 dark:text-red-400',
-          title: 'Action Required',
-          subtitle: 'Overdue requirements — update now to avoid restrictions',
-          buttonLabel: 'Update Required Information',
-          buttonLoadingLabel: 'Opening Stripe...',
+          title: mt("actionRequired"),
+          subtitle: mt("overdueRequirementsUpdateNow"),
+          buttonLabel: mt("updateRequiredInformation"),
+          buttonLoadingLabel: mt("openingStripeEllipsis"),
           buttonIcon: ShieldAlert,
-          helpText: 'Your account may be restricted until resolved',
+          helpText: mt("accountMayBeRestrictedUntilResolved"),
           isActionable: true,
         },
         payouts_disabled: {
           icon: AlertCircle,
           iconBg: 'bg-amber-100 dark:bg-amber-950/30',
           iconColor: 'text-amber-600 dark:text-amber-400',
-          title: 'Add Bank Account',
-          subtitle: 'Charges enabled — add bank details to receive payouts',
-          buttonLabel: 'Add Bank Account',
-          buttonLoadingLabel: 'Opening Stripe...',
+          title: mt("addBankAccount"),
+          subtitle: mt("chargesEnabledAddBankForPayouts"),
+          buttonLabel: mt("addBankAccount"),
+          buttonLoadingLabel: mt("openingStripeEllipsis"),
           buttonIcon: ExternalLink,
-          helpText: 'You can accept payments but need a bank account for payouts',
+          helpText: mt("canAcceptPaymentsNeedBankForPayouts"),
           isActionable: true,
         },
         charges_disabled: {
           icon: AlertCircle,
           iconBg: 'bg-amber-100 dark:bg-amber-950/30',
           iconColor: 'text-amber-600 dark:text-amber-400',
-          title: 'Charges Not Enabled',
-          subtitle: 'Complete setup to accept payments',
-          buttonLabel: 'Complete Payment Setup',
-          buttonLoadingLabel: 'Opening Stripe...',
+          title: mt("chargesNotEnabled"),
+          subtitle: mt("completeSetupToAcceptPayments"),
+          buttonLabel: mt("completePaymentSetup"),
+          buttonLoadingLabel: mt("openingStripeEllipsis"),
           buttonIcon: CreditCard,
-          helpText: 'Additional verification needed to process charges',
+          helpText: mt("additionalVerificationNeededToProcessCharges"),
           isActionable: true,
         },
         rejected: {
           icon: Ban,
           iconBg: 'bg-red-100 dark:bg-red-950/30',
           iconColor: 'text-red-600 dark:text-red-400',
-          title: 'Account Rejected',
-          subtitle: 'Stripe could not verify your account',
-          buttonLabel: 'Contact Support',
-          buttonLoadingLabel: 'Opening...',
+          title: mt("accountRejected"),
+          subtitle: mt("stripeCouldNotVerifyYourAccount"),
+          buttonLabel: mt("contactSupport"),
+          buttonLoadingLabel: mt("openingEllipsis"),
           buttonIcon: ExternalLink,
-          helpText: 'Please contact support for assistance',
+          helpText: mt("pleaseContactSupportForAssistance"),
           isActionable: true,
         },
         incomplete: {
           icon: CreditCard,
           iconBg: 'bg-amber-100 dark:bg-amber-950/30',
           iconColor: 'text-amber-600 dark:text-amber-400',
-          title: 'Complete Setup',
-          subtitle: 'Finish onboarding to receive payments',
-          buttonLabel: 'Continue Stripe Setup',
-          buttonLoadingLabel: 'Opening Setup...',
+          title: mt("completeSetup"),
+          subtitle: mt("finishOnboardingToReceivePayments"),
+          buttonLabel: mt("continueStripeSetup"),
+          buttonLoadingLabel: mt("openingSetupEllipsis"),
           buttonIcon: CreditCard,
-          helpText: 'Opens Stripe in a new tab',
+          helpText: mt("opensStripeInANewTab"),
           isActionable: true,
         },
       };

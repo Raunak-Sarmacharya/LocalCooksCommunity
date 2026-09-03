@@ -1362,7 +1362,7 @@
   "whenYouCanCook": "Quand vous pouvez cuisiner",
   "whenYourSpaceHasMore": "Lorsque votre espace a plus de potentiel qu'un simple tarif horaire, nous vous aidons à l'exploiter. Proposez des abonnements mensuels fixes pour les entreprises alimentaires sérieuses, des ateliers et des événements à prix premium, ou des forfaits sur mesure pour les pop-ups et les équipes de restauration. Si vous pouvez imaginer le cas d'utilisation, nous pouvons vous aider à en fixer le prix, à le structurer et à le faire réserver.",
   "whereItIs": "Emplacement",
-  "withConfidence": "Avec Confiance",
+  "withConfidence": "avec confiance",
   "withLocalCooks": "(Avec LocalCooks)",
   "yearsExperience": "Années d'expérience",
   "yearsOfExperience": "Années d'expérience",
@@ -1382,5 +1382,13 @@
   "failedToFetchLocation": "Échec de la récupération de l'emplacement",
   "noLocationIdProvided": "Aucun ID d'emplacement fourni",
   "listYourCommercialKitchenSeo": "Inscrivez votre cuisine commerciale sur LocalCooks et générez des revenus pendant les heures creuses. Réservation automatisée, paiements Stripe, gestion de la conformité et protection contre les dommages. Desservant St. John's, Terre-Neuve.",
-  "cancellationPolicyDefaultMessage": "Les réservations ne peuvent pas être annulées dans les {hours} heures précédant l'heure prévue."
+  "cancellationPolicyDefaultMessage": "Les réservations ne peuvent pas être annulées dans les {hours} heures précédant l'heure prévue.",
+  "kitchenHstLine": "TVH ({percent} %)",
+  "localCooksServiceFeeLine": "Frais de service ({percent} %)",
+  "noKitchenHstDisclosure": "Aucune TVH n’a été facturée par cette cuisine.",
+  "requestToApplyAt": "Demande d’accès à {name}",
+  "requestToApplyProgress": "Demande d’accès",
+  "step2Of2KitchenDocs": "Documents de cuisine (étape 2)",
+  "everyEmptyHourIs": "Chaque heure vide, c’est",
+  "runYourKitchen": "Gérez votre cuisine"
 }

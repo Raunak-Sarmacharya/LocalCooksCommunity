@@ -150,20 +150,20 @@ function formatCurrency(cents: number): string {
 
 function getStatusBadge(status: string) {
   const statusConfig: Record<string, { variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning"; label: string }> = {
-    draft: { variant: "outline", label: "Draft" },
-    submitted: { variant: "warning", label: "Awaiting Chef Response" },
-    chef_accepted: { variant: "secondary", label: "Chef Accepted" },
-    chef_disputed: { variant: "destructive", label: "Disputed" },
-    under_review: { variant: "warning", label: "Under Admin Review" },
-    approved: { variant: "success", label: "Approved" },
-    partially_approved: { variant: "success", label: "Partially Approved" },
-    rejected: { variant: "destructive", label: "Rejected" },
-    charge_pending: { variant: "warning", label: "Charging..." },
-    charge_succeeded: { variant: "success", label: "Paid" },
-    charge_failed: { variant: "destructive", label: "Charge Failed" },
-    escalated: { variant: "destructive", label: "Escalated — Awaiting Chef Payment" },
-    resolved: { variant: "outline", label: "Resolved" },
-    expired: { variant: "outline", label: "Expired" },
+    draft: { variant: "outline", label: mt("draftStatus") },
+    submitted: { variant: "warning", label: mt("awaitingChefResponse") },
+    chef_accepted: { variant: "secondary", label: mt("chefAccepted") },
+    chef_disputed: { variant: "destructive", label: mt("disputed") },
+    under_review: { variant: "warning", label: mt("underAdminReview") },
+    approved: { variant: "success", label: mt("approved") },
+    partially_approved: { variant: "success", label: mt("partiallyApproved") },
+    rejected: { variant: "destructive", label: mt("rejected") },
+    charge_pending: { variant: "warning", label: mt("charging") },
+    charge_succeeded: { variant: "success", label: mt("paid") },
+    charge_failed: { variant: "destructive", label: mt("chargeFailed") },
+    escalated: { variant: "destructive", label: mt("escalatedAwaitingChefPayment") },
+    resolved: { variant: "outline", label: mt("resolved") },
+    expired: { variant: "outline", label: mt("expired") },
   };
 
   const config = statusConfig[status] || { variant: "outline" as const, label: status };
@@ -286,7 +286,7 @@ function ClaimCard({
               ) : (
                 <Download className="w-4 h-4 mr-1" />
               )}
-              Invoice
+              {mt("invoice")}
             </Button>
           )}
         </div>
@@ -321,12 +321,12 @@ interface RecentBooking {
 
 // Evidence types for the form
 const EVIDENCE_TYPE_OPTIONS = [
-  { value: 'photo_before', label: 'Before Photo', icon: Camera },
-  { value: 'photo_after', label: 'After Photo', icon: Camera },
-  { value: 'receipt', label: 'Receipt', icon: Receipt },
-  { value: 'invoice', label: 'Invoice', icon: FileText },
-  { value: 'document', label: 'Document', icon: FileText },
-  { value: 'third_party_report', label: 'Third Party Report', icon: FileText },
+  { value: 'photo_before', label: mt("beforePhoto"), icon: Camera },
+  { value: 'photo_after', label: mt("afterPhoto"), icon: Camera },
+  { value: 'receipt', label: mt("receipt"), icon: Receipt },
+  { value: 'invoice', label: mt("invoice"), icon: FileText },
+  { value: 'document', label: mt("documentLabel"), icon: FileText },
+  { value: 'third_party_report', label: mt("thirdPartyReport"), icon: FileText },
 ];
 
 // Pending evidence item (before claim is created)
@@ -666,7 +666,7 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
                   <div className="border-t pt-3 space-y-2">
                     <div className="flex items-center justify-between">
                       <Label className="text-sm font-medium">{mt("damagedEquipment")}</Label>
-                      <span className="text-xs text-muted-foreground">Optional — select if applicable</span>
+                      <span className="text-xs text-muted-foreground">{mt("optionalSelectIfApplicable")}</span>
                     </div>
                     <div className="space-y-1.5">
                       {selectedBooking.equipment.map((eq) => {
@@ -1155,7 +1155,7 @@ export function DamageClaimQueue() {
                     ) : (
                       <Download className="h-4 w-4 mr-2" />
                     )}
-                    Download Invoice
+                    {mt("downloadInvoice")}
                   </DropdownMenuItem>
                 </>
               )}
