@@ -4685,7 +4685,7 @@
       "file_type": "code",
       "norm_label": "kitchenpayoutstatementbreakdownprops",
       "source_file": "client/src/components/booking/BookingPricingBreakdown.tsx",
-      "source_location": "L109"
+      "source_location": "L100"
     },
     {
       "id": "client_src_components_booking_bookingpricingbreakdown_kitchenpayoutsummarytilesprops",
@@ -4698,7 +4698,7 @@
       "file_type": "code",
       "norm_label": "kitchenpayoutsummarytilesprops",
       "source_file": "client/src/components/booking/BookingPricingBreakdown.tsx",
-      "source_location": "L177"
+      "source_location": "L162"
     },
     {
       "id": "client_src_components_booking_bookingpricingbreakdown_lineprops",
@@ -21357,7 +21357,7 @@
       "file_type": "code",
       "norm_label": "kitchenpayoutsummarytiles()",
       "source_file": "client/src/components/booking/BookingPricingBreakdown.tsx",
-      "source_location": "L187"
+      "source_location": "L172"
     },
     {
       "id": "client_src_components_manager_revenue_columns_getinvoicecolumns",
@@ -23517,7 +23517,7 @@
       "file_type": "code",
       "norm_label": "generatedamageclaiminvoicepdf()",
       "source_file": "server/services/invoice-service.ts",
-      "source_location": "L1030"
+      "source_location": "L872"
     },
     {
       "id": "server_services_invoice_service_generatestorageinvoicepdf",
@@ -23529,7 +23529,7 @@
       "file_type": "code",
       "norm_label": "generatestorageinvoicepdf()",
       "source_file": "server/services/invoice-service.ts",
-      "source_location": "L770"
+      "source_location": "L612"
     },
     {
       "id": "server_services_stripe_service_getstripepaymentamounts",
@@ -24813,7 +24813,7 @@
       "file_type": "code",
       "norm_label": "chefbookingreceiptbreakdown()",
       "source_file": "client/src/components/booking/BookingPricingBreakdown.tsx",
-      "source_location": "L53"
+      "source_location": "L52"
     },
     {
       "id": "client_src_components_booking_bookingpricingbreakdown_kitchenpayoutstatementbreakdown",
@@ -24825,7 +24825,7 @@
       "file_type": "code",
       "norm_label": "kitchenpayoutstatementbreakdown()",
       "source_file": "client/src/components/booking/BookingPricingBreakdown.tsx",
-      "source_location": "L117"
+      "source_location": "L108"
     },
     {
       "id": "server_services_invoice_service_generateinvoicepdf",
@@ -27333,7 +27333,7 @@
       "file_type": "code",
       "norm_label": "addpaymenthistory()",
       "source_file": "server/services/payment-transactions-service.ts",
-      "source_location": "L893"
+      "source_location": "L890"
     },
     {
       "id": "server_services_payment_transactions_service_createpaymenttransaction",
@@ -27357,7 +27357,7 @@
       "file_type": "code",
       "norm_label": "findpaymenttransactionbybooking()",
       "source_file": "server/services/payment-transactions-service.ts",
-      "source_location": "L857"
+      "source_location": "L854"
     },
     {
       "id": "server_services_payment_transactions_service_findpaymenttransactionbyid",
@@ -27369,7 +27369,7 @@
       "file_type": "code",
       "norm_label": "findpaymenttransactionbyid()",
       "source_file": "server/services/payment-transactions-service.ts",
-      "source_location": "L841"
+      "source_location": "L838"
     },
     {
       "id": "server_services_payment_transactions_service_findpaymenttransactionbyintentid",
@@ -27381,7 +27381,7 @@
       "file_type": "code",
       "norm_label": "findpaymenttransactionbyintentid()",
       "source_file": "server/services/payment-transactions-service.ts",
-      "source_location": "L825"
+      "source_location": "L822"
     },
     {
       "id": "server_services_payment_transactions_service_findpaymenttransactionbymetadata",
@@ -27393,7 +27393,7 @@
       "file_type": "code",
       "norm_label": "findpaymenttransactionbymetadata()",
       "source_file": "server/services/payment-transactions-service.ts",
-      "source_location": "L875"
+      "source_location": "L872"
     },
     {
       "id": "server_services_payment_transactions_service_getadminpaymenttransactions",
@@ -27405,7 +27405,7 @@
       "file_type": "code",
       "norm_label": "getadminpaymenttransactions()",
       "source_file": "server/services/payment-transactions-service.ts",
-      "source_location": "L1258"
+      "source_location": "L1255"
     },
     {
       "id": "server_services_payment_transactions_service_getchefpaymenttransactions",
@@ -27417,7 +27417,7 @@
       "file_type": "code",
       "norm_label": "getchefpaymenttransactions()",
       "source_file": "server/services/payment-transactions-service.ts",
-      "source_location": "L1025"
+      "source_location": "L1022"
     },
     {
       "id": "server_services_payment_transactions_service_getmanagerpaymenttransactions",
@@ -27429,7 +27429,7 @@
       "file_type": "code",
       "norm_label": "getmanagerpaymenttransactions()",
       "source_file": "server/services/payment-transactions-service.ts",
-      "source_location": "L951"
+      "source_location": "L948"
     },
     {
       "id": "server_services_payment_transactions_service_getpaymenthistory",
@@ -27441,7 +27441,7 @@
       "file_type": "code",
       "norm_label": "getpaymenthistory()",
       "source_file": "server/services/payment-transactions-service.ts",
-      "source_location": "L935"
+      "source_location": "L932"
     },
     {
       "id": "server_services_payment_transactions_service_syncexistingpaymenttransactionsfromstripe",
@@ -27453,7 +27453,7 @@
       "file_type": "code",
       "norm_label": "syncexistingpaymenttransactionsfromstripe()",
       "source_file": "server/services/payment-transactions-service.ts",
-      "source_location": "L661"
+      "source_location": "L658"
     },
     {
       "id": "server_services_payment_transactions_service_syncstripeamountstobookings",
@@ -27465,7 +27465,7 @@
       "file_type": "code",
       "norm_label": "syncstripeamountstobookings()",
       "source_file": "server/services/payment-transactions-service.ts",
-      "source_location": "L460"
+      "source_location": "L457"
     },
     {
       "id": "server_services_payment_transactions_service_syncstripefees",
@@ -27477,7 +27477,7 @@
       "file_type": "code",
       "norm_label": "syncstripefees()",
       "source_file": "server/services/payment-transactions-service.ts",
-      "source_location": "L1141"
+      "source_location": "L1138"
     },
     {
       "id": "server_services_payment_transactions_service_updatepaymenttransaction",
@@ -54830,26 +54830,26 @@
       "source_file": "../../../src/lib/firebase.ts"
     },
     {
-      "id": "package_devdependencies_cross_env",
-      "label": "cross-env",
+      "id": "package_devdependencies_autoprefixer",
+      "label": "autoprefixer",
       "_origin": "ast",
       "community": 199,
-      "community_name": "cross-env",
+      "community_name": "autoprefixer",
       "file_type": "code",
-      "norm_label": "cross-env",
+      "norm_label": "autoprefixer",
       "source_file": "package.json",
-      "source_location": "L187"
+      "source_location": "L186"
     },
     {
-      "id": "cross_env",
-      "label": "cross-env",
+      "id": "autoprefixer",
+      "label": "autoprefixer",
       "_origin": "ast",
       "community": 199,
-      "community_name": "cross-env",
+      "community_name": "autoprefixer",
       "file_type": "concept",
-      "norm_label": "cross-env",
+      "norm_label": "autoprefixer",
       "source_file": "package.json",
-      "source_location": "L187"
+      "source_location": "L186"
     },
     {
       "id": "client_src_components_application_applicationformcontext",
@@ -60201,6 +60201,28 @@
       "source_location": "L120"
     },
     {
+      "id": "package_dependencies_hookform_resolvers",
+      "label": "@hookform/resolvers",
+      "_origin": "ast",
+      "community": 302,
+      "community_name": "@hookform/resolvers",
+      "file_type": "code",
+      "norm_label": "@hookform/resolvers",
+      "source_file": "package.json",
+      "source_location": "L60"
+    },
+    {
+      "id": "hookform_resolvers",
+      "label": "@hookform/resolvers",
+      "_origin": "ast",
+      "community": 302,
+      "community_name": "@hookform/resolvers",
+      "file_type": "concept",
+      "norm_label": "@hookform/resolvers",
+      "source_file": "package.json",
+      "source_location": "L60"
+    },
+    {
       "id": "package_dependencies_clsx",
       "label": "clsx",
       "_origin": "ast",
@@ -60265,28 +60287,6 @@
       "norm_label": "@aws-sdk/s3-request-presigner",
       "source_file": "package.json",
       "source_location": "L57"
-    },
-    {
-      "id": "package_dependencies_aws_sdk_client_s3",
-      "label": "@aws-sdk/client-s3",
-      "_origin": "ast",
-      "community": 308,
-      "community_name": "@aws-sdk/client-s3",
-      "file_type": "code",
-      "norm_label": "@aws-sdk/client-s3",
-      "source_file": "package.json",
-      "source_location": "L56"
-    },
-    {
-      "id": "aws_sdk_client_s3",
-      "label": "@aws-sdk/client-s3",
-      "_origin": "ast",
-      "community": 308,
-      "community_name": "@aws-sdk/client-s3",
-      "file_type": "concept",
-      "norm_label": "@aws-sdk/client-s3",
-      "source_file": "package.json",
-      "source_location": "L56"
     },
     {
       "id": "package_dependencies_radix_ui_react_tooltip",
@@ -80820,15 +80820,15 @@
       "source_location": "L167"
     },
     {
-      "id": "package_devdependencies_autoprefixer",
-      "label": "autoprefixer",
+      "id": "package_devdependencies_cross_env",
+      "label": "cross-env",
       "_origin": "ast",
       "community": 53,
       "community_name": "devDependencies",
       "file_type": "code",
-      "norm_label": "autoprefixer",
+      "norm_label": "cross-env",
       "source_file": "package.json",
-      "source_location": "L186"
+      "source_location": "L187"
     },
     {
       "id": "package_devdependencies_drizzle_kit",
@@ -80996,15 +80996,15 @@
       "source_location": "L204"
     },
     {
-      "id": "autoprefixer",
-      "label": "autoprefixer",
+      "id": "cross_env",
+      "label": "cross-env",
       "_origin": "ast",
       "community": 53,
       "community_name": "devDependencies",
       "file_type": "concept",
-      "norm_label": "autoprefixer",
+      "norm_label": "cross-env",
       "source_file": "package.json",
-      "source_location": "L186"
+      "source_location": "L187"
     },
     {
       "id": "drizzle_kit",
@@ -85860,6 +85860,17 @@
       "source_location": "L55"
     },
     {
+      "id": "package_dependencies_aws_sdk_client_s3",
+      "label": "@aws-sdk/client-s3",
+      "_origin": "ast",
+      "community": 67,
+      "community_name": "dependencies",
+      "file_type": "code",
+      "norm_label": "@aws-sdk/client-s3",
+      "source_file": "package.json",
+      "source_location": "L56"
+    },
+    {
       "id": "package_dependencies_cors",
       "label": "cors",
       "_origin": "ast",
@@ -85880,17 +85891,6 @@
       "norm_label": "express-rate-limit",
       "source_file": "package.json",
       "source_location": "L122"
-    },
-    {
-      "id": "package_dependencies_hookform_resolvers",
-      "label": "@hookform/resolvers",
-      "_origin": "ast",
-      "community": 67,
-      "community_name": "dependencies",
-      "file_type": "code",
-      "norm_label": "@hookform/resolvers",
-      "source_file": "package.json",
-      "source_location": "L60"
     },
     {
       "id": "package_dependencies_lucide_react",
@@ -86003,6 +86003,17 @@
       "source_location": "L102"
     },
     {
+      "id": "aws_sdk_client_s3",
+      "label": "@aws-sdk/client-s3",
+      "_origin": "ast",
+      "community": 67,
+      "community_name": "dependencies",
+      "file_type": "concept",
+      "norm_label": "@aws-sdk/client-s3",
+      "source_file": "package.json",
+      "source_location": "L56"
+    },
+    {
       "id": "cors",
       "label": "cors",
       "_origin": "ast",
@@ -86023,17 +86034,6 @@
       "norm_label": "express-rate-limit",
       "source_file": "package.json",
       "source_location": "L122"
-    },
-    {
-      "id": "hookform_resolvers",
-      "label": "@hookform/resolvers",
-      "_origin": "ast",
-      "community": 67,
-      "community_name": "dependencies",
-      "file_type": "concept",
-      "norm_label": "@hookform/resolvers",
-      "source_file": "package.json",
-      "source_location": "L60"
     },
     {
       "id": "lucide_react",
@@ -102242,7 +102242,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "client/src/components/booking/BookingPricingBreakdown.tsx",
-      "source_location": "L63",
+      "source_location": "L61",
       "weight": 1.0
     },
     {
@@ -102254,7 +102254,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "client/src/components/booking/BookingPricingBreakdown.tsx",
-      "source_location": "L67",
+      "source_location": "L65",
       "weight": 1.0
     },
     {
@@ -102266,7 +102266,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "client/src/components/booking/BookingPricingBreakdown.tsx",
-      "source_location": "L124",
+      "source_location": "L115",
       "weight": 1.0
     },
     {
@@ -102278,7 +102278,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "client/src/components/booking/BookingPricingBreakdown.tsx",
-      "source_location": "L133",
+      "source_location": "L124",
       "weight": 1.0
     },
     {
@@ -102290,7 +102290,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "client/src/components/booking/BookingPricingBreakdown.tsx",
-      "source_location": "L216",
+      "source_location": "L201",
       "weight": 1.0
     },
     {
@@ -102302,7 +102302,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "client/src/components/booking/BookingPricingBreakdown.tsx",
-      "source_location": "L229",
+      "source_location": "L214",
       "weight": 1.0
     },
     {
@@ -129170,7 +129170,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "server/services/invoice-service.ts",
-      "source_location": "L568",
+      "source_location": "L503",
       "weight": 1.0
     },
     {
@@ -129182,7 +129182,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "server/services/invoice-service.ts",
-      "source_location": "L685",
+      "source_location": "L561",
       "weight": 1.0
     },
     {
@@ -130610,7 +130610,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "server/services/payment-transactions-service.ts",
-      "source_location": "L799",
+      "source_location": "L796",
       "weight": 1.0
     },
     {
@@ -130622,7 +130622,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "server/services/payment-transactions-service.ts",
-      "source_location": "L802",
+      "source_location": "L799",
       "weight": 1.0
     },
     {
@@ -130634,7 +130634,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "server/services/payment-transactions-service.ts",
-      "source_location": "L1225",
+      "source_location": "L1222",
       "weight": 1.0
     },
     {
@@ -130646,7 +130646,7 @@
       "confidence_score": 1.0,
       "context": "call",
       "source_file": "server/services/payment-transactions-service.ts",
-      "source_location": "L392",
+      "source_location": "L389",
       "weight": 1.0
     },
     {
@@ -137644,7 +137644,7 @@
       "context": "import",
       "deferred": true,
       "source_file": "server/services/invoice-service.ts",
-      "source_location": "L1053",
+      "source_location": "L895",
       "weight": 1.0
     },
     {
@@ -254583,7 +254583,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "client/src/components/booking/BookingPricingBreakdown.tsx",
-      "source_location": "L109",
+      "source_location": "L100",
       "weight": 1.0
     },
     {
@@ -254594,7 +254594,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "client/src/components/booking/BookingPricingBreakdown.tsx",
-      "source_location": "L117",
+      "source_location": "L108",
       "weight": 1.0
     },
     {
@@ -254605,7 +254605,18 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "client/src/components/booking/BookingPricingBreakdown.tsx",
-      "source_location": "L177",
+      "source_location": "L162",
+      "weight": 1.0
+    },
+    {
+      "source": "client_src_components_booking_bookingpricingbreakdown",
+      "target": "client_src_components_booking_bookingpricingbreakdown_kitchenpayoutsummarytiles",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "client/src/components/booking/BookingPricingBreakdown.tsx",
+      "source_location": "L172",
       "weight": 1.0
     },
     {
@@ -254617,17 +254628,6 @@
       "confidence_score": 1.0,
       "source_file": "client/src/components/booking/BookingPricingBreakdown.tsx",
       "source_location": "L18",
-      "weight": 1.0
-    },
-    {
-      "source": "client_src_components_booking_bookingpricingbreakdown",
-      "target": "client_src_components_booking_bookingpricingbreakdown_kitchenpayoutsummarytiles",
-      "relation": "contains",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "client/src/components/booking/BookingPricingBreakdown.tsx",
-      "source_location": "L187",
       "weight": 1.0
     },
     {
@@ -254649,7 +254649,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "client/src/components/booking/BookingPricingBreakdown.tsx",
-      "source_location": "L53",
+      "source_location": "L52",
       "weight": 1.0
     },
     {
@@ -305353,17 +305353,6 @@
     },
     {
       "source": "server_services_invoice_service",
-      "target": "server_services_invoice_service_generatedamageclaiminvoicepdf",
-      "relation": "contains",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "server/services/invoice-service.ts",
-      "source_location": "L1030",
-      "weight": 1.0
-    },
-    {
-      "source": "server_services_invoice_service",
       "target": "server_services_invoice_service_generateinvoicepdf",
       "relation": "contains",
       "_origin": "ast",
@@ -305381,7 +305370,18 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/services/invoice-service.ts",
-      "source_location": "L770",
+      "source_location": "L612",
+      "weight": 1.0
+    },
+    {
+      "source": "server_services_invoice_service",
+      "target": "server_services_invoice_service_generatedamageclaiminvoicepdf",
+      "relation": "contains",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "server/services/invoice-service.ts",
+      "source_location": "L872",
       "weight": 1.0
     },
     {
@@ -306096,7 +306096,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/services/payment-transactions-service.ts",
-      "source_location": "L1025",
+      "source_location": "L1022",
       "weight": 1.0
     },
     {
@@ -306118,7 +306118,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/services/payment-transactions-service.ts",
-      "source_location": "L1141",
+      "source_location": "L1138",
       "weight": 1.0
     },
     {
@@ -306140,7 +306140,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/services/payment-transactions-service.ts",
-      "source_location": "L1258",
+      "source_location": "L1255",
       "weight": 1.0
     },
     {
@@ -306184,7 +306184,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/services/payment-transactions-service.ts",
-      "source_location": "L460",
+      "source_location": "L457",
       "weight": 1.0
     },
     {
@@ -306206,7 +306206,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/services/payment-transactions-service.ts",
-      "source_location": "L661",
+      "source_location": "L658",
       "weight": 1.0
     },
     {
@@ -306217,7 +306217,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/services/payment-transactions-service.ts",
-      "source_location": "L825",
+      "source_location": "L822",
       "weight": 1.0
     },
     {
@@ -306228,7 +306228,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/services/payment-transactions-service.ts",
-      "source_location": "L841",
+      "source_location": "L838",
       "weight": 1.0
     },
     {
@@ -306239,7 +306239,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/services/payment-transactions-service.ts",
-      "source_location": "L857",
+      "source_location": "L854",
       "weight": 1.0
     },
     {
@@ -306250,7 +306250,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/services/payment-transactions-service.ts",
-      "source_location": "L875",
+      "source_location": "L872",
       "weight": 1.0
     },
     {
@@ -306261,7 +306261,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/services/payment-transactions-service.ts",
-      "source_location": "L893",
+      "source_location": "L890",
       "weight": 1.0
     },
     {
@@ -306272,7 +306272,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/services/payment-transactions-service.ts",
-      "source_location": "L935",
+      "source_location": "L932",
       "weight": 1.0
     },
     {
@@ -306283,7 +306283,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server/services/payment-transactions-service.ts",
-      "source_location": "L951",
+      "source_location": "L948",
       "weight": 1.0
     },
     {
@@ -329989,5 +329989,5 @@
       "source_file": "attached_assets/image_1747073611142.png"
     }
   ],
-  "built_at_commit": "4911484370bfe672899e026fc005c5aaf9fb1627"
+  "built_at_commit": "a130fffd868c76d0f80eea6fe12b9608d8056950"
 }

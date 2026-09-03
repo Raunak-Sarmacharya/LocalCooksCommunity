@@ -2382,9 +2382,9 @@
     "semantic_hash": ""
   },
   "client/src/pages/BookingDetailsPage.tsx": {
-    "mtime": 1788448354.2708087,
-    "seen": 1788451208.605126,
-    "ast_hash": "ce83578f2bbcb23f9a00eb158dbfed92",
+    "mtime": 1788455138.220202,
+    "seen": 1788455164.728673,
+    "ast_hash": "5ebaa7df4988401c50b362b591c63d4e",
     "semantic_hash": ""
   },
   "client/src/pages/ChefLanding.tsx": {
@@ -3564,9 +3564,9 @@
     "semantic_hash": "dc46c32d597dce325670f78c72046195"
   },
   "server/services/invoice-service.ts": {
-    "mtime": 1788448680.6828344,
-    "seen": 1788451208.609063,
-    "ast_hash": "375d6f31c4d20c2755ce627193c701c2",
+    "mtime": 1788454988.4985723,
+    "seen": 1788455164.7323031,
+    "ast_hash": "853df047998b471d9900d13bb9787633",
     "semantic_hash": ""
   },
   "server/services/kitchen-checkout-service.ts": {
@@ -3606,9 +3606,9 @@
     "semantic_hash": "021882ee97385855ead9c956dace10da"
   },
   "server/services/payment-transactions-service.ts": {
-    "mtime": 1788446402.0495613,
-    "seen": 1788451208.609186,
-    "ast_hash": "5c5b024345ca7d69e39ed6f69fa4f4ad",
+    "mtime": 1788452223.5505059,
+    "seen": 1788455164.732414,
+    "ast_hash": "5571042074ca18429871c8dc943512bb",
     "semantic_hash": ""
   },
   "server/services/payout-processing-service.ts": {
@@ -3810,9 +3810,9 @@
     "semantic_hash": ""
   },
   "shared/i18n/locales/en-CA/chef.json": {
-    "mtime": 1788445123.8850694,
-    "seen": 1788451208.609792,
-    "ast_hash": "55b41eb6980247a1aa71373fdfb7a935",
+    "mtime": 1788455149.0043235,
+    "seen": 1788455164.733093,
+    "ast_hash": "4235ca2854d0fc2ecd612bdc3009892d",
     "semantic_hash": ""
   },
   "shared/i18n/locales/en-CA/common.json": {
@@ -3834,9 +3834,9 @@
     "semantic_hash": "0962956601b6f6f2a524f861036cdc84"
   },
   "shared/i18n/locales/en-CA/kitchen.json": {
-    "mtime": 1788444336.2825906,
-    "seen": 1788451208.609868,
-    "ast_hash": "70cef6f87c10181ebd0df33fa0952496",
+    "mtime": 1788455149.1286294,
+    "seen": 1788455164.73316,
+    "ast_hash": "fac806ded9076728b8a19f5ae635c173",
     "semantic_hash": ""
   },
   "shared/i18n/locales/en-CA/landing.json": {
@@ -4890,9 +4890,9 @@
     "semantic_hash": ""
   },
   "client/src/components/kitchen-application/BookingPriceSummary.tsx": {
-    "mtime": 1788442837.4781518,
-    "seen": 1788442959.328437,
-    "ast_hash": "aaab1d4b0d12223f8870b971de824d6d",
+    "mtime": 1788455128.6668048,
+    "seen": 1788455164.722017,
+    "ast_hash": "c09688751e6c514a5384407fd01eff27",
     "semantic_hash": ""
   },
   "client/src/lib/persisted-booking-prefs.ts": {
@@ -5118,21 +5118,21 @@
     "semantic_hash": ""
   },
   "server/services/manager-payout-math.test.ts": {
-    "mtime": 1788448649.6633692,
-    "seen": 1788451208.609083,
-    "ast_hash": "609132922aab225db0462fc035686e60",
+    "mtime": 1788452238.1587768,
+    "seen": 1788455164.732322,
+    "ast_hash": "b8832168b7b02d671e3ba99e8e9e0def",
     "semantic_hash": ""
   },
   "server/services/manager-payout-math.ts": {
-    "mtime": 1788448649.58317,
-    "seen": 1788451208.609084,
-    "ast_hash": "b2bd874ffc2cde3ddbee0c22998773e9",
+    "mtime": 1788452208.5668795,
+    "seen": 1788455164.7323232,
+    "ast_hash": "abd706eb82fa9de329eec79f1c68c88c",
     "semantic_hash": ""
   },
   "client/src/components/booking/BookingPricingBreakdown.tsx": {
-    "mtime": 1788449341.3720615,
-    "seen": 1788451208.5966668,
-    "ast_hash": "5e83d47880aa59d58aab45b9d9d917ac",
+    "mtime": 1788455095.549465,
+    "seen": 1788455164.720257,
+    "ast_hash": "bb0d64399514a3cd081a85fdfee6d947",
     "semantic_hash": ""
   },
   "shared/booking-pricing-breakdown.test.ts": {

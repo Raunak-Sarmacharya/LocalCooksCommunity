@@ -1,7 +1,7 @@
 # Graph Report - LocalCooksCommunity  (2026-09-03)
 
 ## Corpus Check
-- 805 files · ~1,744,935 words
+- 805 files · ~1,744,239 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `49114843`
+- Built from commit: `a130fffd`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -209,7 +209,7 @@
 - express.d.ts
 - Chef Kitchen Application System - Implementation Plan
 - /src/lib/firebase.ts
-- cross-env
+- autoprefixer
 - firebase-admin
 - routes/manager.ts
 - KitchenBookingCalendar.tsx
@@ -312,11 +312,11 @@
 - zod
 - zod-validation-error
 - embla-carousel-react
+- @hookform/resolvers
 - mapRowToTransaction
 - clsx
 - esbuild
 - @aws-sdk/s3-request-presigner
-- @aws-sdk/client-s3
 - @radix-ui/react-tooltip
 - stripe-checkout-transactions-service.ts
 - ApplicationDTO Null vs Array Assignability
@@ -742,7 +742,7 @@ Nodes (5): ChefOverviewProps, ApplicationRepository, Application, UpdateApplicat
 
 ### Community 53 - "devDependencies"
 Cohesion: 0.06
-Nodes (33): autoprefixer, drizzle-kit, eslint-plugin-react, eslint-plugin-react-hooks, firebase-tools, jsdom, devDependencies, autoprefixer (+25 more)
+Nodes (33): cross-env, drizzle-kit, eslint-plugin-react, eslint-plugin-react-hooks, firebase-tools, jsdom, devDependencies, cross-env (+25 more)
 
 ### Community 54 - "ChefResourcesPage_en.tsx"
 Cohesion: 0.03
@@ -798,7 +798,7 @@ Nodes (87): ChangePassword(), LoginForm(), RegisterForm(), VerificationDebug(), 
 
 ### Community 67 - "dependencies"
 Cohesion: 0.07
-Nodes (27): cors, express-rate-limit, @hookform/resolvers, lucide-react, next-themes, dependencies, cors, express-rate-limit (+19 more)
+Nodes (27): @aws-sdk/client-s3, cors, express-rate-limit, lucide-react, next-themes, dependencies, @aws-sdk/client-s3, cors (+19 more)
 
 ### Community 68 - "ChefSetupPage.tsx"
 Cohesion: 0.06

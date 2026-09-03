@@ -38,11 +38,10 @@ export type ChefBookingReceiptBreakdownProps = BookingPricingBreakdownInput & {
   currency?: string;
   kitchenName?: string;
   className?: string;
-  /** Kitchen HST line label, e.g. "HST (15%) charged by Harbour Kitchen" */
+  /** Kitchen HST line label, e.g. "HST (15%)" */
   kitchenHstLabel?: string;
   platformFeeLabel?: string;
   totalLabel?: string;
-  noHstDisclosure?: string;
 };
 
 /**
@@ -52,12 +51,11 @@ export type ChefBookingReceiptBreakdownProps = BookingPricingBreakdownInput & {
  */
 export function ChefBookingReceiptBreakdown({
   currency = "CAD",
-  kitchenName,
+  kitchenName: _kitchenName,
   className,
   kitchenHstLabel,
   platformFeeLabel,
-  totalLabel = "Total paid",
-  noHstDisclosure = "No HST was charged by this kitchen.",
+  totalLabel = "Total",
   ...input
 }: ChefBookingReceiptBreakdownProps) {
   const b = buildChefBookingReceiptBreakdown(input);
@@ -65,30 +63,23 @@ export function ChefBookingReceiptBreakdown({
 
   return (
     <div className={cn("space-y-2", className)}>
-      {b.kitchenHstRegistered && b.kitchenHstAmountCents > 0 ? (
+      {b.kitchenHstRegistered && b.kitchenHstAmountCents > 0 && (
         <BreakdownLine
-          label={
-            kitchenHstLabel ??
-            (kitchenName
-              ? `HST (${b.kitchenHstRatePercent}%) charged by ${kitchenName}`
-              : `HST (${b.kitchenHstRatePercent}%)`)
-          }
+          label={kitchenHstLabel ?? `HST (${b.kitchenHstRatePercent}%)`}
           amountCents={b.kitchenHstAmountCents}
           currency={currency}
         />
-      ) : (
-        <p className="text-xs text-muted-foreground">{noHstDisclosure}</p>
       )}
       {b.platformFeeAmountCents > 0 && (
         <BreakdownLine
-          label={platformFeeLabel ?? `Local Cooks service fee (${feePercent}%)`}
+          label={platformFeeLabel ?? `Service fee (${feePercent}%)`}
           amountCents={b.platformFeeAmountCents}
           currency={currency}
         />
       )}
       {b.platformHstAmountCents > 0 && (
         <BreakdownLine
-          label={`HST on Local Cooks service fee (${b.platformHstRatePercent}%)`}
+          label={`HST on service fee (${b.platformHstRatePercent}%)`}
           amountCents={b.platformHstAmountCents}
           currency={currency}
         />
@@ -117,7 +108,7 @@ export type KitchenPayoutStatementBreakdownProps = BookingPricingBreakdownInput 
 export function KitchenPayoutStatementBreakdown({
   currency = "CAD",
   className,
-  title = "Payout statement",
+  title = "Net payout",
   showProcessorFee,
   ...input
 }: KitchenPayoutStatementBreakdownProps) {
@@ -133,14 +124,14 @@ export function KitchenPayoutStatementBreakdown({
     <div className={cn("space-y-2", className)}>
       {b.kitchenHstRegistered && b.kitchenHstAmountCents > 0 && (
         <BreakdownLine
-          label={`HST (${b.kitchenHstRatePercent}%) you charge`}
+          label={`HST (${b.kitchenHstRatePercent}%)`}
           amountCents={b.kitchenHstAmountCents}
           currency={currency}
         />
       )}
       {showStripe && (
         <BreakdownLine
-          label="Stripe processing fee"
+          label="Processing fee"
           amountCents={b.paymentProcessorFeeCents}
           currency={currency}
           prefix="−"
@@ -148,7 +139,7 @@ export function KitchenPayoutStatementBreakdown({
       )}
       {b.refundAmountCents > 0 && (
         <BreakdownLine
-          label="Refund issued"
+          label="Refund"
           amountCents={b.refundAmountCents}
           currency={currency}
           prefix="−"
@@ -164,12 +155,6 @@ export function KitchenPayoutStatementBreakdown({
           amountClassName="font-semibold text-emerald-700"
         />
       </div>
-      <p className="text-[11px] leading-relaxed text-muted-foreground pt-1">
-        {showStripe
-          ? "Stripe's fee for collecting the payment is withheld before the transfer reaches your account."
-          : "Stripe's fee for collecting the payment is withheld before the transfer reaches your account — the exact amount is confirmed once the chef's card is charged."}
-        {b.kitchenHstAmountCents > 0 && " HST you collect is yours to remit."}
-      </p>
     </div>
   );
 }

@@ -1518,12 +1518,10 @@ export default function BookingDetailsPage() {
                     <ChefBookingReceiptBreakdown
                       {...pricingBreakdownInput}
                       currency={booking.currency || "CAD"}
-                      kitchenName={booking.kitchen?.name}
                       totalLabel={booking.paymentStatus === 'authorized' ? t("bdAmountAuthorized") : t("bdAmountCharged")}
-                      noHstDisclosure={t("bdNoKitchenHst", { defaultValue: "No HST was charged by this kitchen." })}
                       platformFeeLabel={t("bdLocalCooksServiceFee", {
                         percent: Math.round((pricingBreakdownInput.platformFeeRate || 0) * 100),
-                        defaultValue: "Local Cooks service fee ({percent}%)",
+                        defaultValue: "Service fee ({percent}%)",
                       })}
                     />
                   )

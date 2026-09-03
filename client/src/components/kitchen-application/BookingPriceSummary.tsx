@@ -82,16 +82,10 @@ export function BookingPriceSummary({
         {estimate.taxCents > 0 && (
           <div className="flex justify-between gap-2">
             <span className="text-muted-foreground min-w-0">
-              {kitchenName
-                ? t("kitchenHstLine", {
-                    percent: estimate.taxRatePercent,
-                    kitchen: kitchenName,
-                    defaultValue: `HST (${estimate.taxRatePercent}%) charged by ${kitchenName}`,
-                  })
-                : t("taxLine", {
-                    percent: estimate.taxRatePercent,
-                    defaultValue: `HST (${estimate.taxRatePercent}%)`,
-                  })}
+              {t("taxLine", {
+                percent: estimate.taxRatePercent,
+                defaultValue: `HST (${estimate.taxRatePercent}%)`,
+              })}
             </span>
             <span className="font-medium tabular-nums shrink-0">
               {formatCurrency(estimate.taxCents, currency)}
@@ -99,18 +93,12 @@ export function BookingPriceSummary({
           </div>
         )}
 
-        {!estimate.taxCents && estimate.taxRatePercent <= 0 ? (
-          <p className="text-[11px] text-muted-foreground">
-            {t("noKitchenHstDisclosure", "No HST was charged by this kitchen.")}
-          </p>
-        ) : null}
-
         {estimate.serviceFeeCents > 0 && (
           <div className="flex justify-between gap-2">
             <span className="text-muted-foreground min-w-0">
-              {t("localCooksServiceFeeLine", {
+              {t("serviceFeeLine", {
                 percent: feePercent,
-                defaultValue: `Local Cooks service fee (${feePercent}%)`,
+                defaultValue: `Service fee (${feePercent}%)`,
               })}
             </span>
             <span className="font-medium tabular-nums shrink-0">
