@@ -116,7 +116,7 @@ const getCheckinHistoryColumns = ({
 }: HistoryColumnsProps): ColumnDef<PendingCheckin>[] => [
   {
     id: "reference",
-    header: "Ref",
+    header: mt("ref"),
     cell: ({ row }) => {
       const ref = row.original.referenceCode || row.original.id;
       return (
@@ -155,14 +155,14 @@ const getCheckinHistoryColumns = ({
   },
   {
     accessorKey: "chefName",
-    header: "Chef",
+    header: mt("chefHeader"),
     cell: ({ row }) => (
       <span className="text-sm">{row.getValue("chefName") || "—"}</span>
     ),
   },
   {
     accessorKey: "checkinStatus",
-    header: "Result",
+    header: mt("result"),
     cell: ({ row }) => {
       const status = row.getValue("checkinStatus") as string;
       if (status === "checkin_completed") {
@@ -186,7 +186,7 @@ const getCheckinHistoryColumns = ({
   },
   {
     accessorKey: "checkinCompletedAt",
-    header: "Date",
+    header: mt("date"),
     cell: ({ row }) => {
       const date = row.original.checkinCompletedAt;
       if (!date) return <span className="text-muted-foreground text-xs">—</span>;
@@ -199,7 +199,7 @@ const getCheckinHistoryColumns = ({
   },
   {
     accessorKey: "checkinNotes",
-    header: "Notes",
+    header: mt("notesHeader"),
     cell: ({ row }) => {
       const notes = row.getValue("checkinNotes") as string | null;
       if (!notes) return <span className="text-muted-foreground text-xs">—</span>;
@@ -212,7 +212,7 @@ const getCheckinHistoryColumns = ({
   },
   {
     id: "evidence",
-    header: "Evidence",
+    header: mt("evidenceHeader"),
     cell: ({ row }) => {
       const checkin = row.original;
       const photoCount = checkin.checkinPhotoUrls?.length || 0;
@@ -303,7 +303,7 @@ function CheckinDetailSheet({
             )}
             {completedAt && (
               <div className="text-xs text-muted-foreground">
-                {isSkipped ? "Skipped" : "Completed"}{" "}
+                {isSkipped ? mt("skipped") : mt("completed")}{" "}
                 {format(completedAt, "MMM d, yyyy 'at' h:mm a")}
               </div>
             )}
@@ -457,7 +457,7 @@ export function PendingStorageCheckins() {
             <CardTitle className="text-xl font-semibold flex items-center gap-2">
               <LogIn className="h-5 w-5 text-emerald-600" />{mt("storageCheckInHistory")}</CardTitle>
             <CardDescription>
-              {checkinHistory.length} completed move-in inspection{checkinHistory.length !== 1 ? "s" : ""}
+              {mt("completedMoveInInspections", { count: checkinHistory.length })}
             </CardDescription>
           </div>
           <Button
@@ -478,7 +478,7 @@ export function PendingStorageCheckins() {
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <div className="rounded-lg border overflow-x-auto">
+          <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
             <Table>
               <TableHeader>
                 {historyTable.getHeaderGroups().map((headerGroup) => (

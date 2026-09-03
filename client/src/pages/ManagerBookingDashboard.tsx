@@ -1075,7 +1075,7 @@ function CreateLocationSheet({ open, onOpenChange, onSuccess }: { open: boolean;
                   disabled={form.formState.isSubmitting}
                 >
                   {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Create Location
+                  {mt("createLocation")}
                 </Button>
               </form>
             </Form>
@@ -1351,7 +1351,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
 
   // Helper function to extract filename from URL
   const getDocumentFilename = (url?: string): string => {
-    if (!url) return 'No document';
+    if (!url) return mt("noDocument");
     try {
       const urlObj = new URL(url);
       const pathname = urlObj.pathname;
@@ -1745,12 +1745,12 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
           location.kitchenLicenseStatus === 'pending_update');
 
       toast({
-        title: isReplacingPending ? 'Submission Replaced' : isUpdateFlow ? 'License Update Submitted' : 'License Uploaded',
+        title: isReplacingPending ? mt("submissionReplaced") : isUpdateFlow ? mt("licenseUpdateSubmitted") : mt("licenseUploaded"),
         description: isReplacingPending
-          ? 'Your pending submission has been replaced. The admin will review your updated document.'
+          ? mt("pendingSubmissionReplacedDesc")
           : isUpdateFlow
-            ? 'Your updated license has been submitted for admin review. Your current approved license remains active until approved.'
-            : 'Your license has been submitted for admin approval.',
+            ? mt("licenseUpdatedSubmittedDesc")
+            : mt("licenseSubmittedForApprovalDesc"),
       });
 
       setLicenseFile(null);
@@ -1831,7 +1831,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                   <div className="flex-1">
                     <h3 className="text-lg font-semibold text-gray-900 mb-1">{mt("onboardingWizard")}</h3>
                     <p className="text-sm text-gray-600 mb-4">
-                      Complete or update your location setup, upload kitchen license, and configure your preferences using the onboarding wizard.
+                      {mt("onboardingWizardSetupDesc")}
                     </p>
                   </div>
                 </div>
@@ -1839,7 +1839,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 md:p-6 space-y-4 shadow-md">
                   <div>
                     <p className="text-sm text-gray-700 mb-4">
-                      Use the onboarding wizard to set up your location details, upload your kitchen license, and configure notification preferences.
+                      {mt("onboardingWizardHelpDesc")}
                     </p>
                     <Button
                       onClick={() => {
@@ -1877,7 +1877,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-blue-800 mb-1">{mt("licenseUpdatePendingAdminReview")}</p>
                           <p className="text-xs text-blue-700">
-                            A new license has been submitted and is awaiting admin approval. Your current license remains active until the update is approved.
+                            {mt("licenseUpdatePendingBody")}
                           </p>
                           {location.kitchenLicensePendingSubmittedAt && (
                             <p className="text-xs text-blue-600 mt-1.5">
@@ -2257,7 +2257,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                         url={location.kitchenTermsUrl}
                         className="text-sm text-blue-600 hover:text-blue-700 mt-2 inline-block"
                       >
-                        View Terms Document →
+                        {mt("viewTermsDocumentArrow")}
                       </AuthenticatedDocumentLink>
                     </div>
                   )}
@@ -2265,7 +2265,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                   {/* Upload section */}
                   <div className="space-y-2">
                     <label className="block text-sm font-medium text-gray-900 mb-2">
-                      {location.kitchenTermsUrl ? 'Replace Terms Document' : 'Upload Terms Document'}
+                      {location.kitchenTermsUrl ? mt("replaceTermsDocument") : mt("uploadTermsDocument")}
                     </label>
                     <p className="text-xs text-gray-600 mb-3">{mt("includeHouseRulesEquipmentUsagePoliciesLiabilityWaiversAndAn")}</p>
                     <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">

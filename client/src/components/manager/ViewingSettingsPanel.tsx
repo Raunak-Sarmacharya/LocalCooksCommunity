@@ -575,7 +575,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
                 ) : (
                   <Save className="h-4 w-4 mr-2" />
                 )}
-                Save Schedule
+                {mt("saveSchedule")}
               </Button>
             </CardHeader>
             <CardContent>
@@ -583,7 +583,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[100px]">Day</TableHead>
+                      <TableHead className="w-[100px]">{mt("day")}</TableHead>
                       <TableHead className="w-[100px]">{mt("status")}</TableHead>
                       <TableHead>{mt("hours")}</TableHead>
                     </TableRow>
@@ -609,7 +609,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
                                 variant={schedule.isAvailable ? "outline" : "secondary"}
                                 className={cn("w-16 justify-center", !schedule.isAvailable && "opacity-50")}
                               >
-                                {schedule.isAvailable ? "Open" : "Closed"}
+                                {schedule.isAvailable ? mt("open") : mt("closed")}
                               </Badge>
                             </div>
                           </TableCell>
@@ -763,13 +763,10 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
             <div className="text-xs sm:text-sm text-blue-800 space-y-1">
               <p className="font-medium">{mt("howItWorks")}</p>
               <p>
-                When you enable viewings, chefs will see a "Schedule a Viewing" button
-                on your kitchen listing. They'll pick a date and time from the availability
-                you set here. Viewing requests will be sent to you for approval.
+                {mt("howViewingsWorkBody1")}
               </p>
               <p>
-                Adding an exception will automatically cancel any existing viewings in that
-                period and notify the affected chefs.
+                {mt("howViewingsWorkBody2")}
               </p>
             </div>
           </div>

@@ -61,7 +61,7 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
   const [isUploadingLicense, setIsUploadingLicense] = useState(false);
 
   const getDocumentFilename = (url?: string): string => {
-    if (!url) return 'No document';
+    if (!url) return mt("noDocument");
     try {
       const urlObj = new URL(url);
       const pathname = urlObj.pathname;
@@ -322,7 +322,7 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
                   <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                     <p className="text-xs text-amber-800">
                       <span className="font-semibold">{mt("replacingYourQueuedUpdate")}</span>{' '}
-                      Uploading a new document will replace the currently-pending update — the admin will review your latest submission.
+                      {mt("replacingQueuedUpdateBody")}
                     </p>
                   </div>
                 )}
@@ -330,26 +330,27 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
                   <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <p className="text-xs text-blue-800">
                       <span className="font-semibold">{mt("replaceYourPendingSubmission")}</span>{' '}
-                      Since your license hasn't been approved yet, uploading a new document replaces it directly — the admin will review your updated submission.
+                      {mt("replacePendingSubmissionBody")}
                     </p>
                   </div>
                 )}
                 {location.kitchenLicenseStatus === 'approved' && !isLicenseExpired && (
                   <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                     <p className="text-xs text-amber-800">
-                      <span className="font-semibold">{mt("submittingANewLicense")}</span> will send it for admin review. Your current approved license stays active until the update is approved.
+                      <span className="font-semibold">{mt("submittingANewLicense")}</span>{' '}
+                      {mt("submittingNewLicenseKeepsCurrentActive")}
                     </p>
                   </div>
                 )}
 
                 <h4 className="font-medium text-slate-900 mb-3">
                   {location.kitchenLicenseStatus === 'pending' && location.kitchenLicenseUrl
-                    ? 'Replace Pending Submission'
+                    ? mt("replacePendingSubmission")
                     : location.kitchenLicenseStatus === 'pending_update'
-                      ? 'Edit uploaded document'
+                      ? mt("editUploadedDocument")
                       : location.kitchenLicenseUrl
-                        ? 'Submit Updated License'
-                        : 'Upload License'}
+                        ? mt("submitUpdatedLicense")
+                        : mt("uploadLicense")}
                 </h4>
                 
                 <div className="space-y-4">
@@ -387,12 +388,12 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
                       <span className="text-sm font-medium text-gray-700 mb-1">
                         {licenseFile ? licenseFile.name : (
                           location.kitchenLicenseStatus === 'pending' && location.kitchenLicenseUrl
-                            ? 'Click to replace pending submission'
+                            ? mt("clickToReplacePendingSubmission")
                             : location.kitchenLicenseStatus === 'pending_update'
-                              ? 'Click to replace queued update'
+                              ? mt("clickToReplaceQueuedUpdate")
                               : location.kitchenLicenseUrl
-                                ? 'Click to submit updated license'
-                                : 'Click to upload license'
+                                ? mt("clickToSubmitUpdatedLicense")
+                                : mt("clickToUploadLicense")
                         )}
                       </span>
                       <span className="text-xs text-gray-500">{mt("pDFJPGOrPNGMax5MB")}</span>
@@ -412,12 +413,12 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
                         <>
                           <Upload className="mr-2 h-4 w-4" />
                           {location.kitchenLicenseStatus === 'pending' && location.kitchenLicenseUrl
-                            ? 'Replace Pending Submission'
+                            ? mt("replacePendingSubmission")
                             : location.kitchenLicenseStatus === 'pending_update'
-                              ? 'Edit uploaded document'
+                              ? mt("editUploadedDocument")
                               : location.kitchenLicenseUrl
-                                ? 'Submit Updated License'
-                                : 'Upload License'}
+                                ? mt("submitUpdatedLicense")
+                                : mt("uploadLicense")}
                         </>
                       )}
                     </Button>

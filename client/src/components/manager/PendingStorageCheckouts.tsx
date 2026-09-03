@@ -193,7 +193,7 @@ const getCheckoutColumns = ({
 }: CheckoutColumnsProps): ColumnDef<PendingCheckout>[] => [
   {
     id: "reference",
-    header: "Ref",
+    header: mt("ref"),
     cell: ({ row }) => {
       const ref = row.original.referenceCode || row.original.id;
       return (
@@ -238,13 +238,13 @@ const getCheckoutColumns = ({
   },
   {
     accessorKey: "chefEmail",
-    header: "Chef",
+    header: mt("chefHeader"),
     cell: ({ row }) => {
       const checkout = row.original;
       return (
         <div className="flex items-center gap-2 text-sm">
           <User className="h-3.5 w-3.5 text-muted-foreground" />
-          <span>{checkout.chefEmail || 'Unknown'}</span>
+          <span>{checkout.chefEmail || mt("unknown")}</span>
         </div>
       );
     },
@@ -273,7 +273,7 @@ const getCheckoutColumns = ({
   },
   {
     accessorKey: "reviewDeadline",
-    header: "Review Window",
+    header: mt("reviewWindow"),
     cell: ({ row }) => {
       const checkout = row.original;
       return (
@@ -286,7 +286,7 @@ const getCheckoutColumns = ({
   },
   {
     accessorKey: "checkoutPhotoUrls",
-    header: "Photos",
+    header: mt("photos"),
     cell: ({ row }) => {
       const checkout = row.original;
       const photos = checkout.checkoutPhotoUrls;
@@ -381,7 +381,7 @@ const getCheckoutColumns = ({
 const getHistoryColumns = (): ColumnDef<PendingCheckout>[] => [
   {
     id: "reference",
-    header: "Ref",
+    header: mt("ref"),
     cell: ({ row }) => {
       const ref = row.original.referenceCode || row.original.id;
       return (
@@ -420,14 +420,14 @@ const getHistoryColumns = (): ColumnDef<PendingCheckout>[] => [
   },
   {
     accessorKey: "chefEmail",
-    header: "Chef",
+    header: mt("chefHeader"),
     cell: ({ row }) => (
-      <span className="text-sm">{row.getValue("chefEmail") || 'Unknown'}</span>
+      <span className="text-sm">{row.getValue("chefEmail") || mt("unknown")}</span>
     ),
   },
   {
     accessorKey: "checkoutStatus",
-    header: "Result",
+    header: mt("result"),
     cell: ({ row }) => {
       const status = row.getValue("checkoutStatus") as string;
       if (status === 'completed') {
@@ -451,7 +451,7 @@ const getHistoryColumns = (): ColumnDef<PendingCheckout>[] => [
   },
   {
     accessorKey: "checkoutApprovedAt",
-    header: "Date",
+    header: mt("date"),
     cell: ({ row }) => {
       const date = row.original.checkoutApprovedAt;
       if (!date) return <span className="text-muted-foreground text-xs">—</span>;
@@ -464,7 +464,7 @@ const getHistoryColumns = (): ColumnDef<PendingCheckout>[] => [
   },
   {
     accessorKey: "checkoutNotes",
-    header: "Notes",
+    header: mt("notesHeader"),
     cell: ({ row }) => {
       const notes = row.getValue("checkoutNotes") as string | null;
       if (!notes) return <span className="text-muted-foreground text-xs">—</span>;
@@ -721,9 +721,9 @@ export function PendingStorageCheckouts() {
               <CardTitle className="text-xl font-semibold flex items-center gap-2">
                 <ShieldCheck className="h-5 w-5 text-green-600" />{mt("storageCheckouts")}</CardTitle>
               <CardDescription>
-                {viewType === 'pending' 
-                  ? `${pendingCheckouts.length} pending checkout review${pendingCheckouts.length !== 1 ? 's' : ''}`
-                  : `${checkoutHistory.length} checkout${checkoutHistory.length !== 1 ? 's' : ''} in history`}
+                {viewType === 'pending'
+                  ? mt("pendingCheckoutReviews", { count: pendingCheckouts.length })
+                  : mt("checkoutsInHistory", { count: checkoutHistory.length })}
               </CardDescription>
             </div>
             <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
@@ -737,14 +737,14 @@ export function PendingStorageCheckouts() {
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="pending" className="gap-2">
                 <Clock className="h-4 w-4" />
-                Pending Review
+                {mt("pendingReview")}
                 {pendingCheckouts.length > 0 && (
                   <Badge variant="count" className="ml-1">{pendingCheckouts.length}</Badge>
                 )}
               </TabsTrigger>
               <TabsTrigger value="history" className="gap-2">
                 <CheckCircle className="h-4 w-4" />
-                History
+                {mt("history")}
                 {checkoutHistory.length > 0 && (
                   <Badge variant="count" className="ml-1">{checkoutHistory.length}</Badge>
                 )}
@@ -874,7 +874,7 @@ export function PendingStorageCheckouts() {
                 <div className="text-sm font-medium">{selectedCheckout.storageName}</div>
                 <div className="text-xs text-muted-foreground flex items-center gap-1">
                   <User className="h-3 w-3" />
-                  {selectedCheckout.chefEmail || 'Unknown chef'}
+                  {selectedCheckout.chefEmail || mt("unknownChef")}
                 </div>
                 <div className="text-xs text-muted-foreground flex items-center gap-1">
                   <MapPin className="h-3 w-3" />
@@ -962,7 +962,7 @@ export function PendingStorageCheckouts() {
                       <li>{mt("theChefWillBeNotifiedAndHas72HoursToRespond")}</li>
                       <li>{mt("theyCanAcceptTheClaimOrDisputeIt")}</li>
                       <li>{mt("youCanAddPhotoEvidenceAfterFiling")}</li>
-                      <li>Storage is released — the claim is tracked separately</li>
+                      <li>{mt("storageReleasedClaimTracked")}</li>
                     </ul>
                   </div>
                 </div>
@@ -975,7 +975,7 @@ export function PendingStorageCheckouts() {
             <StatusButton
               onClick={handleClaimSubmit}
               status={startClaimMutation.isPending ? "loading" : "idle"}
-              labels={{ idle: "File Claim", loading: "Filing", success: "Filed" }}
+              labels={{ idle: mt("fileClaim"), loading: mt("filing"), success: mt("filed") }}
             />
           </SheetFooter>
         </SheetContent>
@@ -1029,7 +1029,7 @@ export function PendingStorageCheckouts() {
                     handleClear(selectedCheckout);
                   }}
                   status={clearMutation.isPending ? "loading" : "idle"}
-                  labels={{ idle: "Clear — No Issues", loading: "Clearing", success: "Cleared" }}
+                  labels={{ idle: mt("clearNoIssues"), loading: mt("clearing"), success: mt("cleared") }}
                 />
                 <Button
                   variant="outline"

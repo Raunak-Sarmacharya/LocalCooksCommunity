@@ -826,8 +826,8 @@ export default function NotificationCenter({ locationId }: { locationId?: number
             <h2 id="notifications-heading" className="font-semibold text-lg">{mt("navNotifications")}</h2>
             <p id="notifications-description" className="sr-only">
               {unreadCount > 0 
-                ? `You have ${unreadCount} unread notification${unreadCount !== 1 ? 's' : ''}`
-                : 'No unread notifications'}
+                ? mt("unreadNotificationsCount", { count: unreadCount })
+                : mt("noUnreadNotifications")}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -859,7 +859,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
         <div className="px-4 py-2 border-b bg-gray-50" role="navigation" aria-label={mt("notificationFilters")}>
           <Tabs value={filter} onValueChange={(v) => setFilter(v as FilterType)}>
             <TabsList className="w-full gap-1" aria-label={mt("filterNotificationsByStatus")}>
-              <TabsTrigger value="all" className="flex-1 text-xs px-2 py-1.5">All</TabsTrigger>
+              <TabsTrigger value="all" className="flex-1 text-xs px-2 py-1.5">{mt("filterAll")}</TabsTrigger>
               <TabsTrigger value="unread" className="flex-1 text-xs px-2 py-1.5">{mt("unread")}</TabsTrigger>
               <TabsTrigger value="read" className="flex-1 text-xs px-2 py-1.5">{mt("read")}</TabsTrigger>
               <TabsTrigger value="archived" className="flex-1 text-xs px-2 py-1.5">

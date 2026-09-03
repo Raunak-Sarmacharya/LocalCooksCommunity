@@ -193,7 +193,7 @@ export default function StripeConnectSetup() {
       // If account already existed, don't try to start onboarding
       if (data.alreadyExists) {
         toast.info(tt("accountAlreadyConnected"), {
-          description: 'Your Stripe account is already connected. You can access your dashboard below.'
+          description: mt("stripeAlreadyConnectedDesc")
         });
         return;
       }
@@ -632,7 +632,7 @@ export default function StripeConnectSetup() {
               <>
                 <Loader2 className="mr-2 h-3 w-3 animate-spin" />{mt("checking")}</>
             ) : (
-              "Already completed? Refresh status"
+              mt("alreadyCompletedRefreshStatus")
             )}
           </Button>
         </div>

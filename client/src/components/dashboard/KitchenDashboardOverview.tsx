@@ -619,20 +619,20 @@ export default function KitchenDashboardOverview({
       {/* ═══════════════════════════════════════════════════════════════════════
           WELCOME HEADER WITH LOCATION SELECTOR
       ═══════════════════════════════════════════════════════════════════════ */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div className="flex-1">
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 min-w-0">
+        <div className="flex-1 min-w-0">
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 break-words">
             {selectedLocation
               ? mt("welcomeBackNamed", { name: selectedLocation.name })
               : mt("welcomeBack")}
           </h1>
-          <p className="text-gray-500 mt-1">
+          <p className="text-gray-500 mt-1 break-words">
             {selectedLocation
               ? mt("heresWhatsHappeningWith", { name: selectedLocation.name })
               : mt("heresWhatsHappeningAcross")}
           </p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-wrap shrink-0 min-w-0">
           {/* Location Selector */}
           {(locations || []).length > 1 && onSelectLocation && (
             <Select
@@ -648,7 +648,7 @@ export default function KitchenDashboardOverview({
                 }
               }}
             >
-              <SelectTrigger className="w-[200px]">
+              <SelectTrigger className="w-full max-w-[200px] sm:w-[200px]">
                 <SelectValue placeholder={mt("selectLocation")} />
               </SelectTrigger>
               <SelectContent>
@@ -1267,7 +1267,7 @@ function CustomerManagementPanel({ bookings, applications, onNavigate, isLoading
 
     applications.forEach((application: any) => {
       const chefId = application.chefId || application.chef?.id;
-      const chefName = application.fullName || application.chef?.username || 'Unknown Chef';
+      const chefName = application.fullName || application.chef?.username || mt("unknownChef");
       const chefEmail = application.email;
       const chefPhone = application.phone;
       
@@ -1542,7 +1542,7 @@ function CustomerManagementPanel({ bookings, applications, onNavigate, isLoading
                     )}
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5 leading-tight break-words">
-                    {chef.email || chef.locationName || `${chef.totalBookings} booking${chef.totalBookings !== 1 ? 's' : ''}`}
+                    {chef.email || chef.locationName || mt("bookingsCount", { count: chef.totalBookings })}
                   </p>
                   {chef.locationName && (
                     <p className="text-[10px] text-gray-400 mt-0.5">{chef.locationName}</p>
@@ -1555,17 +1555,17 @@ function CustomerManagementPanel({ bookings, applications, onNavigate, isLoading
                     {chef.hasApplication && chef.isPending ? (
                       <>
                         <p className="text-sm font-semibold text-amber-600">{mt("review")}</p>
-                        <p className="text-[10px] text-gray-400">needed</p>
+                        <p className="text-[10px] text-gray-400">{mt("needed")}</p>
                       </>
                     ) : chef.totalBookings > 0 ? (
                       <>
                         <p className="text-sm font-semibold text-gray-900">{chef.confirmedBookings}</p>
-                        <p className="text-[10px] text-gray-400">bookings</p>
+                        <p className="text-[10px] text-gray-400">{mt("bookingsLabel")}</p>
                       </>
                     ) : (
                       <>
-                        <p className="text-sm font-semibold text-gray-500">New</p>
-                        <p className="text-[10px] text-gray-400">applicant</p>
+                        <p className="text-sm font-semibold text-gray-500">{mt("newLabel")}</p>
+                        <p className="text-[10px] text-gray-400">{mt("applicant")}</p>
                       </>
                     )}
                   </div>

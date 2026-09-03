@@ -215,7 +215,7 @@ function OverstayCard({
               </CardTitle>
               <CardDescription className="flex items-center gap-2 mt-1">
                 <User className="w-4 h-4" />
-                {overstay.chefEmail || 'Unknown Chef'}
+                {overstay.chefEmail || mt("unknownChef")}
               </CardDescription>
             </div>
             <div className="flex flex-col items-end gap-2">
@@ -290,7 +290,7 @@ function OverstayCard({
             className="w-full justify-center"
           >
             {expanded ? <ChevronUp className="w-4 h-4 mr-1" /> : <ChevronDown className="w-4 h-4 mr-1" />}
-            {expanded ? 'Less Details' : 'More Details'}
+            {expanded ? mt("lessDetails") : mt("moreDetails")}
           </Button>
 
           {expanded && (
@@ -306,11 +306,11 @@ function OverstayCard({
                 </div>
                 <div>
                   <p className="text-muted-foreground">{mt("penaltyRate")}</p>
-                  <p>{(parseFloat(overstay.penaltyRate) * 100).toFixed(0)}% per day</p>
+                  <p>{mt("percentPerDay", { percent: (parseFloat(overstay.penaltyRate) * 100).toFixed(0) })}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">{mt("maxPenaltyDays")}</p>
-                  <p>{overstay.maxPenaltyDays} days</p>
+                  <p>{mt("daysCount", { count: overstay.maxPenaltyDays })}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">{mt("bookingTotal")}</p>
@@ -318,12 +318,12 @@ function OverstayCard({
                 </div>
                 <div>
                   <p className="text-muted-foreground">{mt("taxRate")}</p>
-                  <p>{overstay.kitchenTaxRatePercent > 0 ? `${overstay.kitchenTaxRatePercent.toFixed(1)}% HST` : 'No tax'}</p>
+                  <p>{overstay.kitchenTaxRatePercent > 0 ? mt("hstPercent", { percent: overstay.kitchenTaxRatePercent.toFixed(1) }) : mt("noTax")}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">{mt("paymentMethod")}</p>
                   <p className={hasPaymentMethod ? 'text-green-600' : 'text-red-600'}>
-                    {hasPaymentMethod ? '✓ Saved' : '✗ Not saved'}
+                    {hasPaymentMethod ? `✓ ${mt("saved")}` : `✗ ${mt("notSaved")}`}
                   </p>
                 </div>
               </div>
@@ -751,7 +751,7 @@ export function OverstayPenaltyQueue() {
             variant={showPastPenalties ? "default" : "outline"} 
             onClick={() => setShowPastPenalties(!showPastPenalties)}
           >
-            {showPastPenalties ? "Hide" : "Show"} Past Penalties
+            {showPastPenalties ? mt("hidePastPenalties") : mt("showPastPenalties")}
           </Button>
           <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />{mt("refresh")}</Button>
@@ -867,7 +867,7 @@ export function OverstayPenaltyQueue() {
         <div className="mt-8">
           <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
             <CheckCircle className="w-5 h-5 text-gray-500" />
-            Past Penalties ({pastOverstays.length})
+            {mt("pastPenaltiesWithCount", { count: pastOverstays.length })}
           </h3>
           <div className="space-y-3 opacity-75">
             {pastOverstays.map(overstay => (

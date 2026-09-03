@@ -1141,15 +1141,15 @@ export function TodaysKitchenBookings() {
                           {isUploadingEvidence ? (
                             <>
                               <Loader2 className="h-6 w-6 text-primary animate-spin mb-1" />
-                              <span className="text-xs text-muted-foreground">Uploading... {Math.round(evidenceUploadProgress)}%</span>
+                              <span className="text-xs text-muted-foreground">{mt("uploadingPercent", { percent: Math.round(evidenceUploadProgress) })}</span>
                             </>
                           ) : (
                             <>
                               <Upload className="h-6 w-6 text-muted-foreground mb-1" />
                               <span className="text-xs text-muted-foreground">
                                 {evidencePhotos.length === 0
-                                  ? "Click to upload evidence photos"
-                                  : `${evidencePhotos.length}/10 photos uploaded`}
+                                  ? mt("clickToUploadEvidencePhotos")
+                                  : mt("photosUploadedCount", { count: evidencePhotos.length })}
                               </span>
                             </>
                           )}

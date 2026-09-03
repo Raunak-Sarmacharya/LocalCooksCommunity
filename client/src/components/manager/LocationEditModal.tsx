@@ -566,7 +566,7 @@ export default function LocationEditModal({
 
                     {location.kitchenLicenseApprovedAt && (
                       <p className="text-xs text-gray-500">
-                        {location.kitchenLicenseStatus === 'approved' ? 'Approved' : 'Reviewed'} on:{" "}
+                        {location.kitchenLicenseStatus === 'approved' ? mt("approvedOn") : mt("reviewedOn")}{" "}
                         {new Date(location.kitchenLicenseApprovedAt).toLocaleDateString()}
                       </p>
                     )}

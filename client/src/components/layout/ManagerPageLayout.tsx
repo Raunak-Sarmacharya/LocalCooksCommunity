@@ -113,7 +113,7 @@ export function ManagerPageLayout({
   };
 
   return (
-    <div className="flex flex-col flex-1 h-full min-h-[500px] overflow-hidden bg-background rounded-xl border shadow-sm">
+    <div className="flex flex-col flex-1 h-full min-h-[500px] min-w-0 overflow-hidden bg-background rounded-xl border shadow-sm">
       {/* Mobile Header with Sidebar Trigger */}
       <div className="md:hidden flex items-center justify-between p-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="flex items-center gap-2">
@@ -142,12 +142,12 @@ export function ManagerPageLayout({
       </div>
 
 
-      <ResizablePanelGroup direction="horizontal" className="h-full items-stretch">
+      <ResizablePanelGroup direction="horizontal" className="h-full min-w-0 items-stretch">
         <ResizablePanel
           defaultSize={20}
           minSize={15}
           maxSize={30}
-          className="hidden md:flex flex-col border-r bg-muted/30 min-w-[250px] sticky top-0 h-full"
+          className="hidden md:flex flex-col border-r bg-muted/30 sticky top-0 h-full"
         >
           <ScrollArea className="h-full">
             <div className="flex flex-col h-full">
@@ -171,10 +171,10 @@ export function ManagerPageLayout({
 
         <ResizableHandle withHandle className="hidden md:flex" />
 
-        <ResizablePanel defaultSize={80} className="flex flex-col min-w-0 md:min-w-[400px]">
+        <ResizablePanel defaultSize={80} className="flex flex-col min-w-0">
           <ScrollArea className="flex-1">
-            <div className="p-4 md:p-8">
-              <div className="max-w-6xl mx-auto space-y-6">
+            <div className="p-4 md:p-8 min-w-0">
+              <div className="max-w-6xl mx-auto space-y-6 min-w-0">
                 {(title || description) && (
                   <div className="hidden md:block mb-6 space-y-1.5 border-b pb-4">
                     {title && <h2 className="text-2xl font-bold tracking-tight">{title}</h2>}

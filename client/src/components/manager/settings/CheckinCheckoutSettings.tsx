@@ -855,18 +855,17 @@ export default function CheckinCheckoutSettings({
           <CardTitle className="flex items-center gap-2 text-base">
             <Clock className="size-5 text-amber-600" />{mt("timeWindowOverrides")}</CardTitle>
           <CardDescription>
-            Override platform defaults for when chefs can check in/out and grace periods.
-            Leave blank to use platform defaults.
+            {mt("timeWindowOverridesDesc")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label className="text-xs">
-                Check-in window (minutes before start)
+                {mt("checkinWindowMinutesBeforeLabel")}
                 {data?.platformDefaults && (
                   <span className="text-muted-foreground ml-1">
-                    (default: {data.platformDefaults.checkinWindowMinutesBefore})
+                    {mt("defaultValue", { value: data.platformDefaults.checkinWindowMinutesBefore })}
                   </span>
                 )}
               </Label>
@@ -884,10 +883,10 @@ export default function CheckinCheckoutSettings({
             </div>
             <div className="space-y-2">
               <Label className="text-xs">
-                No-show grace (minutes after start)
+                {mt("noShowGraceMinutesAfterLabel")}
                 {data?.platformDefaults && (
                   <span className="text-muted-foreground ml-1">
-                    (default: {data.platformDefaults.noShowGraceMinutes})
+                    {mt("defaultValue", { value: data.platformDefaults.noShowGraceMinutes })}
                   </span>
                 )}
               </Label>

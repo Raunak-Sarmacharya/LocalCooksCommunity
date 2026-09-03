@@ -49,7 +49,7 @@ export default function NotificationsSettings({ location, onSave }: Notification
       <div>
         <h2 className="text-2xl font-bold tracking-tight">{mt("navNotifications")}</h2>
         <p className="text-muted-foreground">
-          Configure where booking notifications will be sent for {location.name}.
+          {mt("configureNotificationsForLocation", { name: location.name })}
         </p>
       </div>
 
@@ -99,10 +99,10 @@ export default function NotificationsSettings({ location, onSave }: Notification
           <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
             <h4 className="font-medium text-purple-900 mb-2">{mt("notificationTypes")}</h4>
             <ul className="text-sm text-purple-800 space-y-1">
-              <li>• New booking confirmations</li>
-              <li>• Booking cancellations</li>
-              <li>• Booking modifications</li>
-              <li>• Chef application updates</li>
+              <li>• {mt("notifTypeNewBookingConfirmations")}</li>
+              <li>• {mt("notifTypeBookingCancellations")}</li>
+              <li>• {mt("notifTypeBookingModifications")}</li>
+              <li>• {mt("notifTypeChefApplicationUpdates")}</li>
             </ul>
           </div>
 

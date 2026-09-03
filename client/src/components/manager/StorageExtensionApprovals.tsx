@@ -259,8 +259,8 @@ export function StorageExtensionApprovals() {
               <AlertCircle className="h-5 w-5" />{mt("rejectExtensionRequest")}</SheetTitle>
             <SheetDescription>
               {selectedExtension?.status === 'authorized'
-              ? "Are you sure you want to reject this extension request? The payment hold will be released — the chef will not be charged."
-              : "Are you sure you want to reject this extension request? The chef will be refunded."}
+              ? mt("rejectExtensionHoldReleased")
+              : mt("rejectExtensionChefRefunded")}
             </SheetDescription>
           </SheetHeader>
 

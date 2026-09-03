@@ -282,12 +282,12 @@ export default function StorageListingsStep() {
                 <div className="border rounded-lg p-4 bg-green-50 border-green-200 space-y-2">
                   <div className="flex items-center gap-2 mb-2">
                     <CheckCircle className="h-5 w-5 text-green-600" />
-                    <h4 className="font-semibold text-gray-900">Active Listings ({listings.length})</h4>
+                    <h4 className="font-semibold text-gray-900">{mt("activeListingsCount", { count: listings.length })}</h4>
                   </div>
                   {listings.map(l => (
                     <div key={l.id} className="bg-white rounded p-3 border border-green-200">
                       <p className="font-medium">{l.name}</p>
-                      <p className="text-xs text-gray-600">{l.storageType} • ${(Number(l.basePrice || 0) / 100).toFixed(2)}/day</p>
+                      <p className="text-xs text-gray-600">{l.storageType} • ${(Number(l.basePrice || 0) / 100).toFixed(2)}{mt("perDay")}</p>
                     </div>
                   ))}
                 </div>
@@ -427,7 +427,7 @@ export default function StorageListingsStep() {
                                     <Input type="number" min="0" max="50" value={Math.round(parseFloat(customStorage.overstayPenaltyRate) * 100)} onChange={(e) => setCustomStorage({ ...customStorage, overstayPenaltyRate: ((parseInt(e.target.value) || 0) / 100).toString() })} className="h-7 text-xs" />
                                   </div>
                                   <div className="space-y-1">
-                                    <Label className="text-[10px]">Max</Label>
+                                    <Label className="text-[10px]">{mt("maxShort")}</Label>
                                     <Input type="number" min="1" max="90" value={customStorage.overstayMaxPenaltyDays} onChange={(e) => setCustomStorage({ ...customStorage, overstayMaxPenaltyDays: parseInt(e.target.value) || 1 })} className="h-7 text-xs" />
                                   </div>
                                 </div>
@@ -573,7 +573,7 @@ export default function StorageListingsStep() {
                                       <Input type="number" min="0" max="50" value={Math.round(parseFloat(storage.overstayPenaltyRate) * 100)} onChange={(e) => updateSelectedStorage(templateId, { overstayPenaltyRate: ((parseInt(e.target.value) || 0) / 100).toString() })} className="h-6 text-xs px-1" />
                                     </div>
                                     <div className="space-y-0.5">
-                                      <Label className="text-[10px] text-muted-foreground">Max</Label>
+                                      <Label className="text-[10px] text-muted-foreground">{mt("maxShort")}</Label>
                                       <Input type="number" min="1" max="90" value={storage.overstayMaxPenaltyDays} onChange={(e) => updateSelectedStorage(templateId, { overstayMaxPenaltyDays: parseInt(e.target.value) || 1 })} className="h-6 text-xs px-1" />
                                     </div>
                                   </div>

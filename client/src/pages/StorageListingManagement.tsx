@@ -463,7 +463,7 @@ function StorageListingContent({
       await apiPut(`/manager/storage-listings/${id}`, { isActive });
       queryClient.invalidateQueries({ queryKey: [`/api/manager/storage-listings`] });
       loadListings();
-      toast({ title: mt("statusUpdated"), description: `Storage listing is now ${isActive ? 'active' : 'inactive'}` });
+      toast({ title: mt("statusUpdated"), description: isActive ? mt("listingNowActive") : mt("listingNowInactive") });
       setToggleDialogOpen(false);
       setPendingToggle(null);
     } catch (error: any) {
@@ -523,7 +523,7 @@ function StorageListingContent({
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <h4 className="font-medium truncate">{listing.name}</h4>
-                            <Badge variant={listing.isActive !== false ? "success" : "outline"} className="text-xs">{listing.isActive !== false ? 'Active' : 'Inactive'}</Badge>
+                            <Badge variant={listing.isActive !== false ? "success" : "outline"} className="text-xs">{listing.isActive !== false ? mt("active") : mt("inactive")}</Badge>
                           </div>
                           <div className="flex items-center gap-3 text-sm text-muted-foreground">
                             <span className="capitalize">{listing.storageType}</span>
@@ -655,7 +655,7 @@ function StorageListingContent({
                                 </Select>
                               </div>
                               <div className="space-y-1">
-                                <Label className="text-xs">Daily Rate ($) *</Label>
+                                <Label className="text-xs">{mt("dailyRateRequired")}</Label>
                                 <Input type="number" step="0.01" min="0" value={customStorage.dailyRate || ''} onChange={(e) => setCustomStorage({ ...customStorage, dailyRate: parseFloat(e.target.value) || 0 })} placeholder="15.00" className="h-9" />
                               </div>
                             </div>
@@ -744,7 +744,7 @@ function StorageListingContent({
                             </div>
                             <div className="space-y-2">
                               <div className="space-y-1">
-                                <Label className="text-xs">Daily Rate ($)</Label>
+                                <Label className="text-xs">{mt("dailyRateDollars")}</Label>
                                 <Input type="number" step="0.01" min="0" value={storage.dailyRate} onChange={(e) => updateSelectedStorage(storage.templateId, { dailyRate: parseFloat(e.target.value) || 0 })} className="h-8" />
                               </div>
                               <div className="space-y-1">
@@ -791,7 +791,7 @@ function StorageListingContent({
                                     <Input type="number" min="0" max="50" value={Math.round(parseFloat(storage.overstayPenaltyRate) * 100)} onChange={(e) => updateSelectedStorage(storage.templateId, { overstayPenaltyRate: ((parseInt(e.target.value) || 0) / 100).toString() })} className="h-7 text-xs" />
                                   </div>
                                   <div className="space-y-0.5">
-                                    <Label className="text-[10px]">Max</Label>
+                                    <Label className="text-[10px]">{mt("maxShort")}</Label>
                                     <Input type="number" min="1" max="90" value={storage.overstayMaxPenaltyDays} onChange={(e) => updateSelectedStorage(storage.templateId, { overstayMaxPenaltyDays: parseInt(e.target.value) || 1 })} className="h-7 text-xs" />
                                   </div>
                                 </div>
@@ -897,7 +897,7 @@ function StorageListingContent({
                   {/* Daily Rate & Size Row */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label className="text-sm font-medium">Daily Rate ($)</Label>
+                      <Label className="text-sm font-medium">{mt("dailyRateDollars")}</Label>
                       <div className="relative">
                         <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                         <Input 
@@ -1041,7 +1041,7 @@ function StorageListingContent({
             <StatusButton 
               onClick={() => { setActiveSavingAction('edit'); saveEditedListing(); }} 
               status={activeSavingAction === 'edit' && isSaving ? "loading" : "idle"}
-              labels={{ idle: "Save Changes", loading: "Saving", success: "Saved" }}
+              labels={{ idle: mt("saveChanges"), loading: mt("saving"), success: mt("saved") }}
             />
           </SheetFooter>
         </SheetContent>

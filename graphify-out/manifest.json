@@ -798,15 +798,15 @@
     "semantic_hash": "b9a66ef246014dcc398fed117d0d1439"
   },
   "client/src/components/dashboard/BookingCalendarWidget.tsx": {
-    "mtime": 1788457878.3567934,
-    "seen": 1788457914.08537,
-    "ast_hash": "70ddf437d6241dacd17f726cddf7976a",
+    "mtime": 1788459888.2897458,
+    "seen": 1788460332.864044,
+    "ast_hash": "2e5439c2453b7821970f4091c1662428",
     "semantic_hash": ""
   },
   "client/src/components/dashboard/KitchenDashboardOverview.tsx": {
-    "mtime": 1788457846.8253913,
-    "seen": 1788457914.0853708,
-    "ast_hash": "7defb28807cd5bd9a73ae5f4a2cc921c",
+    "mtime": 1788461870.2919562,
+    "seen": 1788462015.64933,
+    "ast_hash": "1d1d756019c4d8bead24d9c580f0016b",
     "semantic_hash": ""
   },
   "client/src/components/document-verification/DocumentUpload.tsx": {
@@ -894,9 +894,9 @@
     "semantic_hash": ""
   },
   "client/src/components/layout/ManagerPageLayout.tsx": {
-    "mtime": 1788456570.3497841,
-    "seen": 1788456583.9923751,
-    "ast_hash": "3a229eaaed1f8fd9e92f0f93a60e37fa",
+    "mtime": 1788459857.554193,
+    "seen": 1788460332.86449,
+    "ast_hash": "277c898b8e2e9114c44ff980f24e01e5",
     "semantic_hash": ""
   },
   "client/src/components/legal/PrivacyContent.tsx": {
@@ -978,9 +978,9 @@
     "semantic_hash": ""
   },
   "client/src/components/manager/LocationEditModal.tsx": {
-    "mtime": 1788263356.9120522,
-    "seen": 1788263885.699852,
-    "ast_hash": "8e76a56ea3a1608269a5c8d43310b70f",
+    "mtime": 1788461849.5708122,
+    "seen": 1788462015.650058,
+    "ast_hash": "2b67f0a65d5307d3538a1d9d1e6d532f",
     "semantic_hash": ""
   },
   "client/src/components/manager/LocationRequirementsSettings.tsx": {
@@ -1014,9 +1014,9 @@
     "semantic_hash": ""
   },
   "client/src/components/manager/ManagerProfileSettings.tsx": {
-    "mtime": 1788456658.0046744,
-    "seen": 1788456786.556486,
-    "ast_hash": "2621495b9a84247e2ec30f88dacb7649",
+    "mtime": 1788461840.5870862,
+    "seen": 1788462015.650173,
+    "ast_hash": "441cdd6055abad623f1d9001969fb524",
     "semantic_hash": ""
   },
   "client/src/components/manager/ManagerProtectedRoute.tsx": {
@@ -1026,9 +1026,9 @@
     "semantic_hash": ""
   },
   "client/src/components/manager/NotificationCenter.tsx": {
-    "mtime": 1788263965.768634,
-    "seen": 1788264571.8448231,
-    "ast_hash": "ad167911463ffc0a822414499da8951f",
+    "mtime": 1788461951.505903,
+    "seen": 1788462015.650196,
+    "ast_hash": "c8366f5bbf2f16bcc41e457f886b89ad",
     "semantic_hash": ""
   },
   "client/src/components/manager/OnboardingStatusBanner.tsx": {
@@ -1038,45 +1038,45 @@
     "semantic_hash": ""
   },
   "client/src/components/manager/PendingCancellationRequests.tsx": {
-    "mtime": 1788258782.6780465,
-    "seen": 1788259863.133776,
-    "ast_hash": "be6d3a2bb169cc032d432d8b5ffe19d2",
+    "mtime": 1788459899.1589475,
+    "seen": 1788460332.864977,
+    "ast_hash": "bed1ef2d2bab92b8713f654e63519b87",
     "semantic_hash": ""
   },
   "client/src/components/manager/PendingStorageCheckins.tsx": {
-    "mtime": 1788263965.7689452,
-    "seen": 1788264571.8448699,
-    "ast_hash": "f185840da64fe8b8d5990472763ea8a4",
+    "mtime": 1788461840.6884487,
+    "seen": 1788462015.6502411,
+    "ast_hash": "db6d8c2bff629d5da68ff810d62a893c",
     "semantic_hash": ""
   },
   "client/src/components/manager/PendingStorageCheckouts.tsx": {
-    "mtime": 1788456617.0770948,
-    "seen": 1788456786.556597,
-    "ast_hash": "0c9b650eca157ab565dfced0f06d0a5e",
+    "mtime": 1788461952.4817896,
+    "seen": 1788462015.650242,
+    "ast_hash": "e7170d3afc55a2f8df013e45158c0b95",
     "semantic_hash": ""
   },
   "client/src/components/manager/StorageExtensionApprovals.tsx": {
-    "mtime": 1788263995.7883434,
-    "seen": 1788264571.844893,
-    "ast_hash": "794d458662cfad7ec870d05b1c80d700",
+    "mtime": 1788461990.1000319,
+    "seen": 1788462015.650242,
+    "ast_hash": "9f431f93825b5b790a2b5a6836ed41b2",
     "semantic_hash": ""
   },
   "client/src/components/manager/StripeConnectSetup.tsx": {
-    "mtime": 1788456592.1086047,
-    "seen": 1788456786.5566201,
-    "ast_hash": "54025557a4da4675953f762ef229b326",
+    "mtime": 1788461988.245661,
+    "seen": 1788462015.650243,
+    "ast_hash": "ed0fdec93e0c290dcd3d592361687ead",
     "semantic_hash": ""
   },
   "client/src/components/manager/TodaysKitchenBookings.tsx": {
-    "mtime": 1788457846.8257232,
-    "seen": 1788457914.0865002,
-    "ast_hash": "d2863f1bbac0f991f33d44b73b9fa1a8",
+    "mtime": 1788461990.0990753,
+    "seen": 1788462015.650244,
+    "ast_hash": "655c6d4fe2d52567040f158cc9f6e8a7",
     "semantic_hash": ""
   },
   "client/src/components/manager/ViewingSettingsPanel.tsx": {
-    "mtime": 1788262672.42591,
-    "seen": 1788262830.961523,
-    "ast_hash": "48cf1a1530ea4f47140065b83e447701",
+    "mtime": 1788460208.6399977,
+    "seen": 1788460332.865025,
+    "ast_hash": "b002a8c8bf0a922e732f7334c5718fac",
     "semantic_hash": ""
   },
   "client/src/components/manager/ViewingsDashboard.tsx": {
@@ -1086,15 +1086,15 @@
     "semantic_hash": ""
   },
   "client/src/components/manager/applications/columns-v2.tsx": {
-    "mtime": 1788433366.4908464,
-    "seen": 1788433587.0543182,
-    "ast_hash": "d97d8a62cd458b57715358b6a419da55",
+    "mtime": 1788459903.7378993,
+    "seen": 1788460332.8650491,
+    "ast_hash": "6203b29f12049a7f116689d61e1ad603",
     "semantic_hash": ""
   },
   "client/src/components/manager/applications/columns.tsx": {
-    "mtime": 1788433366.30587,
-    "seen": 1788433587.0543191,
-    "ast_hash": "9ece6a6e0225e72401aaf20fedfa1d40",
+    "mtime": 1788459904.2340884,
+    "seen": 1788460332.8650491,
+    "ast_hash": "e4db106914732a66e187f5a19598e068",
     "semantic_hash": ""
   },
   "client/src/components/manager/applications/components/ApplicationDetailPanel.tsx": {
@@ -1146,15 +1146,15 @@
     "semantic_hash": ""
   },
   "client/src/components/manager/damage-claims/DamageClaimDetailSheet.tsx": {
-    "mtime": 1788456658.00424,
-    "seen": 1788456786.556878,
-    "ast_hash": "14c63f361fec0dbba8d4f1f2edba7c03",
+    "mtime": 1788461951.0745223,
+    "seen": 1788462015.650541,
+    "ast_hash": "02487a6ea3e0b1a8476e9a17c47b1793",
     "semantic_hash": ""
   },
   "client/src/components/manager/damage-claims/DamageClaimQueue.tsx": {
-    "mtime": 1788456683.8454857,
-    "seen": 1788456786.556878,
-    "ast_hash": "342e1b857c92a120ed05b7e46d6ca7fc",
+    "mtime": 1788461846.261174,
+    "seen": 1788462015.650542,
+    "ast_hash": "3fb7b6572c8e3cc23b16ef35128ccf7a",
     "semantic_hash": ""
   },
   "client/src/components/manager/dashboard/BookingKPIStats.tsx": {
@@ -1176,15 +1176,15 @@
     "semantic_hash": ""
   },
   "client/src/components/manager/locations/CreateLocationDialog.tsx": {
-    "mtime": 1788263300.3264832,
-    "seen": 1788263885.700347,
-    "ast_hash": "325460ba0d90334de2db03e2bdb48921",
+    "mtime": 1788460135.9044075,
+    "seen": 1788460332.865531,
+    "ast_hash": "c705642ee10443418b5ae7f6275bc446",
     "semantic_hash": ""
   },
   "client/src/components/manager/locations/LocationSettingsView.tsx": {
-    "mtime": 1788263396.234018,
-    "seen": 1788263885.700347,
-    "ast_hash": "d7dbc3e6f16f827345a4882667acfe11",
+    "mtime": 1788461864.582833,
+    "seen": 1788462015.650645,
+    "ast_hash": "96318cfabe0fae55553081c572ce6fea",
     "semantic_hash": ""
   },
   "client/src/components/manager/locations/columns.tsx": {
@@ -1242,9 +1242,9 @@
     "semantic_hash": ""
   },
   "client/src/components/manager/onboarding/steps/EquipmentListingsStep.tsx": {
-    "mtime": 1788263300.311292,
-    "seen": 1788263885.700417,
-    "ast_hash": "17e30d1daaa668933b3134f0dbe6540a",
+    "mtime": 1788461852.148083,
+    "seen": 1788462015.65088,
+    "ast_hash": "29186f4878d5e552ac1052f5dc2aff5e",
     "semantic_hash": ""
   },
   "client/src/components/manager/onboarding/steps/LocationStep.tsx": {
@@ -1260,9 +1260,9 @@
     "semantic_hash": ""
   },
   "client/src/components/manager/onboarding/steps/StorageListingsStep.tsx": {
-    "mtime": 1788263300.318529,
-    "seen": 1788263885.700456,
-    "ast_hash": "87a1a2cbdb9b67d40580d776b9c3bd05",
+    "mtime": 1788461910.6497662,
+    "seen": 1788462015.650933,
+    "ast_hash": "4acd36feb8310ffaceeb3cbe1ef344a6",
     "semantic_hash": ""
   },
   "client/src/components/manager/onboarding/steps/WelcomeStep.tsx": {
@@ -1278,9 +1278,9 @@
     "semantic_hash": "077954d0d259f3f758495b6f68a1da06"
   },
   "client/src/components/manager/overstays/OverstayPenaltyQueue.tsx": {
-    "mtime": 1788456658.0035686,
-    "seen": 1788456786.557421,
-    "ast_hash": "2b593c7731139913aef54cd8869fb94d",
+    "mtime": 1788460144.1923957,
+    "seen": 1788460332.866063,
+    "ast_hash": "32bd28cd7ef8335fe2b9cc967e2d00aa",
     "semantic_hash": ""
   },
   "client/src/components/manager/overstays/index.ts": {
@@ -1308,9 +1308,9 @@
     "semantic_hash": ""
   },
   "client/src/components/manager/requirements/RequirementsStepTwo.tsx": {
-    "mtime": 1788258782.6944072,
-    "seen": 1788259863.133902,
-    "ast_hash": "bb49696fcb50f76ffe0e1f11d1576fad",
+    "mtime": 1788461849.9958382,
+    "seen": 1788462015.65111,
+    "ast_hash": "44b9232d7e8600ab1d21cb9502356374",
     "semantic_hash": ""
   },
   "client/src/components/manager/requirements/index.ts": {
@@ -1338,9 +1338,9 @@
     "semantic_hash": ""
   },
   "client/src/components/manager/revenue/components/RevenueCharts.tsx": {
-    "mtime": 1788456658.0044208,
-    "seen": 1788456786.557651,
-    "ast_hash": "2308580ba299787646dfca773cbd5e20",
+    "mtime": 1788461866.0480602,
+    "seen": 1788462015.651212,
+    "ast_hash": "c692f7fc90539430fa4aa5c3998447ef",
     "semantic_hash": ""
   },
   "client/src/components/manager/revenue/components/RevenueMetricCards.tsx": {
@@ -1350,9 +1350,9 @@
     "semantic_hash": ""
   },
   "client/src/components/manager/revenue/components/TransactionTable.tsx": {
-    "mtime": 1788263424.0348313,
-    "seen": 1788263885.7007291,
-    "ast_hash": "a6371fd9e48870a7eb069a92ec1b0d5a",
+    "mtime": 1788461870.245913,
+    "seen": 1788462015.6512399,
+    "ast_hash": "93302f86a09e6907aab0e8df214cc950",
     "semantic_hash": ""
   },
   "client/src/components/manager/revenue/hooks/use-revenue-data.ts": {
@@ -1386,9 +1386,9 @@
     "semantic_hash": ""
   },
   "client/src/components/manager/settings/CheckinCheckoutSettings.tsx": {
-    "mtime": 1788263300.2695177,
-    "seen": 1788263885.7008462,
-    "ast_hash": "3fc3645606fefac0014ab1babdcae9ce",
+    "mtime": 1788461870.1958458,
+    "seen": 1788462015.651393,
+    "ast_hash": "0107dc601fba9a1eafa933db028a318a",
     "semantic_hash": ""
   },
   "client/src/components/manager/settings/FacilityDocsSettings.tsx": {
@@ -1410,9 +1410,9 @@
     "semantic_hash": ""
   },
   "client/src/components/manager/settings/LicenseSettings.tsx": {
-    "mtime": 1788263300.2994504,
-    "seen": 1788263885.7008488,
-    "ast_hash": "55baffc223b71df6e7193f0d91edb7c6",
+    "mtime": 1788461953.7712054,
+    "seen": 1788462015.651468,
+    "ast_hash": "0d53a68ec6e5488e7d5bed38875ed264",
     "semantic_hash": ""
   },
   "client/src/components/manager/settings/LocationSettings.tsx": {
@@ -1422,9 +1422,9 @@
     "semantic_hash": ""
   },
   "client/src/components/manager/settings/NotificationsSettings.tsx": {
-    "mtime": 1788263259.4751976,
-    "seen": 1788263885.700851,
-    "ast_hash": "30e881cc62299a589b12ab922697b8fa",
+    "mtime": 1788461838.085671,
+    "seen": 1788462015.6514938,
+    "ast_hash": "90191c8df0e58b1cf77760fbc3cc1320",
     "semantic_hash": ""
   },
   "client/src/components/manager/settings/StorageCheckinCheckoutEditor.tsx": {
@@ -1872,10 +1872,10 @@
     "semantic_hash": ""
   },
   "client/src/components/ui/sidebar.tsx": {
-    "mtime": 1770310984.0704892,
-    "seen": 1787862209.634509,
-    "ast_hash": "f3a3c7e0b573be8500d186e76bced00f",
-    "semantic_hash": "f3a3c7e0b573be8500d186e76bced00f"
+    "mtime": 1788459845.1624203,
+    "seen": 1788460332.868392,
+    "ast_hash": "b1d01b6ec68c5ff278d0e26f022f9db3",
+    "semantic_hash": ""
   },
   "client/src/components/ui/simple-radio.tsx": {
     "mtime": 1770310984.055053,
@@ -2232,15 +2232,15 @@
     "semantic_hash": "52b658e5fd84d4749176597c32801050"
   },
   "client/src/layouts/ChefDashboardLayout.tsx": {
-    "mtime": 1788093157.8093498,
-    "seen": 1788093187.680852,
-    "ast_hash": "8da30b25f0c8ea7af4ba828f26d232c4",
+    "mtime": 1788459896.2352946,
+    "seen": 1788460332.869788,
+    "ast_hash": "ce40ba85b1163db1ec496e8e8dd55cc9",
     "semantic_hash": ""
   },
   "client/src/layouts/DashboardLayout.tsx": {
-    "mtime": 1788258285.1890123,
-    "seen": 1788259863.136883,
-    "ast_hash": "71bd4c555ee02008bd029c82b836f25f",
+    "mtime": 1788459846.3764918,
+    "seen": 1788460332.869789,
+    "ast_hash": "54a5afb3d93260804bbacf9ef1d64df0",
     "semantic_hash": ""
   },
   "client/src/layouts/ManagerBookingLayout.tsx": {
@@ -2436,9 +2436,9 @@
     "semantic_hash": "8458f23c9475810509bb0ceb72004570"
   },
   "client/src/pages/EquipmentListingManagement.tsx": {
-    "mtime": 1788258847.8241236,
-    "seen": 1788259863.137856,
-    "ast_hash": "206ea89c788b6db0fce19715a174f2e3",
+    "mtime": 1788461923.098566,
+    "seen": 1788462015.656051,
+    "ast_hash": "d8e312b4b2d93576107faec90492dc11",
     "semantic_hash": ""
   },
   "client/src/pages/ForgotPassword.tsx": {
@@ -2454,9 +2454,9 @@
     "semantic_hash": "04b2b06288ae97d1f493472e21d6799d"
   },
   "client/src/pages/KitchenAvailabilityManagement.tsx": {
-    "mtime": 1788456612.863185,
-    "seen": 1788456786.5629172,
-    "ast_hash": "688586e053e12d0af513b513882c8ec7",
+    "mtime": 1788459959.0653539,
+    "seen": 1788460332.871105,
+    "ast_hash": "b676959cc95db25cdac5c353fe5b53f5",
     "semantic_hash": ""
   },
   "client/src/pages/KitchenBookingCalendar.tsx": {
@@ -2484,9 +2484,9 @@
     "semantic_hash": ""
   },
   "client/src/pages/KitchenPricingManagement.tsx": {
-    "mtime": 1788258847.8911366,
-    "seen": 1788259863.137985,
-    "ast_hash": "977ec9c31c8ca963bf52f267efe06286",
+    "mtime": 1788461867.857343,
+    "seen": 1788462015.656223,
+    "ast_hash": "a06e8909334c21845aded7bd58cd4c1b",
     "semantic_hash": ""
   },
   "client/src/pages/KitchenRequirementsPage.tsx": {
@@ -2520,9 +2520,9 @@
     "semantic_hash": "b879bf467a248ca5402e0b67410e2171"
   },
   "client/src/pages/ManagerBookingDashboard.tsx": {
-    "mtime": 1788263995.796522,
-    "seen": 1788264571.85027,
-    "ast_hash": "4e2dd5f907dd7e7e19bd0efd12bcfe54",
+    "mtime": 1788460252.4570782,
+    "seen": 1788460332.8713331,
+    "ast_hash": "c0b9088e41fcc14c632d9a4eacf2b087",
     "semantic_hash": ""
   },
   "client/src/pages/ManagerBookingsPanel.tsx": {
@@ -2616,9 +2616,9 @@
     "semantic_hash": "ee7511fade84ef535779b4d2101b20b4"
   },
   "client/src/pages/StorageListingManagement.tsx": {
-    "mtime": 1788258848.0238888,
-    "seen": 1788259863.138304,
-    "ast_hash": "b9d5ac3f7af0a0d178a99612b3ae0ea0",
+    "mtime": 1788461989.0121155,
+    "seen": 1788462015.65672,
+    "ast_hash": "7ff152df7b52e9f737e066be89f62e68",
     "semantic_hash": ""
   },
   "client/src/pages/StripeConnectRefresh.tsx": {
@@ -2928,9 +2928,9 @@
     "semantic_hash": "8402628c6a2d9c6ed837f3be371df602"
   },
   "package.json": {
-    "mtime": 1788284289.8419242,
-    "seen": 1788286681.430938,
-    "ast_hash": "51f53673afc783d8874949cee451ae19",
+    "mtime": 1788460927.6819725,
+    "seen": 1788461113.596101,
+    "ast_hash": "7af891ddb7612c5fae2603ce81033fb3",
     "semantic_hash": ""
   },
   "postcss.config.js": {
@@ -3012,10 +3012,10 @@
     "semantic_hash": "178be895a25e99d5e8c625a4b2255c2a"
   },
   "server/db.ts": {
-    "mtime": 1771059909.2716174,
-    "seen": 1787862209.634604,
-    "ast_hash": "95410e47a8d136938a0dee0bf1570d29",
-    "semantic_hash": "95410e47a8d136938a0dee0bf1570d29"
+    "mtime": 1788460896.0798345,
+    "seen": 1788461113.5963662,
+    "ast_hash": "76098c7449612390c18130d3c6b9717c",
+    "semantic_hash": ""
   },
   "server/domains/applications/application.repository.ts": {
     "mtime": 1775324203.8872585,
@@ -3042,9 +3042,9 @@
     "semantic_hash": "d2874850294498da8507dbc9ee9016e7"
   },
   "server/domains/applications/chef-application.service.ts": {
-    "mtime": 1788433475.0468554,
-    "seen": 1788433587.062269,
-    "ast_hash": "d65277a1c516efff10e90fb6a55baf9c",
+    "mtime": 1788460916.270267,
+    "seen": 1788461113.596643,
+    "ast_hash": "de7cfecc644d8519b91515de99a063de",
     "semantic_hash": ""
   },
   "server/domains/applications/tier-validation.ts": {
@@ -3318,15 +3318,15 @@
     "semantic_hash": "3d3b81d019b20d209871224506c33f9a"
   },
   "server/routes.ts": {
-    "mtime": 1788291310.708018,
-    "seen": 1788291388.729551,
-    "ast_hash": "f9dcb03089166e5207c81e2aed0d54cf",
+    "mtime": 1788460916.7575586,
+    "seen": 1788461113.5977159,
+    "ast_hash": "967485904ca35888430ada5eacfae3f7",
     "semantic_hash": ""
   },
   "server/routes/admin.ts": {
-    "mtime": 1788448709.9413793,
-    "seen": 1788451208.608259,
-    "ast_hash": "7e77441aabf72a040a141a2700c2641d",
+    "mtime": 1788460906.8815339,
+    "seen": 1788461113.597718,
+    "ast_hash": "ce9dd2750ce59294336bb4f711ceb43f",
     "semantic_hash": ""
   },
   "server/routes/analytics.ts": {
@@ -4974,21 +4974,21 @@
     "semantic_hash": ""
   },
   "shared/i18n/locales/en-CA/manager.json": {
-    "mtime": 1788457878.3530304,
-    "seen": 1788457914.097942,
-    "ast_hash": "9e506549fdf1da503b58cc831a7cd971",
+    "mtime": 1788461987.912471,
+    "seen": 1788462015.6612859,
+    "ast_hash": "7e8c1e9bc6bcb3b77a6e263bc0537b60",
     "semantic_hash": ""
   },
   "shared/i18n/locales/fr-CA/manager.json": {
-    "mtime": 1788457878.3547869,
-    "seen": 1788457914.0981948,
-    "ast_hash": "6ca6002d9bd7762dc05561ca44ed4712",
+    "mtime": 1788461987.9143593,
+    "seen": 1788462015.661611,
+    "ast_hash": "1a0d8a23428ddea51ffc3800462c2c4e",
     "semantic_hash": ""
   },
   "shared/i18n/locales/uk/manager.json": {
-    "mtime": 1788457878.3565466,
-    "seen": 1788457914.098444,
-    "ast_hash": "da7bbdf0af748055a77b8a2da0c073e9",
+    "mtime": 1788461987.917146,
+    "seen": 1788462015.661933,
+    "ast_hash": "3f96ddd8a8a125b1f9bce14a89b2f4e8",
     "semantic_hash": ""
   },
   "client/src/i18n/booking-ns.ts": {

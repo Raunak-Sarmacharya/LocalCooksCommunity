@@ -49,7 +49,7 @@ import { comparePasswords, hashPassword } from "./passwordUtils";
 import { verifyFirebaseToken } from "./firebase-setup";
 import { requireFirebaseAuthWithUser, requireManager, requireAdmin, optionalFirebaseAuth } from "./firebase-auth-middleware";
 import { deleteConversation } from "./chat-service";
-import { pool, db } from "./db";
+import { pool, db, getDbError } from "./db";
 import { getPresignedUrl } from "./r2-storage";
 import { requireChef } from "./routes/middleware";
 import { normalizeImageUrl } from "./routes/utils";
@@ -817,7 +817,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       logger.error("Error registering user:", error);
 
       // Provide more specific error messages
-      if (error.message?.includes('already taken') || error.code === '23505') {
+      const dbErr = getDbError(error);
+      if (dbErr.message?.includes('already taken') || dbErr.code === '23505') {
         return res.status(409).json({
           error: "Email already registered",
           code: "EMAIL_EXISTS",

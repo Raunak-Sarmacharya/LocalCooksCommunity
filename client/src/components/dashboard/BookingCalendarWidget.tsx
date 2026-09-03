@@ -414,7 +414,7 @@ export default function BookingCalendarWidget({
                               `}
                             >
                               <span className="opacity-70">{formatTime(booking.startTime)}</span>
-                              <span className="ml-1">{booking.chefName || booking.portalUserName || 'Chef'}</span>
+                              <span className="ml-1">{booking.chefName || booking.portalUserName || mt("chef")}</span>
                             </div>
                           ))}
                           {dayBookings.length > 2 && (
@@ -542,7 +542,7 @@ export default function BookingCalendarWidget({
                                 }}
                               >
                                 <p className={`text-[10px] font-semibold ${config.textColor} truncate`}>
-                                  {booking.chefName || booking.portalUserName || 'Chef'}
+                                  {booking.chefName || booking.portalUserName || mt("chef")}
                                 </p>
                                 <p className={`text-[9px] ${config.textColor} opacity-70`}>
                                   {formatTime(booking.startTime)}
@@ -627,7 +627,7 @@ export default function BookingCalendarWidget({
 
                           {/* Chef Name */}
                           <p className="font-medium text-gray-900 text-sm truncate mb-1">
-                            {booking.chefName || booking.portalUserName || 'Guest Chef'}
+                            {booking.chefName || booking.portalUserName || mt("guestChef")}
                           </p>
 
                           {/* Kitchen */}
@@ -658,7 +658,7 @@ export default function BookingCalendarWidget({
                   onClick={onNavigateToBookings}
                   className="w-full text-rose-600 hover:text-rose-700 hover:bg-rose-50 mt-2"
                 >
-                  View all bookings
+                  {mt("viewAllBookings")}
                   <ChevronRight className="h-4 w-4 ml-1" />
                 </Button>
               </div>

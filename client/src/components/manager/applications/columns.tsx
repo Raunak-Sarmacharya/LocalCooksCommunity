@@ -79,19 +79,19 @@ export function getApplicationColumns({
         },
         {
             accessorKey: "kitchenPreference",
-            header: "Kitchen Type",
+            header: mt("kitchenTypeHeader"),
             cell: ({ row }) => {
                 const pref = row.getValue("kitchenPreference") as string;
                 return (
                     <span className="capitalize text-sm text-gray-700">
-                        {pref === "commercial" ? "Commercial" : pref === "home" ? "Home" : "Not Sure"}
+                        {pref === "commercial" ? mt("commercial") : pref === "home" ? mt("homeKitchen") : mt("notSure")}
                     </span>
                 )
             },
         },
         {
             accessorKey: "status",
-            header: "Status",
+            header: mt("status"),
             cell: ({ row }) => <StatusBadge application={row.original} />,
             filterFn: (row, id, value) => {
                 return value === 'all' || row.getValue(id) === value

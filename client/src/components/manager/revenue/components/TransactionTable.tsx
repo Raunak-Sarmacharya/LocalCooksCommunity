@@ -372,7 +372,7 @@ export function TransactionTable({
                                     {/* Totals Row */}
                                     <TableRow className="bg-muted/50 font-semibold">
                                         <TableCell colSpan={4}>
-                                            Total ({filteredData.length} transactions)
+                                            {mt("totalTransactionsCount", { count: filteredData.length })}
                                         </TableCell>
                                         <TableCell className="text-right">
                                             {formatCurrency(totals.totalPrice)}
@@ -398,7 +398,7 @@ export function TransactionTable({
                         {/* Pagination */}
                         <div className="flex items-center justify-between space-x-2 py-4">
                             <div className="text-sm text-muted-foreground">
-                                Showing {table.getRowModel().rows.length} of {filteredData.length} transactions
+                                {mt("showingTransactionsCount", { shown: table.getRowModel().rows.length, total: filteredData.length })}
                             </div>
                             <div className="space-x-2">
                                 <Button
@@ -464,7 +464,7 @@ export function TransactionTable({
                             </div>
 
                             <div className="space-y-2">
-                                <Label htmlFor="refund-amount">Refund amount ({refundCurrency})</Label>
+                                <Label htmlFor="refund-amount">{mt("refundAmountWithCurrency", { currency: refundCurrency })}</Label>
                                 <CurrencyInput
                                     id="refund-amount"
                                     value={refundAmount}

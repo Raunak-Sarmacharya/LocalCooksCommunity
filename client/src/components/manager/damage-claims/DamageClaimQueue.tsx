@@ -210,16 +210,16 @@ function ClaimCard({
             
             <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
               <span>
-                <strong>{mt("chef2")}</strong> {claim.chefName || claim.chefEmail || 'Unknown'}
+                <strong>{mt("chef2")}</strong> {claim.chefName || claim.chefEmail || mt("unknown")}
               </span>
               <span>
-                <strong>{mt("type2")}</strong> {claim.bookingType === 'storage' ? 'Storage' : 'Kitchen'}
+                <strong>{mt("type2")}</strong> {claim.bookingType === 'storage' ? mt("storage") : mt("kitchen")}
               </span>
               <span>
                 <strong>{mt("damageDate2")}</strong> {format(new Date(claim.damageDate), 'MMM d, yyyy')}
               </span>
               <span>
-                <strong>{mt("evidence")}</strong> {claim.evidence.length} items
+                <strong>{mt("evidence")}</strong> {mt("evidenceItemsCount", { count: claim.evidence.length })}
               </span>
             </div>
 
@@ -245,7 +245,7 @@ function ClaimCard({
             <p className="text-xl font-bold">{formatCurrency(claim.claimedAmountCents)}</p>
             {claim.finalAmountCents && claim.finalAmountCents !== claim.claimedAmountCents && (
               <p className="text-sm text-green-600">
-                Final: {formatCurrency(claim.finalAmountCents)}
+                {mt("finalAmountLabel", { amount: formatCurrency(claim.finalAmountCents) })}
               </p>
             )}
           </div>
@@ -575,12 +575,12 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
       <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
         <SheetHeader>
           <SheetTitle>
-            {step === 'form' ? 'Create Damage Claim' : 'Add Evidence'}
+            {step === 'form' ? mt("createDamageClaim") : mt("addEvidence")}
           </SheetTitle>
           <SheetDescription>
             {step === 'form' 
-              ? "Fill in the claim details, then add evidence and submit to the chef."
-              : "Upload photos, receipts, or documents as evidence for your claim."
+              ? mt("fillClaimDetailsDesc")
+              : mt("uploadEvidenceDesc")
             }
           </SheetDescription>
         </SheetHeader>
@@ -600,14 +600,14 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
             <div className="space-y-2">
               <Label>{mt("selectBooking")}</Label>
               <p className="text-xs text-muted-foreground mb-2">
-                Only past bookings from the last {deadlineDays} days are eligible
+                {mt("onlyPastBookingsEligible", { days: deadlineDays })}
               </p>
               {loadingBookings ? (
                 <Skeleton className="h-10 w-full" />
               ) : recentBookings.length === 0 ? (
                 <div className="p-4 border rounded-md bg-muted/50 text-center">
                   <p className="text-sm text-muted-foreground">
-                    No eligible bookings found in the last {deadlineDays} days
+                    {mt("noEligibleBookingsFound", { days: deadlineDays })}
                   </p>
                 </div>
               ) : (
@@ -645,7 +645,7 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
                 <div className="space-y-1">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">{mt("type2")}</span>
-                    <Badge variant="outline">{selectedBooking.type === 'storage' ? 'Storage' : 'Kitchen'}</Badge>
+                    <Badge variant="outline">{selectedBooking.type === 'storage' ? mt("storage") : mt("kitchen")}</Badge>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">{mt("chef2")}</span>
@@ -706,7 +706,7 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
                               {eq.brand && <span className="text-muted-foreground ml-1">({eq.brand})</span>}
                             </div>
                             <Badge variant="secondary" className="text-[10px] flex-shrink-0">
-                              {eq.availabilityType === 'included' ? 'Included' : 'Rented'}
+                              {eq.availabilityType === 'included' ? mt("included") : mt("rented")}
                             </Badge>
                           </button>
                         );
@@ -782,9 +782,7 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
             <Alert>
               <Info className="h-4 w-4" />
               <AlertDescription>
-                <strong>{mt("howItWorks2")}</strong> When you submit, the chef will be notified and has 72 hours to respond.
-                If they accept, <strong>their card will be automatically charged</strong> using the payment method from their booking.
-                If they dispute, an admin will review the claim.
+                <strong>{mt("howItWorks2")}</strong> {mt("damageClaimSubmitHowItWorks")}
               </AlertDescription>
             </Alert>
 
@@ -795,7 +793,10 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
                 <span className="font-bold">${formData.claimedAmount}</span>
               </div>
               <p className="text-xs text-muted-foreground">
-                Chef: {selectedBooking?.chefName} • {selectedBooking?.type === 'storage' ? 'Storage' : 'Kitchen'} booking
+                {mt("chefBookingSummary", {
+                  chef: selectedBooking?.chefName ?? "",
+                  type: selectedBooking?.type === "storage" ? mt("storage") : mt("kitchen"),
+                })}
               </p>
             </div>
 
@@ -836,7 +837,7 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
               {/* Pending Evidence List */}
               {pendingEvidence.length > 0 && (
                 <div className="space-y-2 mt-3">
-                  <p className="text-sm font-medium">Evidence to upload ({pendingEvidence.length} items):</p>
+                  <p className="text-sm font-medium">{mt("evidenceToUploadCount", { count: pendingEvidence.length })}</p>
                   {pendingEvidence.map((ev) => (
                     <div key={ev.id} className="flex items-center gap-2 p-2 border rounded-md bg-muted/30">
                       {ev.preview ? (
@@ -1009,7 +1010,7 @@ export function DamageClaimQueue() {
     },
     {
       id: "reference",
-      header: "Ref",
+      header: mt("ref"),
       cell: ({ row }) => {
         const ref = row.original.referenceCode || row.original.kitchenBookingId || row.original.id;
         return (
@@ -1044,17 +1045,17 @@ export function DamageClaimQueue() {
     },
     {
       accessorKey: "chefName",
-      header: "Chef",
+      header: mt("chefHeader"),
       cell: ({ row }) => {
         const claim = row.original;
         return (
-          <span className="text-sm">{claim.chefName || claim.chefEmail || 'Unknown'}</span>
+          <span className="text-sm">{claim.chefName || claim.chefEmail || mt("unknown")}</span>
         );
       },
     },
     {
       accessorKey: "bookingType",
-      header: "Type",
+      header: mt("type"),
       cell: ({ row }) => (
         <Badge variant="outline" className="capitalize">
           {row.original.bookingType}
@@ -1089,7 +1090,7 @@ export function DamageClaimQueue() {
           <div className="text-right">
             <p className="font-semibold">{formatCurrency(claim.claimedAmountCents)}</p>
             {claim.finalAmountCents && claim.finalAmountCents !== claim.claimedAmountCents && (
-              <p className="text-xs text-green-600">Final: {formatCurrency(claim.finalAmountCents)}</p>
+              <p className="text-xs text-green-600">{mt("finalAmountLabel", { amount: formatCurrency(claim.finalAmountCents) })}</p>
             )}
           </div>
         );
@@ -1097,7 +1098,7 @@ export function DamageClaimQueue() {
     },
     {
       accessorKey: "status",
-      header: "Status",
+      header: mt("status"),
       cell: ({ row }) => getStatusBadge(row.original.status),
     },
     {
@@ -1242,7 +1243,7 @@ export function DamageClaimQueue() {
             variant={showAll ? "default" : "outline"} 
             onClick={() => setShowAll(!showAll)}
           >
-            {showAll ? "Hide" : "Show"} Resolved
+            {showAll ? mt("hideResolved") : mt("showResolved")}
           </Button>
           <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
             <RefreshCw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin")} />{mt("refresh")}</Button>
@@ -1267,7 +1268,7 @@ export function DamageClaimQueue() {
             </TabsTrigger>
             <TabsTrigger value="resolved" className="text-xs sm:text-sm px-2 sm:px-3 py-1.5">{mt("resolved")}<Badge variant="count" className="ml-1">{resolvedClaims.length}</Badge>
             </TabsTrigger>
-            <TabsTrigger value="all" className="text-xs sm:text-sm px-2 sm:px-3 py-1.5">All</TabsTrigger>
+            <TabsTrigger value="all" className="text-xs sm:text-sm px-2 sm:px-3 py-1.5">{mt("filterAll")}</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
@@ -1279,7 +1280,7 @@ export function DamageClaimQueue() {
             <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
             <h3 className="text-lg font-medium">{mt("noClaimsInThisCategory")}</h3>
             <p className="text-muted-foreground">
-              {activeTab === "all" ? "You haven't filed any damage claims yet." : `No ${activeTab} claims found.`}
+              {activeTab === "all" ? mt("noDamageClaimsYet") : mt("noTabClaimsFound", { tab: activeTab === "action" ? mt("action") : activeTab === "drafts" ? mt("drafts") : activeTab === "pending" ? mt("pending") : mt("resolved") })}
             </p>
           </CardContent>
         </Card>

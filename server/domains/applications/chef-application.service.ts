@@ -6,7 +6,7 @@ import { logger } from "../../logger";
  * Handles application submission, status updates, and retrieval.
  */
 
-import { db } from "../../db";
+import { db, getDbError } from "../../db";
 import { chefKitchenApplications, locations, users, chefLocationAccess, type ChefKitchenApplication, type InsertChefKitchenApplication } from "@shared/schema";
 import { eq, and, desc, inArray, getTableColumns } from "drizzle-orm";
 
@@ -141,7 +141,7 @@ export class ChefApplicationService {
         } catch (error) {
             logger.error("[ChefApplicationService] Error granting location access:", error);
             // Don't throw if it's just a duplicate key error we missed
-            if ((error as any).code === '23505') return null;
+            if (getDbError(error).code === '23505') return null;
             throw error;
         }
     }

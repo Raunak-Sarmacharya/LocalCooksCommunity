@@ -244,8 +244,8 @@ function KitchenPricingContent({
           {/* Hourly Rate */}
           <div>
             <Label htmlFor="hourlyRate">
-              {pricing.pricingModel === 'hourly' ? 'Hourly Rate' :
-                pricing.pricingModel === 'daily' ? 'Daily Rate' : 'Weekly Rate'} ({pricing.currency})
+              {pricing.pricingModel === 'hourly' ? mt("hourlyRate") :
+                pricing.pricingModel === 'daily' ? mt("dailyRate") : mt("weeklyRate")} ({pricing.currency})
             </Label>
             <CurrencyInput
               id="hourlyRate"
@@ -258,10 +258,10 @@ function KitchenPricingContent({
             />
             <p className="text-xs text-muted-foreground mt-1">
               {pricing.pricingModel === 'hourly'
-                ? 'Amount charged per hour'
+                ? mt("amountChargedPerHour")
                 : pricing.pricingModel === 'daily'
-                  ? 'Amount charged per day'
-                  : 'Amount charged per week'}
+                  ? mt("amountChargedPerDay")
+                  : mt("amountChargedPerWeek")}
             </p>
 
           </div>

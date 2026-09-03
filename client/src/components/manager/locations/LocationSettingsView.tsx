@@ -189,7 +189,7 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
     };
 
     const getDocumentFilename = (url?: string) => {
-        if (!url) return 'No document';
+        if (!url) return mt("noDocument");
         try {
             return decodeURIComponent(url.split('/').pop() || 'kitchen-license');
         } catch {
@@ -295,11 +295,11 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                             <TabsTrigger value="booking-rules" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">{mt("rules")}</TabsTrigger>
                             <TabsTrigger value="application-requirements" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
                                 <span className="hidden sm:inline">{mt("appReq")}</span>
-                                <span className="sm:hidden">Req</span>
+                                <span className="sm:hidden">{mt("req")}</span>
                             </TabsTrigger>
                             <TabsTrigger value="location" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
                                 <span className="hidden sm:inline">{mt("navLocation")}</span>
-                                <span className="sm:hidden">Loc</span>
+                                <span className="sm:hidden">{mt("loc")}</span>
                             </TabsTrigger>
                         </TabsList>
 
@@ -322,12 +322,21 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                             <div className="flex items-center justify-between mb-2">
                                                 <div className="flex items-center gap-2 font-medium">
                                                     {location.kitchenLicenseStatus === "approved" ? <CheckCircle className="h-5 w-5 text-green-600" /> : <AlertCircle className="h-5 w-5 text-yellow-600" />}
-                                                    <span>License Status: {location.kitchenLicenseStatus?.toUpperCase()}</span>
+                                                    <span>{mt("licenseStatusLabeled", {
+                                                        status: mt(
+                                                            location.kitchenLicenseStatus === "approved" ? "approved"
+                                                                : location.kitchenLicenseStatus === "rejected" ? "rejected"
+                                                                    : location.kitchenLicenseStatus === "expired" ? "expired"
+                                                                        : location.kitchenLicenseStatus === "update_pending" ? "updatePending"
+                                                                            : location.kitchenLicenseStatus ? "pendingReview"
+                                                                                : "nA"
+                                                        ),
+                                                    })}</span>
                                                 </div>
                                             </div>
                                             <div className="text-sm space-y-1">
                                                 <p>{mt("document")}<span className="font-medium">{getDocumentFilename(location.kitchenLicenseUrl)}</span></p>
-                                                <p>{mt("expires")}<span className="font-medium">{location.kitchenLicenseExpiry ? new Date(location.kitchenLicenseExpiry).toLocaleDateString() : 'N/A'}</span></p>
+                                                <p>{mt("expires")}<span className="font-medium">{location.kitchenLicenseExpiry ? new Date(location.kitchenLicenseExpiry).toLocaleDateString() : mt("nA")}</span></p>
                                             </div>
                                         </div>
                                     )}
@@ -399,7 +408,7 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                                 rel="noopener noreferrer"
                                                 className="text-sm text-blue-600 hover:underline mt-2 inline-block"
                                             >
-                                                View Document →
+                                                {mt("viewDocumentArrow")}
                                             </a>
                                         </div>
                                     )}
@@ -407,7 +416,7 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                     {/* Upload section */}
                                     <div className="space-y-4 border rounded-lg p-4 bg-muted/20">
                                         <div className="space-y-2">
-                                            <Label>{location.kitchenTermsUrl ? 'Replace Terms Document' : 'Upload Terms Document'}</Label>
+                                            <Label>{location.kitchenTermsUrl ? mt("replaceTermsDocument") : mt("uploadTermsDocument")}</Label>
                                             <p className="text-xs text-muted-foreground">{mt("includeHouseRulesEquipmentUsagePoliciesLiabilityWaiversAndAn")}</p>
                                             <div className="border-2 border-dashed border-border rounded-lg p-6 text-center hover:border-primary/50 transition-colors">
                                                 <input

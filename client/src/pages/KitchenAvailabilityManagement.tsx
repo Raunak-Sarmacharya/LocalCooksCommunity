@@ -510,7 +510,7 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
               {!hideWeeklyScheduleSaveButton && (
                 <Button onClick={handleSaveWeeklySchedule} disabled={isSavingSchedule}>
                   {isSavingSchedule ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                  Save Schedule
+                  {mt("saveSchedule")}
                 </Button>
               )}
             </CardHeader>
@@ -519,7 +519,7 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[100px]">Day</TableHead>
+                      <TableHead className="w-[100px]">{mt("day")}</TableHead>
                       <TableHead className="w-[100px]">{mt("status")}</TableHead>
                       <TableHead>{mt("hours")}</TableHead>
                     </TableRow>
@@ -542,7 +542,7 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
                                 }}
                               />
                               <Badge variant={schedule.isAvailable ? "outline" : "secondary"} className={cn("w-16 justify-center", !schedule.isAvailable && "opacity-50")}>
-                                {schedule.isAvailable ? "Open" : "Closed"}
+                                {schedule.isAvailable ? mt("open") : mt("closed")}
                               </Badge>
                             </div>
                           </TableCell>

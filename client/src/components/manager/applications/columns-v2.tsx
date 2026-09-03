@@ -204,7 +204,7 @@ export function getApplicationColumnsV2({
         },
         {
             accessorKey: "location",
-            header: "Location",
+            header: mt("locationHeader"),
             cell: ({ row }) => {
                 const location = row.original.location;
                 return location ? (
@@ -219,12 +219,12 @@ export function getApplicationColumnsV2({
         },
         {
             id: "progress",
-            header: "Progress",
+            header: mt("progress"),
             cell: ({ row }) => <StepProgress application={row.original} />,
         },
         {
             accessorKey: "status",
-            header: "Status",
+            header: mt("status"),
             cell: ({ row }) => <ApplicationStatusBadge application={row.original} />,
             filterFn: (row, id, value) => {
                 if (value === 'all') return true;
@@ -248,7 +248,7 @@ export function getApplicationColumnsV2({
         },
         {
             id: "documents",
-            header: "Documents",
+            header: mt("documents"),
             cell: ({ row }) => <DocumentIndicators application={row.original} />,
         },
         {

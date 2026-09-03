@@ -1,7 +1,7 @@
 import { logger } from "../logger";
 
 import { Router, Request, Response } from "express";
-import { db } from "../db";
+import { db, getDbError } from "../db";
 import { userService } from "../domains/users/user.service";
 // Imports updated to remove legacy storage
 import { requireFirebaseAuthWithUser, requireAdmin, requireManager } from "../firebase-auth-middleware";
@@ -494,7 +494,8 @@ router.get("/chef-location-access", async (req: Request, res: Response) => {
             logger.info(`[Admin Chef Access] Found ${allAccess.length} location access records`);
         } catch (error: any) {
             logger.error(`[Admin Chef Access] Error querying chef_location_access table:`, error.message);
-            if (error.message?.includes('does not exist') || error.message?.includes('relation') || error.code === '42P01') {
+            const dbErr = getDbError(error);
+            if (dbErr.message?.includes('does not exist') || dbErr.message?.includes('relation') || dbErr.code === '42P01') {
                 logger.info(`[Admin Chef Access] Table doesn't exist yet, returning empty access`);
                 allAccess = [];
             } else {
@@ -1394,7 +1395,7 @@ router.post("/kitchens", async (req: Request, res: Response) => {
         res.status(201).json(kitchen);
     } catch (error: any) {
         logger.error("Error creating kitchen:", error);
-        if (error.code === '23503') { // Foreign key constraint violation
+        if (getDbError(error).code === '23503') { // Foreign key constraint violation
             return res.status(400).json({ error: 'The selected location does not exist or is invalid.' });
         }
         res.status(500).json({ error: error.message || "Failed to create kitchen" });

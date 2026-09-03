@@ -291,14 +291,14 @@ export default function EquipmentListingsStep() {
                 <div className="border rounded-lg p-4 bg-green-50 border-green-200 space-y-2">
                   <div className="flex items-center gap-2 mb-2">
                     <CheckCircle className="h-5 w-5 text-green-600" />
-                    <h4 className="font-semibold text-gray-900">Active Equipment ({listings.length})</h4>
+                    <h4 className="font-semibold text-gray-900">{mt("activeEquipmentCount", { count: listings.length })}</h4>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     {listings.map(l => (
                       <div key={l.id} className="bg-white rounded p-2 border border-green-200 text-sm">
                         <p className="font-medium truncate">{l.equipmentType || l.name}</p>
                         <p className="text-xs text-gray-600">
-                          {l.availabilityType === 'rental' ? `$${(Number(l.sessionRate) / 100).toFixed(2)}/session` : 'Included'}
+                          {l.availabilityType === 'rental' ? `$${(Number(l.sessionRate) / 100).toFixed(2)}${mt("perSession")}` : mt("included")}
                         </p>
                       </div>
                     ))}

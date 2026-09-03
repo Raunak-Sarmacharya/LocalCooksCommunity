@@ -427,7 +427,7 @@ function EquipmentListingContent({
                         <div className="flex items-center gap-2 mb-1">
                           <h4 className="font-medium truncate">{listing.equipmentType}</h4>
                           {listing.brand && <span className="text-sm text-muted-foreground">({listing.brand})</span>}
-                          <Badge variant={listing.isActive !== false ? "success" : "outline"} className="text-xs">{listing.isActive !== false ? 'Active' : 'Inactive'}</Badge>
+                          <Badge variant={listing.isActive !== false ? "success" : "outline"} className="text-xs">{listing.isActive !== false ? mt("active") : mt("inactive")}</Badge>
                         </div>
                         <div className="flex items-center gap-3 text-sm text-muted-foreground">
                           <span className="capitalize">{listing.category.replace('-', ' ')}</span>
@@ -435,7 +435,7 @@ function EquipmentListingContent({
                           <span className="capitalize">{listing.condition}</span>
                           <span>•</span>
                           <span className={cn("font-medium", listing.availabilityType === 'included' ? "text-green-600" : "text-blue-600")}>
-                            {listing.availabilityType === 'included' ? 'Included' : `$${(listing.sessionRate || 0).toFixed(2)}/session`}
+                            {listing.availabilityType === 'included' ? mt("included") : `$${(listing.sessionRate || 0).toFixed(2)}${mt("perSession")}`}
                           </span>
                         </div>
                       </div>
@@ -770,7 +770,7 @@ function EquipmentListingContent({
             <StatusButton 
               onClick={() => { setActiveSavingAction('edit'); saveEditedListing(); }} 
               status={activeSavingAction === 'edit' && isSaving ? "loading" : "idle"}
-              labels={{ idle: "Save Changes", loading: "Saving", success: "Saved" }}
+              labels={{ idle: mt("saveChanges"), loading: mt("saving"), success: mt("saved") }}
             />
           </SheetFooter>
         </SheetContent>

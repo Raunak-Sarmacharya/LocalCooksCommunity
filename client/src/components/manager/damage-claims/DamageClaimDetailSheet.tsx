@@ -349,7 +349,7 @@ export function DamageClaimDetailSheet({
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <Label className="text-xs text-muted-foreground">{mt("chef")}</Label>
-                <p>{claim.chefName || claim.chefEmail || 'Unknown'}</p>
+                <p>{claim.chefName || claim.chefEmail || mt("unknown")}</p>
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">{mt("damageDate")}</Label>
@@ -368,7 +368,7 @@ export function DamageClaimDetailSheet({
             {/* Damaged Equipment Items */}
             {claim.damagedItems && claim.damagedItems.length > 0 && (
               <div className="border rounded-md p-3 space-y-2">
-                <Label className="text-xs text-muted-foreground">Damaged Equipment ({claim.damagedItems.length})</Label>
+                <Label className="text-xs text-muted-foreground">{mt("damagedEquipmentCount", { count: claim.damagedItems.length })}</Label>
                 <div className="space-y-1.5">
                   {claim.damagedItems.map((item, idx) => (
                     <div key={idx} className="flex items-center justify-between text-sm p-2 bg-amber-50 dark:bg-amber-950/20 rounded border border-amber-200 dark:border-amber-800">
@@ -378,7 +378,7 @@ export function DamageClaimDetailSheet({
                         {item.brand && <span className="text-muted-foreground">({item.brand})</span>}
                       </div>
                       <Badge variant="secondary" className="text-[10px]">
-                        {item.equipmentBookingId ? 'Rented' : 'Included'}
+                        {item.equipmentBookingId ? mt("rented") : mt("included")}
                       </Badge>
                     </div>
                   ))}
@@ -407,12 +407,12 @@ export function DamageClaimDetailSheet({
                 <div>
                   <h4 className="font-semibold flex items-center gap-2">
                     <Image className="h-4 w-4" />
-                    Evidence ({claim.evidence.length})
+                    {mt("evidenceCount", { count: claim.evidence.length })}
                   </h4>
                   <p className="text-xs text-muted-foreground">
                     {claim.status === 'draft' 
-                      ? 'Upload at least 2 pieces of evidence before submitting' 
-                      : 'Evidence attached to this claim'}
+                      ? mt("uploadAtLeast2Evidence")
+                      : mt("evidenceAttachedToClaim")}
                   </p>
                 </div>
                 {canAddEvidence && !showUploadForm && (
@@ -659,7 +659,7 @@ export function DamageClaimDetailSheet({
             <div>
               <h4 className="font-semibold flex items-center gap-2 mb-4">
                 <History className="h-4 w-4" />
-                Claim History ({history.length})
+                {mt("claimHistoryCount", { count: history.length })}
               </h4>
               {history.length === 0 ? (
                 <p className="text-sm text-muted-foreground">{mt("noHistoryAvailable")}</p>

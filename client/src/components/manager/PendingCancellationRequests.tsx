@@ -263,8 +263,8 @@ export function PendingCancellationRequests({
                   >
                     <Clock className="h-2.5 w-2.5 mr-0.5" />
                     {req.kind === "kitchen"
-                      ? "Booking Cancellation"
-                      : "Storage Cancellation"}
+                      ? mt("bookingCancellation")
+                      : mt("storageCancellation")}
                   </Badge>
                 </div>
               </div>
@@ -324,23 +324,20 @@ export function PendingCancellationRequests({
               )}
               {confirmDialog.action === "accept" ? (
                 <p className="text-sm">
-                  The{" "}
-                  {confirmDialog.request?.kind === "kitchen"
-                    ? "booking"
-                    : "storage booking"}{" "}
-                  will be cancelled. You can then use{" "}
-                  <span className="font-medium">
-                    &quot;Issue Refund&quot;
-                  </span>{" "}
-                  from the booking actions menu to process the refund.
+                  {mt(
+                    confirmDialog.request?.kind === "kitchen"
+                      ? "acceptKitchenCancelDesc"
+                      : "acceptStorageCancelDesc",
+                    { issueRefund: mt("issueRefund") }
+                  )}
                 </p>
               ) : (
                 <p className="text-sm">
-                  The cancellation request will be declined and the{" "}
-                  {confirmDialog.request?.kind === "kitchen"
-                    ? "booking"
-                    : "storage booking"}{" "}
-                  will remain confirmed. The chef will be notified.
+                  {mt(
+                    confirmDialog.request?.kind === "kitchen"
+                      ? "declineKitchenCancelDesc"
+                      : "declineStorageCancelDesc"
+                  )}
                 </p>
               )}
             </AlertDialogDescription>
@@ -357,10 +354,10 @@ export function PendingCancellationRequests({
               }
             >
               {isProcessing
-                ? "Processing..."
+                ? mt("processingEllipsis")
                 : confirmDialog.action === "accept"
-                  ? "Accept & Cancel"
-                  : "Decline Request"}
+                  ? mt("acceptAndCancel")
+                  : mt("declineRequest")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -161,7 +161,7 @@ export function RequirementsStepTwo({
                               ? 'text-emerald-600 dark:text-emerald-400'
                               : 'text-slate-400 dark:text-slate-500'
                           }`}>
-                            {requirements[field.key] === true ? 'Required' : 'Not Required'}
+                            {requirements[field.key] === true ? mt("required") : mt("notRequired")}
                           </span>
                           <Switch
                             checked={requirements[field.key] === true}

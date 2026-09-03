@@ -298,14 +298,14 @@ const statusColors: Record<PaymentStatus, string> = {
 }
 
 const statusLabels: Record<PaymentStatus, string> = {
-    authorized: 'Payment Held',
-    paid: 'Paid',
-    pending: 'Pending',
-    processing: 'Processing',
-    failed: 'Failed',
-    refunded: 'Refunded',
-    partially_refunded: 'Partial Refund',
-    canceled: 'Canceled',
+    authorized: mt("paymentHeld"),
+    paid: mt("paid"),
+    pending: mt("pending"),
+    processing: mt("processing"),
+    failed: mt("failed"),
+    refunded: mt("refunded"),
+    partially_refunded: mt("partialRefund"),
+    canceled: mt("canceled"),
 }
 
 export function PaymentStatusChart({ data, isLoading }: PaymentStatusChartProps) {

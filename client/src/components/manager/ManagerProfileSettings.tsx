@@ -171,7 +171,7 @@ export default function ManagerProfileSettings() {
             case 'in_progress':
                 return { label: mt("inProgress"), color: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
             case 'failed':
-                return { label: 'Failed', color: 'bg-red-50 text-red-700 border-red-200' };
+                return { label: mt("failed"), color: 'bg-red-50 text-red-700 border-red-200' };
             default:
                 return { label: mt("notStarted"), color: 'bg-slate-50 text-slate-600 border-slate-200' };
         }
@@ -409,7 +409,7 @@ export default function ManagerProfileSettings() {
 
                     {/* Profile Info */}
                     <div className="flex-1 text-center sm:text-left">
-                        <h2 className="text-2xl font-bold">{displayName || 'Your Name'}</h2>
+                        <h2 className="text-2xl font-bold">{displayName || mt("yourName")}</h2>
                         <p className="text-white/80 mt-1">{email}</p>
                         <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-3">
                             <Badge className="bg-white/20 text-white border-0 hover:bg-white/30">
@@ -427,7 +427,7 @@ export default function ManagerProfileSettings() {
                         className="bg-white/20 hover:bg-white/30 text-white border-0 backdrop-blur-sm"
                     >
                         <Edit3 className="h-4 w-4 mr-2" />
-                        {isEditingProfile ? 'Cancel' : 'Edit Profile'}
+                        {isEditingProfile ? mt("cancel") : mt("editProfile")}
                     </Button>
                 </div>
             </div>
@@ -527,7 +527,7 @@ export default function ManagerProfileSettings() {
                                     <StatusButton
                                         status={saveProfileAction.status}
                                         onClick={saveProfileAction.execute}
-                                        labels={{ idle: "Save Changes", loading: "Saving", success: "Saved" }}
+                                        labels={{ idle: mt("saveChanges"), loading: mt("saving"), success: mt("saved") }}
                                     />
                                 </div>
                             )}
@@ -571,7 +571,7 @@ export default function ManagerProfileSettings() {
                                 <span className="text-sm text-slate-600">{mt("emailVerified")}</span>
                                 <div className="flex items-center gap-1 text-green-600">
                                     <CheckCircle2 className="h-4 w-4" />
-                                    <span className="text-sm font-medium">Yes</span>
+                                    <span className="text-sm font-medium">{mt("yes")}</span>
                                 </div>
                             </div>
                             <Separator />
@@ -622,7 +622,7 @@ export default function ManagerProfileSettings() {
                                                         className="h-6 px-2 text-xs"
                                                     >
                                                         <Edit3 className="h-3 w-3 mr-1" />
-                                                        {isEditingContact ? 'Cancel' : 'Edit'}
+                                                        {isEditingContact ? mt("cancel") : mt("edit")}
                                                     </Button>
                                                 </div>
                                                 

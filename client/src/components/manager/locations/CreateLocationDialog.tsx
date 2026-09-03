@@ -206,7 +206,7 @@ export function CreateLocationDialog({
             <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>
-                        {hasExistingLocations ? 'Add New Location' : 'Create Your First Location'}
+                        {hasExistingLocations ? mt("addNewLocation") : mt("createYourFirstLocation")}
                     </DialogTitle>
                     <DialogDescription>{mt("enterTheDetailsForYourNewKitchenLocation")}</DialogDescription>
                 </DialogHeader>
