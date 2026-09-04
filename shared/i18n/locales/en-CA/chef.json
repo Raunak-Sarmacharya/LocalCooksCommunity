@@ -906,7 +906,7 @@
   "kdFindAnotherKitchen": "Find another kitchen",
   "kdInReview": "In review",
   "kdNotApproved": "Not approved",
-  "kdReadyToBook": "Ready to book",
+  "kdReadyToBook": "Approved",
   "kdRejected": "Rejected",
   "kdStep1Approved": "Request to apply approved",
   "kdStep1Of3": "Request to apply",
@@ -2217,5 +2217,7 @@
   "partialRefund": "Partial refund",
   "bdProcessingFee": "Processing fee",
   "bdRefund": "Refund",
-  "bdHstPercent": "HST ({percent}%)"
+  "bdHstPercent": "HST ({percent}%)",
+  "shellYouAreHere": "You are here",
+  "shellNavTreeAria": "Sidebar navigation path"
 }

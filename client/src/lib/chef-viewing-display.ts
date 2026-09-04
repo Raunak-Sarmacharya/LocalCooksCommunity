@@ -106,3 +106,23 @@ export function chefTourRowHasDetails(row: ChefTourRow): boolean {
       row.status === "confirmed"
   );
 }
+
+/** Pending confirmation, or confirmed and not yet finished. */
+export function isPendingOrUpcomingTour(
+  row: Pick<ChefTourRow, "status" | "scheduledAt" | "durationMinutes">,
+  nowMs: number = Date.now()
+): boolean {
+  if (row.status === "pending") return true;
+  if (row.status !== "confirmed") return false;
+  const start = new Date(row.scheduledAt).getTime();
+  if (Number.isNaN(start)) return false;
+  const durationMs = Math.max(row.durationMinutes ?? 30, 0) * 60_000;
+  return start + durationMs >= nowMs;
+}
+
+export function countPendingOrUpcomingTours(
+  rows: Array<Pick<ChefTourRow, "status" | "scheduledAt" | "durationMinutes">>,
+  nowMs: number = Date.now()
+): number {
+  return rows.filter((row) => isPendingOrUpcomingTour(row, nowMs)).length;
+}

@@ -4,8 +4,10 @@ import { useLocation, useRoute } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
 import KitchenBookingFlow from "@/components/booking/KitchenBookingFlow";
-import { Loader2 } from "lucide-react";
+import { Icon } from "@iconify/react";
+import "@/lib/kitchen-inventory-icons";
 import { Button } from "@/components/ui/button";
+import { chefOutlineCtaClass } from "@/lib/chef-cta";
 
 export default function KitchenBookingPage() {
   const { t } = useTranslation(["booking", "chef"]);
@@ -51,21 +53,38 @@ export default function KitchenBookingPage() {
     navigate("/dashboard?view=bookings");
   };
 
+  // Continuity with kitchen preview / discover — do not flip sidebar/title to My Bookings
+  // until booking completes and redirects to booking details.
+  const bookingChrome = {
+    activeView: "discover-kitchens" as const,
+    onViewChange: handleViewChange,
+  };
+
+  const bookingBreadcrumbs = (trailLabel: string) => [
+    {
+      label: t("shellDashboard", { ns: "chef" }),
+      onClick: () => navigate("/dashboard"),
+      navId: "overview" as const,
+    },
+    {
+      label: t("shellDiscoverKitchens", { ns: "chef" }),
+      onClick: () => navigate("/dashboard?view=discover-kitchens"),
+      navId: "discover-kitchens" as const,
+    },
+    { label: trailLabel },
+  ];
+
   if (!Number.isFinite(locationId)) {
     return (
       <ChefDashboardLayout
-        activeView="bookings"
-        onViewChange={handleViewChange}
-        breadcrumbs={[
-          { label: t("shellDashboard", { ns: "chef" }), onClick: () => navigate("/dashboard") },
-          { label: t("title", "Book a kitchen") },
-        ]}
+        {...bookingChrome}
+        breadcrumbs={bookingBreadcrumbs(t("title", "Book a kitchen"))}
       >
         <div className="text-center py-16">
           <p className="text-sm text-muted-foreground mb-4">
             {t("sheetInvalidLocation", "Invalid kitchen location.")}
           </p>
-          <Button variant="outline" onClick={() => navigate("/dashboard")}>
+          <Button variant="outline" className={chefOutlineCtaClass()} onClick={() => navigate("/dashboard")}>
             {t("sheetBackToDashboard", "Back to dashboard")}
           </Button>
         </div>
@@ -76,15 +95,11 @@ export default function KitchenBookingPage() {
   if (isLoading) {
     return (
       <ChefDashboardLayout
-        activeView="bookings"
-        onViewChange={handleViewChange}
-        breadcrumbs={[
-          { label: t("shellDashboard", { ns: "chef" }), onClick: () => navigate("/dashboard") },
-          { label: t("title", "Book a kitchen") },
-        ]}
+        {...bookingChrome}
+        breadcrumbs={bookingBreadcrumbs(t("title", "Book a kitchen"))}
       >
         <div className="flex items-center justify-center py-24">
-          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <Icon icon="mdi:loading" className="h-6 w-6 animate-spin text-primary" aria-hidden />
         </div>
       </ChefDashboardLayout>
     );
@@ -93,18 +108,14 @@ export default function KitchenBookingPage() {
   if (isError || !locationData) {
     return (
       <ChefDashboardLayout
-        activeView="bookings"
-        onViewChange={handleViewChange}
-        breadcrumbs={[
-          { label: t("shellDashboard", { ns: "chef" }), onClick: () => navigate("/dashboard") },
-          { label: t("title", "Book a kitchen") },
-        ]}
+        {...bookingChrome}
+        breadcrumbs={bookingBreadcrumbs(t("title", "Book a kitchen"))}
       >
         <div className="text-center py-16">
           <p className="text-sm text-muted-foreground mb-4">
             {t("sheetLocationLoadFailed", "Could not load this kitchen location.")}
           </p>
-          <Button variant="outline" onClick={() => navigate("/dashboard")}>
+          <Button variant="outline" className={chefOutlineCtaClass()} onClick={() => navigate("/dashboard")}>
             {t("sheetBackToDashboard", "Back to dashboard")}
           </Button>
         </div>
@@ -113,15 +124,24 @@ export default function KitchenBookingPage() {
   }
 
   const locationName = locationData.name || t("title", "Book a kitchen");
+  const previewPath = `/kitchen-preview/${locationData.slug || locationId}`;
 
   return (
     <ChefDashboardLayout
-      activeView="bookings"
-      onViewChange={handleViewChange}
+      {...bookingChrome}
       breadcrumbs={[
-        { label: t("shellDashboard", { ns: "chef" }), onClick: () => navigate("/dashboard") },
-        { label: t("shellMyBookings", { ns: "chef" }), onClick: () => navigate("/dashboard?view=bookings") },
-        { label: locationName },
+        {
+          label: t("shellDashboard", { ns: "chef" }),
+          onClick: () => navigate("/dashboard"),
+          navId: "overview",
+        },
+        {
+          label: t("shellDiscoverKitchens", { ns: "chef" }),
+          onClick: () => navigate("/dashboard?view=discover-kitchens"),
+          navId: "discover-kitchens",
+        },
+        { label: locationName, onClick: () => navigate(previewPath) },
+        { label: t("title", "Book a kitchen") },
       ]}
     >
       <KitchenBookingFlow

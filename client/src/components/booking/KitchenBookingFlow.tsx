@@ -1,12 +1,14 @@
 import { logger } from "@/lib/logger";
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, type Dispatch, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
 import { useKitchenBookings } from "@/hooks/use-kitchen-bookings";
 import { useStoragePricing } from "@/hooks/use-storage-pricing";
 import { formatCurrency, formatHourSlotRange } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
-import { StorageSelection } from "./StorageSelection";
+import { formatCancellationWindowText } from "@/lib/cancellation-policy";
+import { BookingStorageSelector } from "./BookingStorageSelector";
+import { BookingPriceSummary, FeesInfoPopover } from "./BookingPriceSummary";
 import { useUnpaidPenaltiesCheck } from "@/hooks/use-unpaid-penalties";
 
 import {
@@ -34,26 +36,255 @@ import {
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Calendar as UICalendar } from "@/components/ui/calendar";
+import { SmartImage } from "@/components/ui/smart-image";
 import {
-  MapPin,
-  Building,
-  Check,
-  ChefHat,
-  DollarSign,
-  ArrowRight,
-  Loader2,
-  CreditCard,
-  ArrowLeft,
-  Calendar as CalendarIcon,
-  Clock,
-  Pencil,
-  ChevronRight,
-} from "lucide-react";
+  Stepper,
+  StepperDescription,
+  StepperIndicator,
+  StepperItem,
+  StepperNav,
+  StepperSeparator,
+  StepperTitle,
+  StepperTrigger,
+} from "@/components/reui/stepper";
 import { findPersistedBookingForKitchens, notifyBookingPrefsChanged } from "@/lib/persisted-booking-prefs";
-import { resolveEquipmentIcon } from "@/lib/kitchen-inventory-icons";
+import { resolveEquipmentIcon, resolveStorageIcon } from "@/lib/kitchen-inventory-icons";
+import { chefOutlineCtaClass, chefPrimaryCtaClass } from "@/lib/chef-cta";
 import { Icon } from "@iconify/react";
 import { tt } from "@/i18n/common-ns";
 import { bt } from "@/i18n/booking-ns";
+
+/** Inline storage cards before "Show all" — 12 fills a 2-col grid (6 rows). */
+const STORAGE_PREVIEW_COUNT = 12;
+
+function kitchenCoverUrl(kitchen: {
+  imageUrl?: string | null;
+  image_url?: string | null;
+  galleryImages?: string[] | null;
+  gallery_images?: string[] | null;
+  locationBrandImageUrl?: string | null;
+  location_brand_image_url?: string | null;
+} | null): string | null {
+  if (!kitchen) return null;
+  return (
+    kitchen.imageUrl ||
+    kitchen.image_url ||
+    kitchen.galleryImages?.[0] ||
+    kitchen.gallery_images?.[0] ||
+    kitchen.locationBrandImageUrl ||
+    kitchen.location_brand_image_url ||
+    null
+  );
+}
+
+/** Compact Airbnb-style kitchen thumb for confirm summary; ChefHat if missing/broken. */
+function ConfirmKitchenThumbnail({
+  src,
+  alt,
+}: {
+  src: string | null;
+  alt: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) {
+    return (
+      <div className="flex h-14 w-14 sm:h-16 sm:w-16 shrink-0 items-center justify-center rounded-lg border border-[#F51042]/15 bg-white/80">
+        <Icon icon="mdi:chef-hat" className="h-5 w-5 text-[#F51042]" aria-hidden />
+        <span className="sr-only">{alt}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="h-14 w-14 sm:h-16 sm:w-16 shrink-0 overflow-hidden rounded-lg border border-[#F51042]/15 bg-white/80">
+      <SmartImage
+        src={src}
+        alt={alt}
+        className="h-full w-full object-cover"
+        onError={() => setFailed(true)}
+      />
+    </div>
+  );
+}
+
+function equipmentName(equipment: any) {
+  return String(equipment.equipmentType || "")
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .trim();
+}
+
+function InventoryPreviewList({
+  title,
+  subtitle,
+  items,
+  rental,
+}: {
+  title: string;
+  subtitle: string;
+  items: any[];
+  rental: boolean;
+}) {
+  return (
+    <section>
+      <div className="mb-1">
+        <h4 className="text-sm font-semibold text-gray-900">{title}</h4>
+        <p className="text-xs text-muted-foreground">{subtitle}</p>
+      </div>
+      <ul className="grid min-w-0 grid-cols-1 gap-x-6 sm:grid-cols-2">
+        {items.map((equipment) => (
+          <li key={equipment.id} className="flex min-w-0 items-center gap-2.5 border-b border-gray-100 py-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#FFF3F5] text-[#F51042]">
+              <Icon
+                icon={resolveEquipmentIcon(equipment.equipmentType, equipment.category)}
+                width={18}
+                height={18}
+                aria-hidden
+              />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium text-gray-900">
+                {equipmentName(equipment)}
+              </span>
+              <span className="block truncate text-xs text-muted-foreground">
+                {rental ? `${formatCurrency(equipment.sessionRate || 0)} per session` : "Included"}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function cancellationPolicyCopy(
+  kitchen: any,
+  t: (key: string, options?: Record<string, unknown>) => string,
+  fallbackHours = 24
+): string {
+  const location = kitchen?.location;
+  const hours =
+    location?.cancellationPolicyHours ??
+    location?.cancellation_policy_hours ??
+    fallbackHours;
+  const custom =
+    location?.cancellationPolicyMessage ??
+    location?.cancellation_policy_message;
+  const windowText = formatCancellationWindowText(
+    hours,
+    custom,
+    t("cancellationPolicyDefaultMessage", {
+      hours,
+      defaultValue: `Bookings cannot be cancelled within ${hours} hours of the scheduled time.`,
+    })
+  );
+  return `${windowText} ${t("cancellationPolicyRefundRules", {
+    defaultValue:
+      "Cancel before the kitchen manager approves your booking for a full release (nothing is charged). After approval, refunds return your payment except Stripe’s card processing fee, which Stripe does not return. The kitchen sets the cancellation window; refund amounts follow Local Cooks platform rules.",
+  })}`;
+}
+
+/** Persistent place context carried from preview through every booking step. */
+function BookingPlaceContext({
+  kitchen,
+  locationName,
+  locationAddress,
+  compact = false,
+  onPolicyOpen,
+}: {
+  kitchen: any;
+  locationName: string;
+  locationAddress?: string;
+  compact?: boolean;
+  onPolicyOpen: () => void;
+}) {
+  const { t } = useTranslation(["booking", "kitchen"]);
+  if (!kitchen) return null;
+
+  const imageAlt = String(t("sheetKitchenImageAlt", {
+    name: kitchen.name,
+    defaultValue: `${kitchen.name} kitchen`,
+  }));
+  if (compact) {
+    return (
+      <div className="space-y-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <ConfirmKitchenThumbnail src={kitchenCoverUrl(kitchen)} alt={imageAlt} />
+          <div className="min-w-0">
+            <p className="truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-[#F51042]">
+              {t("sheetBookingAtLabel", "Booking at")}
+            </p>
+            <h1 className="truncate text-base font-semibold text-gray-900">{kitchen.name}</h1>
+            <p className="truncate text-xs text-muted-foreground">{locationName}</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onPolicyOpen}
+          className="flex w-full items-center gap-2 border-t border-gray-200/80 pt-2.5 text-left text-[11px] font-medium text-gray-700 transition-colors hover:text-[#F51042]"
+        >
+          <Icon icon="mdi:shield-check-outline" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#F51042]" aria-hidden />
+          <span className="flex-1">{t("sheetCancellationPolicyTitle", "Cancellation policy")}</span>
+          <Icon icon="mdi:chevron-right" className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <section
+      aria-label={t("sheetSelectedKitchenSummary", "Selected kitchen summary")}
+      className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm"
+    >
+      <div className="grid gap-2 p-2">
+        <div className="relative h-24 w-full overflow-hidden rounded-xl bg-gray-100">
+            <div className="flex h-full w-full items-center justify-center bg-[#F51042]/5">
+              <Icon icon="mdi:chef-hat" className="h-8 w-8 text-[#F51042]" aria-hidden />
+            </div>
+            <SmartImage
+              src={kitchenCoverUrl(kitchen) || ""}
+              alt={imageAlt}
+              className="absolute inset-0 h-full w-full object-cover"
+              hideOnError
+            />
+        </div>
+        <div className="rounded-xl bg-gray-50/80 p-2.5">
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#F51042]">
+              {t("sheetBookingAtLabel", "Booking at")}
+            </p>
+            <h2 className="mt-1 truncate text-base font-semibold leading-tight text-gray-900">
+              {kitchen.name}
+            </h2>
+            <p className="mt-1 truncate text-xs font-medium text-gray-600">{locationName}</p>
+            {locationAddress && (
+              <p className="mt-2 flex items-start gap-1.5 text-xs leading-relaxed text-muted-foreground">
+                <Icon icon="mdi:map-marker-outline" className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                <span className="truncate">{locationAddress}</span>
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={onPolicyOpen}
+        className="flex w-full items-center gap-2.5 border-t border-gray-100 bg-gray-50/70 px-3.5 py-2.5 text-left transition-colors hover:bg-[#FFF7F8]"
+      >
+          <Icon icon="mdi:shield-check-outline" className="mt-0.5 h-4 w-4 shrink-0 text-[#F51042]" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-gray-900">
+              {t("sheetCancellationPolicyTitle", "Cancellation policy")}
+            </p>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+              {t("sheetViewCancellationPolicy", "View cancellation and refund terms")}
+            </p>
+          </div>
+          <Icon icon="mdi:chevron-right" className="h-4 w-4 shrink-0 text-gray-400" aria-hidden />
+      </button>
+    </section>
+  );
+}
 
 export interface KitchenBookingFlowProps {
   locationId: number;
@@ -68,8 +299,6 @@ export interface KitchenBookingFlowProps {
 type BookingStep = "calendar" | "slots" | "equipment" | "storage" | "confirm";
 
 type StepMeta = { key: BookingStep; label: string; subtext: string };
-
-const INCLUDED_EQUIPMENT_PREVIEW = 4;
 
 /** Matches kitchen preview / prefs panel — fixed 32px cells → true circular selection. */
 const BOOKING_CALENDAR_CLASS_NAMES = {
@@ -89,9 +318,18 @@ const BOOKING_CALENDAR_CLASS_NAMES = {
     "relative z-0 h-8 p-0 text-center text-xs",
     "[&:has([aria-selected])]:before:absolute [&:has([aria-selected])]:before:left-1/2 [&:has([aria-selected])]:before:top-1/2 [&:has([aria-selected])]:before:h-8 [&:has([aria-selected])]:before:w-8 [&:has([aria-selected])]:before:-translate-x-1/2 [&:has([aria-selected])]:before:-translate-y-1/2 [&:has([aria-selected])]:before:-z-10 [&:has([aria-selected])]:before:rounded-full [&:has([aria-selected])]:before:border-2 [&:has([aria-selected])]:before:border-[#F51042]"
   ),
-  day: "mx-auto flex h-8 w-8 max-w-[32px] items-center justify-center rounded-full p-0 text-xs font-normal text-gray-900 transition-colors hover:bg-gray-100 aria-selected:opacity-100",
+  day: "mx-auto flex h-8 w-8 max-w-[32px] items-center justify-center rounded-full bg-transparent p-0 text-xs font-normal text-gray-900 transition-colors hover:bg-gray-100 aria-selected:opacity-100",
+  day_selected:
+    "bg-transparent text-gray-900 hover:bg-transparent focus:bg-transparent",
   day_disabled:
     "pointer-events-none text-gray-300 opacity-40 line-through decoration-gray-300/80",
+};
+
+/** Two-month booking picker — side-by-side from sm up. */
+const BOOKING_CALENDAR_TWO_MONTH_CLASS_NAMES = {
+  ...BOOKING_CALENDAR_CLASS_NAMES,
+  months: "flex w-full flex-col gap-4 sm:flex-row sm:gap-6 sm:space-y-0",
+  month: "w-full min-w-0 flex-1 space-y-2",
 };
 
 function getDaysInMonth(year: number, month: number) {
@@ -123,6 +361,8 @@ export default function KitchenBookingFlow({
   const [currentStep, setCurrentStep] = useState<BookingStep>("calendar");
   /** When true, date was prefilled — hide Date from the step rail and start after it. */
   const [hideDateStep, setHideDateStep] = useState(false);
+  /** False until kitchen + any restored prefs settle — avoids date-step flash. */
+  const [isFlowReady, setIsFlowReady] = useState(false);
   const initRef = useRef(false);
 
   // Payment state
@@ -149,6 +389,8 @@ export default function KitchenBookingFlow({
     isFullyBooked: boolean;
   }>>([]);
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
+  const [pendingTimeSlots, setPendingTimeSlots] = useState<string[]>([]);
+  const [timeModalOpen, setTimeModalOpen] = useState(false);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   const [maxSlotsPerChef, setMaxSlotsPerChef] = useState<number>(2);
 
@@ -181,8 +423,14 @@ export default function KitchenBookingFlow({
   }>>([]);
   const [selectedEquipmentIds, setSelectedEquipmentIds] = useState<number[]>([]);
   const [notes, setNotes] = useState<string>("");
-  const [includedEquipmentModalOpen, setIncludedEquipmentModalOpen] = useState(false);
+  const [equipmentModalOpen, setEquipmentModalOpen] = useState(false);
+  const [equipmentInventoryModal, setEquipmentInventoryModal] = useState<"included" | "rental" | null>(null);
+  const [storageModalOpen, setStorageModalOpen] = useState(false);
+  const [cancellationPolicyOpen, setCancellationPolicyOpen] = useState(false);
+  const [pendingEquipmentIds, setPendingEquipmentIds] = useState<number[]>([]);
+  const [discardModal, setDiscardModal] = useState<"equipment" | "storage" | "time" | null>(null);
   const [confirmDatePopoverOpen, setConfirmDatePopoverOpen] = useState(false);
+  const storageStepRef = useRef<HTMLDivElement>(null);
 
   // Storage pricing
   const storagePricing = useStoragePricing(selectedStorage, storageListings);
@@ -204,6 +452,14 @@ export default function KitchenBookingFlow({
 
     return { items, subtotal: items.reduce((sum, item) => sum + item.rate, 0) };
   }, [selectedEquipmentIds, equipmentListings.rental]);
+
+  const pendingEquipmentSubtotal = useMemo(
+    () => pendingEquipmentIds.reduce((sum, id) => {
+      const equipment = equipmentListings.rental.find((item: any) => item.id === id);
+      return sum + (equipment?.sessionRate || 0);
+    }, 0),
+    [pendingEquipmentIds, equipmentListings.rental]
+  );
 
   // Combined pricing
   const combinedSubtotal = useMemo(() => {
@@ -259,6 +515,10 @@ export default function KitchenBookingFlow({
 
     initRef.current = true;
     const restoreForKitchen = findPersistedBookingForKitchens([kitchen.id]);
+    // Hide Date in the rail immediately when prefs exist so the stepper doesn't flash it.
+    if (restoreForKitchen?.dateIso) {
+      setHideDateStep(true);
+    }
     void handleKitchenSelect(
       kitchen,
       restoreForKitchen
@@ -275,18 +535,30 @@ export default function KitchenBookingFlow({
     }
   }, [selectedKitchen, selectedDate]);
 
-  // Load month availability for the date step and the confirm-step date popover
+  // Load month availability for the date step (two months) and confirm popover (one month)
   useEffect(() => {
     if (!selectedKitchen) return;
-    if (currentStep === "calendar" || confirmDatePopoverOpen) {
-      loadMonthAvailability(selectedKitchen.id, currentYear, currentMonth);
+    if (currentStep === "calendar") {
+      const next = new Date(currentYear, currentMonth + 1, 1);
+      void loadMonthsAvailability(selectedKitchen.id, [
+        { year: currentYear, month: currentMonth },
+        { year: next.getFullYear(), month: next.getMonth() },
+      ]);
+      return;
+    }
+    if (confirmDatePopoverOpen) {
+      void loadMonthsAvailability(selectedKitchen.id, [
+        { year: currentYear, month: currentMonth },
+      ]);
     }
   }, [selectedKitchen, currentYear, currentMonth, currentStep, confirmDatePopoverOpen]);
 
-  const loadMonthAvailability = async (kitchenId: number, year: number, month: number) => {
+  const loadMonthsAvailability = async (
+    kitchenId: number,
+    months: Array<{ year: number; month: number }>
+  ) => {
     setIsLoadingAvailability(true);
-    // Clear previous month's data so the loader UI shows immediately
-    // and we never display stale dates from another month
+    // Clear so the loader shows and we never mix stale months into the new window
     setDateAvailability({});
 
     try {
@@ -306,45 +578,38 @@ export default function KitchenBookingFlow({
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (authHeader) headers['Authorization'] = authHeader;
 
-      // Single bulk request — replaces the legacy 30 per-day fetches that
-      // caused the calendar to glitch as each request resolved at a different time
-      const response = await fetch(
-        `/api/chef/kitchens/${kitchenId}/month-availability?year=${year}&month=${month}`,
-        {
-          credentials: "include",
-          headers,
-          cache: 'no-store',
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`Failed to load month availability (status ${response.status})`);
-      }
-
-      const serverAvailability: Record<string, boolean> = await response.json();
-
-      // Mask out past dates client-side (server returns schedule-based availability
-      // regardless of date, but past dates should never be selectable)
       const todayDate = new Date();
       todayDate.setHours(0, 0, 0, 0);
-      const daysInMonth = getDaysInMonth(year, month);
-      const availability: Record<string, boolean> = {};
 
-      for (let day = 1; day <= daysInMonth; day++) {
-        const date = new Date(year, month, day);
-        const dateStr = toLocalDateString(date);
-        if (date < todayDate) {
-          availability[dateStr] = false;
-        } else {
-          availability[dateStr] = serverAvailability[dateStr] === true;
-        }
-      }
+      const chunks = await Promise.all(
+        months.map(async ({ year, month }) => {
+          const response = await fetch(
+            `/api/chef/kitchens/${kitchenId}/month-availability?year=${year}&month=${month}`,
+            {
+              credentials: "include",
+              headers,
+              cache: "no-store",
+            }
+          );
+          if (!response.ok) {
+            throw new Error(`Failed to load month availability (status ${response.status})`);
+          }
+          const serverAvailability: Record<string, boolean> = await response.json();
+          const availability: Record<string, boolean> = {};
+          const daysInMonth = getDaysInMonth(year, month);
+          for (let day = 1; day <= daysInMonth; day++) {
+            const date = new Date(year, month, day);
+            const dateStr = toLocalDateString(date);
+            availability[dateStr] =
+              date >= todayDate && serverAvailability[dateStr] === true;
+          }
+          return availability;
+        })
+      );
 
-      setDateAvailability(availability);
+      setDateAvailability(Object.assign({}, ...chunks));
     } catch (error) {
       logger.error('Error loading month availability:', error);
-      // Keep dateAvailability empty so the loader UI still hides on failure
-      // but the calendar grid renders gracefully (all dates will appear closed)
       setDateAvailability({});
     } finally {
       setIsLoadingAvailability(false);
@@ -548,6 +813,7 @@ export default function KitchenBookingFlow({
       step?: BookingStep;
     }
   ) => {
+    setIsFlowReady(false);
     setSelectedKitchen(kitchen);
     setSelectedDate(null);
     setSelectedSlots([]);
@@ -623,6 +889,8 @@ export default function KitchenBookingFlow({
       setKitchenPricing({ hourlyRate: null, currency: 'CAD', minimumBookingHours: 0, platformCommissionRate: 0 });
       setHideDateStep(false);
       setCurrentStep("calendar");
+    } finally {
+      setIsFlowReady(true);
     }
   };
 
@@ -643,7 +911,10 @@ export default function KitchenBookingFlow({
     return dateAvailability[toLocalDateString(d)] === true;
   };
 
-  const handleSlotClick = (slot: { time: string; available: number; capacity: number; isFullyBooked: boolean }) => {
+  const updateSlotSelection = (
+    setter: Dispatch<SetStateAction<string[]>>,
+    slot: { time: string; available: number; capacity: number; isFullyBooked: boolean }
+  ) => {
     if (slot.isFullyBooked) {
       toast({
         title: t("toastSlotFullyBookedTitle", "Slot Fully Booked"),
@@ -655,7 +926,7 @@ export default function KitchenBookingFlow({
 
     const minHours = kitchenPricing?.minimumBookingHours ?? 0;
 
-    setSelectedSlots(prev => {
+    setter(prev => {
       // Deselect: if clicking an already-selected slot, remove it (and any auto-filled slots)
       if (prev.includes(slot.time)) {
         // If minimum hours apply, clear all slots (they were auto-selected as a block)
@@ -719,6 +990,10 @@ export default function KitchenBookingFlow({
         return prev;
       }
     });
+  };
+
+  const handleSlotClick = (slot: { time: string; available: number; capacity: number; isFullyBooked: boolean }) => {
+    updateSlotSelection(setSelectedSlots, slot);
   };
 
   const formatTime = (timeString: string) => {
@@ -1002,7 +1277,7 @@ export default function KitchenBookingFlow({
       return (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <Loader2 className="h-6 w-6 animate-spin text-primary mx-auto mb-3" />
+            <Icon icon="mdi:loading" className="h-6 w-6 animate-spin text-primary mx-auto mb-3" aria-hidden />
             <p className="text-sm text-muted-foreground">{t("sheetLoadingKitchens", "Loading kitchens...")}</p>
           </div>
         </div>
@@ -1015,7 +1290,7 @@ export default function KitchenBookingFlow({
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto mb-3">
-              <Building className="h-6 w-6 text-muted-foreground" />
+              <Icon icon="mdi:office-building-outline" className="h-6 w-6 text-muted-foreground" aria-hidden />
             </div>
             <p className="text-sm font-medium text-muted-foreground">{t("sheetNoKitchensAtLocation", "No kitchens available at this location")}</p>
           </div>
@@ -1023,12 +1298,12 @@ export default function KitchenBookingFlow({
       );
     }
 
-    // Waiting for kitchen auto-select
-    if (!selectedKitchen) {
+    // Waiting for kitchen auto-select + restore (date/slots) so we don't flash Date.
+    if (!selectedKitchen || !isFlowReady) {
       return (
-        <div className="flex-1 flex items-center justify-center">
+        <div className="flex-1 flex items-center justify-center py-16">
           <div className="text-center">
-            <Loader2 className="h-6 w-6 animate-spin text-primary mx-auto mb-3" />
+            <Icon icon="mdi:loading" className="h-6 w-6 animate-spin text-primary mx-auto mb-3" aria-hidden />
             <p className="text-sm text-muted-foreground">{t("sheetLoadingKitchens", "Loading kitchens...")}</p>
           </div>
         </div>
@@ -1042,7 +1317,7 @@ export default function KitchenBookingFlow({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-                <CalendarIcon className="h-4 w-4 text-[#F51042]" />
+                <Icon icon="mdi:calendar-month-outline" className="h-4 w-4 text-[#F51042]" aria-hidden />
                 {t("sheetSelectDateTitle", "Select Date")}
               </h3>
               <p className="text-xs text-muted-foreground mt-1">
@@ -1063,14 +1338,16 @@ export default function KitchenBookingFlow({
             )}
           </div>
 
-          <div className="relative mx-auto w-full max-w-[300px] rounded-xl border border-gray-100 bg-gray-50/40 p-1">
+          <div className="relative mx-auto w-full max-w-[640px] rounded-xl border border-gray-100 bg-gray-50/40 p-2 sm:p-3">
             {isLoadingAvailability && (
               <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-white/60">
-                <Loader2 className="h-5 w-5 animate-spin text-[#F51042]" />
+                <Icon icon="mdi:loading" className="h-5 w-5 animate-spin text-[#F51042]" aria-hidden />
               </div>
             )}
             <UICalendar
               mode="single"
+              numberOfMonths={2}
+              pagedNavigation
               selected={selectedDate ?? undefined}
               onSelect={handleDateClick}
               month={calendarMonth}
@@ -1079,12 +1356,12 @@ export default function KitchenBookingFlow({
               }}
               disabled={(date) => !isDayAvailable(date)}
               className="w-full bg-transparent p-1"
-              classNames={BOOKING_CALENDAR_CLASS_NAMES}
+              classNames={BOOKING_CALENDAR_TWO_MONTH_CLASS_NAMES}
             />
           </div>
 
           {selectedDate && (
-            <div className="mx-auto w-full max-w-[300px] rounded-xl border border-[#F51042]/20 bg-[#F51042]/5 px-3 py-2.5">
+            <div className="mx-auto w-full max-w-[640px] rounded-xl border border-[#F51042]/20 bg-[#F51042]/5 px-3 py-2.5">
               <p className="text-sm font-semibold text-gray-900">
                 {selectedDate.toLocaleDateString(i18n.language, {
                   weekday: "long",
@@ -1109,11 +1386,11 @@ export default function KitchenBookingFlow({
     // Step: Time Slots
     if (currentStep === 'slots' && selectedKitchen && selectedDate) {
       return (
-        <div className="space-y-4">
-          <div className="flex items-start justify-between gap-3">
+        <div className="flex h-full min-h-[16rem] flex-col gap-4">
+          <div className="flex shrink-0 items-start justify-between gap-3">
             <div className="min-w-0">
               <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-                <Clock className="h-4 w-4 text-[#F51042]" />
+                <Icon icon="mdi:clock-outline" className="h-4 w-4 text-[#F51042]" aria-hidden />
                 {t("sheetSelectTimeTitle", "Select Time")}
               </h3>
               <p className="text-xs text-muted-foreground mt-1">
@@ -1138,31 +1415,33 @@ export default function KitchenBookingFlow({
 
           {isLoadingSlots ? (
             <div
-              className="grid grid-cols-2 sm:grid-cols-3 gap-2"
+              className="grid flex-1 content-center grid-cols-2 gap-2.5 sm:grid-cols-3"
               role="status"
               aria-label={t("sheetLoadingSlotsAria", "Loading available time slots")}
             >
               {Array.from({ length: 9 }).map((_, idx) => (
-                <Skeleton key={idx} className="h-10 rounded-lg bg-muted/70" />
+                <Skeleton key={idx} className="h-11 rounded-xl bg-muted/70" />
               ))}
             </div>
           ) : allSlots.length === 0 ? (
-            <div className="rounded-xl border border-dashed py-10 text-center">
-              <Clock className="h-7 w-7 text-muted-foreground/40 mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">{t("sheetNoAvailableHours", "No available hours on this day")}</p>
+            <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed py-10 text-center">
+              <div>
+                <Icon icon="mdi:clock-outline" className="h-7 w-7 text-muted-foreground/40 mx-auto mb-2" aria-hidden />
+                <p className="text-sm text-muted-foreground">{t("sheetNoAvailableHours", "No available hours on this day")}</p>
+              </div>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="flex min-h-0 flex-1 flex-col gap-3">
               {kitchenPricing?.minimumBookingHours && kitchenPricing.minimumBookingHours > 1 && selectedSlots.length === 0 && (
-                <div className="rounded-lg border bg-muted/30 px-3 py-2 flex items-start gap-2">
-                  <Clock className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
+                <div className="shrink-0 rounded-lg border bg-muted/30 px-3 py-2 flex items-start gap-2">
+                  <Icon icon="mdi:clock-outline" className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" aria-hidden />
                   <p className="text-xs text-muted-foreground leading-relaxed">
                     <strong>{t("sheetMinBookingNoticeBold", { minHours: kitchenPricing.minimumBookingHours, defaultValue: `Minimum ${kitchenPricing.minimumBookingHours}-hour booking.` })}</strong>{" "}
                     {t("sheetMinBookingNoticeDetail", { minHours: kitchenPricing.minimumBookingHours, defaultValue: `Selecting a time slot will automatically reserve ${kitchenPricing.minimumBookingHours} consecutive hours.` })}
                   </p>
                 </div>
               )}
-              <div className="flex flex-wrap gap-2">
+              <div className="grid flex-1 content-center grid-cols-2 gap-2.5 sm:grid-cols-3">
                 {allSlots.map((slot) => {
                   const isSelected = selectedSlots.includes(slot.time);
                   const isFullyBooked = slot.isFullyBooked;
@@ -1173,18 +1452,20 @@ export default function KitchenBookingFlow({
                       onClick={() => handleSlotClick(slot)}
                       disabled={isFullyBooked}
                       className={cn(
-                        "px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors",
+                        "flex min-h-[44px] w-full items-center justify-center rounded-xl border px-3 py-2.5 text-center text-xs font-medium transition-colors",
                         isSelected && "bg-[#F51042] text-white border-[#F51042]",
                         !isSelected && !isFullyBooked && "bg-white text-gray-700 border-gray-200 hover:border-[#F51042]/40",
                         isFullyBooked && "bg-muted/50 text-muted-foreground/50 cursor-not-allowed border-transparent line-through"
                       )}
                     >
-                      {formatSlotRange(slot.time)}
-                      {slot.capacity > 1 && !isFullyBooked ? (
-                        <span className={cn("ml-1.5", isSelected ? "text-white/80" : "text-muted-foreground")}>
-                          · {t("sheetSlotsLeft", { count: slot.available, defaultValue: `${slot.available} left` })}
-                        </span>
-                      ) : null}
+                      <span>
+                        {formatSlotRange(slot.time)}
+                        {slot.capacity > 1 && !isFullyBooked ? (
+                          <span className={cn("ml-1.5", isSelected ? "text-white/80" : "text-muted-foreground")}>
+                            · {t("sheetSlotsLeft", { count: slot.available, defaultValue: `${slot.available} left` })}
+                          </span>
+                        ) : null}
+                      </span>
                     </button>
                   );
                 })}
@@ -1197,90 +1478,83 @@ export default function KitchenBookingFlow({
 
     // Step: Equipment
     if (currentStep === "equipment" && selectedKitchen) {
-      const includedPreview = equipmentListings.included.slice(0, INCLUDED_EQUIPMENT_PREVIEW);
-      const includedHasMore = equipmentListings.included.length > INCLUDED_EQUIPMENT_PREVIEW;
+      const includedPreview = equipmentListings.included.slice(0, 4);
+      const rentalPreview = equipmentListings.rental.slice(0, 4);
+      const includedRemaining = Math.max(0, equipmentListings.included.length - includedPreview.length);
+      const rentalRemaining = Math.max(0, equipmentListings.rental.length - rentalPreview.length);
 
       return (
         <div className="space-y-4">
-          <div>
-            <h3 className="text-base font-semibold text-gray-900">
-              {t("sheetEquipmentTitle", "Equipment")}
-            </h3>
-            <p className="text-xs text-muted-foreground mt-1">
-              {t("sheetStepEquipmentSubtext", "Add included or rental gear")}
-            </p>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-base font-semibold text-gray-900">{t("sheetEquipmentTitle", "Equipment")}</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t("sheetEquipmentBrowseDesc", "See what is included, then add any optional rentals you need.")}
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              className={chefPrimaryCtaClass("shrink-0")}
+              onClick={() => {
+                setEquipmentInventoryModal(null);
+                setPendingEquipmentIds(selectedEquipmentIds);
+                setEquipmentModalOpen(true);
+              }}
+              disabled={equipmentListings.rental.length === 0}
+            >
+              <Icon icon="mdi:toolbox-outline" width={17} height={17} className="mr-1.5" aria-hidden />
+              {selectedEquipmentIds.length > 0 ? `Edit (${selectedEquipmentIds.length})` : t("sheetSelectEquipment", "Select equipment")}
+            </Button>
           </div>
 
           {isLoadingAddons ? (
             <div className="flex justify-center py-12">
-              <Loader2 className="h-5 w-5 animate-spin text-[#F51042]" />
+              <Icon icon="mdi:loading" className="h-5 w-5 animate-spin text-[#F51042]" aria-hidden />
             </div>
           ) : (
-            <div className="space-y-4">
-              {equipmentListings.included.length > 0 && (
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground mb-2">{t("sheetIncludedLabel", "Included")}</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {includedPreview.map((eq: any) => (
-                      <span
-                        key={eq.id}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border bg-white text-xs font-medium text-gray-700"
-                      >
-                        <Check className="h-3 w-3 text-[#F51042]" />
-                        {eq.equipmentType}
-                      </span>
-                    ))}
-                  </div>
-                  {includedHasMore && (
-                    <button
-                      type="button"
-                      className="mt-2 inline-flex items-center text-sm font-medium text-[#F51042] hover:text-[#d10e39]"
-                      onClick={() => setIncludedEquipmentModalOpen(true)}
-                    >
-                      {t("sheetShowAllIncluded", {
-                        count: equipmentListings.included.length,
-                        defaultValue: `Show all ${equipmentListings.included.length} included`,
-                      })}
-                      <ChevronRight className="ml-0.5 h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-              )}
-
+            <div className="space-y-5">
+              {equipmentListings.included.length > 0 ? (
+                <InventoryPreviewList
+                  title={t("sheetIncludedLabel", "Included")}
+                  subtitle={t("sheetIncludedEquipmentDesc", "Available with your kitchen booking at no extra charge.")}
+                  items={includedPreview}
+                  rental={false}
+                />
+              ) : null}
+              {includedRemaining > 0 ? (
+                <button
+                  type="button"
+                  className="-mt-3 inline-flex items-center pb-1 text-sm font-semibold text-[#F51042] hover:text-[#D40E38]"
+                  onClick={() => {
+                    setEquipmentModalOpen(false);
+                    setEquipmentInventoryModal("included");
+                  }}
+                >
+                  {t("sheetShowAllButton", { defaultValue: "Show all" })} <span className="ml-1">+{includedRemaining}</span>
+                  <Icon icon="mdi:chevron-right" className="ml-1 h-4 w-4" aria-hidden />
+                </button>
+              ) : null}
               {equipmentListings.rental.length > 0 ? (
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground mb-2">{t("sheetOptionalRentalsLabel", "Optional Rentals")}</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {equipmentListings.rental.map((eq: any) => {
-                      const isSelected = selectedEquipmentIds.includes(eq.id);
-                      return (
-                        <button
-                          key={eq.id}
-                          type="button"
-                          onClick={() => setSelectedEquipmentIds((prev) =>
-                            isSelected ? prev.filter((id) => id !== eq.id) : [...prev, eq.id]
-                          )}
-                          className={cn(
-                            "p-3 border rounded-xl text-left transition-colors",
-                            isSelected
-                              ? "border-[#F51042] bg-[#F51042]/5 ring-1 ring-[#F51042]/30"
-                              : "border-gray-200 bg-white hover:border-[#F51042]/40"
-                          )}
-                        >
-                          <div className="flex justify-between items-start gap-2">
-                            <span className="text-sm font-medium text-gray-900">{eq.equipmentType}</span>
-                            <span className="text-sm font-semibold text-[#F51042] shrink-0">{formatCurrency(eq.sessionRate || 0)}</span>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-0.5">{t("sheetPerSession", "per session")}</p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : equipmentListings.included.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  {t("sheetNoOptionalRentals", "No optional rentals for this kitchen. Included equipment is listed above.")}
-                </p>
+                <InventoryPreviewList
+                  title={t("sheetOptionalRentalsLabel", "Optional rentals")}
+                  subtitle={t("sheetRentalEquipmentDesc", "Available to rent for this kitchen session.")}
+                  items={rentalPreview}
+                  rental
+                />
+              ) : null}
+              {rentalRemaining > 0 ? (
+                <button
+                  type="button"
+                  className="-mt-3 inline-flex items-center pb-1 text-sm font-semibold text-[#F51042] hover:text-[#D40E38]"
+                  onClick={() => {
+                    setEquipmentModalOpen(false);
+                    setEquipmentInventoryModal("rental");
+                  }}
+                >
+                  {t("sheetShowAllButton", { defaultValue: "Show all" })} <span className="ml-1">+{rentalRemaining}</span>
+                  <Icon icon="mdi:chevron-right" className="ml-1 h-4 w-4" aria-hidden />
+                </button>
               ) : null}
             </div>
           )}
@@ -1290,34 +1564,83 @@ export default function KitchenBookingFlow({
 
     // Step: Storage
     if (currentStep === "storage" && selectedKitchen) {
+      const activeStorage = storageListings.filter((storage: any) => storage.isActive !== false);
+      const storagePreview = activeStorage.slice(0, STORAGE_PREVIEW_COUNT);
+      const storageRemaining = Math.max(0, activeStorage.length - storagePreview.length);
       return (
-        <div className="space-y-4">
-          <div>
-            <h3 className="text-base font-semibold text-gray-900">
-              {t("sheetStorageOptionsTitle", "Storage Options")}
-            </h3>
-            <p className="text-xs text-muted-foreground mt-1">
-              {t("sheetNeedStorageDesc", "Reserve refrigerator or dry storage for your ingredients")}
-            </p>
+        <div ref={storageStepRef} className="space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-base font-semibold text-gray-900">{t("sheetStorageOptionsTitle", "Storage options")}</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t("sheetNeedStorageDesc", "Reserve refrigerator, freezer, or dry storage for your ingredients.")}
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              className={chefPrimaryCtaClass("shrink-0")}
+              onClick={() => setStorageModalOpen(true)}
+            >
+              <Icon icon="mdi:archive-plus-outline" width={17} height={17} className="mr-1.5" aria-hidden />
+              {selectedStorage.length > 0 ? `Edit (${selectedStorage.length})` : t("sheetSelectStorage", "Select storage")}
+            </Button>
           </div>
 
           {isLoadingAddons ? (
             <div className="flex justify-center py-12">
-              <Loader2 className="h-5 w-5 animate-spin text-[#F51042]" />
+              <Icon icon="mdi:loading" className="h-5 w-5 animate-spin text-[#F51042]" aria-hidden />
             </div>
           ) : (
-            <StorageSelection
-              storageListings={storageListings}
-              selectedStorage={selectedStorage}
-              onSelectionChange={setSelectedStorage}
-              kitchenBookingDate={selectedDate || undefined}
-            />
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
+                {storagePreview.map((storage: any) => {
+                  const selection = selectedStorage.find((item) => item.storageListingId === storage.id);
+                  return (
+                    <div key={storage.id} className="flex min-w-0 items-center gap-2.5 border-b border-gray-100 py-3">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#FFF3F5] text-[#F51042]">
+                        <Icon
+                          icon={resolveStorageIcon(storage.storageType, storage.name)}
+                          width={18}
+                          height={18}
+                          aria-hidden
+                        />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-gray-900">{storage.name}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {formatCurrency(storage.basePrice || 0)}/day
+                        </p>
+                        {selection ? (
+                          <p className="truncate text-xs font-medium text-gray-900">
+                            {formatDate(selection.startDate)} – {formatDate(selection.endDate)}
+                          </p>
+                        ) : null}
+                      </div>
+                      {selection ? (
+                        <Icon icon="mdi:check" className="h-4 w-4 shrink-0 text-[#F51042]" aria-hidden />
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+              {storageRemaining > 0 ? (
+                <button
+                  type="button"
+                  className="inline-flex items-center pb-1 text-sm font-semibold text-[#F51042] hover:text-[#D40E38]"
+                  onClick={() => setStorageModalOpen(true)}
+                >
+                  {t("sheetShowAllButton", { defaultValue: "Show all" })} +{storageRemaining}
+                  <Icon icon="mdi:chevron-right" className="ml-1 inline h-4 w-4" aria-hidden />
+                </button>
+              ) : null}
+            </div>
           )}
         </div>
       );
     }
 
-    // Step: Confirm — summary + notes (price lives in sticky left rail)
+    // Step: Confirm — editable choices only (kitchen + price live in the left rail)
     if (currentStep === 'confirm' && selectedKitchen && selectedDate && selectedSlots.length > 0) {
       const editLinkClass =
         "inline-flex items-center gap-1 text-xs font-medium text-[#F51042] hover:text-[#d10e39] shrink-0";
@@ -1333,166 +1656,169 @@ export default function KitchenBookingFlow({
             </p>
           </div>
 
-          <div className="rounded-xl border border-[#F51042]/20 bg-[#F51042]/5 p-4 space-y-3">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-white/80 flex items-center justify-center border border-[#F51042]/15">
-                <ChefHat className="h-4 w-4 text-[#F51042]" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-gray-900 truncate">{selectedKitchen.name}</p>
-                <p className="text-xs text-muted-foreground truncate">{locationName}</p>
-              </div>
-            </div>
-
-            <div className="rounded-lg bg-white/80 border border-white px-3 py-2.5">
-              <div className="flex items-start justify-between gap-2">
+          <div className="overflow-hidden rounded-xl border divide-y bg-white">
+            <div className="flex items-start justify-between gap-3 px-4 py-3.5">
+              <div className="flex min-w-0 items-start gap-2.5">
+                <Icon icon="mdi:calendar-month-outline" className="mt-0.5 h-4 w-4 shrink-0 text-[#F51042]" aria-hidden />
                 <div className="min-w-0">
-                  <p className="text-[11px] text-muted-foreground">{t("sheetDateLabel", "Date")}</p>
-                  <p className="text-sm font-medium text-gray-900">{formatDate(selectedDate)}</p>
+                  <p className="text-[11px] font-medium text-muted-foreground">
+                    {t("sheetDateLabel", "Date")}
+                  </p>
+                  <p className="text-sm font-semibold text-gray-900">{formatDate(selectedDate)}</p>
                 </div>
-                <Popover
-                  open={confirmDatePopoverOpen}
-                  onOpenChange={(open) => {
-                    setConfirmDatePopoverOpen(open);
-                    if (open && selectedDate) {
-                      setCalendarMonth(
-                        new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1)
-                      );
-                    }
-                  }}
-                >
-                  <PopoverTrigger asChild>
-                    <button type="button" className={editLinkClass} aria-label={t("sheetEditDate", "Edit date")}>
-                      <Pencil className="h-3 w-3" />
-                      {t("sheetEdit", "Edit")}
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="end" sideOffset={8}>
-                    <div className="relative w-[300px] p-2">
-                      {isLoadingAvailability && (
-                        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-md bg-white/60">
-                          <Loader2 className="h-5 w-5 animate-spin text-[#F51042]" />
-                        </div>
-                      )}
-                      <UICalendar
-                        mode="single"
-                        selected={selectedDate}
-                        onSelect={(date) => {
-                          if (!date) return;
-                          const normalized = new Date(date);
-                          normalized.setHours(0, 0, 0, 0);
-                          if (!isDayAvailable(normalized)) return;
-                          setConfirmDatePopoverOpen(false);
-                          if (selectedDate && selectedDate.getTime() === normalized.getTime()) return;
-                          setSelectedDate(normalized);
-                          setSelectedSlots([]);
-                          setCalendarMonth(new Date(normalized.getFullYear(), normalized.getMonth(), 1));
-                          // New day needs new times — skip calendar step, go straight to slots
-                          setCurrentStep("slots");
-                        }}
-                        month={calendarMonth}
-                        onMonthChange={(month) => {
-                          setCalendarMonth(new Date(month.getFullYear(), month.getMonth(), 1));
-                        }}
-                        disabled={(date) => !isDayAvailable(date)}
-                        className="w-full bg-transparent p-1"
-                        classNames={BOOKING_CALENDAR_CLASS_NAMES}
-                      />
-                    </div>
-                  </PopoverContent>
-                </Popover>
               </div>
+              <Popover
+                open={confirmDatePopoverOpen}
+                onOpenChange={(open) => {
+                  setConfirmDatePopoverOpen(open);
+                  if (open && selectedDate) {
+                    setCalendarMonth(
+                      new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1)
+                    );
+                  }
+                }}
+              >
+                <PopoverTrigger asChild>
+                  <button type="button" className={editLinkClass} aria-label={t("sheetEditDate", "Edit date")}>
+                    <Icon icon="mdi:pencil-outline" className="h-3 w-3" aria-hidden />
+                    {t("sheetEdit", "Edit")}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="end" sideOffset={8}>
+                  <div className="relative w-[300px] p-2">
+                    {isLoadingAvailability && (
+                      <div className="absolute inset-0 z-10 flex items-center justify-center rounded-md bg-white/60">
+                        <Icon icon="mdi:loading" className="h-5 w-5 animate-spin text-[#F51042]" aria-hidden />
+                      </div>
+                    )}
+                    <UICalendar
+                      mode="single"
+                      selected={selectedDate}
+                      onSelect={(date) => {
+                        if (!date) return;
+                        const normalized = new Date(date);
+                        normalized.setHours(0, 0, 0, 0);
+                        if (!isDayAvailable(normalized)) return;
+                        setConfirmDatePopoverOpen(false);
+                        if (selectedDate && selectedDate.getTime() === normalized.getTime()) return;
+                        setSelectedDate(normalized);
+                        setSelectedSlots([]);
+                        setCalendarMonth(new Date(normalized.getFullYear(), normalized.getMonth(), 1));
+                        // New day needs new times — skip calendar step, go straight to slots
+                        setCurrentStep("slots");
+                      }}
+                      month={calendarMonth}
+                      onMonthChange={(month) => {
+                        setCalendarMonth(new Date(month.getFullYear(), month.getMonth(), 1));
+                      }}
+                      disabled={(date) => !isDayAvailable(date)}
+                      className="w-full bg-transparent p-1"
+                      classNames={BOOKING_CALENDAR_CLASS_NAMES}
+                    />
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
 
-            <div className="rounded-lg bg-white/80 border border-white px-3 py-2.5">
-              <div className="flex items-start justify-between gap-2">
+            <div className="flex items-start justify-between gap-3 px-4 py-3.5">
+              <div className="flex min-w-0 items-start gap-2.5">
+                <Icon icon="mdi:clock-outline" className="mt-0.5 h-4 w-4 shrink-0 text-[#F51042]" aria-hidden />
                 <div className="min-w-0">
-                  <p className="text-[11px] text-muted-foreground">{t("sheetBookingTimeLabel", "Booking Time")}</p>
+                  <p className="text-[11px] font-medium text-muted-foreground">
+                    {t("sheetBookingTimeLabel", "Booking Time")}
+                  </p>
                   <p className="text-sm font-semibold text-gray-900">{getBookingTimeRange()}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
+                  <p className="mt-0.5 text-xs text-muted-foreground">
                     {t("sheetHoursCount", {
                       count: selectedSlots.length,
                       defaultValue: `${selectedSlots.length} hour${selectedSlots.length > 1 ? "s" : ""}`,
                     })}
                   </p>
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {[...selectedSlots].sort().map((slot) => (
-                      <span key={slot} className="px-2 py-0.5 rounded-md bg-white border text-[11px] font-medium text-gray-600">
-                        {formatSlotRange(slot)}
-                      </span>
-                    ))}
-                  </div>
                 </div>
-                <button type="button" className={editLinkClass} onClick={() => setCurrentStep("slots")}>
-                  <Pencil className="h-3 w-3" />
+              </div>
+              <button
+                type="button"
+                className={editLinkClass}
+                onClick={() => {
+                  setPendingTimeSlots(selectedSlots);
+                  setTimeModalOpen(true);
+                }}
+              >
+                <Icon icon="mdi:pencil-outline" className="h-3 w-3" aria-hidden />
+                {t("sheetEdit", "Edit")}
+              </button>
+            </div>
+
+            {hasEquipment ? (
+              <div className="flex items-start justify-between gap-3 px-4 py-3.5">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-900">{t("sheetEquipmentTitle", "Equipment")}</p>
+                  <p className="mt-0.5 text-sm text-muted-foreground">
+                    {selectedEquipmentIds.length > 0
+                      ? t("sheetEquipmentLineLabel", {
+                          count: selectedEquipmentIds.length,
+                          defaultValue: `Equipment (${selectedEquipmentIds.length})`,
+                        })
+                      : t("sheetNoRentalsSelected", "No rentals selected")}
+                    {selectedEquipmentIds.length > 0 ? (
+                      <span className="ml-2 font-medium text-gray-900">
+                        {formatCurrency(equipmentPricing.subtotal)}
+                      </span>
+                    ) : null}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className={editLinkClass}
+                  onClick={() => {
+                    setEquipmentInventoryModal(null);
+                    setPendingEquipmentIds(selectedEquipmentIds);
+                    setEquipmentModalOpen(true);
+                  }}
+                >
+                  <Icon icon="mdi:pencil-outline" className="h-3 w-3" aria-hidden />
                   {t("sheetEdit", "Edit")}
                 </button>
               </div>
-            </div>
+            ) : null}
+
+            {hasStorage ? (
+              <div className="flex items-start justify-between gap-3 px-4 py-3.5">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-900">{t("sheetStepStorage", "Storage")}</p>
+                  <p className="mt-0.5 text-sm text-muted-foreground">
+                    {selectedStorage.length > 0
+                      ? t("sheetStorageLineLabel", {
+                          count: selectedStorage.length,
+                          defaultValue: `Storage (${selectedStorage.length})`,
+                        })
+                      : t("sheetNoStorageSelected", "No storage selected")}
+                    {selectedStorage.length > 0 ? (
+                      <span className="ml-2 font-medium text-gray-900">
+                        {formatCurrency(storagePricing.subtotal)}
+                      </span>
+                    ) : null}
+                  </p>
+                </div>
+                <button type="button" className={editLinkClass} onClick={() => setStorageModalOpen(true)}>
+                  <Icon icon="mdi:pencil-outline" className="h-3 w-3" aria-hidden />
+                  {t("sheetEdit", "Edit")}
+                </button>
+              </div>
+            ) : null}
           </div>
 
-          {(hasEquipment || hasStorage) && (
-            <div className="rounded-xl border divide-y">
-              {hasEquipment && (
-                <div className="flex items-start justify-between gap-3 px-4 py-3 text-sm">
-                  <div className="min-w-0">
-                    <p className="font-medium text-gray-900">{t("sheetEquipmentTitle", "Equipment")}</p>
-                    <p className="text-muted-foreground mt-0.5">
-                      {selectedEquipmentIds.length > 0
-                        ? t("sheetEquipmentLineLabel", {
-                            count: selectedEquipmentIds.length,
-                            defaultValue: `Equipment (${selectedEquipmentIds.length})`,
-                          })
-                        : t("sheetNoRentalsSelected", "No rentals selected")}
-                      {selectedEquipmentIds.length > 0 && (
-                        <span className="ml-2 font-medium text-gray-900">
-                          {formatCurrency(equipmentPricing.subtotal)}
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                  <button type="button" className={editLinkClass} onClick={() => setCurrentStep("equipment")}>
-                    <Pencil className="h-3 w-3" />
-                    {t("sheetEdit", "Edit")}
-                  </button>
-                </div>
-              )}
-              {hasStorage && (
-                <div className="flex items-start justify-between gap-3 px-4 py-3 text-sm">
-                  <div className="min-w-0">
-                    <p className="font-medium text-gray-900">{t("sheetStepStorage", "Storage")}</p>
-                    <p className="text-muted-foreground mt-0.5">
-                      {selectedStorage.length > 0
-                        ? t("sheetStorageLineLabel", {
-                            count: selectedStorage.length,
-                            defaultValue: `Storage (${selectedStorage.length})`,
-                          })
-                        : t("sheetNoStorageSelected", "No storage selected")}
-                      {selectedStorage.length > 0 && (
-                        <span className="ml-2 font-medium text-gray-900">
-                          {formatCurrency(storagePricing.subtotal)}
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                  <button type="button" className={editLinkClass} onClick={() => setCurrentStep("storage")}>
-                    <Pencil className="h-3 w-3" />
-                    {t("sheetEdit", "Edit")}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
           <div>
-            <label className="block text-sm font-medium mb-2">{t("sheetSpecialNotesLabel", "Special Notes (Optional)")}</label>
+            <label className="mb-2 block text-sm font-medium">
+              {t("sheetSpecialNotesLabel", "Special Notes (Optional)")}
+            </label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
               maxLength={500}
               placeholder={t("sheetSpecialNotesPlaceholder", "Any special requirements...")}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#F51042]/30 focus:border-[#F51042] resize-none bg-white"
+              className="w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm focus:border-[#F51042] focus:ring-2 focus:ring-[#F51042]/30"
             />
           </div>
         </div>
@@ -1530,11 +1856,11 @@ export default function KitchenBookingFlow({
 
     // Desktop rail
     return (
-      <div className="rounded-xl border bg-white p-4 shadow-sm">
-        <div className="flex items-center gap-2 mb-3">
-          <DollarSign className="h-4 w-4 text-[#F51042]" />
+      <div className="rounded-xl border bg-white p-3 shadow-sm">
+        <div className="mb-2 flex items-center gap-2">
+          <Icon icon="mdi:currency-usd" className="h-4 w-4 text-[#F51042]" aria-hidden />
           <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            {t("sheetOrderSummaryLabel", "Order Summary")}
+            {t("sheetOrderSummaryLabel", "Booking Summary")}
           </span>
         </div>
 
@@ -1555,60 +1881,83 @@ export default function KitchenBookingFlow({
             )}
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-1.5">
+            {selectedDate && currentStep !== "confirm" && (
+              <div className="mb-2 grid grid-cols-[0.78fr_1.22fr] gap-2 border-b pb-2">
+                <div className="flex items-start gap-2.5">
+                  <Icon icon="mdi:calendar-month-outline" className="mt-0.5 h-4 w-4 shrink-0 text-[#F51042]" aria-hidden />
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-medium text-muted-foreground">
+                      {t("sheetDateLabel", "Date")}
+                    </p>
+                    <p className="text-sm font-semibold text-gray-900">{formatDate(selectedDate)}</p>
+                  </div>
+                </div>
+                {selectedSlots.length > 0 && (
+                  <div className="flex items-start gap-2.5">
+                    <Icon icon="mdi:clock-outline" className="mt-0.5 h-4 w-4 shrink-0 text-[#F51042]" aria-hidden />
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-medium text-muted-foreground">
+                        {t("sheetTimeLabel", "Time")}
+                      </p>
+                      <p className="line-clamp-2 text-[11px] font-medium leading-snug text-gray-900">
+                        {selectedSlots.map(formatSlotRange).join(", ")}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             {selectedSlots.length > 0 && kitchenPricing?.hourlyRate && estimatedPrice && (
-              <div className="flex justify-between gap-3 text-sm">
+              <div className="flex items-baseline justify-between gap-3 text-sm">
                 <span className="text-muted-foreground">
                   {t("sheetKitchenTimeItem", {
                     count: estimatedPrice.durationHours,
                     defaultValue: `${estimatedPrice.durationHours} hour${estimatedPrice.durationHours > 1 ? "s" : ""} kitchen time`,
                   })}
                 </span>
-                <span className="font-medium shrink-0">{formatCurrency(estimatedPrice.basePrice)}</span>
+                <span className="font-medium shrink-0 tabular-nums">{formatCurrency(estimatedPrice.basePrice)}</span>
               </div>
             )}
             {selectedEquipmentIds.length > 0 && (
-              <div className="flex justify-between gap-3 text-sm">
+              <div className="flex items-baseline justify-between gap-3 text-sm">
                 <span className="text-muted-foreground">
                   {t("sheetEquipmentRentalsItem", {
                     count: selectedEquipmentIds.length,
                     defaultValue: `${selectedEquipmentIds.length} equipment`,
                   })}
                 </span>
-                <span className="font-medium shrink-0">{formatCurrency(equipmentPricing.subtotal)}</span>
+                <span className="font-medium shrink-0 tabular-nums">{formatCurrency(equipmentPricing.subtotal)}</span>
               </div>
             )}
             {selectedStorage.length > 0 && (
-              <div className="flex justify-between gap-3 text-sm">
+              <div className="flex items-baseline justify-between gap-3 text-sm">
                 <span className="text-muted-foreground">
                   {t("sheetStorageReservationsItem", {
                     count: selectedStorage.length,
                     defaultValue: `${selectedStorage.length} storage`,
                   })}
                 </span>
-                <span className="font-medium shrink-0">{formatCurrency(storagePricing.subtotal)}</span>
+                <span className="font-medium shrink-0 tabular-nums">{formatCurrency(storagePricing.subtotal)}</span>
               </div>
             )}
-            {tax > 0 && (
-              <div className="flex justify-between gap-3 text-sm">
-                <span className="text-muted-foreground">{t("sheetTaxLabel", "Tax")}</span>
-                <span className="font-medium shrink-0">{formatCurrency(tax)}</span>
-              </div>
-            )}
-            {serviceFee > 0 && (
-              <div className="flex justify-between gap-3 text-sm">
+            {(tax > 0 || serviceFee > 0) && (
+              <div className="flex items-baseline justify-between gap-3 text-sm">
                 <span className="text-muted-foreground">
-                  {t("sheetServiceFeeLabel", {
-                    percent: Math.round((kitchenPricing?.platformCommissionRate ?? 0) * 100),
-                    defaultValue: "Service Fee ({{percent}}%)",
-                  })}
+                  {t("sheetTaxesAndFees", "Taxes & non-govt. fees")}
+                  <FeesInfoPopover
+                    tax={tax}
+                    serviceFee={serviceFee}
+                    taxRatePercent={selectedKitchen?.taxRatePercent || 0}
+                    serviceFeeRate={kitchenPricing?.platformCommissionRate ?? 0}
+                  />
                 </span>
-                <span className="font-medium shrink-0">{formatCurrency(serviceFee)}</span>
+                <span className="font-medium shrink-0 tabular-nums">{formatCurrency(tax + serviceFee)}</span>
               </div>
             )}
-            <div className="flex justify-between items-baseline gap-3 pt-3 mt-1 border-t">
+            <div className="mt-1 flex items-baseline justify-between gap-3 border-t pt-2">
               <span className="text-sm font-semibold">{t("sheetTotalLabel", "Total")}</span>
-              <span className="text-xl font-semibold text-[#F51042]">
+              <span className="text-lg font-semibold text-[#F51042] tabular-nums">
                 {formatCurrency(grandTotal)}{" "}
                 <span className="text-xs font-medium text-muted-foreground">{kitchenPricing?.currency || "CAD"}</span>
               </span>
@@ -1639,6 +1988,19 @@ export default function KitchenBookingFlow({
     onCancel();
   };
 
+  const confirmDiscardModalChanges = () => {
+    if (discardModal === "equipment") {
+      setPendingEquipmentIds(selectedEquipmentIds);
+      setEquipmentModalOpen(false);
+    } else if (discardModal === "storage") {
+      setStorageModalOpen(false);
+    } else if (discardModal === "time") {
+      setPendingTimeSlots(selectedSlots);
+      setTimeModalOpen(false);
+    }
+    setDiscardModal(null);
+  };
+
   const goToPreviousStep = () => {
     const prev = goToStepRelative(currentStep, -1);
     if (prev) setCurrentStep(prev);
@@ -1655,11 +2017,11 @@ export default function KitchenBookingFlow({
     <Button
       type="button"
       variant="outline"
-      className="min-h-[44px] flex-1"
+      className={chefOutlineCtaClass("min-h-[44px] flex-1")}
       onClick={goToPreviousStep}
       disabled={isRedirectingToCheckout || isProcessingBooking || createBooking.isPending}
     >
-      <ArrowLeft className="mr-1.5 h-4 w-4 shrink-0 sm:mr-2" />
+      <Icon icon="mdi:arrow-left" className="mr-1.5 h-4 w-4 shrink-0 sm:mr-2" aria-hidden />
       {t("sheetPreviousButton", "Previous")}
     </Button>
   ) : null;
@@ -1668,7 +2030,7 @@ export default function KitchenBookingFlow({
     <Button
       type="button"
       variant="ghost"
-      className="min-h-[44px] shrink-0"
+      className="min-h-[44px] shrink-0 rounded-xl"
       onClick={() => setCancelConfirmOpen(true)}
       disabled={isRedirectingToCheckout || isProcessingBooking || createBooking.isPending}
     >
@@ -1701,6 +2063,10 @@ export default function KitchenBookingFlow({
     ((currentStep === "equipment" || currentStep === "storage") && isLoadingAddons);
 
   const renderStepActions = () => {
+    if (!isFlowReady) {
+      return <div className="flex gap-3">{cancelButton}</div>;
+    }
+
     if (currentStep === "confirm") {
       return (
         <div className="space-y-3">
@@ -1709,23 +2075,23 @@ export default function KitchenBookingFlow({
             {cancelButton}
             {previousButton}
             <Button
-              className="flex-1 min-h-[44px] bg-[#F51042] hover:bg-[#D40E38] text-white"
+              className={chefPrimaryCtaClass("flex-1 min-h-[44px]")}
               onClick={grandTotal > 0 ? redirectToStripeCheckout : handleFreeBookingSubmit}
               disabled={createBooking.isPending || isRedirectingToCheckout || isProcessingBooking}
             >
               {createBooking.isPending || isRedirectingToCheckout || isProcessingBooking ? (
                 <>
-                  <Loader2 className="mr-1.5 sm:mr-2 h-4 w-4 animate-spin flex-shrink-0" />
+                  <Icon icon="mdi:loading" className="mr-1.5 sm:mr-2 h-4 w-4 animate-spin flex-shrink-0" aria-hidden />
                   <span className="truncate">{isRedirectingToCheckout ? t("sheetRedirectingButton", "Redirecting...") : t("sheetBookingEllipsisButton", "Booking...")}</span>
                 </>
               ) : grandTotal > 0 ? (
                 <>
-                  <CreditCard className="mr-1.5 sm:mr-2 h-4 w-4 flex-shrink-0" />
+                  <Icon icon="mdi:credit-card-outline" className="mr-1.5 sm:mr-2 h-4 w-4 flex-shrink-0" aria-hidden />
                   <span className="truncate">{t("sheetCheckoutButton", "Checkout")}</span>
                 </>
               ) : (
                 <>
-                  <Check className="mr-1.5 sm:mr-2 h-4 w-4 flex-shrink-0" />
+                  <Icon icon="mdi:check" className="mr-1.5 sm:mr-2 h-4 w-4 flex-shrink-0" aria-hidden />
                   <span className="truncate">{t("sheetConfirmBookingButton", "Confirm Booking")}</span>
                 </>
               )}
@@ -1748,12 +2114,12 @@ export default function KitchenBookingFlow({
             {cancelButton}
             {previousButton}
             <Button
-              className="min-h-[44px] flex-1 bg-[#F51042] hover:bg-[#D40E38] text-white"
+              className={chefPrimaryCtaClass("min-h-[44px] flex-1")}
               onClick={goToNextStep}
               disabled={continueDisabled}
             >
               {continueButtonLabel()}
-              <ArrowRight className="ml-2 h-4 w-4" />
+              <Icon icon="mdi:arrow-right" className="ml-2 h-4 w-4" aria-hidden />
             </Button>
           </div>
         </>
@@ -1763,166 +2129,341 @@ export default function KitchenBookingFlow({
     return <div className="flex gap-3">{cancelButton}</div>;
   };
 
-  const currentStepMeta = steps[currentStepIndex];
-
   return (
     <>
-      <div className="flex flex-col lg:flex-row gap-0 lg:gap-8 lg:items-start">
-        {/* Left rail: steps + sticky price (desktop) */}
-        <aside className="hidden lg:flex w-[300px] shrink-0 flex-col sticky top-4 self-start max-h-[calc(100vh-6rem)]">
-          <div className="mb-6">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">
-              {t("title", "Book a kitchen")}
-            </p>
-            <h1 className="text-xl font-semibold leading-tight text-gray-900">{locationName}</h1>
-            {selectedKitchen ? (
-              <div className="flex items-center gap-1.5 mt-1.5">
-                <ChefHat className="h-3.5 w-3.5 text-[#F51042] shrink-0" />
-                <span className="text-sm text-muted-foreground">{selectedKitchen.name}</span>
-              </div>
-            ) : locationAddress ? (
-              <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1.5">
-                <MapPin className="h-3.5 w-3.5 shrink-0" />
-                {locationAddress}
-              </p>
-            ) : null}
-          </div>
+      <div className="space-y-4 lg:flex lg:h-[calc(100dvh-9rem)] lg:flex-col lg:space-y-0 lg:gap-4 lg:overflow-hidden">
+        {/* ReUI c-stepper-10 — equal columns, title + description, line separators */}
+        {isFlowReady ? (
+          <Stepper
+            value={currentStepIndex + 1}
+            indicators={{
+              completed: <Icon icon="mdi:check" className="size-3.5" aria-hidden />,
+              loading: <Icon icon="mdi:loading" className="size-3.5 animate-spin" aria-hidden />,
+            }}
+            className="w-full rounded-xl border bg-white px-3 py-3 shadow-sm sm:px-5"
+            aria-label={t("sheetBookingStepsAria", "Booking steps")}
+          >
+            <StepperNav className="w-full">
+              {steps.map((step, index) => (
+                <StepperItem key={step.key} step={index + 1} className="relative">
+                  <StepperTrigger className="flex shrink-0 cursor-default justify-start gap-1.5">
+                    <StepperIndicator>{index + 1}</StepperIndicator>
+                    <div className="flex min-w-0 flex-col items-start gap-0.5">
+                      <StepperTitle className="truncate">{step.label}</StepperTitle>
+                      <StepperDescription className="hidden truncate text-xs sm:block">
+                        {step.subtext}
+                      </StepperDescription>
+                    </div>
+                  </StepperTrigger>
 
-          <nav aria-label={t("sheetBookingStepsAria", "Booking steps")} className="space-y-1 mb-6">
-            {steps.map((step, idx) => {
-              const isCompleted = idx < currentStepIndex;
-              const isCurrent = step.key === currentStep;
-              return (
-                <div
-                  key={step.key}
-                  className={cn(
-                    "flex gap-3 rounded-xl px-3 py-2.5 transition-colors",
-                    isCurrent && "bg-white shadow-sm border border-gray-200",
-                    !isCurrent && !isCompleted && "opacity-55"
-                  )}
-                >
-                  <div
-                    className={cn(
-                      "mt-0.5 w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium shrink-0",
-                      (isCompleted || isCurrent) && "bg-[#F51042] text-white",
-                      !isCompleted && !isCurrent && "bg-muted text-muted-foreground"
-                    )}
-                  >
-                    {isCompleted ? <Check className="h-3.5 w-3.5" /> : idx + 1}
-                  </div>
-                  <div className="min-w-0">
-                    <p className={cn("text-sm font-medium", isCurrent ? "text-gray-900" : "text-gray-700")}>
-                      {step.label}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{step.subtext}</p>
-                  </div>
-                </div>
-              );
-            })}
-          </nav>
-
-          <div className="mt-auto pt-2">{renderPriceBreakdown("rail")}</div>
-        </aside>
-
-        {/* Main column */}
-        <div className="flex-1 flex flex-col min-w-0 rounded-2xl border bg-white shadow-sm overflow-hidden">
-          {/* Mobile step header */}
-          <div className="lg:hidden flex-shrink-0 border-b px-4 py-4 bg-gray-50/50">
-            <div className="flex items-start justify-between gap-3 mb-3">
-              <div className="min-w-0">
-                <h1 className="text-base font-semibold truncate text-gray-900">{locationName}</h1>
-                {selectedKitchen && (
-                  <p className="text-xs text-muted-foreground truncate mt-0.5">{selectedKitchen.name}</p>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-1.5 mb-2">
-              {steps.map((step, idx) => (
-                <div
-                  key={step.key}
-                  className={cn(
-                    "h-1 flex-1 rounded-full transition-colors",
-                    idx <= currentStepIndex ? "bg-[#F51042]" : "bg-muted"
-                  )}
-                />
+                  {index < steps.length - 1 ? <StepperSeparator /> : null}
+                </StepperItem>
               ))}
-            </div>
-            {currentStepMeta && (
-              <div>
-                <p className="text-sm font-semibold text-gray-900">
-                  {t("sheetStepOf", {
-                    current: currentStepIndex + 1,
-                    total: steps.length,
-                    label: currentStepMeta.label,
-                    defaultValue: `Step ${currentStepIndex + 1} of ${steps.length}: ${currentStepMeta.label}`,
-                  })}
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5">{currentStepMeta.subtext}</p>
-              </div>
-            )}
-          </div>
+            </StepperNav>
+          </Stepper>
+        ) : (
+          <Skeleton className="h-[4.5rem] w-full rounded-xl" />
+        )}
 
-          {/* Step content — no nested page scroll; step fits naturally */}
-          <div className="flex-1 px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
-            <div className="w-full max-w-3xl mx-auto lg:mx-0">
-              {renderStepContent()}
+        <div className="flex flex-col gap-0 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-stretch lg:gap-6">
+          {/* Left rail: kitchen details + sticky price (desktop) */}
+          <aside className="hidden w-[340px] shrink-0 flex-col lg:flex lg:h-full">
+            <div className="mb-4">
+              {selectedKitchen ? (
+                <BookingPlaceContext
+                  kitchen={selectedKitchen}
+                  locationName={locationName}
+                  locationAddress={locationAddress}
+                  onPolicyOpen={() => setCancellationPolicyOpen(true)}
+                />
+              ) : (
+                <Skeleton className="h-40 w-full rounded-2xl" />
+              )}
             </div>
-          </div>
+            <div className="mt-auto pt-2">{renderPriceBreakdown("rail")}</div>
+          </aside>
 
-          <div className="flex-shrink-0 border-t bg-white px-4 sm:px-6 lg:px-8 py-4 sticky bottom-0">
-            <div className="w-full max-w-3xl mx-auto lg:mx-0">
-              {renderStepActions()}
+          {/* Main column */}
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border bg-white shadow-sm lg:h-full lg:min-h-0">
+            {/* Mobile kitchen context */}
+            <div className="flex-shrink-0 border-b bg-gray-50/50 px-4 py-3 lg:hidden">
+              {selectedKitchen ? (
+                <BookingPlaceContext
+                  kitchen={selectedKitchen}
+                  locationName={locationName}
+                  locationAddress={locationAddress}
+                  compact
+                  onPolicyOpen={() => setCancellationPolicyOpen(true)}
+                />
+              ) : (
+                <Skeleton className="h-14 w-full rounded-xl" />
+              )}
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 lg:px-8 lg:py-6">
+              <div className="mx-auto h-full w-full max-w-3xl lg:mx-0">{renderStepContent()}</div>
+            </div>
+
+            <div className="sticky bottom-0 flex-shrink-0 border-t bg-white px-4 py-4 sm:px-6 lg:px-8">
+              <div className="mx-auto w-full max-w-3xl lg:mx-0">{renderStepActions()}</div>
             </div>
           </div>
         </div>
       </div>
 
-      <Dialog open={includedEquipmentModalOpen} onOpenChange={setIncludedEquipmentModalOpen}>
+      <Dialog open={timeModalOpen} onOpenChange={(open) => { if (open) setTimeModalOpen(true); }}>
+        <DialogContent
+          showCloseButton={false}
+          onPointerDownOutside={(event) => event.preventDefault()}
+          onEscapeKeyDown={(event) => event.preventDefault()}
+          className="flex max-h-[85vh] w-[min(100vw-1.5rem,42rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl"
+        >
+          <DialogHeader className="border-b border-gray-100 px-5 pb-4 pt-5 text-left">
+            <DialogTitle>{t("sheetSelectTimeTitle", "Select time")}</DialogTitle>
+            <DialogDescription>
+              {selectedDate ? formatDate(selectedDate) : ""} · {t("sheetMaxHoursBadge", { maxHours: maxSlotsPerChef, defaultValue: `Max ${maxSlotsPerChef} hours` })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+              {allSlots.map((slot) => {
+                const selected = pendingTimeSlots.includes(slot.time);
+                return (
+                  <button
+                    key={slot.time}
+                    type="button"
+                    disabled={slot.isFullyBooked}
+                    onClick={() => updateSlotSelection(setPendingTimeSlots, slot)}
+                    className={cn(
+                      "flex min-h-[44px] w-full items-center justify-center rounded-xl border px-3 py-2.5 text-center text-xs font-medium transition-colors",
+                      selected && "border-[#F51042] bg-[#F51042] text-white",
+                      !selected && !slot.isFullyBooked && "border-gray-200 bg-white text-gray-700 hover:border-[#F51042]/40",
+                      slot.isFullyBooked && "cursor-not-allowed border-transparent bg-muted/50 text-muted-foreground/50 line-through"
+                    )}
+                  >
+                    {formatSlotRange(slot.time)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-3 border-t bg-white px-5 py-4">
+            <Button variant="ghost" className="rounded-xl" onClick={() => setDiscardModal("time")}>Cancel</Button>
+            <p className="text-xs text-muted-foreground">{pendingTimeSlots.length} hour{pendingTimeSlots.length === 1 ? "" : "s"} selected</p>
+            <Button
+              disabled={pendingTimeSlots.length === 0}
+              className={chefPrimaryCtaClass()}
+              onClick={() => {
+                setSelectedSlots([...pendingTimeSlots].sort());
+                setTimeModalOpen(false);
+              }}
+            >
+              <Icon icon="mdi:check" className="mr-2 h-4 w-4" aria-hidden /> Save time
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={equipmentInventoryModal !== null}
+        onOpenChange={(open) => {
+          if (!open) setEquipmentInventoryModal(null);
+        }}
+      >
         <DialogContent className="flex max-h-[85vh] w-[min(100vw-1.5rem,48rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
           <DialogHeader className="border-b border-gray-100 px-5 pb-4 pt-5 text-left">
-            <DialogTitle>{t("sheetIncludedEquipmentTitle", "Included equipment")}</DialogTitle>
+            <DialogTitle>
+              {equipmentInventoryModal === "included"
+                ? t("sheetIncludedEquipmentTitle", "Included equipment")
+                : t("sheetOptionalRentalsLabel", "Optional rentals")}
+            </DialogTitle>
+            <DialogDescription>
+              {equipmentInventoryModal === "included"
+                ? t("sheetIncludedEquipmentDesc", "These items come with your kitchen booking at no extra charge.")
+                : t("sheetRentalEquipmentDesc", "These items are available to rent for this kitchen session.")}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+            <InventoryPreviewList
+              title={equipmentInventoryModal === "included"
+                ? t("sheetIncludedLabel", "Included")
+                : t("sheetOptionalRentalsLabel", "Optional rentals")}
+              subtitle={equipmentInventoryModal === "included"
+                ? t("sheetIncludedEquipmentDesc", "Available at no extra charge.")
+                : t("sheetRentalEquipmentDesc", "Available to rent for this session.")}
+              items={equipmentInventoryModal === "included"
+                ? equipmentListings.included
+                : equipmentListings.rental}
+              rental={equipmentInventoryModal === "rental"}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={equipmentModalOpen}
+        onOpenChange={(open) => {
+          if (open) {
+            setEquipmentModalOpen(true);
+            setEquipmentInventoryModal(null);
+          }
+        }}
+      >
+        <DialogContent
+          showCloseButton={false}
+          onPointerDownOutside={(event) => event.preventDefault()}
+          onEscapeKeyDown={(event) => event.preventDefault()}
+          className="flex max-h-[85vh] w-[min(100vw-1.5rem,48rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl"
+        >
+          <DialogHeader className="border-b border-gray-100 px-5 pb-4 pt-5 text-left">
+            <DialogTitle>{t("sheetSelectEquipment", "Select equipment")}</DialogTitle>
             <DialogDescription>
               {t(
-                "sheetIncludedEquipmentDesc",
-                "These items come with your kitchen booking at no extra charge."
+                "sheetSelectEquipmentDesc",
+                "Choose any optional rental equipment you need for this session."
               )}
             </DialogDescription>
           </DialogHeader>
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-            <ul className="grid min-w-0 grid-cols-1 sm:grid-cols-2 sm:gap-x-6">
-              {equipmentListings.included.map((eq: any) => {
-                const name = String(eq.equipmentType || "")
-                  .toLowerCase()
-                  .replace(/[_-]+/g, " ")
-                  .replace(/\b\w/g, (char: string) => char.toUpperCase())
-                  .trim();
-                const hint = [eq.brand, eq.model].filter(Boolean).join(" ");
-                const showHint =
-                  Boolean(hint) && !name.toLowerCase().includes(hint.toLowerCase());
-                return (
-                  <li key={eq.id} className="flex min-w-0 items-center gap-2.5 py-2">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#FFF8F5] text-[#F51042]">
-                      <Icon
-                        icon={resolveEquipmentIcon(eq.equipmentType, eq.category)}
-                        width={16}
-                        height={16}
-                        className="text-[#F51042]"
-                        aria-hidden
-                      />
-                    </span>
-                    <span className="flex min-w-0 items-baseline gap-2">
-                      <span className="truncate text-sm text-gray-900">{name}</span>
-                      {showHint ? (
-                        <span className="hidden truncate text-xs text-gray-400 sm:inline">{hint}</span>
-                      ) : null}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
+            <section>
+              <div className="mb-3">
+                <h4 className="text-sm font-semibold text-gray-900">{t("sheetOptionalRentalsLabel", "Optional rentals")}</h4>
+                <p className="text-xs text-muted-foreground">Select as many as you need.</p>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {equipmentListings.rental.map((equipment: any) => {
+                  const selected = pendingEquipmentIds.includes(equipment.id);
+                  return (
+                    <button
+                      key={equipment.id}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => setPendingEquipmentIds((current) =>
+                        selected
+                          ? current.filter((id) => id !== equipment.id)
+                          : [...current, equipment.id]
+                      )}
+                      className={cn(
+                        "flex items-center gap-3 rounded-xl border p-3 text-left transition-all",
+                        selected
+                          ? "border-[#F51042] bg-[#F51042]/[0.04] ring-1 ring-[#F51042]/20"
+                          : "border-gray-200 hover:border-[#F51042]/40"
+                      )}
+                    >
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#FFF3F5] text-[#F51042]">
+                        <Icon icon={resolveEquipmentIcon(equipment.equipmentType, equipment.category)} width={20} height={20} aria-hidden />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold text-gray-900">{equipmentName(equipment)}</span>
+                        <span className="block text-xs text-muted-foreground">{formatCurrency(equipment.sessionRate || 0)} per session</span>
+                      </span>
+                      <span className={cn(
+                        "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border",
+                        selected ? "border-[#F51042] bg-[#F51042] text-white" : "border-gray-300"
+                      )}>
+                        {selected ? <Icon icon="mdi:check" className="h-3 w-3" aria-hidden /> : null}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          </div>
+          <div className="space-y-3 border-t bg-white px-5 py-3">
+            <BookingPriceSummary
+              kitchenSubtotal={estimatedPrice?.basePrice || 0}
+              equipmentSubtotal={pendingEquipmentSubtotal}
+              storageSubtotal={storagePricing.subtotal || 0}
+              taxRatePercent={selectedKitchen?.taxRatePercent || 0}
+              serviceFeeRate={kitchenPricing?.platformCommissionRate ?? 0}
+              currency={kitchenPricing?.currency || "CAD"}
+              focusAddon="equipment"
+            />
+            <div className="flex items-center justify-between gap-3 border-t pt-3">
+              <Button variant="ghost" className="rounded-xl" onClick={() => setDiscardModal("equipment")}>Cancel</Button>
+              <p className="text-xs text-muted-foreground">
+                {pendingEquipmentIds.length
+                  ? `${pendingEquipmentIds.length} rental${pendingEquipmentIds.length === 1 ? "" : "s"} selected`
+                  : t("sheetNoRentalsSelected", "No rentals selected")}
+              </p>
+              <Button
+                className={chefPrimaryCtaClass()}
+                onClick={() => {
+                  setSelectedEquipmentIds(pendingEquipmentIds);
+                  setEquipmentModalOpen(false);
+                }}
+              >
+                <Icon icon="mdi:check" className="mr-2 h-4 w-4" aria-hidden /> {t("sheetSaveSelection", "Save selection")}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={storageModalOpen} onOpenChange={(open) => { if (open) setStorageModalOpen(true); }}>
+        <DialogContent
+          showCloseButton={false}
+          onPointerDownOutside={(event) => event.preventDefault()}
+          onEscapeKeyDown={(event) => event.preventDefault()}
+          className="flex max-h-[90vh] w-[min(100vw-1.5rem,52rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl"
+        >
+          <DialogHeader className="border-b border-gray-100 px-5 pb-4 pt-5 text-left">
+            <DialogTitle>{t("sheetSelectStorage", "Select storage")}</DialogTitle>
+            <DialogDescription>
+              {t("sheetSelectStorageDesc", "Choose storage first, then set one shared date range or different dates for each selection.")}
+            </DialogDescription>
+          </DialogHeader>
+          <BookingStorageSelector
+            storageListings={storageListings}
+            selectedStorage={selectedStorage}
+            onSelectionChange={setSelectedStorage}
+            kitchenBookingDate={selectedDate || undefined}
+            onDone={() => setStorageModalOpen(false)}
+            onCancel={() => setDiscardModal("storage")}
+            kitchenSubtotal={estimatedPrice?.basePrice || 0}
+            equipmentSubtotal={equipmentPricing.subtotal || 0}
+            taxRatePercent={selectedKitchen?.taxRatePercent || 0}
+            serviceFeeRate={kitchenPricing?.platformCommissionRate ?? 0}
+            currency={kitchenPricing?.currency || "CAD"}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={cancellationPolicyOpen} onOpenChange={setCancellationPolicyOpen}>
+        <DialogContent className="w-[min(100vw-1.5rem,34rem)] sm:max-w-lg">
+          <DialogHeader className="text-left">
+            <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-[#FFF3F5] text-[#F51042]">
+              <Icon icon="mdi:shield-check-outline" className="h-5 w-5" aria-hidden />
+            </div>
+            <DialogTitle>{t("sheetCancellationPolicyTitle", "Cancellation policy")}</DialogTitle>
+            <DialogDescription className="pt-2 text-sm leading-relaxed text-gray-600">
+              {selectedKitchen
+                ? cancellationPolicyCopy(selectedKitchen, (key, options) =>
+                    String(t(`kitchen:${key}`, options as any))
+                  )
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <Button className="mt-2 w-full" variant="outline" onClick={() => setCancellationPolicyOpen(false)}>
+            {t("sheetClosePolicy", "Got it")}
+          </Button>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={discardModal !== null} onOpenChange={(open) => { if (!open) setDiscardModal(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Nothing from this modal will be added unless you use its save or continue button.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep editing</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDiscardModalChanges}>Discard changes</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>
         <AlertDialogContent>

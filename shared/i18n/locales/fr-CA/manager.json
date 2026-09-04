@@ -395,8 +395,8 @@
   "configureRequirements2": "Configurer les exigences",
   "configureRequirementsFor": "Configurer les exigences pour",
   "configureWhatInformationChefsNeedToProvideWhenApplyingToYour": "Configurez les informations que les chefs doivent fournir lorsqu'ils postulent dans votre établissement.",
-  "configureWhenChefsCanCancelTheirBookings": "Configurer quand les chefs peuvent annuler leurs réservations",
-  "configureWhenChefsCanCancelTheirBookingsThisPolicyAppliesToA": "Configurez quand les chefs peuvent annuler leurs réservations. Cette politique s'applique à toutes les cuisines de cet emplacement.",
+  "configureWhenChefsCanCancelTheirBookings": "Définissez quand les chefs peuvent annuler. Les montants de remboursement sont fixés par Local Cooks, pas par cette fenêtre.",
+  "configureWhenChefsCanCancelTheirBookingsThisPolicyAppliesToA": "Définissez le délai d’annulation pour toutes les cuisines de cet emplacement. Les remboursements suivent Local Cooks : libération complète avant votre approbation; après, presque intégral sauf les frais Stripe.",
   "configureWhereBookingNotificationsWillBeSentIfLeftEmptyNotif": "Configurez où les notifications de réservation seront envoyées. Si laissé vide, les notifications seront envoyées à l'adresse courriel du compte du gestionnaire.",
   "configureYourLocationPreferencesBookingRulesApplicationRequi": "Configurez vos préférences de localisation, vos règles de réservation, vos exigences d'application et vos notifications.",
   "confirm": "Confirmer",
@@ -2277,6 +2277,7 @@
   "hoursSuffix": "heures",
   "useHoursAsPlaceholder": "Utilisez {hours} comme espace réservé pour la fenêtre d'annulation",
   "useHoursAsPlaceholderLong": "Utilisez {hours} comme espace réservé pour la fenêtre d'annulation. Ce message sera affiché aux chefs lorsqu'ils tentent d'annuler.",
-  "minimumHoursBeforeCancellationAllowed": "Nombre minimum d'heures avant l'heure de réservation pour autoriser l'annulation (0 = aucune restriction)",
-  "chefsMustBookAtLeastHours": "Les chefs doivent réserver au moins ce nombre d'heures avant l'heure de réservation (0 = aucune restriction)"
+  "minimumHoursBeforeCancellationAllowed": "Heures minimum avant l’heure de réservation pour pouvoir annuler (0 = aucune restriction). Ne modifie pas les montants de remboursement.",
+  "chefsMustBookAtLeastHours": "Les chefs doivent réserver au moins ce nombre d'heures avant l'heure de réservation (0 = aucune restriction)",
+  "cancellationRefundPlatformNote": "Les remboursements sont gérés par la plateforme : libération complète du hold avant votre approbation; après, hors frais de traitement Stripe. Vous ne définissez que le délai et le message ci-dessus."
 }

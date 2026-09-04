@@ -244,7 +244,7 @@ export default function ApplyToKitchen() {
           } catch(e) {}
 
           if (hasIntent && locationId) {
-            navigate(`/book/${locationId}`);
+            navigate(`/kitchen-preview/${locationId}`);
           } else {
             navigate("/dashboard?view=kitchen-applications");
           }

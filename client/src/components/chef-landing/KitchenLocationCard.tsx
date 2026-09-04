@@ -2,12 +2,12 @@ import { logger } from "@/lib/logger";
 import { motion } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Building2, Calendar, ArrowRight } from "lucide-react";
-import { useLocation } from "wouter";
+import { Calendar, ArrowRight } from "lucide-react";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { useState } from "react";
 import { SmartImage } from "@/components/ui/smart-image";
 import { TruncatedText } from "@/components/common/TruncatedText";
+import { KitchenPhotoPlaceholder } from "@/components/kitchen/KitchenPhotoPlaceholder";
 import { useTranslation } from "react-i18next";
 
 // Define interface matching the data structure in ChefLanding
@@ -54,51 +54,46 @@ export function KitchenLocationCard({ location, navigate }: KitchenLocationCardP
             transition={{ duration: 0.3, ease: "easeOut" }}
         >
             <Card className="h-full border-0 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 bg-white overflow-hidden">
-                {/* Kitchen Image Area */}
-                <div className="relative h-44 overflow-hidden">
-                    {!showPlaceholder ? (
-                        <>
-                            <SmartImage
-                                src={displayUrl}
-                                alt={location.name}
-                                className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
-                                onError={(e) => {
-                                    logger.error(`[KitchenLocationCard] Image failed to load for ${location.name}:`, rawImageUrl);
-                                    setImageError(true);
-                                }}
-                                loading="lazy"
-                            />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
-                        </>
-                    ) : (
-                        // Placeholder State
-                        <div className="w-full h-full bg-gradient-to-br from-[#FFE8DD] via-[#FFF0EB] to-white flex items-center justify-center">
-                            <div className="w-16 h-16 bg-gradient-to-br from-[#F51042]/15 to-[#FF6B6B]/10 rounded-xl flex items-center justify-center">
-                                <Building2 className="h-8 w-8 text-[#F51042]" />
+                {/* Inset photo — same radius as card + visible stroke */}
+                <div className="shrink-0 p-3 pb-0">
+                    <div className="relative h-44 overflow-hidden rounded-2xl border border-[#E5E0DB] ring-1 ring-[#2C2C2C]/[0.06] bg-[#F3F1EF]">
+                        {!showPlaceholder ? (
+                            <>
+                                <SmartImage
+                                    src={displayUrl}
+                                    alt={location.name}
+                                    className="w-full h-full object-cover rounded-2xl transform group-hover:scale-105 transition-transform duration-500"
+                                    onError={(e) => {
+                                        logger.error(`[KitchenLocationCard] Image failed to load for ${location.name}:`, rawImageUrl);
+                                        setImageError(true);
+                                    }}
+                                    loading="lazy"
+                                />
+                                <div className="absolute inset-0 rounded-2xl bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+                            </>
+                        ) : (
+                            <KitchenPhotoPlaceholder className="rounded-2xl" />
+                        )}
+
+                        {location.kitchenCount > 1 && (
+                            <div className="absolute top-3 right-3 bg-white rounded-full px-3 py-1 shadow-md z-10">
+                                <span className="text-xs font-bold text-[#F51042]">
+                                    {t("kitchenCount", "{{count}} Kitchens", { count: location.kitchenCount })}
+                                </span>
                             </div>
-                        </div>
-                    )}
+                        )}
 
-                    {/* Kitchen count badge */}
-                    {location.kitchenCount > 1 && (
-                        <div className="absolute top-3 right-3 bg-white rounded-full px-3 py-1 shadow-md z-10">
-                            <span className="text-xs font-bold text-[#F51042]">
-                                {t("kitchenCount", "{{count}} Kitchens", { count: location.kitchenCount })}
-                            </span>
-                        </div>
-                    )}
-
-                    {/* Logo overlay */}
-                    {location.logoUrl && (
-                        <div className="absolute top-3 left-3 z-10">
-                            <SmartImage
-                                src={location.logoUrl}
-                                alt={t("logoAlt", "{{name}} logo", { name: location.name })}
-                                className="h-10 w-auto object-contain bg-white rounded-lg p-1.5 shadow-md"
-                                hideOnError
-                            />
-                        </div>
-                    )}
+                        {location.logoUrl && (
+                            <div className="absolute top-3 left-3 z-10">
+                                <SmartImage
+                                    src={location.logoUrl}
+                                    alt={t("logoAlt", "{{name}} logo", { name: location.name })}
+                                    className="h-10 w-auto object-contain bg-white rounded-lg p-1.5 shadow-md"
+                                    hideOnError
+                                />
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {/* Content */}

@@ -1,6 +1,6 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Calendar } from "@/components/ui/calendar";
+import { Calendar, calendarRangeCellClass, calendarRangeDayClass, calendarRangeDayModifiers } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,17 +17,9 @@ import {
 import { cn } from "@/lib/utils";
 import { resolveStorageIcon } from "@/lib/kitchen-inventory-icons";
 import { Icon } from "@iconify/react";
-import {
-  Package,
-  X,
-  Calendar as CalendarIcon,
-  AlertCircle,
-  Check,
-  Pencil,
-  ChevronRight,
-} from "lucide-react";
+import { chefPrimaryCtaClass } from "@/lib/chef-cta";
 import type { DateRange } from "react-day-picker";
-import { format, differenceInDays, isBefore, startOfToday } from "date-fns";
+import { format, differenceInDays, isBefore, startOfDay, startOfToday } from "date-fns";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -59,6 +51,10 @@ interface StorageSelectionProps {
 /** How many cards to show inline before "Show all" — keeps the booking step short. */
 const STORAGE_PREVIEW_COUNT = 4;
 
+function monthStart(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const formatCents = (cents: number) => `$${(cents / 100).toFixed(2)}`;
@@ -68,7 +64,8 @@ function calculatePrice(
   range: DateRange | undefined
 ): { days: number; total: number } | null {
   if (!range?.from || !range?.to) return null;
-  const days = Math.ceil(differenceInDays(range.to, range.from));
+  // Inclusive calendar days (Sep 9–11 = 3), not overnight gaps.
+  const days = differenceInDays(range.to, range.from) + 1;
   const minDays = listing.minimumBookingDuration || 1;
   const effectiveDays = Math.max(days, minDays);
   return { days: effectiveDays, total: listing.basePrice * effectiveDays };
@@ -96,7 +93,7 @@ export function StorageSelection({
       if (isBefore(range.from, minDate)) return t("storageSelStartDatePast");
       if (!range.to) return null;
       if (isBefore(range.to, range.from)) return t("storageSelEndBeforeStart");
-      const days = Math.ceil(differenceInDays(range.to, range.from));
+      const days = differenceInDays(range.to, range.from) + 1;
       const minDays = listing.minimumBookingDuration || 1;
       if (days < minDays) {
         return t("storageSelMinDaysRequired", { minDays });
@@ -111,6 +108,8 @@ export function StorageSelection({
   const [pendingRanges, setPendingRanges] = useState<
     Record<number, DateRange | undefined>
   >({});
+  /** Controlled month per listing — prevents DayPicker remount/reset flicker while picking a range. */
+  const [calendarMonthById, setCalendarMonthById] = useState<Record<number, Date>>({});
 
   const activeListings = useMemo(
     () => storageListings.filter((l) => l.isActive !== false),
@@ -136,8 +135,17 @@ export function StorageSelection({
     return out;
   }, [activeListings, needsShowAll, selectedStorage]);
 
-  const minDate = startOfToday();
-  const defaultMonth = kitchenBookingDate || new Date();
+  // Stable for the session so `disabled` doesn't churn every render and flicker the grid.
+  const minDate = useMemo(() => startOfToday(), []);
+  const defaultMonth = useMemo(
+    () => monthStart(kitchenBookingDate ? startOfDay(kitchenBookingDate) : minDate),
+    [kitchenBookingDate, minDate]
+  );
+
+  const isDateDisabled = useCallback(
+    (date: Date) => isBefore(date, minDate),
+    [minDate]
+  );
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
@@ -150,6 +158,10 @@ export function StorageSelection({
       [listingId]: existing
         ? { from: existing.startDate, to: existing.endDate }
         : undefined,
+    }));
+    setCalendarMonthById((prev) => ({
+      ...prev,
+      [listingId]: monthStart(existing?.startDate || defaultMonth),
     }));
     setOpenPopoverId(listingId);
   };
@@ -165,6 +177,7 @@ export function StorageSelection({
   ) => {
     const current = pendingRanges[listingId];
     let newRange = range;
+    // Starting a new range after a complete one — keep the clicked day as the new start.
     if (current?.from && current?.to && selectedDay) {
       newRange = { from: selectedDay, to: undefined };
     }
@@ -217,12 +230,13 @@ export function StorageSelection({
     const isEdit = selectedStorage.some(
       (s) => s.storageListingId === storage.id
     );
+    const month = calendarMonthById[storage.id] ?? defaultMonth;
 
     return (
-      <div className="flex flex-col">
-        <div className="px-3 pt-3 pb-2 border-b border-border">
+      <div className="flex w-72 flex-col">
+        <div className="border-b border-border px-3 pb-2 pt-3">
           <p className="text-sm font-medium text-foreground">{storage.name}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">
+          <p className="mt-0.5 text-xs text-muted-foreground">
             {t("storageSelMinDaysPrice", {
               minDays,
               price: formatCents(storage.basePrice),
@@ -237,15 +251,33 @@ export function StorageSelection({
             handleRangeSelect(storage.id, r, day)
           }
           numberOfMonths={1}
-          defaultMonth={defaultMonth}
-          disabled={(date: Date) => isBefore(date, minDate)}
-          className="p-2"
+          month={month}
+          onMonthChange={(next) =>
+            setCalendarMonthById((prev) => ({
+              ...prev,
+              [storage.id]: monthStart(next),
+            }))
+          }
+          disabled={isDateDisabled}
+          className="mx-auto w-full px-2 py-2"
+          classNames={{
+            months: "flex w-full flex-col",
+            month: "w-full space-y-2",
+            caption: "relative flex w-full items-center justify-center pt-0.5",
+            caption_label: "text-sm font-medium",
+            table: "w-full table-fixed border-collapse",
+            head_cell:
+              "w-[14.28%] pb-1 text-center text-[0.7rem] font-normal text-muted-foreground",
+            cell: calendarRangeCellClass,
+            day: calendarRangeDayClass,
+            ...calendarRangeDayModifiers,
+          }}
         />
 
-        <div className="px-3 pb-3 space-y-2 border-t border-border pt-2">
+        <div className="space-y-2 border-t border-border px-3 pb-3 pt-2">
           {error && (
             <div className="flex items-center gap-1.5 text-xs text-destructive">
-              <AlertCircle className="h-3 w-3 flex-shrink-0" />
+              <Icon icon="mdi:alert-circle-outline" className="h-3 w-3 flex-shrink-0" aria-hidden />
               <span>{error}</span>
             </div>
           )}
@@ -272,17 +304,45 @@ export function StorageSelection({
 
           <Button
             size="sm"
-            className="w-full"
+            className={chefPrimaryCtaClass("w-full")}
             disabled={!range?.from || !range?.to || !!error}
             onClick={() => handleConfirm(storage.id)}
           >
-            <Check className="h-3.5 w-3.5 mr-1.5" />
+            <Icon icon="mdi:check" className="h-3.5 w-3.5 mr-1.5" aria-hidden />
             {isEdit ? t("storageSelUpdateDates") : t("storageSelAddStorage")}
           </Button>
         </div>
       </div>
     );
   };
+
+  const renderDatePopover = (
+    storage: StorageListing,
+    opts: { align: "start" | "end"; trigger: ReactNode }
+  ) => (
+    <Popover
+      // Nested inside the "Show all" Dialog — modal popovers fight the dialog
+      // focus trap and make the calendar open/close/jump on each click.
+      modal={false}
+      open={openPopoverId === storage.id}
+      onOpenChange={(open) => {
+        if (open) handleOpenPopover(storage.id);
+        else handleClosePopover();
+      }}
+    >
+      <PopoverTrigger asChild>{opts.trigger}</PopoverTrigger>
+      <PopoverContent
+        className="w-72 p-0"
+        align={opts.align}
+        sideOffset={8}
+        collisionPadding={12}
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        onCloseAutoFocus={(e) => e.preventDefault()}
+      >
+        {renderCalendarContent(storage)}
+      </PopoverContent>
+    </Popover>
+  );
 
   const renderCard = (storage: StorageListing) => {
     const isSelected = selectedStorage.some(
@@ -313,7 +373,7 @@ export function StorageSelection({
         <div className="flex items-start gap-2.5">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#FFF8F5] text-[#F51042]">
             <Icon
-              icon={resolveStorageIcon(storage.storageType)}
+              icon={resolveStorageIcon(storage.storageType, storage.name)}
               width={16}
               height={16}
               className="text-[#F51042]"
@@ -342,9 +402,9 @@ export function StorageSelection({
               {isSelected && selection ? (
                 <div className="flex items-center justify-between gap-2 rounded-md bg-primary/5 border border-primary/10 pl-2 pr-0.5 py-1">
                   <div className="flex items-center gap-1.5 min-w-0">
-                    <Check className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+                    <Icon icon="mdi:check" className="h-3.5 w-3.5 text-primary flex-shrink-0" aria-hidden />
                     <div className="min-w-0">
-                      <p className="text-xs font-medium text-foreground truncate">
+                      <p className="truncate text-xs font-semibold text-gray-900">
                         {format(selection.startDate, "MMM d")} &mdash;{" "}
                         {format(selection.endDate, "MMM d")}
                       </p>
@@ -356,54 +416,38 @@ export function StorageSelection({
                     </div>
                   </div>
                   <div className="flex items-center flex-shrink-0">
-                    <Popover
-                      open={openPopoverId === storage.id}
-                      onOpenChange={(open) => {
-                        if (open) handleOpenPopover(storage.id);
-                        else handleClosePopover();
-                      }}
-                    >
-                      <PopoverTrigger asChild>
+                    {renderDatePopover(storage, {
+                      align: "end",
+                      trigger: (
                         <Button variant="ghost" size="icon" className="h-7 w-7">
-                          <Pencil className="h-3 w-3" />
+                          <Icon icon="mdi:pencil-outline" className="h-3 w-3" aria-hidden />
                         </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="p-0" align="end" sideOffset={8}>
-                        {renderCalendarContent(storage)}
-                      </PopoverContent>
-                    </Popover>
+                      ),
+                    })}
                     <Button
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7 text-muted-foreground hover:text-destructive"
                       onClick={() => handleRemove(storage.id)}
                     >
-                      <X className="h-3.5 w-3.5" />
+                      <Icon icon="mdi:close" className="h-3.5 w-3.5" aria-hidden />
                     </Button>
                   </div>
                 </div>
               ) : (
-                <Popover
-                  open={openPopoverId === storage.id}
-                  onOpenChange={(open) => {
-                    if (open) handleOpenPopover(storage.id);
-                    else handleClosePopover();
-                  }}
-                >
-                  <PopoverTrigger asChild>
+                renderDatePopover(storage, {
+                  align: "start",
+                  trigger: (
                     <Button
                       variant="outline"
                       size="sm"
                       className="w-full justify-start text-xs h-8 font-normal text-muted-foreground hover:text-foreground"
                     >
-                      <CalendarIcon className="h-3.5 w-3.5 mr-2" />
+                      <Icon icon="mdi:calendar-month-outline" className="h-3.5 w-3.5 mr-2" aria-hidden />
                       {t("storageSelSelectDates")}
                     </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="p-0" align="start" sideOffset={8}>
-                    {renderCalendarContent(storage)}
-                  </PopoverContent>
-                </Popover>
+                  ),
+                })
               )}
             </div>
           </div>
@@ -419,7 +463,7 @@ export function StorageSelection({
   if (activeListings.length === 0) {
     return (
       <div className="rounded-lg border border-border bg-muted/30 p-4 text-center">
-        <Package className="h-6 w-6 mx-auto mb-2 text-muted-foreground/50" />
+        <Icon icon="mdi:archive-outline" className="h-6 w-6 mx-auto mb-2 text-muted-foreground/50" aria-hidden />
         <p className="text-sm text-muted-foreground">{t("storageSelNoStorage")}</p>
       </div>
     );
@@ -440,7 +484,7 @@ export function StorageSelection({
               count: activeListings.length,
               defaultValue: `Show all ${activeListings.length} storage options`,
             })}
-            <ChevronRight className="ml-0.5 h-4 w-4" />
+            <Icon icon="mdi:chevron-right" className="ml-0.5 h-4 w-4" aria-hidden />
           </button>
 
           <Dialog open={showAllOpen} onOpenChange={setShowAllOpen}>

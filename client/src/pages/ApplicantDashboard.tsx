@@ -169,11 +169,6 @@ export default function ApplicantDashboard() {
     return () => window.removeEventListener('popstate', syncFromUrl);
   }, [location]);
 
-  // Booking navigation helper
-  const openBookingPage = (locationId: number) => {
-    navigate(`/book/${locationId}`);
-  };
-
   // Get document verification status for seller application
   const { verification: docData, error: docError, forceRefresh: refetchDocs } = useDocumentVerification();
 
@@ -211,6 +206,12 @@ export default function ApplicantDashboard() {
     },
     staleTime: 60000,
   });
+
+  // Book CTAs go through kitchen preview first (switcher / apply / book there).
+  const openBookingPage = (locationId: number, locationSlug?: string | null) => {
+    const fromPublic = publicKitchens?.find((k) => k.locationId === locationId);
+    navigate(`/kitchen-preview/${locationSlug || fromPublic?.locationSlug || locationId}`);
+  };
 
   // Fetch bookings for chefs with approved kitchen access
   const { bookings, isLoadingBookings, cancelBooking: cancelBookingMutation, kitchens } = useKitchenBookings();
@@ -640,8 +641,9 @@ export default function ApplicantDashboard() {
     params.delete("bookLocation");
     const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}${window.location.hash}`;
     window.history.replaceState({}, "", next);
-    navigate(`/book/${bookLocationId}`);
-  }, [navigate]);
+    const fromPublic = publicKitchens?.find((k) => k.locationId === bookLocationId);
+    navigate(`/kitchen-preview/${fromPublic?.locationSlug || bookLocationId}`);
+  }, [navigate, publicKitchens]);
 
   const overviewTabContent = (
     <OverviewTabContent
@@ -744,7 +746,6 @@ export default function ApplicantDashboard() {
   const discoverKitchensTabContent = (
     <KitchenDiscovery
       defaultTab={activeTab === "viewings" ? "tours" : "discover"}
-      onViewKitchenApplication={() => setActiveTab("applications")}
     />
   );
 
@@ -835,56 +836,88 @@ export default function ApplicantDashboard() {
   };
 
   // Generate dynamic breadcrumbs based on current view and sub-view
+  // navId marks the sidebar parent — crumbs after it expand as a nested drawer
   const getBreadcrumbs = () => {
-    const baseBreadcrumbs = [{ label: t("shellChefPortal"), href: "#" }];
+    const baseBreadcrumbs = [{ label: t("shellChefPortal"), href: "#", navId: "overview" as const }];
 
-    // If in applications tab with documents view, add nested breadcrumb
     if (activeTab === 'applications' && applicationViewMode === 'documents') {
       return [
         ...baseBreadcrumbs,
-        { label: t("shellMyApplication"), onClick: () => setApplicationViewMode('list') },
-        { label: t("shellDocumentVerification") }
+        {
+          label: t("shellMyApplication"),
+          onClick: () => setApplicationViewMode('list'),
+          navId: "applications" as const,
+        },
+        { label: t("shellDocumentVerification") },
       ];
     }
 
-    // If in applications tab with form view
     if (activeTab === 'applications' && applicationViewMode === 'form') {
       return [
         ...baseBreadcrumbs,
-        { label: t("shellMyApplication"), onClick: () => setApplicationViewMode('list') },
-        { label: t("shellNewApplication") }
+        {
+          label: t("shellMyApplication"),
+          onClick: () => setApplicationViewMode('list'),
+          navId: "applications" as const,
+        },
+        { label: t("shellNewApplication") },
       ];
     }
 
-    // If in training tab with player view, add nested breadcrumb
     if (activeTab === 'training' && trainingViewMode === 'player') {
       return [
         ...baseBreadcrumbs,
-        { label: t("shellTraining"), onClick: () => setTrainingViewMode('overview') },
-        { label: t("shellVideoPlayer") }
-      ];
-    }
-
-    if (activeTab === 'viewings') {
-      return [
-        ...baseBreadcrumbs,
-        { label: t("shellDiscoverKitchens"), onClick: () => setActiveTab("discover-kitchens") },
-        { label: t("shellKitchenTours") }
+        {
+          label: t("shellTraining"),
+          onClick: () => setTrainingViewMode('overview'),
+          navId: "training" as const,
+        },
+        { label: t("shellVideoPlayer") },
       ];
     }
 
     if (activeTab === 'bookings') {
       return [
         ...baseBreadcrumbs,
-        { label: t("shellMyBookings") }
+        { label: t("shellMyBookings"), navId: "bookings" as const },
+      ];
+    }
+
+    if (activeTab === 'kitchen-applications') {
+      return [
+        ...baseBreadcrumbs,
+        { label: t("shellMyKitchens"), navId: "kitchen-applications" as const },
+      ];
+    }
+
+    if (activeTab === 'discover-kitchens') {
+      return [
+        ...baseBreadcrumbs,
+        { label: t("shellDiscoverKitchens"), navId: "discover-kitchens" as const },
+      ];
+    }
+
+    if (activeTab === 'viewings') {
+      return [
+        ...baseBreadcrumbs,
+        {
+          label: t("shellDiscoverKitchens"),
+          onClick: () => setActiveTab("discover-kitchens"),
+          navId: "discover-kitchens" as const,
+        },
+        { label: t("shellKitchenTours") },
       ];
     }
 
     if (activeTab === 'transactions') {
       return [
         ...baseBreadcrumbs,
-        { label: t("shellMyBookings"), onClick: () => setActiveTab("bookings") },
-        { label: t("shellTransactions") }
+        {
+          label: t("shellMyBookings"),
+          onClick: () => setActiveTab("bookings"),
+          navId: "bookings" as const,
+        },
+        { label: t("shellTransactions") },
       ];
     }
 
@@ -892,12 +925,11 @@ export default function ApplicantDashboard() {
       return [
         ...baseBreadcrumbs,
         { label: t("shellSupport"), onClick: () => setActiveTab("support") },
-        { label: t("shellResolutionCenter") }
+        { label: t("shellResolutionCenter"), navId: "issues-refunds" as const },
       ];
     }
 
-    // Default: just show the current tab
-    return undefined; // Let the layout generate default breadcrumbs
+    return undefined;
   };
 
   return (

@@ -1395,5 +1395,14 @@
   "bookingDatesComingSoonTitle": "Les dates de réservation ne sont pas encore ouvertes",
   "bookingDatesComingSoonNeedRateAndSchedule": "Cette cuisine a encore besoin d’un tarif horaire et d’un horaire de disponibilité avant que vous puissiez choisir une date.",
   "bookingDatesComingSoonNeedRate": "Cette cuisine a encore besoin d’un tarif horaire avant que vous puissiez choisir une date.",
-  "bookingDatesComingSoonNeedSchedule": "Cette cuisine a encore besoin d’un horaire de disponibilité avant que vous puissiez choisir une date."
+  "bookingDatesComingSoonNeedSchedule": "Cette cuisine a encore besoin d’un horaire de disponibilité avant que vous puissiez choisir une date.",
+  "gridCardEquipmentLabel": "Équipement",
+  "gridCardNone": "—",
+  "gridCardOpenAria": "Ouvrir la cuisine",
+  "gridCardStorageCold": "Froid",
+  "gridCardStorageDry": "Sec",
+  "gridCardStorageFreezer": "Congélateur",
+  "gridCardStorageLabel": "Entreposage",
+  "gridCardVisualsSubtitle": "Photos de qualité bientôt disponibles",
+  "gridCardVisualsTitle": "Visuels en préparation"
 }

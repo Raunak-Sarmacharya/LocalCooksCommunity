@@ -41,11 +41,11 @@ const EQUIPMENT_RULES: Array<{ match: RegExp; icon: string }> = [
 const STORAGE_ICONS: Record<string, string> = {
   freezer: "mdi:snowflake",
   cold: "mdi:fridge-outline",
-  dry: "mdi:package-variant-closed",
+  dry: "mdi:cupboard-outline",
 };
 
 const DEFAULT_EQUIPMENT_ICON = "mdi:pot-steam-outline";
-const DEFAULT_STORAGE_ICON = "mdi:package-variant";
+const DEFAULT_STORAGE_ICON = "mdi:archive-outline";
 
 function normalize(value: string): string {
   return value.toLowerCase().replace(/[_-]+/g, " ").trim();
@@ -59,9 +59,15 @@ export function resolveEquipmentIcon(equipmentType: string, category?: string | 
   return DEFAULT_EQUIPMENT_ICON;
 }
 
-export function resolveStorageIcon(storageType: string): string {
+/** Prefer typed key; fall back to name keywords when type is missing/custom. */
+export function resolveStorageIcon(storageType: string, name?: string | null): string {
   const key = normalize(storageType).replace(/\s+/g, "");
-  return STORAGE_ICONS[key] || STORAGE_ICONS[normalize(storageType)] || DEFAULT_STORAGE_ICON;
+  if (STORAGE_ICONS[key]) return STORAGE_ICONS[key];
+  const haystack = normalize([storageType, name].filter(Boolean).join(" "));
+  if (/freezer|frozen/.test(haystack)) return STORAGE_ICONS.freezer;
+  if (/cold|cool|fridge|refrigerat|chill/.test(haystack)) return STORAGE_ICONS.cold;
+  if (/dry|shelf|shelving|pantry|cabinet/.test(haystack)) return STORAGE_ICONS.dry;
+  return DEFAULT_STORAGE_ICON;
 }
 
 // ponytail: keyword map only — ceiling is custom/unknown types → generic icon; upgrade path: per-listing icon field
@@ -71,4 +77,8 @@ if (import.meta.env?.DEV) {
     "equipment icon map: fryer"
   );
   console.assert(resolveStorageIcon("freezer") === "mdi:snowflake", "storage icon map: freezer");
+  console.assert(
+    resolveStorageIcon("custom", "Walk-in Freezer") === "mdi:snowflake",
+    "storage icon map: name fallback"
+  );
 }

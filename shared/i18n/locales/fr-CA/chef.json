@@ -899,7 +899,7 @@
   "kdFindAnotherKitchen": "Trouver une autre cuisine",
   "kdInReview": "En révision",
   "kdNotApproved": "Non approuvée",
-  "kdReadyToBook": "Prêt à réserver",
+  "kdReadyToBook": "Approuvé",
   "kdRejected": "Refusée",
   "kdStep1Approved": "Demande d’accès approuvée",
   "kdStep1Of3": "Demande d’accès",
@@ -2217,5 +2217,7 @@
   "partialRefund": "Remboursement partiel",
   "bdProcessingFee": "Frais de traitement",
   "bdRefund": "Remboursement",
-  "bdHstPercent": "TVH ({percent} %)"
+  "bdHstPercent": "TVH ({percent} %)",
+  "shellYouAreHere": "Vous êtes ici",
+  "shellNavTreeAria": "Chemin de navigation de la barre latérale"
 }

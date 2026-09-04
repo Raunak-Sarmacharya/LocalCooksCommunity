@@ -350,6 +350,12 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
                 {mt("useHoursAsPlaceholder", { hours: "{hours}" })}
               </p>
             </div>
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+              <div className="flex items-start gap-2">
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+                <p className="text-xs text-blue-800">{mt("cancellationRefundPlatformNote")}</p>
+              </div>
+            </div>
           </div>
 
           {/* Daily Booking Limit */}

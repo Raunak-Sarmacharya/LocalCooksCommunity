@@ -19,6 +19,7 @@ export interface PublicKitchen {
   name: string;
   description?: string | null;
   imageUrl?: string | null;
+  galleryImages?: string[];
   equipment?: string[];
   hourlyRate?: number | null;
   locationId: number;

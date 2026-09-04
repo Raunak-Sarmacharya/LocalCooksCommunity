@@ -1,11 +1,43 @@
 import * as React from "react"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { Icon } from "@iconify/react"
 import { DayPicker } from "react-day-picker"
 
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
+import "@/lib/kitchen-inventory-icons"
 
 export type CalendarProps = React.ComponentProps<typeof DayPicker>
+
+/**
+ * Turo-style range pill: one continuous outer border + soft fill.
+ * No separate start/end circles (those create vertical “inside lines”).
+ */
+export const calendarRangeCellClass = cn(
+  "relative z-0 h-9 p-0 text-center text-sm",
+  "[&:has([aria-selected])]:before:absolute [&:has([aria-selected])]:before:inset-y-0 [&:has([aria-selected])]:before:inset-x-0 [&:has([aria-selected])]:before:-z-10 [&:has([aria-selected])]:before:border-y-2 [&:has([aria-selected])]:before:border-[#F51042] [&:has([aria-selected])]:before:bg-[#FFF0F3]",
+  // Start of range or start of week row
+  "first:[&:has([aria-selected])]:before:rounded-l-full first:[&:has([aria-selected])]:before:border-l-2",
+  "[&:has([aria-selected].day-range-start)]:before:rounded-l-full [&:has([aria-selected].day-range-start)]:before:border-l-2",
+  // End of range or end of week row
+  "last:[&:has([aria-selected])]:before:rounded-r-full last:[&:has([aria-selected])]:before:border-r-2",
+  "[&:has([aria-selected].day-range-end)]:before:rounded-r-full [&:has([aria-selected].day-range-end)]:before:border-r-2",
+  // Single-day selection → full circle pill
+  "[&:has([aria-selected].day-range-start.day-range-end)]:before:rounded-full [&:has([aria-selected].day-range-start.day-range-end)]:before:border-x-2"
+)
+
+export const calendarRangeDayClass =
+  "relative z-10 mx-auto flex h-9 w-9 max-w-[36px] items-center justify-center rounded-full bg-transparent p-0 text-sm font-normal text-gray-900 transition-colors hover:bg-gray-100 aria-selected:opacity-100"
+
+export const calendarRangeDayModifiers = {
+  day_selected:
+    "bg-transparent text-gray-900 hover:bg-transparent focus:bg-transparent",
+  day_range_middle:
+    "day-range-middle !rounded-none !bg-transparent !text-gray-900 aria-selected:!text-gray-900",
+  day_range_start:
+    "day-range-start !bg-transparent !text-gray-900",
+  day_range_end:
+    "day-range-end !bg-transparent !text-gray-900",
+}
 
 function Calendar({
   className,
@@ -34,42 +66,30 @@ function Calendar({
         head_cell:
           "text-muted-foreground font-normal text-[0.8rem] text-center pb-2 w-[14.28%]",
         row: "mt-1",
-        cell: cn(
-          "text-center text-sm p-0 relative h-10 z-0",
-          // The background / top-bottom borders
-          "[&:has([aria-selected])]:before:absolute [&:has([aria-selected])]:before:inset-y-[1px] [&:has([aria-selected])]:before:inset-x-0 [&:has([aria-selected])]:before:border-y-2 [&:has([aria-selected])]:before:border-[#F51042] [&:has([aria-selected])]:before:-z-10",
-          // Left border & radius for start of range OR start of week
-          "first:[&:has([aria-selected])]:before:border-l-2 first:[&:has([aria-selected])]:before:rounded-l-full",
-          "[&:has([aria-selected].day-range-start)]:before:border-l-2 [&:has([aria-selected].day-range-start)]:before:rounded-l-full",
-          // Right border & radius for end of range OR end of week
-          "last:[&:has([aria-selected])]:before:border-r-2 last:[&:has([aria-selected])]:before:rounded-r-full",
-          "[&:has([aria-selected].day-range-end)]:before:border-r-2 [&:has([aria-selected].day-range-end)]:before:rounded-r-full",
-          // Full circle for single selected day
-          "[&:has([aria-selected].day-range-start.day-range-end)]:before:border-x-2 [&:has([aria-selected].day-range-start.day-range-end)]:before:rounded-full"
-        ),
+        cell: "relative z-0 h-9 p-0 text-center text-sm",
         day: cn(
           buttonVariants({ variant: "ghost" }),
-          "h-full w-full max-w-[40px] mx-auto p-0 font-semibold aria-selected:opacity-100 rounded-full hover:bg-gray-100 transition-colors flex items-center justify-center text-gray-900"
+          "mx-auto flex h-9 w-9 max-w-[36px] items-center justify-center rounded-full p-0 font-normal text-gray-900 transition-colors hover:bg-gray-100 aria-selected:opacity-100"
         ),
-        day_range_start: "day-range-start aria-selected:text-[#F51042] aria-selected:bg-transparent font-medium",
-        day_range_end: "day-range-end aria-selected:text-[#F51042] aria-selected:bg-transparent font-medium",
+        // Transparent by default so callers that draw selection via cell ::before
+        // (booking step 1 outline circle) are not overridden by a solid fill.
         day_selected:
-          "text-[#F51042] aria-selected:bg-transparent hover:bg-transparent focus:bg-transparent",
-        day_today: "font-semibold text-gray-900 rounded-full",
+          "bg-transparent text-[#F51042] hover:bg-transparent focus:bg-transparent",
+        day_today: "font-semibold text-gray-900",
         day_outside:
           "day-outside text-muted-foreground aria-selected:text-[#F51042] opacity-50",
         day_disabled: "text-gray-300 opacity-40 font-normal line-through decoration-gray-300/80",
         day_range_middle:
-          "aria-selected:bg-transparent aria-selected:text-[#F51042]",
+          "aria-selected:bg-transparent aria-selected:text-gray-900",
         day_hidden: "invisible",
         ...classNames,
       }}
       components={{
-        IconLeft: ({ className, ...props }) => (
-          <ChevronLeft className={cn("h-4 w-4", className)} {...props} />
+        IconLeft: ({ className }) => (
+          <Icon icon="mdi:chevron-left" className={cn("h-4 w-4", className)} aria-hidden />
         ),
-        IconRight: ({ className, ...props }) => (
-          <ChevronRight className={cn("h-4 w-4", className)} {...props} />
+        IconRight: ({ className }) => (
+          <Icon icon="mdi:chevron-right" className={cn("h-4 w-4", className)} aria-hidden />
         ),
       }}
       {...props}

@@ -395,8 +395,8 @@
   "configureRequirements2": "Налаштувати вимоги",
   "configureRequirementsFor": "Налаштуйте вимоги для",
   "configureWhatInformationChefsNeedToProvideWhenApplyingToYour": "Налаштуйте, яку інформацію повинні надавати шеф-кухарі, коли ви подаєте заявку на ваше місце.",
-  "configureWhenChefsCanCancelTheirBookings": "Налаштуйте, коли кухарі можуть скасувати свої замовлення",
-  "configureWhenChefsCanCancelTheirBookingsThisPolicyAppliesToA": "Налаштуйте, коли кухарі можуть скасувати свої замовлення. Ця політика поширюється на всі кухні в цьому місці.",
+  "configureWhenChefsCanCancelTheirBookings": "Вкажіть, коли шефи можуть скасовувати. Суми повернення встановлює Local Cooks, а не це вікно.",
+  "configureWhenChefsCanCancelTheirBookingsThisPolicyAppliesToA": "Встановіть вікно скасування для всіх кухонь локації. Суми повернення за правилами Local Cooks: повне звільнення до вашого схвалення; після — майже повне, крім комісії Stripe.",
   "configureWhereBookingNotificationsWillBeSentIfLeftEmptyNotif": "Налаштуйте, куди надсилатимуться сповіщення про бронювання. Якщо залишити поле пустим, сповіщення надходитимуть на електронну адресу облікового запису менеджера.",
   "configureYourLocationPreferencesBookingRulesApplicationRequi": "Налаштуйте свої параметри розташування, правила бронювання, вимоги до програми та сповіщення.",
   "confirm": "Підтвердити",
@@ -2277,6 +2277,7 @@
   "hoursSuffix": "годин",
   "useHoursAsPlaceholder": "Використовуйте {hours} як заповнювач для вікна скасування",
   "useHoursAsPlaceholderLong": "Використовуйте {hours} як заповнювач для вікна скасування. Це повідомлення буде показано шеф-кухарям, коли вони намагатимуться скасувати.",
-  "minimumHoursBeforeCancellationAllowed": "Мінімальна кількість годин до часу бронювання, коли скасування дозволено (0 = без обмежень)",
-  "chefsMustBookAtLeastHours": "Шеф-кухарі повинні бронювати щонайменше за стільки годин до часу бронювання (0 = без обмежень)"
+  "minimumHoursBeforeCancellationAllowed": "Мінімум годин до початку бронювання, коли скасування ще дозволене (0 = без обмежень). Не змінює суми повернення.",
+  "chefsMustBookAtLeastHours": "Шеф-кухарі повинні бронювати щонайменше за стільки годин до часу бронювання (0 = без обмежень)",
+  "cancellationRefundPlatformNote": "Повернення керує платформа: повне звільнення холду до схвалення; після схвалення — без комісії Stripe за картку. Ви задаєте лише вікно та повідомлення вище."
 }

@@ -899,7 +899,7 @@
   "kdFindAnotherKitchen": "Знайти іншу кухню",
   "kdInReview": "На розгляді",
   "kdNotApproved": "Не схвалено",
-  "kdReadyToBook": "Готово до бронювання",
+  "kdReadyToBook": "Схвалено",
   "kdRejected": "Відхилено",
   "kdStep1Approved": "Запит схвалено",
   "kdStep1Of3": "Запит на подачу",
@@ -2217,5 +2217,7 @@
   "partialRefund": "Часткове повернення",
   "bdProcessingFee": "Комісія за обробку",
   "bdRefund": "Відшкодування",
-  "bdHstPercent": "HST ({percent}%)"
+  "bdHstPercent": "HST ({percent}%)",
+  "shellYouAreHere": "Ви тут",
+  "shellNavTreeAria": "Шлях навігації бічної панелі"
 }

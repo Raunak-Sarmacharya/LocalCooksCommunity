@@ -1395,5 +1395,14 @@
   "bookingDatesComingSoonTitle": "Booking dates aren’t open yet",
   "bookingDatesComingSoonNeedRateAndSchedule": "This kitchen still needs an hourly rate and availability schedule before you can pick a date.",
   "bookingDatesComingSoonNeedRate": "This kitchen still needs an hourly rate before you can pick a date.",
-  "bookingDatesComingSoonNeedSchedule": "This kitchen still needs an availability schedule before you can pick a date."
+  "bookingDatesComingSoonNeedSchedule": "This kitchen still needs an availability schedule before you can pick a date.",
+  "gridCardEquipmentLabel": "Equipment",
+  "gridCardNone": "—",
+  "gridCardOpenAria": "Open kitchen",
+  "gridCardStorageCold": "Cold",
+  "gridCardStorageDry": "Dry",
+  "gridCardStorageFreezer": "Freezer",
+  "gridCardStorageLabel": "Storage",
+  "gridCardVisualsSubtitle": "High-quality photos coming soon",
+  "gridCardVisualsTitle": "Visuals in the Oven"
 }

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   chefTourRowHasDetails,
+  countPendingOrUpcomingTours,
   formatTourWhen,
+  isPendingOrUpcomingTour,
   normalizeChefTourRow,
   viewingStatusBadge,
 } from "./chef-viewing-display";
@@ -57,5 +59,51 @@ describe("normalizeChefTourRow", () => {
   it("returns null for incomplete payloads", () => {
     expect(normalizeChefTourRow({})).toBeNull();
     expect(normalizeChefTourRow(null)).toBeNull();
+  });
+});
+
+describe("isPendingOrUpcomingTour", () => {
+  const now = Date.parse("2026-09-05T12:00:00.000Z");
+
+  it("counts pending regardless of schedule", () => {
+    expect(
+      isPendingOrUpcomingTour(
+        { status: "pending", scheduledAt: "2026-01-01T00:00:00.000Z", durationMinutes: 30 },
+        now
+      )
+    ).toBe(true);
+  });
+
+  it("counts confirmed only while not finished", () => {
+    expect(
+      isPendingOrUpcomingTour(
+        { status: "confirmed", scheduledAt: "2026-09-05T11:45:00.000Z", durationMinutes: 30 },
+        now
+      )
+    ).toBe(true);
+    expect(
+      isPendingOrUpcomingTour(
+        { status: "confirmed", scheduledAt: "2026-09-05T10:00:00.000Z", durationMinutes: 30 },
+        now
+      )
+    ).toBe(false);
+  });
+
+  it("ignores completed / cancelled", () => {
+    expect(
+      isPendingOrUpcomingTour(
+        { status: "completed", scheduledAt: "2026-09-06T12:00:00.000Z", durationMinutes: 30 },
+        now
+      )
+    ).toBe(false);
+    expect(
+      countPendingOrUpcomingTours(
+        [
+          { status: "pending", scheduledAt: "2026-01-01T00:00:00.000Z", durationMinutes: 30 },
+          { status: "cancelled", scheduledAt: "2026-09-06T12:00:00.000Z", durationMinutes: 30 },
+        ],
+        now
+      )
+    ).toBe(1);
   });
 });

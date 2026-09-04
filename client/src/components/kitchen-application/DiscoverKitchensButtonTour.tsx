@@ -48,7 +48,7 @@ export function DiscoverKitchensButtonTour({
     },
     {
       id: "details",
-      title: t("applyFlowTourDetails", "View details"),
+      title: t("requestToApply", "Request to apply"),
       body: t("applyFlowTourDetailsDesc", "Open a kitchen to see photos, equipment, storage, and rates before you apply."),
     },
   ];

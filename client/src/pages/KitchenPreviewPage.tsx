@@ -13,6 +13,7 @@ import {
   type PersistedBookingPricePreview,
 } from "@/lib/persisted-booking-prefs";
 import { Button } from "@/components/ui/button";
+import { chefOutlineCtaClass, chefPrimaryCtaClass } from "@/lib/chef-cta";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -49,6 +50,7 @@ import { KitchenPreviewWalkthrough } from "@/components/kitchen-application/Kitc
 import { getAuthHeaders } from "@/lib/api";
 import { saveAuthIntentFromCurrentPage } from "@/lib/auth-intent";
 import { pickPreviewActiveSectionId } from "@/lib/preview-scroll-spy";
+import { formatCancellationWindowText } from "@/lib/cancellation-policy";
 import { resolveEquipmentIcon, resolveStorageIcon } from "@/lib/kitchen-inventory-icons";
 import { SmartImage } from "@/components/ui/smart-image";
 import { Calendar as UICalendar } from "@/components/ui/calendar";
@@ -626,7 +628,7 @@ function KitchenPhotoCollage({
         data-preview-tour="photos"
         className={cn(
           "bg-gray-100 rounded-2xl flex flex-col items-center justify-center w-full shadow-sm",
-          fill ? "h-full min-h-[260px]" : compact ? "h-[180px] sm:h-[220px]" : "h-[200px] sm:h-[260px] lg:h-[300px]"
+          fill ? "h-full min-h-[260px]" : compact ? "h-[200px] sm:h-[260px]" : "h-[200px] sm:h-[280px] lg:h-[320px]"
         )}
       >
         <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center mb-3">
@@ -645,10 +647,10 @@ function KitchenPhotoCollage({
   const hasMore = extraCount > 0;
   // Hero + remainder in a 2-col tail: even totals leave one empty cell.
   const showSeeAllTile = count >= 4 && count % 2 === 0;
-  const seeAllTileClass = cn(
-    fill && "h-full min-h-0 aspect-auto",
-    !fill && "aspect-[4/3] sm:aspect-auto"
-  );
+  /** One fixed collage height for every image count so 1-photo kitchens don’t jump. */
+  const collageHeightClass = compact
+    ? "h-[200px] sm:h-[260px]"
+    : "h-[200px] sm:h-[280px] lg:h-[320px]";
 
   const lightbox = (
     <AnimatePresence>
@@ -671,22 +673,11 @@ function KitchenPhotoCollage({
           "grid gap-1.5 overflow-hidden rounded-2xl bg-white",
           count === 1 ? "shadow-sm" : "shadow-xl",
           fill && "h-full min-h-[260px] lg:absolute lg:inset-0 lg:min-h-0",
+          !fill && collageHeightClass,
           count === 1 && "grid-cols-1",
           count === 2 && "grid-cols-2",
           count === 3 && "grid-cols-2 grid-rows-2",
-          count >= 4 && "grid-cols-2 sm:grid-cols-4 sm:grid-rows-2",
-          !fill &&
-            (compact
-              ? cn(
-                  count === 1 && "h-[180px] sm:h-[220px]",
-                  count === 3 && "sm:h-[240px]",
-                  count >= 4 && "sm:h-[260px]"
-                )
-              : cn(
-                  count === 1 && "h-[200px] sm:h-[260px] lg:h-[300px]",
-                  count === 3 && "sm:h-[360px]",
-                  count >= 4 && "sm:h-[380px]"
-                ))
+          count >= 4 && "grid-cols-2 sm:grid-cols-4 sm:grid-rows-2"
         )}
       >
         {previewImages.map((img, index) => {
@@ -701,15 +692,11 @@ function KitchenPhotoCollage({
               index={index}
               onClick={() => openAt(isLastWithMore ? PREVIEW_COUNT : index)}
               className={cn(
-                fill && "h-full min-h-0 aspect-auto",
-                !fill && count === 1 && "h-full min-h-0",
-                !fill && count === 2 && (compact ? "aspect-[4/3] sm:aspect-auto sm:min-h-[220px]" : "aspect-[4/3] sm:aspect-auto sm:min-h-[320px]"),
-                !fill && isHero && count === 3 && (compact ? "row-span-2 min-h-[160px] sm:min-h-0" : "row-span-2 min-h-[200px] sm:min-h-0"),
-                !fill && !isHero && count === 3 && "min-h-[80px] sm:min-h-0",
-                !fill && isHero && count >= 4 && "col-span-2 aspect-[16/9] sm:aspect-auto sm:row-span-2 sm:min-h-0",
-                !fill && !isHero && count >= 4 && "aspect-[4/3] sm:aspect-auto",
+                "h-full min-h-0",
                 fill && isHero && count >= 3 && "row-span-2",
-                fill && isHero && count >= 4 && "col-span-2 sm:row-span-2"
+                fill && isHero && count >= 4 && "col-span-2 sm:row-span-2",
+                !fill && isHero && count === 3 && "row-span-2",
+                !fill && isHero && count >= 4 && "col-span-2 sm:row-span-2"
               )}
               overlay={
                 isLastWithMore ? (
@@ -728,10 +715,7 @@ function KitchenPhotoCollage({
           <button
             type="button"
             onClick={() => openAt(0)}
-            className={cn(
-              "relative min-h-0 overflow-hidden bg-gray-900 text-white text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042] focus-visible:ring-inset",
-              seeAllTileClass
-            )}
+            className="relative h-full min-h-0 overflow-hidden bg-gray-900 text-white text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042] focus-visible:ring-inset"
             aria-label={t("viewAllPhotos", {
               count: images.length,
               defaultValue: `View all ${images.length} photos`,
@@ -1170,7 +1154,7 @@ function KitchenStorageSections({
         {storageAll.slice(0, maxVisible).map((item) => (
           <InventoryPreviewRow
             key={item.id}
-            icon={resolveStorageIcon(item.storageType)}
+            icon={resolveStorageIcon(item.storageType, item.name)}
             name={item.name || titleCaseLabel(item.storageType, t)}
             hint={item.name ? titleCaseLabel(item.storageType, t) : undefined}
             amount={
@@ -1197,7 +1181,7 @@ function KitchenStorageSections({
           {storage.slice(0, visibleCount).map((item) => (
             <PricedRow
               key={item.id}
-              icon={resolveStorageIcon(item.storageType)}
+              icon={resolveStorageIcon(item.storageType, item.name)}
               name={item.name || titleCaseLabel(item.storageType, t)}
               hint={item.name ? titleCaseLabel(item.storageType, t) : undefined}
               amount={
@@ -1445,11 +1429,8 @@ const PREMIUM_PRIMARY_SHADOW =
 /** Apply CTA surfaces — same soft elevation as tour CTA (primary red vs quiet outline). */
 function previewApplyCtaClass(variant: "default" | "outline" = "default") {
   return variant === "outline"
-    ? cn("rounded-xl transition-colors disabled:opacity-100", PREMIUM_CTA_SHADOW)
-    : cn(
-        "rounded-xl border-transparent bg-[#F51042] text-white transition-colors hover:bg-[#E00A38] hover:text-white disabled:opacity-100",
-        PREMIUM_PRIMARY_SHADOW
-      );
+    ? chefOutlineCtaClass()
+    : chefPrimaryCtaClass();
 }
 
 /** Dock tour CTA — solid primary when alone; outline secondary when paired with Apply. */
@@ -1516,9 +1497,6 @@ function RateHoursFacts({
   );
 }
 
-const EN_CANCELLATION_POLICY_DEFAULT =
-  "Bookings cannot be cancelled within {hours} hours of the scheduled time.";
-
 function ThingsToKnowSection({
   cancellationPolicyHours,
   cancellationPolicyMessage,
@@ -1530,11 +1508,12 @@ function ThingsToKnowSection({
 }) {
   const { t } = useTranslation("kitchen");
   const hours = cancellationPolicyHours ?? 24;
-  const rawPolicy = cancellationPolicyMessage?.trim();
-  const policyText =
-    !rawPolicy || rawPolicy === EN_CANCELLATION_POLICY_DEFAULT
-      ? t("cancellationPolicyDefaultMessage", { hours })
-      : rawPolicy.replace(/\{hours\}/g, String(hours));
+  const windowText = formatCancellationWindowText(
+    hours,
+    cancellationPolicyMessage,
+    t("cancellationPolicyDefaultMessage", { hours })
+  );
+  const policyText = `${windowText} ${t("cancellationPolicyRefundRules")}`;
   const termsHref = kitchenTermsUrl ? getR2ProxyUrl(kitchenTermsUrl) : "/terms";
 
   const columns = [
@@ -2937,11 +2916,28 @@ export default function KitchenPreviewPage() {
     }
   }, [isAuthenticated, locationId, hasApplication, canBook, application?.status, applicationLoading]);
 
+  // Keep selection on the current kitchen when switching units at this location;
+  // reset when the location changes or the prior kitchen is gone.
   useEffect(() => {
-    if (locationData?.kitchens?.length && !selectedKitchen) {
-      setSelectedKitchen(locationData.kitchens[0]);
+    const kitchens = locationData?.kitchens;
+    if (!kitchens?.length) {
+      setSelectedKitchen(null);
+      return;
     }
-  }, [locationData?.kitchens, selectedKitchen]);
+    setSelectedKitchen((prev) => {
+      if (prev && kitchens.some((k) => k.id === prev.id)) return prev;
+      try {
+        const preferred = new URLSearchParams(window.location.search).get("kitchenId");
+        if (preferred) {
+          const match = kitchens.find((k) => String(k.id) === preferred);
+          if (match) return match;
+        }
+      } catch {
+        /* ignore */
+      }
+      return kitchens[0];
+    });
+  }, [locationData?.id, locationData?.kitchens]);
 
   useEffect(() => {
     let raf = 0;
@@ -3850,6 +3846,7 @@ export default function KitchenPreviewPage() {
           >
             <div className="w-full min-w-0 space-y-3">
               <GuestHoursCard
+                key={selectedKitchen?.id ?? "no-kitchen"}
                 availability={selectedKitchen?.availability}
                 kitchenId={selectedKitchen?.id?.toString()}
                 locationId={locationId?.toString()}
@@ -3984,8 +3981,12 @@ export default function KitchenPreviewPage() {
           activeView={activeView}
           onViewChange={handleViewChange}
           breadcrumbs={[
-            { label: t("shellDashboard"), onClick: () => navigate('/dashboard') },
-            { label: t("shellDiscoverKitchens"), onClick: () => navigate('/dashboard?view=discover-kitchens') },
+            { label: t("shellDashboard"), onClick: () => navigate('/dashboard'), navId: "overview" },
+            {
+              label: t("shellDiscoverKitchens"),
+              onClick: () => navigate('/dashboard?view=discover-kitchens'),
+              navId: "discover-kitchens",
+            },
             { label: locationData?.name || t("applyFlowKitchenFallbackName") },
           ]}
         >

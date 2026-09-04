@@ -1395,5 +1395,14 @@
   "bookingDatesComingSoonTitle": "Дати бронювання ще не відкриті",
   "bookingDatesComingSoonNeedRateAndSchedule": "Цій кухні ще потрібна погодинна ставка та графік доступності, перш ніж ви зможете обрати дату.",
   "bookingDatesComingSoonNeedRate": "Цій кухні ще потрібна погодинна ставка, перш ніж ви зможете обрати дату.",
-  "bookingDatesComingSoonNeedSchedule": "Цій кухні ще потрібен графік доступності, перш ніж ви зможете обрати дату."
+  "bookingDatesComingSoonNeedSchedule": "Цій кухні ще потрібен графік доступності, перш ніж ви зможете обрати дату.",
+  "gridCardEquipmentLabel": "Обладнання",
+  "gridCardNone": "—",
+  "gridCardOpenAria": "Відкрити кухню",
+  "gridCardStorageCold": "Холод",
+  "gridCardStorageDry": "Сухе",
+  "gridCardStorageFreezer": "Морозилка",
+  "gridCardStorageLabel": "Зберігання",
+  "gridCardVisualsSubtitle": "Якісні фото незабаром",
+  "gridCardVisualsTitle": "Візуали готуються"
 }

@@ -395,8 +395,8 @@
   "configureRequirements2": "Configure requirements",
   "configureRequirementsFor": "Configure requirements for",
   "configureWhatInformationChefsNeedToProvideWhenApplyingToYour": "Configure what information chefs need to provide when applying to your location.",
-  "configureWhenChefsCanCancelTheirBookings": "Configure when chefs can cancel their bookings",
-  "configureWhenChefsCanCancelTheirBookingsThisPolicyAppliesToA": "Configure when chefs can cancel their bookings. This policy applies to all kitchens at this location.",
+  "configureWhenChefsCanCancelTheirBookings": "Set when chefs may cancel. Refund amounts are set by Local Cooks, not this window.",
+  "configureWhenChefsCanCancelTheirBookingsThisPolicyAppliesToA": "Set the cancellation window for all kitchens at this location. Refund amounts follow Local Cooks platform rules: full release before you approve; after approval, almost full except Stripe processing fees.",
   "configureWhereBookingNotificationsWillBeSentIfLeftEmptyNotif": "Configure where booking notifications will be sent. If left empty, notifications will go to the manager's account email.",
   "configureYourLocationPreferencesBookingRulesApplicationRequi": "Configure your location preferences, booking rules, application requirements, and notifications.",
   "confirm": "Confirm",
@@ -2277,6 +2277,7 @@
   "hoursSuffix": "hours",
   "useHoursAsPlaceholder": "Use {hours} as a placeholder for the cancellation window",
   "useHoursAsPlaceholderLong": "Use {hours} as a placeholder for the cancellation window. This message will be shown to chefs when they try to cancel.",
-  "minimumHoursBeforeCancellationAllowed": "Minimum hours before booking time that cancellation is allowed (0 = no restrictions)",
-  "chefsMustBookAtLeastHours": "Chefs must book at least this many hours before the booking time (0 = no restrictions)"
+  "minimumHoursBeforeCancellationAllowed": "Minimum hours before booking time that cancellation is allowed (0 = no restrictions). Does not change refund amounts.",
+  "chefsMustBookAtLeastHours": "Chefs must book at least this many hours before the booking time (0 = no restrictions)",
+  "cancellationRefundPlatformNote": "Refunds are platform-controlled: full hold release if cancelled before you approve; after approval, refunds exclude Stripe’s card processing fee. You only set the cancellation window and message above."
 }

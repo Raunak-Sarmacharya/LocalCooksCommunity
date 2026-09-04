@@ -37,5 +37,6 @@ describe("getKitchenDisplayStatus", () => {
   it("enables booking when fully approved at tier 3+", () => {
     const display = getKitchenDisplayStatus({ status: "approved", current_tier: 3 });
     expect(display.actionKind).toBe("book");
+    expect(display.label).toBe("Approved");
   });
 });

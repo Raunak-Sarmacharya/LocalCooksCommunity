@@ -2,22 +2,6 @@
 
 import * as React from "react"
 import {
-    LayoutDashboard,
-    FileText,
-    Building2,
-    Calendar,
-    BookOpen,
-    MessageCircle,
-    Search,
-    AlertTriangle,
-    DollarSign,
-    Store,
-    ChevronsUpDown,
-    LogOut,
-    User as UserIcon,
-} from "lucide-react"
-
-import {
     Sidebar,
     SidebarContent,
     SidebarFooter,
@@ -28,6 +12,9 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
     SidebarMenuBadge,
+    SidebarMenuSub,
+    SidebarMenuSubButton,
+    SidebarMenuSubItem,
     SidebarRail,
     useSidebar,
 } from "@/components/ui/sidebar"
@@ -45,62 +32,26 @@ import { useFirebaseAuth } from "@/hooks/use-auth"
 import { useTranslation } from "react-i18next"
 import type { TFunction } from "i18next"
 import { LanguageMenuSection } from "@/components/i18n/LanguageSwitcher"
+import { Icon } from "@iconify/react"
+import "@/lib/kitchen-inventory-icons"
+import {
+    chefNavSections,
+    sidebarBranchForView,
+    type ChefBreadcrumb,
+    type ChefNavItem,
+} from "@/lib/chef-nav-sections"
 
 function sectionHasHeader(title: string | undefined, itemCount: number) {
     return Boolean(title) && itemCount > 1
 }
-
-// Type definition for navigation items
-interface NavItem {
-    id: string
-    labelKey: string
-    icon: React.ComponentType<{ className?: string }>
-    path?: string
-    badge?: number
-}
-
-interface NavSection {
-    titleKey?: string
-    items: NavItem[]
-}
-
-const navSections: NavSection[] = [
-    {
-        items: [
-            { id: "overview", labelKey: "shellOverview", icon: LayoutDashboard },
-            { id: "applications", labelKey: "shellMyApplication", icon: FileText },
-            { id: "training", labelKey: "shellTraining", icon: BookOpen },
-        ],
-    },
-    {
-        titleKey: "shellSelling",
-        items: [
-            { id: "seller-revenue", labelKey: "shellMyEarnings", icon: DollarSign },
-            { id: "my-account", labelKey: "shellLinkedAccounts", icon: Store },
-        ],
-    },
-    {
-        titleKey: "shellKitchens",
-        items: [
-            { id: "kitchen-applications", labelKey: "shellMyKitchens", icon: Building2 },
-            { id: "discover-kitchens", labelKey: "shellDiscoverKitchens", icon: Search },
-            { id: "bookings", labelKey: "shellMyBookings", icon: Calendar },
-        ],
-    },
-    {
-        titleKey: "shellInbox",
-        items: [
-            { id: "messages", labelKey: "shellMessages", icon: MessageCircle, badge: 0 },
-            { id: "issues-refunds", labelKey: "shellResolutionCenter", icon: AlertTriangle },
-        ],
-    },
-]
 
 interface ChefSidebarProps extends React.ComponentProps<typeof Sidebar> {
     activeView: string
     onViewChange: (view: string) => void
     messageBadgeCount?: number
     hiddenItems?: string[]
+    /** Same trail as header breadcrumbs — nested crumbs expand under the active parent. */
+    breadcrumbs?: ChefBreadcrumb[]
 }
 
 export function ChefSidebar({
@@ -108,6 +59,7 @@ export function ChefSidebar({
     onViewChange,
     messageBadgeCount = 0,
     hiddenItems = [],
+    breadcrumbs,
     ...props
 }: ChefSidebarProps) {
     const { user, logout } = useFirebaseAuth()
@@ -115,7 +67,11 @@ export function ChefSidebar({
     const tr = t as unknown as TFunction
     const { isMobile, setOpenMobile, state } = useSidebar()
 
-    // Get user initials for avatar fallback
+    const branch = React.useMemo(
+        () => sidebarBranchForView(breadcrumbs, activeView),
+        [breadcrumbs, activeView]
+    )
+
     const getInitials = (name: string | null | undefined) => {
         if (!name) return "CH"
         const parts = name.split(" ")
@@ -133,7 +89,7 @@ export function ChefSidebar({
     }
 
     const { ungroupedItems, groupedSections } = React.useMemo(() => {
-        const prepared = navSections
+        const prepared = chefNavSections
             .map((section) => ({
                 ...section,
                 visibleItems: section.items.filter((item) => !hiddenItems.includes(item.id)),
@@ -150,7 +106,8 @@ export function ChefSidebar({
         }
     }, [hiddenItems])
 
-    const renderNavItem = (item: NavItem) => {
+    const renderNavItem = (item: ChefNavItem) => {
+        const showBranch = activeView === item.id && branch.length > 0
         const isActive = activeView === item.id
         const badge = item.id === "messages" ? messageBadgeCount : undefined
         const label = tr(item.labelKey as never)
@@ -159,22 +116,15 @@ export function ChefSidebar({
             <SidebarMenuItem key={item.id}>
                 <SidebarMenuButton
                     isActive={isActive}
-                    onClick={() => {
-                        if (item.path) {
-                            if (isMobile) {
-                                setOpenMobile(false)
-                            }
-                            window.location.href = item.path
-                        } else {
-                            handleViewChange(item.id)
-                        }
-                    }}
+                    onClick={() => handleViewChange(item.id)}
                     tooltip={label}
                     className={cn(
                         isActive && "text-sidebar-primary-foreground font-medium"
                     )}
                 >
-                    {item.icon && <item.icon />}
+                    {item.icon ? (
+                        <Icon icon={item.icon} width={16} height={16} aria-hidden />
+                    ) : null}
                     <span>{label}</span>
                     {badge !== undefined && badge > 0 && (
                         <SidebarMenuBadge className="bg-destructive text-destructive-foreground">
@@ -182,6 +132,36 @@ export function ChefSidebar({
                         </SidebarMenuBadge>
                     )}
                 </SidebarMenuButton>
+                {showBranch && (
+                    <SidebarMenuSub>
+                        {branch.map((crumb, index) => {
+                            const isLeaf = index === branch.length - 1
+                            const canNavigate = Boolean(crumb.onClick)
+                            return (
+                                <SidebarMenuSubItem key={`${crumb.label}-${index}`}>
+                                    <SidebarMenuSubButton
+                                        asChild
+                                        size="sm"
+                                        isActive={isLeaf}
+                                    >
+                                        <button
+                                            type="button"
+                                            className="w-full cursor-pointer text-left"
+                                            disabled={!canNavigate && isLeaf}
+                                            onClick={() => {
+                                                if (!crumb.onClick) return
+                                                crumb.onClick()
+                                                if (isMobile) setOpenMobile(false)
+                                            }}
+                                        >
+                                            <span>{crumb.label}</span>
+                                        </button>
+                                    </SidebarMenuSubButton>
+                                </SidebarMenuSubItem>
+                            )
+                        })}
+                    </SidebarMenuSub>
+                )}
             </SidebarMenuItem>
         )
     }
@@ -222,7 +202,7 @@ export function ChefSidebar({
                     </SidebarGroup>
                 )}
                 {groupedSections.map((section) => (
-                    <SidebarGroup key={section.titleKey} className="px-2 py-3">
+                    <SidebarGroup key={section.id} className="px-2 py-3">
                         <SidebarGroupLabel className="h-7 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                             {tr(section.titleKey as never)}
                         </SidebarGroupLabel>
@@ -261,7 +241,7 @@ export function ChefSidebar({
                                             {user?.email || "chef@localcooks.ca"}
                                         </span>
                                     </div>
-                                    <ChevronsUpDown className="ml-auto size-4 text-muted-foreground group-data-[collapsible=icon]:hidden" />
+                                    <Icon icon="mdi:unfold-more-horizontal" className="ml-auto size-4 text-muted-foreground group-data-[collapsible=icon]:hidden" aria-hidden />
                                 </SidebarMenuButton>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent
@@ -285,7 +265,7 @@ export function ChefSidebar({
                                     onClick={() => handleViewChange("profile")}
                                     className="cursor-pointer"
                                 >
-                                    <UserIcon className="mr-2 h-4 w-4" />
+                                    <Icon icon="mdi:account-outline" className="mr-2 h-4 w-4" aria-hidden />
                                     {t("shellProfile")}
                                 </DropdownMenuItem>
 
@@ -299,7 +279,7 @@ export function ChefSidebar({
                                     onClick={() => logout()}
                                     className="cursor-pointer text-destructive focus:text-destructive"
                                 >
-                                    <LogOut className="mr-2 h-4 w-4" />
+                                    <Icon icon="mdi:logout" className="mr-2 h-4 w-4" aria-hidden />
                                     {t("shellSignOut")}
                                 </DropdownMenuItem>
                             </DropdownMenuContent>

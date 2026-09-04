@@ -25,6 +25,7 @@ import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { formatCurrency } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 import { SmartImage } from "@/components/ui/smart-image";
+import { KitchenPhotoPlaceholder } from "@/components/kitchen/KitchenPhotoPlaceholder";
 import { tt } from "@/i18n/common-ns";
 
 interface PublicLocation {
@@ -94,13 +95,16 @@ function BrowseLocationCard({
       case "reapply":
         return t("applyAgain", "Apply Again");
       case "apply":
-        return t("applyToBook", "Apply to Book");
+        return t("requestToApply", "Request to apply");
       case "guest":
         return t("viewDetails", "View Details");
     }
   })();
 
   const primaryDisabled = action.kind === "pending";
+  // Book / Apply / Reapply already open preview — don't also show View Details.
+  const primaryOpensPreview =
+    action.kind === "book" || action.kind === "apply" || action.kind === "reapply";
 
   return (
     <motion.article
@@ -109,50 +113,51 @@ function BrowseLocationCard({
       transition={{ duration: 0.45, delay: Math.min(index * 0.06, 0.3), ease: [0.25, 0.46, 0.45, 0.94] }}
       className="group flex h-full flex-col overflow-hidden rounded-2xl bg-white shadow-[0_8px_30px_rgba(44,44,44,0.06)] ring-1 ring-[#2C2C2C]/6 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_40px_rgba(245,16,66,0.12)]"
     >
-      <button
-        type="button"
-        onClick={onViewDetails}
-        className="relative block aspect-[4/3] w-full overflow-hidden text-left"
-        aria-label={t("viewLocationAria", { name: location.name, defaultValue: `View ${location.name}` })}
-      >
-        {showImage ? (
-          <SmartImage
-            src={img!}
-            alt={location.name}
-            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
-            loading="lazy"
-            onError={() => setImageError(true)}
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#FFE8DD] via-[#FFF8F5] to-white">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#F51042]/10">
-              <Building2 className="h-8 w-8 text-[#F51042]" />
-            </div>
-          </div>
-        )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
+      {/* Inset photo — same radius as card + visible stroke */}
+      <div className="shrink-0 p-3 pb-0">
+        <button
+          type="button"
+          onClick={onViewDetails}
+          className="relative block aspect-[4/3] w-full overflow-hidden rounded-2xl border border-[#E5E0DB] ring-1 ring-[#2C2C2C]/[0.06] bg-[#F3F1EF] text-left"
+          aria-label={t("viewLocationAria", { name: location.name, defaultValue: `View ${location.name}` })}
+        >
+          {showImage ? (
+            <SmartImage
+              src={img!}
+              alt={location.name}
+              className="h-full w-full rounded-2xl object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+              loading="lazy"
+              onError={() => setImageError(true)}
+            />
+          ) : (
+            <KitchenPhotoPlaceholder className="rounded-2xl" />
+          )}
+          {showImage ? (
+            <div className="absolute inset-0 rounded-2xl bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
+          ) : null}
 
-        {location.logoUrl && (
-          <SmartImage
-            src={location.logoUrl}
-            alt=""
-            className="absolute left-3 top-3 h-10 w-auto rounded-lg bg-white/95 p-1.5 shadow-md"
-            hideOnError
-          />
-        )}
+          {location.logoUrl && (
+            <SmartImage
+              src={location.logoUrl}
+              alt=""
+              className="absolute left-3 top-3 h-10 w-auto rounded-lg bg-white/95 p-1.5 shadow-md"
+              hideOnError
+            />
+          )}
 
-        {(location.kitchenCount ?? 0) > 1 && (
-          <span className="absolute right-3 top-3 rounded-full bg-white/95 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#F51042] shadow-sm">
-            {location.kitchenCount} {location.kitchenCount === 1 ? t("kitchenSingular", "kitchen") : t("kitchenPlural", "kitchens")}
-          </span>
-        )}
+          {(location.kitchenCount ?? 0) > 1 && (
+            <span className="absolute right-3 top-3 rounded-full bg-white/95 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#F51042] shadow-sm">
+              {location.kitchenCount} {location.kitchenCount === 1 ? t("kitchenSingular", "kitchen") : t("kitchenPlural", "kitchens")}
+            </span>
+          )}
 
-        {rateLabel && (
-          <span className="absolute bottom-3 left-3 rounded-full bg-white/95 px-3 py-1.5 text-xs font-semibold text-[#2C2C2C] shadow-sm backdrop-blur-sm">
-            {t("fromPrefix", "From")} <span className="text-[#F51042]">{rateLabel}</span>
-          </span>
-        )}
-      </button>
+          {rateLabel && (
+            <span className="absolute bottom-3 left-3 rounded-full bg-white/95 px-3 py-1.5 text-xs font-semibold text-[#2C2C2C] shadow-sm backdrop-blur-sm">
+              {t("fromPrefix", "From")} <span className="text-[#F51042]">{rateLabel}</span>
+            </span>
+          )}
+        </button>
+      </div>
 
       <div className="flex flex-1 flex-col p-5">
         <div className="mb-4 flex-1">
@@ -202,19 +207,21 @@ function BrowseLocationCard({
               {!primaryDisabled && <ArrowRight className="ml-1.5 h-3.5 w-3.5" />}
             </Button>
           )}
-          <Button
-            variant={action.kind === "guest" ? "default" : "outline"}
-            className={cn(
-              "min-h-[44px] flex-1 rounded-full font-semibold",
-              action.kind === "guest"
-                ? "bg-[#F51042] text-white hover:bg-[#D90E3A]"
-                : "border-[#2C2C2C]/15 text-[#2C2C2C] hover:border-[#F51042] hover:bg-[#F51042]/5 hover:text-[#F51042]"
-            )}
-            onClick={onViewDetails}
-          >
-            {t("viewDetails", "View Details")}
-            {action.kind === "guest" && <ArrowRight className="ml-1.5 h-3.5 w-3.5" />}
-          </Button>
+          {!primaryOpensPreview && (
+            <Button
+              variant={action.kind === "guest" ? "default" : "outline"}
+              className={cn(
+                "min-h-[44px] flex-1 rounded-full font-semibold",
+                action.kind === "guest"
+                  ? "bg-[#F51042] text-white hover:bg-[#D90E3A]"
+                  : "border-[#2C2C2C]/15 text-[#2C2C2C] hover:border-[#F51042] hover:bg-[#F51042]/5 hover:text-[#F51042]"
+              )}
+              onClick={onViewDetails}
+            >
+              {t("viewDetails", "View Details")}
+              {action.kind === "guest" && <ArrowRight className="ml-1.5 h-3.5 w-3.5" />}
+            </Button>
+          )}
         </div>
       </div>
     </motion.article>
@@ -224,7 +231,9 @@ function BrowseLocationCard({
 function CardSkeleton() {
   return (
     <div className="overflow-hidden rounded-2xl bg-white ring-1 ring-[#2C2C2C]/6">
-      <div className="aspect-[4/3] animate-pulse bg-[#FFE8DD]/60" />
+      <div className="p-3 pb-0">
+        <div className="aspect-[4/3] animate-pulse rounded-2xl border border-[#E5E0DB] bg-[#FFE8DD]/60" />
+      </div>
       <div className="space-y-3 p-5">
         <div className="h-5 w-2/3 animate-pulse rounded bg-[#2C2C2C]/8" />
         <div className="h-4 w-full animate-pulse rounded bg-[#2C2C2C]/6" />
@@ -309,11 +318,11 @@ export default function KitchenComparisonPage() {
     const redirectPreview = `/kitchen-preview/${location?.slug || locationId}`;
     switch (action.kind) {
       case "book":
-        navigate(`/book/${locationId}`);
-        break;
-      case "continue":
       case "apply":
       case "reapply":
+        navigate(redirectPreview);
+        break;
+      case "continue":
         navigate(`/kitchen-requirements/${locationId}`);
         break;
       case "guest":

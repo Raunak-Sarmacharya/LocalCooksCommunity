@@ -12,24 +12,29 @@ import {
 } from "@/components/ui/breadcrumb"
 import { useFirebaseAuth } from "@/hooks/use-auth"
 import { useChefSidebarHiddenItems } from "@/hooks/use-chef-sidebar-hidden-items"
-import { Command, Headphones } from "lucide-react"
+import { Command } from "lucide-react"
+import { Icon } from "@iconify/react"
+import "@/lib/kitchen-inventory-icons"
 import ChefNotificationCenter from "@/components/chef/ChefNotificationCenter"
 import { CommandMenu } from "@/components/command-menu"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useTranslation } from "react-i18next"
 import type { TFunction } from "i18next"
+import {
+    findChefNavItem,
+    type ChefBreadcrumb,
+} from "@/lib/chef-nav-sections"
 
 interface ChefDashboardLayoutProps {
     children: React.ReactNode
     activeView: string
     onViewChange: (view: string) => void
     messageBadgeCount?: number
-    breadcrumbs?: Array<{ label: string; href?: string; onClick?: () => void }>
+    breadcrumbs?: ChefBreadcrumb[]
     hiddenItems?: string[]
 }
 
-// View label translation keys for breadcrumb generation
 const viewLabelKeys: Record<string, string> = {
     overview: "shellOverview",
     applications: "shellMyApplication",
@@ -68,11 +73,28 @@ export default function ChefDashboardLayout({
         [autoHiddenItems, hiddenItems]
     )
 
-    // Generate breadcrumbs based on active view if not provided
-    const displayBreadcrumbs = breadcrumbs || [
-        { label: t("shellDashboard"), href: "#" },
-        { label: viewLabelKeys[activeView] ? tr(viewLabelKeys[activeView] as never) : activeView },
-    ]
+    // Breadcrumbs: Dashboard > Page (> nested) — skip section group titles (Kitchens, Selling, …)
+    const displayBreadcrumbs = React.useMemo((): ChefBreadcrumb[] => {
+        if (breadcrumbs) return breadcrumbs
+
+        const crumbs: ChefBreadcrumb[] = [
+            {
+                label: t("shellDashboard"),
+                onClick: () => onViewChange("overview"),
+                navId: "overview",
+            },
+        ]
+        const item = findChefNavItem(activeView)
+        crumbs.push({
+            label: item
+                ? tr(item.labelKey as never)
+                : viewLabelKeys[activeView]
+                  ? tr(viewLabelKeys[activeView] as never)
+                  : activeView,
+            navId: item?.id ?? (viewLabelKeys[activeView] ? activeView : undefined),
+        })
+        return crumbs
+    }, [breadcrumbs, activeView, onViewChange, t, tr])
 
     return (
         <SidebarProvider>
@@ -81,8 +103,9 @@ export default function ChefDashboardLayout({
                 onViewChange={onViewChange}
                 messageBadgeCount={messageBadgeCount}
                 hiddenItems={sidebarHiddenItems}
+                breadcrumbs={displayBreadcrumbs}
             />
-            <SidebarInset className="min-w-0 overflow-x-hidden">
+            <SidebarInset className="min-w-0 overflow-x-clip">
                 <header className="flex h-16 shrink-0 items-center justify-between gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 border-b px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 min-w-0">
                     <div className="flex items-center gap-2 min-w-0">
                         <SidebarTrigger className="-ml-1 shrink-0" />
@@ -146,14 +169,14 @@ export default function ChefDashboardLayout({
                                     : "border-border bg-background text-foreground hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
                             )}
                         >
-                            <Headphones className="h-4 w-4" />
+                            <Icon icon="mdi:headphones" className="h-4 w-4" aria-hidden />
                             <span className="hidden sm:inline">{t("shellSupport")}</span>
                         </button>
 
                         <ChefNotificationCenter />
                     </div>
                 </header>
-                <main className="flex-1 min-w-0 p-4 md:p-6 lg:p-8 bg-muted/30 overflow-x-hidden">
+                <main className="flex-1 min-w-0 p-4 md:p-6 lg:p-8 bg-muted/30 overflow-x-clip">
                     <div className="mx-auto max-w-7xl w-full min-w-0 animate-fade-in space-y-6">
                         {children}
                     </div>
