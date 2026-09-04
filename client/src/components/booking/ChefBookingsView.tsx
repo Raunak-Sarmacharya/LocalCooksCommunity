@@ -79,6 +79,7 @@ import { ExpiringStorageNotification } from "./ExpiringStorageNotification"
 import { PendingOverstayPenalties } from "../chef/PendingOverstayPenalties"
 import { CancellationRequestSheet, type CancellationTarget } from "./CancellationRequestSheet"
 import { KitchenCheckinTracker } from "./KitchenCheckinTracker"
+import { STRIPE_PROCESSING_FEE_REFUND_DOCS, stripeLinkClassName } from "@/lib/stripe-brand"
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged } from "firebase/auth"
 import { format, differenceInDays } from "date-fns"
@@ -677,7 +678,7 @@ const getChefBookingColumns = ({
                 </div>
               </TooltipTrigger>
               <TooltipContent className="max-w-xs">
-                <div className="space-y-1 text-sm">
+                <div className="space-y-1.5 text-sm">
                   <p className="font-medium">{isRefunded ? t('payFullyRefunded') : t('payPartiallyRefunded')}</p>
                   <div className="flex justify-between gap-4 text-muted-foreground">
                     <span>{t("payOriginalCharge")}</span>
@@ -687,6 +688,18 @@ const getChefBookingColumns = ({
                     <span>{t("payRefundedToYou")}</span>
                     <span>{formatPrice(refundAmount)}</span>
                   </div>
+                  <p className="text-xs text-muted-foreground pt-1 border-t leading-snug">
+                    {t("stripeFeeNonRefundableTooltip")}{" "}
+                    <a
+                      href={STRIPE_PROCESSING_FEE_REFUND_DOCS}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={stripeLinkClassName}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {t("stripeFeeNonRefundableDocsLink")}
+                    </a>
+                  </p>
                 </div>
               </TooltipContent>
             </Tooltip>
@@ -706,7 +719,7 @@ const getChefBookingColumns = ({
                 </div>
               </TooltipTrigger>
               <TooltipContent className="max-w-xs">
-                <div className="space-y-1 text-sm">
+                <div className="space-y-1.5 text-sm">
                   <p className="font-medium">{t("bkPartialRefundIssued")}</p>
                   <div className="flex justify-between gap-4">
                     <span>{t("bkTotalCharged")}</span>
@@ -716,6 +729,18 @@ const getChefBookingColumns = ({
                     <span>{t("bkRefundedToYou")}</span>
                     <span>{formatPrice(refundAmount)}</span>
                   </div>
+                  <p className="text-xs text-muted-foreground pt-1 border-t leading-snug">
+                    {t("stripeFeeNonRefundableTooltip")}{" "}
+                    <a
+                      href={STRIPE_PROCESSING_FEE_REFUND_DOCS}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={stripeLinkClassName}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {t("stripeFeeNonRefundableDocsLink")}
+                    </a>
+                  </p>
                 </div>
               </TooltipContent>
             </Tooltip>

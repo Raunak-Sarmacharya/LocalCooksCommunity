@@ -273,7 +273,8 @@ function isKitchenFlowPath(pathOrUrl: string): boolean {
     return (
       path.includes("/kitchen-preview") ||
       path.includes("/apply-kitchen") ||
-      path.includes("/book-kitchen")
+      path.includes("/book-kitchen") ||
+      path.includes("/book/")
     );
   } catch {
     return false;

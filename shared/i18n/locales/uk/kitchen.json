@@ -372,6 +372,7 @@
   "damageClaimsTab": "Позови про відшкодування збитків",
   "dashboard": "Панель керування",
   "dateLabel": "Дата:",
+  "dateNotAvailable": "Дата недоступна",
   "dayAvailable": "Доступно",
   "dayFri": "Пт",
   "dayFriday": "П'ятниця",
@@ -1390,5 +1391,9 @@
   "requestToApplyProgress": "Запит на подачу заявки",
   "step2Of2KitchenDocs": "Документи кухні (крок 2)",
   "everyEmptyHourIs": "Кожна порожня година — це",
-  "runYourKitchen": "Керуйте кухнею"
+  "runYourKitchen": "Керуйте кухнею",
+  "bookingDatesComingSoonTitle": "Дати бронювання ще не відкриті",
+  "bookingDatesComingSoonNeedRateAndSchedule": "Цій кухні ще потрібна погодинна ставка та графік доступності, перш ніж ви зможете обрати дату.",
+  "bookingDatesComingSoonNeedRate": "Цій кухні ще потрібна погодинна ставка, перш ніж ви зможете обрати дату.",
+  "bookingDatesComingSoonNeedSchedule": "Цій кухні ще потрібен графік доступності, перш ніж ви зможете обрати дату."
 }

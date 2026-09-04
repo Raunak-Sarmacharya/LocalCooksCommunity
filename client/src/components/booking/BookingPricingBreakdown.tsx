@@ -102,6 +102,9 @@ export type KitchenPayoutStatementBreakdownProps = BookingPricingBreakdownInput 
   className?: string;
   title?: string;
   showProcessorFee?: boolean;
+  processingFeeLabel?: string;
+  refundLabel?: string;
+  hstLabel?: string;
 };
 
 /** Kitchen manager payout statement — not a Local Cooks tax invoice */
@@ -110,6 +113,9 @@ export function KitchenPayoutStatementBreakdown({
   className,
   title = "Net payout",
   showProcessorFee,
+  processingFeeLabel = "Processing fee",
+  refundLabel = "Refund",
+  hstLabel,
   ...input
 }: KitchenPayoutStatementBreakdownProps) {
   const b = buildKitchenPayoutStatementBreakdown({
@@ -124,14 +130,14 @@ export function KitchenPayoutStatementBreakdown({
     <div className={cn("space-y-2", className)}>
       {b.kitchenHstRegistered && b.kitchenHstAmountCents > 0 && (
         <BreakdownLine
-          label={`HST (${b.kitchenHstRatePercent}%)`}
+          label={hstLabel ?? `HST (${b.kitchenHstRatePercent}%)`}
           amountCents={b.kitchenHstAmountCents}
           currency={currency}
         />
       )}
       {showStripe && (
         <BreakdownLine
-          label="Processing fee"
+          label={processingFeeLabel}
           amountCents={b.paymentProcessorFeeCents}
           currency={currency}
           prefix="−"
@@ -139,7 +145,7 @@ export function KitchenPayoutStatementBreakdown({
       )}
       {b.refundAmountCents > 0 && (
         <BreakdownLine
-          label="Refund"
+          label={refundLabel}
           amountCents={b.refundAmountCents}
           currency={currency}
           prefix="−"

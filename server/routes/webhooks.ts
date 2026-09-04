@@ -2304,13 +2304,19 @@ async function handleChargeRefunded(
       db,
     );
     
-    // SIMPLE REFUND MODEL: Full refund = manager's entire balance refunded
-    // Compare to manager_revenue (what manager received), not charge.amount (what customer paid)
-    // This ensures "refunded" status when manager refunds their entire balance
+    // Full refund = customer received charge − stripe fee (includes platform service fee).
+    // Compare against that threshold, not manager_revenue alone.
     let refundStatus: "refunded" | "partially_refunded";
     if (transaction) {
       const managerRevenue = parseInt(String(transaction.manager_revenue || '0')) || 0;
-      const isFullRefund = refundAmountCents >= managerRevenue;
+      const serviceFee = parseInt(String(transaction.service_fee || '0')) || 0;
+      const stripeFee = parseInt(String(transaction.stripe_processing_fee || '0')) || 0;
+      const chargeAmount = parseInt(String(transaction.amount || '0')) || 0;
+      const fullRefundThreshold = Math.max(
+        managerRevenue + serviceFee,
+        Math.max(0, chargeAmount - stripeFee),
+      );
+      const isFullRefund = refundAmountCents >= fullRefundThreshold;
       refundStatus = isFullRefund ? "refunded" : "partially_refunded";
       
       await updatePaymentTransaction(

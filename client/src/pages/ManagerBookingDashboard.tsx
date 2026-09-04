@@ -2847,13 +2847,13 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                   <div>
                     <label className="block text-sm font-medium text-gray-900 mb-2">{mt("cancellationWindowHours")}</label>
                     <NumericInput
-                      suffix="hours"
+                      suffix={mt("hoursSuffix")}
                       value={String(cancellationHours)}
                       onValueChange={(val) => setCancellationHours(parseInt(val) || 0)}
                       className="max-w-xs"
                     />
                     <p className="text-xs text-gray-600 mt-1">
-                      Minimum hours before booking time that cancellation is allowed (0 = no restrictions)
+                      {mt("minimumHoursBeforeCancellationAllowed")}
                     </p>
                   </div>
 
@@ -2864,10 +2864,10 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                       onChange={(e) => setCancellationMessage(e.target.value)}
                       rows={3}
                       className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Bookings cannot be cancelled within {hours} hours of the scheduled time."
+                      placeholder={mt("cancellationPolicyDefaultMessage")}
                     />
                     <p className="text-xs text-gray-600 mt-1">
-                      Use {"{hours}"} as a placeholder for the cancellation window. This message will be shown to chefs when they try to cancel.
+                      {mt("useHoursAsPlaceholderLong", { hours: "{hours}" })}
                     </p>
                   </div>
 
@@ -2888,7 +2888,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                   <div className="flex-1">
                     <h3 className="text-lg font-semibold text-gray-900 mb-1">{mt("dailyBookingLimit")}</h3>
                     <p className="text-sm text-gray-600 mb-4">
-                      Set the default maximum hours a chef can book per day. This applies to all kitchens at this location unless overridden for specific dates.
+                      {mt("maximumHoursAChefCanBookPerDay")}
                     </p>
                   </div>
                 </div>
@@ -2897,7 +2897,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                   <div>
                     <label className="block text-sm font-medium text-gray-900 mb-2">{mt("defaultHoursPerChefPerDay")}</label>
                     <NumericInput
-                      suffix="hours"
+                      suffix={mt("hoursSuffix")}
                       value={String(dailyBookingLimit)}
                       onValueChange={(val) => setDailyBookingLimit(parseInt(val) || 2)}
                       className="max-w-xs"
@@ -2925,7 +2925,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                   <div className="flex-1">
                     <h3 className="text-lg font-semibold text-gray-900 mb-1">{mt("minimumBookingWindow")}</h3>
                     <p className="text-sm text-gray-600 mb-4">
-                      Set the minimum advance notice required for bookings. Chefs cannot book a kitchen within this time window. This prevents last-minute bookings and gives managers time to prepare.
+                      {mt("minimumAdvanceNoticeRequiredForBookings")}
                     </p>
                   </div>
                 </div>
@@ -2934,7 +2934,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                   <div>
                     <label className="block text-sm font-medium text-gray-900 mb-2">{mt("minimumHoursInAdvance")}</label>
                     <NumericInput
-                      suffix="hours"
+                      suffix={mt("hoursSuffix")}
                       value={String(minimumBookingWindowHours)}
                       onValueChange={(val) => {
                         const parsed = parseInt(val, 10);
@@ -2943,11 +2943,11 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                       className="max-w-xs"
                     />
                     <p className="text-xs text-gray-600 mt-1">
-                      Chefs must book at least this many hours before the booking time (0 = no restrictions, default: 1 hour)
+                      {mt("chefsMustBookAtLeastHours")}
                     </p>
                     <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
                       <Info className="h-3 w-3 inline mr-1" />
-                      <strong>{mt("example")}</strong> With 1 hour, if it&apos;s 1:00 PM, chefs can only book times starting from 2:00 PM onwards.
+                      {mt("exampleWith1HourIfItS100PMChefsCanOnlyBookTimesStartingFrom2")}
                     </div>
                   </div>
 

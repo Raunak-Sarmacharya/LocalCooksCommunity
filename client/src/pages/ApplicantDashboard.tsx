@@ -45,7 +45,6 @@ import { useCustomAlerts } from "@/components/ui/custom-alerts";
 import { useChefOnboardingStatus } from "@/hooks/use-chef-onboarding-status";
 import KitchenDiscovery from "@/components/kitchen-application/KitchenDiscovery";
 import { requestDiscoverKitchensWalkthrough } from "@/components/kitchen-application/DiscoverKitchensButtonTour";
-import KitchenBookingSheet from "@/components/booking/KitchenBookingSheet";
 import TrainingOverviewPanel from "@/components/training/TrainingOverviewPanel";
 import ApplicationFormPanel from "@/components/application/ApplicationFormPanel";
 import ChefSupportPage from "@/components/chef/ChefSupportPage";
@@ -93,7 +92,7 @@ export default function ApplicantDashboard() {
   const [chatApplication, setChatApplication] = useState<any | null>(null);
   const [chatConversationId, setChatConversationId] = useState<string | null>(null);
   const subdomain = useSubdomain();
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
 
   // Parse view from URL query parameter (e.g., /dashboard?view=messages)
   const getInitialTab = () => {
@@ -170,13 +169,10 @@ export default function ApplicantDashboard() {
     return () => window.removeEventListener('popstate', syncFromUrl);
   }, [location]);
 
-  // Booking sheet state
-  const [bookingSheetOpen, setBookingSheetOpen] = useState(false);
-  const [bookingLocation, setBookingLocation] = useState<{
-    id: number;
-    name: string;
-    address?: string;
-  } | null>(null);
+  // Booking navigation helper
+  const openBookingPage = (locationId: number) => {
+    navigate(`/book/${locationId}`);
+  };
 
   // Get document verification status for seller application
   const { verification: docData, error: docError, forceRefresh: refetchDocs } = useDocumentVerification();
@@ -306,14 +302,9 @@ export default function ApplicantDashboard() {
       // No kitchens ready to book - navigate to discover kitchens
       setActiveTab("discover-kitchens");
     } else if (readyToBookKitchens.length === 1) {
-      // Single kitchen ready - open booking sheet directly
+      // Single kitchen ready - open booking page directly
       const kitchen = readyToBookKitchens[0];
-      setBookingLocation({
-        id: kitchen.locationId,
-        name: kitchen.location?.name || 'Kitchen',
-        address: kitchen.location?.address,
-      });
-      setBookingSheetOpen(true);
+      openBookingPage(kitchen.locationId);
     } else {
       // Multiple kitchens ready - navigate to My Kitchens tab to select
       setActiveTab("kitchen-applications");
@@ -638,7 +629,7 @@ export default function ApplicantDashboard() {
   // Cast kitchen applications to the expected type for components
   const typedKitchenApplications = kitchenApplications as unknown as KitchenApplicationWithLocation[];
 
-  // Deep link: /dashboard?bookLocation=8 opens the booking side sheet
+  // Deep link: /dashboard?bookLocation=8 → intermediate booking page
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const bookLocationRaw = params.get("bookLocation");
@@ -646,20 +637,11 @@ export default function ApplicantDashboard() {
     const bookLocationId = Number(bookLocationRaw);
     if (!Number.isFinite(bookLocationId)) return;
 
-    const app = typedKitchenApplications.find(
-      (a) => a.locationId === bookLocationId || a.location?.id === bookLocationId
-    );
-    setBookingLocation({
-      id: bookLocationId,
-      name: app?.location?.name || "Kitchen",
-      address: app?.location?.address,
-    });
-    setBookingSheetOpen(true);
-
     params.delete("bookLocation");
     const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}${window.location.hash}`;
     window.history.replaceState({}, "", next);
-  }, [typedKitchenApplications]);
+    navigate(`/book/${bookLocationId}`);
+  }, [navigate]);
 
   const overviewTabContent = (
     <OverviewTabContent
@@ -698,13 +680,8 @@ export default function ApplicantDashboard() {
         requestDiscoverKitchensWalkthrough();
         setActiveTab("discover-kitchens");
       }}
-      onBookKitchen={(locationId, locationName, locationAddress) => {
-        setBookingLocation({
-          id: locationId,
-          name: locationName,
-          address: locationAddress,
-        });
-        setBookingSheetOpen(true);
+      onBookKitchen={(locationId) => {
+        openBookingPage(locationId);
       }}
     />
   );
@@ -747,9 +724,8 @@ export default function ApplicantDashboard() {
       publicKitchens={publicKitchens}
       chefId={chefId}
       onSetActiveTab={setActiveTab}
-      onOpenBookingSheet={(location: BookingLocation) => {
-        setBookingLocation(location);
-        setBookingSheetOpen(true);
+      onOpenBookingSheet={(bookingLoc: BookingLocation) => {
+        openBookingPage(bookingLoc.id);
       }}
       onOpenChat={(app) => {
         setChatApplication(app);
@@ -1071,17 +1047,6 @@ export default function ApplicantDashboard() {
           )}
         </DialogContent>
       </Dialog>
-
-      {/* Kitchen Booking Sheet - Enterprise-grade inline booking */}
-      {bookingLocation && (
-        <KitchenBookingSheet
-          open={bookingSheetOpen}
-          onOpenChange={setBookingSheetOpen}
-          locationId={bookingLocation.id}
-          locationName={bookingLocation.name}
-          locationAddress={bookingLocation.address}
-        />
-      )}
     </ChefDashboardLayout>
   );
 }

@@ -283,5 +283,7 @@
   "failedToFetchExceptions": "Échec de la récupération des exceptions",
   "managerDashboard": "Tableau de bord gestionnaire",
   "adminDashboardNamed": "Tableau de bord admin de {name}",
-  "chefDashboardNamed": "Tableau de bord de {name}"
+  "chefDashboardNamed": "Tableau de bord de {name}",
+  "previous": "Précédent",
+  "noResults": "Aucun résultat."
 }

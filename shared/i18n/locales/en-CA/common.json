@@ -283,5 +283,7 @@
   "failedToFetchExceptions": "Failed to fetch exceptions",
   "managerDashboard": "Manager Dashboard",
   "adminDashboardNamed": "{name}'s Admin Dashboard",
-  "chefDashboardNamed": "{name}'s Dashboard"
+  "chefDashboardNamed": "{name}'s Dashboard",
+  "previous": "Previous",
+  "noResults": "No results."
 }

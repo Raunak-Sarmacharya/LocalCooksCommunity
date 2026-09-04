@@ -583,7 +583,7 @@ function TransactionDetailSheet({
                         <Copy className="h-3 w-3 text-muted-foreground cursor-pointer" onClick={() => copyToClipboard(field.value!)} />
                         {field.link && (
                           <a href={field.link} target="_blank" rel="noopener noreferrer">
-                            <ExternalLink className="h-3 w-3 text-muted-foreground hover:text-blue-600" />
+                            <ExternalLink className="h-3 w-3 text-stripe hover:text-stripe/80" />
                           </a>
                         )}
                       </>

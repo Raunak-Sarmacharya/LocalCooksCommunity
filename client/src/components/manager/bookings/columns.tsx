@@ -76,11 +76,10 @@ export type Booking = {
     paymentIntentId?: string;
     transactionId?: number;
     refundAmount?: number; // in cents - amount already refunded
-    // SIMPLE REFUND MODEL: Manager's balance is the cap
-    // Stripe fee is sunk cost — manager enters $X, customer gets $X, manager debited $X
-    refundableAmount?: number; // in cents - max refundable = manager's remaining balance
+    // Max refundable = manager remaining + platform service fee remaining (Stripe fee sunk)
+    refundableAmount?: number; // in cents
     stripeProcessingFee?: number; // in cents - total Stripe processing fee (display only)
-    managerRemainingBalance?: number; // in cents - manager's remaining balance from this transaction
+    managerRemainingBalance?: number; // in cents - manager's remaining Connect balance
     taxRatePercent?: number; // kitchen's tax rate percentage for revenue calculations
     taxAmount?: number; // in cents - tax = kb.total_price * tax_rate / 100 (same as transaction history)
     netRevenue?: number; // in cents - kitchen subtotal + tax - Stripe fee

@@ -23,9 +23,14 @@ export function ProtectedRoute({ path, component: Component }: ProtectedRoutePro
   }
 
   if (!user) {
+    const redirect = encodeURIComponent(
+      typeof window !== "undefined"
+        ? window.location.pathname + window.location.search
+        : path
+    );
     return (
       <Route path={path}>
-        <Redirect to={`/auth?redirect=${path}`} />
+        <Redirect to={`/auth?redirect=${redirect}`} />
       </Route>
     );
   }

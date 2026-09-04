@@ -276,6 +276,9 @@
   "bdRefundedOn": "Remboursé le {date}",
   "bdRefundedToChef": "{amount} a été remboursé au chef.",
   "bdRefundedYou": "Vous avez reçu un remboursement de {amount}.",
+  "stripeFeeNonRefundableAria": "Pourquoi un remboursement peut être inférieur au montant facturé",
+  "stripeFeeNonRefundableTooltip": "Stripe ne rembourse pas les frais de traitement de carte lors d’un remboursement, donc ces frais sont exclus. Local Cooks rembourse ses frais de service de plateforme.",
+  "stripeFeeNonRefundableDocsLink": "Docs Stripe : les frais de traitement ne sont pas remboursés",
   "bdRevenue": "Revenus",
   "bdSchedule": "Horaire",
   "bdServiceFee": "Frais de service",
@@ -2211,5 +2214,8 @@
   "storageDeclinedCount": "{count} entreposage refusé",
   "equipmentDeclinedCount": "{count} équipement refusé",
   "storagePendingCount": "{count} entreposage en attente",
-  "partialRefund": "Remboursement partiel"
+  "partialRefund": "Remboursement partiel",
+  "bdProcessingFee": "Frais de traitement",
+  "bdRefund": "Remboursement",
+  "bdHstPercent": "TVH ({percent} %)"
 }

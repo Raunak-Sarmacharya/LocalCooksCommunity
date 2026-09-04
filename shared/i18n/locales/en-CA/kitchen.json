@@ -378,6 +378,7 @@
   "damageClaimsTab": "Damage Claims",
   "dashboard": "Dashboard",
   "dateLabel": "Date:",
+  "dateNotAvailable": "Date is not available",
   "dayAvailable": "Available",
   "dayFri": "Fri",
   "dayFriday": "Friday",
@@ -1390,5 +1391,9 @@
   "listYourCommercialKitchenSeo": "List your commercial kitchen on LocalCooks and earn revenue from idle hours. Automated booking, Stripe payouts, compliance management, and damage protection. Serving St. John's, Newfoundland.",
   "cancellationPolicyDefaultMessage": "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
   "everyEmptyHourIs": "Every empty hour is",
-  "runYourKitchen": "Run Your Kitchen"
+  "runYourKitchen": "Run Your Kitchen",
+  "bookingDatesComingSoonTitle": "Booking dates aren’t open yet",
+  "bookingDatesComingSoonNeedRateAndSchedule": "This kitchen still needs an hourly rate and availability schedule before you can pick a date.",
+  "bookingDatesComingSoonNeedRate": "This kitchen still needs an hourly rate before you can pick a date.",
+  "bookingDatesComingSoonNeedSchedule": "This kitchen still needs an availability schedule before you can pick a date."
 }

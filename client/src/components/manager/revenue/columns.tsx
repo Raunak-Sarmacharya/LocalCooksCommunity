@@ -273,7 +273,7 @@ export function getTransactionColumns({
                     <TooltipProvider>
                         <Tooltip>
                             <TooltipTrigger asChild>
-                                <div className="text-right text-violet-600 text-sm">
+                                <div className="text-right text-stripe text-sm">
                                     {formatCurrency(stripeFee)}
                                 </div>
                             </TooltipTrigger>

@@ -243,16 +243,16 @@ export default function ManagerLocationsPage({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">
-              All Locations ({statusCounts.all})
+              {mt("allLocationsCount", { count: statusCounts.all })}
             </SelectItem>
             <SelectItem value="approved">
-              Approved ({statusCounts.approved})
+              {mt("approvedCount", { count: statusCounts.approved })}
             </SelectItem>
             <SelectItem value="pending">
-              Pending ({statusCounts.pending})
+              {mt("pendingCount", { count: statusCounts.pending })}
             </SelectItem>
             <SelectItem value="rejected">
-              Rejected ({statusCounts.rejected})
+              {mt("rejectedCount", { count: statusCounts.rejected })}
             </SelectItem>
           </SelectContent>
         </Select>
@@ -305,7 +305,7 @@ export default function ManagerLocationsPage({
           })}
           data={filteredLocations}
           filterColumn="name"
-          filterPlaceholder="Filter by name..."
+          filterPlaceholder={mt("filterByName")}
         />
       )}
 
@@ -316,19 +316,19 @@ export default function ManagerLocationsPage({
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full bg-green-500" />
               <span className="text-gray-600">
-                {statusCounts.approved} Approved
+                {mt("countApproved", { count: statusCounts.approved })}
               </span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full bg-yellow-500" />
               <span className="text-gray-600">
-                {statusCounts.pending} Pending
+                {mt("countPending", { count: statusCounts.pending })}
               </span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full bg-red-500" />
               <span className="text-gray-600">
-                {statusCounts.rejected} Rejected
+                {mt("countRejected", { count: statusCounts.rejected })}
               </span>
             </div>
           </div>

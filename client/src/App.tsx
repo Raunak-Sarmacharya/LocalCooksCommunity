@@ -57,6 +57,7 @@ const KitchenAvailabilityManagement = lazy(() => import("@/pages/KitchenAvailabi
 const ManagerBookingsPanel = lazy(() => import("@/pages/ManagerBookingsPanel"));
 const ManagerBookingDashboard = lazy(() => import("@/pages/ManagerBookingDashboard"));
 const KitchenBookingCalendar = lazy(() => import("@/pages/KitchenBookingCalendar"));
+const KitchenBookingPage = lazy(() => import("@/pages/KitchenBookingPage"));
 const BookingConfirmationPage = lazy(() => import("@/pages/BookingConfirmationPage"));
 const PaymentSuccessPage = lazy(() => import("@/pages/PaymentSuccessPage"));
 const BookingDetailsPage = lazy(() => import("@/pages/BookingDetailsPage"));
@@ -111,7 +112,7 @@ function SubdomainRoute({ path, component, subdomain, children, ...props }: {
       let targetSubdomain: SubdomainType = null;
       if (path.startsWith('/admin')) {
         targetSubdomain = 'admin';
-      } else if (path.startsWith('/apply') || path.startsWith('/dashboard') || path.startsWith('/book-kitchen') || path.startsWith('/kitchen-requirements')) {
+      } else if (path.startsWith('/apply') || path.startsWith('/dashboard') || path.startsWith('/book-kitchen') || path.startsWith('/book/') || path.startsWith('/kitchen-requirements')) {
         targetSubdomain = 'chef';
       } else if (path.startsWith('/manager')) {
         targetSubdomain = 'kitchen';
@@ -182,7 +183,7 @@ function Router() {
 
     // Redirect chef routes to chef subdomain
     if ((path.startsWith('/apply') || path.startsWith('/dashboard') ||
-      path.startsWith('/book-kitchen') || path.startsWith('/kitchen-requirements')) &&
+      path.startsWith('/book-kitchen') || path.startsWith('/book/') || path.startsWith('/kitchen-requirements')) &&
       subdomain !== 'chef') {
       window.location.href = `${getSubdomainOriginForEnvironment('chef', window.location.hostname, {
         port: window.location.port,
@@ -253,6 +254,7 @@ function Router() {
         <ProtectedRoute path="/microlearning" component={MicrolearningOverview} />
 
         {/* Kitchen Booking Routes */}
+        <ProtectedRoute path="/book/:locationId" component={KitchenBookingPage} />
         <SubdomainRoute path="/book-kitchen" component={KitchenBookingCalendar} subdomain={subdomain} />
         <SubdomainRoute path="/book-kitchen/confirm" component={BookingConfirmationPage} subdomain={subdomain} />
         <SubdomainRoute path="/payment-success" component={PaymentSuccessPage} subdomain={subdomain} />

@@ -55,7 +55,10 @@ import { Calendar as UICalendar } from "@/components/ui/calendar";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { kt } from "@/i18n/kitchen-ns";
-import KitchenBookingSheet from "@/components/booking/KitchenBookingSheet";
+import {
+  evaluateTypedKitchenDate,
+  parseLocalDateInput,
+} from "@/lib/kitchen-typed-date";
 
 /** Iconify icon used across kitchen preview chrome (MDI, bundled offline). */
 function PreviewIcon({
@@ -397,6 +400,20 @@ function formatKitchenRate(kitchen: PublicKitchen): string | null {
     return `${amount} ${String(i18n.t("perHour", { ns: "kitchen", defaultValue: "per hour" }))}`;
   }
   return amount;
+}
+
+/** Rate + at least one operating day — otherwise date booking UX is Coming Soon. */
+function kitchenReadyForDateBooking(kitchen: PublicKitchen | null | undefined): boolean {
+  if (!kitchen) return false;
+  if (kitchen.hourlyRate == null || Number(kitchen.hourlyRate) <= 0) return false;
+  const availability = kitchen.availability;
+  if (!availability?.length) return false;
+  return availability.some((day) => {
+    const available = day.isAvailable ?? (day as { is_available?: boolean }).is_available;
+    const start = day.startTime || (day as { start_time?: string }).start_time;
+    const end = day.endTime || (day as { end_time?: string }).end_time;
+    return !!(available && start && end);
+  });
 }
 
 /** Total + selection details above the sticky-card Request CTA (not beside it). */
@@ -1650,22 +1667,37 @@ function GuestHoursCard({
   /** Extra status tip shown in the CTA info popover (e.g. apply-first notice). */
   extraInfoTip?: string | null;
 }) {
-  const { t, i18n } = useTranslation("kitchen");
+  const { t } = useTranslation("kitchen");
   const { openAuthModal } = useAuthModal();
   const { user } = useFirebaseAuth();
   const isAuthenticated = !!user;
   
   const storageKey = kitchenId ? `kitchen_dates_${kitchenId}` : 'kitchen_dates_generic';
   const tourStorageKey = locationId ? `viewing_booking_${locationId}` : null;
+
+  const hasRate = !!kitchenRate;
+  const hasSchedule = !!(
+    availability?.some((day) => {
+      const available = day.isAvailable ?? (day as { is_available?: boolean }).is_available;
+      const start = day.startTime || (day as { start_time?: string }).start_time;
+      const end = day.endTime || (day as { end_time?: string }).end_time;
+      return !!(available && start && end);
+    })
+  );
+  const bookingDatesReady = hasRate && hasSchedule;
   
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const [dateInputValue, setDateInputValue] = useState("");
+  const [dateNotAvailable, setDateNotAvailable] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState<Date>(() => new Date());
   const [uncontrolledCalendarOpen, setUncontrolledCalendarOpen] = useState(false);
   const calendarOpen = calendarOpenProp ?? uncontrolledCalendarOpen;
   const setCalendarOpen = onCalendarOpenChange ?? setUncontrolledCalendarOpen;
   const [dateAvailability, setDateAvailability] = useState<Record<string, boolean>>({});
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [loadedMonthKey, setLoadedMonthKey] = useState<string | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+  const pendingTypedDateRef = useRef<string | null>(null);
 
   const toLocalDateString = (date: Date) => {
     const y = date.getFullYear();
@@ -1673,6 +1705,14 @@ function GuestHoursCard({
     const d = String(date.getDate()).padStart(2, "0");
     return `${y}-${m}-${d}`;
   };
+
+  const monthKeyOf = (date: Date) => `${date.getFullYear()}-${date.getMonth()}`;
+
+  const todayStr = (() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return toLocalDateString(today);
+  })();
 
   const sameCalendarDay = (a: Date, b: Date) =>
     a.getFullYear() === b.getFullYear() &&
@@ -1688,13 +1728,14 @@ function GuestHoursCard({
   };
 
   useEffect(() => {
-    if (!kitchenId) return;
+    if (!kitchenId || !bookingDatesReady) return;
     let cancelled = false;
+    const year = calendarMonth.getFullYear();
+    const month = calendarMonth.getMonth();
+    const monthKey = `${year}-${month}`;
     const loadMonth = async () => {
       setAvailabilityLoading(true);
       try {
-        const year = calendarMonth.getFullYear();
-        const month = calendarMonth.getMonth();
         const response = await fetch(
           `/api/public/kitchens/${kitchenId}/month-availability?year=${year}&month=${month}`,
           { credentials: "include", cache: "no-store" }
@@ -1711,18 +1752,22 @@ function GuestHoursCard({
           const dateStr = toLocalDateString(date);
           merged[dateStr] = date >= today && serverAvailability[dateStr] === true;
         }
-        setDateAvailability(merged);
+        // Accumulate months so typed dates outside the visible month stay checkable.
+        setDateAvailability((prev) => ({ ...prev, ...merged }));
       } catch {
-        if (!cancelled) setDateAvailability({});
+        // Keep prior months; settle typed checks via loadedMonthKey below.
       } finally {
-        if (!cancelled) setAvailabilityLoading(false);
+        if (!cancelled) {
+          setLoadedMonthKey(monthKey);
+          setAvailabilityLoading(false);
+        }
       }
     };
     void loadMonth();
     return () => {
       cancelled = true;
     };
-  }, [kitchenId, calendarMonth]);
+  }, [kitchenId, calendarMonth, bookingDatesReady]);
 
   // Persist or clear date in sessionStorage (single day — no range).
   // Skip the initial undefined render so we don't wipe a just-saved preview date
@@ -1737,6 +1782,8 @@ function GuestHoursCard({
           const from = new Date(parsed.from);
           from.setHours(0, 0, 0, 0);
           setSelectedDate(from);
+          setDateInputValue(toLocalDateString(from));
+          setCalendarMonth(new Date(from.getFullYear(), from.getMonth(), 1));
         }
       }
     } catch (e) {
@@ -1751,10 +1798,10 @@ function GuestHoursCard({
     if (selectedDate) {
       sessionStorage.setItem(storageKey, JSON.stringify({ from: selectedDate }));
       if (kitchenId) notifyBookingPrefsChanged(kitchenId);
-    } else {
+    } else if (!dateNotAvailable && !pendingTypedDateRef.current) {
       sessionStorage.removeItem(storageKey);
     }
-  }, [selectedDate, storageKey, kitchenId]);
+  }, [selectedDate, storageKey, kitchenId, dateNotAvailable]);
 
   const isDayAvailable = (date: Date) => {
     const today = new Date();
@@ -1762,8 +1809,13 @@ function GuestHoursCard({
     if (date < today) return false;
 
     const dateStr = toLocalDateString(date);
-    if (Object.keys(dateAvailability).length > 0) {
+    if (dateStr in dateAvailability) {
       return dateAvailability[dateStr] === true;
+    }
+
+    if (Object.keys(dateAvailability).length > 0) {
+      // Other months not loaded yet — treat as unavailable for calendar clicks.
+      return false;
     }
 
     if (!availability || availability.length === 0) return false;
@@ -1772,22 +1824,127 @@ function GuestHoursCard({
     return dayHasOperatingHours(dayAvail);
   };
 
+  const commitAvailableDate = (next: Date) => {
+    setSelectedDate(next);
+    setDateInputValue(toLocalDateString(next));
+    setDateNotAvailable(false);
+    pendingTypedDateRef.current = null;
+    if (kitchenId) {
+      sessionStorage.removeItem(`kitchen_booking_prefs_${kitchenId}`);
+      notifyBookingPrefsChanged(kitchenId);
+    }
+    setCalendarOpen(false);
+  };
+
+  const resolveTypedDate = (dateStr: string) => {
+    const next = parseLocalDateInput(dateStr);
+    if (!next) {
+      setDateNotAvailable(true);
+      setSelectedDate(undefined);
+      pendingTypedDateRef.current = null;
+      return;
+    }
+
+    if (!kitchenId) {
+      if (isDayAvailable(next)) commitAvailableDate(next);
+      else {
+        setSelectedDate(undefined);
+        setDateNotAvailable(true);
+        pendingTypedDateRef.current = null;
+      }
+      return;
+    }
+
+    const status = evaluateTypedKitchenDate(dateStr, dateAvailability, todayStr);
+    if (status === "pending") {
+      // Month fetch finished without this day → unavailable.
+      setSelectedDate(undefined);
+      setDateNotAvailable(true);
+      pendingTypedDateRef.current = null;
+      return;
+    }
+    if (status === "available") {
+      commitAvailableDate(next);
+      return;
+    }
+    setSelectedDate(undefined);
+    setDateNotAvailable(true);
+    pendingTypedDateRef.current = null;
+  };
+
+  const queueTypedDate = (dateStr: string) => {
+    const next = parseLocalDateInput(dateStr);
+    if (!next) {
+      setDateNotAvailable(true);
+      setSelectedDate(undefined);
+      pendingTypedDateRef.current = null;
+      return;
+    }
+
+    const targetMonth = new Date(next.getFullYear(), next.getMonth(), 1);
+    setCalendarMonth(targetMonth);
+    pendingTypedDateRef.current = dateStr;
+    setDateNotAvailable(false);
+
+    if (!kitchenId) {
+      resolveTypedDate(dateStr);
+      return;
+    }
+
+    // Already have this month loaded and not mid-fetch — resolve now.
+    if (loadedMonthKey === monthKeyOf(next) && !availabilityLoading) {
+      resolveTypedDate(dateStr);
+    }
+  };
+
+  useEffect(() => {
+    if (availabilityLoading) return;
+    const pending = pendingTypedDateRef.current;
+    if (!pending) return;
+    const next = parseLocalDateInput(pending);
+    if (!next) return;
+    if (kitchenId && loadedMonthKey !== monthKeyOf(next)) return;
+    resolveTypedDate(pending);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- settle when the target month finishes loading
+  }, [availabilityLoading, loadedMonthKey, dateAvailability, kitchenId]);
+
   useEffect(() => {
     // Don't clear the saved date while month availability is still loading
     if (availabilityLoading) return;
+    if (pendingTypedDateRef.current) return;
     if (selectedDate && !isDayAvailable(selectedDate)) {
       setSelectedDate(undefined);
+      setDateNotAvailable(true);
     }
   }, [selectedDate, availability, dateAvailability, availabilityLoading]);
 
   const clearDates = () => {
     setSelectedDate(undefined);
+    setDateInputValue("");
+    setDateNotAvailable(false);
+    pendingTypedDateRef.current = null;
     sessionStorage.removeItem(storageKey);
     if (kitchenId) {
       sessionStorage.removeItem(`kitchen_booking_prefs_${kitchenId}`);
       notifyBookingPrefsChanged(kitchenId);
     }
     setCalendarOpen(true);
+  };
+
+  const handleDateInputChange = (value: string) => {
+    setDateInputValue(value);
+    if (!value) {
+      setSelectedDate(undefined);
+      setDateNotAvailable(false);
+      pendingTypedDateRef.current = null;
+      sessionStorage.removeItem(storageKey);
+      if (kitchenId) {
+        sessionStorage.removeItem(`kitchen_booking_prefs_${kitchenId}`);
+        notifyBookingPrefsChanged(kitchenId);
+      }
+      return;
+    }
+    queueTypedDate(value);
   };
 
   const handleSelect = (day: Date | undefined) => {
@@ -1797,18 +1954,17 @@ function GuestHoursCard({
     }
     const next = new Date(day);
     next.setHours(0, 0, 0, 0);
-    if (!isDayAvailable(next)) return;
+    if (!isDayAvailable(next)) {
+      setDateInputValue(toLocalDateString(next));
+      setSelectedDate(undefined);
+      setDateNotAvailable(true);
+      return;
+    }
     if (selectedDate && sameCalendarDay(selectedDate, next)) {
       clearDates();
       return;
     }
-    setSelectedDate(next);
-    // New date invalidates prior hour slots for this kitchen.
-    if (kitchenId) {
-      sessionStorage.removeItem(`kitchen_booking_prefs_${kitchenId}`);
-      notifyBookingPrefsChanged(kitchenId);
-    }
-    setCalendarOpen(false);
+    commitAvailableDate(next);
   };
 
   const handleProceed = () => {
@@ -1857,22 +2013,23 @@ function GuestHoursCard({
     });
   };
 
-  const hasSelection = !!selectedDate;
-  const datesOk = !!(selectedDate && isDayAvailable(selectedDate));
+  const hasSelection = !!selectedDate || (!!dateInputValue && dateNotAvailable);
+  const datesOk =
+    bookingDatesReady && !!(selectedDate && isDayAvailable(selectedDate));
   const checkingApp =
     isAuthenticated && (locationApplicationLoading || listApplicationLoading);
 
   useEffect(() => {
     onDatesOkChange?.(datesOk);
   }, [datesOk, onDatesOkChange]);
+
+  // CTAs that need a date stay behind Coming Soon until rate + schedule exist.
+  const showDateGatedCta = showPrimaryCta;
   const stickyCtaLabel = checkingApp
     ? t("checkingApplication", "Checking your application…")
     : proceedLabel || t("requestToApply", "Request to apply");
-  const datesSummary = datesOk
-    ? selectedDate!.toLocaleDateString(i18n.language, { month: "short", day: "numeric" })
-    : t("addDate", "Add a date");
 
-  const ctaBlocked = proceedDisabled || checkingApp || availabilityLoading;
+  const ctaBlocked = proceedDisabled || checkingApp || (bookingDatesReady && availabilityLoading);
   const handleCtaClick = () => {
     if (ctaBlocked) return;
     if (requireDatesForProceed && !datesOk) {
@@ -1883,7 +2040,7 @@ function GuestHoursCard({
     handleProceed();
   };
 
-  const ctaButton = showPrimaryCta ? (
+  const ctaButton = showDateGatedCta ? (
     <Button
       id="preview-apply"
       variant={proceedVariant === "outline" ? "outline" : "default"}
@@ -1906,7 +2063,64 @@ function GuestHoursCard({
       {extraInfoTip ? <p className="mt-2">{extraInfoTip}</p> : null}
     </>
   );
-  const showBookingInfo = showPrimaryCta || !!extraInfoTip;
+  const showBookingInfo = showDateGatedCta || !!extraInfoTip;
+
+  if (!bookingDatesReady) {
+    return (
+      <div
+        ref={cardRef}
+        className={cn(
+          "relative bg-white rounded-2xl border border-gray-200/70 flex flex-col w-full",
+          PREMIUM_CARD_SHADOW,
+          bento ? "p-3 sm:p-3.5 h-full" : "p-5"
+        )}
+        data-preview-tour="hours"
+      >
+        {extraInfoTip ? (
+          <div className={cn("absolute z-10", bento ? "right-2 top-2" : "right-3 top-3")}>
+            <PreviewInfoTip label={t("bookingInfoTip", "Booking info")}>
+              {extraInfoTip}
+            </PreviewInfoTip>
+          </div>
+        ) : null}
+        <div
+          className={cn(
+            "flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50/80 px-4 py-8 text-center",
+            extraInfoTip && "pr-10"
+          )}
+        >
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold uppercase tracking-wider text-gray-600">
+            <PreviewIcon icon="mdi:clock-outline" size={14} />
+            {t("applyFlowComingSoonBadge", "Coming Soon")}
+          </span>
+          <p className="mt-3 text-sm font-medium text-gray-900">
+            {t("bookingDatesComingSoonTitle", "Booking dates aren’t open yet")}
+          </p>
+          <p className="mt-1.5 max-w-[16rem] text-xs leading-relaxed text-gray-500">
+            {!hasRate && !hasSchedule
+              ? t(
+                  "bookingDatesComingSoonNeedRateAndSchedule",
+                  "This kitchen still needs an hourly rate and availability schedule before you can pick a date."
+                )
+              : !hasRate
+                ? t(
+                    "bookingDatesComingSoonNeedRate",
+                    "This kitchen still needs an hourly rate before you can pick a date."
+                  )
+                : t(
+                    "bookingDatesComingSoonNeedSchedule",
+                    "This kitchen still needs an availability schedule before you can pick a date."
+                  )}
+          </p>
+        </div>
+        {showDateGatedCta ? (
+          <div className="mt-4 shrink-0 space-y-2 border-t border-gray-200 pt-3" data-preview-tour="cta">
+            {ctaButton}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -1921,7 +2135,7 @@ function GuestHoursCard({
       {showBookingInfo ? (
         <div className={cn("absolute z-10", bento ? "right-2 top-2" : "right-3 top-3")}>
           <PreviewInfoTip label={t("bookingInfoTip", "Booking info")}>
-            {showPrimaryCta ? bookingInfoBody : extraInfoTip}
+            {showDateGatedCta ? bookingInfoBody : extraInfoTip}
           </PreviewInfoTip>
         </div>
       ) : null}
@@ -1940,24 +2154,58 @@ function GuestHoursCard({
       <div data-preview-tour="cta">
       <Collapsible open={calendarOpen} onOpenChange={setCalendarOpen}>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setCalendarOpen(!calendarOpen)}
-            className="flex min-w-0 flex-1 items-center justify-between rounded-xl border border-gray-300 px-3.5 py-3 text-left transition-colors hover:border-gray-400"
-            aria-expanded={calendarOpen}
+          <div
+            className={cn(
+              "flex min-w-0 flex-1 items-center gap-2 rounded-xl border px-3.5 py-2.5 transition-colors",
+              dateNotAvailable
+                ? "border-[#F51042]/60 hover:border-[#F51042]"
+                : "border-gray-300 hover:border-gray-400"
+            )}
           >
-            <span className="min-w-0">
+            <label className="min-w-0 flex-1">
               <span className="block text-xs font-medium uppercase tracking-wider text-gray-500">
                 {t("selectYourDate", "Choose your date")}
               </span>
-              <span className="mt-0.5 block truncate text-sm text-gray-900">{datesSummary}</span>
-            </span>
-            <PreviewIcon
-              icon={calendarOpen ? "mdi:chevron-up" : "mdi:chevron-down"}
-              size={18}
-              className="shrink-0 text-gray-500"
-            />
-          </button>
+              <input
+                type="date"
+                value={dateInputValue}
+                min={todayStr}
+                onChange={(e) => handleDateInputChange(e.target.value)}
+                onFocus={() => setCalendarOpen(true)}
+                aria-invalid={dateNotAvailable}
+                aria-describedby={dateNotAvailable ? "preview-date-unavailable" : undefined}
+                className={cn(
+                  "mt-0.5 w-full min-w-0 border-0 bg-transparent p-0 text-sm outline-none",
+                  "text-gray-900 [color-scheme:light]",
+                  "focus-visible:ring-0"
+                )}
+              />
+              {dateNotAvailable ? (
+                <span
+                  id="preview-date-unavailable"
+                  className="mt-0.5 block text-xs font-medium text-[#F51042]"
+                >
+                  {t("dateNotAvailable", "Date is not available")}
+                </span>
+              ) : null}
+            </label>
+            <button
+              type="button"
+              onClick={() => setCalendarOpen(!calendarOpen)}
+              className="shrink-0 rounded-md p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+              aria-expanded={calendarOpen}
+              aria-label={
+                calendarOpen
+                  ? t("hideCalendar", "Hide calendar")
+                  : t("showCalendar", "Show calendar")
+              }
+            >
+              <PreviewIcon
+                icon={calendarOpen ? "mdi:chevron-up" : "mdi:chevron-down"}
+                size={18}
+              />
+            </button>
+          </div>
           {hasSelection && (
             <Button
               type="button"
@@ -2017,7 +2265,7 @@ function GuestHoursCard({
         </CollapsibleContent>
       </Collapsible>
 
-      {showPrimaryCta && (
+      {showDateGatedCta && (
         <div className="mt-4 shrink-0 space-y-2 border-t border-gray-200 pt-3">
           {pricePreview ? <PreviewBookingTotalAboveCta preview={pricePreview} /> : null}
           {ctaButton}
@@ -2920,16 +3168,15 @@ export default function KitchenPreviewPage() {
     });
   };
 
-  const [bookingSheetOpen, setBookingSheetOpen] = useState(false);
-
-  const openBookingSheet = () => {
+  const openBookingPage = () => {
     if (!locationId) return;
-    setBookingSheetOpen(true);
+    const kitchenQuery = selectedKitchen?.id != null ? `?kitchenId=${selectedKitchen.id}` : "";
+    navigate(`/book/${locationId}${kitchenQuery}`);
   };
 
   const handleGetStarted = () => {
     if (canBook) {
-      openBookingSheet();
+      openBookingPage();
       return;
     }
     if (alreadyApplied) {
@@ -2941,7 +3188,7 @@ export default function KitchenPreviewPage() {
 
   const handleBookClick = () => {
     if (canBook) {
-      openBookingSheet();
+      openBookingPage();
     } else if (alreadyApplied) {
       goToChefApplications();
     } else if (locationData?.canAcceptApplications !== false) {
@@ -3013,6 +3260,10 @@ export default function KitchenPreviewPage() {
       canAcceptApplications: location.canAcceptApplications !== false,
       display,
     });
+    const bookingDatesReady = kitchenReadyForDateBooking(selectedKitchen);
+    const showDateGatedApplyCta = !!ctaSpec;
+    const requireDatesForApply =
+      bookingDatesReady && (ctaSpec?.requireDates ?? true);
 
     const hoursSummary = availableDaySummary(selectedKitchen?.availability, t);
     const includedCount = kitchenEquipment?.included?.length ?? 0;
@@ -3219,19 +3470,19 @@ export default function KitchenPreviewPage() {
 
     // Dock tour only after the sticky-under-apply tour scrolls away (second position).
     const showDockTour = !!tourCta && !tourInView && !stickyTourInView;
-    const showDockApply = !applyInView && !!ctaSpec;
+    const showDockApply = !applyInView && showDateGatedApplyCta;
     const dockTourPairedWithApply = showDockTour && showDockApply;
 
     const showDockTotal = showDockApply && !!bookingPricePreview;
 
-    const applyCtaButton = ctaSpec ? (
+    const applyCtaButton = showDateGatedApplyCta && ctaSpec ? (
       <Button
         size="sm"
         variant={ctaSpec.variant === "outline" ? "outline" : "default"}
         className={cn("shrink-0 font-semibold", previewApplyCtaClass(ctaSpec.variant))}
         disabled={ctaSpec.kind === "pending" || ctaSpec.kind === "loading"}
         onClick={() => {
-          if (ctaSpec.requireDates && !datesOk) {
+          if (requireDatesForApply && !datesOk) {
             setCalendarOpen(true);
             document
               .getElementById("preview-dates")
@@ -3419,7 +3670,7 @@ export default function KitchenPreviewPage() {
                               className="min-w-0 max-w-[9.5rem] sm:max-w-[11rem]"
                             />
                           ) : null}
-                          <DockCtaChip show={!!ctaSpec} reduceMotion={reduceMotion} className="shrink-0">
+                          <DockCtaChip show={showDateGatedApplyCta} reduceMotion={reduceMotion} className="shrink-0">
                             {applyCtaButton}
                           </DockCtaChip>
                         </>
@@ -3615,12 +3866,12 @@ export default function KitchenPreviewPage() {
                 equipmentListings={kitchenEquipment}
                 storageListings={kitchenStorage}
                 proceedLabel={ctaSpec?.label}
-                requireDatesForProceed={ctaSpec?.requireDates ?? true}
+                requireDatesForProceed={requireDatesForApply}
                 proceedVariant={ctaSpec?.variant ?? "default"}
                 proceedDisabled={
                   !ctaSpec || ctaSpec.kind === "pending" || ctaSpec.kind === "loading"
                 }
-                showPrimaryCta={!!ctaSpec}
+                showPrimaryCta={showDateGatedApplyCta}
                 calendarOpen={calendarOpen}
                 onCalendarOpenChange={setCalendarOpen}
                 onDatesOkChange={setDatesOk}
@@ -3725,17 +3976,6 @@ export default function KitchenPreviewPage() {
     />
   ) : null;
 
-  const bookingSheet =
-    locationId != null && locationData ? (
-      <KitchenBookingSheet
-        open={bookingSheetOpen}
-        onOpenChange={setBookingSheetOpen}
-        locationId={locationId}
-        locationName={locationData.name}
-        locationAddress={locationData.address}
-      />
-    ) : null;
-
   // Chefs keep the dashboard sidebar; other signed-in roles use the public chrome.
   if (useChefChrome) {
     return (
@@ -3752,7 +3992,6 @@ export default function KitchenPreviewPage() {
           {getContent()}
         </ChefDashboardLayout>
         {scheduleTourSheet}
-        {bookingSheet}
       </>
     );
   }
@@ -3792,7 +4031,6 @@ export default function KitchenPreviewPage() {
       </main>
       <Footer />
       {scheduleTourSheet}
-      {bookingSheet}
     </div>
   );
 }

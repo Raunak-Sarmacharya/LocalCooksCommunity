@@ -300,7 +300,7 @@ export default function ChefSellerAccount({ onOpenApplications }: ChefSellerAcco
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-start gap-3">
                 <BrandMark>
-                  <SiStripe className="h-5 w-5" style={{ color: "#635BFF" }} aria-hidden />
+                  <SiStripe className="h-5 w-5 text-stripe" aria-hidden />
                 </BrandMark>
                 <div>
                   <img

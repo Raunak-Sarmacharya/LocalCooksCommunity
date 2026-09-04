@@ -75,6 +75,8 @@ export interface BookingForManagement {
   transactionAmount?: number;
   stripeProcessingFee?: number;
   managerRevenue?: number;
+  /** Local Cooks platform fee in cents (from payment_transactions). */
+  serviceFee?: number;
   taxRatePercent?: number;
   refundableAmount?: number;
   refundAmount?: number;
@@ -294,6 +296,7 @@ function BookingManagementContent({
     const transactionAmount = booking.transactionAmount || 0;
     const stripeFee = booking.stripeProcessingFee || 0;
     const managerRevenue = booking.managerRevenue || 0;
+    const serviceFee = booking.serviceFee || 0;
     const taxRatePercent = booking.taxRatePercent || 0;
     const alreadyRefunded = booking.refundAmount || 0;
 
@@ -323,18 +326,24 @@ function BookingManagementContent({
 
     const totalCancelledSubtotal = cancelledKitchenCents + cancelledStorageCents + cancelledEquipmentCents;
     const proportionalTax = Math.round((totalCancelledSubtotal * taxRatePercent) / 100);
-    const grossRefund = totalCancelledSubtotal + proportionalTax;
+    const managerGross = managerRevenue + stripeFee;
+    const proportionalServiceFee = managerGross > 0
+      ? Math.round(serviceFee * ((totalCancelledSubtotal + proportionalTax) / managerGross))
+      : 0;
+    const grossRefund = totalCancelledSubtotal + proportionalTax + proportionalServiceFee;
 
-    // Proportional Stripe fee
+    // Proportional Stripe fee (sunk)
     const proportionalStripeFee = transactionAmount > 0
       ? Math.round(stripeFee * (grossRefund / transactionAmount))
       : 0;
 
-    // Net refund = gross minus proportional Stripe fee (customer absorbs fee)
     const netRefund = Math.max(0, grossRefund - proportionalStripeFee);
 
-    // Cap at available balance
-    const availableBalance = Math.max(0, (booking.refundableAmount || managerRevenue) - alreadyRefunded);
+    // Cap includes remaining platform service fee
+    const availableBalance = Math.max(
+      0,
+      (booking.refundableAmount || managerRevenue + serviceFee) - alreadyRefunded,
+    );
     const autoRefundAmount = Math.min(netRefund, availableBalance);
 
     const hasCancellations = totalCancelledSubtotal > 0;
@@ -951,7 +960,6 @@ function BookingManagementContent({
                 <Info className="h-3 w-3 mt-0.5 shrink-0" />
                 <span>
                   {mt("stripeFeeTaxProportionalCancel")}
-                  The customer always absorbs the Stripe processing fee per platform terms.
                 </span>
               </div>
             </div>

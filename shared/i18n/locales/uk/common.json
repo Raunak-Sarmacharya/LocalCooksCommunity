@@ -283,5 +283,7 @@
   "failedToFetchExceptions": "Не вдалося отримати винятки",
   "managerDashboard": "Панель менеджера",
   "adminDashboardNamed": "Адмін-панель {name}",
-  "chefDashboardNamed": "Панель {name}"
+  "chefDashboardNamed": "Панель {name}",
+  "previous": "Назад",
+  "noResults": "Немає результатів."
 }

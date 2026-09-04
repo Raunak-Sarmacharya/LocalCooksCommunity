@@ -309,7 +309,7 @@ export default function KitchenComparisonPage() {
     const redirectPreview = `/kitchen-preview/${location?.slug || locationId}`;
     switch (action.kind) {
       case "book":
-        navigate(`/dashboard?bookLocation=${locationId}`);
+        navigate(`/book/${locationId}`);
         break;
       case "continue":
       case "apply":

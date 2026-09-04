@@ -284,12 +284,12 @@ export function RevenueMetricCards({ metrics, isLoading, transactions }: Revenue
                         {/* Stripe Processing Fee */}
                         <div className="space-y-1">
                             <div className="flex items-center gap-1.5">
-                                <CreditCard className="h-3.5 w-3.5 text-violet-600" />
+                                <CreditCard className="h-3.5 w-3.5 text-stripe" />
                                 <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{mt("stripeFee")}</span>
                                 <TooltipProvider>
                                     <Tooltip>
                                         <TooltipTrigger asChild>
-                                            <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                                            <Info className="h-3 w-3 text-stripe cursor-help" />
                                         </TooltipTrigger>
                                         <TooltipContent className="max-w-xs">
                                             <p className="text-sm">{mt("stripeFeeTooltipDetail")}</p>
@@ -297,7 +297,7 @@ export function RevenueMetricCards({ metrics, isLoading, transactions }: Revenue
                                     </Tooltip>
                                 </TooltipProvider>
                             </div>
-                            <p className="text-xl font-bold text-violet-600">{formatCurrency(stripeFee)}</p>
+                            <p className="text-xl font-bold text-stripe">{formatCurrency(stripeFee)}</p>
                             <p className="text-xs text-muted-foreground">{mt("fromStripeAPI")}</p>
                         </div>
 

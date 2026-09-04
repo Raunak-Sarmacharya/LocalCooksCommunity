@@ -275,6 +275,9 @@
   "bdRefundedOn": "Refunded on {date}",
   "bdRefundedToChef": "{amount} was refunded to the chef.",
   "bdRefundedYou": "You received a refund of {amount}.",
+  "stripeFeeNonRefundableAria": "Why refunds may be less than the amount charged",
+  "stripeFeeNonRefundableTooltip": "Stripe does not return card processing fees when a payment is refunded, so refunds exclude that fee. Local Cooks returns its platform service fee.",
+  "stripeFeeNonRefundableDocsLink": "Stripe docs: processing fees aren’t returned",
   "bdRevenue": "Revenue",
   "bdSchedule": "Schedule",
   "bdServiceFee": "Service Fee",
@@ -2211,5 +2214,8 @@
   "storageDeclinedCount": "{count} storage declined",
   "equipmentDeclinedCount": "{count} equipment declined",
   "storagePendingCount": "{count} storage pending",
-  "partialRefund": "Partial refund"
+  "partialRefund": "Partial refund",
+  "bdProcessingFee": "Processing fee",
+  "bdRefund": "Refund",
+  "bdHstPercent": "HST ({percent}%)"
 }

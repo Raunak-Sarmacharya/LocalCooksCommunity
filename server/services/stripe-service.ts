@@ -609,69 +609,137 @@ export async function createRefund(
 }
 
 /**
- * SIMPLE REFUND MODEL
- * 
- * Manager's available balance is the cap. No proportional calculations.
- * The Stripe fee is a sunk cost — it's gone from day 1 and not refundable.
- * 
- * How it works:
- * - Customer paid $40, Stripe took $1.46, Manager received $38.54
- * - Manager's available balance = $38.54 (their balance minus any prior refunds)
- * - Manager enters $20 → Customer gets $20, Manager debited $20
- * - Manager's remaining balance = $18.54
- * 
- * @param totalChargedCents - Original transaction amount in cents
- * @param managerReceivedCents - Amount manager received after Stripe fees (from transfer)
- * @param alreadyRefundedCents - Amount already refunded in previous refunds (from manager's balance)
- * @param stripeProcessingFeeCents - Original Stripe processing fee (for display only)
- * @returns Refund breakdown with max refundable
+ * REFUND MODEL
+ *
+ * Customer paid: managerGross + serviceFee (= totalCharged).
+ * Manager received: managerGross − stripeFee.
+ * Platform kept: serviceFee.
+ * Stripe fee is sunk — Stripe does not return processing fees on refunds.
+ *
+ * On refund, the customer gets the platform service fee back (platform absorbs it).
+ * The manager is only debited their share. Max customer refund =
+ *   totalCharged − stripeFee − alreadyRefunded
+ * ≈ remainingManagerBalance + remainingServiceFee.
+ *
+ * Example: charged $122, Stripe $3.84, manager $111.16, service fee $7.
+ * Full refund → customer $118.16, manager debited $111.16, platform returns $7.
  */
 export function calculateRefundBreakdown(
   totalChargedCents: number,
   managerReceivedCents: number,
   alreadyRefundedCents: number,
-  stripeProcessingFeeCents: number
+  stripeProcessingFeeCents: number,
+  serviceFeeCents: number = 0,
 ): {
   maxRefundableToCustomer: number;
   maxDeductibleFromManager: number;
   remainingManagerBalance: number;
+  remainingServiceFee: number;
   originalStripeFee: number;
+  originalServiceFee: number;
   explanation: string;
 } {
-  // Manager's remaining balance = what they received minus what's already been refunded
-  // Note: alreadyRefundedCents here represents the amount already taken from manager's balance
-  const managerRemainingBalance = Math.max(0, managerReceivedCents - alreadyRefundedCents);
-  
-  // Max refundable = manager's remaining balance (simple!)
-  // Customer gets X, Manager debited X — always equal
-  const maxRefundable = managerRemainingBalance;
-  
+  const serviceFee = Math.max(0, serviceFeeCents);
+  const managerReceived = Math.max(0, managerReceivedCents);
+  const alreadyRefunded = Math.max(0, alreadyRefundedCents);
+  const originalPool = managerReceived + serviceFee;
+
+  // Attribute prior customer refunds across manager vs platform using the original split.
+  const alreadyFromManager =
+    originalPool > 0
+      ? Math.min(
+          managerReceived,
+          Math.round((alreadyRefunded * managerReceived) / originalPool),
+        )
+      : alreadyRefunded;
+  const alreadyFromPlatform = Math.min(
+    serviceFee,
+    Math.max(0, alreadyRefunded - alreadyFromManager),
+  );
+
+  const remainingManagerBalance = Math.max(0, managerReceived - alreadyFromManager);
+  const remainingServiceFee = Math.max(0, serviceFee - alreadyFromPlatform);
+
+  // Also respect what's left on the Stripe charge (total − stripe fee − refunded).
+  const maxFromCharge = Math.max(
+    0,
+    totalChargedCents - Math.max(0, stripeProcessingFeeCents) - alreadyRefunded,
+  );
+  const maxRefundable = Math.min(
+    remainingManagerBalance + remainingServiceFee,
+    maxFromCharge,
+  );
+
   return {
     maxRefundableToCustomer: maxRefundable,
-    maxDeductibleFromManager: maxRefundable, // Same value - no discrepancy!
-    remainingManagerBalance: managerRemainingBalance,
+    maxDeductibleFromManager: remainingManagerBalance,
+    remainingManagerBalance,
+    remainingServiceFee,
     originalStripeFee: stripeProcessingFeeCents,
-    explanation: managerRemainingBalance > 0
-      ? `Available to refund from this transaction: $${(maxRefundable / 100).toFixed(2)}`
-      : 'No remaining balance to refund'
+    originalServiceFee: serviceFee,
+    explanation:
+      maxRefundable > 0
+        ? `Available to refund: $${(maxRefundable / 100).toFixed(2)} (includes platform service fee)`
+        : "No remaining balance to refund",
   };
 }
 
 /**
- * Reverse the transfer (from connected account back to platform) and then refund the charge.
- * 
- * ENTERPRISE STANDARD - Unified Refund Model:
- * - Customer receives exactly the specified refund amount
- * - Manager's Stripe Connect account is debited the same amount (via explicit transfer reversal)
- * - This ensures consistency between LocalCooks portal and Stripe dashboard
- * 
+ * Split a customer refund into manager debit + platform service-fee return.
+ * Customer receives `customerRefundCents`; only `managerDebitCents` is reversed from Connect.
+ */
+export function splitCustomerRefund(
+  customerRefundCents: number,
+  managerReceivedCents: number,
+  serviceFeeCents: number,
+  alreadyRefundedCents: number = 0,
+): { managerDebitCents: number; platformServiceFeeCents: number } {
+  const breakdown = calculateRefundBreakdown(
+    managerReceivedCents + serviceFeeCents, // charge proxy when total unknown
+    managerReceivedCents,
+    alreadyRefundedCents,
+    0,
+    serviceFeeCents,
+  );
+  const refund = Math.max(
+    0,
+    Math.min(customerRefundCents, breakdown.maxRefundableToCustomer),
+  );
+  const remainingPool =
+    breakdown.remainingManagerBalance + breakdown.remainingServiceFee;
+  if (refund <= 0 || remainingPool <= 0) {
+    return { managerDebitCents: 0, platformServiceFeeCents: 0 };
+  }
+
+  let managerDebitCents = Math.round(
+    (refund * breakdown.remainingManagerBalance) / remainingPool,
+  );
+  managerDebitCents = Math.min(
+    managerDebitCents,
+    breakdown.remainingManagerBalance,
+    refund,
+  );
+  let platformServiceFeeCents = refund - managerDebitCents;
+  if (platformServiceFeeCents > breakdown.remainingServiceFee) {
+    platformServiceFeeCents = breakdown.remainingServiceFee;
+    managerDebitCents = refund - platformServiceFeeCents;
+  }
+  return { managerDebitCents, platformServiceFeeCents };
+}
+
+/**
+ * Reverse the manager transfer (Connect → platform) and refund the customer.
+ *
+ * Customer refund may include the platform service fee (platform absorbs it).
+ * Pass `reverseTransferAmount` = manager's share only; do not reverse the
+ * service-fee portion from the connected account.
+ *
+ * Stripe processing fees are never returned.
+ *
  * ENTERPRISE STANDARD - Automatic Refund Emails:
  * Stripe automatically sends refund receipt emails to customers if:
  * 1. "Refunds" is enabled in Stripe Dashboard > Settings > Customer emails
  * 2. The original charge had a receipt_email set (we set this in checkout session creation)
- * 
- * For card refunds, Stripe uses the receipt_email from the original charge.
- * No additional parameters needed - just ensure Dashboard settings are configured.
  */
 export async function reverseTransferAndRefund(
   paymentIntentId: string,
@@ -742,8 +810,23 @@ export async function reverseTransferAndRefund(
     // Fallback to charge.transfer for legacy destination charges
     const transferId = transferIdFromDb || (typeof charge.transfer === 'string' ? charge.transfer : charge.transfer?.id);
 
-    // If a transfer exists, reverse the proportional amount
-    if (transferId && transferredAmount > 0) {
+    // Reverse only the manager's share. When the customer refund includes the
+    // platform service fee, reverseTransferAmount < refund amount — the platform
+    // absorbs the fee from its own balance. Fall back to charge-proration only
+    // when no explicit manager debit was provided.
+    if (transferId && options?.reverseTransferAmount !== undefined) {
+      const reversalAmount = Math.min(
+        Math.max(0, options.reverseTransferAmount),
+        transferredAmount > 0 ? transferredAmount : options.reverseTransferAmount,
+      );
+      if (reversalAmount > 0) {
+        const reversal = await stripe.transfers.createReversal(transferId, {
+          amount: reversalAmount,
+          metadata: options?.transferMetadata || options?.metadata,
+        });
+        transferReversalId = reversal.id;
+      }
+    } else if (transferId && transferredAmount > 0) {
       const { reverseTransferForRefund } = await import('./stripe-transfer-service');
       const reversal = await reverseTransferForRefund(
         transferId,
@@ -752,16 +835,6 @@ export async function reverseTransferAndRefund(
         transferredAmount,
       );
       transferReversalId = reversal?.id || null;
-    } else if (transferId && options?.reverseTransferAmount !== undefined) {
-      // Legacy explicit reversal path (destination charges)
-      const reversalAmount = options.reverseTransferAmount;
-      if (reversalAmount > 0) {
-        const reversal = await stripe.transfers.createReversal(transferId, {
-          amount: reversalAmount,
-          metadata: options?.transferMetadata || options?.metadata,
-        });
-        transferReversalId = reversal.id;
-      }
     }
 
     const refundParams: any = {

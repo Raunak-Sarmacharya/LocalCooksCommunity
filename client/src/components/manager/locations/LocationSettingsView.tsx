@@ -648,19 +648,20 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                 <CardContent className="space-y-6">
                                     <div className="space-y-2">
                                         <Label>{mt("cancellationWindow")}</Label>
-                                        <NumericInput suffix="hours" value={String(cancellationHours)} onValueChange={(val) => setCancellationHours(parseInt(val) || 0)} />
+                                        <NumericInput suffix={mt("hoursSuffix")} value={String(cancellationHours)} onValueChange={(val) => setCancellationHours(parseInt(val) || 0)} />
                                     </div>
                                     <div className="space-y-2">
                                         <Label>{mt("policyMessage")}</Label>
-                                        <Textarea value={cancellationMessage} onChange={e => setCancellationMessage(e.target.value)} />
+                                        <Textarea value={cancellationMessage} onChange={e => setCancellationMessage(e.target.value)} placeholder={mt("cancellationPolicyDefaultMessage")} />
+                                        <p className="text-xs text-muted-foreground">{mt("useHoursAsPlaceholder", { hours: "{hours}" })}</p>
                                     </div>
                                     <div className="space-y-2">
                                         <Label>{mt("defaultDailyLimit")}</Label>
-                                        <NumericInput suffix="hours" value={String(dailyBookingLimit)} onValueChange={(val) => setDailyBookingLimit(parseInt(val) || 0)} />
+                                        <NumericInput suffix={mt("hoursSuffix")} value={String(dailyBookingLimit)} onValueChange={(val) => setDailyBookingLimit(parseInt(val) || 0)} />
                                     </div>
                                     <div className="space-y-2">
                                         <Label>{mt("minimumAdvanceNotice")}</Label>
-                                        <NumericInput suffix="hours" value={String(minimumBookingWindowHours)} onValueChange={(val) => setMinimumBookingWindowHours(parseInt(val) || 0)} />
+                                        <NumericInput suffix={mt("hoursSuffix")} value={String(minimumBookingWindowHours)} onValueChange={(val) => setMinimumBookingWindowHours(parseInt(val) || 0)} />
                                     </div>
                                     <Button onClick={() => handleSave()} disabled={isUpdating}>
                                         <Save className="h-4 w-4 mr-2" />{mt("saveAllSettings")}</Button>

@@ -616,7 +616,7 @@ export function ManagerKitchenApplicationsContent({
                             columns={columns}
                             data={filteredApplications}
                             filterColumn="fullName"
-                            filterPlaceholder="Filter by name..."
+                            filterPlaceholder={mt("filterByName")}
                         />
                     ) : (
                         <div className="flex flex-col items-center justify-center py-16 text-center">

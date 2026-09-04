@@ -327,13 +327,13 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
               <Label htmlFor="cancellation-hours">{mt("cancellationWindow")}</Label>
               <NumericInput
                 id="cancellation-hours"
-                suffix="hours"
+                suffix={mt("hoursSuffix")}
                 value={String(cancellationHours)}
                 onValueChange={(val) => setCancellationHours(parseInt(val) || 0)}
                 className="mt-1.5 max-w-xs"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Minimum hours before booking time that cancellation is allowed (0 = no restrictions)
+                {mt("minimumHoursBeforeCancellationAllowed")}
               </p>
             </div>
             <div>
@@ -347,7 +347,7 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
                 placeholder={mt("cancellationPolicyDefaultMessage")}
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Use {"{hours}"} as a placeholder for the cancellation window
+                {mt("useHoursAsPlaceholder", { hours: "{hours}" })}
               </p>
             </div>
           </div>
@@ -363,7 +363,7 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
               <Label htmlFor="daily-limit">{mt("defaultHoursPerChefPerDay")}</Label>
               <NumericInput
                 id="daily-limit"
-                suffix="hours"
+                suffix={mt("hoursSuffix")}
                 value={String(dailyBookingLimit)}
                 onValueChange={(val) => setDailyBookingLimit(parseInt(val) || 2)}
                 className="mt-1.5 max-w-xs"
@@ -389,7 +389,7 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
               <Label htmlFor="min-window">{mt("minimumHoursInAdvance")}</Label>
               <NumericInput
                 id="min-window"
-                suffix="hours"
+                suffix={mt("hoursSuffix")}
                 value={String(minimumBookingWindowHours)}
                 onValueChange={(val) => {
                   const parsed = parseInt(val, 10);
@@ -398,7 +398,7 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
                 className="mt-1.5 max-w-xs"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Chefs must book at least this many hours before the booking time (0 = no restrictions)
+                {mt("chefsMustBookAtLeastHours")}
               </p>
             </div>
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">

@@ -160,7 +160,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           } else if (
             currentPath.includes('/kitchen-preview') ||
             currentPath.includes('/apply-kitchen') ||
-            currentPath.includes('/book-kitchen')
+            currentPath.includes('/book-kitchen') ||
+            currentPath.includes('/book/')
           ) {
             finalRole = 'chef';
             logger.info('👨‍🍳 Auto-setting role to chef based on kitchen preview/book path');
@@ -573,7 +574,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else if (
         currentPath.includes('/kitchen-preview') ||
         currentPath.includes('/apply-kitchen') ||
-        currentPath.includes('/book-kitchen')
+        currentPath.includes('/book-kitchen') ||
+        currentPath.includes('/book/')
       ) {
         detectedRole = 'chef';
         logger.info('👨‍🍳 Detected chef role from kitchen preview/book path during signup');

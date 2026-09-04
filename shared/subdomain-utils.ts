@@ -268,7 +268,7 @@ export function isRouteAccessibleFromSubdomain(subdomainType: SubdomainType, rou
 
   // Chef routes - accessible from chef subdomain
   if (routePath.startsWith('/apply') || routePath.startsWith('/dashboard') || 
-      routePath.startsWith('/book-kitchen')) {
+      routePath.startsWith('/book-kitchen') || routePath.startsWith('/book/')) {
     return subdomainType === 'chef';
   }
 

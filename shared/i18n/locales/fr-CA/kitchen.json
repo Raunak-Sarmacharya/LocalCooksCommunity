@@ -372,6 +372,7 @@
   "damageClaimsTab": "Réclamations pour dommages",
   "dashboard": "Tableau de bord",
   "dateLabel": "Date :",
+  "dateNotAvailable": "Cette date n'est pas disponible",
   "dayAvailable": "Disponible",
   "dayFri": "Ven",
   "dayFriday": "Vendredi",
@@ -1390,5 +1391,9 @@
   "requestToApplyProgress": "Demande d’accès",
   "step2Of2KitchenDocs": "Documents de cuisine (étape 2)",
   "everyEmptyHourIs": "Chaque heure vide, c’est",
-  "runYourKitchen": "Gérez votre cuisine"
+  "runYourKitchen": "Gérez votre cuisine",
+  "bookingDatesComingSoonTitle": "Les dates de réservation ne sont pas encore ouvertes",
+  "bookingDatesComingSoonNeedRateAndSchedule": "Cette cuisine a encore besoin d’un tarif horaire et d’un horaire de disponibilité avant que vous puissiez choisir une date.",
+  "bookingDatesComingSoonNeedRate": "Cette cuisine a encore besoin d’un tarif horaire avant que vous puissiez choisir une date.",
+  "bookingDatesComingSoonNeedSchedule": "Cette cuisine a encore besoin d’un horaire de disponibilité avant que vous puissiez choisir une date."
 }

@@ -266,18 +266,19 @@ function BookingActionSheetContent({
   const isAuthorized = booking.paymentStatus === "authorized";
   const kitchenIsRejected = kitchenAction === "cancelled";
 
-  // ── Refund Calculation (Tax-inclusive, full Stripe fee deducted) ─────────────
+  // ── Refund Calculation (tax + service fee returned; Stripe fee sunk) ─────────
   // Formula:
   //   rejectedSubtotal = sum of rejected item prices (pre-tax)
-  //   proportionalTax = rejectedSubtotal × taxRate / 100
-  //   grossRefund = rejectedSubtotal + proportionalTax
-  //   netRefund = max(0, grossRefund − fullStripeFee)
-  //   Full rejection → netRefund = transactionAmount − stripeFee = managerRevenue → balance = 0
+  //   proportionalTax / proportionalServiceFee scaled to rejected share
+  //   grossRefund = rejectedSubtotal + tax + serviceFee
+  //   netRefund = max(0, grossRefund − proportionalStripeFee)
+  //   Full rejection → customer gets charge − stripe fee (platform returns service fee)
   const refundCalc = useMemo(() => {
     const kitchenPriceCents = booking.totalPrice || 0;
     const transactionAmount = booking.transactionAmount || 0;
     const stripeFee = booking.stripeProcessingFee || 0;
     const managerRevenue = booking.managerRevenue || 0;
+    const serviceFee = booking.serviceFee || 0;
     const taxRatePercent = booking.taxRatePercent || 0;
 
     // Sum rejected subtotals (pre-tax)
@@ -317,19 +318,24 @@ function BookingActionSheetContent({
     // Proportional tax on rejected items
     const proportionalTax = Math.round((totalRejectedSubtotal * taxRatePercent) / 100);
 
-    // Gross refund = rejected subtotal + proportional tax
-    const grossRefund = totalRejectedSubtotal + proportionalTax;
+    // Proportional platform service fee (returned to customer on refund)
+    const managerGross = managerRevenue + stripeFee;
+    const proportionalServiceFee = managerGross > 0
+      ? Math.round(serviceFee * ((totalRejectedSubtotal + proportionalTax) / managerGross))
+      : 0;
 
-    // Proportional Stripe fee = stripeFee × (grossRefund / transactionAmount)
+    // Gross refund = rejected subtotal + tax + service fee
+    const grossRefund = totalRejectedSubtotal + proportionalTax + proportionalServiceFee;
+
+    // Proportional Stripe fee (sunk)
     const proportionalStripeFee = transactionAmount > 0
       ? Math.round(stripeFee * (grossRefund / transactionAmount))
       : 0;
 
-    // Net refund = gross minus proportional Stripe fee (chef absorbs the fee)
     const netRefund = Math.max(0, grossRefund - proportionalStripeFee);
 
-    // Cap at manager's available balance
-    const maxRefundable = Math.max(0, managerRevenue);
+    // Cap at manager remaining + remaining service fee (Stripe fee excluded)
+    const maxRefundable = Math.max(0, managerRevenue + serviceFee);
     const autoRefundAmount = Math.min(netRefund, maxRefundable);
 
     const hasAnyRejection = totalRejectedSubtotal > 0;
@@ -1081,7 +1087,7 @@ function BookingActionSheetContent({
                 </div>
                 {effectiveRefundAmount < refundCalc.netRefund && (
                   <p className="text-[10px] text-amber-600 italic">
-                    Capped at available balance ({formatPrice(refundCalc.maxRefundable)})
+                    Capped at available refund ({formatPrice(refundCalc.maxRefundable)})
                   </p>
                 )}
               </div>
@@ -1115,7 +1121,7 @@ function BookingActionSheetContent({
                       >{mt("reset")}</Button>
                     </div>
                     <p className="text-[10px] text-amber-600">
-                      Max: {formatPrice(refundCalc.maxRefundable)} (manager&apos;s available balance)
+                      Max: {formatPrice(refundCalc.maxRefundable)} (includes platform service fee)
                     </p>
                   </div>
                 )}

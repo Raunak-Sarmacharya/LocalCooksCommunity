@@ -13,6 +13,7 @@ import { logger } from "../logger";
 
 import { sql } from "drizzle-orm";
 import { resolveKitchenTransactionTaxAndSubtotal } from "./revenue-transaction-tax";
+import { calculateRefundBreakdown } from "./stripe-service";
 
 export interface RevenueMetrics {
   totalRevenue: number;        // Total booking revenue (cents) - gross amount charged to customer
@@ -1091,9 +1092,14 @@ export async function getTransactionHistory(
         createdAt: row.created_at,
         paidAt: row.pt_paid_at || null,
         refundAmount: ptRefundAmount,
-        // SIMPLE REFUND MODEL: Manager's balance is the cap
-        // refundableAmount = managerRevenue - already refunded (not totalPrice - refunded)
-        refundableAmount: Math.max(0, (managerRevenue || 0) - ptRefundAmount),
+        // Includes platform service fee (returned on refund); Stripe fee is sunk
+        refundableAmount: calculateRefundBreakdown(
+          (managerRevenue || 0) + serviceFeeCents + stripeFee,
+          managerRevenue || 0,
+          ptRefundAmount,
+          stripeFee,
+          serviceFeeCents,
+        ).maxRefundableToCustomer,
         // Add description field for damage claims
         description: description,
       };
@@ -1270,8 +1276,14 @@ export async function getTransactionHistory(
         createdAt: row.created_at,
         paidAt: row.pt_paid_at || null,
         refundAmount: ptRefundAmount,
-        // SIMPLE REFUND MODEL: Manager's balance is the cap
-        refundableAmount: Math.max(0, (ptManagerRevenue || ptAmount) - ptRefundAmount),
+        // Includes platform service fee (returned on refund); Stripe fee is sunk
+        refundableAmount: calculateRefundBreakdown(
+          (ptManagerRevenue || ptAmount) + ptServiceFee + stripeFee,
+          ptManagerRevenue || ptAmount,
+          ptRefundAmount,
+          stripeFee,
+          ptServiceFee,
+        ).maxRefundableToCustomer,
       };
     });
 

@@ -589,12 +589,20 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
         totalPrice: details.totalPrice,
         status: details.status,
         paymentStatus: details.paymentStatus,
-        transactionId: booking.transactionId, // from list data
+        transactionId: details.paymentTransaction?.id || booking.transactionId, // prefer details PT id
         transactionAmount: details.paymentTransaction?.amount,
         stripeProcessingFee: details.paymentTransaction?.stripeProcessingFee,
         managerRevenue: details.paymentTransaction?.managerRevenue,
+        serviceFee:
+          details.paymentTransaction?.serviceFee ||
+          details.serviceFee ||
+          booking.serviceFee ||
+          0,
         taxRatePercent: details.kitchen?.taxRatePercent ? Number(details.kitchen.taxRatePercent) : undefined,
-        refundableAmount: details.paymentTransaction?.managerRevenue || booking.refundableAmount,
+        refundableAmount:
+          (details.paymentTransaction?.managerRevenue || 0) +
+            (details.paymentTransaction?.serviceFee || details.serviceFee || booking.serviceFee || 0) ||
+          booking.refundableAmount,
         refundAmount: details.paymentTransaction?.refundAmount || booking.refundAmount || 0,
         cancellationRequested: !!details.cancellationRequestedAt,
         cancellationReason: details.cancellationRequestReason,
@@ -1179,7 +1187,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                         <span>${((bookingToRefund.refundAmount || 0) / 100).toFixed(2)}</span>
                       </div>
                     )}
-                    {/* SIMPLE REFUND MODEL: Available balance is the cap */}
+                    {/* Max refundable includes platform service fee; Stripe fee is sunk */}
                     <div className="border-t pt-3 mt-3 space-y-2">
                       {(bookingToRefund.stripeProcessingFee || 0) > 0 && (
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -1284,7 +1292,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
 
               <Separator />
 
-              {/* Refund Breakdown — capped at manager's available balance */}
+              {/* Refund breakdown — includes platform service fee; Stripe fee is sunk */}
               <div className="space-y-2 text-sm">
                 <p className="font-medium text-sm">{t("refundBreakdown")}</p>
                 <div className="flex items-center justify-between">

@@ -25,7 +25,6 @@ import {
 import { useState, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "wouter";
-import KitchenBookingSheet from "@/components/booking/KitchenBookingSheet";
 import { ScheduleViewingWidget } from "@/components/chef/ScheduleViewingWidget";
 import ChefViewingsList from "@/components/chef/ChefViewingsList";
 import { DiscoverKitchensButtonTour, consumeDiscoverKitchensWalkthroughRequest, peekDiscoverKitchensWalkthroughRequest } from "@/components/kitchen-application/DiscoverKitchensButtonTour";
@@ -132,21 +131,9 @@ export default function KitchenDiscovery({
     setActiveTab(defaultTab);
   }, [defaultTab]);
   
-  // Booking sheet state for platform standard booking flow
-  const [bookingSheetOpen, setBookingSheetOpen] = useState(false);
-  const [bookingLocation, setBookingLocation] = useState<{
-    id: number;
-    name: string;
-    address?: string;
-  } | null>(null);
-
-  const handleBookClick = (locationId: number, locationName: string, locationAddress?: string) => {
-    setBookingLocation({
-      id: locationId,
-      name: locationName,
-      address: locationAddress,
-    });
-    setBookingSheetOpen(true);
+  // Navigate to intermediate booking page
+  const handleBookClick = (locationId: number, _locationName: string, _locationAddress?: string) => {
+    navigate(`/book/${locationId}`);
   };
 
   const handleViewKitchenApplication = () => {
@@ -995,16 +982,6 @@ export default function KitchenDiscovery({
             <ChefViewingsList onExploreKitchens={() => setActiveTab("discover")} />
           </TabsContent>
         </Tabs>
-
-      {bookingLocation && (
-        <KitchenBookingSheet
-          open={bookingSheetOpen}
-          onOpenChange={setBookingSheetOpen}
-          locationId={bookingLocation.id}
-          locationName={bookingLocation.name}
-          locationAddress={bookingLocation.address}
-        />
-      )}
 
       <Dialog
         open={!!tourKitchenPicker}

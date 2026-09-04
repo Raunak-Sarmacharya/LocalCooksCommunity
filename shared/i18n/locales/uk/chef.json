@@ -276,6 +276,9 @@
   "bdRefundedOn": "Повернено {date}",
   "bdRefundedToChef": "{amount} повернено шеф-кухарю.",
   "bdRefundedYou": "Ви отримали повернення {amount}.",
+  "stripeFeeNonRefundableAria": "Чому повернення може бути меншим за списану суму",
+  "stripeFeeNonRefundableTooltip": "Stripe не повертає комісію за обробку картки під час повернення платежу, тому цю комісію виключено. Local Cooks повертає свій сервісний збір платформи.",
+  "stripeFeeNonRefundableDocsLink": "Документація Stripe: комісія за обробку не повертається",
   "bdRevenue": "Дохід",
   "bdSchedule": "Розклад",
   "bdServiceFee": "Сервісний збір",
@@ -2211,5 +2214,8 @@
   "storageDeclinedCount": "{count} зберігання відхилено",
   "equipmentDeclinedCount": "{count} обладнання відхилено",
   "storagePendingCount": "{count} зберігання в очікуванні",
-  "partialRefund": "Часткове повернення"
+  "partialRefund": "Часткове повернення",
+  "bdProcessingFee": "Комісія за обробку",
+  "bdRefund": "Відшкодування",
+  "bdHstPercent": "HST ({percent}%)"
 }

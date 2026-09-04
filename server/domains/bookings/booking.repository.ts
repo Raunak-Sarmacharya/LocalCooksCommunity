@@ -17,6 +17,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, asc, lt, not, inArray, gte, lte, or, sql, ne } from "drizzle-orm";
 import { KitchenBooking, StorageBooking, EquipmentBooking, InsertKitchenBooking } from "./booking.types";
+import { calculateRefundBreakdown } from "../../services/stripe-service";
 
 export class BookingRepository {
 
@@ -279,18 +280,21 @@ export class BookingRepository {
                 ? managerRevenue
                 : kbTotalPrice + taxAmount - stripeProcessingFee);
             
-            // SIMPLE REFUND MODEL: Manager's balance is the cap
-            // Stripe fee is a sunk cost — it's gone from day 1 and not refundable
-            // Manager enters $20 → Customer gets $20, Manager debited $20
-            // For voided authorizations: no money was captured, so nothing to refund
-            
-            // Manager's remaining balance = what they received minus what's already been refunded
-            const managerRemainingBalance = isVoidedAuthorization ? 0 : (managerRevenue 
-                ? Math.max(0, managerRevenue - refundAmount)
-                : 0);
-            
-            // Max refundable = manager's remaining balance (simple!)
-            const refundableAmount = managerRemainingBalance;
+            // Max refundable includes platform service fee (returned on refund).
+            // Stripe fee is sunk. For voided authorizations: nothing to refund.
+            const refundBreakdown = calculateRefundBreakdown(
+                transactionAmount ?? 0,
+                managerRevenue ?? 0,
+                refundAmount,
+                stripeProcessingFee,
+                serviceFee,
+            );
+            const managerRemainingBalance = isVoidedAuthorization
+                ? 0
+                : refundBreakdown.remainingManagerBalance;
+            const refundableAmount = isVoidedAuthorization
+                ? 0
+                : refundBreakdown.maxRefundableToCustomer;
 
             // For authorized holds, preserve the original amount for display context
             // (the client shows "Payment held: $XX" differently from "Total charged: $XX")
@@ -328,9 +332,9 @@ export class BookingRepository {
                 managerRevenue,    // What manager receives (0 for voided auths)
                 netRevenue,        // Net = transactionAmount - taxAmount - stripeFee (0 for voided auths)
                 refundAmount,      // Amount already refunded (0 for voided auths)
-                refundableAmount,  // SIMPLE: Max refundable = manager's remaining balance (0 for voided auths)
+                refundableAmount,  // manager remaining + service fee remaining (0 for voided auths)
                 stripeProcessingFee,   // Total Stripe processing fee (0 for voided auths)
-                managerRemainingBalance, // Manager's remaining balance from this transaction (0 for voided auths)
+                managerRemainingBalance, // Manager's remaining Connect balance (0 for voided auths)
                 // ── Voided Authorization Context ────────────────────────────────────
                 // These fields let the client distinguish between "never charged" vs "$0 booking"
                 isVoidedAuthorization,  // true when PT was canceled before capture — no money moved

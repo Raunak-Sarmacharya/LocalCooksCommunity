@@ -1483,16 +1483,12 @@ router.put(
 /**
  * ENTERPRISE-GRADE REFUND ENDPOINT
  *
- * Unified Refund Model: Customer Refund = Manager Deduction
- * This ensures consistency between LocalCooks portal and Stripe dashboard.
+ * Customer refund includes the platform service fee (platform absorbs it).
+ * Manager is only debited their share of the refund.
+ * Stripe processing fees are sunk and never returned.
  *
- * Key Principle:
- * - Manager enters refund amount (e.g., $20)
- * - Customer receives exactly $20
- * - Manager's Stripe Connect account is debited exactly $20
- * - No discrepancy, no confusion
- *
- * The max refundable is limited by the manager's remaining balance from this transaction.
+ * Max refundable ≈ manager remaining + service fee remaining
+ *               = totalCharged − stripeFee − alreadyRefunded
  */
 router.post(
   "/revenue/transactions/:transactionId/refund",
@@ -1563,10 +1559,10 @@ router.post(
         parseInt(String(transaction.manager_revenue || "0")) || 0;
       const stripeProcessingFee =
         parseInt(String(transaction.stripe_processing_fee || "0")) || 0;
+      const serviceFee =
+        parseInt(String(transaction.service_fee || "0")) || 0;
 
-      // UNIFIED REFUND MODEL: Customer Refund = Manager Deduction
-      // Calculate using the enterprise-grade refund breakdown
-      const { calculateRefundBreakdown } = await import(
+      const { calculateRefundBreakdown, splitCustomerRefund } = await import(
         "../services/stripe-service"
       );
       const refundBreakdown = calculateRefundBreakdown(
@@ -1574,10 +1570,9 @@ router.post(
         managerRevenue,
         currentRefundAmount,
         stripeProcessingFee,
+        serviceFee,
       );
 
-      // Validate the requested amount doesn't exceed max refundable
-      // Max refundable = manager's remaining balance (ensures customer refund = manager deduction)
       if (amountCents > refundBreakdown.maxRefundableToCustomer) {
         return res.status(400).json({
           error: `Refund amount exceeds maximum. Max refundable: $${(refundBreakdown.maxRefundableToCustomer / 100).toFixed(2)}`,
@@ -1600,9 +1595,14 @@ router.post(
           .json({ error: "Manager Stripe Connect account not found" });
       }
 
-      // UNIFIED MODEL: Both amounts are the same - no discrepancy!
       const refundToCustomer = amountCents;
-      const deductFromManager = amountCents; // Same value for consistency
+      const { managerDebitCents: deductFromManager, platformServiceFeeCents } =
+        splitCustomerRefund(
+          refundToCustomer,
+          managerRevenue,
+          serviceFee,
+          currentRefundAmount,
+        );
 
       const { reverseTransferAndRefund } = await import(
         "../services/stripe-service"
@@ -1621,10 +1621,12 @@ router.post(
 
       const refund = await reverseTransferAndRefund(
         transaction.payment_intent_id,
-        refundToCustomer, // Customer receives this amount
+        refundToCustomer,
         stripeReason,
         {
-          reverseTransferAmount: deductFromManager, // Manager is debited this exact same amount
+          reverseTransferAmount: deductFromManager,
+          // Separate-charges flow has no application_fee; service fee is returned
+          // by including it in the customer refund (platform absorbs from balance).
           refundApplicationFee: false,
           metadata: {
             transaction_id: String(transaction.id),
@@ -1632,9 +1634,10 @@ router.post(
             booking_type: String(transaction.booking_type),
             manager_id: String(managerId),
             refund_reason: refundReason ? String(refundReason) : "",
-            refund_model: "unified", // Track that we used unified model
+            refund_model: "service_fee_included",
             customer_receives: String(refundToCustomer),
             manager_debited: String(deductFromManager),
+            platform_service_fee_returned: String(platformServiceFeeCents),
           },
           transferMetadata: {
             transaction_id: String(transaction.id),
@@ -1648,11 +1651,12 @@ router.post(
 
       // Update payment transaction totals
       const newRefundTotal = currentRefundAmount + amountCents;
-      // SIMPLE REFUND MODEL: Full refund = manager's entire balance refunded
-      // Compare to managerRevenue (what manager received), not totalAmount (what customer paid)
-      // Manager can only refund up to their balance, so when newRefundTotal >= managerRevenue, it's fully refunded
+      const fullRefundThreshold = Math.max(
+        0,
+        totalAmount - stripeProcessingFee,
+      );
       const newStatus =
-        newRefundTotal >= managerRevenue ? "refunded" : "partially_refunded";
+        newRefundTotal >= fullRefundThreshold ? "refunded" : "partially_refunded";
 
       // Append refund details to metadata
       let currentMetadata: any = {};
@@ -1815,29 +1819,28 @@ router.post(
         logger.error("[Refund] Error sending refund notification to chef:", notifError);
       }
 
-      // Calculate new remaining amounts for response using unified model
       const newBreakdown = calculateRefundBreakdown(
         totalAmount,
         managerRevenue,
         newRefundTotal,
         stripeProcessingFee,
+        serviceFee,
       );
 
       res.json({
         success: true,
         refundId: refund.refundId,
         status: newStatus,
-        // UNIFIED: Both values are the same - no discrepancy!
         customerReceived: refundToCustomer,
         managerDebited: deductFromManager,
-        // Total refunded so far
+        platformServiceFeeReturned: platformServiceFeeCents,
         totalRefunded: newRefundTotal,
-        // Remaining amounts (using unified model)
         remainingCharged: totalAmount - newRefundTotal,
         maxRefundable: newBreakdown.maxRefundableToCustomer,
         managerRemainingBalance: newBreakdown.remainingManagerBalance,
-        // Fee info for transparency
+        remainingServiceFee: newBreakdown.remainingServiceFee,
         originalStripeFee: stripeProcessingFee,
+        originalServiceFee: serviceFee,
         transferReversalId: refund.transferReversalId,
       });
     } catch (error: any) {
@@ -4204,6 +4207,7 @@ router.get(
       try {
         const [txn] = await db
           .select({
+            id: paymentTransactions.id,
             amount: paymentTransactions.amount,
             baseAmount: paymentTransactions.baseAmount, // Base amount before tax
             serviceFee: paymentTransactions.serviceFee,
@@ -4999,7 +5003,7 @@ router.put(
 
           const totalRejectedSubtotalCents = rejectedKitchenCents + rejectedStorageTotalCents + rejectedEquipmentTotalCents;
 
-          // ── Step 3: Calculate refund (tax-inclusive, full Stripe fee deducted) ─
+          // ── Step 3: Calculate refund (tax + service fee, Stripe fee sunk) ─
           if (totalRejectedSubtotalCents > 0) {
             const paymentTransaction = await findPaymentTransactionByIntentId(
               bookingPaymentIntentId,
@@ -5018,6 +5022,9 @@ router.put(
             const managerRevenue = paymentTransaction
               ? parseInt(String(paymentTransaction.manager_revenue || "0")) || 0
               : transactionAmount;
+            const serviceFee = paymentTransaction
+              ? parseInt(String(paymentTransaction.service_fee || "0")) || 0
+              : 0;
             const currentRefundAmount = paymentTransaction
               ? parseInt(String(paymentTransaction.refund_amount || "0")) || 0
               : 0;
@@ -5032,19 +5039,46 @@ router.put(
               (totalRejectedSubtotalCents * taxRatePercent) / 100,
             );
 
-            // Gross refund = rejected subtotal + proportional tax
-            const grossRefundCents = totalRejectedSubtotalCents + proportionalTaxCents;
+            // Proportional platform service fee — returned to the customer on refund.
+            // serviceFee was charged on original subtotal; scale by rejected kitchen-owned share.
+            const managerGrossCents = baseAmount > 0 ? baseAmount : (managerRevenue + stripeProcessingFee);
+            const proportionalServiceFee = managerGrossCents > 0
+              ? Math.round(
+                  serviceFee *
+                    ((totalRejectedSubtotalCents + proportionalTaxCents) / managerGrossCents),
+                )
+              : 0;
 
-            // Proportional Stripe fee = stripeFee × (grossRefund / transactionAmount)
-            // Chef absorbs the proportional Stripe fee — it's deducted from what the customer gets back
+            // Gross refund = rejected subtotal + tax + service fee
+            const grossRefundCents =
+              totalRejectedSubtotalCents + proportionalTaxCents + proportionalServiceFee;
+
+            // Proportional Stripe fee (sunk — deducted from what the customer gets back)
             const proportionalStripeFee = transactionAmount > 0
               ? Math.round(stripeProcessingFee * (grossRefundCents / transactionAmount))
               : 0;
             const netRefundCents = Math.max(0, grossRefundCents - proportionalStripeFee);
 
-            // Cap at manager's remaining balance
-            const managerRemainingBalance = Math.max(0, managerRevenue - currentRefundAmount);
-            const cappedRefundAmount = Math.min(netRefundCents, managerRemainingBalance);
+            const { calculateRefundBreakdown, splitCustomerRefund } = await import(
+              "../services/stripe-service"
+            );
+            const refundBreakdown = calculateRefundBreakdown(
+              transactionAmount,
+              managerRevenue,
+              currentRefundAmount,
+              stripeProcessingFee,
+              serviceFee,
+            );
+            const cappedRefundAmount = Math.min(
+              netRefundCents,
+              refundBreakdown.maxRefundableToCustomer,
+            );
+            const { managerDebitCents, platformServiceFeeCents } = splitCustomerRefund(
+              cappedRefundAmount,
+              managerRevenue,
+              serviceFee,
+              currentRefundAmount,
+            );
 
             // Build description of what was rejected
             const rejectedItems: string[] = [];
@@ -5052,19 +5086,21 @@ router.put(
             if (rejectedStorageIds.length > 0) rejectedItems.push(...rejectedStorageIds.map(sid => `storage_${sid}`));
             if (rejectedEquipmentIds.length > 0) rejectedItems.push(...rejectedEquipmentIds.map(eid => `equipment_${eid}`));
 
-            const isFullRefund = cappedRefundAmount >= managerRemainingBalance;
+            const isFullRefund =
+              cappedRefundAmount >= refundBreakdown.maxRefundableToCustomer &&
+              refundBreakdown.maxRefundableToCustomer > 0;
             const refundType = kitchenWasRejected
               ? (rejectedStorageIds.length > 0 || rejectedEquipmentIds.length > 0 ? "kitchen_and_items" : "kitchen_only")
               : "items_only";
 
             if (cappedRefundAmount > 0) {
-              // Process refund with transfer reversal
+              // Process refund with transfer reversal (manager share only)
               const stripeResult = await reverseTransferAndRefund(
                 bookingPaymentIntentId,
                 cappedRefundAmount,
                 "requested_by_customer",
                 {
-                  reverseTransferAmount: cappedRefundAmount,
+                  reverseTransferAmount: managerDebitCents,
                   refundApplicationFee: false,
                   metadata: {
                     booking_id: String(id),
@@ -5073,7 +5109,7 @@ router.put(
                       ? "Booking rejected by manager"
                       : "Item(s) rejected by manager (partial approval)",
                     manager_id: String(user.id),
-                    refund_model: "tax_inclusive_proportional_stripe_deducted",
+                    refund_model: "service_fee_included",
                     rejected_kitchen: String(kitchenWasRejected),
                     rejected_kitchen_cents: String(rejectedKitchenCents),
                     rejected_storage_ids: JSON.stringify(rejectedStorageIds),
@@ -5082,6 +5118,7 @@ router.put(
                     rejected_equipment_cents: String(rejectedEquipmentTotalCents),
                     total_rejected_subtotal_cents: String(totalRejectedSubtotalCents),
                     proportional_tax_cents: String(proportionalTaxCents),
+                    proportional_service_fee_cents: String(proportionalServiceFee),
                     tax_rate_percent: String(taxRatePercent),
                     gross_refund_cents: String(grossRefundCents),
                     proportional_stripe_fee_cents: String(proportionalStripeFee),
@@ -5090,8 +5127,10 @@ router.put(
                     transaction_amount: String(transactionAmount),
                     base_amount: String(baseAmount),
                     manager_revenue: String(managerRevenue),
+                    service_fee: String(serviceFee),
                     customer_receives: String(cappedRefundAmount),
-                    manager_debited: String(cappedRefundAmount),
+                    manager_debited: String(managerDebitCents),
+                    platform_service_fee_returned: String(platformServiceFeeCents),
                   },
                 },
               );
@@ -5115,11 +5154,14 @@ router.put(
                 rejectedEquipmentTotalCents,
                 totalRejectedSubtotalCents,
                 proportionalTaxCents,
+                proportionalServiceFee,
                 grossRefundCents,
                 proportionalStripeFee,
                 totalStripeFee: stripeProcessingFee,
                 netRefundCents,
                 cappedRefundAmount,
+                managerDebitCents,
+                platformServiceFeeCents,
                 isFullRefund,
               });
 
@@ -5128,7 +5170,8 @@ router.put(
               // Update payment transaction
               if (paymentTransaction) {
                 const newTotalRefunded = currentRefundAmount + refundResult.refundAmount;
-                const newStatus = newTotalRefunded >= managerRevenue ? "refunded" : "partially_refunded";
+                const fullRefundThreshold = Math.max(0, transactionAmount - stripeProcessingFee);
+                const newStatus = newTotalRefunded >= fullRefundThreshold ? "refunded" : "partially_refunded";
                 await updatePaymentTransaction(
                   paymentTransaction.id,
                   {
@@ -5504,8 +5547,8 @@ router.put(
           amount: refundResult.refundAmount,
           rejectedItems: refundResult.rejectedItems,
           message: isFullRejection
-            ? "Refund processed for rejected items (customer absorbs proportional Stripe fee)"
-            : "Partial refund processed for rejected items (customer absorbs proportional Stripe fee)",
+            ? "Refund processed for rejected items (platform service fee returned; Stripe fee sunk)"
+            : "Partial refund processed for rejected items (platform service fee returned; Stripe fee sunk)",
         };
         responseData.message = isFullRejection
           ? "Booking rejected and refund processed"
@@ -7417,9 +7460,7 @@ router.post(
             : extensionTotalPrice;
 
           if (transactionAmount > 0) {
-            // UNIFIED REFUND MODEL: Customer Refund = Manager Deduction
-            // This ensures consistency between LocalCooks portal and Stripe dashboard
-            const { calculateRefundBreakdown } = await import(
+            const { calculateRefundBreakdown, splitCustomerRefund } = await import(
               "../services/stripe-service"
             );
 
@@ -7435,35 +7476,43 @@ router.post(
               ? parseInt(String(paymentTransaction.manager_revenue || "0")) ||
                 transactionAmount
               : transactionAmount;
+            const serviceFee = paymentTransaction
+              ? parseInt(String(paymentTransaction.service_fee || "0")) || 0
+              : 0;
 
-            // Use unified refund breakdown calculator
             const refundBreakdown = calculateRefundBreakdown(
               transactionAmount,
               managerRevenue,
               currentRefundAmount,
               stripeProcessingFee,
+              serviceFee,
             );
 
-            // UNIFIED: Both amounts are the same - no discrepancy!
             const refundToCustomer = refundBreakdown.maxRefundableToCustomer;
-            const deductFromManager = refundBreakdown.maxDeductibleFromManager;
+            const { managerDebitCents: deductFromManager, platformServiceFeeCents } =
+              splitCustomerRefund(
+                refundToCustomer,
+                managerRevenue,
+                serviceFee,
+                currentRefundAmount,
+              );
 
-            // Process refund with transfer reversal (unified model)
             refundResult = await reverseTransferAndRefund(
               extension.stripePaymentIntentId,
-              refundToCustomer, // Customer receives this amount
+              refundToCustomer,
               "requested_by_customer",
               {
-                reverseTransferAmount: deductFromManager, // Manager debited same amount
+                reverseTransferAmount: deductFromManager,
                 refundApplicationFee: false,
                 metadata: {
                   storage_extension_id: String(extensionId),
                   storage_booking_id: String(extension.storageBookingId),
                   rejection_reason: reason || "Extension declined by manager",
                   manager_id: String(managerId),
-                  refund_model: "unified",
+                  refund_model: "service_fee_included",
                   customer_receives: String(refundToCustomer),
                   manager_debited: String(deductFromManager),
+                  platform_service_fee_returned: String(platformServiceFeeCents),
                 },
               },
             );

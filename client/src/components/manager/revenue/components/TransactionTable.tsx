@@ -87,7 +87,10 @@ export function TransactionTable({
     const openRefundDialog = useCallback((transaction: Transaction) => {
         if (!onRefundTransaction) return
         setRefundTarget(transaction)
-        const remaining = transaction.refundableAmount ?? (transaction.totalPrice || 0)
+        const remaining = transaction.refundableAmount ?? Math.max(
+          0,
+          (transaction.managerRevenue || 0) + (transaction.serviceFee || 0) - (transaction.refundAmount || 0),
+        )
         setRefundAmount((remaining / 100).toFixed(2))
         setRefundReason('')
         setRefundError(null)
@@ -380,7 +383,7 @@ export function TransactionTable({
                                         <TableCell className="text-right text-amber-600">
                                             {formatCurrency(totals.taxAmount)}
                                         </TableCell>
-                                        <TableCell className="text-right text-violet-600">
+                                        <TableCell className="text-right text-stripe">
                                             {formatCurrency(totals.stripeFee)}
                                         </TableCell>
                                         <TableCell className="text-right text-red-600">

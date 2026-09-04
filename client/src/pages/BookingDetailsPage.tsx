@@ -55,6 +55,7 @@ import {
   type ManagementSubmitParams,
 } from "@/components/manager/bookings/BookingManagementSheet";
 import { KitchenCheckinTracker } from "@/components/booking/KitchenCheckinTracker";
+import { StripeProcessingFeeRefundInfo } from "@/components/booking/StripeProcessingFeeRefundInfo";
 import { SmartImage } from "@/components/ui/smart-image";
 import { tt } from "@/i18n/common-ns";
 import {
@@ -132,6 +133,7 @@ interface BookingDetails {
     };
   }>;
   paymentTransaction?: {
+    id?: number;
     amount: number;
     serviceFee: number;
     taxAmount?: number;
@@ -186,7 +188,7 @@ export default function BookingDetailsPage() {
   const [, managerParams] = useRoute("/manager/booking/:id");
   const bookingId = params?.id || managerParams?.id;
   const isManagerView = !!managerParams?.id;
-  const { t: tStrict } = useTranslation("chef");
+  const { t: tStrict, i18n } = useTranslation("chef");
   const t = tStrict as unknown as (key: string, options?: Record<string, unknown>) => string;
 
   const { loading: authLoading } = useFirebaseAuth();
@@ -321,17 +323,19 @@ export default function BookingDetailsPage() {
 
   const formatTime = (timeStr: string) => {
     if (!timeStr) return "";
-    const [hours, minutes] = timeStr.split(":");
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? "PM" : "AM";
-    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-    return `${displayHour}:${minutes} ${ampm}`;
+    const [hours, minutes] = timeStr.split(":").map(Number);
+    const date = new Date();
+    date.setHours(hours, minutes || 0, 0, 0);
+    return new Intl.DateTimeFormat(i18n.language, {
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(date);
   };
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return "";
     const date = new Date(dateStr);
-    return date.toLocaleDateString("en-US", {
+    return date.toLocaleDateString(i18n.language, {
       weekday: "long",
       year: "numeric",
       month: "long",
@@ -342,7 +346,7 @@ export default function BookingDetailsPage() {
   const formatShortDate = (dateStr: string) => {
     if (!dateStr) return "";
     const date = new Date(dateStr);
-    return date.toLocaleDateString("en-US", {
+    return date.toLocaleDateString(i18n.language, {
       month: "short",
       day: "numeric",
       year: "numeric",
@@ -809,12 +813,16 @@ export default function BookingDetailsPage() {
     totalPrice: booking.totalPrice,
     status: booking.status,
     paymentStatus: booking.paymentStatus,
+    transactionId: booking.paymentTransaction?.id,
     transactionAmount: booking.paymentTransaction?.amount,
     stripeProcessingFee: booking.paymentTransaction?.stripeProcessingFee,
     managerRevenue: booking.paymentTransaction?.managerRevenue,
+    serviceFee: booking.paymentTransaction?.serviceFee || booking.serviceFee || 0,
     taxRatePercent: booking.kitchen?.taxRatePercent ? Number(booking.kitchen.taxRatePercent) : undefined,
-    // refundableAmount uses managerRevenue — the ManagementSheet subtracts alreadyRefunded (refundAmount) itself
-    refundableAmount: booking.paymentTransaction?.managerRevenue,
+    // Gross pool (manager + service fee); sheet subtracts alreadyRefunded.
+    refundableAmount:
+      (booking.paymentTransaction?.managerRevenue || 0) +
+      (booking.paymentTransaction?.serviceFee || booking.serviceFee || 0),
     refundAmount: booking.paymentTransaction?.refundAmount || 0,
     cancellationRequested: booking.status === 'cancellation_requested',
     storageItems: booking.storageBookings?.map((s) => ({
@@ -869,13 +877,63 @@ export default function BookingDetailsPage() {
             body: JSON.stringify({ status: 'confirmed', storageActions: params.storageActions, equipmentActions: params.equipmentActions }),
           });
           if (!statusRes.ok) { const d = await statusRes.json().catch(() => ({})); throw new Error(d.error || 'Failed to update'); }
-          toast({ title: t("bdItemsCancelledToast"), description: t("bdItemsCancelledDesc") });
-          // Refresh booking data
+
+          if (
+            params.action === "partial-cancel-refund" &&
+            params.refundAmountCents &&
+            params.refundAmountCents > 0 &&
+            bookingForManagement?.transactionId
+          ) {
+            const refundRes = await fetch(
+              `/api/manager/revenue/transactions/${bookingForManagement.transactionId}/refund`,
+              {
+                method: 'POST', headers, credentials: "include",
+                body: JSON.stringify({
+                  amount: params.refundAmountCents,
+                  reason: 'Partial cancellation refund',
+                }),
+              },
+            );
+            if (!refundRes.ok) {
+              const d = await refundRes.json().catch(() => ({}));
+              throw new Error(d.error || 'Items cancelled but refund failed');
+            }
+            toast({
+              title: t("bdItemsCancelledToast"),
+              description: t("bdRefundProcessedDesc", {
+                amount: `$${(params.refundAmountCents / 100).toFixed(2)}`,
+              }),
+            });
+          } else {
+            toast({ title: t("bdItemsCancelledToast"), description: t("bdItemsCancelledDesc") });
+          }
           window.location.reload();
           break;
         }
         case "refund-only": {
-          toast({ title: t("bdInfoTitle"), description: t("bdRefundPanelInfo") });
+          if (!bookingForManagement?.transactionId || !params.refundAmountCents) {
+            throw new Error(t("bdRefundPanelInfo"));
+          }
+          const refundRes = await fetch(
+            `/api/manager/revenue/transactions/${bookingForManagement.transactionId}/refund`,
+            {
+              method: 'POST', headers, credentials: "include",
+              body: JSON.stringify({
+                amount: params.refundAmountCents,
+                reason: 'Refund issued by manager',
+              }),
+            },
+          );
+          if (!refundRes.ok) {
+            const d = await refundRes.json().catch(() => ({}));
+            throw new Error(d.error || 'Failed to process refund');
+          }
+          toast({
+            title: t("bdRefundProcessedDesc", {
+              amount: `$${(params.refundAmountCents / 100).toFixed(2)}`,
+            }),
+          });
+          window.location.reload();
           break;
         }
         case "accept-cancellation": {
@@ -1513,6 +1571,11 @@ export default function BookingDetailsPage() {
                           : t("bdYourPayout", { defaultValue: "Your payout" })
                       }
                       showProcessorFee={pricingBreakdownInput.showPaymentProcessorFee}
+                      processingFeeLabel={t("bdProcessingFee")}
+                      refundLabel={t("bdRefund")}
+                      hstLabel={t("bdHstPercent", {
+                        percent: pricingBreakdownInput.kitchenHstRatePercent ?? 0,
+                      })}
                     />
                   ) : (
                     <ChefBookingReceiptBreakdown
@@ -1528,8 +1591,11 @@ export default function BookingDetailsPage() {
                 )}
 
                 {!isManagerView && refundAmount > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-warning">{t("bdRefundedLine")}</span>
+                  <div className="flex justify-between text-sm items-center gap-2">
+                    <span className="text-warning inline-flex items-center gap-1">
+                      {t("bdRefundedLine")}
+                      <StripeProcessingFeeRefundInfo iconClassName="h-3 w-3" />
+                    </span>
                     <span className="font-mono tabular-nums text-warning">−{formatCurrency(refundAmount)}</span>
                   </div>
                 )}
@@ -1574,9 +1640,10 @@ export default function BookingDetailsPage() {
                 <div className="mt-4 p-3 rounded-lg border">
                   <div className="flex items-start gap-2">
                     <Receipt className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
-                    <div className="text-xs text-muted-foreground">
-                      <p className="font-medium text-foreground mb-0.5">
+                    <div className="text-xs text-muted-foreground min-w-0">
+                      <p className="font-medium text-foreground mb-0.5 inline-flex items-center gap-1.5">
                         {isRefunded ? t("bdFullyRefunded") : t("bdPartialRefundIssued")}
+                        {!isManagerView && <StripeProcessingFeeRefundInfo />}
                       </p>
                       <p>
                         {isManagerView
@@ -1659,6 +1726,7 @@ export default function BookingDetailsPage() {
   if (isManagerView) {
     return (
       <ManagerBookingLayout
+        bookingLocationId={booking?.location?.id ?? booking?.kitchen?.locationId ?? null}
         breadcrumbs={[
           { label: t("shellDashboard"), onClick: () => navigate("/manager/dashboard") },
           { label: t("bkMyBookings"), onClick: () => window.history.back() },

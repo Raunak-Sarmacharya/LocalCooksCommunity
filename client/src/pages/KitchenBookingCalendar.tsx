@@ -86,8 +86,8 @@ export default function KitchenBookingCalendar() {
   const locationParam = urlParams.get('location');
   const locationFilterId = locationParam ? parseInt(locationParam) : null;
 
-  // Book CTAs use KitchenBookingSheet via dashboard deep link — don't leave chefs on this orphaned calendar page.
-  const shouldRedirectToSheet =
+  // Book CTAs use /book/:locationId — don't leave chefs on this orphaned calendar page.
+  const shouldRedirectToBookPage =
     !!locationFilterId &&
     !Number.isNaN(locationFilterId) &&
     !urlParams.get("date") &&
@@ -95,9 +95,9 @@ export default function KitchenBookingCalendar() {
     !urlParams.get("kitchen");
 
   useEffect(() => {
-    if (!shouldRedirectToSheet) return;
-    setLocation(`/dashboard?bookLocation=${locationFilterId}`, { replace: true });
-  }, [shouldRedirectToSheet, locationFilterId, setLocation]);
+    if (!shouldRedirectToBookPage) return;
+    setLocation(`/book/${locationFilterId}`, { replace: true });
+  }, [shouldRedirectToBookPage, locationFilterId, setLocation]);
 
   const filteredKitchens = useMemo(() => {
     if (!locationFilterId) {
@@ -1017,7 +1017,7 @@ export default function KitchenBookingCalendar() {
   const isToday = (date: Date) => date.toDateString() === today.toDateString();
   const isPast = (date: Date) => date < new Date(new Date().setHours(0, 0, 0, 0));
 
-  if (shouldRedirectToSheet) {
+  if (shouldRedirectToBookPage) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
