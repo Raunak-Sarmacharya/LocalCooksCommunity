@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useRoute } from "wouter";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
+import { useChefShellChrome } from "@/layouts/chef-shell-context";
 import ManagerBookingLayout from "@/layouts/ManagerBookingLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -1722,6 +1723,25 @@ export default function BookingDetailsPage() {
     </TooltipProvider>
   );
 
+  const bookingBreadcrumbs = useMemo(
+    () => [
+      { label: t("shellDashboard"), onClick: () => navigate("/dashboard"), navId: "overview" as const },
+      {
+        label: t("shellMyBookings"),
+        onClick: () => navigate("/dashboard?view=bookings"),
+        navId: "bookings" as const,
+      },
+      { label: booking ? t("bdBookingRef", { id: booking.id }) : t("bdBookingDetails") },
+    ],
+    [t, navigate, booking]
+  );
+
+  const inShell = useChefShellChrome({
+    activeView: "bookings",
+    onViewChange: handleViewChange,
+    breadcrumbs: bookingBreadcrumbs,
+  });
+
   // Render with appropriate layout
   if (isManagerView) {
     return (
@@ -1754,17 +1774,8 @@ export default function BookingDetailsPage() {
     );
   }
 
-  // Chef view with ChefDashboardLayout
-  return (
-    <ChefDashboardLayout
-      activeView="bookings"
-      onViewChange={handleViewChange}
-      breadcrumbs={[
-        { label: t("shellDashboard"), onClick: () => navigate("/dashboard") },
-        { label: t("shellMyBookings"), onClick: () => window.history.back() },
-        { label: booking ? t("bdBookingRef", { id: booking.id }) : t("bdBookingDetails") },
-      ]}
-    >
+  const chefBody = (
+    <>
       {isLoading ? loadingContent : (error || !booking) ? errorContent : bookingContent}
       {booking && (
         <KitchenCheckinTracker
@@ -1780,6 +1791,19 @@ export default function BookingDetailsPage() {
           endTime={booking.endTime}
         />
       )}
+    </>
+  );
+
+  if (inShell) return chefBody;
+
+  return (
+    <ChefDashboardLayout
+      activeView="bookings"
+      onViewChange={handleViewChange}
+      breadcrumbs={bookingBreadcrumbs}
+    >
+      {chefBody}
     </ChefDashboardLayout>
   );
 }
+

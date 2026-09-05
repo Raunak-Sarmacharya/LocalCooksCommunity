@@ -98,8 +98,15 @@ export function ConversationItem({
             <span className="font-medium truncate text-sm">
               {partnerName}
             </span>
-            <span className="text-xs text-muted-foreground truncate">
-              {partnerLocation || t("chatCooksCommunity")}
+            <span
+              className={cn(
+                "text-xs truncate",
+                unreadCount > 0 ? "font-medium text-foreground" : "text-muted-foreground"
+              )}
+            >
+              {conversation.lastMessageText?.trim() ||
+                partnerLocation ||
+                t("chatCooksCommunity")}
             </span>
           </div>
           

@@ -42,6 +42,7 @@ import {
 import { getKitchenDisplayStatus, kitchenLocationId, toneToBadgeVariant, type KitchenActionKind, type KitchenDisplayStatus } from "@/components/chef/applications/status";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
+import { useChefShellChrome } from "@/layouts/chef-shell-context";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LocationMap } from "@/components/ui/location-map";
 import { cn } from "@/lib/utils";
@@ -50,7 +51,10 @@ import { KitchenPreviewWalkthrough } from "@/components/kitchen-application/Kitc
 import { getAuthHeaders } from "@/lib/api";
 import { saveAuthIntentFromCurrentPage } from "@/lib/auth-intent";
 import { pickPreviewActiveSectionId } from "@/lib/preview-scroll-spy";
-import { formatCancellationWindowText } from "@/lib/cancellation-policy";
+import {
+  CancellationPolicyDialog,
+  cancellationPolicyFirstLine,
+} from "@/components/booking/CancellationPolicyDialog";
 import { resolveEquipmentIcon, resolveStorageIcon } from "@/lib/kitchen-inventory-icons";
 import { SmartImage } from "@/components/ui/smart-image";
 import { Calendar as UICalendar } from "@/components/ui/calendar";
@@ -1507,24 +1511,23 @@ function ThingsToKnowSection({
   kitchenTermsUrl?: string | null;
 }) {
   const { t } = useTranslation("kitchen");
+  const [policyOpen, setPolicyOpen] = useState(false);
   const hours = cancellationPolicyHours ?? 24;
-  const windowText = formatCancellationWindowText(
-    hours,
-    cancellationPolicyMessage,
-    t("cancellationPolicyDefaultMessage", { hours })
+  const firstLine = cancellationPolicyFirstLine(hours, cancellationPolicyMessage, (key, options) =>
+    String(t(key, options as never))
   );
-  const policyText = `${windowText} ${t("cancellationPolicyRefundRules")}`;
   const termsHref = kitchenTermsUrl ? getR2ProxyUrl(kitchenTermsUrl) : "/terms";
 
   const columns = [
     {
+      id: "cancellation" as const,
       icon: "mdi:calendar-remove-outline",
       title: t("thingsToKnowCancellationTitle", "Cancellation policy"),
-      body: policyText,
-      href: "/terms",
+      body: firstLine,
       linkLabel: t("thingsToKnowLearnMore", "Learn more"),
     },
     {
+      id: "terms" as const,
       icon: "mdi:file-document-outline",
       title: t("thingsToKnowTermsTitle", "Kitchen terms & policies"),
       body: kitchenTermsUrl
@@ -1541,6 +1544,7 @@ function ThingsToKnowSection({
       external: !!kitchenTermsUrl,
     },
     {
+      id: "resources" as const,
       icon: "mdi:book-open-page-variant-outline",
       title: t("thingsToKnowResourcesTitle", "Chef resources"),
       body: t(
@@ -1565,19 +1569,35 @@ function ThingsToKnowSection({
           >
             <PreviewIcon icon={col.icon} size={18} className="text-gray-900" />
             <h3 className="mt-2.5 text-sm font-semibold text-gray-900">{col.title}</h3>
-            <p className="mt-1.5 text-sm leading-relaxed text-gray-600">{col.body}</p>
-            <a
-              href={col.href}
-              {...("external" in col && col.external
-                ? { target: "_blank", rel: "noopener noreferrer" }
-                : {})}
-              className="mt-2 text-sm font-medium text-gray-900 underline underline-offset-2 hover:text-[#F51042]"
-            >
-              {col.linkLabel}
-            </a>
+            <p className="mt-1.5 line-clamp-1 text-sm leading-relaxed text-gray-600">{col.body}</p>
+            {col.id === "cancellation" ? (
+              <button
+                type="button"
+                onClick={() => setPolicyOpen(true)}
+                className="mt-2 self-start text-sm font-medium text-gray-900 underline underline-offset-2 hover:text-[#F51042]"
+              >
+                {col.linkLabel}
+              </button>
+            ) : (
+              <a
+                href={"href" in col ? col.href : "#"}
+                {...("external" in col && col.external
+                  ? { target: "_blank", rel: "noopener noreferrer" }
+                  : {})}
+                className="mt-2 text-sm font-medium text-gray-900 underline underline-offset-2 hover:text-[#F51042]"
+              >
+                {col.linkLabel}
+              </a>
+            )}
           </div>
         ))}
       </div>
+      <CancellationPolicyDialog
+        open={policyOpen}
+        onOpenChange={setPolicyOpen}
+        hours={cancellationPolicyHours}
+        customMessage={cancellationPolicyMessage}
+      />
     </section>
   );
 }
@@ -3973,22 +3993,42 @@ export default function KitchenPreviewPage() {
     />
   ) : null;
 
-  // Chefs keep the dashboard sidebar; other signed-in roles use the public chrome.
+  const previewBreadcrumbs = useMemo(
+    () => [
+      { label: t("shellDashboard"), onClick: () => navigate("/dashboard"), navId: "overview" as const },
+      {
+        label: t("shellDiscoverKitchens"),
+        onClick: () => navigate("/dashboard?view=discover-kitchens"),
+        navId: "discover-kitchens" as const,
+      },
+      { label: locationData?.name || t("applyFlowKitchenFallbackName") },
+    ],
+    [t, navigate, locationData?.name]
+  );
+
+  const inShell = useChefShellChrome({
+    activeView,
+    onViewChange: handleViewChange,
+    breadcrumbs: previewBreadcrumbs,
+  });
+
+  // Chefs keep the dashboard sidebar; prefer persistent shell so chrome does not remount.
+  if (inShell) {
+    return (
+      <>
+        {getContent()}
+        {scheduleTourSheet}
+      </>
+    );
+  }
+
   if (useChefChrome) {
     return (
       <>
         <ChefDashboardLayout
           activeView={activeView}
           onViewChange={handleViewChange}
-          breadcrumbs={[
-            { label: t("shellDashboard"), onClick: () => navigate('/dashboard'), navId: "overview" },
-            {
-              label: t("shellDiscoverKitchens"),
-              onClick: () => navigate('/dashboard?view=discover-kitchens'),
-              navId: "discover-kitchens",
-            },
-            { label: locationData?.name || t("applyFlowKitchenFallbackName") },
-          ]}
+          breadcrumbs={previewBreadcrumbs}
         >
           {getContent()}
         </ChefDashboardLayout>
@@ -3997,8 +4037,12 @@ export default function KitchenPreviewPage() {
     );
   }
 
-  // For unauthenticated users, use public layout
-  if (isLoading) {
+  // Authenticated non-chef still loading kitchen data — avoid full-bleed guest splash
+  if (isAuthenticated && (isLoading || authLoading)) {
+    return loadingContent;
+  }
+
+  if (isLoading || authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
         <div className="text-center">

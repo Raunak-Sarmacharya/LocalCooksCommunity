@@ -1,6 +1,8 @@
 import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
+import { resolveNotificationHref } from "@shared/notification-deep-links";
+import { navigateNotificationHref } from "@/lib/navigate-notification-href";
 /**
  * Enterprise-Grade Notification Center Component
  * 
@@ -281,16 +283,25 @@ function NotificationItem({
   isSelected: boolean;
   _onSelect: (id: number) => void;
 }) {
+  const href = resolveNotificationHref({
+    role: "manager",
+    type: notification.type,
+    actionUrl: notification.action_url,
+    metadata: notification.metadata,
+  });
+
+  const openNotification = async () => {
+    if (!notification.is_read) {
+      await onMarkRead(notification.id);
+    }
+    if (href) navigateNotificationHref(href);
+  };
+
   // Handle keyboard navigation
   const handleKeyDown = async (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      if (!notification.is_read) {
-        await onMarkRead(notification.id);
-      }
-      if (notification.action_url) {
-        window.location.href = notification.action_url;
-      }
+      await openNotification();
     }
   };
 
@@ -310,14 +321,9 @@ function NotificationItem({
         !notification.is_read && "bg-blue-50/50",
         isSelected && "bg-blue-100"
       )}
-      onClick={async (e) => {
+      onClick={(e) => {
         e.stopPropagation();
-        if (!notification.is_read) {
-          await onMarkRead(notification.id);
-        }
-        if (notification.action_url) {
-          window.location.href = notification.action_url;
-        }
+        void openNotification();
       }}
     >
       {/* Priority indicator */}
@@ -356,23 +362,17 @@ function NotificationItem({
           </p>
           
           {/* Action button if present */}
-          {notification.action_label && (
+          {(notification.action_label || href) && (
             <Button
               variant="link"
               size="sm"
               className="h-auto p-0 mt-1 text-primary"
-              onClick={async (e) => {
+              onClick={(e) => {
                 e.stopPropagation();
-                // Mark as read when clicking action button
-                if (!notification.is_read) {
-                  await onMarkRead(notification.id);
-                }
-                if (notification.action_url) {
-                  window.location.href = notification.action_url;
-                }
+                void openNotification();
               }}
             >
-              {notification.action_label}
+              {notification.action_label || "View details"}
               <ChevronRight className="h-3 w-3 ml-1" />
             </Button>
           )}

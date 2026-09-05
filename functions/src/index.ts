@@ -45,42 +45,27 @@ function getPool(): Pool {
   return pool;
 }
 
-// Notification types matching the server notification service
-type NotificationType = 
-  | "booking_new"
-  | "booking_confirmed"
-  | "booking_cancelled"
-  | "payment_received"
-  | "payment_failed"
-  | "application_new"
-  | "application_approved"
-  | "storage_expiring"
-  | "license_approved"
-  | "license_rejected"
-  | "message_received"
-  | "system_announcement";
-
 type NotificationPriority = "low" | "normal" | "high" | "urgent";
 
-interface CreateNotificationParams {
-  managerId: number;
+interface CreateInAppNotificationParams {
+  userId: number;
+  target: "chef" | "manager";
   locationId?: number;
-  type: NotificationType;
   title: string;
   message: string;
   priority?: NotificationPriority;
   actionUrl?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 /**
- * Create a notification in the Neon database
+ * Create an in-app notification in Neon (manager_notifications or chef_notifications).
  */
-async function createNotification(params: CreateNotificationParams): Promise<number | null> {
+async function createInAppNotification(params: CreateInAppNotificationParams): Promise<number | null> {
   const {
-    managerId,
+    userId,
+    target,
     locationId,
-    type,
     title,
     message,
     priority = "normal",
@@ -90,17 +75,30 @@ async function createNotification(params: CreateNotificationParams): Promise<num
 
   try {
     const db = getPool();
-    
-    const result = await db.query(
-      `INSERT INTO manager_notifications 
-       (manager_id, location_id, type, title, message, priority, action_url, metadata, is_read, is_archived, created_at)
-       VALUES ($1, $2, $3::notification_type, $4, $5, $6::notification_priority, $7, $8, false, false, NOW())
-       RETURNING id`,
-      [managerId, locationId || null, type, title, message, priority, actionUrl || null, metadata ? JSON.stringify(metadata) : null]
-    );
+    const metaJson = metadata ? JSON.stringify(metadata) : null;
 
+    if (target === "manager") {
+      const result = await db.query(
+        `INSERT INTO manager_notifications 
+         (manager_id, location_id, type, title, message, priority, action_url, metadata, is_read, is_archived, created_at)
+         VALUES ($1, $2, 'message_received'::notification_type, $3, $4, $5::notification_priority, $6, $7, false, false, NOW())
+         RETURNING id`,
+        [userId, locationId || null, title, message, priority, actionUrl || null, metaJson]
+      );
+      const notificationId = result.rows[0]?.id;
+      logger.info(`Created manager notification ${notificationId} for ${userId}`);
+      return notificationId;
+    }
+
+    const result = await db.query(
+      `INSERT INTO chef_notifications 
+       (chef_id, type, title, message, priority, action_url, metadata, is_read, is_archived, created_at)
+       VALUES ($1, 'message_received'::chef_notification_type, $2, $3, $4::chef_notification_priority, $5, $6, false, false, NOW())
+       RETURNING id`,
+      [userId, title, message, priority, actionUrl || null, metaJson]
+    );
     const notificationId = result.rows[0]?.id;
-    logger.info(`✅ Created notification ${notificationId} for manager ${managerId}: ${type}`);
+    logger.info(`Created chef notification ${notificationId} for ${userId}`);
     return notificationId;
   } catch (error) {
     logger.error("Error creating notification:", error);
@@ -135,7 +133,13 @@ async function notificationExists(messageId: string, conversationId: string): Pr
       `SELECT id FROM manager_notifications 
        WHERE type = 'message_received' 
        AND metadata->>'messageId' = $1 
-       AND metadata->>'conversationId' = $2`,
+       AND metadata->>'conversationId' = $2
+       UNION ALL
+       SELECT id FROM chef_notifications 
+       WHERE type = 'message_received' 
+       AND metadata->>'messageId' = $1 
+       AND metadata->>'conversationId' = $2
+       LIMIT 1`,
       [messageId, conversationId]
     );
     return result.rows.length > 0;
@@ -239,13 +243,6 @@ export const onNewChatMessage = onDocumentCreated(
         return;
       }
 
-      // Only create in-app notifications for managers (NotificationCenter is manager-only)
-      // Chefs could get push notifications in the future
-      if (recipientRole !== "manager") {
-        logger.info(`Skipping in-app notification for ${recipientRole} - not implemented`);
-        return;
-      }
-
       // Get sender details for the notification
       const sender = await getUserById(messageData.senderId);
       const senderName = sender?.username || "Someone";
@@ -255,15 +252,19 @@ export const onNewChatMessage = onDocumentCreated(
         ? messageData.content.substring(0, 100) + "..." 
         : messageData.content || "Sent a message";
 
-      // Create the notification
-      await createNotification({
-        managerId: recipientId,
+      const actionUrl =
+        recipientRole === "chef"
+          ? `/dashboard?view=messages&conversation=${encodeURIComponent(conversationId)}`
+          : `/manager/dashboard?view=messages&conversation=${encodeURIComponent(conversationId)}`;
+
+      await createInAppNotification({
+        userId: recipientId,
+        target: recipientRole,
         locationId: conversation.locationId || undefined,
-        type: "message_received",
         title: `New message from ${senderName}`,
         message: contentPreview,
         priority: "normal",
-        actionUrl: `/manager/applications?chat=${conversation.applicationId}`,
+        actionUrl,
         metadata: {
           conversationId,
           messageId,
@@ -274,7 +275,7 @@ export const onNewChatMessage = onDocumentCreated(
         },
       });
 
-      logger.info(`✅ Message notification created for manager ${recipientId}`);
+      logger.info(`Message notification created for ${recipientRole} ${recipientId}`);
     } catch (error) {
       logger.error("Error processing new message:", error);
       throw error; // Rethrow to trigger retry

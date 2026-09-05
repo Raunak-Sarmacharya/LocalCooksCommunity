@@ -602,23 +602,18 @@ export default function OverviewTabContent({
         {kitchenApplications.length > 0 ? (
           <Card className="flex h-full flex-col shadow-none">
             <CardHeader className="pb-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <CardTitle className="text-base">{t("ovKitchenAccessTitle")}</CardTitle>
-                  <CardDescription className="mt-1">
-                    {t("ovKitchenAccessDesc")}
-                  </CardDescription>
-                </div>
-                <Badge variant={kitchenSummary.variant} className="shrink-0 font-medium">
-                  {kitchenSummary.label}
-                </Badge>
+              <div>
+                <CardTitle className="text-base">{t("ovKitchenAccessTitle")}</CardTitle>
+                <CardDescription className="mt-1">
+                  {t("ovKitchenAccessDesc")}
+                </CardDescription>
               </div>
             </CardHeader>
             <CardContent className="flex-1 pt-0">
-              <div className="divide-y border-y">
-                {kitchenDisplays.slice(0, 3).map(({ app, display }) => (
+              <div className="max-h-[11.5rem] overflow-y-auto overflow-x-hidden divide-y border-y">
+                {kitchenDisplays.map(({ app, display }) => (
                   <div key={app.id} className="flex items-center justify-between gap-3 py-2">
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <TruncatedText as="p" className="truncate text-sm font-medium">
                         {app.location?.name || t("ovKitchenFallback")}
                       </TruncatedText>

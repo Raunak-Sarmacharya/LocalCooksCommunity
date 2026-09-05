@@ -249,10 +249,15 @@ export default function ManagerBookingDashboard() {
 
   // Sync activeView with URL parameters. Listens to popstate so back/forward
   // through the pushed tab history correctly updates the active view.
+  const [deepLinkConversationId, setDeepLinkConversationId] = useState<string | null>(() =>
+    new URLSearchParams(window.location.search).get("conversation")
+  );
+
   useEffect(() => {
     const handleLocationChange = () => {
       const params = new URLSearchParams(window.location.search);
       const view = params.get('view');
+      setDeepLinkConversationId(params.get("conversation"));
       const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'viewings', 'availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'overstays', 'damage-claims', 'storage-checkouts'];
       // Back-compat: redirect legacy URL to the new combined page.
       if (view === 'settings-storage-checkout') {
@@ -677,7 +682,7 @@ export default function ManagerBookingDashboard() {
       {activeView === 'messages' && (
         managerId ? (
           <div className="h-[calc(100vh-8rem)]">
-            <UnifiedChatView userId={managerId} role="manager" />
+            <UnifiedChatView userId={managerId} role="manager" initialConversationId={deepLinkConversationId} />
           </div>
         ) : (
           <Card>

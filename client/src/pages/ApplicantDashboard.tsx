@@ -13,6 +13,7 @@ import ChefBookingsView from "@/components/booking/ChefBookingsView";
 import { PendingStorageExtensions } from "@/components/booking/PendingStorageExtensions";
 import { useKitchenBookings } from "@/hooks/use-kitchen-bookings";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
+import { useChefShellChrome } from "@/layouts/chef-shell-context";
 import ChefCommandPalette from "@/components/chef/ChefCommandPalette";
 import {
   Dialog,
@@ -129,6 +130,12 @@ export default function ApplicantDashboard() {
 
   // Training view mode - 'overview' shows training overview, 'player' shows the video player
   const [trainingViewMode, setTrainingViewMode] = useState<'overview' | 'player'>('overview');
+  const [deepLinkConversationId, setDeepLinkConversationId] = useState<string | null>(() =>
+    new URLSearchParams(window.location.search).get("conversation")
+  );
+  const [resolutionTab, setResolutionTab] = useState<string | undefined>(() =>
+    new URLSearchParams(window.location.search).get("tab") || undefined
+  );
 
   // Update activeTab and applicationViewMode when URL changes (for notification clicks and deep links).
   // Note: wouter's `location` only tracks the pathname, so search-param-only
@@ -145,6 +152,8 @@ export default function ApplicantDashboard() {
       const params = new URLSearchParams(window.location.search);
       const view = params.get('view');
       const action = params.get('action');
+      setDeepLinkConversationId(params.get("conversation"));
+      setResolutionTab(params.get("tab") || undefined);
 
       if (view && VALID_VIEWS.includes(view)) {
         setActiveTabState(view === 'damage-claims' ? 'issues-refunds' : view);
@@ -739,7 +748,7 @@ export default function ApplicantDashboard() {
 
   const messagesTabContent = (
     <div className="h-[calc(100vh-8rem)]">
-      <UnifiedChatView userId={chefId} role="chef" />
+      <UnifiedChatView userId={chefId} role="chef" initialConversationId={deepLinkConversationId} />
     </div>
   );
 
@@ -797,7 +806,7 @@ export default function ApplicantDashboard() {
       case "issues-refunds":
         return (
           <div className="space-y-8 animate-in fade-in-50 duration-500">
-            <IssuesAndRefunds />
+            <IssuesAndRefunds initialTab={resolutionTab} />
           </div>
         );
       case "transactions":
@@ -837,7 +846,7 @@ export default function ApplicantDashboard() {
 
   // Generate dynamic breadcrumbs based on current view and sub-view
   // navId marks the sidebar parent — crumbs after it expand as a nested drawer
-  const getBreadcrumbs = () => {
+  const breadcrumbs = useMemo(() => {
     const baseBreadcrumbs = [{ label: t("shellChefPortal"), href: "#", navId: "overview" as const }];
 
     if (activeTab === 'applications' && applicationViewMode === 'documents') {
@@ -930,34 +939,42 @@ export default function ApplicantDashboard() {
     }
 
     return undefined;
-  };
+  }, [activeTab, applicationViewMode, trainingViewMode, t]);
 
-  return (
-    <ChefDashboardLayout
-      activeView={
-        activeTab === "viewings"
-          ? "discover-kitchens"
-          : activeTab === "transactions"
-            ? "bookings"
-            : activeTab
-      }
-      onViewChange={(view) => {
-        setActiveTab(view);
-        // Reset sub-view modes when switching tabs
-        if (view !== 'applications') {
-          setApplicationViewMode('list');
-        }
-        if (view !== 'training') {
-          setTrainingViewMode('overview');
-        }
-      }}
-      messageBadgeCount={0}
-      breadcrumbs={getBreadcrumbs()}
-      hiddenItems={[
-        ...(!(isSellerApplicationFullyApproved && isShopCreated) ? ['seller-revenue', 'my-account'] : []),
-        ...(!hasResolutionItems ? ['issues-refunds'] : []),
-      ]}
-    >
+  const shellActiveView =
+    activeTab === "viewings"
+      ? "discover-kitchens"
+      : activeTab === "transactions"
+        ? "bookings"
+        : activeTab;
+
+  const onShellViewChange = useCallback((view: string) => {
+    setActiveTab(view);
+    if (view !== "applications") setApplicationViewMode("list");
+    if (view !== "training") setTrainingViewMode("overview");
+  }, []);
+
+  const shellHiddenItems = useMemo(
+    () => [
+      ...(!(isSellerApplicationFullyApproved && isShopCreated)
+        ? ["seller-revenue", "my-account"]
+        : []),
+      ...(!hasResolutionItems ? ["issues-refunds"] : []),
+    ],
+    [isSellerApplicationFullyApproved, isShopCreated, hasResolutionItems]
+  );
+
+  const inShell = useChefShellChrome({
+    activeView: shellActiveView,
+    onViewChange: onShellViewChange,
+    messageBadgeCount: 0,
+    breadcrumbs,
+    hiddenItems: shellHiddenItems,
+  });
+
+  const dashboardBody = (
+    <>
+
       {/* ⌘K Command Palette */}
       <ChefCommandPalette onNavigate={(view) => {
         setActiveTab(view);
@@ -1079,6 +1096,20 @@ export default function ApplicantDashboard() {
           )}
         </DialogContent>
       </Dialog>
+    </>
+  );
+
+  if (inShell) return dashboardBody;
+
+  return (
+    <ChefDashboardLayout
+      activeView={shellActiveView}
+      onViewChange={onShellViewChange}
+      messageBadgeCount={0}
+      breadcrumbs={breadcrumbs}
+      hiddenItems={shellHiddenItems}
+    >
+      {dashboardBody}
     </ChefDashboardLayout>
   );
 }

@@ -38,6 +38,8 @@ export interface Conversation {
   locationId: number;
   createdAt: Timestamp | Date;
   lastMessageAt: Timestamp | Date;
+  /** Preview text for inbox list (like iMessage / WhatsApp). */
+  lastMessageText?: string;
   unreadChefCount: number;
   unreadManagerCount: number;
 }
@@ -214,8 +216,14 @@ export async function sendMessage(
       return messageRef.id;
     }
 
+    const preview =
+      type === "file"
+        ? fileName?.trim() || "Attachment"
+        : content.trim().slice(0, 240);
+
     const updateData: any = {
       lastMessageAt: serverTimestamp(),
+      lastMessageText: preview,
     };
 
     // Increment unread count for the other party
@@ -281,6 +289,7 @@ export async function sendSystemMessage(
     // Update conversation's lastMessageAt
     await updateDoc(doc(db, 'conversations', conversationId), {
       lastMessageAt: serverTimestamp(),
+      lastMessageText: content.trim().slice(0, 240),
     });
 
     return messageRef.id;
@@ -487,6 +496,8 @@ export async function getAllConversations(
         locationId: data.locationId,
         createdAt: data.createdAt?.toDate() || new Date(),
         lastMessageAt: data.lastMessageAt?.toDate() || new Date(),
+        lastMessageText:
+          typeof data.lastMessageText === "string" ? data.lastMessageText : undefined,
         unreadChefCount: data.unreadChefCount || 0,
         unreadManagerCount: data.unreadManagerCount || 0,
       });
@@ -515,6 +526,37 @@ export async function getAllConversations(
 
     // Convert back to array
     const uniqueConversations = Array.from(uniqueConversationsMap.values());
+
+    // Backfill preview text for older conversations (written on send going forward)
+    await Promise.all(
+      uniqueConversations
+        .filter((c) => !c.lastMessageText?.trim())
+        .slice(0, 25)
+        .map(async (conv) => {
+          try {
+            const qLast = query(
+              collection(db, "conversations", conv.id, "messages"),
+              orderBy("createdAt", "desc"),
+              limit(1)
+            );
+            const snap = await getDocs(qLast);
+            const data = snap.docs[0]?.data();
+            if (!data) return;
+            const text =
+              data.type === "file"
+                ? data.fileName || "Attachment"
+                : typeof data.content === "string"
+                  ? data.content.trim().slice(0, 240)
+                  : "";
+            if (!text) return;
+            conv.lastMessageText = text;
+            // Persist so the list stays fast next open
+            void updateDoc(doc(db, "conversations", conv.id), { lastMessageText: text });
+          } catch {
+            /* ignore per-conversation backfill failures */
+          }
+        })
+    );
 
     return uniqueConversations;
   } catch (error) {

@@ -9,11 +9,12 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useAuthModal } from "@/components/auth/AuthModalProvider";
 import { chefDashboardHref } from "@/lib/chef-dashboard-nav";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
+import { useChefShellChrome } from "@/layouts/chef-shell-context";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { Badge } from "@/components/ui/badge";
 import { ChefPageHeader } from "@/components/chef/ui";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { useChefKitchenApplicationForLocation } from "@/hooks/use-chef-kitchen-applications";
@@ -438,28 +439,45 @@ export default function KitchenRequirementsPage() {
         return mainContent;
     };
 
-    // If user is authenticated, wrap in ChefDashboardLayout
+    const reqOnViewChange = (view: string) => {
+        setActiveView(view);
+        setLocation(chefDashboardHref(view), { replace: true });
+    };
+
+    const reqBreadcrumbs = useMemo(
+        () => [
+            { label: t("shellDashboard", "Dashboard"), onClick: () => setLocation("/dashboard"), navId: "overview" as const },
+            {
+                label: t("shellDiscoverKitchens", "Discover Kitchens"),
+                onClick: () => setLocation("/dashboard?view=discover-kitchens"),
+                navId: "discover-kitchens" as const,
+            },
+            { label: locationData?.location?.name || t("kitchenWord", "Kitchen") },
+        ],
+        [t, setLocation, locationData?.location?.name]
+    );
+
+    const inShell = useChefShellChrome({
+        activeView,
+        onViewChange: reqOnViewChange,
+        breadcrumbs: reqBreadcrumbs,
+    });
+
+    // If user is authenticated, use persistent chef shell (or layout fallback)
     if (user) {
+        if (inShell) return getContent();
         return (
             <ChefDashboardLayout
                 activeView={activeView}
-                onViewChange={(view) => {
-                    setActiveView(view);
-                    // REPLACE so back button doesn't bounce through this requirements page.
-                    setLocation(chefDashboardHref(view), { replace: true });
-                }}
-                breadcrumbs={[
-                    { label: t("shellDashboard", "Dashboard"), onClick: () => setLocation('/dashboard') },
-                    { label: t("shellDiscoverKitchens", "Discover Kitchens"), onClick: () => setLocation('/dashboard?view=discover-kitchens') },
-                    { label: locationData?.location?.name || t('kitchenWord', 'Kitchen') },
-                ]}
+                onViewChange={reqOnViewChange}
+                breadcrumbs={reqBreadcrumbs}
             >
                 {getContent()}
             </ChefDashboardLayout>
         );
     }
 
-    // For unauthenticated users, use public layout
+    // For unauthenticated    // For unauthenticated users, use public layout
     return (
         <div className="min-h-screen flex flex-col bg-gray-50">
             <Header />

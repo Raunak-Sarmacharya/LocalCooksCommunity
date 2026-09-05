@@ -142,6 +142,19 @@ export async function syncFirebaseUserToNeon(params: {
     logger.info(`   - isChef in DB: ${(newUser as any).isChef}`);
     logger.info(`   - has_seen_welcome in DB: ${(newUser as any).has_seen_welcome} (admins/managers skip welcome screen)`);
 
+    // In-app welcome for new chefs (bell / notification center)
+    if (isChef) {
+      try {
+        const { notificationService } = await import("./services/notification.service");
+        await notificationService.notifyChefWelcome(
+          newUser.id,
+          displayName || email.split("@")[0] || "Chef"
+        );
+      } catch (welcomeNotifErr) {
+        logger.warn(`Failed to create chef welcome notification for ${newUser.id}:`, welcomeNotifErr);
+      }
+    }
+
     // Handle email notifications based on user type
     if (!isGoogleUser && email) {
       logger.info(`📧 Email/password user - Firebase will handle verification email for ${email}`);

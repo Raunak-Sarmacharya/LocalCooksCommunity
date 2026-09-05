@@ -77,6 +77,16 @@ export default function ChefDashboardLayout({
     const displayBreadcrumbs = React.useMemo((): ChefBreadcrumb[] => {
         if (breadcrumbs) return breadcrumbs
 
+        // Overview is the home — one crumb only so the sidebar does not nest "Overview" under itself
+        if (activeView === "overview") {
+            return [
+                {
+                    label: t("shellOverview"),
+                    navId: "overview",
+                },
+            ]
+        }
+
         const crumbs: ChefBreadcrumb[] = [
             {
                 label: t("shellDashboard"),

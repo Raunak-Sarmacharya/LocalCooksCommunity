@@ -80,13 +80,16 @@ export function findChefNavItem(view: string): ChefNavItem | undefined {
   return undefined;
 }
 
-/** Crumbs after the active sidebar item — shown as a nested drawer under that item. */
+/** Crumbs after the active sidebar item — nested context under that item (never the item itself). */
 export function sidebarBranchForView(
   breadcrumbs: ChefBreadcrumb[] | undefined,
   activeView: string
 ): ChefBreadcrumb[] {
   if (!breadcrumbs?.length) return [];
-  const idx = breadcrumbs.findIndex((c) => c.navId === activeView);
+  // Last match wins when Dashboard/Overview both carry navId "overview"
+  const idx = breadcrumbs.map((c) => c.navId).lastIndexOf(activeView);
   if (idx < 0) return [];
-  return breadcrumbs.slice(idx + 1).filter((c) => Boolean(c.label?.trim()));
+  return breadcrumbs
+    .slice(idx + 1)
+    .filter((c) => Boolean(c.label?.trim()) && c.navId !== activeView);
 }

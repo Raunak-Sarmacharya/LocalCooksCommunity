@@ -30,6 +30,7 @@ import {
   reauthenticateWithCredential,
   updatePassword,
 } from "firebase/auth";
+import { cn } from "@/lib/utils";
 
 // ─── Helpers ────────────────────────────────────────────
 async function syncPasswordToNeon(newPassword: string): Promise<void> {
@@ -74,9 +75,11 @@ type SetPasswordFormData = z.infer<typeof setPasswordSchema>;
 interface ChangePasswordProps {
   role?: 'chef' | 'manager' | 'admin';
   onSuccess?: () => void;
+  /** Strip Card chrome when nested inside a parent section. */
+  embedded?: boolean;
 }
 
-export default function ChangePassword({ onSuccess }: ChangePasswordProps) {
+export default function ChangePassword({ onSuccess, embedded = false }: ChangePasswordProps) {
   const [hasLinkedPassword, setHasLinkedPassword] = useState(false);
 
   // Detect if user has email/password provider linked (synchronous check, no effect needed)
@@ -99,6 +102,13 @@ export default function ChangePassword({ onSuccess }: ChangePasswordProps) {
 
   // Show loading while detecting provider
   if (hasPasswordProvider === null) {
+    if (embedded) {
+      return (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      );
+    }
     return (
       <Card>
         <CardContent className="flex items-center justify-center py-8">
@@ -109,12 +119,13 @@ export default function ChangePassword({ onSuccess }: ChangePasswordProps) {
   }
 
   if (hasPasswordProvider) {
-    return <ChangePasswordForm onSuccess={onSuccess} />;
+    return <ChangePasswordForm onSuccess={onSuccess} embedded={embedded} />;
   }
 
   return (
     <SetPasswordForm
       isGoogleUser={isGoogleUser}
+      embedded={embedded}
       onSuccess={() => {
         setHasLinkedPassword(true);
         onSuccess?.();
@@ -124,7 +135,13 @@ export default function ChangePassword({ onSuccess }: ChangePasswordProps) {
 }
 
 // ─── Change Password Form (for email/password users) ───
-function ChangePasswordForm({ onSuccess }: { onSuccess?: () => void }) {
+function ChangePasswordForm({
+  onSuccess,
+  embedded = false,
+}: {
+  onSuccess?: () => void;
+  embedded?: boolean;
+}) {
   const { t } = useTranslation("chef");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -195,6 +212,61 @@ function ChangePasswordForm({ onSuccess }: { onSuccess?: () => void }) {
     }
   };
 
+  const formBody = (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
+        <FormField
+          control={form.control}
+          name="currentPassword"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t("pwCurrentLabel")}</FormLabel>
+              <FormControl>
+                <Input type="password" placeholder={t("pwCurrentPlaceholder")} {...field} disabled={isSubmitting} className="h-11" />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="newPassword"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t("pwNewLabel")}</FormLabel>
+              <FormControl>
+                <Input type="password" placeholder={t("pwNewPlaceholder")} {...field} disabled={isSubmitting} className="h-11" />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="confirmPassword"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t("pwConfirmLabel")}</FormLabel>
+              <FormControl>
+                <Input type="password" placeholder={t("pwConfirmPlaceholder")} {...field} disabled={isSubmitting} className="h-11" />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <Button type="submit" className={cn(embedded ? "w-full sm:w-auto" : "w-full")} disabled={isSubmitting}>
+          {isSubmitting ? (
+            <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t("pwChanging")}</>
+          ) : (
+            <><KeyRound className="mr-2 h-4 w-4" />{t("pwChangePassword")}</>
+          )}
+        </Button>
+      </form>
+    </Form>
+  );
+
+  if (embedded) return formBody;
+
   return (
     <Card>
       <CardHeader>
@@ -207,56 +279,7 @@ function ChangePasswordForm({ onSuccess }: { onSuccess?: () => void }) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
-            <FormField
-              control={form.control}
-              name="currentPassword"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t("pwCurrentLabel")}</FormLabel>
-                  <FormControl>
-                    <Input type="password" placeholder={t("pwCurrentPlaceholder")} {...field} disabled={isSubmitting} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="newPassword"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t("pwNewLabel")}</FormLabel>
-                  <FormControl>
-                    <Input type="password" placeholder={t("pwNewPlaceholder")} {...field} disabled={isSubmitting} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="confirmPassword"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t("pwConfirmLabel")}</FormLabel>
-                  <FormControl>
-                    <Input type="password" placeholder={t("pwConfirmPlaceholder")} {...field} disabled={isSubmitting} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t("pwChanging")}</>
-              ) : (
-                <><KeyRound className="mr-2 h-4 w-4" />{t("pwChangePassword")}</>
-              )}
-            </Button>
-          </form>
-        </Form>
+        {formBody}
       </CardContent>
     </Card>
   );
@@ -266,9 +289,11 @@ function ChangePasswordForm({ onSuccess }: { onSuccess?: () => void }) {
 function SetPasswordForm({
   isGoogleUser,
   onSuccess,
+  embedded = false,
 }: {
   isGoogleUser: boolean;
   onSuccess?: () => void;
+  embedded?: boolean;
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -325,6 +350,63 @@ function SetPasswordForm({
     }
   };
 
+  const formBody = (
+    <div className="space-y-5">
+      {isGoogleUser && !embedded ? (
+        <div className="flex items-start gap-3 rounded-lg border bg-muted/40 p-3">
+          <Chrome className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">
+            You signed in with Google. Add a password to also sign in with email.
+          </p>
+        </div>
+      ) : null}
+      {isGoogleUser && embedded ? (
+        <p className="text-sm text-muted-foreground">
+          You signed in with Google. Add a password to also sign in with email.
+        </p>
+      ) : null}
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
+          <FormField
+            control={form.control}
+            name="newPassword"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>New password</FormLabel>
+                <FormControl>
+                  <Input type="password" placeholder="At least 8 characters" {...field} disabled={isSubmitting} className="h-11" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="confirmPassword"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Confirm password</FormLabel>
+                <FormControl>
+                  <Input type="password" placeholder="Confirm password" {...field} disabled={isSubmitting} className="h-11" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <Button type="submit" className={cn(embedded ? "w-full sm:w-auto" : "w-full")} disabled={isSubmitting}>
+            {isSubmitting ? (
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving…</>
+            ) : (
+              <><ShieldCheck className="mr-2 h-4 w-4" />Set password</>
+            )}
+          </Button>
+        </form>
+      </Form>
+    </div>
+  );
+
+  if (embedded) return formBody;
+
   return (
     <Card>
       <CardHeader>
@@ -337,66 +419,7 @@ function SetPasswordForm({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
-        {/* Google sign-in info banner */}
-        {isGoogleUser && (
-          <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/50 p-4">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-background border border-border">
-              <Chrome className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm font-medium leading-tight">Signed in with Google</p>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Your account uses Google for authentication. You can optionally set a
-                password below to also sign in with your email and password.
-              </p>
-            </div>
-          </div>
-        )}
-
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
-            <FormField
-              control={form.control}
-              name="newPassword"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Password</FormLabel>
-                  <FormControl>
-                    <Input type="password" placeholder="Choose a strong password (min 8 characters)" {...field} disabled={isSubmitting} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="confirmPassword"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Confirm Password</FormLabel>
-                  <FormControl>
-                    <Input type="password" placeholder="Re-enter your password" {...field} disabled={isSubmitting} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Success hint */}
-            <div className="flex items-start gap-2 text-xs text-muted-foreground">
-              <ShieldCheck className="h-4 w-4 mt-0.5 shrink-0" />
-              <span>After setting a password, you can sign in with either Google or your email and password.</span>
-            </div>
-
-            <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Setting Password...</>
-              ) : (
-                <><KeyRound className="mr-2 h-4 w-4" />Set Password</>
-              )}
-            </Button>
-          </form>
-        </Form>
+        {formBody}
       </CardContent>
     </Card>
   );

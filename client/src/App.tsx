@@ -6,7 +6,7 @@ import { AuthProvider } from "@/hooks/use-auth";
 import { AuthModalProvider } from "@/components/auth/AuthModalProvider";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { HelmetProvider } from "react-helmet-async";
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, useEffect } from "react";
 import { Route, Switch, useLocation } from "wouter";
 import { auth } from "./lib/firebase";
 import { queryClient } from "./lib/queryClient";
@@ -19,6 +19,7 @@ import { LocaleProfileSync } from "@/i18n/LocaleProfileSync";
 import { PublicLocaleRouter } from "@/i18n/PublicLocaleRouter";
 import { localePublicRoutes } from "@/i18n/LocalePublicRoute";
 import { useTranslation } from "react-i18next";
+import { ChefShellProvider } from "@/layouts/chef-shell";
 
 // Immediate load components (small/critical)
 import AdminProtectedRoute from "@/components/admin/AdminProtectedRoute";
@@ -221,9 +222,10 @@ function Router() {
   const LandingPage = getLandingPage();
 
   return (
-    <Suspense fallback={<LoadingSpinner />}>
+    <>
       <PublicLocaleRouter />
-      <Switch>
+      <ChefShellProvider>
+          <Switch>
         <Route path="/" component={LandingPage} />
         {localePublicRoutes("/", LandingPage)}
         <SubdomainRoute path="/apply" component={ApplicationForm} subdomain={subdomain} />
@@ -371,7 +373,8 @@ function Router() {
 
         <Route component={NotFound} />
       </Switch>
-    </Suspense>
+      </ChefShellProvider>
+    </>
   );
 }
 

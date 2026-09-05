@@ -10,9 +10,10 @@ import { Building2, Loader2, Calendar, ClipboardList } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
+import { useChefShellChrome } from "@/layouts/chef-shell-context";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTranslation } from "react-i18next";
 import { kt } from "@/i18n/kitchen-ns";
@@ -273,34 +274,54 @@ export default function ApplyToKitchen() {
     return mainContent;
   };
 
+  const applyOnViewChange = (view: string) => {
+    setActiveView(view);
+    navigate(chefDashboardHref(view), { replace: true });
+  };
+
+  const applyBreadcrumbs = useMemo(
+    () => [
+      { label: t("dashboard", { defaultValue: "Dashboard" }), onClick: () => navigate("/dashboard"), navId: "overview" as const },
+      {
+        label: t("discoverKitchens", { defaultValue: "Discover Kitchens" }),
+        onClick: () => navigate("/dashboard?view=discover-kitchens"),
+        navId: "discover-kitchens" as const,
+      },
+      {
+        label: location?.name || t("applyFlowKitchenFallbackName", { defaultValue: "Kitchen" }),
+        onClick: () => navigate(`/kitchen-requirements/${locationId}`),
+      },
+      { label: t("requestToApply", { defaultValue: "Request to apply" }) },
+    ],
+    [t, navigate, location?.name, locationId]
+  );
+
+  const inShell = useChefShellChrome({
+    activeView,
+    onViewChange: applyOnViewChange,
+    breadcrumbs: applyBreadcrumbs,
+  });
+
   // If not authenticated, redirect (handled by useEffect)
   if (!user && !authLoading) {
     return null;
   }
 
-  // If user is authenticated, wrap in ChefDashboardLayout
+  // If user is authenticated, use persistent chef shell (or layout fallback)
   if (user) {
+    if (inShell) return getContent();
     return (
       <ChefDashboardLayout
         activeView={activeView}
-        onViewChange={(view) => {
-          setActiveView(view);
-          // REPLACE so back button doesn't bounce through this apply-to-kitchen page.
-          navigate(chefDashboardHref(view), { replace: true });
-        }}
-        breadcrumbs={[
-          { label: t("dashboard", { defaultValue: "Dashboard" }), onClick: () => navigate('/dashboard') },
-          { label: t("discoverKitchens", { defaultValue: "Discover Kitchens" }), onClick: () => navigate('/dashboard?view=discover-kitchens') },
-          { label: location?.name || t("applyFlowKitchenFallbackName", { defaultValue: "Kitchen" }), onClick: () => navigate(`/kitchen-requirements/${locationId}`) },
-          { label: t("requestToApply", { defaultValue: "Request to apply" }) },
-        ]}
+        onViewChange={applyOnViewChange}
+        breadcrumbs={applyBreadcrumbs}
       >
         {getContent()}
       </ChefDashboardLayout>
     );
   }
 
-  // Fallback for loading state before auth is determined
+  // Fallback  // Fallback for loading state before auth is determined
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />

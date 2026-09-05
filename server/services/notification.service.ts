@@ -13,6 +13,17 @@ import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { logger } from "../logger";
 import { format } from "date-fns";
+import {
+  chefBookingHref,
+  chefDashboardView,
+  chefIssuesHref,
+  chefMessagesHref,
+  managerBookingHref,
+  managerDashboardView,
+  managerMessagesHref,
+  normalizeNotificationActionUrl,
+  resolveNotificationHref,
+} from "@shared/notification-deep-links";
 
 // ===================================
 // TYPES
@@ -151,6 +162,15 @@ async function createNotification(params: CreateNotificationParams) {
     expiresAt
   } = params;
 
+  // Always store a clickable deep link (normalize legacy URLs; infer when omitted).
+  const resolvedActionUrl =
+    resolveNotificationHref({
+      role: target,
+      type,
+      actionUrl,
+      metadata,
+    }) ?? normalizeNotificationActionUrl(actionUrl);
+
   try {
     let result;
     
@@ -167,7 +187,7 @@ async function createNotification(params: CreateNotificationParams) {
           ${title}, 
           ${message}, 
           ${JSON.stringify(metadata)}::jsonb, 
-          ${actionUrl || null}, 
+          ${resolvedActionUrl || null}, 
           ${actionLabel || null}, 
           ${expiresAt ? expiresAt.toISOString() : null}
         )
@@ -186,7 +206,7 @@ async function createNotification(params: CreateNotificationParams) {
           ${title}, 
           ${message}, 
           ${JSON.stringify(metadata)}::jsonb, 
-          ${actionUrl || null}, 
+          ${resolvedActionUrl || null}, 
           ${actionLabel || null}, 
           ${expiresAt ? expiresAt.toISOString() : null}
         )
@@ -255,7 +275,7 @@ interface BookingNotificationData {
 }
 
 async function notifyNewBooking(data: BookingNotificationData) {
-  const actionUrl = `/manager/booking/${data.bookingId}`;
+  const actionUrl = managerBookingHref(data.bookingId);
   logger.info(`[NotificationService] Creating booking_new notification with actionUrl: ${actionUrl}`);
   return createManagerNotification({
     managerId: data.managerId,
@@ -272,7 +292,7 @@ async function notifyNewBooking(data: BookingNotificationData) {
       startTime: data.startTime,
       endTime: data.endTime
     },
-    actionUrl: `/manager/booking/${data.bookingId}`,
+    actionUrl,
     actionLabel: 'Review Booking'
   });
 }
@@ -290,7 +310,7 @@ async function notifyBookingConfirmed(data: BookingNotificationData) {
       chefName: data.chefName,
       kitchenName: data.kitchenName
     },
-    actionUrl: `/manager/booking/${data.bookingId}`,
+    actionUrl: managerBookingHref(data.bookingId),
     actionLabel: 'View Booking'
   });
 }
@@ -312,7 +332,7 @@ async function notifyBookingCancelled(data: BookingNotificationData & { cancelle
       kitchenName: data.kitchenName,
       cancelledBy: data.cancelledBy
     },
-    actionUrl: `/manager/booking/${data.bookingId}`,
+    actionUrl: managerBookingHref(data.bookingId),
     actionLabel: 'View Details'
   });
 }
@@ -346,7 +366,7 @@ async function notifyPaymentReceived(data: PaymentNotificationData) {
       currency: data.currency,
       chefName: data.chefName
     },
-    actionUrl: `/manager/booking-dashboard?view=revenue`,
+    actionUrl: managerDashboardView('revenue'),
     actionLabel: 'View Revenue'
   });
 }
@@ -367,7 +387,7 @@ async function notifyPaymentFailed(data: PaymentNotificationData & { reason?: st
       chefName: data.chefName,
       reason: data.reason
     },
-    actionUrl: `/manager/booking/${data.bookingId}`,
+    actionUrl: managerBookingHref(data.bookingId),
     actionLabel: 'View Booking'
   });
 }
@@ -398,7 +418,7 @@ async function notifyNewApplication(data: ApplicationNotificationData) {
       chefName: data.chefName,
       chefEmail: data.chefEmail
     },
-    actionUrl: `/manager/booking-dashboard?view=applications`,
+    actionUrl: managerDashboardView('applications'),
     actionLabel: 'Review Application'
   });
 }
@@ -418,7 +438,7 @@ async function notifyStep2ApplicationSubmitted(data: ApplicationNotificationData
       locationName: data.locationName,
       step: 2
     },
-    actionUrl: `/manager/booking-dashboard?view=applications`,
+    actionUrl: managerDashboardView('applications'),
     actionLabel: 'Review Step 2'
   });
 }
@@ -435,7 +455,7 @@ async function notifyApplicationApproved(data: ApplicationNotificationData) {
       applicationId: data.applicationId,
       chefName: data.chefName
     },
-    actionUrl: `/manager/booking-dashboard?view=applications`,
+    actionUrl: managerDashboardView('applications'),
     actionLabel: 'View Applications'
   });
 }
@@ -469,7 +489,7 @@ async function notifyStorageExpiring(data: StorageExpiringData) {
       expiryDate: data.expiryDate,
       daysUntilExpiry: data.daysUntilExpiry
     },
-    actionUrl: `/manager/booking-dashboard?view=storage`,
+    actionUrl: managerDashboardView('storage-checkouts'),
     actionLabel: 'View Storage'
   });
 }
@@ -494,7 +514,7 @@ async function notifyLicenseApproved(data: LicenseNotificationData) {
       locationName: data.locationName,
       expiryDate: data.expiryDate
     },
-    actionUrl: `/manager/booking-dashboard?view=settings`,
+    actionUrl: managerDashboardView('settings'),
     actionLabel: 'View Settings'
   });
 }
@@ -511,7 +531,7 @@ async function notifyLicenseRejected(data: LicenseNotificationData) {
       locationName: data.locationName,
       feedback: data.feedback
     },
-    actionUrl: `/manager/booking-dashboard?view=settings`,
+    actionUrl: managerDashboardView('settings'),
     actionLabel: 'Upload New License'
   });
 }
@@ -529,7 +549,7 @@ async function notifyLicenseExpiring(data: LicenseNotificationData & { daysUntil
       expiryDate: data.expiryDate,
       daysUntilExpiry: data.daysUntilExpiry
     },
-    actionUrl: `/manager/booking-dashboard?view=settings`,
+    actionUrl: managerDashboardView('settings'),
     actionLabel: 'Renew License'
   });
 }
@@ -560,7 +580,7 @@ async function notifyNewMessage(data: MessageNotificationData) {
       senderName: data.senderName,
       conversationId: data.conversationId
     },
-    actionUrl: `/manager/booking-dashboard?view=messages`,
+    actionUrl: managerMessagesHref(data.conversationId),
     actionLabel: 'View Message'
   });
 }
@@ -636,7 +656,7 @@ async function notifyChefBookingConfirmed(data: ChefBookingNotificationData) {
       locationName: data.locationName,
       bookingDate: data.bookingDate
     },
-    actionUrl: `/booking/${data.bookingId}`,
+    actionUrl: chefBookingHref(data.bookingId),
     actionLabel: 'View Booking'
   });
 }
@@ -657,7 +677,7 @@ async function notifyChefBookingCancelled(data: ChefBookingNotificationData & { 
       cancelledBy: data.cancelledBy,
       reason: data.reason
     },
-    actionUrl: `/dashboard?view=bookings`,
+    actionUrl: chefDashboardView('bookings'),
     actionLabel: 'View Details'
   });
 }
@@ -676,7 +696,7 @@ async function notifyChefKitchenCheckinReminder(data: { chefId: number; bookingI
       startTime: data.startTime,
       endTime: data.endTime
     },
-    actionUrl: `/booking/${data.bookingId}`,
+    actionUrl: chefBookingHref(data.bookingId),
     actionLabel: 'Check In Now',
     expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000), // 12 hours
   });
@@ -694,7 +714,7 @@ async function notifyChefStorageCheckinReminder(data: { chefId: number; storageB
       storageName: data.storageName,
       startDate: data.startDate
     },
-    actionUrl: `/dashboard?view=bookings`,
+    actionUrl: chefDashboardView('bookings'),
     actionLabel: 'Request Check-In',
     expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
   });
@@ -727,10 +747,10 @@ async function notifyChefApplicationApproved(data: {
       currentTier
     },
     actionUrl: isFullyApproved
-      ? `/dashboard?view=discover`
+      ? chefDashboardView('discover-kitchens')
       : data.locationId
         ? `/kitchen-requirements/${data.locationId}`
-        : `/dashboard?view=kitchen-applications`,
+        : chefDashboardView('kitchen-applications'),
     actionLabel: isFullyApproved ? 'Book Now' : 'Complete Step 2'
   });
 }
@@ -747,7 +767,7 @@ async function notifyChefApplicationRejected(data: { chefId: number; kitchenName
       locationName: data.locationName,
       reason: data.reason
     },
-    actionUrl: `/dashboard?view=applications`,
+    actionUrl: chefDashboardView('applications'),
     actionLabel: 'View Details'
   });
 }
@@ -760,7 +780,7 @@ async function notifyChefWelcome(chefId: number, chefName: string) {
     title: `Welcome to LocalCooks, ${chefName}!`,
     message: 'Your account is set up. Start by exploring available kitchens and submitting your first application.',
     metadata: { isWelcome: true },
-    actionUrl: `/dashboard?view=discover`,
+    actionUrl: chefDashboardView('discover-kitchens'),
     actionLabel: 'Explore Kitchens'
   });
 }
@@ -778,7 +798,7 @@ async function notifyChefPaymentReceived(data: { chefId: number; amount: number;
       currency: data.currency,
       bookingId: data.bookingId
     },
-    actionUrl: `/dashboard?view=bookings`,
+    actionUrl: chefDashboardView('bookings'),
     actionLabel: 'View Booking'
   });
 }
@@ -799,7 +819,7 @@ async function notifyChefPaymentRefunded(data: { chefId: number; refundAmountCen
       bookingName: data.bookingName,
       reason: data.reason
     },
-    actionUrl: `/dashboard?view=payments`,
+    actionUrl: chefIssuesHref(),
     actionLabel: 'View Details'
   });
 }
@@ -817,7 +837,7 @@ async function notifyChefMessage(data: { chefId: number; senderName: string; mes
       senderName: data.senderName,
       conversationId: data.conversationId
     },
-    actionUrl: `/dashboard?view=messages`,
+    actionUrl: chefMessagesHref(data.conversationId),
     actionLabel: 'View Message'
   });
 }
@@ -866,7 +886,7 @@ async function notifyManagerStorageCheckoutRequested(data: { managerId: number; 
     title: 'Storage Checkout Requested',
     message: `${data.chefName} has requested checkout for storage "${data.storageName}". Please review.`,
     metadata: { storageBookingId: data.storageBookingId, chefName: data.chefName, storageName: data.storageName },
-    actionUrl: `/manager/booking-dashboard?view=storage`,
+    actionUrl: managerDashboardView('storage-checkouts'),
     actionLabel: 'Review Checkout',
   });
 }
@@ -881,7 +901,7 @@ async function notifyChefStorageCheckoutCleared(data: { chefId: number; storageN
     title: 'Storage Checkout Complete',
     message: `Your storage checkout for "${data.storageName}" has been cleared ${clearedBy}. Thank you!`,
     metadata: { storageBookingId: data.storageBookingId, storageName: data.storageName, isAutoClear: data.isAutoClear },
-    actionUrl: `/dashboard?view=storage`,
+    actionUrl: chefDashboardView('bookings'),
     actionLabel: 'View Storage',
   });
 }
@@ -895,7 +915,7 @@ async function notifyChefStorageCheckoutClaimFiled(data: { chefId: number; stora
     title: 'Storage Claim Filed',
     message: `A claim "${data.claimTitle}" has been filed for your storage checkout at "${data.storageName}". Please review in your dashboard.`,
     metadata: { storageBookingId: data.storageBookingId, claimId: data.claimId, storageName: data.storageName, claimTitle: data.claimTitle },
-    actionUrl: `/dashboard?view=claims`,
+    actionUrl: chefIssuesHref('damage-claims'),
     actionLabel: 'View Claim',
   });
 }
@@ -930,7 +950,7 @@ async function notifyManagerStorageExtensionPending(data: StorageExtensionNotifi
       newEndDate: data.newEndDate,
       chefName: data.chefName
     },
-    actionUrl: `/manager/booking-dashboard?view=storage`,
+    actionUrl: managerDashboardView('storage-checkouts'),
     actionLabel: 'Review Extension'
   });
 }
@@ -949,7 +969,7 @@ async function notifyChefStorageExtensionApproved(data: StorageExtensionNotifica
       extensionDays: data.extensionDays,
       newEndDate: data.newEndDate
     },
-    actionUrl: `/dashboard?view=bookings`,
+    actionUrl: chefDashboardView('bookings'),
     actionLabel: 'View Booking'
   });
 }
@@ -968,7 +988,7 @@ async function notifyChefStorageExtensionRejected(data: StorageExtensionNotifica
       extensionDays: data.extensionDays,
       reason: data.reason
     },
-    actionUrl: `/dashboard?view=bookings`,
+    actionUrl: chefDashboardView('bookings'),
     actionLabel: 'View Details'
   });
 }
@@ -1001,7 +1021,7 @@ async function notifyChefOverstayDetected(data: { chefId: number } & OverstayNot
       daysOverdue: data.daysOverdue,
       penaltyAmountCents: data.penaltyAmountCents
     },
-    actionUrl: `/dashboard?view=storage`,
+    actionUrl: chefIssuesHref('overstay-penalties'),
     actionLabel: 'Resolve Now'
   });
 }
@@ -1023,7 +1043,7 @@ async function notifyManagerOverstayPendingReview(data: { managerId: number; loc
       daysOverdue: data.daysOverdue,
       penaltyAmountCents: data.penaltyAmountCents
     },
-    actionUrl: `/manager/booking-dashboard?view=overstays`,
+    actionUrl: managerDashboardView('overstays'),
     actionLabel: 'Review Penalty'
   });
 }
@@ -1043,7 +1063,7 @@ async function notifyChefPenaltyApproved(data: { chefId: number } & OverstayNoti
       daysOverdue: data.daysOverdue,
       penaltyAmountCents: data.penaltyAmountCents
     },
-    actionUrl: `/dashboard?view=payments`,
+    actionUrl: chefIssuesHref(),
     actionLabel: 'View Details'
   });
 }
@@ -1061,7 +1081,7 @@ async function notifyChefPenaltyWaived(data: { chefId: number; waiveReason?: str
       storageName: data.storageName,
       waiveReason: data.waiveReason
     },
-    actionUrl: `/dashboard?view=storage`,
+    actionUrl: chefDashboardView('bookings'),
     actionLabel: 'View Storage'
   });
 }
@@ -1081,7 +1101,7 @@ async function notifyChefPenaltyCharged(data: { chefId: number } & OverstayNotif
       daysOverdue: data.daysOverdue,
       penaltyAmountCents: data.penaltyAmountCents
     },
-    actionUrl: `/dashboard?view=payments`,
+    actionUrl: chefIssuesHref(),
     actionLabel: 'View Receipt'
   });
 }
@@ -1102,7 +1122,7 @@ async function notifyManagerPenaltyReceived(data: { managerId: number; locationI
       chefName: data.chefName,
       penaltyAmountCents: data.penaltyAmountCents
     },
-    actionUrl: `/manager/booking-dashboard?view=revenue`,
+    actionUrl: managerDashboardView('revenue'),
     actionLabel: 'View Revenue'
   });
 }
@@ -1122,7 +1142,7 @@ async function notifyChefPaymentRequired(data: { chefId: number; paymentUrl?: st
       penaltyAmountCents: data.penaltyAmountCents,
       paymentUrl: data.paymentUrl
     },
-    actionUrl: data.paymentUrl || `/dashboard?view=payments`,
+    actionUrl: data.paymentUrl || chefIssuesHref('overstay-penalties'),
     actionLabel: 'Complete Payment'
   });
 }
@@ -1142,7 +1162,7 @@ async function notifyChefOverstayRefunded(data: { chefId: number; refundAmountCe
       refundAmountCents: data.refundAmountCents,
       refundReason: data.refundReason
     },
-    actionUrl: `/dashboard?view=payments`,
+    actionUrl: chefIssuesHref(),
     actionLabel: 'View Details'
   });
 }
@@ -1175,7 +1195,7 @@ async function notifyChefDamageClaimFiled(data: { chefId: number; managerName: s
       locationName: data.locationName,
       responseDeadline: data.responseDeadline.toISOString()
     },
-    actionUrl: `/dashboard?view=damage-claims`,
+    actionUrl: chefIssuesHref('damage-claims'),
     actionLabel: 'Respond Now'
   });
 }
@@ -1200,7 +1220,7 @@ async function notifyManagerClaimResponseReceived(data: { managerId: number; loc
       responseType: data.responseType,
       chefResponse: data.chefResponse
     },
-    actionUrl: `/manager/booking-dashboard?view=damage-claims`,
+    actionUrl: managerDashboardView('damage-claims'),
     actionLabel: 'View Claim'
   });
 }
@@ -1228,7 +1248,7 @@ async function notifyChefClaimDecision(data: { chefId: number; decision: 'approv
       approvedAmountCents: data.approvedAmountCents,
       decisionReason: data.decisionReason
     },
-    actionUrl: `/dashboard?view=damage-claims`,
+    actionUrl: chefIssuesHref('damage-claims'),
     actionLabel: 'View Details'
   });
 }
@@ -1257,7 +1277,7 @@ async function notifyManagerClaimDecision(data: { managerId: number; locationId:
       approvedAmountCents: data.approvedAmountCents,
       decisionReason: data.decisionReason
     },
-    actionUrl: `/manager/booking-dashboard?view=damage-claims`,
+    actionUrl: managerDashboardView('damage-claims'),
     actionLabel: 'View Claim'
   });
 }
@@ -1277,7 +1297,7 @@ async function notifyChefDamageClaimCharged(data: { chefId: number } & DamageCla
       amountCents: data.amountCents,
       locationName: data.locationName
     },
-    actionUrl: `/dashboard?view=payments`,
+    actionUrl: chefIssuesHref(),
     actionLabel: 'View Receipt'
   });
 }
@@ -1298,7 +1318,7 @@ async function notifyManagerDamageClaimReceived(data: { managerId: number; locat
       chefName: data.chefName,
       amountCents: data.amountCents
     },
-    actionUrl: `/manager/booking-dashboard?view=revenue`,
+    actionUrl: managerDashboardView('revenue'),
     actionLabel: 'View Revenue'
   });
 }
@@ -1318,7 +1338,7 @@ async function notifyChefDamageClaimRefunded(data: { chefId: number; refundAmoun
       refundAmountCents: data.refundAmountCents,
       refundReason: data.refundReason
     },
-    actionUrl: `/dashboard?view=payments`,
+    actionUrl: chefIssuesHref(),
     actionLabel: 'View Details'
   });
 }

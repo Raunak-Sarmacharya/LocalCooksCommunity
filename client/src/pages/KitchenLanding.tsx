@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { landingListKitchenPath } from "@/lib/landing-cta";
 import { motion, useScroll, useTransform, MotionValue } from "framer-motion";
 import { SmartImage } from "@/components/ui/smart-image";
 import emptyKitchenImage from "@assets/emptykitchen.png";
@@ -338,6 +340,7 @@ function KitchenTypewriter() {
 
 export default function KitchenLanding() {
   const { t } = useTranslation("kitchen");
+  const { user } = useFirebaseAuth();
   const [, setLocation] = useLocation();
 
   const revenueSectionRef = useRef<HTMLDivElement | null>(null);
@@ -364,9 +367,8 @@ export default function KitchenLanding() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  // Route new kitchen partners into the real onboarding entry point instead of a mailto dead-end.
   const handleListKitchen = () => {
-    setLocation('/manager/login');
+    setLocation(landingListKitchenPath(user));
   };
 
   return (

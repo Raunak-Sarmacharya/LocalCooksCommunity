@@ -22,6 +22,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { KitchenLocationCard } from "@/components/chef-landing/KitchenLocationCard";
 import { TruncatedText } from "@/components/common/TruncatedText";
+import { landingBrowseKitchensPath, landingDashboardPath } from "@/lib/landing-cta";
 import { motion, AnimatePresence, useScroll, useTransform, MotionValue } from "framer-motion";
 import useEmblaCarousel from "embla-carousel-react";
 import { SmartImage } from "@/components/ui/smart-image";
@@ -983,7 +984,8 @@ export default function ChefLanding() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  const handleGetStarted = () => navigate(user ? '/apply' : '/auth');
+  const handleGetStarted = () => navigate(landingDashboardPath(user));
+  const handleBrowseKitchens = () => navigate(landingBrowseKitchensPath(user));
 
   return (
     <div className="min-h-screen flex flex-col overflow-x-hidden">
@@ -1872,7 +1874,7 @@ export default function ChefLanding() {
                     size="lg"
                     variant="outline"
                     className="group inline-flex items-center justify-center bg-white/10 hover:bg-white text-white hover:text-[#F51042] border-2 border-white/40 hover:border-white font-semibold rounded-full px-6 sm:px-8 py-5 sm:py-6 text-sm sm:text-base transition-all duration-300 shadow-lg shadow-black/10 hover:shadow-xl hover:-translate-y-0.5"
-                    onClick={() => navigate('/compare-kitchens')}
+                    onClick={handleBrowseKitchens}
                   >
                     <Calendar className="mr-2 h-4 w-4 sm:h-5 sm:w-5 shrink-0" />{t("browseAllKitchens")}<ArrowRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5 shrink-0 group-hover:translate-x-1 transition-transform" />
                   </Button>
@@ -2021,7 +2023,7 @@ export default function ChefLanding() {
                     <p className="text-sm text-[#6B6B6B] hidden sm:block">{t("joinKitchenPartners")}</p>
                     <div className="flex flex-col sm:flex-row gap-2">
                       <Button
-                        onClick={() => window.location.href = 'mailto:admin@localcook.shop?subject=Kitchen Partnership Inquiry'}
+                        onClick={() => window.location.href = 'https://kitchen.localcooks.ca'}
                         className="bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold py-2.5 px-6 rounded-full text-sm transition-all duration-300 group"
                       >{t("becomePartner")}<ArrowRight className="ml-1.5 h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
                       </Button>

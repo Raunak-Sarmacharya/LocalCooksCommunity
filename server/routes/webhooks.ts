@@ -1106,6 +1106,26 @@ async function handleCheckoutSessionCompleted(
             } else {
               logger.error(`[Webhook] ❌ Failed to send chef booking request email for booking ${booking.id} to ${chef.username}`);
             }
+
+            // In-app notification for chef (email alone was leaving the bell empty)
+            try {
+              await notificationService.createForChef({
+                chefId,
+                type: "booking_confirmed",
+                priority: "high",
+                title: "Booking Request Submitted",
+                message: `Your booking request for ${kitchen.name} on ${bookingDate.toISOString().split("T")[0]} (${startTime}–${endTime}) was submitted and is awaiting manager approval.`,
+                metadata: {
+                  bookingId: booking.id,
+                  kitchenName: kitchen.name,
+                  bookingDate: bookingDate.toISOString().split("T")[0],
+                },
+                actionUrl: `/booking/${booking.id}`,
+                actionLabel: "View Booking",
+              });
+            } catch (chefNotifErr) {
+              logger.error(`[Webhook] Failed to create chef booking notification:`, chefNotifErr as any);
+            }
           } else {
             logger.warn(`[Webhook] Chef or kitchen not found for booking ${booking.id} - chef: ${!!chef}, kitchen: ${!!kitchen}`);
           }

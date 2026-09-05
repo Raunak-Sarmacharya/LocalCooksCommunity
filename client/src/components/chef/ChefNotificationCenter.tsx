@@ -63,6 +63,8 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { formatDistanceToNow, isToday, isYesterday, isThisWeek } from "date-fns";
 import { tt } from "@/i18n/common-ns";
 import { ct } from "@/i18n/chef-ns";
+import { resolveNotificationHref } from "@shared/notification-deep-links";
+import { navigateNotificationHref } from "@/lib/navigate-notification-href";
 
 // Types
 interface Notification {
@@ -295,16 +297,25 @@ function NotificationItem({
   onDelete: (id: number) => void;
 }) {
   const { t } = useTranslation("chef");
+  const href = resolveNotificationHref({
+    role: "chef",
+    type: notification.type,
+    actionUrl: notification.action_url,
+    metadata: notification.metadata,
+  });
+
+  const openNotification = async () => {
+    if (!notification.is_read) {
+      await onMarkRead(notification.id);
+    }
+    if (href) navigateNotificationHref(href);
+  };
+
   // Handle keyboard navigation
   const handleKeyDown = async (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      if (!notification.is_read) {
-        await onMarkRead(notification.id);
-      }
-      if (notification.action_url) {
-        window.location.href = notification.action_url;
-      }
+      await openNotification();
     }
   };
 
@@ -323,14 +334,7 @@ function NotificationItem({
         "focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset",
         !notification.is_read && "bg-muted/50"
       )}
-      onClick={async () => {
-        if (!notification.is_read) {
-          await onMarkRead(notification.id);
-        }
-        if (notification.action_url) {
-          window.location.href = notification.action_url;
-        }
-      }}
+      onClick={() => { void openNotification(); }}
     >
       {/* Priority indicator */}
       <div className={cn(
@@ -368,22 +372,17 @@ function NotificationItem({
           </p>
           
           {/* Action button if present */}
-          {notification.action_label && (
+          {(notification.action_label || href) && (
             <Button
               variant="link"
               size="sm"
               className="h-auto p-0 mt-1"
               onClick={(e) => {
                 e.stopPropagation();
-                if (!notification.is_read) {
-                  onMarkRead(notification.id);
-                }
-                if (notification.action_url) {
-                  window.location.href = notification.action_url;
-                }
+                void openNotification();
               }}
             >
-              {notification.action_label}
+              {notification.action_label || t("notifViewDetails", "View details")}
               <ChevronRight className="h-3 w-3 ml-1" />
             </Button>
           )}

@@ -6,7 +6,7 @@
  * - Overstay penalties requiring payment
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileText, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -18,8 +18,10 @@ import { ChefPageHeader } from "@/components/chef/ui";
 import { PendingDamageClaims } from "./PendingDamageClaims";
 import { OverstayPenaltiesTable } from "./OverstayPenaltiesTable";
 
-export function IssuesAndRefunds() {
-  const [activeTab, setActiveTab] = useState<string>("damage-claims");
+export function IssuesAndRefunds({ initialTab }: { initialTab?: string }) {
+  const [activeTab, setActiveTab] = useState<string>(
+    initialTab === "overstay-penalties" ? "overstay-penalties" : "damage-claims"
+  );
   const {
     pendingDamageClaims,
     pendingPenalties,
@@ -27,6 +29,12 @@ export function IssuesAndRefunds() {
     totalPenalties,
   } = useChefResolutionCenter();
   const { t } = useTranslation("chef");
+
+  useEffect(() => {
+    if (initialTab === "overstay-penalties" || initialTab === "damage-claims") {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
 
   return (
     <div className="space-y-6">

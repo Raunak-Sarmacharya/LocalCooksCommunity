@@ -106,6 +106,60 @@ export function ChefSidebar({
         }
     }, [hiddenItems])
 
+    const closeMobileIfNeeded = () => {
+        if (isMobile) setOpenMobile(false)
+    }
+
+    const activateCrumb = (crumb: ChefBreadcrumb) => {
+        if (!crumb.onClick) return
+        crumb.onClick()
+        closeMobileIfNeeded()
+    }
+
+    /** Nested trail under a nav item: Kitchen → Book (child of kitchen), not flat siblings. */
+    const renderBranchTrail = (trail: ChefBreadcrumb[], depth = 0): React.ReactNode => {
+        if (trail.length === 0) return null
+
+        const [head, ...tail] = trail
+        const isLeaf = tail.length === 0
+        const canNavigate = Boolean(head.onClick)
+
+        return (
+            <SidebarMenuSubItem key={`${head.label}-${depth}`}>
+                <SidebarMenuSubButton
+                    asChild
+                    size="sm"
+                    isActive={isLeaf}
+                    className={cn(
+                        "h-auto min-h-7 py-1.5 text-[12px] leading-snug",
+                        !isLeaf &&
+                            "font-medium text-sidebar-foreground/80 hover:text-sidebar-accent-foreground",
+                        isLeaf && "font-medium"
+                    )}
+                >
+                    <button
+                        type="button"
+                        className="w-full cursor-pointer text-left"
+                        disabled={!canNavigate && isLeaf}
+                        onClick={() => activateCrumb(head)}
+                    >
+                        <span className="truncate">{head.label}</span>
+                    </button>
+                </SidebarMenuSubButton>
+                {tail.length > 0 ? (
+                    <SidebarMenuSub
+                        className={cn(
+                            "mx-0 mb-1 ml-2.5 mt-0.5 border-l border-sidebar-border/70 px-2 py-0.5",
+                            "translate-x-0"
+                        )}
+                    >
+                        {renderBranchTrail(tail, depth + 1)}
+                    </SidebarMenuSub>
+                ) : null}
+            </SidebarMenuSubItem>
+        )
+    }
+
     const renderNavItem = (item: ChefNavItem) => {
         const showBranch = activeView === item.id && branch.length > 0
         const isActive = activeView === item.id
@@ -133,33 +187,13 @@ export function ChefSidebar({
                     )}
                 </SidebarMenuButton>
                 {showBranch && (
-                    <SidebarMenuSub>
-                        {branch.map((crumb, index) => {
-                            const isLeaf = index === branch.length - 1
-                            const canNavigate = Boolean(crumb.onClick)
-                            return (
-                                <SidebarMenuSubItem key={`${crumb.label}-${index}`}>
-                                    <SidebarMenuSubButton
-                                        asChild
-                                        size="sm"
-                                        isActive={isLeaf}
-                                    >
-                                        <button
-                                            type="button"
-                                            className="w-full cursor-pointer text-left"
-                                            disabled={!canNavigate && isLeaf}
-                                            onClick={() => {
-                                                if (!crumb.onClick) return
-                                                crumb.onClick()
-                                                if (isMobile) setOpenMobile(false)
-                                            }}
-                                        >
-                                            <span>{crumb.label}</span>
-                                        </button>
-                                    </SidebarMenuSubButton>
-                                </SidebarMenuSubItem>
-                            )
-                        })}
+                    <SidebarMenuSub
+                        className={cn(
+                            "mx-3.5 mb-1 mt-0.5 border-l border-sidebar-border/80 px-2.5 py-1",
+                            "gap-0.5"
+                        )}
+                    >
+                        {renderBranchTrail(branch)}
                     </SidebarMenuSub>
                 )}
             </SidebarMenuItem>
