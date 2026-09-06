@@ -10,15 +10,12 @@ import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Loader2,
-  Mail,
-  Phone,
   KeyRound,
-  Shield,
   Camera,
-  CheckCircle2,
   Edit3,
   Lock,
   X,
+  Info,
 } from "lucide-react";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
@@ -26,14 +23,17 @@ import ChangePassword from "@/components/auth/ChangePassword";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { useTranslation } from "react-i18next";
 import { tt } from "@/i18n/common-ns";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Field,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field";
-import { motion, AnimatePresence } from "framer-motion";
-import { ChefPageHeader, StatusDot } from "@/components/chef/ui";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { motion } from "framer-motion";
+import { StatusDot } from "@/components/chef/ui";
+import { InfoChip } from "@/components/chef/info-chip";
+
+type EditableField = "displayName" | "username" | "phone";
 
 export default function ChefProfileSettings() {
   const { t } = useTranslation("chef");
@@ -47,7 +47,8 @@ export default function ChefProfileSettings() {
   const [phone, setPhone] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editingField, setEditingField] = useState<EditableField | null>(null);
+  const [draft, setDraft] = useState("");
 
   const { uploadFile, isUploading } = useFileUpload({
     maxSize: 2 * 1024 * 1024,
@@ -170,10 +171,7 @@ export default function ChefProfileSettings() {
           tone: "danger" as const,
         };
       default:
-        return {
-          label: t("profileStatusNotApplied", "Not Applied"),
-          tone: "neutral" as const,
-        };
+        return null;
     }
   };
 
@@ -211,12 +209,16 @@ export default function ChefProfileSettings() {
       if (!response.ok) throw new Error(tt("failedToUpdateProfile"));
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/chef/my-profile"] });
       queryClient.invalidateQueries({
         queryKey: ["/api/user/profile", firebaseUser?.uid],
       });
-      setIsEditingProfile(false);
+      if (variables.displayName !== undefined) setDisplayName(variables.displayName);
+      if (variables.username !== undefined) setUsername(variables.username);
+      if (variables.phone !== undefined) setPhone(variables.phone);
+      setEditingField(null);
+      setDraft("");
       toast({
         title: t("profileUpdatedTitle", "Profile updated"),
         description: t(
@@ -236,14 +238,42 @@ export default function ChefProfileSettings() {
     },
   });
 
-  const saveProfileAction = useStatusButton(
+  const startEdit = (field: EditableField, current: string) => {
+    setEditingField(field);
+    setDraft(current);
+  };
+
+  const cancelEdit = () => {
+    setEditingField(null);
+    setDraft("");
+  };
+
+  const saveFieldAction = useStatusButton(
     useCallback(async () => {
-      await updateProfileMutation.mutateAsync({
-        username: username !== user?.username ? username : undefined,
-        displayName: displayName || undefined,
-        phone: phone || undefined,
-      });
-    }, [updateProfileMutation, username, user?.username, displayName, phone])
+      if (!editingField) return;
+      const trimmed = draft.trim();
+      const original =
+        editingField === "displayName"
+          ? displayName
+          : editingField === "username"
+            ? username
+            : phone;
+      if (trimmed === original.trim()) return;
+      if (editingField === "displayName") {
+        await updateProfileMutation.mutateAsync({ displayName: trimmed });
+      } else if (editingField === "username") {
+        await updateProfileMutation.mutateAsync({ username: trimmed });
+      } else {
+        await updateProfileMutation.mutateAsync({ phone: trimmed });
+      }
+    }, [
+      editingField,
+      draft,
+      displayName,
+      username,
+      phone,
+      updateProfileMutation,
+    ])
   );
 
   const handleAvatarClick = () => {
@@ -271,56 +301,25 @@ export default function ChefProfileSettings() {
   if (isLoadingProfile || isLoadingDetails) {
     return (
       <div className="mx-auto max-w-4xl space-y-6 pb-16">
-        <div className="h-8 w-48 animate-pulse rounded bg-muted" />
         <div className="h-44 animate-pulse rounded-[1.35rem] bg-muted" />
-        <div className="grid gap-4 lg:grid-cols-3">
-          <div className="h-64 animate-pulse rounded-[1.35rem] bg-muted lg:col-span-2" />
-          <div className="h-64 animate-pulse rounded-[1.35rem] bg-muted" />
-        </div>
+        <div className="h-10 w-64 animate-pulse rounded bg-muted" />
+        <div className="h-64 animate-pulse rounded-[1.35rem] bg-muted" />
       </div>
     );
   }
 
-  const appStatus = getApplicationStatusDisplay(chefProfile?.applicationStatus);
+  const appStatus = getApplicationStatusDisplay(
+    chefProfile?.applicationStatus ?? null
+  );
   const photoSrc = avatarUrl || firebaseUser?.photoURL || undefined;
 
   return (
     <div className="relative mx-auto max-w-4xl space-y-8 pb-16">
-      {/* Soft brand wash — same language as site chrome */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-x-[-1rem] -top-4 -z-10 h-72 rounded-[2rem] bg-[radial-gradient(ellipse_at_28%_20%,hsl(348_85%_59%_/_0.1),transparent_58%)]"
       />
 
-      <ChefPageHeader
-        title={t("profileTitle", "Profile Settings")}
-        description={t(
-          "profileDescription",
-          "Manage your account details and security preferences"
-        )}
-        actions={
-          <Button
-            type="button"
-            size="sm"
-            variant={isEditingProfile ? "secondary" : "outline"}
-            onClick={() => setIsEditingProfile((v) => !v)}
-          >
-            {isEditingProfile ? (
-              <>
-                <X className="mr-1.5 h-3.5 w-3.5" />
-                {t("profileCancel", "Cancel")}
-              </>
-            ) : (
-              <>
-                <Edit3 className="mr-1.5 h-3.5 w-3.5" />
-                {t("profileEditProfile", "Edit Profile")}
-              </>
-            )}
-          </Button>
-        }
-      />
-
-      {/* Light identity hero */}
       <motion.section
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -368,40 +367,87 @@ export default function ChefProfileSettings() {
             <h2 className="mt-2 truncate text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
               {displayName || t("profileYourName", "Your Name")}
             </h2>
-            <p className="mt-1 truncate text-sm text-muted-foreground">{email}</p>
+            <div className="mt-1.5 flex flex-wrap items-center justify-center gap-2 sm:justify-start">
+              <p className="truncate text-sm text-muted-foreground">{email}</p>
+              <InfoChip
+                tone={user?.isVerified ? "success" : "warning"}
+                className="shrink-0 px-2 py-1"
+              >
+                {user?.isVerified
+                  ? t("profileVerifiedBadge", "Verified")
+                  : t("pfPending", "Pending")}
+              </InfoChip>
+            </div>
 
-            <ul className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-sm text-muted-foreground sm:justify-start">
-              <li className="inline-flex items-center gap-2">
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-sm text-muted-foreground sm:justify-start">
+              <span className="inline-flex items-center gap-2">
                 <StatusDot tone="progress" className="bg-primary" />
                 <span>{t("profileChefBadge", "Chef")}</span>
-              </li>
-              <li className="hidden h-3 w-px bg-border sm:block" aria-hidden />
-              <li className="inline-flex items-center gap-2">
-                <StatusDot tone={user?.isVerified ? "success" : "warning"} />
-                <span>
-                  {user?.isVerified
-                    ? t("profileVerifiedBadge", "Verified")
-                    : t("pfPending", "Pending")}
-                </span>
-              </li>
-              <li className="hidden h-3 w-px bg-border sm:block" aria-hidden />
-              <li className="inline-flex items-center gap-2">
-                <StatusDot tone={appStatus.tone} />
-                <span>{appStatus.label}</span>
-              </li>
-            </ul>
+              </span>
+              {appStatus ? (
+                <>
+                  <span className="hidden h-3 w-px bg-border sm:block" aria-hidden />
+                  <span className="inline-flex items-center gap-2">
+                    <StatusDot tone={appStatus.tone} />
+                    <span>{appStatus.label}</span>
+                  </span>
+                </>
+              ) : null}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground/70 transition hover:bg-muted hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    aria-label={t("pfAccountStatus")}
+                  >
+                    <Info className="h-3.5 w-3.5" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="start"
+                  className="w-80 space-y-3 p-3 sm:w-96"
+                >
+                  <p className="text-sm font-medium text-foreground">
+                    {t("pfAccountStatus")}
+                  </p>
+                  <ul className="space-y-2">
+                    <IntegrityRow
+                      label={t("pfAccountType")}
+                      value={t("pfRoleChef")}
+                      tone="progress"
+                    />
+                    {appStatus ? (
+                      <IntegrityRow
+                        label={t("pfApplication")}
+                        value={appStatus.label}
+                        tone={appStatus.tone}
+                      />
+                    ) : null}
+                  </ul>
+                </PopoverContent>
+              </Popover>
+            </div>
           </div>
         </div>
       </motion.section>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Personal info — main column */}
-        <motion.section
-          className="lg:col-span-2"
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.06 }}
-        >
+      <Tabs defaultValue="account" className="w-full">
+        <TabsList className="h-auto w-full justify-start gap-0 rounded-none border-b bg-transparent p-0">
+          <TabsTrigger
+            value="account"
+            className="rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
+          >
+            {t("profileTabAccount", "Account details")}
+          </TabsTrigger>
+          <TabsTrigger
+            value="security"
+            className="rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
+          >
+            {t("profileTabSecurity", "Security")}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="account" className="mt-6 focus-visible:ring-0">
           <Section
             title={t("profilePersonalInformation", "Personal Information")}
             description={t(
@@ -409,168 +455,115 @@ export default function ChefProfileSettings() {
               "Your public profile details"
             )}
           >
-            <AnimatePresence mode="wait" initial={false}>
-              {isEditingProfile ? (
-                <motion.div
-                  key="edit"
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <FieldGroup className="gap-5">
-                    <Field>
-                      <FieldLabel htmlFor="displayName">
-                        {t("profileDisplayName", "Display Name")}
-                      </FieldLabel>
-                      <Input
-                        id="displayName"
-                        value={displayName}
-                        onChange={(e) => setDisplayName(e.target.value)}
-                        placeholder={t("profileDisplayNamePlaceholder", "John Doe")}
-                        className="h-11"
-                      />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="username">
-                        {t("profileUsername", "Username")}
-                      </FieldLabel>
-                      <Input
-                        id="username"
-                        value={username}
-                        onChange={(e) => setUsername(e.target.value)}
-                        placeholder={t("profileUsernamePlaceholder", "johndoe")}
-                        className="h-11"
-                      />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="phone">
-                        {t("profilePhoneNumber", "Phone Number")}
-                      </FieldLabel>
-                      <div className="relative">
-                        <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input
-                          id="phone"
-                          type="tel"
-                          value={phone}
-                          onChange={(e) => setPhone(e.target.value)}
-                          placeholder={t(
-                            "profilePhonePlaceholder",
-                            "+1 (555) 000-0000"
-                          )}
-                          className="h-11 pl-10"
-                        />
-                      </div>
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="email">
-                        {t("profileEmailAddress", "Email Address")}
-                      </FieldLabel>
-                      <div className="relative">
-                        <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input
-                          id="email"
-                          type="email"
-                          value={email}
-                          disabled
-                          className="h-11 bg-muted pl-10 pr-10"
-                        />
-                        <Lock className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50" />
-                      </div>
-                      <FieldDescription className="flex items-center gap-1.5">
-                        <Shield className="h-3 w-3" />
-                        {t(
-                          "profileEmailLinkedNotice",
-                          "Email is linked to your authentication and cannot be changed here"
-                        )}
-                      </FieldDescription>
-                    </Field>
-                  </FieldGroup>
-                  <div className="mt-6 flex justify-end border-t pt-5">
-                    <StatusButton
-                      status={saveProfileAction.status}
-                      onClick={saveProfileAction.execute}
-                      labels={{
-                        idle: t("profileSaveChanges", "Save Changes"),
-                        loading: t("profileSaving", "Saving"),
-                        success: t("profileSaved", "Saved"),
-                      }}
-                    />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+              <FieldRow
+                label={t("profileDisplayName", "Display Name")}
+                value={displayName || "—"}
+                original={displayName}
+                editing={editingField === "displayName"}
+                draft={draft}
+                onDraftChange={setDraft}
+                onEdit={() => startEdit("displayName", displayName)}
+                onCancel={cancelEdit}
+                onSave={saveFieldAction.execute}
+                saveStatus={saveFieldAction.status}
+                inputId="displayName"
+                placeholder={t("profileDisplayNamePlaceholder", "John Doe")}
+                saveLabels={{
+                  idle: t("profileSaveChanges", "Save"),
+                  loading: t("profileSaving", "Saving"),
+                  success: t("profileSaved", "Saved"),
+                }}
+                cancelLabel={t("profileCancel", "Cancel")}
+                editLabel={t("profileEdit", "Edit")}
+              />
+              <FieldRow
+                label={t("profileUsername", "Username")}
+                value={username || "—"}
+                original={username}
+                editing={editingField === "username"}
+                draft={draft}
+                onDraftChange={setDraft}
+                onEdit={() => startEdit("username", username)}
+                onCancel={cancelEdit}
+                onSave={saveFieldAction.execute}
+                saveStatus={saveFieldAction.status}
+                inputId="username"
+                placeholder={t("profileUsernamePlaceholder", "johndoe")}
+                saveLabels={{
+                  idle: t("profileSaveChanges", "Save"),
+                  loading: t("profileSaving", "Saving"),
+                  success: t("profileSaved", "Saved"),
+                }}
+                cancelLabel={t("profileCancel", "Cancel")}
+                editLabel={t("profileEdit", "Edit")}
+              />
+              <FieldRow
+                label={t("profilePhoneNumber", "Phone Number")}
+                value={phone || "—"}
+                original={phone}
+                editing={editingField === "phone"}
+                draft={draft}
+                onDraftChange={setDraft}
+                onEdit={() => startEdit("phone", phone)}
+                onCancel={cancelEdit}
+                onSave={saveFieldAction.execute}
+                saveStatus={saveFieldAction.status}
+                inputId="phone"
+                inputType="tel"
+                placeholder={t("profilePhonePlaceholder", "+1 (555) 000-0000")}
+                saveLabels={{
+                  idle: t("profileSaveChanges", "Save"),
+                  loading: t("profileSaving", "Saving"),
+                  success: t("profileSaved", "Saved"),
+                }}
+                cancelLabel={t("profileCancel", "Cancel")}
+                editLabel={t("profileEdit", "Edit")}
+              />
+              <div className="rounded-xl border bg-muted/30 px-4 py-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      {t("profileEmailAddress", "Email Address")}
+                    </p>
+                    <p className="truncate text-sm font-medium text-foreground">
+                      {email || "—"}
+                    </p>
                   </div>
-                </motion.div>
-              ) : (
-                <motion.dl
-                  key="view"
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="grid gap-4 sm:grid-cols-2"
-                >
-                  <InfoTile
-                    label={t("profileDisplayName", "Display Name")}
-                    value={displayName || "—"}
-                  />
-                  <InfoTile
-                    label={t("profileUsername", "Username")}
-                    value={username || "—"}
-                  />
-                  <InfoTile
-                    label={t("profilePhoneNumber", "Phone Number")}
-                    value={phone || "—"}
-                    icon={<Phone className="h-3.5 w-3.5" />}
-                  />
-                  <InfoTile
-                    label={t("profileEmailAddress", "Email Address")}
-                    value={email || "—"}
-                    icon={<Mail className="h-3.5 w-3.5" />}
-                  />
-                </motion.dl>
-              )}
-            </AnimatePresence>
+                  <div className="flex shrink-0 items-center gap-0.5">
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button
+                          type="button"
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground/70 transition hover:bg-background hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          aria-label={t(
+                            "profileEmailLinkedNotice",
+                            "Email is linked to your authentication and cannot be changed here"
+                          )}
+                        >
+                          <Info className="h-3.5 w-3.5" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent align="end" className="w-72 p-3">
+                        <p className="text-xs leading-relaxed text-muted-foreground">
+                          {t(
+                            "profileEmailLinkedNotice",
+                            "Email is linked to your authentication and cannot be changed here"
+                          )}
+                        </p>
+                      </PopoverContent>
+                    </Popover>
+                    <span className="inline-flex h-7 w-7 items-center justify-center text-muted-foreground/50">
+                      <Lock className="h-3.5 w-3.5" aria-hidden />
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </Section>
-        </motion.section>
+        </TabsContent>
 
-        {/* Sidebar */}
-        <motion.div
-          className="space-y-6"
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.1 }}
-        >
-          <Section title={t("pfAccountStatus")}>
-            <ul className="space-y-3">
-              <IntegrityRow
-                label={t("pfAccountType")}
-                value={t("pfRoleChef")}
-                tone="progress"
-              />
-              <IntegrityRow
-                label={t("pfEmailVerified")}
-                value={user?.isVerified ? t("pfYes") : t("pfPending", "Pending")}
-                tone={user?.isVerified ? "success" : "warning"}
-                icon={
-                  user?.isVerified ? (
-                    <CheckCircle2 className="h-3.5 w-3.5 text-success" />
-                  ) : undefined
-                }
-              />
-              <IntegrityRow
-                label={t("pfApplication")}
-                value={appStatus.label}
-                tone={appStatus.tone}
-              />
-            </ul>
-          </Section>
-        </motion.div>
-
-        {/* Security — full width, same section language, no nested card */}
-        <motion.section
-          className="lg:col-span-3"
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.12 }}
-        >
+        <TabsContent value="security" className="mt-6 focus-visible:ring-0">
           <Section
             title={t("pfSecurityTitle")}
             description={t("pfSecurityDesc")}
@@ -578,7 +571,94 @@ export default function ChefProfileSettings() {
           >
             <ChangePassword role="chef" embedded />
           </Section>
-        </motion.section>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+function FieldRow({
+  label,
+  value,
+  original,
+  editing,
+  draft,
+  onDraftChange,
+  onEdit,
+  onCancel,
+  onSave,
+  saveStatus,
+  inputId,
+  inputType = "text",
+  placeholder,
+  saveLabels,
+  cancelLabel,
+  editLabel,
+}: {
+  label: string;
+  value: string;
+  original: string;
+  editing: boolean;
+  draft: string;
+  onDraftChange: (value: string) => void;
+  onEdit: () => void;
+  onCancel: () => void;
+  onSave: () => void;
+  saveStatus: "idle" | "loading" | "success" | "error";
+  inputId: string;
+  inputType?: string;
+  placeholder?: string;
+  saveLabels: { idle: string; loading: string; success: string };
+  cancelLabel: string;
+  editLabel: string;
+}) {
+  const isDirty = draft.trim() !== original.trim();
+
+  if (editing) {
+    return (
+      <div className="rounded-xl border bg-card px-4 py-3 ring-1 ring-primary/20">
+        <p className="text-xs font-medium text-muted-foreground">{label}</p>
+        <Input
+          id={inputId}
+          type={inputType}
+          value={draft}
+          onChange={(e) => onDraftChange(e.target.value)}
+          placeholder={placeholder}
+          className="mt-2 h-10"
+          autoFocus
+        />
+        <div className="mt-3 flex items-center justify-end gap-2">
+          <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
+            <X className="mr-1 h-3.5 w-3.5" />
+            {cancelLabel}
+          </Button>
+          <StatusButton
+            size="sm"
+            status={saveStatus}
+            onClick={onSave}
+            labels={saveLabels}
+            disabled={!isDirty}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border bg-muted/30 px-4 py-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1 space-y-1">
+          <p className="text-xs font-medium text-muted-foreground">{label}</p>
+          <p className="truncate text-sm font-medium text-foreground">{value}</p>
+        </div>
+        <button
+          type="button"
+          onClick={onEdit}
+          className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Edit3 className="h-3.5 w-3.5" aria-hidden />
+          {editLabel}
+        </button>
       </div>
     </div>
   );
@@ -611,26 +691,6 @@ function Section({
         </div>
       </div>
       <div className="px-5 py-5 sm:px-6 sm:py-6">{children}</div>
-    </div>
-  );
-}
-
-function InfoTile({
-  label,
-  value,
-  icon,
-}: {
-  label: string;
-  value: string;
-  icon?: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-xl border bg-muted/30 px-4 py-3.5">
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className="mt-1.5 flex items-center gap-2 text-sm font-medium text-foreground">
-        {icon ? <span className="text-muted-foreground">{icon}</span> : null}
-        <span className="min-w-0 break-words">{value}</span>
-      </p>
     </div>
   );
 }

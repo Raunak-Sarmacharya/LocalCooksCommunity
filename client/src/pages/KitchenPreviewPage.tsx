@@ -1526,7 +1526,47 @@ function KitchenInventoryPair({
           "Included with your booking, plus equipment you can rent by the session."
         )}
       >
-        <KitchenEquipmentSections kitchen={kitchen} alwaysExpanded columns={2} />
+        {included.length > 0 && rental.length > 0 ? (
+          <Tabs
+            defaultValue="included"
+            className="w-full"
+          >
+            <TabsList className="mb-3 h-auto w-full justify-start gap-0 rounded-none border-b border-gray-200 bg-transparent p-0">
+              <TabsTrigger
+                value="included"
+                className="rounded-none border-b-2 border-transparent px-3 py-2 text-sm shadow-none data-[state=active]:border-[#F51042] data-[state=active]:bg-transparent data-[state=active]:text-gray-900 data-[state=active]:shadow-none"
+              >
+                {t("comesWithBooking", "Included")}
+                <span className="ml-1.5 text-xs text-gray-400">{included.length}</span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="rental"
+                className="rounded-none border-b-2 border-transparent px-3 py-2 text-sm shadow-none data-[state=active]:border-[#F51042] data-[state=active]:bg-transparent data-[state=active]:text-gray-900 data-[state=active]:shadow-none"
+              >
+                {t("optionalRentals", "Optional Rentals")}
+                <span className="ml-1.5 text-xs text-gray-400">{rental.length}</span>
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="included" className="mt-0 focus-visible:ring-0">
+              <KitchenEquipmentSections
+                kitchen={kitchen}
+                section="included"
+                alwaysExpanded
+                columns={2}
+              />
+            </TabsContent>
+            <TabsContent value="rental" className="mt-0 focus-visible:ring-0">
+              <KitchenEquipmentSections
+                kitchen={kitchen}
+                section="rental"
+                alwaysExpanded
+                columns={2}
+              />
+            </TabsContent>
+          </Tabs>
+        ) : (
+          <KitchenEquipmentSections kitchen={kitchen} alwaysExpanded columns={2} />
+        )}
       </InventoryModal>
 
       <InventoryModal

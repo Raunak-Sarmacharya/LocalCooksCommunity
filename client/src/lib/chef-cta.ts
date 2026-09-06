@@ -9,7 +9,7 @@ const PREMIUM_PRIMARY_SHADOW =
 /** Chef primary CTA — same surface as kitchen preview Apply / Book. */
 export function chefPrimaryCtaClass(className?: string) {
   return cn(
-    "rounded-xl border-transparent bg-[#F51042] text-white transition-colors hover:bg-[#E00A38] hover:text-white disabled:opacity-100",
+    "rounded-xl border-transparent bg-[#F51042] text-white transition-colors hover:bg-[#E00A38] hover:text-white disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:bg-[#F51042]",
     PREMIUM_PRIMARY_SHADOW,
     className
   );
@@ -17,5 +17,9 @@ export function chefPrimaryCtaClass(className?: string) {
 
 /** Chef outline / secondary CTA — same soft elevation as preview tour outline. */
 export function chefOutlineCtaClass(className?: string) {
-  return cn("rounded-xl transition-colors disabled:opacity-100", PREMIUM_CTA_SHADOW, className);
+  return cn(
+    "rounded-xl transition-colors disabled:cursor-not-allowed disabled:opacity-55",
+    PREMIUM_CTA_SHADOW,
+    className
+  );
 }

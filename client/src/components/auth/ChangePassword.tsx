@@ -17,8 +17,8 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { KeyRound, Loader2, ShieldCheck, Chrome } from "lucide-react";
-import { useState, useMemo } from "react";
+import { KeyRound, Loader2, ShieldCheck, Chrome, Mail } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { toast } from "@/hooks/use-toast";
@@ -31,6 +31,7 @@ import {
   updatePassword,
 } from "firebase/auth";
 import { cn } from "@/lib/utils";
+import { resolvePasswordFormMode } from "./password-form-mode";
 
 // ─── Helpers ────────────────────────────────────────────
 async function syncPasswordToNeon(newPassword: string): Promise<void> {
@@ -59,6 +60,9 @@ const changePasswordSchema = z.object({
 }).refine((data) => data.newPassword === data.confirmPassword, {
   message: "Passwords do not match",
   path: ["confirmPassword"],
+}).refine((data) => data.newPassword !== data.currentPassword, {
+  message: "New password must be different from your current password",
+  path: ["newPassword"],
 });
 
 const setPasswordSchema = z.object({
@@ -81,6 +85,9 @@ interface ChangePasswordProps {
 
 export default function ChangePassword({ onSuccess, embedded = false }: ChangePasswordProps) {
   const [hasLinkedPassword, setHasLinkedPassword] = useState(false);
+  const [treatPasswordAsKnown, setTreatPasswordAsKnown] = useState(false);
+  // undefined = still loading token claim; null = unavailable
+  const [signInProvider, setSignInProvider] = useState<string | null | undefined>(undefined);
 
   // Detect if user has email/password provider linked (synchronous check, no effect needed)
   const hasPasswordProvider = useMemo(() => {
@@ -100,8 +107,40 @@ export default function ChangePassword({ onSuccess, embedded = false }: ChangePa
     );
   }, []);
 
-  // Show loading while detecting provider
-  if (hasPasswordProvider === null) {
+  useEffect(() => {
+    let cancelled = false;
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      setSignInProvider(null);
+      return;
+    }
+    currentUser
+      .getIdTokenResult()
+      .then((token) => {
+        if (!cancelled) setSignInProvider(token.signInProvider ?? null);
+      })
+      .catch((err) => {
+        logger.warn("[ChangePassword] Failed to read sign-in provider:", err);
+        if (!cancelled) setSignInProvider(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const mode = resolvePasswordFormMode({
+    hasPasswordProvider,
+    signInProvider,
+    treatPasswordAsKnown,
+  });
+
+  const markPasswordKnown = () => {
+    setHasLinkedPassword(true);
+    setTreatPasswordAsKnown(true);
+    onSuccess?.();
+  };
+
+  if (mode === "loading") {
     if (embedded) {
       return (
         <div className="flex items-center justify-center py-8">
@@ -118,18 +157,16 @@ export default function ChangePassword({ onSuccess, embedded = false }: ChangePa
     );
   }
 
-  if (hasPasswordProvider) {
+  if (mode === "change") {
     return <ChangePasswordForm onSuccess={onSuccess} embedded={embedded} />;
   }
 
   return (
     <SetPasswordForm
+      mode={mode}
       isGoogleUser={isGoogleUser}
       embedded={embedded}
-      onSuccess={() => {
-        setHasLinkedPassword(true);
-        onSuccess?.();
-      }}
+      onSuccess={markPasswordKnown}
     />
   );
 }
@@ -152,7 +189,15 @@ function ChangePasswordForm({
       newPassword: "",
       confirmPassword: "",
     },
+    mode: "onChange",
   });
+
+  const watched = form.watch();
+  const canSave =
+    watched.currentPassword.length > 0 &&
+    watched.newPassword.length >= 8 &&
+    watched.confirmPassword === watched.newPassword &&
+    watched.newPassword !== watched.currentPassword;
 
   const onSubmit = async (data: ChangePasswordFormData) => {
     setIsSubmitting(true);
@@ -254,7 +299,11 @@ function ChangePasswordForm({
             </FormItem>
           )}
         />
-        <Button type="submit" className={cn(embedded ? "w-full sm:w-auto" : "w-full")} disabled={isSubmitting}>
+        <Button
+          type="submit"
+          className={cn(embedded ? "w-full sm:w-auto" : "w-full")}
+          disabled={isSubmitting || !canSave}
+        >
           {isSubmitting ? (
             <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t("pwChanging")}</>
           ) : (
@@ -285,17 +334,20 @@ function ChangePasswordForm({
   );
 }
 
-// ─── Set Password Form (for Google SSO users) ──────────
+// ─── Set Password Form (Google SSO link, or email-link update) ───
 function SetPasswordForm({
+  mode,
   isGoogleUser,
   onSuccess,
   embedded = false,
 }: {
+  mode: "set-link" | "set-update";
   isGoogleUser: boolean;
   onSuccess?: () => void;
   embedded?: boolean;
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isEmailLinkSet = mode === "set-update";
 
   const form = useForm<SetPasswordFormData>({
     resolver: zodResolver(setPasswordSchema),
@@ -303,7 +355,13 @@ function SetPasswordForm({
       newPassword: "",
       confirmPassword: "",
     },
+    mode: "onChange",
   });
+
+  const watched = form.watch();
+  const canSave =
+    watched.newPassword.length >= 8 &&
+    watched.confirmPassword === watched.newPassword;
 
   const onSubmit = async (data: SetPasswordFormData) => {
     setIsSubmitting(true);
@@ -319,15 +377,22 @@ function SetPasswordForm({
         throw new Error("No email associated with this account.");
       }
 
-      // Link email/password credential to the existing Google account
-      const credential = EmailAuthProvider.credential(userEmail, data.newPassword);
-      await linkWithCredential(currentFirebaseUser, credential);
+      if (mode === "set-update") {
+        // Passwordless signup already linked a Firebase password provider with a
+        // server-generated secret the user never saw. Recent email-link auth lets
+        // us replace it without asking for that secret. Neon stays NOT NULL via sync.
+        await updatePassword(currentFirebaseUser, data.newPassword);
+      } else {
+        const credential = EmailAuthProvider.credential(userEmail, data.newPassword);
+        await linkWithCredential(currentFirebaseUser, credential);
+      }
 
-      // Sync hashed password to Neon DB (non-blocking)
       await syncPasswordToNeon(data.newPassword);
 
       toast.success("Password set successfully", {
-        description: "You can now sign in with your email and password as an alternative to Google."
+        description: isEmailLinkSet
+          ? "You can now sign in with your email and password, or keep using email links."
+          : "You can now sign in with your email and password as an alternative to Google.",
       });
 
       form.reset();
@@ -338,7 +403,9 @@ function SetPasswordForm({
       if (error.code === 'auth/weak-password') {
         errorMessage = "Password is too weak. Use at least 8 characters with a mix of letters, numbers, and symbols.";
       } else if (error.code === 'auth/requires-recent-login') {
-        errorMessage = "For security reasons, please sign out and sign back in with Google, then try again.";
+        errorMessage = isEmailLinkSet
+          ? "For security reasons, please sign out and sign back in with your email link, then try again."
+          : "For security reasons, please sign out and sign back in with Google, then try again.";
       } else if (error.code === 'auth/provider-already-linked') {
         errorMessage = "A password is already linked to this account. Try changing your password instead.";
       } else if (error.code === 'auth/email-already-in-use') {
@@ -350,21 +417,37 @@ function SetPasswordForm({
     }
   };
 
-  const formBody = (
-    <div className="space-y-5">
-      {isGoogleUser && !embedded ? (
-        <div className="flex items-start gap-3 rounded-lg border bg-muted/40 p-3">
-          <Chrome className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">
-            You signed in with Google. Add a password to also sign in with email.
-          </p>
-        </div>
-      ) : null}
-      {isGoogleUser && embedded ? (
+  const hint = isEmailLinkSet ? (
+    embedded ? (
+      <p className="text-sm text-muted-foreground">
+        You signed in with an email link. Choose a password to also sign in with email and password.
+      </p>
+    ) : (
+      <div className="flex items-start gap-3 rounded-lg border bg-muted/40 p-3">
+        <Mail className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">
+          You signed in with an email link. Choose a password to also sign in with email and password.
+        </p>
+      </div>
+    )
+  ) : isGoogleUser ? (
+    embedded ? (
+      <p className="text-sm text-muted-foreground">
+        You signed in with Google. Add a password to also sign in with email.
+      </p>
+    ) : (
+      <div className="flex items-start gap-3 rounded-lg border bg-muted/40 p-3">
+        <Chrome className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
         <p className="text-sm text-muted-foreground">
           You signed in with Google. Add a password to also sign in with email.
         </p>
-      ) : null}
+      </div>
+    )
+  ) : null;
+
+  const formBody = (
+    <div className="space-y-5">
+      {hint}
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
           <FormField
@@ -393,7 +476,11 @@ function SetPasswordForm({
               </FormItem>
             )}
           />
-          <Button type="submit" className={cn(embedded ? "w-full sm:w-auto" : "w-full")} disabled={isSubmitting}>
+          <Button
+            type="submit"
+            className={cn(embedded ? "w-full sm:w-auto" : "w-full")}
+            disabled={isSubmitting || !canSave}
+          >
             {isSubmitting ? (
               <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving…</>
             ) : (

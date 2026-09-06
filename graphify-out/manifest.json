@@ -348,9 +348,9 @@
     "semantic_hash": ""
   },
   "client/src/components/auth/ChangePassword.tsx": {
-    "mtime": 1788607180.9190164,
-    "seen": 1788615369.970399,
-    "ast_hash": "5c42f6d242f3aa00a2ec18e8e8236397",
+    "mtime": 1788658528.3995745,
+    "seen": 1788658561.1266701,
+    "ast_hash": "a8b3902ee7466795cb2da58c5a3c51a7",
     "semantic_hash": ""
   },
   "client/src/components/auth/EmailVerificationScreen.tsx": {
@@ -414,8 +414,8 @@
     "semantic_hash": "f334985b2124a5558308762617b15949"
   },
   "client/src/components/booking/BookingControlPanel.tsx": {
-    "mtime": 1788654516.3100908,
-    "seen": 1788654631.983726,
+    "mtime": 1788656802.8495574,
+    "seen": 1788657122.793431,
     "ast_hash": "50c860f50f8ad97875b1fff3ff6a3e55",
     "semantic_hash": ""
   },
@@ -552,9 +552,9 @@
     "semantic_hash": ""
   },
   "client/src/components/chef/ChefProfileSettings.tsx": {
-    "mtime": 1788626240.453707,
-    "seen": 1788626269.2615712,
-    "ast_hash": "e7fb191d471ba94b1ea1785c35fdb8fb",
+    "mtime": 1788657941.7449992,
+    "seen": 1788657960.73761,
+    "ast_hash": "5376c3a0f778cff3159cf54834df4157",
     "semantic_hash": ""
   },
   "client/src/components/chef/ChefSellerAccount.tsx": {
@@ -678,8 +678,8 @@
     "semantic_hash": ""
   },
   "client/src/components/chef/dashboard/MyKitchensTabContent.tsx": {
-    "mtime": 1788651838.3593934,
-    "seen": 1788652218.421292,
+    "mtime": 1788656802.8494515,
+    "seen": 1788657122.7955709,
     "ast_hash": "0d1cbd9e6aa03c7b6c36c3263b04c3c9",
     "semantic_hash": ""
   },
@@ -762,8 +762,8 @@
     "semantic_hash": ""
   },
   "client/src/components/chef/ui.tsx": {
-    "mtime": 1788651838.3596377,
-    "seen": 1788652218.421644,
+    "mtime": 1788656802.8494654,
+    "seen": 1788657122.7964292,
     "ast_hash": "98b6627dacd09c4d57289dd35fd418ed",
     "semantic_hash": ""
   },
@@ -858,8 +858,8 @@
     "semantic_hash": ""
   },
   "client/src/components/kitchen-application/KitchenDiscovery.tsx": {
-    "mtime": 1788651838.359348,
-    "seen": 1788652218.4220989,
+    "mtime": 1788656802.8496318,
+    "seen": 1788657122.798018,
     "ast_hash": "bd369f0cc823389fd9ecefd4b3ee3df4",
     "semantic_hash": ""
   },
@@ -1908,10 +1908,10 @@
     "semantic_hash": ""
   },
   "client/src/components/ui/status-button.tsx": {
-    "mtime": 1788621590.2495334,
-    "seen": 1788622359.724514,
-    "ast_hash": "f4e3f616d061924bbcfd6d4a42ff7878",
-    "semantic_hash": "f4e3f616d061924bbcfd6d4a42ff7878"
+    "mtime": 1788657937.680454,
+    "seen": 1788657960.743346,
+    "ast_hash": "c15c4f77c21c02a9f3b5b3877add34e1",
+    "semantic_hash": ""
   },
   "client/src/components/ui/switch.tsx": {
     "mtime": 1788621590.2497125,
@@ -2472,9 +2472,9 @@
     "semantic_hash": ""
   },
   "client/src/pages/KitchenPreviewPage.tsx": {
-    "mtime": 1788655333.815348,
-    "seen": 1788655367.2621188,
-    "ast_hash": "817100514acb3982784e90a13a56174b",
+    "mtime": 1788657003.662262,
+    "seen": 1788657122.816592,
+    "ast_hash": "9da4349c2a2186a685bec1d4a5dbbfc1",
     "semantic_hash": ""
   },
   "client/src/pages/KitchenPricingManagement.tsx": {
@@ -5178,8 +5178,8 @@
     "semantic_hash": ""
   },
   "client/src/components/booking/KitchenBookingFlow.tsx": {
-    "mtime": 1788654516.3115082,
-    "seen": 1788654631.983867,
+    "mtime": 1788656802.8495188,
+    "seen": 1788657122.794267,
     "ast_hash": "523831187eb4fc6916fcf09075b27347",
     "semantic_hash": ""
   },
@@ -5286,14 +5286,14 @@
     "semantic_hash": ""
   },
   "client/src/lib/chef-cta.ts": {
-    "mtime": 1788553467.4247785,
-    "seen": 1788553852.195765,
-    "ast_hash": "85f2c54ac80b1cf4db0b89fe1f0451d6",
+    "mtime": 1788657928.6814656,
+    "seen": 1788657960.745172,
+    "ast_hash": "eb8533f1964c42e6a9e74fb0b17cc371",
     "semantic_hash": ""
   },
   "client/src/components/kitchen/KitchenGridCard.tsx": {
-    "mtime": 1788651838.3596797,
-    "seen": 1788652218.4221709,
+    "mtime": 1788656802.8494344,
+    "seen": 1788657122.798107,
     "ast_hash": "d57e98b6c0bf4df38f344d42833ef650",
     "semantic_hash": ""
   },
@@ -5451,6 +5451,18 @@
     "mtime": 1788654341.6365614,
     "seen": 1788654631.9917178,
     "ast_hash": "52f2424f8e34b4bbd8cef7817223aad8",
+    "semantic_hash": ""
+  },
+  "client/src/components/auth/password-form-mode.test.ts": {
+    "mtime": 1788658482.601749,
+    "seen": 1788658561.126922,
+    "ast_hash": "e14e25fbf13fb8f5c4a11f3e9dde4321",
+    "semantic_hash": ""
+  },
+  "client/src/components/auth/password-form-mode.ts": {
+    "mtime": 1788658471.3518524,
+    "seen": 1788658561.126923,
+    "ast_hash": "f64676e8a25dbd15d6664766677d7e3a",
     "semantic_hash": ""
   }
 }
