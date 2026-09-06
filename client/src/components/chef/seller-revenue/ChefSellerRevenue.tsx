@@ -23,6 +23,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import Logo from "@/components/ui/logo";
+import { SiStripe } from "react-icons/si";
+import { Icon } from "@iconify/react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
@@ -1580,7 +1583,7 @@ function StripeDashboardButton({ className }: { className?: string }) {
 
   return (
     <Button variant="outline" onClick={handleOpenDashboard} disabled={dashboardLinkMutation.isPending} className={cn("gap-2", className)}>
-      {dashboardLinkMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
+      {dashboardLinkMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <SiStripe className="h-4 w-4 text-[#635BFF]" />}
       {t("revViewStripeDashboard")}
     </Button>
   );
@@ -1594,7 +1597,7 @@ function PhpSellerDashboardButton({ className }: { className?: string }) {
   const { t } = useTranslation("chef");
   return (
     <Button variant="outline" onClick={openChefShopHome} className={cn("gap-2", className)}>
-      <Store className="h-4 w-4" />
+      <Logo variant="brand" className="h-4 w-4" />
       {t("revSellerAccount")}
     </Button>
   );

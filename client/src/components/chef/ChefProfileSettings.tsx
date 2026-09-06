@@ -1,5 +1,5 @@
 import { logger } from "@/lib/logger";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
@@ -9,9 +9,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
-  Loader2,
-  KeyRound,
-  Camera,
   Edit3,
   Lock,
   X,
@@ -20,9 +17,9 @@ import {
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
 import ChangePassword from "@/components/auth/ChangePassword";
-import { useFileUpload } from "@/hooks/useFileUpload";
 import { useTranslation } from "react-i18next";
 import { tt } from "@/i18n/common-ns";
+import type { PasswordFormMode } from "@/components/auth/password-form-mode";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Popover,
@@ -40,7 +37,6 @@ export default function ChefProfileSettings() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user: firebaseUser } = useFirebaseAuth();
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -49,22 +45,14 @@ export default function ChefProfileSettings() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [editingField, setEditingField] = useState<EditableField | null>(null);
   const [draft, setDraft] = useState("");
+  const [passwordMode, setPasswordMode] = useState<PasswordFormMode>("loading");
 
-  const { uploadFile, isUploading } = useFileUpload({
-    maxSize: 2 * 1024 * 1024,
-    allowedTypes: ["image/jpeg", "image/png", "image/webp"],
-    onSuccess: (response) => {
-      setAvatarUrl(response.url);
-      updateProfileMutation.mutate({ profileImageUrl: response.url });
-    },
-    onError: (error) => {
-      toast({
-        title: t("profileUploadFailedTitle", "Upload failed"),
-        description: error,
-        variant: "destructive",
-      });
-    },
-  });
+  const passwordHeading =
+    passwordMode === "set-link" || passwordMode === "set-update"
+      ? t("pfPasswordCreate", "Create password")
+      : passwordMode === "change"
+        ? t("pfPasswordUpdate", "Update password")
+        : t("pfPasswordTitle", "Password");
 
   const { data: user, isLoading: isLoadingProfile } = useQuery({
     queryKey: ["/api/user/profile", firebaseUser?.uid],
@@ -276,15 +264,6 @@ export default function ChefProfileSettings() {
     ])
   );
 
-  const handleAvatarClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) await uploadFile(file);
-  };
-
   const getInitials = () => {
     if (displayName) {
       return displayName
@@ -314,10 +293,18 @@ export default function ChefProfileSettings() {
   const photoSrc = avatarUrl || firebaseUser?.photoURL || undefined;
 
   return (
-    <div className="relative mx-auto max-w-4xl space-y-8 pb-16">
+    <div className="relative mx-auto max-w-4xl space-y-8 pb-10">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">
+          {t("cmdProfileSettings", "Profile Settings")}
+        </h1>
+        <p className="text-muted-foreground mt-1">
+          {t("manageYourAccountDetailsAndSecurityPreferences", "Manage your account details and password.")}
+        </p>
+      </div>
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-x-[-1rem] -top-4 -z-10 h-72 rounded-[2rem] bg-[radial-gradient(ellipse_at_28%_20%,hsl(348_85%_59%_/_0.1),transparent_58%)]"
+        className="pointer-events-none absolute inset-x-[-1rem] top-0 -z-10 h-32 rounded-[2rem] bg-[radial-gradient(ellipse_at_28%_20%,hsl(348_85%_59%_/_0.1),transparent_58%)]"
       />
 
       <motion.section
@@ -328,46 +315,26 @@ export default function ChefProfileSettings() {
       >
         <div
           aria-hidden
-          className="absolute inset-x-0 top-0 h-24 bg-[linear-gradient(180deg,hsl(348_85%_59%_/_0.08),transparent)]"
+          className="absolute inset-x-0 top-0 h-20 bg-[linear-gradient(180deg,hsl(348_85%_59%_/_0.08),transparent)]"
         />
-        <div className="relative flex flex-col items-center gap-5 px-6 py-8 sm:flex-row sm:items-center sm:gap-7 sm:px-8">
-          <div className="relative shrink-0">
-            <Avatar className="h-24 w-24 border-2 border-background shadow-md ring-2 ring-primary/20 sm:h-28 sm:w-28">
+        <div className="relative flex flex-col items-center gap-3 p-4 sm:flex-row">
+          <div className="shrink-0">
+            <Avatar className="h-[4.5rem] w-[4.5rem] border-2 border-background shadow-sm ring-2 ring-primary/20">
               <AvatarImage src={photoSrc} alt={displayName} className="object-cover" />
               <AvatarFallback className="bg-primary/10 text-2xl font-semibold text-primary">
                 {getInitials()}
               </AvatarFallback>
             </Avatar>
-            <button
-              type="button"
-              onClick={handleAvatarClick}
-              disabled={isUploading}
-              className="absolute bottom-0 right-0 flex h-9 w-9 items-center justify-center rounded-full border bg-background text-foreground shadow-sm transition hover:bg-primary hover:text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label={t("profileChangePhoto", "Change photo")}
-            >
-              {isUploading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Camera className="h-4 w-4" />
-              )}
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              onChange={handleAvatarChange}
-              className="hidden"
-            />
           </div>
 
-          <div className="min-w-0 flex-1 text-center sm:text-left">
-            <p className="font-display text-xl leading-none text-primary sm:text-2xl">
+          <div className="min-w-0 flex-1 flex flex-col items-center sm:items-start gap-1.5">
+            <p className="font-display text-sm font-medium leading-none text-primary">
               Local Cooks
             </p>
-            <h2 className="mt-2 truncate text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+            <h2 className="truncate text-xl font-semibold tracking-tight text-foreground leading-none">
               {displayName || t("profileYourName", "Your Name")}
             </h2>
-            <div className="mt-1.5 flex flex-wrap items-center justify-center gap-2 sm:justify-start">
+            <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-sm sm:justify-start">
               <p className="truncate text-sm text-muted-foreground">{email}</p>
               <InfoChip
                 tone={user?.isVerified ? "success" : "warning"}
@@ -377,9 +344,6 @@ export default function ChefProfileSettings() {
                   ? t("profileVerifiedBadge", "Verified")
                   : t("pfPending", "Pending")}
               </InfoChip>
-            </div>
-
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-sm text-muted-foreground sm:justify-start">
               <span className="inline-flex items-center gap-2">
                 <StatusDot tone="progress" className="bg-primary" />
                 <span>{t("profileChefBadge", "Chef")}</span>
@@ -443,7 +407,7 @@ export default function ChefProfileSettings() {
             value="security"
             className="rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
           >
-            {t("profileTabSecurity", "Security")}
+            {t("profileTabPassword", "Password")}
           </TabsTrigger>
         </TabsList>
 
@@ -565,11 +529,14 @@ export default function ChefProfileSettings() {
 
         <TabsContent value="security" className="mt-6 focus-visible:ring-0">
           <Section
-            title={t("pfSecurityTitle")}
+            title={passwordHeading}
             description={t("pfSecurityDesc")}
-            icon={<KeyRound className="h-4 w-4 text-primary" />}
           >
-            <ChangePassword role="chef" embedded />
+            <ChangePassword
+              role="chef"
+              embedded
+              onModeResolved={setPasswordMode}
+            />
           </Section>
         </TabsContent>
       </Tabs>

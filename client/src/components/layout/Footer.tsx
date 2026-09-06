@@ -65,25 +65,25 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
   };
 
   return (
-    <footer ref={ref} className="bg-gradient-to-t from-[#1a1a1a] via-[#2C2C2C] to-[#1a1a1a] text-white pt-10 pb-6 px-4 relative overflow-hidden">
+    <footer ref={ref} className="relative overflow-hidden border-t-4 border-[#F51042] bg-[#101010] px-4 pb-24 pt-10 text-white sm:pb-8 lg:pt-12">
       {/* Decorative background elements */}
-      <div className="absolute inset-0 opacity-10 pointer-events-none">
-        <div className="absolute top-20 left-20 w-96 h-96 bg-brand-primary rounded-full blur-3xl"></div>
-        <div className="absolute bottom-20 right-20 w-80 h-80 bg-gold rounded-full blur-3xl"></div>
+      <div className="pointer-events-none absolute inset-0 opacity-[0.07]">
+        <div className="absolute -left-32 -top-40 size-[28rem] rounded-full bg-brand-primary blur-3xl"></div>
+        <div className="absolute -bottom-52 right-0 size-96 rounded-full bg-gold blur-3xl"></div>
       </div>
 
       <div className="container mx-auto max-w-7xl relative z-10 px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-col md:flex-row justify-between mb-6 pb-6 border-b border-white/20 gap-8 md:gap-0">
-          <div className="mb-8 md:mb-0 md:w-1/3">
+        <div className="grid gap-8 border-b border-white/10 pb-9 lg:grid-cols-[0.9fr_2fr] lg:gap-20">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-5 lg:p-6">
             <div className="mb-4">
-              <Logo variant="white" className="h-12 sm:h-14 md:h-16 w-auto" />
+              <Logo variant="white" className="h-11 w-auto sm:h-12" />
             </div>
-            <p className="text-gray-300 mb-6 max-w-md text-sm sm:text-base leading-relaxed">{t("connectingTalentedHomeChefs")}</p>
+            <p className="max-w-sm text-sm leading-6 text-white/60">{t("connectingTalentedHomeChefs")}</p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 md:w-3/5">
+          <div className="grid grid-cols-1 gap-8 py-2 sm:grid-cols-3 lg:gap-12">
             <div>
-              <h3 className="text-xl md:text-2xl font-bold mb-4 text-brand-primary">{t("contactUs")}</h3>
+              <h3 className="mb-4 text-xs font-semibold uppercase tracking-[0.16em] text-white/45">{t("contactUs")}</h3>
               <ul className="space-y-3">
                 <li>
                   <a
@@ -113,7 +113,7 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
             </div>
 
             <div>
-              <h3 className="text-xl md:text-2xl font-bold mb-4 text-brand-primary">{t("quickLinks")}</h3>
+              <h3 className="mb-4 text-xs font-semibold uppercase tracking-[0.16em] text-white/45">{t("quickLinks")}</h3>
               <ul className="space-y-2">
                 {isChefLanding ? (
                   <>
@@ -232,7 +232,7 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
             </div>
 
             <div>
-              <h3 className="text-xl md:text-2xl font-bold mb-4 text-[#F51042]">{t("connect")}</h3>
+              <h3 className="mb-4 text-xs font-semibold uppercase tracking-[0.16em] text-white/45">{t("connect")}</h3>
               <div className="flex space-x-3 mb-4">
                 <a
                   href="https://www.facebook.com/LocalCooks"
@@ -258,7 +258,7 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row justify-between items-center text-xs sm:text-sm text-gray-400 pt-4 gap-3 sm:gap-4">
+        <div className="flex flex-col items-center justify-between gap-4 pt-6 text-xs text-white/45 sm:flex-row">
           <div className="flex items-center w-full sm:w-auto justify-center sm:justify-start">
             <LanguageSwitcher size="sm" variant="footer" />
           </div>

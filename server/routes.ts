@@ -109,6 +109,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Mount Places API Proxy (secure Google Places API access)
   app.use("/api/places", (await import("./routes/places")).default);
 
+  // Authenticated, role-scoped global search (shared by all portal command menus)
+  app.use("/api/search", (await import("./routes/search")).default);
+
   // Legacy logout endpoint alias (frontend calls /api/logout)
   app.post("/api/logout", (req, res) => {
     logger.info("🚪 Logout request received (Firebase Auth is stateless)");

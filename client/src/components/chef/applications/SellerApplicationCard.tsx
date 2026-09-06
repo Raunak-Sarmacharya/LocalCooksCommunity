@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Icon } from "@iconify/react";
 import type { TFunction } from "i18next";
 import { Card } from "@/components/ui/card";
 import { InfoChip } from "@/components/chef/info-chip";
@@ -215,8 +216,9 @@ export default function SellerApplicationCard({
                 size="sm"
                 className="text-muted-foreground"
                 onClick={() => onCancelApplication("chef", app.id)}
-              >
-                {t("cancelApplication", "Cancel application")}
+      >
+        <Icon icon="mdi:close-circle-outline" className="size-4" aria-hidden />
+        {t("cancelApplication", "Cancel application")}
               </Button>
             )}
           </div>

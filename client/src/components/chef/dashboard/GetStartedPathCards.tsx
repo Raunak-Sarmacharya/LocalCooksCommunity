@@ -15,6 +15,7 @@ import { TruncatedText } from "@/components/common/TruncatedText";
 import chefCookingImage from "@/assets/chef-cooking.png";
 import emptyKitchenImage from "@assets/emptykitchen.png";
 import { cn } from "@/lib/utils";
+import { Icon } from "@iconify/react";
 
 type PathItem = {
   title: string;
@@ -32,6 +33,7 @@ function GetStartedPathCard({
   ctaLabel,
   onCta,
   ctaTestId,
+  ctaIcon,
   loading = "lazy",
   compact = false,
 }: {
@@ -45,6 +47,7 @@ function GetStartedPathCard({
   ctaLabel: string;
   onCta: () => void;
   ctaTestId?: string;
+  ctaIcon: string;
   loading?: "lazy" | "eager";
   compact?: boolean;
 }) {
@@ -81,8 +84,8 @@ function GetStartedPathCard({
         </CardContent>
         <CardFooter className="mt-auto flex-row justify-end gap-2">
           <Button size="sm" onClick={onCta} data-testid={ctaTestId}>
+            <Icon icon={ctaIcon} className="size-4" aria-hidden />
             {ctaLabel}
-            <ArrowRight />
           </Button>
         </CardFooter>
       </Card>
@@ -136,8 +139,8 @@ function GetStartedPathCard({
 
       <CardFooter className="mt-auto flex-row justify-end gap-2">
         <Button size="sm" onClick={onCta} data-testid={ctaTestId}>
+          <Icon icon={ctaIcon} className="size-4" aria-hidden />
           {ctaLabel}
-          <ArrowRight />
         </Button>
       </CardFooter>
     </Card>
@@ -182,6 +185,7 @@ export function SellerPathEmptyCard({
       steps={SELLER_STEPS}
       ctaLabel={t("applyToSell", "Apply to sell")}
       ctaTestId="seller-application-start"
+      ctaIcon="mdi:file-document-edit-outline"
       onCta={onApply}
       loading={loading}
       compact={compact}
@@ -223,7 +227,8 @@ export function KitchenPathEmptyCard({
       title={t("kitchenAccessTitle", "Kitchen access")}
       description={t("kitchenAccessDesc", "Apply to a partner kitchen, get approved, then book time to cook.")}
       steps={KITCHEN_STEPS}
-      ctaLabel={t("exploreKitchens", "Explore kitchens")}
+      ctaLabel={t("exploreKitchens", "Discover Kitchens")}
+      ctaIcon="mdi:magnify"
       onCta={onExplore}
       loading={loading}
       compact={compact}

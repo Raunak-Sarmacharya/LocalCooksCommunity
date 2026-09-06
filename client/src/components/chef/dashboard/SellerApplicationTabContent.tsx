@@ -20,6 +20,7 @@ import { Application } from "@shared/schema";
 import { ArrowRight, Building, Store } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { Icon } from "@iconify/react";
 import type { KitchenApplicationWithLocation, PublicKitchen } from "./types";
 
 interface SellerApplicationTabContentProps {
@@ -320,8 +321,9 @@ export default function SellerApplicationTabContent({
                   size="sm"
                   className="text-muted-foreground"
                   onClick={() => onCancelApplication("chef", current.id)}
-                >
-                  {t("apCancelBtn")}
+        >
+          <Icon icon="mdi:close-circle-outline" className="size-4" aria-hidden />
+          {t("apCancelBtn")}
                 </Button>
               ) : (
                 <span />
@@ -331,8 +333,9 @@ export default function SellerApplicationTabContent({
                   className="ml-auto"
                   variant={docsNeedAction ? "default" : "outline"}
                   onClick={onManageDocuments}
-                >
-                  {docsNeedAction ? t("apUpdateDocuments") : t("apManageDocuments")}
+      >
+        <Icon icon="mdi:file-document-edit-outline" className="size-4" aria-hidden />
+        {docsNeedAction ? t("apUpdateDocuments") : t("apManageDocuments")}
                   <ArrowRight />
                 </Button>
               ) : !hasActiveSeller ? (

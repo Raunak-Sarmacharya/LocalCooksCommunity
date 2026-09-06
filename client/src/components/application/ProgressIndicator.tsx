@@ -17,7 +17,7 @@ export default function ProgressIndicator({ step }: ProgressIndicatorProps) {
   ] as const;
 
   return (
-    <div className="grid grid-cols-3 gap-3">
+    <div className="grid grid-cols-3 gap-2">
       {STEPS.map((item, index) => {
         const n = index + 1;
         const complete = step > n;

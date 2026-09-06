@@ -70,7 +70,8 @@ export function KitchenGridCard({
 
   const storageLine = formatStorageLine(
     storageSummary,
-    t("gridCardNone", "—")
+    t("gridCardNone", "—"),
+    t("gridCardStorageSpaces", "storage spaces")
   );
   const equipmentLine = formatEquipmentBreakdown(equipmentSummary, {
     included: t("gridCardEquipmentIncluded", "included"),

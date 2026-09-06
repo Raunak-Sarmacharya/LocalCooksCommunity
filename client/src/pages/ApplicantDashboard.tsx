@@ -38,6 +38,7 @@ import {
   AlertCircle,
   MessageCircle,
   CreditCard,
+  Loader2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
@@ -57,6 +58,7 @@ import { useChefOnboardingStatus } from "@/hooks/use-chef-onboarding-status";
 import KitchenDiscovery from "@/components/kitchen-application/KitchenDiscovery";
 import TrainingOverviewPanel from "@/components/training/TrainingOverviewPanel";
 import ApplicationFormPanel from "@/components/application/ApplicationFormPanel";
+import { leaveSellerApplication } from "@/components/application/ApplicationFormContext";
 import ChefSupportPage from "@/components/chef/ChefSupportPage";
 import { IssuesAndRefunds } from "@/components/chef/IssuesAndRefunds";
 import { TransactionHistory } from "@/components/chef/TransactionHistory";
@@ -67,6 +69,7 @@ import OutstandingDuesBanner from "@/components/chef/OutstandingDuesBanner";
 import ChefProfileSettings from "@/components/chef/ChefProfileSettings";
 import ChefSellerRevenue from "@/components/chef/seller-revenue/ChefSellerRevenue";
 import ChefSellerAccount from "@/components/chef/ChefSellerAccount";
+import ChefNotificationCenter from "@/components/chef/ChefNotificationCenter";
 import { useDocumentVerification } from "@/hooks/use-document-verification";
 import { applicationStatusVariant, hasStep2BeenSubmitted } from "@/components/chef/applications/status";
 import { ChefPageHeader } from "@/components/chef/ui";
@@ -109,7 +112,7 @@ export default function ApplicantDashboard() {
   const getInitialTab = () => {
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
-    if (view && ['overview', 'applications', 'kitchen-applications', 'discover-kitchens', 'viewings', 'bookings', 'training', 'messages', 'support', 'feedback', 'seller-revenue', 'my-account', 'transactions', 'issues-refunds'].includes(view)) {
+    if (view && ['overview', 'applications', 'kitchen-applications', 'discover-kitchens', 'viewings', 'bookings', 'training', 'messages', 'support', 'feedback', 'seller-revenue', 'my-account', 'transactions', 'issues-refunds', 'notifications', 'profile'].includes(view)) {
       return view;
     }
     return 'overview';
@@ -139,11 +142,13 @@ export default function ApplicantDashboard() {
   const [applicationViewMode, setApplicationViewMode] = useState<'list' | 'form' | 'documents'>('list');
   const applicationLeaveRef = useRef<(() => void) | null>(null);
   const [applicationLeaveOpen, setApplicationLeaveOpen] = useState(false);
+  const [applicationBusy, setApplicationBusy] = useState(false);
   const isApplicationFlowActive =
     applicationViewMode === "form" || applicationViewMode === "documents";
 
   const requestLeaveApplication = useCallback(
     (proceed?: () => void) => {
+      if (applicationBusy) return;
       if (!isApplicationFlowActive) {
         proceed?.();
         return;
@@ -151,15 +156,15 @@ export default function ApplicantDashboard() {
       applicationLeaveRef.current = proceed ?? null;
       setApplicationLeaveOpen(true);
     },
-    [isApplicationFlowActive],
+    [isApplicationFlowActive, applicationBusy],
   );
 
   const confirmLeaveApplication = useCallback(() => {
     setApplicationLeaveOpen(false);
     const proceed = applicationLeaveRef.current;
     applicationLeaveRef.current = null;
-    if (proceed) proceed();
-    else setApplicationViewMode("list");
+    setApplicationViewMode("list");
+    leaveSellerApplication(proceed ?? undefined);
   }, []);
 
   const guardedApplicationNavigate = useCallback(
@@ -407,7 +412,7 @@ export default function ApplicantDashboard() {
     }
   }, [user, subdomain]);
 
-  const { data: applications = [], isLoading, error } = useQuery<Application[]>({
+  const { data: applications = [], isLoading, error, refetch: refetchApplications } = useQuery<Application[]>({
     queryKey: ["/api/firebase/applications/my"],
     queryFn: async ({ queryKey }) => {
       if (!user?.uid) {
@@ -713,8 +718,18 @@ export default function ApplicantDashboard() {
     />
   );
 
-  const applicationsTabContent = applicationViewMode === "form" ? (
-    <ApplicationFormPanel onBack={() => requestLeaveApplication(() => setApplicationViewMode("list"))} />
+  const applicationsTabContent = userDisplayInfo.isLoading ? (
+    <div role="status" className="flex min-h-48 items-center justify-center gap-3 rounded-xl border p-6">
+      <Loader2 className="size-5 animate-spin" aria-hidden />
+      <span>{t("apMyApplication")}...</span>
+    </div>
+  ) : userDisplayInfo.error ? (
+    <div role="alert" className="space-y-3 rounded-xl border p-6">
+      <p>{userDisplayInfo.error.message}</p>
+      <Button className="rounded-xl" variant="outline" onClick={() => refetchApplications()}>Retry</Button>
+    </div>
+  ) : applicationViewMode === "form" ? (
+    <ApplicationFormPanel onBack={() => requestLeaveApplication(() => setApplicationViewMode("list"))} onBusyChange={setApplicationBusy} />
   ) : applicationViewMode === "documents" ? (
     <DocumentVerificationView
       documentVerification={docData || undefined}
@@ -877,6 +892,12 @@ export default function ApplicantDashboard() {
         return (
           <div className="space-y-8 animate-in fade-in-50 duration-500">
             <ChefProfileSettings />
+          </div>
+        );
+      case "notifications":
+        return (
+          <div className="animate-in fade-in-50 duration-500">
+            <ChefNotificationCenter variant="page" />
           </div>
         );
       default:
@@ -1148,14 +1169,14 @@ export default function ApplicantDashboard() {
           if (!open) applicationLeaveRef.current = null;
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="w-[95vw] rounded-xl sm:rounded-xl">
           <AlertDialogHeader>
             <AlertDialogTitle>{t("apLeaveTitle")}</AlertDialogTitle>
             <AlertDialogDescription>{t("apLeaveDesc")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t("apLeaveKeep")}</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmLeaveApplication}>
+            <AlertDialogCancel className="rounded-xl">{t("apLeaveKeep")}</AlertDialogCancel>
+            <AlertDialogAction className="rounded-xl" onClick={confirmLeaveApplication}>
               {t("apLeaveConfirm")}
             </AlertDialogAction>
           </AlertDialogFooter>

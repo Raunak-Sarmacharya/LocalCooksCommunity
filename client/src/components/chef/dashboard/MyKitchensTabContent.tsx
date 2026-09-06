@@ -22,10 +22,7 @@ import type {
 } from "./types";
 import { ChefPageHeader } from "@/components/chef/ui";
 import { getKitchenDisplayStatus } from "@/components/chef/applications/status";
-import {
-  KitchenStatusChip,
-  bookNowIcon as BookNowIcon,
-} from "@/components/chef/applications/status-icons";
+import { KitchenStatusChip } from "@/components/chef/applications/status-icons";
 import { KitchenGridCard } from "@/components/kitchen/KitchenGridCard";
 import { chefOutlineCtaClass, chefPrimaryCtaClass } from "@/lib/chef-cta";
 import { kitchenPreviewPath } from "@/lib/discover-location-groups";
@@ -34,6 +31,7 @@ import {
   mergeStorageSummaries,
 } from "@/lib/kitchen-grid-card";
 import { cn } from "@/lib/utils";
+import { Icon } from "@iconify/react";
 
 interface MyKitchensTabContentProps {
   kitchenApplications: KitchenApplicationWithLocation[];
@@ -108,8 +106,9 @@ export default function MyKitchensTabContent({
                 onClick={() => {
                   window.location.href = previewHref;
                 }}
-              >
-                {t("apptabViewDetails", "View details")}
+      >
+        <Icon icon="mdi:eye-outline" className="size-4" aria-hidden />
+        {t("apptabViewDetails", "View details")}
               </Button>
             );
             if (app.status === "approved") {
@@ -126,10 +125,9 @@ export default function MyKitchensTabContent({
                         address: app.location?.address,
                       });
                     }}
-                  >
-                    <BookNowIcon className="mr-1.5 h-4 w-4" />
+      >
+                    <Icon icon="mdi:calendar-plus-outline" className="size-4" aria-hidden />
                     {t("apptabBook", "Book")}
-                    <ArrowRight className="ml-1.5 h-4 w-4" />
                   </Button>
                 );
               } else if (display.actionKind === "wait") {
@@ -240,7 +238,7 @@ export default function MyKitchensTabContent({
                 onSetActiveTab("discover-kitchens");
               }}
             >
-              {t("apptabExploreKitchens", "Explore kitchens")}
+              {t("apptabExploreKitchens", "Discover Kitchens")}
               <ArrowRight />
             </Button>
           </CardContent>

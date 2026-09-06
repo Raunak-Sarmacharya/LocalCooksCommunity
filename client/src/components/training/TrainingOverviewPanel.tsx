@@ -266,15 +266,9 @@ export default function TrainingOverviewPanel({ className, viewMode: controlledV
           meta={isCompleted ? t('trMetaComplete') : completedVideos > 0 ? t('trMetaProgress', { done: completedVideos, total: TOTAL_VIDEOS }) : t('trMetaSelfPaced', { count: TOTAL_VIDEOS })}
           action={
             isCompleted ? (
-              <div className="grid grid-cols-2 gap-2">
-                <Button variant="outline" onClick={downloadCertificate} disabled={isDownloading}>
-                  <Download className="h-4 w-4" />
-                  {isDownloading ? t('trDownloading') : t('trDownload')}
-                </Button>
-                <Button onClick={openPlayer}>
-                  {videoCtaLabel}
-                </Button>
-              </div>
+              <Button onClick={openPlayer} className="w-full">
+                {videoCtaLabel}
+              </Button>
             ) : (
               <Button onClick={openPlayer} className="w-full">
                 <Play className="h-4 w-4" />

@@ -384,7 +384,11 @@ router.get('/manager/locations/:locationId/requirements',
             }
 
             const requirements = await locationService.getLocationRequirementsWithDefaults(locationId);
-            res.json(requirements);
+            res.json({
+                ...requirements,
+                kitchen_terms_url: location.kitchenTermsUrl,
+                kitchen_license_url: location.kitchenLicenseUrl
+            });
         } catch (error) {
             logger.error('Error getting location requirements:', error);
             res.status(500).json({ error: 'Failed to get requirements' });

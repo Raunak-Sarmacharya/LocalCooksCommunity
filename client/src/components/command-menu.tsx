@@ -31,6 +31,7 @@ import {
     ClipboardList,
     PackageCheck,
     Mail,
+    ChevronRight,
 } from "lucide-react"
 
 import {
@@ -48,6 +49,7 @@ import { auth } from "@/lib/firebase"
 import { useLocation } from "wouter"
 import { useTranslation } from "react-i18next"
 import { mt } from "@/i18n/manager"
+import type { GlobalSearchResponse, GlobalSearchResult } from "@shared/search"
 
 export type PortalType = 'chef' | 'manager' | 'admin'
 
@@ -61,7 +63,7 @@ interface CommandMenuProps {
 }
 
 // Reference code pattern: KB-XXXXXX, SB-XXXXXX, EXT-XXXXXX, OP-XXXXXX, DC-XXXXXX
-const REFERENCE_CODE_PATTERN = /^(KB|SB|EXT|OP|DC)-[A-Z0-9]{3,8}$/i
+const REFERENCE_CODE_PATTERN = /^((KB|SB|EXT|OP|DC)-[A-Z0-9]{3,8}|\d+)$/i
 
 const REFERENCE_TYPE_LABELS: Record<string, string> = {
     kitchen_booking: "Kitchen Booking",
@@ -69,6 +71,26 @@ const REFERENCE_TYPE_LABELS: Record<string, string> = {
     storage_extension: "Storage Extension",
     overstay_penalty: "Overstay Penalty",
     damage_claim: "Damage Claim",
+}
+
+const SEARCH_TYPE_LABELS: Record<GlobalSearchResult["type"], string> = {
+    navigation: "Page",
+    location: "Location",
+    kitchen: "Kitchen",
+    storage: "Storage",
+    equipment: "Equipment",
+}
+
+function HighlightText({ text, query }: { text: string; query: string }) {
+    const terms = query.trim().split(/\s+/).filter((term) => term.length > 1)
+    if (!terms.length) return <>{text}</>
+    const escaped = terms.map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    const pattern = new RegExp(`(${escaped.join("|")})`, "gi")
+    return <>{text.split(pattern).map((part, index) =>
+        terms.some((term) => part.localeCompare(term, undefined, { sensitivity: "accent" }) === 0)
+            ? <mark key={`${part}-${index}`} className="rounded-sm bg-primary/15 px-0.5 text-foreground">{part}</mark>
+            : <React.Fragment key={`${part}-${index}`}>{part}</React.Fragment>
+    )}</>
 }
 
 export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portalType = 'manager', hiddenItems = [] }: CommandMenuProps) {
@@ -94,6 +116,35 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
     // Normalize search: strip leading # and whitespace for ref code matching
     const normalizedSearch = searchValue.trim().replace(/^#/, '').trim().toUpperCase()
     const isRefCodeSearch = REFERENCE_CODE_PATTERN.test(normalizedSearch)
+    const [debouncedSearch, setDebouncedSearch] = React.useState("")
+    const hasBackendQuery = searchValue.trim().length >= 2
+
+    React.useEffect(() => {
+        const timer = window.setTimeout(() => setDebouncedSearch(searchValue.trim()), 250)
+        return () => window.clearTimeout(timer)
+    }, [searchValue])
+
+    const {
+        data: globalSearch,
+        isFetching: globalSearchLoading,
+        isError: globalSearchFailed,
+    } = useQuery<GlobalSearchResponse>({
+        queryKey: ["/api/search", portalType, debouncedSearch],
+        queryFn: async ({ signal }) => {
+            const user = auth.currentUser
+            if (!user) throw new Error("Authentication required")
+            const token = await user.getIdToken()
+            const params = new URLSearchParams({ q: debouncedSearch, portal: portalType, limit: "12" })
+            const response = await fetch(`/api/search?${params}`, {
+                headers: { Authorization: `Bearer ${token}` },
+                signal,
+            })
+            if (!response.ok) throw new Error("Search request failed")
+            return response.json()
+        },
+        enabled: open && debouncedSearch.length >= 2 && !!auth.currentUser,
+        staleTime: 30_000,
+    })
 
     // Debounced reference code lookup
     React.useEffect(() => {
@@ -167,15 +218,29 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
             if (!res.ok) return [];
             return res.json();
         },
-        enabled: open && portalType === 'manager'
+        enabled: open && portalType === 'manager' && !hasBackendQuery
     });
+
+    const openSearchResult = React.useCallback((result: GlobalSearchResult) => {
+        runCommand(() => {
+            if (result.view && onViewChange) {
+                if (portalType === "admin" && result.view === "kitchen-management") {
+                    navigate("/admin/manage-locations")
+                    return
+                }
+                onViewChange(result.view)
+                return
+            }
+            navigate(result.url)
+        })
+    }, [navigate, onViewChange, portalType, runCommand])
 
     return (
         <>
             <div className="hidden">
                 {/* Hidden trigger */}
             </div>
-            <CommandDialog open={open} onOpenChange={onOpenChange} shouldFilter={!isRefCodeSearch}>
+            <CommandDialog open={open} onOpenChange={onOpenChange} shouldFilter={!hasBackendQuery && !isRefCodeSearch}>
                 <CommandInput
                     placeholder={portalType === 'admin' ? mt("shellSearchCommand") : portalType === 'manager' ? mt("shellSearchCommand") : t("shellSearchCommand")}
                     value={searchValue}
@@ -183,11 +248,13 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
                 />
                 <CommandList>
                     <CommandEmpty>
-                        {refLookupLoading ? (
+                        {globalSearchLoading || refLookupLoading ? (
                             <div className="flex items-center justify-center gap-2 py-2">
                                 <Loader2 className="h-4 w-4 animate-spin" />
-                                <span className="text-sm text-muted-foreground">{mt("cmdLookingUpRef")}</span>
+                                <span className="text-sm text-muted-foreground">Searching all accessible content…</span>
                             </div>
+                        ) : globalSearchFailed ? (
+                            <div className="text-sm text-muted-foreground">Search is temporarily unavailable.</div>
                         ) : refLookupError ? (
                             <div className="text-sm text-muted-foreground">{refLookupError}</div>
                         ) : (
@@ -236,8 +303,47 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
                         </CommandGroup>
                     )}
 
+                    {hasBackendQuery && (globalSearch?.results.length ?? 0) > 0 && (
+                        <CommandGroup heading="Search results">
+                            {globalSearch!.results.map((result) => (
+                                <CommandItem
+                                    key={result.id}
+                                    value={result.id}
+                                    onSelect={() => openSearchResult(result)}
+                                    className="group items-start gap-3 rounded-lg px-3 py-3"
+                                >
+                                    <Search className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                                    <div className="min-w-0 flex-1 space-y-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="truncate font-medium text-foreground">
+                                                <HighlightText text={result.title} query={searchValue} />
+                                            </span>
+                                            <span className="shrink-0 rounded-full border border-border/70 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                                                {SEARCH_TYPE_LABELS[result.type]}
+                                            </span>
+                                        </div>
+                                        {result.snippet && (
+                                            <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                                                <HighlightText text={result.snippet} query={searchValue} />
+                                            </p>
+                                        )}
+                                        <div className="flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground/80" aria-label="Breadcrumb">
+                                            {result.breadcrumb.map((crumb, index) => (
+                                                <React.Fragment key={`${crumb.label}-${index}`}>
+                                                    {index > 0 && <ChevronRight className="h-3 w-3 shrink-0" aria-hidden="true" />}
+                                                    <span className="truncate">{crumb.label}</span>
+                                                </React.Fragment>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-data-[selected=true]:opacity-100" aria-hidden="true" />
+                                </CommandItem>
+                            ))}
+                        </CommandGroup>
+                    )}
+
                     {/* ═══ CHEF Portal Navigation ═══ */}
-                    {portalType === 'chef' && (
+                    {!hasBackendQuery && portalType === 'chef' && (
                         <>
                             <CommandGroup heading={t("shellNavigation")}>
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("overview"))}>
@@ -314,7 +420,7 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
                     )}
 
                     {/* ═══ MANAGER Portal Navigation ═══ */}
-                    {portalType === 'manager' && (
+                    {!hasBackendQuery && portalType === 'manager' && (
                         <>
                             <CommandGroup heading={mt("cmdSuggestions")}>
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("overview"))}>
@@ -407,7 +513,7 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
                     )}
 
                     {/* ═══ ADMIN Portal Navigation ═══ */}
-                    {portalType === 'admin' && (
+                    {!hasBackendQuery && portalType === 'admin' && (
                         <>
                             <CommandGroup heading="Dashboard">
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("overview"))}>

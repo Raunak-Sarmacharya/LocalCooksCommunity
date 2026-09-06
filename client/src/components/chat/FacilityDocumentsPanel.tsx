@@ -17,7 +17,7 @@ interface FacilityDocument {
   id: string;
   name: string;
   url: string;
-  type: 'floor_plans' | 'ventilation_specs';
+  type: 'floor_plans' | 'ventilation_specs' | 'kitchen_terms' | 'kitchen_license';
   description?: string;
 }
 
@@ -73,8 +73,26 @@ export default function FacilityDocumentsPanel({ locationId, onAttachDocuments }
             id: 'ventilation_specs',
             name: 'Ventilation Specifications',
             url: data.ventilation_specs_url,
-            type: 'ventilation_specs',
+            type: 'ventilation_specs' as any,
             description: data.ventilation_specs || 'Ventilation system specifications and details',
+          });
+        }
+        if (data.kitchen_terms_url) {
+          documents.push({
+            id: 'kitchen_terms',
+            name: 'Kitchen Terms & Policies',
+            url: data.kitchen_terms_url,
+            type: 'kitchen_terms' as any,
+            description: 'Kitchen rules, policies, and terms of use',
+          });
+        }
+        if (data.kitchen_license_url) {
+          documents.push({
+            id: 'kitchen_license',
+            name: 'Kitchen License',
+            url: data.kitchen_license_url,
+            type: 'kitchen_license' as any,
+            description: 'Official kitchen operating license',
           });
         }
         return documents;

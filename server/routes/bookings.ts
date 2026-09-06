@@ -147,7 +147,8 @@ router.post("/bookings/checkout", async (req: Request, res: Response) => {
 router.get("/bookings/by-reference/:code", requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
     try {
         const { code } = req.params;
-        if (!code || code.length < 4) {
+        const isNumeric = /^\d+$/.test(code);
+        if (!code || (!isNumeric && code.length < 4)) {
             return res.status(400).json({ error: "Invalid reference code" });
         }
 
@@ -160,7 +161,9 @@ router.get("/bookings/by-reference/:code", requireFirebaseAuthWithUser, async (r
 
         const { storageBookings: sb, pendingStorageExtensions, storageOverstayRecords, damageClaims, storageListings: sl } = await import("@shared/schema");
 
-        if (prefix === 'KB') {
+        const parsedId = isNumeric ? parseInt(code, 10) : null;
+
+        if (prefix === 'KB' || isNumeric) {
             let query = db.select({
                 id: kitchenBookings.id,
                 referenceCode: kitchenBookings.referenceCode,
@@ -171,6 +174,7 @@ router.get("/bookings/by-reference/:code", requireFirebaseAuthWithUser, async (r
                 .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
                 .innerJoin(locations, eq(kitchens.locationId, locations.id))
                 .where(
+                    isNumeric ? eq(kitchenBookings.id, parsedId!) :
                     isAdmin
                         ? eq(kitchenBookings.referenceCode, code)
                         : isManager
@@ -187,7 +191,8 @@ router.get("/bookings/by-reference/:code", requireFirebaseAuthWithUser, async (r
                         : `/booking/${booking.id}`;
                 return res.json({ type: 'kitchen_booking', id: booking.id, referenceCode: booking.referenceCode, url });
             }
-        } else if (prefix === 'SB') {
+        } 
+        if (prefix === 'SB' || isNumeric) {
             const [booking] = await db.select({
                 id: sb.id,
                 referenceCode: sb.referenceCode,
@@ -198,6 +203,7 @@ router.get("/bookings/by-reference/:code", requireFirebaseAuthWithUser, async (r
                 .innerJoin(kitchens, eq(sl.kitchenId, kitchens.id))
                 .innerJoin(locations, eq(kitchens.locationId, locations.id))
                 .where(
+                    isNumeric ? eq(sb.id, parsedId!) :
                     isAdmin
                         ? eq(sb.referenceCode, code)
                         : isManager
@@ -206,7 +212,8 @@ router.get("/bookings/by-reference/:code", requireFirebaseAuthWithUser, async (r
                 )
                 .limit(1);
             if (booking) return res.json({ type: 'storage_booking', id: booking.id, referenceCode: booking.referenceCode, url: isAdmin ? `/admin?section=transactions&search=${booking.referenceCode}` : `/dashboard` });
-        } else if (prefix === 'EXT') {
+        } 
+        if (prefix === 'EXT' || isNumeric) {
             const [ext] = await db.select({ id: pendingStorageExtensions.id, referenceCode: pendingStorageExtensions.referenceCode })
                 .from(pendingStorageExtensions)
                 .innerJoin(sb, eq(pendingStorageExtensions.storageBookingId, sb.id))
@@ -214,6 +221,7 @@ router.get("/bookings/by-reference/:code", requireFirebaseAuthWithUser, async (r
                 .innerJoin(kitchens, eq(sl.kitchenId, kitchens.id))
                 .innerJoin(locations, eq(kitchens.locationId, locations.id))
                 .where(
+                    isNumeric ? eq(pendingStorageExtensions.id, parsedId!) :
                     isAdmin
                         ? eq(pendingStorageExtensions.referenceCode, code)
                         : isManager
@@ -222,7 +230,8 @@ router.get("/bookings/by-reference/:code", requireFirebaseAuthWithUser, async (r
                 )
                 .limit(1);
             if (ext) return res.json({ type: 'storage_extension', id: ext.id, referenceCode: ext.referenceCode, url: isAdmin ? `/admin?section=transactions&search=${ext.referenceCode}` : `/dashboard` });
-        } else if (prefix === 'OP') {
+        } 
+        if (prefix === 'OP' || isNumeric) {
             const [record] = await db.select({ id: storageOverstayRecords.id, referenceCode: storageOverstayRecords.referenceCode })
                 .from(storageOverstayRecords)
                 .innerJoin(sb, eq(storageOverstayRecords.storageBookingId, sb.id))
@@ -230,6 +239,7 @@ router.get("/bookings/by-reference/:code", requireFirebaseAuthWithUser, async (r
                 .innerJoin(kitchens, eq(sl.kitchenId, kitchens.id))
                 .innerJoin(locations, eq(kitchens.locationId, locations.id))
                 .where(
+                    isNumeric ? eq(storageOverstayRecords.id, parsedId!) :
                     isAdmin
                         ? eq(storageOverstayRecords.referenceCode, code)
                         : isManager
@@ -238,10 +248,12 @@ router.get("/bookings/by-reference/:code", requireFirebaseAuthWithUser, async (r
                 )
                 .limit(1);
             if (record) return res.json({ type: 'overstay_penalty', id: record.id, referenceCode: record.referenceCode, url: isAdmin ? `/admin?section=overstay-penalties-history&search=${record.referenceCode}` : `/dashboard` });
-        } else if (prefix === 'DC') {
+        } 
+        if (prefix === 'DC' || isNumeric) {
             const [claim] = await db.select({ id: damageClaims.id, referenceCode: damageClaims.referenceCode })
                 .from(damageClaims)
                 .where(
+                    isNumeric ? eq(damageClaims.id, parsedId!) :
                     isAdmin
                         ? eq(damageClaims.referenceCode, code)
                         : isManager

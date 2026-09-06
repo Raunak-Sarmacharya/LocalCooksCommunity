@@ -14,7 +14,7 @@ import {
 import { cn } from "@/lib/utils"
 
 const ChatInputSchema = z.object({
-  message: z.string().min(1, "Message cannot be empty"),
+  message: z.string(),
 })
 
 type ChatInputFormType = z.infer<typeof ChatInputSchema>
@@ -26,6 +26,7 @@ interface ChatInputProps {
   isLoading?: boolean
   placeholder?: string
   className?: string
+  hasExternalAttachments?: boolean
 }
 
 export function ChatInput({ 
@@ -33,7 +34,8 @@ export function ChatInput({
   disabled, 
   isLoading, 
   placeholder = "Type your message...",
-  className 
+  className,
+  hasExternalAttachments = false
 }: ChatInputProps) {
   const [files, setFiles] = React.useState<File[]>([])
   const fileInputRef = React.useRef<HTMLInputElement>(null)
@@ -48,15 +50,10 @@ export function ChatInput({
   const message = form.watch("message")
 
   const onSubmit = async (data: ChatInputFormType) => {
-    if ((!data.message.trim() && files.length === 0) || disabled || isLoading) return
+    if ((!data.message.trim() && files.length === 0 && !hasExternalAttachments) || disabled || isLoading) return
     
     // We handle the submission manually to allow clearing logic
-    // Currently standardizing on array of files
     if (files.length > 0) {
-        // If we have files, we might need to send them one by one or as list depending on parent
-        // For now, let's assume onSend handles it. 
-        // We'll update interface to allow File[] but for now cast to any to avoid breaking changes immediately if strict.
-        // Actually, let's fix the interface above.
         onSend(data.message, files as any)
     } else {
         onSend(data.message)
@@ -79,8 +76,6 @@ export function ChatInput({
     if (e.target.files && e.target.files.length > 0) {
       const newFiles = Array.from(e.target.files)
       setFiles(prev => [...prev, ...newFiles])
-      // onFileSelect is legacy singular, maybe call it for the first one or remove usage?
-      // onFileSelect?.(selectedFile) 
     }
   }
 
@@ -158,7 +153,7 @@ export function ChatInput({
 
           <Button
             type="submit"
-            disabled={disabled || isLoading || (!message.trim() && files.length === 0)}
+            disabled={disabled || isLoading || (!message.trim() && files.length === 0 && !hasExternalAttachments)}
             size="icon"
             className="h-[40px] w-[40px] shrink-0 transition-all duration-200"
           >

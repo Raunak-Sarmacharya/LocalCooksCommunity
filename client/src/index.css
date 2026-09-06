@@ -171,6 +171,7 @@
     font-family: 'Figtree', system-ui, sans-serif;
     -webkit-tap-highlight-color: transparent;
     /* Remove mobile tap highlight */
+    cursor: default;
   }
 
   h1,
@@ -186,7 +187,8 @@
     font-family: 'Lobster', cursive;
   }
 
-  /* Prevent cursor from changing to text selection (I-beam) when hovering over text */
+  /* Prevent cursor from changing to text selection (I-beam) when hovering over text,
+     while allowing pointer cursor to be inherited in clickable elements */
   p,
   span,
   h1,
@@ -196,7 +198,7 @@
   h5,
   h6,
   div {
-    cursor: default;
+    cursor: inherit;
   }
 
   /* Enhanced Autofill Support */
@@ -236,12 +238,26 @@
   }
   /* ReUI alert invert variant — keep HSL components so hsl(var(--*)) utilities work. */
   :root {
-    --invert: 240 6% 10%;
-    --invert-foreground: 0 0% 98%;
+    --invert: var(--color-zinc-900);
+    --invert-foreground: var(--color-zinc-50);
+    --destructive-foreground: var(--color-red-800);
+    --success: var(--color-emerald-500);
+    --success-foreground: var(--color-emerald-900);
+    --info: var(--color-violet-500);
+    --info-foreground: var(--color-violet-900);
+    --warning: var(--color-yellow-500);
+    --warning-foreground: var(--color-yellow-900);
   }
   .dark {
-    --invert: 240 4% 16%;
-    --invert-foreground: 0 0% 98%;
+    --invert: var(--color-zinc-700);
+    --invert-foreground: var(--color-zinc-50);
+    --destructive-foreground: var(--color-red-600);
+    --success: var(--color-emerald-500);
+    --success-foreground: var(--color-emerald-600);
+    --info: var(--color-violet-500);
+    --info-foreground: var(--color-violet-600);
+    --warning: var(--color-yellow-500);
+    --warning-foreground: var(--color-yellow-600);
   }
 }
 

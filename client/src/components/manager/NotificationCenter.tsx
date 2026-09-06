@@ -55,6 +55,8 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Alert, AlertTitle, AlertDescription, AlertAction } from "@/components/reui/alert";
+import { Frame, FramePanel } from "@/components/reui/frame";
 import { cn } from "@/lib/utils";
 import { auth } from "@/lib/firebase";
 import { toast } from "@/hooks/use-toast";
@@ -131,17 +133,17 @@ function getNotificationIcon(type: string) {
   }
 }
 
-// Get priority color
-function getPriorityColor(priority: string) {
+// Get priority variant for Alert
+function getAlertVariant(priority: string) {
   switch (priority) {
     case "urgent":
-      return "bg-red-500";
+      return "destructive";
     case "high":
-      return "bg-orange-500";
+      return "warning";
     case "normal":
-      return "bg-blue-500";
+      return "info";
     default:
-      return "bg-gray-400";
+      return "default";
   }
 }
 
@@ -306,112 +308,47 @@ function NotificationItem({
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, x: -20 }}
-      role="article"
-      aria-label={`${notification.is_read ? '' : 'Unread: '}${notification.title}`}
-      aria-describedby={`notification-${notification.id}-message`}
-      tabIndex={0}
-      onKeyDown={handleKeyDown}
-      className={cn(
-        "group relative p-3 border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer",
-        "focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset",
-        !notification.is_read && "bg-blue-50/50",
-        isSelected && "bg-blue-100"
-      )}
-      onClick={(e) => {
-        e.stopPropagation();
-        void openNotification();
-      }}
-    >
-      {/* Priority indicator */}
-      <div className={cn(
-        "absolute left-0 top-0 bottom-0 w-1",
-        getPriorityColor(notification.priority)
-      )} />
-
-      <div className="flex items-start gap-3 pl-2">
-        {/* Icon */}
+    <div className="overflow-hidden relative group">
+      <Alert
+        variant={getAlertVariant(notification.priority)}
+        className={cn(
+          "border-none bg-transparent shadow-none hover:bg-muted/50 transition-colors cursor-pointer relative rounded-none p-2 gap-y-0 items-center",
+          "grid-cols-[24px_1fr_24px] has-[>svg]:grid-cols-[24px_1fr_24px]",
+          !notification.is_read && "bg-muted/20",
+          isSelected && "bg-blue-50"
+        )}
+        onClick={(e) => {
+          e.stopPropagation();
+          void openNotification();
+        }}
+      >
         <div className={cn(
-          "flex-shrink-0 p-2 rounded-full",
-          notification.is_read ? "bg-gray-100 text-gray-500" : "bg-blue-100 text-blue-600"
+          "shrink-0",
+          notification.is_read ? "text-muted-foreground" : "text-foreground"
         )}>
           {getNotificationIcon(notification.type)}
         </div>
-
-        {/* Content */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <h4 className={cn(
-              "text-sm break-words",
-              notification.is_read ? "font-normal text-gray-700" : "font-semibold text-gray-900"
-            )}>
+        <div className="flex flex-col min-w-0 pr-2">
+          <AlertTitle className="flex justify-between items-center gap-2 min-w-0 h-auto">
+            <span className={cn("text-sm truncate flex-1 min-w-0", notification.is_read ? "font-normal text-foreground" : "font-semibold text-foreground")}>
               {notification.title}
-            </h4>
-            <span className="text-xs text-gray-400 flex-shrink-0">
+            </span>
+            <span className="text-[10px] text-muted-foreground whitespace-nowrap font-normal shrink-0">
               {formatNotificationTime(notification.created_at)}
             </span>
-          </div>
-          <p 
-            id={`notification-${notification.id}-message`}
-            className="text-sm text-gray-600 line-clamp-3 mt-0.5 break-words"
-          >
-            {notification.message}
-          </p>
+          </AlertTitle>
           
-          {/* Action button if present */}
-          {(notification.action_label || href) && (
-            <Button
-              variant="link"
-              size="sm"
-              className="h-auto p-0 mt-1 text-primary"
-              onClick={(e) => {
-                e.stopPropagation();
-                void openNotification();
-              }}
-            >
-              {notification.action_label || "View details"}
-              <ChevronRight className="h-3 w-3 ml-1" />
-            </Button>
-          )}
+          <AlertDescription className="mt-0 min-w-0 block w-full">
+            <p className="text-xs text-foreground/80 truncate w-full">
+              {notification.message}
+            </p>
+          </AlertDescription>
         </div>
-
-        {/* Quick actions (show on hover) */}
-        <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => e.stopPropagation()}>
-                <span className="sr-only">{mt("actions")}</span>
-                <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-                </svg>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40">
-              {!notification.is_read && (
-                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onMarkRead(notification.id); }}>
-                  <Check className="h-4 w-4 mr-2" />{mt("markAsRead")}</DropdownMenuItem>
-              )}
-              {notification.is_archived ? (
-                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onUnarchive(notification.id); }}>
-                  <Archive className="h-4 w-4 mr-2" />{mt("restore")}</DropdownMenuItem>
-              ) : (
-                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onArchive(notification.id); }}>
-                  <Archive className="h-4 w-4 mr-2" />{mt("archive")}</DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem 
-                className="text-red-600"
-                onClick={(e) => { e.stopPropagation(); onDelete(notification.id); }}
-              >
-                <Trash2 className="h-4 w-4 mr-2" />{mt("delete")}</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+        <div className="flex items-center justify-end opacity-0 group-hover:opacity-100 transition-all transform translate-x-1 group-hover:translate-x-0">
+          <ChevronRight className="h-4 w-4 text-muted-foreground/60" />
         </div>
-      </div>
-    </motion.div>
+      </Alert>
+    </div>
   );
 }
 
@@ -804,7 +741,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
           )} />
           {unreadCount > 0 && (
             <Badge 
-              className="absolute -top-1 -right-1 h-5 min-w-5 flex items-center justify-center p-0 text-xs bg-red-500 hover:bg-red-500 animate-in fade-in zoom-in duration-200"
+              className="absolute -top-1 -right-1 h-5 min-w-5 flex items-center justify-center p-0 text-xs bg-red-500 hover:bg-red-500 animate-in fade-in zoom-in duration-200 rounded-full"
             >
               {unreadCount > 99 ? "99+" : unreadCount}
             </Badge>
@@ -813,7 +750,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
       </PopoverTrigger>
 
       <PopoverContent 
-        className="w-[calc(100vw-2rem)] sm:w-[400px] p-0" 
+        className="w-[calc(100vw-2rem)] sm:w-[400px] p-0 rounded-[1.35rem] overflow-hidden" 
         align="end"
         sideOffset={8}
         role="dialog"
@@ -821,7 +758,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
         aria-describedby="notifications-description"
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b">
+        <div className="flex items-center justify-between p-4 border-b border-border/50">
           <div>
             <h2 id="notifications-heading" className="font-semibold text-lg">{mt("navNotifications")}</h2>
             <p id="notifications-description" className="sr-only">
@@ -830,11 +767,11 @@ export default function NotificationCenter({ locationId }: { locationId?: number
                 : mt("noUnreadNotifications")}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className="h-8 w-8 rounded-full"
               onClick={() => refetch()}
               disabled={isLoading}
               aria-label={isLoading ? tt("refreshingNotifications") : tt("refreshNotifications")}
@@ -845,7 +782,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-8 text-xs"
+                className="h-8 text-xs rounded-full"
                 onClick={() => markAllReadMutation.mutate()}
                 disabled={markAllReadMutation.isPending}
                 aria-label={`Mark all ${unreadCount} notifications as read`}
@@ -884,22 +821,24 @@ export default function NotificationCenter({ locationId }: { locationId?: number
                 <section key={group.label} aria-labelledby={`group-${group.label.toLowerCase().replace(/\s+/g, '-')}`}>
                   <h3 
                     id={`group-${group.label.toLowerCase().replace(/\s+/g, '-')}`}
-                    className="sticky top-0 bg-gray-100 px-4 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    className="sticky top-0 z-10 bg-gray-100 px-4 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wider"
                   >
                     {group.label}
                   </h3>
-                  {group.notifications.map((notification) => (
-                    <NotificationItem
-                      key={notification.id}
-                      notification={notification}
-                      onMarkRead={handleMarkRead}
-                      onArchive={handleArchive}
-                      onUnarchive={handleUnarchive}
-                      onDelete={handleDelete}
-                      isSelected={selectedIds.has(notification.id)}
-                      _onSelect={handleSelect}
-                    />
-                  ))}
+                  <div className="flex flex-col">
+                    {group.notifications.map((notification) => (
+                      <NotificationItem
+                        key={notification.id}
+                        notification={notification}
+                        onMarkRead={handleMarkRead}
+                        onArchive={handleArchive}
+                        onUnarchive={handleUnarchive}
+                        onDelete={handleDelete}
+                        isSelected={selectedIds.has(notification.id)}
+                        _onSelect={handleSelect}
+                      />
+                    ))}
+                  </div>
                 </section>
               ))}
             </AnimatePresence>

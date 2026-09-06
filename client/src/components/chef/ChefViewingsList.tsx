@@ -30,6 +30,7 @@ import {
   MapPin,
   MessageSquare,
 } from "lucide-react";
+import { Icon } from "@iconify/react";
 import { DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
@@ -323,7 +324,8 @@ export default function ChefViewingsList({ onExploreKitchens }: { onExploreKitch
           </p>
           {onExploreKitchens && (
             <Button className="mt-4" onClick={onExploreKitchens}>
-              {t("tourListExploreCta", "Explore kitchens")}
+              <Icon icon="mdi:magnify" className="size-4" aria-hidden />
+              {t("tourListExploreCta", "Discover Kitchens")}
             </Button>
           )}
         </CardContent>

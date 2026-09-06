@@ -573,7 +573,7 @@ export default function ChefResourcesPage_en() {
               />
               <p className="text-gray-600">
                 <strong>How to get started:</strong> Visit{" "}
-                <ExtLink href="https://skillspassnl.bluedrop.io">skillspassnl.bluedrop.io</ExtLink>, create a free account, complete the relevant modules, pass the assessment, and download your certificate. For business owners, the &ldquo;Food Safety: Owner &amp; Manager&rdquo; module is recommended — it covers legal liabilities beyond basic hygiene.
+                <ExtLink href="https://skillspassnl.bluedrop.io/storefront/online-registration/10863">skillspassnl.bluedrop.io</ExtLink>, create a free account, complete the relevant modules, pass the assessment, and download your certificate. For business owners, the &ldquo;Food Safety: Owner &amp; Manager&rdquo; module is recommended — it covers legal liabilities beyond basic hygiene.
               </p>
 
               <SubHeading id="paid-alternatives">Paid Alternatives (Canada-Wide Recognition)</SubHeading>

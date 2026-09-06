@@ -51,6 +51,7 @@ import { findPersistedBookingForKitchens, notifyBookingPrefsChanged } from "@/li
 import { resolveEquipmentIcon, resolveStorageIcon } from "@/lib/kitchen-inventory-icons";
 import { chefOutlineCtaClass, chefPrimaryCtaClass } from "@/lib/chef-cta";
 import { Icon } from "@iconify/react";
+import { InfoChip } from "@/components/chef/info-chip";
 import { tt } from "@/i18n/common-ns";
 import { bt } from "@/i18n/booking-ns";
 
@@ -1875,11 +1876,11 @@ export default function KitchenBookingFlow({
 
     if (variant === "mobile") {
       if (!showDetails) {
-        if (!selectedKitchen || kitchenPricing?.hourlyRate == null) return null;
+        if (!selectedKitchen) return null;
         return (
-          <div className="flex items-center justify-between text-sm mb-3">
-            <span className="text-muted-foreground">{t("sheetPerHour", "/hour")}</span>
-            <span className="font-semibold text-[#F51042]">{formatCurrency(kitchenPricing.hourlyRate)}</span>
+          <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
+            <Icon icon="mdi:clock-outline" className="size-4 text-[#F51042]" aria-hidden />
+            <span>{t("sheetPriceHint", "Select time to see your total")}</span>
           </div>
         );
       }
@@ -1896,28 +1897,29 @@ export default function KitchenBookingFlow({
     // Desktop rail
     return (
       <div className="rounded-[1.35rem] border bg-white p-3 shadow-sm">
-        <div className="mb-2 flex items-center gap-2">
-          <Icon icon="mdi:currency-usd" className="h-4 w-4 text-[#F51042]" aria-hidden />
-          <span className="text-base font-semibold text-muted-foreground">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <span className="flex items-center gap-2 text-base font-semibold text-muted-foreground">
+            <Icon icon="mdi:receipt-text-outline" className="h-4 w-4 text-[#F51042]" aria-hidden />
             {t("sheetOrderSummaryLabel", "Booking Summary")}
           </span>
+          {selectedKitchen && kitchenPricing?.hourlyRate != null ? (
+            <InfoChip variant="count" icon={<Icon icon="mdi:cash-clock" className="!text-black" />}>
+              {formatCurrency(kitchenPricing.hourlyRate)}{t("sheetPerHour", "/hour")}
+            </InfoChip>
+          ) : null}
         </div>
 
         {!showDetails ? (
-          <div className="space-y-1">
-            {selectedKitchen && kitchenPricing?.hourlyRate != null ? (
-              <>
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-base font-semibold text-gray-900">{formatCurrency(kitchenPricing.hourlyRate)}</span>
-                  <span className="text-sm text-muted-foreground">{t("sheetPerHour", "/hour")}</span>
-                </div>
-                <p className="text-sm text-muted-foreground pt-1">
-                  {t("sheetPriceHint", "Select time to see your total")}
-                </p>
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">{t("sheetPricePending", "Pricing appears as you book")}</p>
-            )}
+          <div className="rounded-xl border border-dashed bg-muted/25 px-3 py-4 text-center">
+            <span className="mx-auto flex size-8 items-center justify-center rounded-full bg-white text-[#F51042] shadow-sm">
+              <Icon icon={selectedDate ? "mdi:clock-outline" : "mdi:calendar-month-outline"} className="size-4" aria-hidden />
+            </span>
+            <p className="mt-2 text-sm font-medium text-gray-900">
+              {selectedDate ? t("sheetChooseTime", "Choose a time") : t("sheetChooseDate", "Choose a date")}
+            </p>
+            <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+              {t("sheetPriceHint", "Select time to see your total")}
+            </p>
           </div>
         ) : (
           <div className="space-y-1.5">

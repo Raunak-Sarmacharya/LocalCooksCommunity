@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { Icon } from "@iconify/react";
 import { Link, useLocation } from "wouter";
 import ChefViewingsList from "@/components/chef/ChefViewingsList";
 import { ChefPageHeader, InfoChip } from "@/components/chef/ui";
@@ -487,6 +488,7 @@ export default function KitchenDiscovery({
                             className={kitchenCardDetailsClass}
                             onClick={openPreview}
                           >
+                            <Icon icon="mdi:file-document-edit-outline" className="size-4" aria-hidden />
                             {t("requestToApply", "Request to apply")}
                           </Button>
                         )
@@ -511,7 +513,7 @@ export default function KitchenDiscovery({
               </p>
               <Button className={chefPrimaryCtaClass("mt-4")} onClick={() => setActiveTab("discover")}>
                 <Plus className="mr-2 h-4 w-4" />
-                {t("applyFlowExploreKitchensButton", "Explore Kitchens")}
+                {t("applyFlowExploreKitchensButton", "Discover Kitchens")}
               </Button>
             </div>
           ) : (

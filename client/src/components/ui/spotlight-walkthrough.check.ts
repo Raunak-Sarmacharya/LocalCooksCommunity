@@ -24,7 +24,7 @@ const localStorageMock = {
   get length() {
     return store.size;
   },
-  key: (index: number) => [...store.keys()][index] ?? null,
+  key: (index: number) => Array.from(store.keys())[index] ?? null,
   clear: () => store.clear(),
 };
 Object.defineProperty(globalThis, "localStorage", {

@@ -4,6 +4,8 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import Logo from "@/components/ui/logo";
+import { SiStripe } from "react-icons/si";
 import { InfoChip } from "@/components/chef/info-chip";
 import { KitchenStatusChip } from "@/components/chef/applications/status-icons";
 import {
@@ -44,6 +46,7 @@ import type {
 import { KitchenPathEmptyCard, SellerPathEmptyCard } from "./GetStartedPathCards";
 import { TruncatedText } from "@/components/common/TruncatedText";
 import { tt } from "@/i18n/common-ns";
+import { Icon } from "@iconify/react";
 
 interface OverviewTabContentProps {
   user: {
@@ -512,21 +515,22 @@ export default function OverviewTabContent({
               {shopStatus?.linked ? (
                 <>
                   <Button variant="outline" size="sm" onClick={openShop}>
+                    <Logo variant="brand" className="mr-2 h-4 w-4" />
                     {t("ovShopBtn")}
-                    <ExternalLink />
                   </Button>
                   <Button
                     variant="outline"
                     size="sm"
+                    className="ml-2"
                     onClick={handleOpenDashboard}
                     disabled={dashboardLinkMutation.isPending}
                   >
-                    {t("ovStripeBtn")}
                     {dashboardLinkMutation.isPending ? (
-                      <Loader2 className="animate-spin" />
+                      <Icon icon="mdi:loading" className="mr-2 size-4 animate-spin" aria-hidden />
                     ) : (
-                      <ExternalLink />
+                      <SiStripe className="mr-2 h-4 w-4 text-[#635BFF]" aria-hidden />
                     )}
+                    {t("ovStripeBtn")}
                   </Button>
                 </>
               ) : (
@@ -535,8 +539,8 @@ export default function OverviewTabContent({
                   size="sm"
                   onClick={() => onSetActiveTab("my-account")}
                 >
+                  <Icon icon="mdi:link-variant" className="size-4" aria-hidden />
                   {t("ovOpenAccounts")}
-                  <ArrowRight />
                 </Button>
               )}
             </CardFooter>
@@ -582,8 +586,8 @@ export default function OverviewTabContent({
                 size="sm"
                 onClick={() => onSetActiveTab("applications")}
               >
+                <Icon icon="mdi:file-document-outline" className="size-4" aria-hidden />
                 {t("ovViewApplication")}
-                <ArrowRight />
               </Button>
             </CardFooter>
           </Card>
@@ -629,16 +633,18 @@ export default function OverviewTabContent({
                 size="sm"
                 onClick={() => onSetActiveTab("kitchen-applications")}
               >
+                <Icon icon="mdi:office-building-outline" className="mr-2 size-4" aria-hidden />
                 {t("ovMyKitchensBtn")}
               </Button>
               <Button
                 size="sm"
+                className="ml-2"
                 onClick={() => {
                   onSetActiveTab("discover-kitchens");
                 }}
               >
+                <Icon icon="mdi:magnify" className="size-4" aria-hidden />
                 {t("ovExploreKitchensBtn")}
-                <ArrowRight />
               </Button>
             </CardFooter>
           </Card>
@@ -791,6 +797,7 @@ function UpcomingBookings({
         </div>
         {bookings.length > 4 && (
           <Button variant="outline" size="sm" className="mt-3 w-full" onClick={onViewAll}>
+            <Icon icon="mdi:calendar-month-outline" className="size-4" aria-hidden />
             {t("ovMore", { count: bookings.length - 4 })}
           </Button>
         )}

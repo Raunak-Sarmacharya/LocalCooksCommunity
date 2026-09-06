@@ -18,7 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { KeyRound, Loader2, ShieldCheck, Chrome, Mail } from "lucide-react";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { toast } from "@/hooks/use-toast";
@@ -31,7 +31,7 @@ import {
   updatePassword,
 } from "firebase/auth";
 import { cn } from "@/lib/utils";
-import { resolvePasswordFormMode } from "./password-form-mode";
+import { resolvePasswordFormMode, type PasswordFormMode } from "./password-form-mode";
 
 // ─── Helpers ────────────────────────────────────────────
 async function syncPasswordToNeon(newPassword: string): Promise<void> {
@@ -81,9 +81,11 @@ interface ChangePasswordProps {
   onSuccess?: () => void;
   /** Strip Card chrome when nested inside a parent section. */
   embedded?: boolean;
+  /** Fires once the form mode is known (never "loading") and again if it changes mid-session. */
+  onModeResolved?: (mode: Exclude<PasswordFormMode, "loading">) => void;
 }
 
-export default function ChangePassword({ onSuccess, embedded = false }: ChangePasswordProps) {
+export default function ChangePassword({ onSuccess, embedded = false, onModeResolved }: ChangePasswordProps) {
   const [hasLinkedPassword, setHasLinkedPassword] = useState(false);
   const [treatPasswordAsKnown, setTreatPasswordAsKnown] = useState(false);
   // undefined = still loading token claim; null = unavailable
@@ -116,10 +118,10 @@ export default function ChangePassword({ onSuccess, embedded = false }: ChangePa
     }
     currentUser
       .getIdTokenResult()
-      .then((token) => {
-        if (!cancelled) setSignInProvider(token.signInProvider ?? null);
+      .then((token: any) => {
+        if (!cancelled) setSignInProvider(token?.signInProvider ?? null);
       })
-      .catch((err) => {
+      .catch((err: any) => {
         logger.warn("[ChangePassword] Failed to read sign-in provider:", err);
         if (!cancelled) setSignInProvider(null);
       });
@@ -133,6 +135,14 @@ export default function ChangePassword({ onSuccess, embedded = false }: ChangePa
     signInProvider,
     treatPasswordAsKnown,
   });
+
+  // Surface the resolved mode (e.g. so a parent header can say "Create" vs "Update").
+  // Re-fires if the mode changes mid-session (set → change after a successful set).
+  const onModeResolvedRef = useRef(onModeResolved);
+  onModeResolvedRef.current = onModeResolved;
+  useEffect(() => {
+    if (mode !== "loading") onModeResolvedRef.current?.(mode);
+  }, [mode]);
 
   const markPasswordKnown = () => {
     setHasLinkedPassword(true);

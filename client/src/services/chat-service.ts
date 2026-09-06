@@ -424,10 +424,18 @@ export async function uploadChatFile(
     const formData = new FormData();
     formData.append('file', file);
 
-    const response = await fetch('/api/upload', {
+    const { auth } = await import('@/lib/firebase');
+    const token = await auth.currentUser?.getIdToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch('/api/files/upload-file', {
       method: 'POST',
       body: formData,
       credentials: 'include',
+      headers,
     });
 
     if (!response.ok) {

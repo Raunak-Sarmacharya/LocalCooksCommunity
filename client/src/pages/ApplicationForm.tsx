@@ -15,8 +15,11 @@ import { Application } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { AlertCircle, Loader2, Shield } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useLocation } from "wouter";
+import { Icon } from "@iconify/react";
 
 // Helper to check if an application is active (not cancelled, rejected)
 const isApplicationActive = (app: Application) => {
@@ -31,7 +34,10 @@ const hasActiveApplication = (applications?: Application[]) => {
 
 // This component renders the appropriate form based on the current step
 function FormStep() {
-  const { currentStep } = useApplicationForm();
+  const { currentStep, isBusy } = useApplicationForm();
+  const { t } = useTranslation("chef");
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const [leaveDestination, setLeaveDestination] = useState("/dashboard?view=applications");
   const [, navigate] = useLocation();
   // Ensure page always starts at the top when step changes
   useEffect(() => {
@@ -44,44 +50,51 @@ function FormStep() {
 
   return (
     <>
-      <div className="container mx-auto px-4 sm:px-6 mb-6 sm:mb-8">
+      <div className="container mx-auto mb-4 px-4 sm:px-6">
         <ProgressIndicator step={currentStep} />
       </div>
 
       <div className="container mx-auto px-4 sm:px-6">
         <FadeInSection>
-          <div className="max-w-2xl mx-auto bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-6 md:p-8 mobile-safe-area card-hover" data-testid="seller-application-form">
-            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-6 text-center px-2">Local Cooks Application</h1>
+          <div className="mx-auto max-w-2xl rounded-2xl border bg-white p-4 shadow-sm sm:p-5" data-testid="seller-application-form">
+            <div className="mb-3 flex justify-end">
+              <Button type="button" variant="ghost" size="sm" className="rounded-xl" disabled={isBusy} onClick={() => { setLeaveDestination("/dashboard?view=applications"); setLeaveOpen(true); }} data-testid="seller-application-cancel">
+                <Icon icon="mdi:close" className="size-4" aria-hidden />
+                {t("apCancelBtn")}
+              </Button>
+            </div>
+            <h1 className="mb-2 px-2 text-center text-xl font-semibold tracking-tight sm:text-2xl">Local Cooks Application</h1>
 
             {currentStep === 1 && (
               <div className="fade-in">
-                <p className="text-center text-sm sm:text-base mb-6 sm:mb-8 text-gray-600">Please provide your personal information</p>
+                <p className="mb-4 text-center text-sm text-gray-600">Please provide your personal information</p>
                 <PersonalInfoForm />
               </div>
             )}
 
             {currentStep === 2 && (
               <div className="fade-in">
-                <p className="text-center text-sm sm:text-base mb-6 sm:mb-8 text-gray-600">Select your kitchen preference</p>
+                <p className="mb-4 text-center text-sm text-gray-600">Select your kitchen preference</p>
                 <KitchenPreferenceForm />
               </div>
             )}
 
             {currentStep === 3 && (
               <div className="fade-in">
-                <p className="text-center text-sm sm:text-base mb-6 sm:mb-8 text-gray-600">Tell us about your food safety certifications</p>
+                <p className="mb-4 text-center text-sm text-gray-600">Tell us about your food safety certifications</p>
                 <CertificationsForm />
               </div>
             )}
 
             {currentStep === 1 && (
-              <div className="mt-6 text-center">
+              <div className="mt-4 text-center">
                 <Button
                   type="button"
                   variant="ghost"
-                  onClick={() => navigate("/")}
-                  className="text-gray-600 hover:text-primary transition-colors"
+                  onClick={() => { setLeaveDestination("/"); setLeaveOpen(true); }}
+                  className="rounded-xl text-gray-600 hover:text-primary transition-colors"
                 >
+                  <Icon icon="mdi:arrow-left" className="size-4" aria-hidden />
                   Back to Home
                 </Button>
               </div>
@@ -89,6 +102,18 @@ function FormStep() {
           </div>
         </FadeInSection>
       </div>
+      <AlertDialog open={leaveOpen} onOpenChange={setLeaveOpen}>
+        <AlertDialogContent className="w-[95vw] rounded-2xl sm:rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("apLeaveTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("apLeaveDesc")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-xl">{t("apLeaveKeep")}</AlertDialogCancel>
+            <AlertDialogAction className="rounded-xl" onClick={() => navigate(leaveDestination)}>{t("apLeaveConfirm")}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
@@ -113,7 +138,7 @@ export default function ApplicationForm() {
   }, [user, authLoading, navigate]);
 
   // Fetch applicant's applications
-  const { data: applications, isLoading: applicationsLoading } = useQuery<Application[]>({
+  const { data: applications, isLoading: applicationsLoading, error: applicationsError, refetch: refetchApplications } = useQuery<Application[]>({
     queryKey: ["/api/firebase/applications/my"],
     queryFn: async ({ queryKey }) => {
       const { auth } = await import('@/lib/firebase');
@@ -168,7 +193,7 @@ export default function ApplicationForm() {
     if (!applicationsLoading && activeApplication) {
       // Set a small timeout to ensure UI renders before redirect
       const timer = setTimeout(() => {
-        navigate("/dashboard");
+        navigate("/dashboard?view=applications");
       }, 2000);
 
       return () => clearTimeout(timer);
@@ -176,7 +201,7 @@ export default function ApplicationForm() {
   }, [applicationsLoading, activeApplication, navigate]);
 
   // Show loading state while checking authentication
-  const isLoading = authLoading || (user && applicationsLoading);
+  const isLoading = authLoading || !user || applicationsLoading;
 
   // If user is admin, they shouldn't see this page
   if (!authLoading && user && user.role === "admin") {
@@ -198,7 +223,7 @@ export default function ApplicationForm() {
               </AlertDescription>
             </Alert>
             <div className="flex justify-center">
-              <Button onClick={() => navigate("/admin")} className="mt-4">
+              <Button onClick={() => navigate("/admin")} className="mt-4 rounded-xl">
                 Go to Admin Dashboard
               </Button>
             </div>
@@ -223,10 +248,19 @@ export default function ApplicationForm() {
         />
         <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
         <Header />
-        <main className="flex-grow pt-20 sm:pt-24 md:pt-28 pb-12 sm:pb-16 relative z-10">
+        <main className="relative z-10 flex-grow pb-10 pt-20 sm:pt-24">
           {isLoading ? (
-            <div className="container mx-auto px-4 sm:px-6 flex justify-center py-8 sm:py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <div role="status" className="container mx-auto px-4 sm:px-6 flex min-h-[50vh] flex-col items-center justify-center py-8 sm:py-12">
+              <div className="relative flex h-16 w-16 items-center justify-center">
+                <Loader2 className="absolute h-full w-full animate-spin text-primary/20" />
+                <Loader2 className="absolute h-8 w-8 animate-spin text-primary" />
+              </div>
+              <p className="mt-4 font-medium text-muted-foreground animate-pulse">Loading application...</p>
+            </div>
+          ) : applicationsError ? (
+            <div role="alert" className="mx-auto max-w-2xl space-y-3 rounded-xl border bg-white p-6">
+              <p>Unable to load your applications. Please try again before starting a new application.</p>
+              <Button className="rounded-xl" onClick={() => refetchApplications()}>Retry</Button>
             </div>
           ) : activeApplication ? (
             <motion.div
@@ -243,10 +277,11 @@ export default function ApplicationForm() {
                 </AlertDescription>
               </Alert>
               <div className="flex justify-center">
-                <Button onClick={() => navigate("/dashboard")} className="mt-4">
-                  Go to Dashboard
+                <Button onClick={() => navigate("/dashboard?view=applications")} className="mt-4 rounded-xl">
+                  My Applications
                 </Button>
               </div>
+              <p role="status" className="mt-4 flex items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" aria-hidden />Opening My Applications...</p>
             </motion.div>
           ) : (
             <FormStep />

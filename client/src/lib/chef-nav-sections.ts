@@ -8,6 +8,7 @@ export type ChefNavItemId =
   | "discover-kitchens"
   | "bookings"
   | "messages"
+  | "notifications"
   | "issues-refunds";
 
 export type ChefNavItem = {
@@ -46,7 +47,7 @@ export const chefNavSections: ChefNavSection[] = [
     titleKey: "shellSelling",
     items: [
       { id: "seller-revenue", labelKey: "shellMyEarnings", icon: "mdi:cash-multiple" },
-      { id: "my-account", labelKey: "shellLinkedAccounts", icon: "mdi:storefront-outline" },
+      { id: "my-account", labelKey: "shellLinkedAccounts", icon: "fluent:person-link-28-regular" },
     ],
   },
   {
@@ -63,6 +64,7 @@ export const chefNavSections: ChefNavSection[] = [
     titleKey: "shellInbox",
     items: [
       { id: "messages", labelKey: "shellMessages", icon: "mdi:message-outline" },
+      { id: "notifications", labelKey: "notifPanelHeading", icon: "mdi:bell-outline" },
       { id: "issues-refunds", labelKey: "shellResolutionCenter", icon: "mdi:alert-outline" },
     ],
   },

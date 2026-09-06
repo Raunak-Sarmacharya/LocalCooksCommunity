@@ -54,6 +54,7 @@ const viewLabelKeys: Record<string, string> = {
     "my-account": "shellLinkedAccounts",
     transactions: "shellTransactions",
     "issues-refunds": "shellResolutionCenter",
+    notifications: "notifPanelHeading",
 }
 
 export default function ChefDashboardLayout({
@@ -185,7 +186,7 @@ export default function ChefDashboardLayout({
                             <span className="hidden sm:inline">{t("shellSupport")}</span>
                         </button>
 
-                        <ChefNotificationCenter />
+                        <ChefNotificationCenter onViewAll={() => onViewChange("notifications")} />
                     </div>
                 </header>
                 <main className="flex-1 min-w-0 p-4 md:p-6 lg:p-8 bg-muted/30 overflow-x-clip">

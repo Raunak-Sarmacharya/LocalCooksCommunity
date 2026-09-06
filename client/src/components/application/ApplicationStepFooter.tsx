@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useApplicationForm } from "./ApplicationFormContext";
+import { Icon } from "@iconify/react";
 
 interface ApplicationStepFooterProps {
   continueLabel: ReactNode;
@@ -12,7 +12,7 @@ interface ApplicationStepFooterProps {
   showContinueArrow?: boolean;
 }
 
-/** Matches booking flow actions: Cancel | Back? | primary flex-1 */
+/** Cancel belongs in the application header, not beside form actions. */
 export function ApplicationStepFooter({
   continueLabel,
   continueTestId,
@@ -21,40 +21,33 @@ export function ApplicationStepFooter({
   showContinueArrow = true,
 }: ApplicationStepFooterProps) {
   const { t } = useTranslation("chef");
-  const { goToPreviousStep, onCancel } = useApplicationForm();
+  const { goToPreviousStep, isBusy } = useApplicationForm();
 
   return (
-    <div className="flex flex-wrap items-center gap-3 border-t pt-6">
-      {onCancel ? (
-        <Button
-          type="button"
-          variant="ghost"
-          className="min-h-[44px] shrink-0 text-muted-foreground"
-          onClick={onCancel}
-          data-testid="seller-application-cancel"
-        >
-          {t("apCancelBtn")}
-        </Button>
-      ) : null}
+    <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
+
       {showPrevious ? (
         <Button
           type="button"
           variant="outline"
-          className="min-h-[44px] shrink-0"
+          size="sm"
+          className="shrink-0 rounded-xl"
+          disabled={isBusy || continueDisabled}
           onClick={goToPreviousStep}
         >
-          <ArrowLeft className="h-4 w-4" />
+          <Icon icon="mdi:arrow-left" className="size-4" aria-hidden />
           {t("sellerApp_back")}
         </Button>
       ) : null}
       <Button
         type="submit"
-        className="min-h-[44px] min-w-[8rem] flex-1"
-        disabled={continueDisabled}
+        size="sm"
+        className="min-w-[7.5rem] rounded-xl"
+        disabled={isBusy || continueDisabled}
         data-testid={continueTestId}
       >
         {continueLabel}
-        {showContinueArrow ? <ArrowRight className="h-4 w-4" /> : null}
+        {showContinueArrow ? <Icon icon="mdi:arrow-right" className="size-4" aria-hidden /> : null}
       </Button>
     </div>
   );

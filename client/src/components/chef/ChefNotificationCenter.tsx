@@ -56,6 +56,8 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Alert, AlertTitle, AlertDescription, AlertAction } from "@/components/reui/alert";
+import { Frame, FramePanel } from "@/components/reui/frame";
 import { cn } from "@/lib/utils";
 import { auth } from "@/lib/firebase";
 import { toast } from "@/hooks/use-toast";
@@ -65,6 +67,8 @@ import { tt } from "@/i18n/common-ns";
 import { ct } from "@/i18n/chef-ns";
 import { resolveNotificationHref } from "@shared/notification-deep-links";
 import { navigateNotificationHref } from "@/lib/navigate-notification-href";
+import { Icon } from "@iconify/react";
+import { InfoChip } from "@/components/chef/info-chip";
 
 // Types
 interface Notification {
@@ -147,17 +151,18 @@ function getNotificationIcon(type: string) {
   }
 }
 
-// Get priority color
-function getPriorityColor(priority: string) {
+// Get priority variant for Alert
+function getAlertVariant(priority: string) {
   switch (priority) {
     case "urgent":
-      return "bg-destructive";
+      return "destructive";
     case "high":
-      return "bg-warning";
+      return "warning";
     case "normal":
+      return "info";
     case "low":
     default:
-      return "bg-muted-foreground/30";
+      return "default";
   }
 }
 
@@ -320,114 +325,56 @@ function NotificationItem({
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, x: -20 }}
-      role="article"
-      aria-label={`${notification.is_read ? '' : t("notifUnreadPrefix", "Unread: ")}${notification.title}`}
-      aria-describedby={`notification-${notification.id}-message`}
-      tabIndex={0}
-      onKeyDown={handleKeyDown}
-      className={cn(
-        "group relative p-3 border-b border-border hover:bg-muted/50 transition-colors cursor-pointer",
-        "focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset",
-        !notification.is_read && "bg-muted/50"
-      )}
-      onClick={() => { void openNotification(); }}
-    >
-      {/* Priority indicator */}
-      <div className={cn(
-        "absolute left-0 top-0 bottom-0 w-1",
-        getPriorityColor(notification.priority)
-      )} />
-
-      <div className="flex items-start gap-3 pl-2">
-        {/* Icon */}
+    <div className="overflow-hidden relative group">
+      <Alert
+        variant={getAlertVariant(notification.priority)}
+        className={cn(
+          "border-none bg-transparent shadow-none hover:bg-muted/50 transition-colors cursor-pointer relative rounded-none p-3 gap-y-0 items-center",
+          "grid-cols-[24px_1fr_24px] has-[>svg]:grid-cols-[24px_1fr_24px]",
+          !notification.is_read && "bg-muted/20"
+        )}
+        onClick={() => { void openNotification(); }}
+      >
         <div className={cn(
-          "flex-shrink-0 p-2 rounded-full",
-          notification.is_read ? "bg-muted text-muted-foreground" : "bg-muted text-foreground"
+          "shrink-0",
+          notification.is_read ? "text-muted-foreground" : "text-foreground"
         )}>
           {getNotificationIcon(notification.type)}
         </div>
-
-        {/* Content */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between gap-2">
-            <h4 className={cn(
-              "text-sm truncate",
-              notification.is_read ? "font-normal text-muted-foreground" : "font-semibold text-foreground"
-            )}>
+        <div className="flex flex-col min-w-0 pr-2">
+          <AlertTitle className="flex justify-between items-center gap-2 min-w-0 h-auto">
+            <span className={cn("text-sm truncate flex-1 min-w-0", notification.is_read ? "font-normal text-foreground" : "font-semibold text-foreground")}>
               {notification.title}
-            </h4>
-            <span className="text-xs text-muted-foreground/60 flex-shrink-0">
+            </span>
+            <span className="text-[10px] text-muted-foreground whitespace-nowrap font-normal shrink-0">
               {formatNotificationTime(notification.created_at)}
             </span>
-          </div>
-          <p 
-            id={`notification-${notification.id}-message`}
-            className="text-sm text-muted-foreground line-clamp-2 mt-0.5"
-          >
-            {notification.message}
-          </p>
+          </AlertTitle>
           
-          {/* Action button if present */}
-          {(notification.action_label || href) && (
-            <Button
-              variant="link"
-              size="sm"
-              className="h-auto p-0 mt-1"
-              onClick={(e) => {
-                e.stopPropagation();
-                void openNotification();
-              }}
-            >
-              {notification.action_label || t("notifViewDetails", "View details")}
-              <ChevronRight className="h-3 w-3 ml-1" />
-            </Button>
-          )}
+          <AlertDescription className="mt-0 min-w-0 block w-full">
+            <p className="text-xs text-foreground/80 truncate w-full">
+              {notification.message}
+            </p>
+          </AlertDescription>
         </div>
-
-        {/* Quick actions (show on hover) */}
-        <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => e.stopPropagation()}>
-                <span className="sr-only">{t("notifActionsLabel", "Actions")}</span>
-                <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-                </svg>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40">
-              {!notification.is_read && (
-                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onMarkRead(notification.id); }}>
-                  <Check className="h-4 w-4 mr-2" />
-                  {t("notifMarkAsRead", "Mark as read")}
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onArchive(notification.id); }}>
-                <Archive className="h-4 w-4 mr-2" />
-                {t("notifArchive", "Archive")}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem 
-                onClick={(e) => { e.stopPropagation(); onDelete(notification.id); }}
-                className="text-red-600"
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                {t("notifDelete", "Delete")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+        <div className="flex items-center justify-end opacity-0 group-hover:opacity-100 transition-all transform translate-x-1 group-hover:translate-x-0">
+          <ChevronRight className="h-4 w-4 text-muted-foreground/60" />
         </div>
-      </div>
-    </motion.div>
+      </Alert>
+    </div>
   );
 }
 
 // Main ChefNotificationCenter component
-export default function ChefNotificationCenter() {
+type ChefNotificationCenterProps = {
+  variant?: "popover" | "page";
+  onViewAll?: () => void;
+};
+
+export default function ChefNotificationCenter({
+  variant = "popover",
+  onViewAll,
+}: ChefNotificationCenterProps) {
   const { t } = useTranslation("chef");
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
@@ -467,7 +414,7 @@ export default function ChefNotificationCenter() {
       }
       return res.json();
     },
-    enabled: isOpen && isAuthReady,
+    enabled: (isOpen || variant === "page") && isAuthReady,
     retry: false,
   });
 
@@ -720,6 +667,61 @@ export default function ChefNotificationCenter() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen]);
 
+  const notificationPanel = (
+    <div className={cn(variant === "page" && "overflow-hidden rounded-[1.35rem] border bg-card shadow-sm")}>
+      {variant === "page" && (
+        <div className="border-b bg-[linear-gradient(135deg,hsl(var(--primary)/0.08),transparent_55%)] px-5 py-5 sm:px-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="flex size-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <Icon icon="mdi:bell-outline" className="size-5" aria-hidden />
+                </span>
+                <h1 className="text-2xl font-semibold tracking-tight">{t("notifPanelHeading", "Notifications")}</h1>
+                {unreadCount > 0 && <InfoChip variant="count" icon={<Icon icon="mdi:email-alert-outline" />}>{unreadCount} {t("notifFilterUnread", "Unread").toLowerCase()}</InfoChip>}
+              </div>
+              <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+                {t("notifCenterDescription", "Review updates, messages, bookings, and account activity in one place.")}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading}>
+                <Icon icon="mdi:refresh" className={cn("size-4", isLoading && "animate-spin")} aria-hidden />
+                {t("notifRefreshLabel", "Refresh notifications")}
+              </Button>
+              {unreadCount > 0 && (
+                <Button size="sm" onClick={() => markAllReadMutation.mutate()} disabled={markAllReadMutation.isPending}>
+                  <Icon icon="mdi:check-all" className="size-4" aria-hidden />
+                  {t("notifMarkAllReadButton", "Mark all read")}
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {variant === "page" && (
+        <div className="min-h-[28rem]" role="feed" aria-label={t("notifListAriaLabel", "Notifications list")} aria-busy={isLoading}>
+          {isLoading ? <NotificationListSkeleton /> : notificationsError || unreadError ? <ErrorNotificationState onRetry={() => refetch()} /> : notifications.length === 0 ? <EmptyNotificationState filter={filter} /> : (
+            <AnimatePresence mode="popLayout">
+              {groupedNotifications.map((group) => (
+                <section key={group.label} aria-labelledby={`page-group-${group.label.toLowerCase().replace(/\s+/g, '-')}`}>
+                  <h3 id={`group-${group.label.toLowerCase().replace(/\s+/g, '-')}`} className="sticky top-0 bg-gray-100 px-4 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    {group.label}
+                  </h3>
+                  <div className="flex flex-col">
+                    {group.notifications.map((notification) => <NotificationItem key={notification.id} notification={notification} onMarkRead={handleMarkRead} onArchive={handleArchive} onDelete={handleDelete} />)}
+                  </div>
+                </section>
+              ))}
+            </AnimatePresence>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  if (variant === "page") return notificationPanel;
+
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
@@ -748,7 +750,7 @@ export default function ChefNotificationCenter() {
       </PopoverTrigger>
 
       <PopoverContent 
-        className="w-[calc(100vw-2rem)] sm:w-[400px] p-0" 
+        className="w-[calc(100vw-2rem)] sm:w-[400px] p-0 rounded-[1.35rem] overflow-hidden" 
         align="end"
         sideOffset={8}
         role="dialog"
@@ -821,19 +823,21 @@ export default function ChefNotificationCenter() {
                 <section key={group.label} aria-labelledby={`group-${group.label.toLowerCase().replace(/\s+/g, '-')}`}>
                   <h3 
                     id={`group-${group.label.toLowerCase().replace(/\s+/g, '-')}`}
-                    className="sticky top-0 bg-muted px-4 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider"
+                    className="sticky top-0 z-10 bg-muted px-4 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider"
                   >
                     {group.label}
                   </h3>
-                  {group.notifications.map((notification) => (
-                    <NotificationItem
-                      key={notification.id}
-                      notification={notification}
-                      onMarkRead={handleMarkRead}
-                      onArchive={handleArchive}
-                      onDelete={handleDelete}
-                    />
-                  ))}
+                  <div className="flex flex-col">
+                    {group.notifications.map((notification) => (
+                      <NotificationItem
+                        key={notification.id}
+                        notification={notification}
+                        onMarkRead={handleMarkRead}
+                        onArchive={handleArchive}
+                        onDelete={handleDelete}
+                      />
+                    ))}
+                  </div>
                 </section>
               ))}
             </AnimatePresence>
@@ -843,7 +847,8 @@ export default function ChefNotificationCenter() {
         {/* Footer */}
         {notifications.length > 0 && (
           <div className="p-3 border-t bg-muted/50 text-center">
-            <Button variant="link" size="sm" className="text-xs text-muted-foreground">
+            <Button variant="link" size="sm" className="text-xs text-muted-foreground" onClick={() => { setIsOpen(false); onViewAll?.(); }}>
+              <Icon icon="mdi:bell-badge-outline" className="mr-1 size-4" aria-hidden />
               {t("notifViewAllButton", "View all notifications")}
             </Button>
           </div>

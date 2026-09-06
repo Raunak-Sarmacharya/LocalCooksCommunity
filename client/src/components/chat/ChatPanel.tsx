@@ -291,6 +291,7 @@ export default function ChatPanel({
         <ChatInput
           onSend={onSend}
           isLoading={isSending}
+          hasExternalAttachments={attachedFacilityDocuments.length > 0}
           className="border-0 shadow-none bg-background pb-6"
           placeholder={t("chatMessagePlaceholder", { name: getPartnerName() })}
         />

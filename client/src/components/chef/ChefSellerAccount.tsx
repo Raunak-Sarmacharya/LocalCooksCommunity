@@ -31,7 +31,9 @@ import {
   openChefShopHome,
   useShopStatus,
   useStripeDashboardLink,
+  useEarningsSummary,
 } from "@/components/chef/seller-revenue/hooks/useSellerRevenue";
+import { Icon } from "@iconify/react";
 import { useToast } from "@/hooks/use-toast";
 import { formatDate } from "@/lib/formatters";
 import locoLogo from "@/assets/LoCoLogo.svg";
@@ -179,6 +181,9 @@ export default function ChefSellerAccount({ onOpenApplications }: ChefSellerAcco
 
   const hasShop = Boolean(shopStatus?.phpShopId || shopStatus?.linked);
   const stripeConnected = Boolean(shopStatus?.phpShopStripeAccountId);
+  
+  const { data: summaryData } = useEarningsSummary({ enabled: hasShop });
+  const shopName = summaryData?.shop?.sname;
   const payoutsOn = stripeConnected;
   const linkedAt = shopStatus?.linkedAt ? formatDate(shopStatus.linkedAt) : null;
 
@@ -216,32 +221,7 @@ export default function ChefSellerAccount({ onOpenApplications }: ChefSellerAcco
         description={t("linkedAccountsSubtitle")}
       />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatTile
-          label={t("sellerShopLabel")}
-          value={hasShop ? t("statusReady") : t("statusPending")}
-          hint={hasShop && shopStatus?.phpShopId ? t("shopIdHint", { shopId: shopStatus.phpShopId }) : t("afterSellerApprovalHint")}
-          tone={shopTone}
-        />
-        <StatTile
-          label={t("stripeLabel")}
-          value={stripeConnected ? t("statusConnected") : hasShop ? t("statusNotConnected") : t("statusPending")}
-          hint={stripeConnected ? t("expressDashboardHint") : hasShop ? t("connectFromShopHint") : t("afterShopCreatedHint")}
-          tone={stripeTone}
-        />
-        <StatTile
-          label={t("payoutsLabel")}
-          value={payoutsOn ? t("statusOn") : t("statusOff")}
-          hint={payoutsOn ? t("payoutsOnHint") : t("needsStripeHint")}
-          tone={payoutsTone}
-        />
-        <StatTile
-          label={t("linkedLabel")}
-          value={linkedAt ?? "—"}
-          hint={linkedAt ? t("linkedDateHint") : t("notLinkedYetHint")}
-          tone={hasShop ? "success" : "neutral"}
-        />
-      </div>
+
 
       {!hasShop && (
         <QuietNotice title={t("sellerAccountsAfterApprovalTitle")}>
@@ -274,9 +254,14 @@ export default function ChefSellerAccount({ onOpenApplications }: ChefSellerAcco
                   <CardDescription className="mt-1">{t("sellerShopCardDesc")}</CardDescription>
                 </div>
               </div>
-              <InfoChip variant={hasShop ? "success" : "outline"} className="shrink-0">
-                {hasShop ? t("statusReady") : t("statusPending")}
-              </InfoChip>
+              <div className="flex flex-col items-end gap-1">
+                <InfoChip variant={hasShop ? "success" : "outline"} className="shrink-0">
+                  {hasShop ? t("statusReady") : t("statusPending")}
+                </InfoChip>
+                {hasShop && linkedAt && (
+                  <span className="text-[10px] text-muted-foreground">{linkedAt}</span>
+                )}
+              </div>
             </div>
           </CardHeader>
           <CardContent className="flex-1 pt-0">
@@ -290,7 +275,7 @@ export default function ChefSellerAccount({ onOpenApplications }: ChefSellerAcco
               disabled={!hasShop}
             >
               {t("openShop")}
-              <ExternalLink />
+              <ExternalLink className="ml-2 h-4 w-4" />
             </Button>
           </CardFooter>
         </Card>
@@ -311,12 +296,17 @@ export default function ChefSellerAccount({ onOpenApplications }: ChefSellerAcco
                   <CardDescription className="mt-1">{t("stripeCardDesc")}</CardDescription>
                 </div>
               </div>
-              <InfoChip
-                variant={stripeConnected ? "success" : hasShop ? "warning" : "outline"}
-                className="shrink-0"
-              >
-                {stripeConnected ? t("statusConnected") : hasShop ? t("statusNotConnected") : t("statusPending")}
-              </InfoChip>
+              <div className="flex flex-col items-end gap-1">
+                <InfoChip
+                  variant={stripeConnected ? "success" : hasShop ? "warning" : "outline"}
+                  className="shrink-0"
+                >
+                  {stripeConnected ? t("statusConnected") : hasShop ? t("statusNotConnected") : t("statusPending")}
+                </InfoChip>
+                {stripeConnected && linkedAt && (
+                  <span className="text-[10px] text-muted-foreground">{linkedAt}</span>
+                )}
+              </div>
             </div>
           </CardHeader>
           <CardContent className="flex-1 pt-0">
@@ -331,9 +321,9 @@ export default function ChefSellerAccount({ onOpenApplications }: ChefSellerAcco
             >
               {stripeConnected ? t("openStripe") : t("connectInShop")}
               {dashboardLinkMutation.isPending ? (
-                <Loader2 className="animate-spin" />
+                <Loader2 className="ml-2 h-4 w-4 animate-spin" />
               ) : (
-                <ExternalLink />
+                <ExternalLink className="ml-2 h-4 w-4" />
               )}
             </Button>
           </CardFooter>

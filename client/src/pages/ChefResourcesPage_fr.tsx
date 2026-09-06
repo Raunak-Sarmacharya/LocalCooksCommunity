@@ -566,7 +566,7 @@ export default function ChefResourcesPage_en_fr() {
               <ResourceTable headers={["", ""]} rows={[["Coût", "Gratuit"], ["Fournisseur", "Gouvernement de Terre-Neuve-et-Labrador"], ["Site Web", "skillspassnl.com"], ["Cours", "Salubrité alimentaire : Sensibilisation générale · Préparation alimentaire à domicile · Propriétaire et gestionnaire"], ["Format", "En ligne, environ 30 minutes par module"], ["Certificat", "Téléchargement immédiat après réussite"]]} />
               <p className="text-gray-600">
                 <strong>Comment commencer :</strong> Visite{" "}
-                <ExtLink href="https://skillspassnl.bluedrop.io">skillspassnl.bluedrop.io</ExtLink>, créez un compte gratuit, complétez les modules pertinents, réussissez l'évaluation et téléchargez votre certificat.Pour les propriétaires d'entreprise, le module « Sécurité alimentaire : propriétaire et gestionnaire » est recommandé : il couvre les responsabilités légales au-delà de l'hygiène de base.
+                <ExtLink href="https://skillspassnl.bluedrop.io/storefront/online-registration/10863">skillspassnl.bluedrop.io</ExtLink>, créez un compte gratuit, complétez les modules pertinents, réussissez l'évaluation et téléchargez votre certificat.Pour les propriétaires d'entreprise, le module « Sécurité alimentaire : propriétaire et gestionnaire » est recommandé : il couvre les responsabilités légales au-delà de l'hygiène de base.
               </p>
 
               <SubHeading id="paid-alternatives">Alternatives payantes (reconnaissance pancanadienne)</SubHeading>

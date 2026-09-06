@@ -781,7 +781,7 @@ async function notifyChefWelcome(chefId: number, chefName: string) {
     message: 'Your account is set up. Start by exploring available kitchens and submitting your first application.',
     metadata: { isWelcome: true },
     actionUrl: chefDashboardView('discover-kitchens'),
-    actionLabel: 'Explore Kitchens'
+    actionLabel: 'Discover Kitchens'
   });
 }
 

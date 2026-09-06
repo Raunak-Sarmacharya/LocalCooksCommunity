@@ -84,9 +84,11 @@ export function formatEquipmentBreakdown(
 /** Storage line for cards — unit count only. */
 export function formatStorageLine(
   summary: KitchenGridStorageSummary | null | undefined,
-  noneLabel: string
+  noneLabel: string,
+  spacesLabel?: string
 ): string {
   if (!summary || summary.totalStorageUnits <= 0) return noneLabel;
+  if (spacesLabel) return `${summary.totalStorageUnits} ${spacesLabel}`;
   return String(summary.totalStorageUnits);
 }
 

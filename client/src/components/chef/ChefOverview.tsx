@@ -27,6 +27,7 @@ import { StatTile } from "@/components/chef/ui";
 import { TruncatedText } from "@/components/common/TruncatedText";
 import { applicationStatusVariant } from "@/components/chef/applications/status";
 import { useTranslation } from "react-i18next";
+import { Icon } from "@iconify/react";
 
 interface ChefOverviewProps {
   user: { displayName?: string | null } | null;
@@ -283,19 +284,20 @@ export function ChefOverview({
               </div>
             )}
           </CardContent>
-          <CardFooter className="border-t pt-4 gap-2">
+          <CardFooter className="flex flex-row items-center border-t pt-4 gap-4 w-full">
             {kitchenApplications.length > 0 ? (
               <>
                 <Button
                   variant="outline"
-                  className="flex-1"
+                  className="flex-1 w-full"
                   onClick={() => onNavigate("kitchen-applications")}
-                >
-                  {t("overviewMyKitchensButton", "My Kitchens")}
+              >
+                <Icon icon="mdi:office-building-outline" className="mr-2 size-4" aria-hidden />
+                {t("overviewMyKitchensButton", "My Kitchens")}
                 </Button>
                 <Button
                   variant="outline"
-                  className="flex-1"
+                  className="flex-1 w-full"
                   onClick={() => (window.location.href = "/compare-kitchens")}
                 >
                   {t("overviewDiscoverMore", "Discover More")}
@@ -308,7 +310,7 @@ export function ChefOverview({
                 className="w-full"
                 onClick={() => (window.location.href = "/compare-kitchens")}
               >
-                {t("overviewExploreKitchens", "Explore Kitchens")}
+                {t("overviewExploreKitchens", "Discover Kitchens")}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             )}

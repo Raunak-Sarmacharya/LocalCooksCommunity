@@ -6,6 +6,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { Icon } from "@iconify/react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarDays,
@@ -970,6 +971,7 @@ export function ScheduleViewingWidget({
                 className="mt-auto self-start text-gray-500"
                 onClick={requestClose}
               >
+                <Icon icon="mdi:close" className="size-4" aria-hidden />
                 Cancel
               </Button>
             )}
@@ -996,6 +998,7 @@ export function ScheduleViewingWidget({
                   className="mt-3 -ml-2 self-start text-gray-500"
                   onClick={requestClose}
                 >
+                  <Icon icon="mdi:close" className="size-4" aria-hidden />
                   Cancel
                 </Button>
               )}
