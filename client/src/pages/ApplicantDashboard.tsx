@@ -40,12 +40,21 @@ import {
   CreditCard,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { useCustomAlerts } from "@/components/ui/custom-alerts";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useChefOnboardingStatus } from "@/hooks/use-chef-onboarding-status";
 import KitchenDiscovery from "@/components/kitchen-application/KitchenDiscovery";
-import { requestDiscoverKitchensWalkthrough } from "@/components/kitchen-application/DiscoverKitchensButtonTour";
 import TrainingOverviewPanel from "@/components/training/TrainingOverviewPanel";
 import ApplicationFormPanel from "@/components/application/ApplicationFormPanel";
 import ChefSupportPage from "@/components/chef/ChefSupportPage";
@@ -128,6 +137,37 @@ export default function ApplicantDashboard() {
 
   // Application form view mode - 'list' shows applications, 'form' shows the application form, 'documents' shows document verification
   const [applicationViewMode, setApplicationViewMode] = useState<'list' | 'form' | 'documents'>('list');
+  const applicationLeaveRef = useRef<(() => void) | null>(null);
+  const [applicationLeaveOpen, setApplicationLeaveOpen] = useState(false);
+  const isApplicationFlowActive =
+    applicationViewMode === "form" || applicationViewMode === "documents";
+
+  const requestLeaveApplication = useCallback(
+    (proceed?: () => void) => {
+      if (!isApplicationFlowActive) {
+        proceed?.();
+        return;
+      }
+      applicationLeaveRef.current = proceed ?? null;
+      setApplicationLeaveOpen(true);
+    },
+    [isApplicationFlowActive],
+  );
+
+  const confirmLeaveApplication = useCallback(() => {
+    setApplicationLeaveOpen(false);
+    const proceed = applicationLeaveRef.current;
+    applicationLeaveRef.current = null;
+    if (proceed) proceed();
+    else setApplicationViewMode("list");
+  }, []);
+
+  const guardedApplicationNavigate = useCallback(
+    (fn: () => void) => {
+      requestLeaveApplication(fn);
+    },
+    [requestLeaveApplication],
+  );
 
   // Training view mode - 'overview' shows training overview, 'player' shows the video player
   const [trainingViewMode, setTrainingViewMode] = useState<'overview' | 'player'>('overview');
@@ -674,11 +714,11 @@ export default function ApplicantDashboard() {
   );
 
   const applicationsTabContent = applicationViewMode === "form" ? (
-    <ApplicationFormPanel onBack={() => setApplicationViewMode("list")} />
+    <ApplicationFormPanel onBack={() => requestLeaveApplication(() => setApplicationViewMode("list"))} />
   ) : applicationViewMode === "documents" ? (
     <DocumentVerificationView
       documentVerification={docData || undefined}
-      onBack={() => setApplicationViewMode("list")}
+      onBack={() => requestLeaveApplication(() => setApplicationViewMode("list"))}
     />
   ) : (
     <SellerApplicationTabContent
@@ -689,7 +729,6 @@ export default function ApplicantDashboard() {
       onManageDocuments={() => setApplicationViewMode("documents")}
       onCancelApplication={handleCancelApplication}
       onDiscoverKitchens={() => {
-        requestDiscoverKitchensWalkthrough();
         setActiveTab("discover-kitchens");
       }}
       onBookKitchen={(locationId) => {
@@ -855,7 +894,7 @@ export default function ApplicantDashboard() {
         ...baseBreadcrumbs,
         {
           label: t("shellMyApplication"),
-          onClick: () => setApplicationViewMode('list'),
+          onClick: () => guardedApplicationNavigate(() => setApplicationViewMode('list')),
           navId: "applications" as const,
         },
         { label: t("shellDocumentVerification") },
@@ -867,7 +906,7 @@ export default function ApplicantDashboard() {
         ...baseBreadcrumbs,
         {
           label: t("shellMyApplication"),
-          onClick: () => setApplicationViewMode('list'),
+          onClick: () => guardedApplicationNavigate(() => setApplicationViewMode('list')),
           navId: "applications" as const,
         },
         { label: t("shellNewApplication") },
@@ -940,7 +979,7 @@ export default function ApplicantDashboard() {
     }
 
     return undefined;
-  }, [activeTab, applicationViewMode, trainingViewMode, t]);
+  }, [activeTab, applicationViewMode, trainingViewMode, t, guardedApplicationNavigate]);
 
   const shellActiveView =
     activeTab === "viewings"
@@ -950,10 +989,12 @@ export default function ApplicantDashboard() {
         : activeTab;
 
   const onShellViewChange = useCallback((view: string) => {
-    setActiveTab(view);
-    if (view !== "applications") setApplicationViewMode("list");
-    if (view !== "training") setTrainingViewMode("overview");
-  }, []);
+    guardedApplicationNavigate(() => {
+      setActiveTab(view);
+      if (view !== "applications") setApplicationViewMode("list");
+      if (view !== "training") setTrainingViewMode("overview");
+    });
+  }, [guardedApplicationNavigate]);
 
   const shellHiddenItems = useMemo(
     () => [
@@ -978,9 +1019,11 @@ export default function ApplicantDashboard() {
 
       {/* ⌘K Command Palette */}
       <ChefCommandPalette onNavigate={(view) => {
-        setActiveTab(view);
-        if (view !== 'applications') setApplicationViewMode('list');
-        if (view !== 'training') setTrainingViewMode('overview');
+        guardedApplicationNavigate(() => {
+          setActiveTab(view);
+          if (view !== 'applications') setApplicationViewMode('list');
+          if (view !== 'training') setTrainingViewMode('overview');
+        });
       }} />
 
       {/* Identifies the chef in Tidio; the widget script loads only when chat is opened */}
@@ -1097,6 +1140,27 @@ export default function ApplicantDashboard() {
           )}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={applicationLeaveOpen}
+        onOpenChange={(open) => {
+          setApplicationLeaveOpen(open);
+          if (!open) applicationLeaveRef.current = null;
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("apLeaveTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("apLeaveDesc")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("apLeaveKeep")}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmLeaveApplication}>
+              {t("apLeaveConfirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 

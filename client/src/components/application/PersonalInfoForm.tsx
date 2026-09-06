@@ -5,13 +5,12 @@ import { useApplicationForm } from "./ApplicationFormContext";
 import { useTranslation } from "react-i18next";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 
-import { Button } from "@/components/ui/button";
 import { Form } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowRight, ArrowLeft } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import { ApplicationStepFooter } from "./ApplicationStepFooter";
 
 // Phone validation helper (matches server-side validation)
 const phoneNumberSchema = z.string()
@@ -309,21 +308,10 @@ export default function PersonalInfoForm() {
           </div>
         </div>
 
-        <div className="flex justify-between items-center pt-2">
-          <Button
-            type="button"
-            variant="outline"
-            disabled
-            className="border-gray-200 text-gray-400"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            {t("sellerApp_back")}
-          </Button>
-          <Button type="submit" data-testid="seller-application-continue">
-            {t("sellerApp_continue")}
-            <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
-        </div>
+        <ApplicationStepFooter
+          continueLabel={t("sellerApp_continue")}
+          continueTestId="seller-application-continue"
+        />
       </form>
     </Form>
   );

@@ -10,18 +10,11 @@ import {
   Plus,
   Search,
   Eye,
-  Info,
 } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "wouter";
 import ChefViewingsList from "@/components/chef/ChefViewingsList";
-import {
-  DiscoverKitchensButtonTour,
-  consumeDiscoverKitchensWalkthroughRequest,
-  peekDiscoverKitchensWalkthroughRequest,
-} from "@/components/kitchen-application/DiscoverKitchensButtonTour";
-
 import { ChefPageHeader, InfoChip } from "@/components/chef/ui";
 import {
   getKitchenDisplayStatus,
@@ -138,16 +131,6 @@ export default function KitchenDiscovery({
     navigate(kitchenPreviewPath(locationId, locationSlug));
   };
 
-  const [tourReplayToken, setTourReplayToken] = useState(() =>
-    peekDiscoverKitchensWalkthroughRequest() ? 1 : 0
-  );
-
-  useEffect(() => {
-    if (!consumeDiscoverKitchensWalkthroughRequest()) return;
-    setActiveTab("discover");
-    setTourReplayToken((token) => Math.max(token, 1));
-  }, []);
-
   const {
     applications,
     hasAnyApproved,
@@ -226,32 +209,20 @@ export default function KitchenDiscovery({
     [filteredAvailableKitchens]
   );
 
-  const firstWalkthroughCardId = discoverLocationCards[0]?.locationId;
-
   const kitchenStatusTone = (status: string) =>
     getKitchenDisplayStatus({ status }, tChef).tone;
 
   const kitchenStatusLabel = (status: string) => getKitchenDisplayStatus({ status }, tChef).label;
 
-  const walkthrough = (
-    <DiscoverKitchensButtonTour
-      enabled={!isLoading && activeTab === "discover" && discoverLocationCards.length > 0}
-      replayToken={tourReplayToken}
-    />
-  );
-
   if (isLoading) {
     return (
-      <>
-        <Card>
-          <CardContent className="p-8">
-            <div className="flex items-center justify-center">
-              <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-foreground" />
-            </div>
-          </CardContent>
-        </Card>
-        {walkthrough}
-      </>
+      <Card>
+        <CardContent className="p-8">
+          <div className="flex items-center justify-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-foreground" />
+          </div>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -333,23 +304,6 @@ export default function KitchenDiscovery({
       <ChefPageHeader
         title={t("applyFlowDiscoverKitchensTitle", "Discover kitchens")}
         description={t("applyFlowDiscoverKitchensDesc", "Apply first. Booking opens after approval.")}
-        titleAccessory={
-          discoverLocationCards.length > 0 ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 -ml-2 gap-1.5 px-2 font-normal text-muted-foreground"
-              onClick={() => {
-                setActiveTab("discover");
-                setTourReplayToken((token) => token + 1);
-              }}
-            >
-              <Info />
-              {t("whatButtonsDo", "What buttons do?")}
-            </Button>
-          ) : null
-        }
         actions={
           <div className="flex flex-wrap gap-2">
             {approvedCount > 0 ? (
@@ -403,28 +357,28 @@ export default function KitchenDiscovery({
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="mb-4 h-auto flex-wrap">
-          <TabsTrigger value="discover" data-kitchen-tour="tab-discover">
+          <TabsTrigger value="discover">
             <Plus className="h-4 w-4 mr-2" />
             {t("applyFlowDiscoverTabLabel", {
               count: discoverLocationCards.length,
               defaultValue: "Discover ({count})",
             })}
           </TabsTrigger>
-          <TabsTrigger value="applications" data-kitchen-tour="tab-applications">
+          <TabsTrigger value="applications">
             <Clock className="h-4 w-4 mr-2" />
             {t("applyFlowMyApplicationsTabLabel", {
               count: applications.length,
               defaultValue: "My Applications ({count})",
             })}
           </TabsTrigger>
-          <TabsTrigger value="approved" data-kitchen-tour="tab-approved">
+          <TabsTrigger value="approved">
             <Check className="h-4 w-4 mr-2" />
             {t("applyFlowApprovedTabLabel", {
               count: approvedCount,
               defaultValue: "Approved ({count})",
             })}
           </TabsTrigger>
-          <TabsTrigger value="tours" data-kitchen-tour="tab-tours">
+          <TabsTrigger value="tours">
             <Eye className="h-4 w-4 mr-2" />
             {t("applyFlowKitchenToursTab", "Kitchen Tours")}
           </TabsTrigger>
@@ -490,7 +444,6 @@ export default function KitchenDiscovery({
                 const display = application ? getKitchenDisplayStatus(application, tChef) : null;
                 const showBook = display?.actionKind === "book";
                 const previewHref = kitchenPreviewPath(card.locationId, card.locationSlug);
-                const isWalkthroughCard = card.locationId === firstWalkthroughCardId;
                 const openPreview = () => navigate(previewHref);
 
                 const overlayChip = display ? (
@@ -521,7 +474,6 @@ export default function KitchenDiscovery({
                         showBook ? (
                           <Button
                             className={kitchenCardBookClass}
-                            data-kitchen-tour={isWalkthroughCard ? "details" : undefined}
                             onClick={() =>
                               handleBookClick(card.locationId, card.locationSlug)
                             }
@@ -533,7 +485,6 @@ export default function KitchenDiscovery({
                           <Button
                             variant="outline"
                             className={kitchenCardDetailsClass}
-                            data-kitchen-tour={isWalkthroughCard ? "details" : undefined}
                             onClick={openPreview}
                           >
                             {t("requestToApply", "Request to apply")}
@@ -757,8 +708,6 @@ export default function KitchenDiscovery({
           <ChefViewingsList onExploreKitchens={() => setActiveTab("discover")} />
         </TabsContent>
       </Tabs>
-
-      {walkthrough}
     </div>
   );
 }

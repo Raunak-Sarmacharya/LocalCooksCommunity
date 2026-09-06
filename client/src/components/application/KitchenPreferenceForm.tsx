@@ -1,11 +1,11 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowRight, ArrowLeft, Building, HelpCircle, HomeIcon } from "lucide-react";
+import { Building, HelpCircle, HomeIcon } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { useApplicationForm } from "./ApplicationFormContext";
 import { useTranslation } from "react-i18next";
+import { ApplicationStepFooter } from "./ApplicationStepFooter";
 
-import { Button } from "@/components/ui/button";
 import { Form } from "@/components/ui/form";
 
 // Create a schema for just the kitchen preference field
@@ -17,7 +17,7 @@ type KitchenPreferenceFormData = z.infer<typeof kitchenPreferenceSchema>;
 
 export default function KitchenPreferenceForm() {
   const { t } = useTranslation("chef");
-  const { formData, updateFormData, goToNextStep, goToPreviousStep } = useApplicationForm();
+  const { formData, updateFormData, goToNextStep } = useApplicationForm();
 
   const form = useForm<KitchenPreferenceFormData>({
     resolver: zodResolver(kitchenPreferenceSchema),
@@ -114,21 +114,11 @@ export default function KitchenPreferenceForm() {
           <p className="text-sm font-medium text-destructive">{t("sellerApp_kpSelectRequired")}</p>
         )}
 
-        <div className="flex justify-between items-center pt-4 border-t border-border/50">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={goToPreviousStep}
-            className="text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            {t("sellerApp_back")}
-          </Button>
-          <Button type="submit" size="lg" className="px-8" data-testid="seller-application-continue">
-            {t("sellerApp_continue")}
-            <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
-        </div>
+        <ApplicationStepFooter
+          showPrevious
+          continueLabel={t("sellerApp_continue")}
+          continueTestId="seller-application-continue"
+        />
       </form>
     </Form>
   );

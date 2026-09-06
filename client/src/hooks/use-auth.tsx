@@ -668,19 +668,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setPendingSync(false);
       setPendingRegistration(false);
 
-      // SECURITY FIX: Clear all localStorage data to prevent cross-user data leakage.
-      // Keep uid-scoped walkthrough flags so the same user is not toured again.
+      // Keep uid-scoped kitchen preview walkthrough so the same account is not toured again.
       const walkthroughFlags: [string, string][] = [];
       try {
         for (let i = 0; i < localStorage.length; i++) {
           const key = localStorage.key(i);
-          if (
-            key &&
-            (key.startsWith("lc.kitchenPreview.walkthrough") ||
-              key.startsWith("lc.discoverKitchens.buttonTour"))
-          ) {
-            const val = localStorage.getItem(key);
-            if (val != null) walkthroughFlags.push([key, val]);
+          if (key && key.startsWith("lc.kitchenPreview.walkthrough") && localStorage.getItem(key) === "1") {
+            walkthroughFlags.push([key, "1"]);
           }
         }
       } catch {

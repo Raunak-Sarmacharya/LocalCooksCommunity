@@ -27,7 +27,6 @@ import {
   bookNowIcon as BookNowIcon,
 } from "@/components/chef/applications/status-icons";
 import { KitchenGridCard } from "@/components/kitchen/KitchenGridCard";
-import { requestDiscoverKitchensWalkthrough } from "@/components/kitchen-application/DiscoverKitchensButtonTour";
 import { chefOutlineCtaClass, chefPrimaryCtaClass } from "@/lib/chef-cta";
 import { kitchenPreviewPath } from "@/lib/discover-location-groups";
 import {
@@ -238,7 +237,6 @@ export default function MyKitchensTabContent({
             <Button
               className={chefPrimaryCtaClass()}
               onClick={() => {
-                requestDiscoverKitchensWalkthrough();
                 onSetActiveTab("discover-kitchens");
               }}
             >

@@ -1,34 +1,43 @@
 import { useEffect, useState } from "react";
-import { SpotlightWalkthrough, walkthroughStorageKey } from "@/components/ui/spotlight-walkthrough";
+import {
+  SpotlightWalkthrough,
+  hasCompletedTourFamily,
+  migrateTourFamilyCompletion,
+  walkthroughStorageKey,
+} from "@/components/ui/spotlight-walkthrough";
 import { useAuthModal } from "@/components/auth/AuthModalProvider";
 import { useFirebaseAuth } from "@/hooks/use-auth";
-
 import { useTranslation } from "react-i18next";
 
-const PREVIEW_WALKTHROUGH_BASE = "lc.kitchenPreview.walkthrough.v3";
+/** Stable key — never bump; versioned keys are migrated into this. */
+const PREVIEW_WALKTHROUGH_FAMILY = "lc.kitchenPreview.walkthrough";
+const PREVIEW_WALKTHROUGH_SEEN = `${PREVIEW_WALKTHROUGH_FAMILY}.seen`;
 
-export function KitchenPreviewWalkthrough({
-  enabled,
-  replayToken = 0,
-}: {
-  enabled: boolean;
-  replayToken?: number;
-}) {
+export function KitchenPreviewWalkthrough({ enabled }: { enabled: boolean }) {
   const { t } = useTranslation("kitchen");
   const { user } = useFirebaseAuth();
   const { isOpen } = useAuthModal();
   const [hasOpenDialog, setHasOpenDialog] = useState(false);
 
   useEffect(() => {
-    // Check for real application/auth/dialogs that should suppress the tour,
-    // excluding the Spotlight walkthrough overlay itself (which mounts with
-    // role="dialog" and caused an infinite enable/unmount flicker loop).
+    if (!user?.uid) return;
+    migrateTourFamilyCompletion(
+      PREVIEW_WALKTHROUGH_FAMILY,
+      user.uid,
+      walkthroughStorageKey(PREVIEW_WALKTHROUGH_SEEN, user.uid)
+    );
+  }, [user?.uid]);
+
+  useEffect(() => {
+    // Suppress while another dialog is open. Ignore the spotlight overlay itself
+    // (role="dialog") so enable/unmount doesn't flicker.
     const compute = () => {
       const dialogs = document.querySelectorAll('[role="dialog"]');
       for (let i = 0; i < dialogs.length; i++) {
         const el = dialogs[i];
-        // SpotlightWalkthrough renders with aria-labelledby="spotlight-walkthrough-title"
         if (el.getAttribute("aria-labelledby") === "spotlight-walkthrough-title") continue;
+        if (el.getAttribute("data-state") === "closed") continue;
+        if (el.getAttribute("aria-hidden") === "true") continue;
         setHasOpenDialog(true);
         return;
       }
@@ -59,24 +68,9 @@ export function KitchenPreviewWalkthrough({
       body: t("tourPhotosDesc", "See the space. Tap a photo to zoom."),
     },
     {
-      id: "tab-overview",
-      title: t("tourTabOverview", "Overview"),
-      body: t("tourTabOverviewDesc", "Hours, amenities, and where it is."),
-    },
-    {
-      id: "tab-equipment",
-      title: t("equipment", "Equipment"),
-      body: t("tourTabEquipmentDesc", "What's included and available to rent."),
-    },
-    {
-      id: "tab-storage",
-      title: t("storage", "Storage"),
-      body: t("tourTabStorageDesc", "Cold, dry, and other storage on site."),
-    },
-    {
       id: "hours",
-      title: t("tourHours", "Hours"),
-      body: t("tourHoursDesc", "When you can cook. Book exact times after approval."),
+      title: t("tourHours", "Hours & date"),
+      body: t("tourHoursDesc", "Pick an available date. Book exact times after approval."),
     },
     {
       id: "cta",
@@ -95,13 +89,16 @@ export function KitchenPreviewWalkthrough({
     },
   ];
 
+  if (!user?.uid) return null;
+  // Any prior completion for this account (stable or versioned) → never show again.
+  if (hasCompletedTourFamily(PREVIEW_WALKTHROUGH_FAMILY, user.uid)) return null;
+
   return (
     <SpotlightWalkthrough
-      storageKey={walkthroughStorageKey(PREVIEW_WALKTHROUGH_BASE, user?.uid)}
+      storageKey={walkthroughStorageKey(PREVIEW_WALKTHROUGH_SEEN, user.uid)}
       attr="data-preview-tour"
       steps={STEPS}
       enabled={enabled && !isOpen && !hasOpenDialog}
-      replayToken={replayToken}
       readyWhen={(ids) => ids.includes("photos") && ids.includes("hours")}
     />
   );

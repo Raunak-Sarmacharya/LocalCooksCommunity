@@ -2,6 +2,14 @@ import type { ReactNode } from "react";
 import { Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CARD_RADIUS } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { TruncatedText } from "@/components/common/TruncatedText";
 import type { StatusTone } from "@/components/chef/applications/status";
@@ -52,12 +60,52 @@ export function ChefPageHeader({
   return (
     <div className={cn("flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between", className)}>
       <div>
-        <h2 className="text-2xl font-semibold tracking-tight">{title}</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-2xl font-semibold tracking-tight">{title}</h2>
+          {titleAccessory}
+        </div>
         {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
-        {titleAccessory ? <div className="mt-2">{titleAccessory}</div> : null}
       </div>
       {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
     </div>
+  );
+}
+
+/** Info icon that opens a modal with help copy — use instead of tip banners. */
+export function InfoHint({
+  title,
+  children,
+  label,
+  className,
+}: {
+  title: string;
+  children: ReactNode;
+  label?: string;
+  className?: string;
+}) {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+            className,
+          )}
+          aria-label={label ?? title}
+        >
+          <Info className="h-4 w-4" />
+        </button>
+      </DialogTrigger>
+      <DialogContent className="max-w-md" showCloseButton={false}>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription asChild>
+            <div className="space-y-3 text-sm text-muted-foreground">{children}</div>
+          </DialogDescription>
+        </DialogHeader>
+      </DialogContent>
+    </Dialog>
   );
 }
 

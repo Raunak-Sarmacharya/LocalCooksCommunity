@@ -2566,7 +2566,6 @@ function GuestHoursCard({
     >
       {rateRow}
 
-      <div data-preview-tour="cta">
       <Collapsible open={calendarOpen} onOpenChange={setCalendarOpen}>
         <div className="flex items-center gap-2">
           <div
@@ -2681,12 +2680,11 @@ function GuestHoursCard({
       </Collapsible>
 
       {showDateGatedCta && (
-        <div className="mt-3 shrink-0 space-y-2 border-t border-gray-200 pt-2.5">
+        <div className="mt-3 shrink-0 space-y-2 border-t border-gray-200 pt-2.5" data-preview-tour="cta">
           {pricePreview ? <PreviewBookingTotalAboveCta preview={pricePreview} /> : null}
           {ctaButton}
         </div>
       )}
-      </div>
     </div>
   );
 }

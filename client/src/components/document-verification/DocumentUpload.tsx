@@ -3,7 +3,17 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { InfoChip } from "@/components/chef/info-chip";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -20,7 +30,6 @@ import {
   Clock,
   FileText,
   FolderOpen,
-  Info,
   Loader2,
   Plus,
   Upload,
@@ -29,25 +38,31 @@ import {
 import React, { useState } from "react";
 import { Link } from "wouter";
 import { useTranslation } from "react-i18next";
-import { QuietNotice } from "@/components/chef/ui";
+import { QuietNotice, InfoHint } from "@/components/chef/ui";
 
 // Helper component for authenticated document links
-function AuthenticatedDocumentLink({ url, className, children }: { url: string | null | undefined; className?: string; children: React.ReactNode }) {
+const AuthenticatedDocumentLink = React.forwardRef<
+  HTMLAnchorElement,
+  { url: string | null | undefined; className?: string; children: React.ReactNode }
+>(function AuthenticatedDocumentLink({ url, className, children }, ref) {
   const { url: presignedUrl } = usePresignedDocumentUrl(url);
-  
+
   if (!url) return null;
-  
+
   return (
-    <a 
-      href={presignedUrl || url} 
-      target="_blank" 
+    <a
+      ref={ref}
+      href={presignedUrl || url}
+      target="_blank"
       rel="noopener noreferrer"
       className={className}
     >
       {children}
     </a>
   );
-}
+});
+AuthenticatedDocumentLink.displayName = "AuthenticatedDocumentLink";
+
 
 // Add types for props
 interface DocumentManagementModalProps {
@@ -58,6 +73,8 @@ interface DocumentManagementModalProps {
 interface DocumentUploadProps {
   openInModal?: boolean;
   forceShowForm?: boolean;
+  /** Hide duplicate headings/alerts when nested under DocumentVerificationView */
+  embedded?: boolean;
 }
 
 interface DocumentUploadModalProps {
@@ -82,8 +99,22 @@ function DocumentUploadModal({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [discardOpen, setDiscardOpen] = useState(false);
   const { toast } = useToast();
   const { t } = useTranslation("chef");
+
+  const resetAndClose = () => {
+    setUrl("");
+    setSelectedFile(null);
+    setErrors({});
+    setDiscardOpen(false);
+    onClose();
+  };
+
+  const requestClose = () => {
+    // Match booking selection modals: confirm before abandoning the picker
+    setDiscardOpen(true);
+  };
 
   const validateUrl = (url: string): boolean => {
     try {
@@ -120,11 +151,7 @@ function DocumentUploadModal({
         file: selectedFile || undefined
       });
 
-      // Reset form and close modal
-      setUrl("");
-      setSelectedFile(null);
-      setErrors({});
-      onClose();
+      resetAndClose();
 
       toast({
         title: t("duUpdatedToastTitle"),
@@ -148,174 +175,236 @@ function DocumentUploadModal({
     : t('duEstablishmentDesc');
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            {documentTitle}
-          </DialogTitle>
-          <DialogDescription>
-            {documentDescription}
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={isOpen}>
+        <DialogContent
+          className="max-w-md"
+          showCloseButton={false}
+          onEscapeKeyDown={(e) => {
+            e.preventDefault();
+            requestClose();
+          }}
+          onPointerDownOutside={(e) => {
+            e.preventDefault();
+            requestClose();
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              {documentTitle}
+            </DialogTitle>
+            <DialogDescription>
+              {documentDescription}
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="space-y-6">
-          {/* Current Document Display */}
-          {currentDocumentUrl && (
-            <div className="rounded-[1.35rem] border px-4 py-3">
-              <p className="text-sm font-medium mb-2">{t("duCurrentDocument")}</p>
-              <div className="flex items-center gap-2">
-                <FileText className="h-4 w-4 text-muted-foreground" />
-                <a
-                  href={currentDocumentUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm font-medium text-primary hover:underline"
-                >
-                  {t("duViewDocument")}
-                </a>
-              </div>
-            </div>
-          )}
-
-          {/* Upload Options */}
-          <Tabs defaultValue="file" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="file">{t("duTabUploadFile")}</TabsTrigger>
-              <TabsTrigger value="url">{t("duTabProvideUrl")}</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="file" className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor={`file-${documentType}`}>{t("duSelectDocument")}</Label>
-                <div className="relative">
-                  <input
-                    id={`file-${documentType}`}
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png,.webp"
-                    onChange={handleFileSelect}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  />
-                  <div className="flex items-center justify-between p-3 border border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <FolderOpen className="h-5 w-5 text-gray-500" />
-                      <span className="text-sm text-gray-700">
-                        {selectedFile ? selectedFile.name : t("duChooseFile")}
-                      </span>
-                    </div>
-                    {selectedFile && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedFile(null);
-                        }}
-                        className="text-destructive hover:text-destructive hover:bg-muted"
-                      >
-                        <XCircle className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
+          <div className="space-y-6">
+            {currentDocumentUrl && (
+              <div className="rounded-xl border px-4 py-3">
+                <p className="mb-2 text-sm font-medium">{t("duCurrentDocument")}</p>
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                  <AuthenticatedDocumentLink
+                    url={currentDocumentUrl}
+                    className="text-sm font-medium text-primary hover:underline"
+                  >
+                    {t("duViewDocument")}
+                  </AuthenticatedDocumentLink>
                 </div>
-                <p className="text-xs text-gray-500">
-                  {t("duFileFormats")}
-                </p>
               </div>
-            </TabsContent>
+            )}
 
-            <TabsContent value="url" className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor={`url-${documentType}`}>{t("duDocumentUrl")}</Label>
-                <Input
-                  id={`url-${documentType}`}
-                  type="url"
-                  placeholder="https://example.com/document.pdf"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  className={errors.url ? "border-red-500" : ""}
-                />
-                {errors.url && (
-                  <p className="text-sm text-red-500 flex items-center gap-1">
-                    <AlertTriangle className="h-3 w-3" />
-                    {errors.url}
+            <Tabs defaultValue="file" className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="file">{t("duTabUploadFile")}</TabsTrigger>
+                <TabsTrigger value="url">{t("duTabProvideUrl")}</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="file" className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor={`file-${documentType}`}>{t("duSelectDocument")}</Label>
+                  <div className="relative">
+                    <input
+                      id={`file-${documentType}`}
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,.webp"
+                      onChange={handleFileSelect}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    />
+                    <div className="flex items-center justify-between rounded-xl border bg-muted/40 p-3 transition-colors hover:bg-muted/60">
+                      <div className="flex items-center gap-3">
+                        <FolderOpen className="h-5 w-5 text-muted-foreground" />
+                        <span className="text-sm text-foreground">
+                          {selectedFile ? selectedFile.name : t("duChooseFile")}
+                        </span>
+                      </div>
+                      {selectedFile && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedFile(null);
+                          }}
+                          className="text-destructive hover:text-destructive hover:bg-muted"
+                        >
+                          <XCircle className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {t("duFileFormats")}
                   </p>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="url" className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor={`url-${documentType}`}>{t("duDocumentUrl")}</Label>
+                  <Input
+                    id={`url-${documentType}`}
+                    type="url"
+                    placeholder="https://example.com/document.pdf"
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    className={errors.url ? "border-destructive" : ""}
+                  />
+                  {errors.url && (
+                    <p className="flex items-center gap-1 text-sm text-destructive">
+                      <AlertTriangle className="h-3 w-3" />
+                      {errors.url}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    {t("duUrlHint")}
+                  </p>
+                </div>
+              </TabsContent>
+            </Tabs>
+
+            {errors.general && (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  {errors.general}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={requestClose} className="flex-1">
+                {t("duCancel")}
+              </Button>
+              <Button
+                onClick={handleSubmit}
+                disabled={isSubmitting}
+                className="flex-1"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {t("duUploading")}
+                  </>
+                ) : (
+                  <>
+                    <Upload className="mr-2 h-4 w-4" />
+                    {t("duUpdateBtn")}
+                  </>
                 )}
-                <p className="text-xs text-gray-500">
-                  {t("duUrlHint")}
-                </p>
-              </div>
-            </TabsContent>
-          </Tabs>
-
-          {/* Error Display */}
-          {errors.general && (
-            <Alert variant="destructive">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>
-                {errors.general}
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* Submit Button */}
-          <div className="flex gap-3">
-            <Button variant="outline" onClick={onClose} className="flex-1">
-              {t("duCancel")}
-            </Button>
-            <Button
-              onClick={handleSubmit}
-              disabled={isSubmitting}
-              className="flex-1"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {t("duUploading")}
-                </>
-              ) : (
-                <>
-                  <Upload className="mr-2 h-4 w-4" />
-                  {t("duUpdateBtn")}
-                </>
-              )}
-            </Button>
+              </Button>
+            </div>
           </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={discardOpen} onOpenChange={setDiscardOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("apDiscardUploadTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("apDiscardUploadDesc")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("apDiscardUploadKeep")}</AlertDialogCancel>
+            <AlertDialogAction onClick={resetAndClose}>{t("apDiscardUploadConfirm")}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 
 export function DocumentManagementModal({ open, onOpenChange }: DocumentManagementModalProps) {
   const { t } = useTranslation("chef");
+  const [discardOpen, setDiscardOpen] = useState(false);
+
+  const requestClose = () => setDiscardOpen(true);
+  const confirmClose = () => {
+    setDiscardOpen(false);
+    onOpenChange(false);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl w-full max-h-screen overflow-y-auto p-0 sm:p-6 rounded-lg sm:rounded-2xl">
-        <DialogHeader>
-          <DialogTitle>{t("duManageTitle")}</DialogTitle>
-          <DialogClose />
-        </DialogHeader>
-        <div className="p-4 sm:p-0">
-          <QuietNotice title={t("duStatusResetTitle")}>
-            {t("duStatusResetBody")}
-          </QuietNotice>
-          <DocumentUpload forceShowForm />
-        </div>
-      </DialogContent>
-    </Dialog>
+    <>
+      <Dialog open={open}>
+        <DialogContent
+          className="max-w-4xl w-full max-h-screen overflow-y-auto p-0 sm:p-6 rounded-lg sm:rounded-2xl"
+          showCloseButton={false}
+          onEscapeKeyDown={(e) => {
+            e.preventDefault();
+            requestClose();
+          }}
+          onPointerDownOutside={(e) => {
+            e.preventDefault();
+            requestClose();
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {t("duManageTitle")}
+              <InfoHint title={t("duGoodToKnow")}>
+                <p className="font-medium text-foreground">{t("duStatusResetTitle")}</p>
+                <p>{t("duStatusResetBody")}</p>
+              </InfoHint>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 p-4 sm:p-0">
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" onClick={requestClose}>
+                {t("duCancel")}
+              </Button>
+            </div>
+            <DocumentUpload forceShowForm embedded />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={discardOpen} onOpenChange={setDiscardOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("apLeaveTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("apLeaveDesc")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("apLeaveKeep")}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmClose}>{t("apLeaveConfirm")}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 
-export default function DocumentUpload({ openInModal = false, forceShowForm = false }: DocumentUploadProps) {
+export default function DocumentUpload({
+  openInModal = false,
+  forceShowForm = false,
+  embedded = false,
+}: DocumentUploadProps) {
   const { verification, loading, createMutation, updateMutation, refetch, forceRefresh } = useDocumentVerification();
   const { toast } = useToast();
   const { t } = useTranslation("chef");
-
-  // Check if we're in production (Vercel)
-  const isProduction = typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'production';
 
   // Modal states for individual document uploads
   const [foodSafetyModalOpen, setFoodSafetyModalOpen] = useState(false);
@@ -509,6 +598,17 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
             <CardTitle className="flex items-center gap-2">
               <CheckCircle className="h-6 w-6 text-success" />
               {t("duVerifiedTitle")}
+              <InfoHint title={t("duGoodToKnow")}>
+                <p className="font-medium text-foreground">{t("duWhatsNext")}</p>
+                <ul className="list-disc space-y-1 pl-4">
+                  <li>{t("duNextProfileVerified")}</li>
+                  <li>{t("duNextAcceptOrders")}</li>
+                  <li>{t("duNextStatusDisplayed")}</li>
+                  <li>{t("duNextKeepCurrent")}</li>
+                </ul>
+                <p className="pt-2 font-medium text-foreground">{t("duUpdateDocsTitle")}</p>
+                <p>{t("duUpdateDocsBody")}</p>
+              </InfoHint>
             </CardTitle>
             <CardDescription>
               {t("duVerifiedDesc")}
@@ -563,21 +663,11 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
               )}
             </div>
 
-            {/* Admin Feedback */}
             {verification.documentsAdminFeedback && (
               <QuietNotice title={t("duAdminComments")}>
                 {verification.documentsAdminFeedback}
               </QuietNotice>
             )}
-
-            <QuietNotice title={t("duWhatsNext")}>
-              <ul className="list-disc pl-4 space-y-1 mt-1">
-                <li>{t("duNextProfileVerified")}</li>
-                <li>{t("duNextAcceptOrders")}</li>
-                <li>{t("duNextStatusDisplayed")}</li>
-                <li>{t("duNextKeepCurrent")}</li>
-              </ul>
-            </QuietNotice>
 
             <div className="flex flex-col sm:flex-row gap-3 pt-4">
               <Button asChild className="flex-1">
@@ -591,10 +681,6 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
                 {t("duManageDocuments")}
               </Button>
             </div>
-
-            <QuietNotice title={t("duUpdateDocsTitle")}>
-              {t("duUpdateDocsBody")}
-            </QuietNotice>
           </CardContent>
 
           <DocumentManagementModal open={modalOpen} onOpenChange={setModalOpen} />
@@ -603,70 +689,49 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
     );
   }
 
-  // If not fully verified, show the new streamlined form
+  // If not fully verified, show the streamlined form
   return (
     <div className="space-y-6">
-      {/* Special alert for documents under review - Only show when documents are ACTUALLY uploaded and pending */}
-      {verification && (() => {
-        // Check if documents are actually uploaded AND pending review
-        const hasFoodSafetyPending = verification.foodSafetyLicenseUrl && verification.foodSafetyLicenseStatus === "pending";
-        const hasEstablishmentPending = verification.foodEstablishmentCertUrl && verification.foodEstablishmentCertStatus === "pending";
-        const hasDocumentsPending = hasFoodSafetyPending || hasEstablishmentPending;
-
-        if (hasDocumentsPending) {
-          return (
-            <Alert>
-              <Clock className="h-4 w-4" />
-              <AlertDescription>
-                <strong>{t("duUnderReviewPrefix")}</strong>{t("duUnderReviewBody")}
-                <br /><br />
-                {t("duUnderReviewFooter")}
-              </AlertDescription>
-            </Alert>
-          );
-        }
-        return null;
-      })()}
-
-      {verification && (verification.foodSafetyLicenseUrl || verification.foodEstablishmentCertUrl) && (
-        <Alert>
-          <Info className="h-4 w-4" />
-          <AlertDescription>
-            <strong>{t("duUpdateYourDocs")}</strong>{t("duUpdateYourDocsBody")}
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Document Management Section */}
-      <div className="space-y-4">
-        <h3 className="text-lg font-medium text-gray-900">{t("duRequiredDocuments")}</h3>
+      <div className="space-y-3">
+        {!embedded && (
+          <div className="flex items-center gap-1">
+            <h3 className="text-sm font-medium">{t("duRequiredDocuments")}</h3>
+            <InfoHint title={t("duGoodToKnow")}>
+              <p className="font-medium text-foreground">{t("duUpdateDocsTitle")}</p>
+              <p>{t("duUpdateYourDocsBody")}</p>
+              <p className="font-medium text-foreground">{t("duStatusResetTitle")}</p>
+              <p>{t("duStatusResetBody")}</p>
+            </InfoHint>
+          </div>
+        )}
 
         {/* Food Safety License */}
-        <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-lg border bg-muted flex items-center justify-center">
-              <FileText className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <div className="flex-1">
-              <h4 className="font-medium text-gray-900">{t("duFoodSafetyTitle")} *</h4>
-              <div className="flex items-center gap-2 mt-1">
-                {verification?.foodSafetyLicenseUrl ? (
-                  <>
-                    <span className="text-sm text-gray-600">{t("duDocumentUploaded")}</span>
-                    {verification.foodSafetyLicenseStatus && getStatusBadge(verification.foodSafetyLicenseStatus)}
-                  </>
-                ) : (
-                  <span className="text-sm text-gray-500">{t("duNotUploaded")}</span>
-                )}
-              </div>
+        <div className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium">
+              {t("duFoodSafetyTitle")} <span className="text-muted-foreground">*</span>
+            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              {verification?.foodSafetyLicenseUrl ? (
+                <>
+                  <span className="text-xs text-muted-foreground">{t("duDocumentUploaded")}</span>
+                  {verification.foodSafetyLicenseStatus && getStatusBadge(verification.foodSafetyLicenseStatus)}
+                </>
+              ) : (
+                <span className="text-xs text-muted-foreground">{t("duNotUploaded")}</span>
+              )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             {verification?.foodSafetyLicenseUrl && (
               <Button variant="ghost" size="sm" asChild>
-                <a href={verification.foodSafetyLicenseUrl} target="_blank" rel="noopener noreferrer">
+                <AuthenticatedDocumentLink
+                  url={verification.foodSafetyLicenseUrl}
+                  className="inline-flex items-center gap-1.5"
+                >
                   <FileText className="h-4 w-4" />
-                </a>
+                  {t("duViewDocument")}
+                </AuthenticatedDocumentLink>
               </Button>
             )}
             <Button
@@ -676,12 +741,12 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
             >
               {verification?.foodSafetyLicenseUrl ? (
                 <>
-                  <Upload className="h-4 w-4 mr-2" />
+                  <Upload className="h-4 w-4" />
                   {t("duUpdateBtn")}
                 </>
               ) : (
                 <>
-                  <Plus className="h-4 w-4 mr-2" />
+                  <Plus className="h-4 w-4" />
                   {t("duUploadBtn")}
                 </>
               )}
@@ -690,32 +755,29 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
         </div>
 
         {/* Food Establishment Certificate */}
-        <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-lg border bg-muted flex items-center justify-center">
-              <FileText className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <div className="flex-1">
-              <h4 className="font-medium text-gray-900">{t("duEstablishmentTitle")}</h4>
-              <div className="flex items-center gap-2 mt-1">
-                {verification?.foodEstablishmentCertUrl ? (
-                  <>
-                    <span className="text-sm text-gray-600">{t("duDocumentUploaded")}</span>
-                    {verification.foodEstablishmentCertStatus && getStatusBadge(verification.foodEstablishmentCertStatus)}
-                  </>
-                ) : (
-                  <span className="text-sm text-gray-500">{t("duNotUploaded")}</span>
-                )}
-              </div>
+        <div className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium">{t("duEstablishmentTitle")}</p>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              {verification?.foodEstablishmentCertUrl ? (
+                <>
+                  <span className="text-xs text-muted-foreground">{t("duDocumentUploaded")}</span>
+                  {verification.foodEstablishmentCertStatus && getStatusBadge(verification.foodEstablishmentCertStatus)}
+                </>
+              ) : (
+                <span className="text-xs text-muted-foreground">{t("duNotUploaded")}</span>
+              )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             {verification?.foodEstablishmentCertUrl && (
               <Button variant="ghost" size="sm" asChild>
-                <AuthenticatedDocumentLink 
+                <AuthenticatedDocumentLink
                   url={verification.foodEstablishmentCertUrl}
+                  className="inline-flex items-center gap-1.5"
                 >
                   <FileText className="h-4 w-4" />
+                  {t("duViewDocument")}
                 </AuthenticatedDocumentLink>
               </Button>
             )}
@@ -726,12 +788,12 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
             >
               {verification?.foodEstablishmentCertUrl ? (
                 <>
-                  <Upload className="h-4 w-4 mr-2" />
+                  <Upload className="h-4 w-4" />
                   {t("duUpdateBtn")}
                 </>
               ) : (
                 <>
-                  <Plus className="h-4 w-4 mr-2" />
+                  <Plus className="h-4 w-4" />
                   {t("duUploadBtn")}
                 </>
               )}
@@ -740,17 +802,12 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
         </div>
       </div>
 
-      {/* Admin Feedback */}
       {verification?.documentsAdminFeedback && (
-        <Alert>
-          <Award className="h-4 w-4" />
-          <AlertDescription>
-            <strong>{t("duAdminFeedback")}</strong> {verification.documentsAdminFeedback}
-          </AlertDescription>
-        </Alert>
+        <QuietNotice title={t("duAdminFeedback")}>
+          {verification.documentsAdminFeedback}
+        </QuietNotice>
       )}
 
-      {/* Upload Error Display */}
       {uploadError && (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
@@ -760,7 +817,6 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
         </Alert>
       )}
 
-      {/* Document Upload Modals */}
       <DocumentUploadModal
         documentType="foodSafety"
         isOpen={foodSafetyModalOpen}
@@ -780,4 +836,5 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
       />
     </div>
   );
-} 
+}
+ 

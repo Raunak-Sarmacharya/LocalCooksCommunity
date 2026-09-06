@@ -10,11 +10,16 @@ interface ApplicationFormContextProps {
   updateFormData: (data: Partial<ApplicationFormData>) => void;
   goToNextStep: () => void;
   goToPreviousStep: () => void;
+  /** Leave the whole application flow (parent should confirm). */
+  onCancel?: () => void;
 }
 
 const ApplicationFormContext = createContext<ApplicationFormContextProps | undefined>(undefined);
 
-export const ApplicationFormProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const ApplicationFormProvider: React.FC<{
+  children: React.ReactNode;
+  onCancel?: () => void;
+}> = ({ children, onCancel }) => {
   const [currentStep, setCurrentStep] = useState<FormStep>(1);
   const [formData, setFormData] = useState<Partial<ApplicationFormData>>({
     fullName: "",
@@ -56,6 +61,7 @@ export const ApplicationFormProvider: React.FC<{ children: React.ReactNode }> = 
         updateFormData,
         goToNextStep,
         goToPreviousStep,
+        onCancel,
       }}
     >
       {children}

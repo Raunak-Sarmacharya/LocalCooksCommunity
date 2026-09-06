@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { queryClient } from "../lib/queryClient";
+import { pickDocumentVerificationApp } from "./pick-document-verification-app";
 
 type DocumentVerificationContextType = {
   verification: Application | null;
@@ -174,25 +175,20 @@ export function useDocumentVerification() {
         return 20000; // 20 seconds
       }
 
-      // Find the approved application for document verification
-      const verification = data.find(app => app.status === "approved");
+      const verification = pickDocumentVerificationApp(data);
 
       if (!verification) {
-        // No approved application, check moderately
-        return 30000; // 30 seconds
+        return 30000;
       }
 
-      // Check if any documents are pending review
       const hasPendingDocuments =
         verification.foodSafetyLicenseStatus === "pending" ||
         verification.foodEstablishmentCertStatus === "pending";
 
-      // Check if documents need attention (rejected)
       const hasRejectedDocuments =
         verification.foodSafetyLicenseStatus === "rejected" ||
         verification.foodEstablishmentCertStatus === "rejected";
 
-      // Check if all uploaded documents are approved
       const isFullyApproved =
         verification.foodSafetyLicenseStatus === "approved" &&
         (!verification.foodEstablishmentCertUrl || verification.foodEstablishmentCertStatus === "approved");
@@ -221,9 +217,7 @@ export function useDocumentVerification() {
     gcTime: 10000, // Keep in cache for only 10 seconds (updated property name)
   });
 
-  // Find the most recent application for document verification (any status)
-  // This will be used to show appropriate UI based on status
-  const verification = applications && applications.length > 0 ? applications[0] : null;
+  const verification = pickDocumentVerificationApp(applications);
 
   // Check for status changes and show subtle notifications
   useEffect(() => {

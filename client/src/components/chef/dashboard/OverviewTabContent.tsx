@@ -43,7 +43,6 @@ import type {
 } from "./types";
 import { KitchenPathEmptyCard, SellerPathEmptyCard } from "./GetStartedPathCards";
 import { TruncatedText } from "@/components/common/TruncatedText";
-import { requestDiscoverKitchensWalkthrough } from "@/components/kitchen-application/DiscoverKitchensButtonTour";
 import { tt } from "@/i18n/common-ns";
 
 interface OverviewTabContentProps {
@@ -635,7 +634,6 @@ export default function OverviewTabContent({
               <Button
                 size="sm"
                 onClick={() => {
-                  requestDiscoverKitchensWalkthrough();
                   onSetActiveTab("discover-kitchens");
                 }}
               >
@@ -649,7 +647,6 @@ export default function OverviewTabContent({
             loading="eager"
             compact={Boolean(showSellerAccount || latestApp)}
             onExplore={() => {
-              requestDiscoverKitchensWalkthrough();
               onSetActiveTab("discover-kitchens");
             }}
           />

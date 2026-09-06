@@ -1,5 +1,3 @@
-import { Button } from "@/components/ui/button";
-import { InfoChip } from "@/components/chef/info-chip";
 import {
   Card,
   CardContent,
@@ -7,10 +5,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { InfoChip } from "@/components/chef/info-chip";
 import { cn } from "@/lib/utils";
-import { ArrowLeft } from "lucide-react";
 import DocumentUpload from "@/components/document-verification/DocumentUpload";
-import { ChefPageHeader, QuietNotice } from "@/components/chef/ui";
+import { ChefPageHeader, InfoHint } from "@/components/chef/ui";
 import { documentToneFromLabel } from "@/components/chef/applications/status";
 import { useTranslation } from "react-i18next";
 
@@ -23,10 +21,15 @@ interface DocumentVerificationData {
 
 interface DocumentVerificationViewProps {
   documentVerification: DocumentVerificationData | null | undefined;
-  onBack: () => void;
+  /** @deprecated Breadcrumbs handle navigation; kept for call-site compatibility */
+  onBack?: () => void;
 }
 
-function statusLabel(status: string | null | undefined, uploaded: boolean, t: import("i18next").TFunction<"chef", undefined>) {
+function statusLabel(
+  status: string | null | undefined,
+  uploaded: boolean,
+  t: import("i18next").TFunction<"chef", undefined>,
+) {
   if (!uploaded) return t("dvNotStarted");
   if (status === "approved") return t("ovDocVerified");
   if (status === "pending") return t("apDocInReviewLabel");
@@ -36,18 +39,17 @@ function statusLabel(status: string | null | undefined, uploaded: boolean, t: im
 
 export default function DocumentVerificationView({
   documentVerification,
-  onBack,
 }: DocumentVerificationViewProps) {
   const { t } = useTranslation("chef");
   const hasUploadedDocuments = Boolean(
-    documentVerification?.foodSafetyLicenseUrl || documentVerification?.foodEstablishmentCertUrl
+    documentVerification?.foodSafetyLicenseUrl || documentVerification?.foodEstablishmentCertUrl,
   );
   const documentsArePending =
     hasUploadedDocuments && documentVerification?.foodSafetyLicenseStatus === "pending";
   const overallLabel = statusLabel(
     documentVerification?.foodSafetyLicenseStatus,
     Boolean(documentVerification?.foodSafetyLicenseUrl),
-    t
+    t,
   );
 
   const steps = [
@@ -60,16 +62,30 @@ export default function DocumentVerificationView({
     { label: t("dvStepVerified"), done: documentVerification?.foodSafetyLicenseStatus === "approved" },
   ];
 
+  const tipTitle = t("duGoodToKnow");
+  const tipSections = documentsArePending
+    ? [{ title: t("dvPendingTitle"), body: t("dvPendingBody") }]
+    : !hasUploadedDocuments
+      ? [{ title: t("dvNeededTitle"), body: t("dvNeededBody") }]
+      : [
+          { title: t("duUpdateDocsTitle"), body: t("duUpdateDocsBody") },
+          { title: t("duStatusResetTitle"), body: t("duStatusResetBody") },
+        ];
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <ChefPageHeader
         title={t("dvTitle")}
         description={t("dvDesc")}
-        actions={
-          <Button variant="ghost" onClick={onBack}>
-            <ArrowLeft />
-            {t("dvBack")}
-          </Button>
+        titleAccessory={
+          <InfoHint title={tipTitle}>
+            {tipSections.map((section) => (
+              <div key={section.title}>
+                <p className="font-medium text-foreground">{section.title}</p>
+                <p>{section.body}</p>
+              </div>
+            ))}
+          </InfoHint>
         }
       />
 
@@ -80,42 +96,27 @@ export default function DocumentVerificationView({
               <CardTitle className="text-base">{t("dvStatusLabel")}</CardTitle>
               <CardDescription>{t("dvStatusDesc")}</CardDescription>
             </div>
-            <InfoChip tone={documentToneFromLabel(overallLabel)}>
+            <InfoChip tone={documentToneFromLabel(overallLabel)} className="shrink-0">
               {overallLabel}
             </InfoChip>
           </div>
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-2">
-            {steps.map((step, index) => (
-              <div key={step.label} className="flex flex-1 items-center gap-2">
-                <div className="min-w-0 flex-1">
-                  <div
-                    className={cn(
-                      "h-1 rounded-full",
-                      step.done ? "bg-foreground" : step.current ? "bg-foreground/40" : "bg-border"
-                    )}
-                  />
-                  <p className="mt-2 text-center text-xs text-muted-foreground">{step.label}</p>
-                </div>
-                {index < steps.length - 1 ? null : null}
+            {steps.map((step) => (
+              <div key={step.label} className="min-w-0 flex-1">
+                <div
+                  className={cn(
+                    "h-1 rounded-full",
+                    step.done ? "bg-foreground" : step.current ? "bg-foreground/40" : "bg-border",
+                  )}
+                />
+                <p className="mt-2 text-center text-xs text-muted-foreground">{step.label}</p>
               </div>
             ))}
           </div>
         </CardContent>
       </Card>
-
-      {documentsArePending && (
-        <QuietNotice title={t("dvPendingTitle")}>
-          {t("dvPendingBody")}
-        </QuietNotice>
-      )}
-
-      {!hasUploadedDocuments && (
-        <QuietNotice title={t("dvNeededTitle")}>
-          {t("dvNeededBody")}
-        </QuietNotice>
-      )}
 
       <Card className="shadow-none">
         <CardHeader>
@@ -123,7 +124,7 @@ export default function DocumentVerificationView({
           <CardDescription>{t("dvRequiredDocsDesc")}</CardDescription>
         </CardHeader>
         <CardContent>
-          <DocumentUpload forceShowForm={true} />
+          <DocumentUpload forceShowForm embedded />
         </CardContent>
       </Card>
     </div>

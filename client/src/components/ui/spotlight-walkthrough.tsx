@@ -22,16 +22,49 @@ const GAP = 10;
 const PAD = 4;
 
 export function walkthroughStorageKey(base: string, uid?: string | null) {
-  return uid ? `${base}:${uid}` : base;
+  // Account-lifetime tours must be uid-scoped; bare keys are not once-per-user.
+  if (!uid) return `${base}:anonymous`;
+  return `${base}:${uid}`;
 }
 
-function hasCompletedTour(storageKey: string) {
+/** True if this account already completed any key in the walkthrough family. */
+export function hasCompletedTourFamily(familyPrefix: string, uid: string) {
+  try {
+    const scopedEnd = `:${uid}`;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key || !key.startsWith(familyPrefix)) continue;
+      if (localStorage.getItem(key) !== "1") continue;
+      if (key.endsWith(scopedEnd)) return true;
+      // Legacy unscoped flag (no :uid suffix after the family prefix).
+      if (!key.slice(familyPrefix.length).includes(":")) return true;
+    }
+    return false;
+  } catch {
+    return true; // fail closed — don't show the tour if storage is broken
+  }
+}
+
+/** Copy any prior family completion onto the stable seen key for this uid. */
+export function migrateTourFamilyCompletion(familyPrefix: string, uid: string, seenKey: string) {
+  try {
+    if (localStorage.getItem(seenKey) === "1") return;
+    if (!hasCompletedTourFamily(familyPrefix, uid)) return;
+    localStorage.setItem(seenKey, "1");
+  } catch {
+    // ignore
+  }
+}
+
+/** Exported for assert check — true only when this storage key is marked done. */
+export function hasCompletedTour(storageKey: string) {
   try {
     if (localStorage.getItem(storageKey) === "1") return true;
+    // Migrate legacy unscoped flag → this uid key (one-time).
     const scopedAt = storageKey.lastIndexOf(":");
     if (scopedAt > 0) {
       const unscoped = storageKey.slice(0, scopedAt);
-      if (localStorage.getItem(unscoped) === "1") {
+      if (unscoped && localStorage.getItem(unscoped) === "1") {
         localStorage.setItem(storageKey, "1");
         return true;
       }
@@ -289,21 +322,21 @@ export function SpotlightWalkthrough({
 
       <div
         ref={popoverRef}
-        className="fixed z-10 rounded-md border bg-background px-3.5 py-3 shadow-sm"
+        className="fixed z-10 rounded-xl border border-gray-200 bg-white px-3.5 py-3 shadow-sm"
         style={{ top: popoverTop, left: popoverLeft, width: POPOVER_WIDTH }}
         onClick={(event) => event.stopPropagation()}
       >
         <div
           aria-hidden
           className={cn(
-            "absolute h-2 w-2 rotate-45 bg-background",
-            placeBelow ? "-top-1 border-l border-t" : "-bottom-1 border-r border-b"
+            "absolute h-2 w-2 rotate-45 bg-white",
+            placeBelow ? "-top-1 border-l border-t border-gray-200" : "-bottom-1 border-r border-b border-gray-200"
           )}
           style={{ left: arrowLeft }}
         />
 
         <div className="flex items-start justify-between gap-3">
-          <h2 id="spotlight-walkthrough-title" className="text-[13px] font-medium leading-none">
+          <h2 id="spotlight-walkthrough-title" className="text-[13px] font-semibold leading-none text-gray-900">
             {step.title}
           </h2>
           <div className="flex items-center gap-1 pt-0.5" aria-hidden>
@@ -312,20 +345,20 @@ export function SpotlightWalkthrough({
                 key={item.id}
                 className={
                   index === stepIndex
-                    ? "h-1 w-1 rounded-full bg-foreground"
-                    : "h-1 w-1 rounded-full bg-muted-foreground/30"
+                    ? "h-1.5 w-1.5 rounded-full bg-[#F51042]"
+                    : "h-1.5 w-1.5 rounded-full bg-gray-300"
                 }
               />
             ))}
           </div>
         </div>
-        <p className="mt-1.5 text-[13px] leading-snug text-muted-foreground">{step.body}</p>
+        <p className="mt-1.5 text-[13px] leading-snug text-gray-500">{step.body}</p>
         <div className="mt-3 flex items-center justify-end gap-4">
           {!isLast && (
             <button
               type="button"
               onClick={close}
-              className="text-[13px] text-muted-foreground transition-colors hover:text-foreground"
+              className="text-[13px] text-gray-500 transition-colors hover:text-gray-900"
             >
               {t("skip", "Skip")}
             </button>
@@ -336,7 +369,7 @@ export function SpotlightWalkthrough({
               if (isLast) close();
               else setStepIndex((current) => current + 1);
             }}
-            className="text-[13px] font-medium text-foreground"
+            className="text-[13px] font-semibold text-[#F51042] hover:text-[#d60e39]"
           >
             {isLast ? t("done", "Done") : t("next", "Next")}
           </button>
