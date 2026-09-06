@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { chefOutlineCtaClass, chefPrimaryCtaClass } from "@/lib/chef-cta";
 import { resolveStorageIcon } from "@/lib/kitchen-inventory-icons";
 import { useTranslation } from "react-i18next";
+import { bt } from "@/i18n/booking-ns";
 import { BookingPriceSummary } from "./BookingPriceSummary";
 
 interface StorageListing {
@@ -52,17 +53,17 @@ type DateMode = "same" | "different";
 const formatCents = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 function listingLabel(type: StorageListing["storageType"]) {
-  if (type === "freezer") return "Freezer";
-  if (type === "cold") return "Refrigerated";
-  return "Dry storage";
+  if (type === "freezer") return bt("bssFreezer");
+  if (type === "cold") return bt("bssRefrigerated");
+  return bt("bssDryStorage");
 }
 
 function rangeError(listing: StorageListing, range: DateRange | undefined, minDate: Date) {
-  if (!range?.from || !range?.to) return "Choose a start and end date.";
-  if (isBefore(range.from, minDate)) return "The start date cannot be in the past.";
+  if (!range?.from || !range?.to) return bt("bssChooseStartEnd");
+  if (isBefore(range.from, minDate)) return bt("bssStartDatePast");
   const days = differenceInDays(range.to, range.from) + 1;
   const minimum = listing.minimumBookingDuration || 1;
-  if (days < minimum) return `This storage requires at least ${minimum} day${minimum === 1 ? "" : "s"}.`;
+  if (days < minimum) return bt("bssMinDaysRequired", { count: minimum });
   return null;
 }
 
@@ -227,11 +228,11 @@ export function BookingStorageSelector({
                         ) : null}
                       </span>
                     </span>
-                    <span className="mt-0.5 block text-xs text-muted-foreground">
-                      {listingLabel(storage.storageType)} · {formatCents(storage.basePrice)}/day
+                    <span className="mt-0.5 block text-sm text-muted-foreground">
+                      {listingLabel(storage.storageType)} · {formatCents(storage.basePrice)}{t("storageSelPerDay")}
                     </span>
-                    <span className="mt-1 block text-[11px] text-gray-500">
-                      Min. {storage.minimumBookingDuration || 1} day{(storage.minimumBookingDuration || 1) === 1 ? "" : "s"}
+                    <span className="mt-1 block text-sm text-muted-foreground">
+                      {t("bssMinDaysShortLabel", { count: storage.minimumBookingDuration || 1 })}
                     </span>
                   </span>
                 </button>
@@ -242,14 +243,14 @@ export function BookingStorageSelector({
         <div className="space-y-3 border-t bg-white px-5 py-3">
           {priceSummary}
           <div className="flex items-center justify-between gap-3 border-t pt-3">
-            <Button variant="ghost" className="rounded-xl" onClick={onCancel}>Cancel</Button>
-            <p className="text-xs text-muted-foreground">
+            <Button variant="ghost" className="rounded-xl" onClick={onCancel}>{t("sheetCancelButton")}</Button>
+            <p className="text-sm text-muted-foreground">
               {selectedIds.length
-                ? `${selectedIds.length} storage option${selectedIds.length === 1 ? "" : "s"} selected`
-                : t("sheetNoStorageSelected", "No storage selected")}
+                ? t("bssStorageOptionsSelected", { count: selectedIds.length })
+                : t("sheetNoStorageSelected")}
             </p>
             <Button className={chefPrimaryCtaClass()} onClick={proceedFromSelection}>
-              {selectedIds.length ? "Choose dates" : "Continue without storage"}
+              {selectedIds.length ? t("bssChooseDates") : t("bssContinueWithoutStorage")}
             </Button>
           </div>
         </div>
@@ -261,9 +262,9 @@ export function BookingStorageSelector({
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6">
-          <p className="text-sm font-semibold text-gray-900">How would you like to set the dates?</p>
+          <p className="text-sm font-semibold text-gray-900">{t("bssHowSetDates")}</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            You selected {selectedIds.length} storage options. You can reserve them together or set a different range for each.
+            {t("bssYouSelectedStorage", { count: selectedIds.length })}
           </p>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <button
@@ -271,27 +272,47 @@ export function BookingStorageSelector({
               onClick={() => { setDateMode("same"); setStage("dates"); }}
               className="rounded-xl border border-gray-200 p-4 text-left transition-colors hover:border-[#F51042] hover:bg-[#F51042]/[0.03]"
             >
-              <Icon icon="mdi:calendar-range" width={21} height={21} className="text-[#F51042]" aria-hidden />
-              <span className="mt-3 block text-sm font-semibold text-gray-900">Same date range</span>
-              <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">Apply one start and end date to every selected storage.</span>
+              <span className="flex items-start gap-2.5">
+                <Icon
+                  icon="mdi:calendar-range"
+                  className="mt-0.5 h-4 w-4 shrink-0 text-[#F51042]"
+                  aria-hidden
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-gray-900">{t("bssSameDateRange")}</span>
+                  <span className="mt-1 block text-sm leading-relaxed text-muted-foreground">
+                    {t("bssSameDateRangeDesc")}
+                  </span>
+                </span>
+              </span>
             </button>
             <button
               type="button"
               onClick={() => { setDateMode("different"); setActiveDateId(selectedIds[0]); setStage("dates"); }}
               className="rounded-xl border border-gray-200 p-4 text-left transition-colors hover:border-[#F51042] hover:bg-[#F51042]/[0.03]"
             >
-              <Icon icon="mdi:calendar-multiple" width={21} height={21} className="text-[#F51042]" aria-hidden />
-              <span className="mt-3 block text-sm font-semibold text-gray-900">Different dates</span>
-              <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">Choose a separate range for each selected storage.</span>
+              <span className="flex items-start gap-2.5">
+                <Icon
+                  icon="mdi:calendar-multiple"
+                  className="mt-0.5 h-4 w-4 shrink-0 text-[#F51042]"
+                  aria-hidden
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-gray-900">{t("bssDifferentDates")}</span>
+                  <span className="mt-1 block text-sm leading-relaxed text-muted-foreground">
+                    {t("bssDifferentDatesDesc")}
+                  </span>
+                </span>
+              </span>
             </button>
           </div>
         </div>
         <div className="space-y-3 border-t px-5 py-3">
           {priceSummary}
           <div className="flex items-center justify-between border-t pt-3">
-            <Button variant="ghost" className="rounded-xl" onClick={onCancel}>Cancel</Button>
+            <Button variant="ghost" className="rounded-xl" onClick={onCancel}>{t("sheetCancelButton")}</Button>
             <Button variant="outline" className={chefOutlineCtaClass()} onClick={() => setStage("select")}>
-              <Icon icon="mdi:arrow-left" width={16} height={16} className="mr-2" aria-hidden /> Back to storage
+              <Icon icon="mdi:arrow-left" width={16} height={16} className="mr-2" aria-hidden /> {t("bssBackToStorage")}
             </Button>
           </div>
         </div>
@@ -326,7 +347,7 @@ export function BookingStorageSelector({
                   type="button"
                   onClick={() => setActiveDateId(listing.id)}
                   className={cn(
-                    "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium",
+                    "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium",
                     currentListing?.id === listing.id
                       ? "border-[#F51042] bg-[#F51042]/5 text-[#F51042]"
                       : "border-gray-200 text-gray-600"
@@ -373,12 +394,12 @@ export function BookingStorageSelector({
         </div>
 
         {error ? (
-          <div className="mt-3 flex items-center gap-2 text-xs text-amber-700">
+          <div className="mt-3 flex items-center gap-2 text-sm text-amber-700">
             <Icon icon="mdi:alert-circle-outline" width={16} height={16} className="shrink-0" aria-hidden />
             <span>{error}</span>
           </div>
         ) : range?.from && range?.to ? (
-          <p className="mt-3 text-xs font-medium text-gray-900">
+          <p className="mt-3 text-sm font-medium text-gray-900">
             {format(range.from, "MMM d, yyyy")} — {format(range.to, "MMM d, yyyy")}
           </p>
         ) : null}
@@ -387,7 +408,7 @@ export function BookingStorageSelector({
       <div className="space-y-3 border-t bg-white px-5 py-3">
         {priceSummary}
         <div className="flex items-center justify-between gap-3 border-t pt-3">
-          <Button variant="ghost" className="rounded-xl" onClick={onCancel}>Cancel</Button>
+          <Button variant="ghost" className="rounded-xl" onClick={onCancel}>{t("sheetCancelButton")}</Button>
           <Button
             variant="outline"
             className={chefOutlineCtaClass()}

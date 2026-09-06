@@ -655,7 +655,7 @@ function OrderDetailSheet({
             </div>
             <div className="pt-1">
               <p className="text-xs text-muted-foreground mb-2">{t("revDetailItemsOrdered", "Items Ordered")}</p>
-              <div className="bg-muted/50 rounded-md px-3 py-2">
+              <div className="bg-muted/50 rounded-xl px-3 py-2">
                 <OrderItemsList itemsStr={order.items_description} />
               </div>
             </div>
@@ -674,7 +674,7 @@ function OrderDetailSheet({
                 <div
                   key={item.label}
                   className={cn(
-                    "flex items-center justify-between py-1.5 px-2 rounded-md text-sm",
+                    "flex items-center justify-between py-1.5 px-2 rounded-xl text-sm",
                     item.highlight && item.value > 0 && "bg-muted/50"
                   )}
                 >
@@ -711,7 +711,7 @@ function OrderDetailSheet({
           <Separator />
 
           {/* Net Earnings */}
-          <div className="flex items-center justify-between py-3 px-3 border rounded-lg bg-muted/30">
+          <div className="flex items-center justify-between py-3 px-3 border rounded-xl bg-muted/30">
             <div>
               <p className="text-sm font-semibold">{t("revDetailYourEarnings", "Your Earnings")}</p>
               <p className="text-xs text-muted-foreground">{t("revDetailAfterFees", "After all fees and deductions")}</p>
@@ -1068,11 +1068,11 @@ function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: stri
               {t("revSalesEngagement")}
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <div className="space-y-1 bg-muted/20 p-3 rounded-lg border border-muted/50">
+              <div className="space-y-1 bg-muted/20 p-3 rounded-xl border border-muted/50">
                 <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 h-4"><DollarSign className="h-3.5 w-3.5"/>{t("revAvgOrder")}</p>
                 <p className="text-xl font-bold">{fmtDollars(analytics.aov)}</p>
               </div>
-              <div className="space-y-1 bg-muted/20 p-3 rounded-lg border border-muted/50">
+              <div className="space-y-1 bg-muted/20 p-3 rounded-xl border border-muted/50">
                 <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 h-4">
                   <Users className="h-3.5 w-3.5"/>
                   <span>{t("revRetentionRate")}</span>
@@ -1099,11 +1099,11 @@ function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: stri
                 </p>
                 <p className="text-xl font-bold">{analytics.returningPct.toFixed(1)}%</p>
               </div>
-              <div className="space-y-1 bg-muted/20 p-3 rounded-lg border border-muted/50">
+              <div className="space-y-1 bg-muted/20 p-3 rounded-xl border border-muted/50">
                 <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 h-4"><ShoppingBag className="h-3.5 w-3.5"/>{t("revItemsPerOrder")}</p>
                 <p className="text-xl font-bold">{analytics.itemsPerOrder.toFixed(1)}</p>
               </div>
-              <div className="space-y-1 bg-muted/20 p-3 rounded-lg border border-muted/50">
+              <div className="space-y-1 bg-muted/20 p-3 rounded-xl border border-muted/50">
                 <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 h-4"><Calendar className="h-3.5 w-3.5"/>{t("revPreOrders")}</p>
                 <p className="text-xl font-bold">{((analytics.preOrderCount / analytics.totalOrders) * 100).toFixed(0)}%</p>
               </div>
@@ -1154,7 +1154,7 @@ function SellerAnalytics({ period, sellerId }: { period: string; sellerId?: stri
             ) : (
               <div className="space-y-3">
                 {analytics.topCustomers.map((customer, i) => (
-                  <div key={i} className="flex items-center justify-between p-2.5 bg-background rounded-lg border">
+                  <div key={i} className="flex items-center justify-between p-2.5 bg-background rounded-xl border">
                     <div className="flex items-center gap-3">
                       <div className="h-8 w-8 rounded-full bg-muted text-muted-foreground flex items-center justify-center font-bold text-xs shrink-0">
                         {customer.name.substring(0, 2).toUpperCase()}
@@ -1305,7 +1305,7 @@ function ExportReportModal({ orders }: { orders: SellerOrder[] }) {
               />
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium">End Date</label>
+              <label className="text-sm font-medium">{t("revEndDate")}</label>
               <input 
                 type="date" 
                 value={endDate} 
@@ -1317,15 +1317,15 @@ function ExportReportModal({ orders }: { orders: SellerOrder[] }) {
           <div className="flex flex-col gap-2 mt-4 pt-4 border-t">
             <Button onClick={() => downloadSecureReport('pdf')} disabled={isDownloading || !startDate || !endDate} className="w-full justify-start">
               <FileText className="mr-2 h-4 w-4 text-muted-foreground" />
-              Download Statement (PDF)
+              {t("revDownloadStatementPdf")}
             </Button>
             <Button onClick={() => downloadSecureReport('csv')} variant="outline" disabled={isDownloading || !startDate || !endDate} className="w-full justify-start">
               <FileSpreadsheet className="mr-2 h-4 w-4 text-muted-foreground" />
-              Download Data (CSV)
+              {t("revDownloadDataCsv")}
             </Button>
             <Button onClick={() => { setOpen(false); exportOrdersCSV(orders, t, i18n.language); }} variant="outline" disabled={orders.length === 0} className="w-full justify-start mt-2 border-dashed">
               <Download className="mr-2 h-4 w-4" />
-              Export Current Table View (CSV)
+              {t("revExportCurrentTableCsv")}
             </Button>
           </div>
         </div>
@@ -1479,7 +1479,7 @@ function SellerOrderHistory({ period }: { period: string }) {
             </div>
           ) : (
             <>
-              <div className="rounded-md border">
+              <div className="rounded-xl border">
                 <Table>
                   <TableHeader>
                     {table.getHeaderGroups().map((headerGroup) => (
@@ -1678,7 +1678,7 @@ export default function ChefSellerRevenue() {
           <CardContent className="py-12 text-center">
             <Store className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
             <p className="text-muted-foreground">
-              Link your seller account above to view your food order revenue.
+              {t("revLinkAccountToViewRevenue")}
             </p>
           </CardContent>
         </Card>

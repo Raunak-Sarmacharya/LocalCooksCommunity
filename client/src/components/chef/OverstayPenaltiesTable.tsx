@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { InfoChip } from "@/components/chef/info-chip";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -111,21 +112,21 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 
 function getStatusBadge(penalty: OverstayPenalty) {
   if (penalty.chargeSucceededAt || penalty.isPaid) {
-    return <Badge variant="success">{ct("paid")}</Badge>;
+    return <InfoChip variant="success">{ct("paid")}</InfoChip>;
   }
   if (penalty.isResolved) {
-    return <Badge variant="outline" className="bg-muted/50 text-muted-foreground border-border">{ct("resolved")}</Badge>;
+    return <InfoChip variant="outline">{ct("resolved")}</InfoChip>;
   }
   if (penalty.status === 'escalated') {
-    return <Badge variant="destructive">{ct("shellStatusActionRequired")}</Badge>;
+    return <InfoChip variant="destructive">{ct("shellStatusActionRequired")}</InfoChip>;
   }
   if (penalty.status === 'charge_failed') {
-    return <Badge variant="destructive">{ct("shellStatusPaymentFailed")}</Badge>;
+    return <InfoChip variant="destructive">{ct("shellStatusPaymentFailed")}</InfoChip>;
   }
   if (penalty.status === 'charge_pending') {
-    return <Badge variant="warning">{ct("processing")}</Badge>;
+    return <InfoChip variant="warning">{ct("processing")}</InfoChip>;
   }
-  return <Badge variant="destructive">{ct("dcStatusEscalated")}</Badge>;
+  return <InfoChip variant="destructive">{ct("dcStatusEscalated")}</InfoChip>;
 }
 
 // Column definitions
@@ -178,9 +179,9 @@ function getOverstayPenaltyColumns(t: any,
       cell: ({ row }) => {
         const type = row.getValue("storageType") as string;
         return (
-          <Badge variant="outline" className="capitalize">
+          <InfoChip variant="outline" className="capitalize">
             {type}
-          </Badge>
+          </InfoChip>
         );
       },
     },
@@ -200,9 +201,9 @@ function getOverstayPenaltyColumns(t: any,
       cell: ({ row }) => {
         const days = row.getValue("daysOverdue") as number;
         return (
-          <Badge variant={days > 7 ? "destructive" : "outline"} className="text-xs">
+          <InfoChip variant={days > 7 ? "destructive" : "outline"}>
             {days} day{days !== 1 ? 's' : ''}
-          </Badge>
+          </InfoChip>
         );
       },
     },
@@ -409,12 +410,12 @@ export function OverstayPenaltiesTable() {
     <div className="space-y-6">
       {/* Urgent Penalties Alert */}
       {pendingPenalties.length > 0 && (
-        <div className="rounded-lg border border-destructive/30 p-4 flex items-start gap-3">
+        <div className="rounded-[1.35rem] border border-destructive/30 p-4 flex items-start gap-3">
           <AlertTriangle className="h-5 w-5 text-destructive mt-0.5 shrink-0" />
           <div>
             <div className="flex items-center gap-2 mb-1">
               <h4 className="font-medium text-sm">{t("rcPaymentRequiredTitle", "Payment Required")}</h4>
-              <Badge variant="destructive" className="text-xs">{t("rcPaymentRequiredAction", "Action needed")}</Badge>
+              <InfoChip variant="destructive">{t("rcPaymentRequiredAction", "Action needed")}</InfoChip>
             </div>
             <p className="text-sm text-muted-foreground">
               You have {pendingPenalties.length} overstay penalty{pendingPenalties.length !== 1 ? 'ies' : 'y'} requiring payment.
@@ -464,7 +465,7 @@ export function OverstayPenaltiesTable() {
           </Tabs>
 
           {/* Table */}
-          <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+          <div className="rounded-xl border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
             <Table>
               <TableHeader>
                 {table.getHeaderGroups().map((headerGroup) => (

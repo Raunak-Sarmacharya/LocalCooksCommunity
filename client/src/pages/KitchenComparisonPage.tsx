@@ -9,13 +9,13 @@ import { motion } from "framer-motion";
 import {
   Building2,
   MapPin,
-  Calendar,
   ArrowRight,
   ArrowLeft,
   Search,
   ChefHat,
   Lock,
 } from "lucide-react";
+import { bookNowIcon as BookNowIcon } from "@/components/chef/applications/status-icons";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
@@ -202,7 +202,7 @@ function BrowseLocationCard({
               )}
               onClick={onPrimaryAction}
             >
-              {action.kind === "book" && <Calendar className="mr-1.5 h-3.5 w-3.5" />}
+              {action.kind === "book" && <BookNowIcon className="mr-1.5 h-3.5 w-3.5" />}
               {primaryLabel}
               {!primaryDisabled && <ArrowRight className="ml-1.5 h-3.5 w-3.5" />}
             </Button>
@@ -394,7 +394,7 @@ export default function KitchenComparisonPage() {
                 </span>
               </h1>
               <p className="max-w-2xl text-sm leading-relaxed text-[#6B6B6B] sm:text-base lg:text-lg">
-                {t("browseKitchensHeroDesc", "Browse certified commercial kitchens in St. John's. Explore spaces freely — sign in when you're ready to book.")}
+                {t("browseKitchensHeroDesc", "Browse certified commercial kitchens in St. John's. Explore spaces freely — sign in when you're Book Now.")}
               </p>
             </div>
           </FadeInSection>
@@ -476,7 +476,7 @@ export default function KitchenComparisonPage() {
                 <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[#F51042]/10">
                   <Lock className="h-4 w-4 text-[#F51042]" />
                 </div>
-                <p className="mb-1 text-sm font-semibold text-[#1A1A1A]">{t("readyToBookKitchen", "Ready to book a kitchen?")}</p>
+                <p className="mb-1 text-sm font-semibold text-[#1A1A1A]">{t("readyToBookKitchen", "Book Now a kitchen?")}</p>
                 <p className="mb-5 text-xs leading-relaxed text-[#6B6B6B] sm:text-sm">
                   {t("readyToBookKitchenDesc", "Create a free account to view availability and reserve your slot. Browsing stays open — no pressure.")}
                 </p>

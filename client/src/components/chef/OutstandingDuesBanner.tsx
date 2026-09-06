@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { AlertTriangle, CreditCard, ExternalLink, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { InfoChip } from "@/components/chef/info-chip";
 import { useOutstandingDues, usePayDue, type OutstandingDueItem } from "@/hooks/use-outstanding-dues";
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "react-i18next";
@@ -72,7 +72,7 @@ export default function OutstandingDuesBanner() {
   };
 
   return (
-    <div className="border border-destructive rounded-xl shadow-none mb-6 overflow-hidden animate-in slide-in-from-top-2 duration-300">
+    <div className="border border-destructive rounded-[1.35rem] shadow-none mb-6 overflow-hidden animate-in slide-in-from-top-2 duration-300">
       {/* Header */}
       <div className="px-5 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3 min-w-0">
@@ -133,9 +133,9 @@ export default function OutstandingDuesBanner() {
                     <TruncatedText as="p" className="text-sm font-medium truncate">
                       {item.title}
                     </TruncatedText>
-                    <Badge variant={getStatusVariant(item.status)} className="text-xs px-1.5 py-0">
+                    <InfoChip variant={getStatusVariant(item.status)} className="px-1.5 py-0">
                       {tr(getStatusLabelKey(item.status) as never)}
-                    </Badge>
+                    </InfoChip>
                   </div>
                   <TruncatedText as="p" className="text-xs text-muted-foreground truncate">{item.description}</TruncatedText>
                 </div>

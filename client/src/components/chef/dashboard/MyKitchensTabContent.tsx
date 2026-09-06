@@ -10,7 +10,6 @@ import {
 import { useTranslation } from "react-i18next";
 import {
   Building,
-  Calendar,
   Clock,
   MessageCircle,
   ArrowRight,
@@ -23,12 +22,16 @@ import type {
 } from "./types";
 import { ChefPageHeader } from "@/components/chef/ui";
 import { getKitchenDisplayStatus } from "@/components/chef/applications/status";
+import {
+  KitchenStatusChip,
+  bookNowIcon as BookNowIcon,
+} from "@/components/chef/applications/status-icons";
 import { KitchenGridCard } from "@/components/kitchen/KitchenGridCard";
 import { requestDiscoverKitchensWalkthrough } from "@/components/kitchen-application/DiscoverKitchensButtonTour";
 import { chefOutlineCtaClass, chefPrimaryCtaClass } from "@/lib/chef-cta";
 import { kitchenPreviewPath } from "@/lib/discover-location-groups";
 import {
-  mergeEquipmentLists,
+  mergeEquipmentSummaries,
   mergeStorageSummaries,
 } from "@/lib/kitchen-grid-card";
 import { cn } from "@/lib/utils";
@@ -80,8 +83,8 @@ export default function MyKitchensTabContent({
               kitchensAtLocation[0];
             const imageUrl =
               kitchenData?.imageUrl || kitchenData?.galleryImages?.[0] || null;
-            const equipment = mergeEquipmentLists(
-              kitchensAtLocation.map((k) => k.equipment)
+            const equipmentSummary = mergeEquipmentSummaries(
+              kitchensAtLocation.map((k) => k.equipmentSummary)
             );
             const storageSummary = mergeStorageSummaries(
               kitchensAtLocation.map((k) => k.storageSummary)
@@ -125,7 +128,7 @@ export default function MyKitchensTabContent({
                       });
                     }}
                   >
-                    <Calendar className="mr-1.5 h-4 w-4" />
+                    <BookNowIcon className="mr-1.5 h-4 w-4" />
                     {t("apptabBook", "Book")}
                     <ArrowRight className="ml-1.5 h-4 w-4" />
                   </Button>
@@ -140,7 +143,7 @@ export default function MyKitchensTabContent({
                     )}
                   >
                     <FileCheck className="mr-1 h-3 w-3" />
-                    {t("apptabStep2Submitted", "Step 2 submitted")}
+                    {t("apptabStep2Submitted", "Application submitted")}
                   </Badge>
                 );
               } else {
@@ -182,12 +185,10 @@ export default function MyKitchensTabContent({
                 }
                 imageUrl={imageUrl}
                 hourlyRateCents={kitchenData?.hourlyRate}
-                equipment={equipment}
+                equipmentSummary={equipmentSummary}
                 storageSummary={storageSummary}
                 overlayChip={
-                  <span className="inline-flex items-center rounded-full bg-background/95 px-3 py-1.5 text-xs font-medium shadow-sm">
-                    {display.label}
-                  </span>
+                  <KitchenStatusChip display={display} />
                 }
                 onCardClick={() => {
                   window.location.href = previewHref;

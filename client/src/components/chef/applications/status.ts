@@ -144,10 +144,10 @@ export function getKitchenDisplayStatus(
 
   if (status === "approved" && tier >= 3) {
     return {
-      label: tr("kdReadyToBook", "Approved"),
+      label: tr("kdReadyToBook", "Book Now"),
       tone: "success",
       step: 3,
-      stepCaption: tr("ovReady", "Approved"),
+      stepCaption: tr("ovReady", "Book Now"),
       actionLabel: tr("kdBook", "Book"),
       actionKind: "book",
     };

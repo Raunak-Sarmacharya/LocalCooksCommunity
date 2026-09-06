@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
+import { InfoChip } from "@/components/chef/info-chip"
 import { Separator } from "@/components/ui/separator"
 import {
   AlertTriangle,
@@ -131,10 +131,9 @@ export function CancellationRequestSheet({
                 </div>
               </div>
               <div className="flex items-center gap-2 pt-1">
-                <Badge variant="warning" className="text-[11px]">
-                  <Clock className="h-3 w-3 mr-1" />
+                <InfoChip variant="warning" icon={<Clock className="h-3 w-3" />} className="text-xs">
                   {t("crManagerReviewRequired")}
-                </Badge>
+                </InfoChip>
               </div>
             </div>
           ) : (

@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useRoute } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -13,6 +13,7 @@ export default function KitchenBookingPage() {
   const { t } = useTranslation(["booking", "chef"]);
   const [, navigate] = useLocation();
   const [, params] = useRoute("/book/:locationId");
+  const leaveGuardRef = useRef<((proceed?: () => void) => void) | null>(null);
 
   const locationId = params?.locationId ? Number(params.locationId) : NaN;
   const searchParams = useMemo(() => new URLSearchParams(window.location.search), []);
@@ -29,12 +30,27 @@ export default function KitchenBookingPage() {
     enabled: Number.isFinite(locationId),
   });
 
+  const guardedNavigate = useCallback((fn: () => void) => {
+    const guard = leaveGuardRef.current;
+    if (guard) guard(fn);
+    else fn();
+  }, []);
+
+  const registerLeaveGuard = useCallback(
+    (requestLeave: ((proceed?: () => void) => void) | null) => {
+      leaveGuardRef.current = requestLeave;
+    },
+    []
+  );
+
   const handleViewChange = (view: string) => {
-    if (view === "overview") {
-      navigate("/dashboard");
-      return;
-    }
-    navigate(`/dashboard?view=${view}`);
+    guardedNavigate(() => {
+      if (view === "overview") {
+        navigate("/dashboard");
+        return;
+      }
+      navigate(`/dashboard?view=${view}`);
+    });
   };
 
   const handleCancel = () => {
@@ -62,21 +78,24 @@ export default function KitchenBookingPage() {
     const trail: ChefBreadcrumb[] = [
       {
         label: t("shellDashboard", { ns: "chef" }),
-        onClick: () => navigate("/dashboard"),
+        onClick: () => guardedNavigate(() => navigate("/dashboard")),
         navId: "overview",
       },
       {
         label: t("shellDiscoverKitchens", { ns: "chef" }),
-        onClick: () => navigate("/dashboard?view=discover-kitchens"),
+        onClick: () => guardedNavigate(() => navigate("/dashboard?view=discover-kitchens")),
         navId: "discover-kitchens",
       },
     ];
     if (locationData?.name) {
-      trail.push({ label: locationName, onClick: () => navigate(previewPath) });
+      trail.push({
+        label: locationName,
+        onClick: () => guardedNavigate(() => navigate(previewPath)),
+      });
     }
     trail.push({ label: t("title", "Book a kitchen") });
     return trail;
-  }, [t, navigate, locationData?.name, locationName, previewPath]);
+  }, [t, navigate, locationData?.name, locationName, previewPath, guardedNavigate]);
 
   const inShell = useChefShellChrome({
     activeView: "discover-kitchens",
@@ -122,6 +141,7 @@ export default function KitchenBookingPage() {
         kitchenId={kitchenId}
         onCancel={handleCancel}
         onComplete={handleComplete}
+        registerLeaveGuard={registerLeaveGuard}
       />
     );
   }

@@ -407,7 +407,7 @@ export function ChefRevenueMatrix({ data, period }: ChefRevenueMatrixProps) {
             </div>
           </>
         ) : (
-          <div className="h-[250px] flex items-center justify-center text-muted-foreground border border-dashed rounded-lg">
+          <div className="h-[250px] flex items-center justify-center text-muted-foreground border border-dashed rounded-xl">
             {t("revenueChartNoData", "No data available for this view")}
           </div>
         )}

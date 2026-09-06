@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { InfoChip } from "@/components/chef/info-chip";
 import {
   Card,
   CardContent,
@@ -245,9 +245,9 @@ export default function SellerApplicationTabContent({
               <p className="text-xs text-muted-foreground">{t("apSectionSellerDesc")}</p>
             </div>
             {current ? (
-              <Badge variant={toneToBadgeVariant(statusTone)} className="shrink-0 font-medium">
+              <InfoChip tone={statusTone} className="shrink-0">
                 {statusLabel}
-              </Badge>
+              </InfoChip>
             ) : null}
           </div>
           <Card className="flex flex-1 flex-col shadow-none" data-testid="seller-application-card">
@@ -277,17 +277,17 @@ export default function SellerApplicationTabContent({
                     </div>
                   </dl>
                   <div className="grid grid-cols-1 gap-2">
-                    <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2.5">
+                    <div className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5">
                       <span className="text-sm">{t("apFoodSafetyLicense")}</span>
-                      <Badge variant={foodSafety.variant} className="font-medium">
+                      <InfoChip variant={foodSafety.variant}>
                         {foodSafety.label}
-                      </Badge>
+                      </InfoChip>
                     </div>
-                    <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2.5">
+                    <div className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5">
                       <span className="text-sm">{t("apEstablishmentCert")}</span>
-                      <Badge variant={establishment.variant} className="font-medium">
+                      <InfoChip variant={establishment.variant}>
                         {establishment.label}
-                      </Badge>
+                      </InfoChip>
                     </div>
                   </div>
                   {current.feedback ? (
@@ -353,9 +353,9 @@ export default function SellerApplicationTabContent({
               <p className="text-xs text-muted-foreground">{t("apSectionKitchensDesc")}</p>
             </div>
             {hasKitchens ? (
-              <Badge variant={toneToBadgeVariant(kitchenTone)} className="shrink-0 font-medium">
+              <InfoChip tone={kitchenTone} className="shrink-0">
                 {kitchenValue}
-              </Badge>
+              </InfoChip>
             ) : null}
           </div>
           {hasKitchens ? (

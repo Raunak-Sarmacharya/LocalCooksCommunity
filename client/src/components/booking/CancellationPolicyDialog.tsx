@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { formatCancellationWindowText } from "@/lib/cancellation-policy";
+import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 
 /** Full cancellation + refund copy (same text as /book/ policy modal). */
 export function buildCancellationPolicyText(
@@ -67,16 +68,81 @@ export function CancellationPolicyDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[min(100vw-1.5rem,34rem)] sm:max-w-lg">
+      <DialogContent
+        showCloseButton={false}
+        className="w-[min(100vw-1.5rem,34rem)] sm:max-w-lg"
+      >
         <DialogHeader className="text-left">
-          <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-[#FFF3F5] text-[#F51042]">
-            <Icon icon="mdi:shield-check-outline" className="h-5 w-5" aria-hidden />
-          </div>
-          <DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <Icon
+              icon="mdi:shield-check-outline"
+              className="h-4 w-4 shrink-0 text-[#F51042]"
+              aria-hidden
+            />
             {t("sheetCancellationPolicyTitle", "Cancellation policy")}
           </DialogTitle>
-          <DialogDescription className="pt-2 text-sm leading-relaxed text-gray-600">
+          <DialogDescription className="pt-2 text-sm leading-relaxed text-muted-foreground">
             {full}
+          </DialogDescription>
+        </DialogHeader>
+        <Button className="mt-2 w-full" variant="outline" onClick={() => onOpenChange(false)}>
+          {t("sheetClosePolicy", "Got it")}
+        </Button>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Kitchen house rules / uploaded terms — same shell as cancellation policy. */
+export function KitchenTermsDialog({
+  open,
+  onOpenChange,
+  kitchenTermsUrl,
+  ns = "kitchen",
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  kitchenTermsUrl?: string | null;
+  ns?: "kitchen" | "booking";
+}) {
+  const { t } = useTranslation(ns);
+  const termsHref = kitchenTermsUrl ? getR2ProxyUrl(kitchenTermsUrl) : "/terms";
+  const hasUpload = !!kitchenTermsUrl;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        showCloseButton={false}
+        className="w-[min(100vw-1.5rem,34rem)] sm:max-w-lg"
+      >
+        <DialogHeader className="text-left">
+          <DialogTitle className="flex items-center gap-2">
+            <Icon
+              icon="mdi:file-document-outline"
+              className="h-4 w-4 shrink-0 text-[#F51042]"
+              aria-hidden
+            />
+            {t("thingsToKnowTermsTitle", "Kitchen terms & policies")}
+          </DialogTitle>
+          <DialogDescription className="pt-2 text-sm leading-relaxed text-muted-foreground">
+            {hasUpload
+              ? t(
+                  "thingsToKnowTermsBody",
+                  "House rules, usage policies, and chef requirements for this kitchen."
+                )
+              : t(
+                  "thingsToKnowTermsBodyFallback",
+                  "Kitchen usage policies and food safety standards apply to every booking."
+                )}{" "}
+            <a
+              href={termsHref || "/terms"}
+              {...(hasUpload ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+              className="font-medium text-foreground underline underline-offset-2 hover:text-[#F51042]"
+            >
+              {hasUpload
+                ? t("thingsToKnowViewTerms", "View kitchen terms")
+                : t("thingsToKnowViewPlatformTerms", "View platform terms")}
+            </a>
           </DialogDescription>
         </DialogHeader>
         <Button className="mt-2 w-full" variant="outline" onClick={() => onOpenChange(false)}>

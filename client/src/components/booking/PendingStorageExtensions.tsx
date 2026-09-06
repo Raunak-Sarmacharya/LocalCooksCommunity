@@ -11,7 +11,7 @@ import {
 } from "@tanstack/react-table";
 import { Clock, Check, X, Package, ChevronRight, AlertCircle, RefreshCw, ArrowUpDown } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { InfoChip } from "@/components/chef/info-chip";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -142,45 +142,40 @@ const getExtensionColumns = (
         switch (status) {
           case 'pending':
             return (
-              <Badge variant="outline" className="text-muted-foreground">
-                <Clock className="h-3 w-3 mr-1" />
+              <InfoChip variant="outline" icon={<Clock className="h-3 w-3" />}>
                 {t("sxStatusAwaitingPayment")}
-              </Badge>
+              </InfoChip>
             );
           case 'paid':
             return (
-              <Badge variant="warning">
-                <Clock className="h-3 w-3 mr-1" />
+              <InfoChip variant="warning" icon={<Clock className="h-3 w-3" />}>
                 {t("sxStatusAwaitingApproval")}
-              </Badge>
+              </InfoChip>
             );
           case 'approved':
           case 'completed':
             return (
-              <Badge variant="success">
-                <Check className="h-3 w-3 mr-1" />
+              <InfoChip variant="success" icon={<Check className="h-3 w-3" />}>
                 {t("sxStatusApproved")}
-              </Badge>
+              </InfoChip>
             );
           case 'rejected':
             return (
-              <Badge variant="outline" className="text-destructive border-destructive/30">
-                <X className="h-3 w-3 mr-1" />
+              <InfoChip variant="destructive" icon={<X className="h-3 w-3" />}>
                 {t("sxStatusRejected")}
-              </Badge>
+              </InfoChip>
             );
           case 'refunded':
             return (
-              <Badge variant="outline">
-                <Check className="h-3 w-3 mr-1" />
+              <InfoChip variant="outline" icon={<Check className="h-3 w-3" />}>
                 {t("sxStatusRefunded")}
-              </Badge>
+              </InfoChip>
             );
           default:
             return (
-              <Badge variant="outline" className="capitalize">
+              <InfoChip variant="outline" className="capitalize">
                 {status}
-              </Badge>
+              </InfoChip>
             );
         }
       };
@@ -359,7 +354,7 @@ export function PendingStorageExtensions() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="rounded-md border bg-background">
+        <div className="rounded-xl border bg-background">
           <Table>
             <TableHeader>
               {table.getHeaderGroups().map((headerGroup) => (

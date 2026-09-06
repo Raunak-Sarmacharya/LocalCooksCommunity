@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { InfoChip } from "@/components/chef/info-chip";
 import { Button } from "@/components/ui/button";
 import {
   Collapsible,
@@ -123,9 +123,9 @@ export default function SellerApplicationCard({
                 <p className="font-medium">
                   {t("sellerApplicationCardTitle", { id: app.id, defaultValue: `Seller application #${app.id}` })}
                 </p>
-                <Badge variant={applicationStatusVariant(app.status)} className="font-medium">
+                <InfoChip variant={applicationStatusVariant(app.status)}>
                   {formatApplicationStatus(app.status, t)}
-                </Badge>
+                </InfoChip>
               </div>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t("sellerSubmittedOn", { date: submittedDate, defaultValue: `Submitted ${submittedDate}` })}
@@ -185,17 +185,17 @@ export default function SellerApplicationCard({
                 )}
               </div>
               <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2.5">
+                <div className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5">
                   <span className="text-sm">{t("foodSafetyLicense", "Food Safety License")}</span>
-                  <Badge variant={foodSafety.variant} className="font-medium">
+                  <InfoChip variant={foodSafety.variant}>
                     {foodSafety.label}
-                  </Badge>
+                  </InfoChip>
                 </div>
-                <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2.5">
+                <div className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5">
                   <span className="text-sm">{t("establishmentCert", "Establishment Cert")}</span>
-                  <Badge variant={establishment.variant} className="font-medium">
+                  <InfoChip variant={establishment.variant}>
                     {establishment.label}
-                  </Badge>
+                  </InfoChip>
                 </div>
               </div>
             </div>

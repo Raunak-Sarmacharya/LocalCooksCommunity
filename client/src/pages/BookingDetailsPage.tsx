@@ -7,7 +7,7 @@ import { useChefShellChrome } from "@/layouts/chef-shell-context";
 import ManagerBookingLayout from "@/layouts/ManagerBookingLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { InfoChip } from "@/components/chef/info-chip";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -59,6 +59,7 @@ import { KitchenCheckinTracker } from "@/components/booking/KitchenCheckinTracke
 import { StripeProcessingFeeRefundInfo } from "@/components/booking/StripeProcessingFeeRefundInfo";
 import { SmartImage } from "@/components/ui/smart-image";
 import { tt } from "@/i18n/common-ns";
+import { mt } from "@/i18n/manager";
 import {
   ChefBookingReceiptBreakdown,
   KitchenPayoutStatementBreakdown,
@@ -392,83 +393,74 @@ export default function BookingDetailsPage() {
     switch (status) {
       case "confirmed":
         return (
-          <Badge variant="success" className="font-medium">
-            <CheckCircle2 className="h-3 w-3 mr-1" />
+          <InfoChip variant="success" icon={<CheckCircle2 className="h-3 w-3" />}>
             {t("bdStatusConfirmed")}
-          </Badge>
+          </InfoChip>
         );
       case "pending":
         return (
-          <Badge variant="warning" className="font-medium">
-            <AlertCircle className="h-3 w-3 mr-1" />
+          <InfoChip variant="warning" icon={<AlertCircle className="h-3 w-3" />}>
             {t("bdStatusPending")}
-          </Badge>
+          </InfoChip>
         );
       case "cancelled": {
         // Industry standard: distinguish by cause
         const isExpired = booking?.paymentStatus === 'failed';
         const isRefunded = booking?.paymentStatus === 'refunded';
         const cancelledLabel = isExpired ? t("bdStatusExpired") : isRefunded ? t("bdStatusRefunded") : t("bdStatusCancelled");
-        const cancelledIcon = isExpired ? <AlertCircle className="h-3 w-3 mr-1" /> : <XCircle className="h-3 w-3 mr-1" />;
+        const cancelledIcon = isExpired ? <AlertCircle className="h-3 w-3" /> : <XCircle className="h-3 w-3" />;
         return (
-          <Badge variant="outline" className="text-muted-foreground border-border font-medium">
-            {cancelledIcon}
+          <InfoChip variant="outline" icon={cancelledIcon}>
             {cancelledLabel}
-          </Badge>
+          </InfoChip>
         );
       }
       default:
-        return <Badge variant="outline" className="font-medium">{status}</Badge>;
+        return <InfoChip variant="outline">{status}</InfoChip>;
     }
   };
 
   const getCheckinStatusBadge = (checkinStatus: string | null | undefined) => {
     if (!checkinStatus || checkinStatus === 'not_checked_in') {
       return (
-        <Badge variant="outline" className="font-medium text-muted-foreground border-border">
-          <Clock className="h-3 w-3 mr-1" />
+        <InfoChip variant="outline" icon={<Clock className="h-3 w-3" />}>
           {t("bdCiNotCheckedIn")}
-        </Badge>
+        </InfoChip>
       );
     }
     if (checkinStatus === 'checked_in') {
       return (
-        <Badge variant="success" className="font-medium">
-          <LogIn className="h-3 w-3 mr-1" />
+        <InfoChip variant="success" icon={<LogIn className="h-3 w-3" />}>
           {t("bdCiCheckedIn")}
-        </Badge>
+        </InfoChip>
       );
     }
     if (checkinStatus === 'checkout_requested') {
       return (
-        <Badge variant="info" className="font-medium">
-          <Camera className="h-3 w-3 mr-1" />
+        <InfoChip variant="info" icon={<Camera className="h-3 w-3" />}>
           {t("bdCiCheckoutPending")}
-        </Badge>
+        </InfoChip>
       );
     }
     if (checkinStatus === 'checked_out') {
       return (
-        <Badge variant="success" className="font-medium">
-          <LogOut className="h-3 w-3 mr-1" />
+        <InfoChip variant="success" icon={<LogOut className="h-3 w-3" />}>
           {t("bdCiCheckedOut")}
-        </Badge>
+        </InfoChip>
       );
     }
     if (checkinStatus === 'no_show') {
       return (
-        <Badge variant="destructive" className="font-medium">
-          <XCircle className="h-3 w-3 mr-1" />
+        <InfoChip variant="destructive" icon={<XCircle className="h-3 w-3" />}>
           {t("bdCiNoShow")}
-        </Badge>
+        </InfoChip>
       );
     }
     if (checkinStatus === 'checkout_claim_filed') {
       return (
-        <Badge variant="warning" className="font-medium">
-          <FileWarning className="h-3 w-3 mr-1" />
+        <InfoChip variant="warning" icon={<FileWarning className="h-3 w-3" />}>
           {t("bdCiClaimFiled")}
-        </Badge>
+        </InfoChip>
       );
     }
     return null;
@@ -478,68 +470,59 @@ export default function BookingDetailsPage() {
     switch (status) {
       case "authorized":
         return (
-          <Badge variant="outline" className="text-muted-foreground border-border font-medium">
-            <CreditCard className="h-3 w-3 mr-1" />
+          <InfoChip variant="outline" icon={<CreditCard className="h-3 w-3" />}>
             {t("bdPayHeld")}
-          </Badge>
+          </InfoChip>
         );
       case "paid":
         return (
-          <Badge variant="success" className="font-medium">
-            <CreditCard className="h-3 w-3 mr-1" />
+          <InfoChip variant="success" icon={<CreditCard className="h-3 w-3" />}>
             {t("bdPayPaid")}
-          </Badge>
+          </InfoChip>
         );
       case "processing":
         return (
-          <Badge variant="outline" className="text-muted-foreground border-border font-medium">
-            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+          <InfoChip variant="outline" icon={<Loader2 className="h-3 w-3 animate-spin" />}>
             {t("bdPayProcessing")}
-          </Badge>
+          </InfoChip>
         );
       case "pending":
         return (
-          <Badge variant="warning" className="font-medium">
-            <AlertCircle className="h-3 w-3 mr-1" />
+          <InfoChip variant="warning" icon={<AlertCircle className="h-3 w-3" />}>
             {t("bdPayPending")}
-          </Badge>
+          </InfoChip>
         );
       case "refunded":
         return (
-          <Badge variant="outline" className="text-muted-foreground border-border font-medium">
-            <Receipt className="h-3 w-3 mr-1" />
+          <InfoChip variant="outline" icon={<Receipt className="h-3 w-3" />}>
             {t("bdPayRefunded")}
-          </Badge>
+          </InfoChip>
         );
       case "partially_refunded":
         return (
-          <Badge variant="warning" className="font-medium">
-            <Receipt className="h-3 w-3 mr-1" />
+          <InfoChip variant="warning" icon={<Receipt className="h-3 w-3" />}>
             {t("bdPayPartialRefund")}
-          </Badge>
+          </InfoChip>
         );
       case "failed":
         // Distinguish voided authorization (cancelled booking with 'failed' payment) from actual failures
         if (booking?.status === 'cancelled') {
           return (
-            <Badge variant="outline" className="text-muted-foreground border-border font-medium">
-              <CreditCard className="h-3 w-3 mr-1" />
+            <InfoChip variant="outline" icon={<CreditCard className="h-3 w-3" />}>
               {t("bdPayAuthVoided")}
-            </Badge>
+            </InfoChip>
           );
         }
         return (
-          <Badge variant="outline" className="text-destructive border-destructive/30 font-medium">
-            <XCircle className="h-3 w-3 mr-1" />
+          <InfoChip variant="destructive" icon={<XCircle className="h-3 w-3" />}>
             Failed
-          </Badge>
+          </InfoChip>
         );
       case "canceled":
         return (
-          <Badge variant="outline" className="text-muted-foreground border-border font-medium">
-            <XCircle className="h-3 w-3 mr-1" />
+          <InfoChip variant="outline" icon={<XCircle className="h-3 w-3" />}>
             {t("bdPayCanceled")}
-          </Badge>
+          </InfoChip>
         );
       default:
         return null;
@@ -944,7 +927,7 @@ export default function BookingDetailsPage() {
           });
           if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed'); }
           setBooking({ ...booking, status: 'cancelled' });
-          toast({ title: "Cancellation Accepted" });
+          toast({ title: mt("cancellationAccepted") });
           break;
         }
         case "decline-cancellation": {
@@ -954,7 +937,7 @@ export default function BookingDetailsPage() {
           });
           if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed'); }
           setBooking({ ...booking, status: 'confirmed' });
-          toast({ title: "Cancellation Declined" });
+          toast({ title: mt("cancellationDeclined") });
           break;
         }
         case "accept-storage-cancel": {
@@ -964,7 +947,7 @@ export default function BookingDetailsPage() {
             body: JSON.stringify({ action: 'accept' }),
           });
           if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed'); }
-          toast({ title: "Storage Cancellation Accepted" });
+          toast({ title: mt("storageCancellationAccepted") });
           window.location.reload();
           break;
         }
@@ -975,7 +958,7 @@ export default function BookingDetailsPage() {
             body: JSON.stringify({ action: 'decline' }),
           });
           if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed'); }
-          toast({ title: "Storage Cancellation Declined" });
+          toast({ title: mt("storageCancellationDeclined") });
           break;
         }
       }
@@ -1356,32 +1339,31 @@ export default function BookingDetailsPage() {
                           {formatCurrency(storage.totalPrice)}
                         </span>
                         {storage.status === "completed" ? (
-                          <Badge variant="outline" className="text-[10px] text-success border-success/30">
-                            <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />{t("bdStatusCleared")}
-                          </Badge>
+                          <InfoChip variant="success" icon={<CheckCircle2 className="h-2.5 w-2.5" />}>
+                            {t("bdStatusCleared")}
+                          </InfoChip>
                         ) : refunded ? (
-                          <Badge variant="outline" className="text-[10px] text-warning border-warning/30">
-                            <Receipt className="h-2.5 w-2.5 mr-0.5" />{t("bdStatusRefunded")?.toLowerCase()}
-                          </Badge>
+                          <InfoChip variant="warning" icon={<Receipt className="h-2.5 w-2.5" />}>
+                            {t("bdStatusRefunded")?.toLowerCase()}
+                          </InfoChip>
                         ) : voided ? (
-                          <Badge variant="outline" className="text-[10px] text-muted-foreground border-border">
-                            <XCircle className="h-2.5 w-2.5 mr-0.5" />{t("bdStatusNotCharged")}
-                          </Badge>
+                          <InfoChip variant="outline" icon={<XCircle className="h-2.5 w-2.5" />}>
+                            {t("bdStatusNotCharged")}
+                          </InfoChip>
                         ) : storage.status === "cancelled" ? (
-                          <Badge variant="outline" className="text-[10px] text-muted-foreground border-border">
-                            <XCircle className="h-2.5 w-2.5 mr-0.5" />{t("bdStatusCancelled")?.toLowerCase()}
-                          </Badge>
+                          <InfoChip variant="outline" icon={<XCircle className="h-2.5 w-2.5" />}>
+                            {t("bdStatusCancelled")?.toLowerCase()}
+                          </InfoChip>
                         ) : storage.status === "confirmed" || storage.status === "active" ? (
-                          <Badge variant="outline" className="text-[10px] text-success border-success/30">
-                            <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />{t("bdStatusConfirmed")?.toLowerCase()}
-                          </Badge>
+                          <InfoChip variant="success" icon={<CheckCircle2 className="h-2.5 w-2.5" />}>
+                            {t("bdStatusConfirmed")?.toLowerCase()}
+                          </InfoChip>
                         ) : (
-                          <Badge variant="outline" className="text-[10px] text-warning border-warning/30">
-                            <AlertCircle className="h-2.5 w-2.5 mr-0.5" />
+                          <InfoChip variant="warning" icon={<AlertCircle className="h-2.5 w-2.5" />}>
                             {storage.status === 'pending' ? t("bdStatusPending")?.toLowerCase() : 
                              storage.status === 'expired' ? t("bdStatusExpired")?.toLowerCase() : 
                              storage.status}
-                          </Badge>
+                          </InfoChip>
                         )}
                       </div>
                     </div>
@@ -1423,28 +1405,27 @@ export default function BookingDetailsPage() {
                           {formatCurrency(equipment.totalPrice)}
                         </span>
                         {refunded ? (
-                          <Badge variant="outline" className="text-[10px] text-warning border-warning/30">
-                            <Receipt className="h-2.5 w-2.5 mr-0.5" />{t("bdStatusRefunded")?.toLowerCase()}
-                          </Badge>
+                          <InfoChip variant="warning" icon={<Receipt className="h-2.5 w-2.5" />}>
+                            {t("bdStatusRefunded")?.toLowerCase()}
+                          </InfoChip>
                         ) : voided ? (
-                          <Badge variant="outline" className="text-[10px] text-muted-foreground border-border">
-                            <XCircle className="h-2.5 w-2.5 mr-0.5" />{t("bdStatusNotCharged")}
-                          </Badge>
+                          <InfoChip variant="outline" icon={<XCircle className="h-2.5 w-2.5" />}>
+                            {t("bdStatusNotCharged")}
+                          </InfoChip>
                         ) : equipment.status === "cancelled" ? (
-                          <Badge variant="outline" className="text-[10px] text-muted-foreground border-border">
-                            <XCircle className="h-2.5 w-2.5 mr-0.5" />{t("bdStatusCancelled")?.toLowerCase()}
-                          </Badge>
+                          <InfoChip variant="outline" icon={<XCircle className="h-2.5 w-2.5" />}>
+                            {t("bdStatusCancelled")?.toLowerCase()}
+                          </InfoChip>
                         ) : equipment.status === "confirmed" || equipment.status === "active" ? (
-                          <Badge variant="outline" className="text-[10px] text-success border-success/30">
-                            <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />{t("bdStatusConfirmed")?.toLowerCase()}
-                          </Badge>
+                          <InfoChip variant="success" icon={<CheckCircle2 className="h-2.5 w-2.5" />}>
+                            {t("bdStatusConfirmed")?.toLowerCase()}
+                          </InfoChip>
                         ) : (
-                          <Badge variant="outline" className="text-[10px] text-warning border-warning/30">
-                            <AlertCircle className="h-2.5 w-2.5 mr-0.5" />
+                          <InfoChip variant="warning" icon={<AlertCircle className="h-2.5 w-2.5" />}>
                             {equipment.status === 'pending' ? t("bdStatusPending")?.toLowerCase() : 
                              equipment.status === 'expired' ? t("bdStatusExpired")?.toLowerCase() : 
                              equipment.status}
-                          </Badge>
+                          </InfoChip>
                         )}
                       </div>
                     </div>

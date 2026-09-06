@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { normalizeChatSystemMessage } from "@/lib/chat-system-message";
 import { useTranslation } from "react-i18next";
 import { useState, useRef, useEffect } from 'react';
 import { X, Loader2, Info, FileText } from 'lucide-react';
@@ -203,7 +204,7 @@ export default function ChatPanel({
             return (
               <div key={message.id} className="flex justify-center my-4">
                 <span className="text-xs text-muted-foreground bg-muted/50 px-3 py-1 rounded-full border">
-                  {message.content}
+                  {normalizeChatSystemMessage(message.content)}
                 </span>
               </div>
             );

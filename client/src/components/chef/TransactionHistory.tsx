@@ -29,6 +29,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { InfoChip } from "@/components/chef/info-chip";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -104,40 +105,40 @@ function formatCurrency(cents: number): string {
 function getStatusBadge(status: string, refundAmount: number, t: any) {
   if (status === 'refunded' || (status === 'partially_refunded' && refundAmount > 0)) {
     return (
-      <Badge variant="info">
+      <InfoChip variant="info">
         {status === 'partially_refunded' ? t("billingPartialRefund", "Partial Refund") : t("billingRefunded", "Refunded")}
-      </Badge>
+      </InfoChip>
     );
   }
   if (status === 'succeeded') {
     return (
-      <Badge variant="success">
+      <InfoChip variant="success">
         {t("billingCompleted", "Completed")}
-      </Badge>
+      </InfoChip>
     );
   }
   if (status === 'pending' || status === 'processing') {
     return (
-      <Badge variant="warning">
+      <InfoChip variant="warning">
         {status === 'processing' ? t("billingProcessing", "Processing") : t("billingPending", "Pending")}
-      </Badge>
+      </InfoChip>
     );
   }
   if (status === 'canceled') {
     return (
-      <Badge variant="outline" className="bg-muted text-muted-foreground border-border">
+      <InfoChip variant="outline">
         {t("billingNoCharge", "No Charge")}
-      </Badge>
+      </InfoChip>
     );
   }
   if (status === 'failed') {
     return (
-      <Badge variant="outline" className="text-destructive border-destructive/30">
+      <InfoChip variant="destructive">
         {t("billingFailed", "Failed")}
-      </Badge>
+      </InfoChip>
     );
   }
-  return <Badge variant="outline">{status}</Badge>;
+  return <InfoChip variant="outline">{status}</InfoChip>;
 }
 
 function getBookingTypeIcon(type: string) {
@@ -549,7 +550,7 @@ export function TransactionHistory() {
           </Tabs>
 
           {/* Table */}
-          <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+          <div className="rounded-xl border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
             <Table>
               <TableHeader>
                 {table.getHeaderGroups().map((headerGroup) => (

@@ -63,6 +63,7 @@ import { applicationStatusVariant, hasStep2BeenSubmitted } from "@/components/ch
 import { ChefPageHeader } from "@/components/chef/ui";
 import { useTranslation } from "react-i18next";
 import { tt } from "@/i18n/common-ns";
+import { bt } from "@/i18n/booking-ns";
 import {
   OverviewTabContent,
   MyKitchensTabContent,
@@ -281,20 +282,20 @@ export default function ApplicantDashboard() {
       onSuccess: (data: any) => {
         if (data?.action === 'cancellation_requested') {
           toast({
-            title: "Cancellation Request Submitted",
-            description: "Your cancellation request has been sent to the kitchen manager for review.",
+            title: t("kbcCancellationRequestSubmittedTitle"),
+            description: t("kbcCancellationRequestSubmittedDesc"),
           });
         } else {
           toast({
-            title: "Booking Cancelled",
-            description: "Your booking has been cancelled successfully.",
+            title: bt("kbcBookingCancelledTitle"),
+            description: bt("kbcBookingCancelledDesc"),
           });
         }
       },
       onError: (error: any) => {
         toast({
-          title: "Cancellation Failed",
-          description: error.message || "Failed to cancel booking. Please try again.",
+          title: bt("kbcCancellationFailedTitle"),
+          description: error.message || bt("kbcCancellationFailedDesc"),
           variant: "destructive",
         });
       },
@@ -303,13 +304,13 @@ export default function ApplicantDashboard() {
 
   // Handle "Book a Session" button click - use platform standard booking flow
   const handleBookSessionClick = () => {
-    // Get approved kitchens that are ready to book (Tier 3)
+    // Get approved kitchens that are Book Now (Tier 3)
     const readyToBookKitchens = kitchenApplications.filter(
       (app) => app.status === 'approved' && (app.current_tier ?? 1) >= 3
     );
 
     if (readyToBookKitchens.length === 0) {
-      // No kitchens ready to book - navigate to discover kitchens
+      // No kitchens Book Now - navigate to discover kitchens
       setActiveTab("discover-kitchens");
     } else if (readyToBookKitchens.length === 1) {
       // Single kitchen ready - open booking page directly
@@ -597,7 +598,7 @@ export default function ApplicantDashboard() {
   // Enterprise 3-Tier System:
   // - Tier 1: Application submitted, pending review
   // - Tier 2: Step 1 approved, chef completing Step 2 docs
-  // - Tier 3: Fully approved (current_tier >= 3), ready to book
+  // - Tier 3: Fully approved (current_tier >= 3), Book Now
   const getKitchenAccessSummary = () => {
     const total = kitchenApplications.length;
     if (total === 0) return { label: t("ksNotStarted"), variant: "outline" as const };
@@ -991,7 +992,7 @@ export default function ApplicantDashboard() {
 
       {/* Continue Setup Banner - Like managers have */}
       {showSetupBanner && (
-        <div className="mb-6 flex flex-col gap-3 rounded-lg border bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-6 flex flex-col gap-3 rounded-[1.35rem] border bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-medium">{t("shellFinishChefSetup")}</p>
             <p className="text-sm text-muted-foreground">
@@ -1052,7 +1053,7 @@ export default function ApplicantDashboard() {
               </Button>
             </div>
 
-            <div className="p-4 bg-muted/50 rounded-xl border border-border/50 flex gap-3 italic">
+            <div className="p-4 bg-muted/50 rounded-[1.35rem] border border-border/50 flex gap-3 italic">
               <AlertCircle className="h-5 w-5 text-muted-foreground flex-shrink-0" />
               <p className="text-xs text-muted-foreground leading-relaxed">
                 {t("shellNextStepsStripe")}

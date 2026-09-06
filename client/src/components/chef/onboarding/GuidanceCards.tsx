@@ -51,7 +51,7 @@ export function GuidanceCards({
           );
 
           const classNames = cn(
-            "rounded-xl border border-border bg-muted/30 p-4 text-left h-full",
+            "rounded-[1.35rem] border border-border bg-muted/30 p-4 text-left h-full",
             isInteractive && "hover:border-primary/40 hover:bg-muted/50 transition-colors"
           );
 

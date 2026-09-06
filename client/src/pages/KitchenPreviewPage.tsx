@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { chefOutlineCtaClass, chefPrimaryCtaClass } from "@/lib/chef-cta";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { InfoChip } from "@/components/chef/info-chip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
@@ -24,6 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import Header from "@/components/layout/Header";
@@ -39,7 +41,7 @@ import {
   useChefKitchenApplications,
   useGlobalMyApplications,
 } from "@/hooks/use-chef-kitchen-applications";
-import { getKitchenDisplayStatus, kitchenLocationId, toneToBadgeVariant, type KitchenActionKind, type KitchenDisplayStatus } from "@/components/chef/applications/status";
+import { getKitchenDisplayStatus, kitchenLocationId, type KitchenActionKind, type KitchenDisplayStatus } from "@/components/chef/applications/status";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
 import { useChefShellChrome } from "@/layouts/chef-shell-context";
@@ -53,18 +55,19 @@ import { saveAuthIntentFromCurrentPage } from "@/lib/auth-intent";
 import { pickPreviewActiveSectionId } from "@/lib/preview-scroll-spy";
 import {
   CancellationPolicyDialog,
+  KitchenTermsDialog,
   cancellationPolicyFirstLine,
 } from "@/components/booking/CancellationPolicyDialog";
 import { resolveEquipmentIcon, resolveStorageIcon } from "@/lib/kitchen-inventory-icons";
 import { SmartImage } from "@/components/ui/smart-image";
 import { Calendar as UICalendar } from "@/components/ui/calendar";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { kt } from "@/i18n/kitchen-ns";
 import {
   evaluateTypedKitchenDate,
   parseLocalDateInput,
 } from "@/lib/kitchen-typed-date";
+import { fitDescriptionPreview } from "@/lib/fit-description-preview";
 
 /** Iconify icon used across kitchen preview chrome (MDI, bundled offline). */
 function PreviewIcon({
@@ -87,51 +90,90 @@ function PreviewIcon({
   );
 }
 
-/** Click-to-open info tip — keeps helper copy off the layout. */
-function PreviewInfoTip({
-  label,
-  children,
-  className,
-  side = "top",
-  align = "end",
+/** One-line description with “Show all” immediately after the truncated text. */
+function ExpandableDescription({
+  text,
+  title,
 }: {
-  label: string;
-  children: ReactNode;
-  className?: string;
-  side?: "top" | "bottom" | "left" | "right";
-  align?: "start" | "center" | "end";
+  text: string;
+  title?: string;
 }) {
+  const { t } = useTranslation("kitchen");
+  const boxRef = useRef<HTMLDivElement>(null);
+  const measureRef = useRef<HTMLSpanElement>(null);
+  const [cut, setCut] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  const showAllLabel = t("showAllDescription", "Show all");
+  const preview = text.replace(/\s+/g, " ").trim();
+
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    const probe = measureRef.current;
+    if (!box || !probe) return;
+
+    const measurePx = (s: string) => {
+      probe.textContent = s;
+      return probe.offsetWidth;
+    };
+
+    const fit = () => {
+      const suffixPx = measurePx(`… ${showAllLabel}`) + 2;
+      setCut(fitDescriptionPreview(preview, box.clientWidth, measurePx, suffixPx));
+    };
+
+    fit();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(fit) : null;
+    ro?.observe(box);
+    return () => ro?.disconnect();
+  }, [preview, showAllLabel]);
+
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          className={cn(
-            "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
-            "text-gray-400 hover:bg-gray-100 hover:text-gray-700",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]/40",
-            "touch-manipulation",
-            className
-          )}
-          aria-label={label}
+    <div>
+      <div ref={boxRef} className="relative text-sm leading-relaxed text-gray-600">
+        <span
+          ref={measureRef}
+          className="pointer-events-none invisible absolute whitespace-nowrap text-sm font-medium"
+          aria-hidden
+        />
+        {cut !== null ? (
+          <>
+            <span>{cut}… </span>
+            <button
+              type="button"
+              onClick={() => setOpen(true)}
+              className="inline font-medium text-[#F51042] hover:underline"
+            >
+              {showAllLabel}
+            </button>
+          </>
+        ) : (
+          <span>{preview}</span>
+        )}
+      </div>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent
+          showCloseButton={false}
+          className="flex max-h-[85vh] w-[min(100vw-1.5rem,32rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg"
         >
-          <PreviewIcon icon="mdi:information-outline" size={16} />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        side={side}
-        align={align}
-        sideOffset={8}
-        collisionPadding={16}
-        avoidCollisions
-        onOpenAutoFocus={(e) => e.preventDefault()}
-        className="z-[100] w-auto max-w-[min(18rem,calc(100vw-2rem))] p-3 text-xs leading-relaxed text-gray-700 shadow-lg"
-      >
-        {children}
-      </PopoverContent>
-    </Popover>
+          <DialogHeader className="border-b border-gray-100 px-5 pb-4 pt-5 text-left">
+            <DialogTitle>{title || t("aboutThisKitchen", "About this kitchen")}</DialogTitle>
+            <DialogDescription className="sr-only">
+              {t("fullKitchenDescription", "Full kitchen description")}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{text}</p>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
+
+type BookingAccessChip = {
+  title: string;
+  description: string;
+};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ENTERPRISE-GRADE DESIGN SYSTEM - Notion-Inspired Kitchen Preview
@@ -775,7 +817,7 @@ function KitchenPhotoCollage({
 // EQUIPMENT CARD — brand-restrained, marketplace-clean
 // ═══════════════════════════════════════════════════════════════════════════════
 const ADDON_PREVIEW_COUNT = 18;
-const CARD_PREVIEW_COUNT = 6;
+const CARD_PREVIEW_COUNT = 4;
 
 function titleCaseLabel(value: string, t?: any) {
   const formatted = value
@@ -911,7 +953,7 @@ function IncludedEquipmentList({
                   {visible.map((item) => (
                     <li
                       key={item.id}
-                      className="flex min-w-0 items-center gap-2.5 py-2"
+                      className="flex min-w-0 items-center gap-2 py-1"
                     >
                       <InventoryTypeIcon
                         icon={resolveEquipmentIcon(item.equipmentType, item.category)}
@@ -946,8 +988,8 @@ function PricedRow({
   icon?: string;
 }) {
   return (
-    <li className="flex min-w-0 items-center justify-between gap-3 py-2">
-      <span className="flex min-w-0 items-center gap-2.5">
+    <li className="flex min-w-0 items-center justify-between gap-3 py-1">
+      <span className="flex min-w-0 items-center gap-2">
         {icon ? <InventoryTypeIcon icon={icon} /> : null}
         <NameCell name={name} hint={hint} />
       </span>
@@ -970,8 +1012,8 @@ function InventoryPreviewRow({
   icon?: string;
 }) {
   return (
-    <li className="flex min-h-10 min-w-0 items-center justify-between gap-3 py-1.5">
-      <span className="flex min-w-0 items-center gap-2.5">
+    <li className="flex min-h-8 min-w-0 items-center justify-between gap-3 py-1">
+      <span className="flex min-w-0 items-center gap-2">
         {icon ? <InventoryTypeIcon icon={icon} /> : null}
         <span className="min-w-0">
           <span className="block truncate text-sm text-gray-900">{name}</span>
@@ -1043,11 +1085,11 @@ function KitchenEquipmentSections({
   const rentalList = previewPerSection != null ? rentalPreview : rental;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       {included.length > 0 && (
         <div>
           {section === "all" && (
-            <div className="mb-2 flex items-baseline justify-between gap-3">
+            <div className="mb-1 flex items-baseline justify-between gap-3">
               <h3 className="text-sm font-semibold text-gray-900">
                 {t("comesWithBooking", "Included")}
               </h3>
@@ -1057,7 +1099,7 @@ function KitchenEquipmentSections({
           {previewPerSection != null ? (
             <CompactList>
               {includedList.map((item) => (
-                <li key={item.id} className="flex min-w-0 items-center gap-2.5 py-2">
+                <li key={item.id} className="flex min-w-0 items-center gap-2 py-1">
                   <InventoryTypeIcon
                     icon={resolveEquipmentIcon(item.equipmentType, item.category)}
                   />
@@ -1077,13 +1119,11 @@ function KitchenEquipmentSections({
       {rental.length > 0 && (
         <div>
           {section === "all" && (
-            <div className="mb-2 flex items-center justify-between gap-3 rounded-lg border border-[#F51042]/20 bg-[#FFF8F5] px-2.5 py-1.5">
-              <h3 className="text-sm font-semibold text-[#F51042]">
-                {t("optionalRentals", "Available to rent")}
+            <div className="mb-1 flex items-baseline justify-between gap-3">
+              <h3 className="text-sm font-semibold text-gray-900">
+                {t("optionalRentals", "Optional Rentals")}
               </h3>
-              <span className="text-xs font-medium text-[#F51042]/80">
-                {rentalAll.length}
-              </span>
+              <span className="text-xs text-gray-400">{rentalAll.length}</span>
             </div>
           )}
           {previewPerSection != null ? (
@@ -1217,7 +1257,7 @@ function InventoryShowAllButton({
   return (
     <button
       type="button"
-      className="mt-2 inline-flex items-center text-sm font-medium text-[#F51042] hover:text-[#d10e39]"
+      className="mt-1 inline-flex items-center text-sm font-medium text-[#F51042] hover:text-[#d10e39]"
       onClick={onClick}
     >
       {t("showAllCount", { count, label: t(label, { defaultValue: label }), defaultValue: `Show all ${count} ${label}` })}
@@ -1232,21 +1272,111 @@ function InventoryModal({
   title,
   description,
   children,
+  stacked,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
   description: string;
   children: ReactNode;
+  /** Raise above another open dialog (e.g. equipment info). */
+  stacked?: boolean;
 }) {
+  const { t } = useTranslation("kitchen");
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollMore, setCanScrollMore] = useState(false);
+
+  const updateScrollHint = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) {
+      setCanScrollMore(false);
+      return;
+    }
+    setCanScrollMore(el.scrollHeight - el.scrollTop - el.clientHeight > 8);
+  }, []);
+
+  useEffect(() => {
+    if (!open) {
+      setCanScrollMore(false);
+      return;
+    }
+
+    let cancelled = false;
+    let el: HTMLDivElement | null = null;
+    let ro: ResizeObserver | null = null;
+    let mo: MutationObserver | null = null;
+
+    const attach = () => {
+      el = scrollRef.current;
+      if (!el || cancelled) return;
+
+      updateScrollHint();
+      ro = new ResizeObserver(updateScrollHint);
+      ro.observe(el);
+      mo = new MutationObserver(updateScrollHint);
+      mo.observe(el, { childList: true, subtree: true, characterData: true });
+      el.addEventListener("scroll", updateScrollHint, { passive: true });
+    };
+
+    // Wait for dialog open + list layout before measuring overflow.
+    const raf = requestAnimationFrame(() => {
+      attach();
+      requestAnimationFrame(updateScrollHint);
+    });
+    const timer = window.setTimeout(() => {
+      if (!el) attach();
+      updateScrollHint();
+    }, 50);
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      window.clearTimeout(timer);
+      ro?.disconnect();
+      mo?.disconnect();
+      el?.removeEventListener("scroll", updateScrollHint);
+    };
+  }, [open, children, updateScrollHint]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[85vh] w-[min(100vw-1.5rem,48rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
-        <DialogHeader className="border-b border-gray-100 px-5 pb-4 pt-5 text-left">
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
+      <DialogContent
+        showCloseButton={false}
+        overlayClassName={stacked ? "z-[60]" : undefined}
+        className={cn(
+          "flex max-h-[85vh] w-[min(100vw-1.5rem,40rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl",
+          stacked && "z-[60]"
+        )}
+      >
+        <DialogHeader className="shrink-0 space-y-1 border-b border-gray-100 px-4 pb-3 pt-4 text-left sm:px-5 sm:pb-3.5 sm:pt-5">
+          <DialogTitle className="text-base sm:text-lg">{title}</DialogTitle>
+          <DialogDescription className="text-sm leading-relaxed">
+            {description}
+          </DialogDescription>
         </DialogHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
+        <div className="relative min-h-0 flex-1 overflow-hidden">
+          <div
+            ref={scrollRef}
+            className="max-h-[min(62vh,34rem)] overflow-y-auto px-4 py-3 sm:px-5 sm:py-4"
+          >
+            {children}
+          </div>
+          {canScrollMore ? (
+            <div
+              className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center bg-gradient-to-t from-background from-40% via-background/85 to-transparent pb-1.5 pt-10"
+              aria-hidden
+            >
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-white text-muted-foreground shadow-sm">
+                <Icon icon="mdi:chevron-down" className="h-4 w-4" />
+              </span>
+            </div>
+          ) : null}
+          <span className="sr-only">
+            {canScrollMore
+              ? t("scrollForMore", "Scroll for more")
+              : null}
+          </span>
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -1258,15 +1388,23 @@ function KitchenInventoryPair({
   hasStorage,
   openModal: controlledOpen,
   onOpenModalChange,
+  kitchenTermsUrl,
 }: {
   kitchen: PublicKitchen;
   hasEquipment: boolean;
   hasStorage: boolean;
   openModal?: "equipment" | "storage" | null;
   onOpenModalChange?: (modal: "equipment" | "storage" | null) => void;
+  kitchenTermsUrl?: string | null;
 }) {
   const { t } = useTranslation("kitchen");
   const [uncontrolledOpen, setUncontrolledOpen] = useState<"equipment" | "storage" | null>(null);
+  const [explainOpen, setExplainOpen] = useState<"equipment" | "storage" | null>(null);
+  /** Stacked list modal opened from the equipment info dialog (info stays open behind). */
+  const [equipmentSectionModal, setEquipmentSectionModal] = useState<
+    "included" | "rental" | null
+  >(null);
+  const [termsOpen, setTermsOpen] = useState(false);
   const openModal = controlledOpen !== undefined ? controlledOpen : uncontrolledOpen;
   const setOpenModal = onOpenModalChange ?? setUncontrolledOpen;
   const included = kitchen.equipment?.included ?? [];
@@ -1281,31 +1419,57 @@ function KitchenInventoryPair({
     <div className="w-full">
       <div
         className={cn(
-          "grid items-stretch gap-4",
+          "grid items-stretch gap-2.5",
           both ? "sm:grid-cols-2" : "grid-cols-1"
         )}
       >
         {showEquipment && (
           <div
             id="preview-equipment"
-            className="flex min-h-0 min-w-0 flex-col rounded-xl border border-gray-200 bg-white p-4 sm:p-5 scroll-mt-32"
+            className="flex min-h-0 min-w-0 flex-col rounded-xl border border-gray-200 bg-white p-3 scroll-mt-32"
             data-preview-tour="equipment"
           >
-            <h3 className="mb-3 flex shrink-0 items-center gap-2 text-sm font-semibold text-gray-900">
+            <h3 className="mb-1.5 flex shrink-0 items-center gap-1.5 text-sm font-semibold text-gray-900">
               <Icon icon="mdi:pot-steam" className="h-4 w-4 text-[#F51042]" />
               {t("equipment", "Equipment")}
-              <span className="ml-auto text-xs font-normal text-gray-400">
-                {equipmentCount}
+              <span className="ml-auto flex items-center gap-1 text-xs font-normal text-gray-400">
+                {included.length > 0 ? (
+                  <span>
+                    {t("includedCountShort", {
+                      count: included.length,
+                      defaultValue: `${included.length} included`,
+                    })}
+                  </span>
+                ) : null}
+                {included.length > 0 && rental.length > 0 ? (
+                  <span aria-hidden="true">+</span>
+                ) : null}
+                {rental.length > 0 ? (
+                  <span>
+                    {t("rentalCountShort", {
+                      count: rental.length,
+                      defaultValue: `${rental.length} rental`,
+                    })}
+                  </span>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setExplainOpen("equipment")}
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                  aria-label={t("equipmentTypesExplain", "What included and rental mean")}
+                >
+                  <PreviewIcon icon="mdi:information-outline" size={14} />
+                </button>
               </span>
             </h3>
             <div className="min-h-0 flex-1 overflow-hidden">
               <KitchenEquipmentSections
                 kitchen={kitchen}
-                previewPerSection={Math.max(3, Math.ceil(CARD_PREVIEW_COUNT / 2))}
+                previewPerSection={Math.max(2, Math.ceil(CARD_PREVIEW_COUNT / 2))}
               />
             </div>
             {equipmentCount > CARD_PREVIEW_COUNT && (
-              <div className="mt-auto shrink-0 pt-1">
+              <div className="mt-auto shrink-0 pt-0.5">
                 <InventoryShowAllButton
                   count={equipmentCount}
                   label="equipment"
@@ -1319,21 +1483,29 @@ function KitchenInventoryPair({
         {showStorage && (
           <div
             id="preview-storage"
-            className="flex min-h-0 min-w-0 flex-col rounded-xl border border-gray-200 bg-white p-4 sm:p-5 scroll-mt-32"
+            className="flex min-h-0 min-w-0 flex-col rounded-xl border border-gray-200 bg-white p-3 scroll-mt-32"
             data-preview-tour="storage"
           >
-            <h3 className="mb-3 flex shrink-0 items-center gap-2 text-sm font-semibold text-gray-900">
+            <h3 className="mb-1.5 flex shrink-0 items-center gap-1.5 text-sm font-semibold text-gray-900">
               <Icon icon="mdi:warehouse" className="h-4 w-4 text-[#F51042]" />
               {t("storage", "Storage")}
-              <span className="ml-auto text-xs font-normal text-gray-400">
-                {storage.length}
+              <span className="ml-auto flex items-center gap-1 text-xs font-normal text-gray-400">
+                <span>{storage.length}</span>
+                <button
+                  type="button"
+                  onClick={() => setExplainOpen("storage")}
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                  aria-label={t("storageExplain", "What storage options mean")}
+                >
+                  <PreviewIcon icon="mdi:information-outline" size={14} />
+                </button>
               </span>
             </h3>
             <div className="min-h-0 flex-1 overflow-hidden">
               <KitchenStorageSections kitchen={kitchen} maxVisible={CARD_PREVIEW_COUNT} />
             </div>
             {storage.length > CARD_PREVIEW_COUNT && (
-              <div className="mt-auto shrink-0 pt-1">
+              <div className="mt-auto shrink-0 pt-0.5">
                 <InventoryShowAllButton
                   count={storage.length}
                   label="storage"
@@ -1368,6 +1540,195 @@ function KitchenInventoryPair({
       >
         <KitchenStorageSections kitchen={kitchen} alwaysExpanded columns={2} />
       </InventoryModal>
+
+      <InventoryModal
+        open={equipmentSectionModal === "included"}
+        onOpenChange={(open) => setEquipmentSectionModal(open ? "included" : null)}
+        title={t("comesWithBooking", "Included")}
+        description={t(
+          "includedEquipmentExplain",
+          "Comes with your kitchen booking at no extra charge."
+        )}
+        stacked
+      >
+        <KitchenEquipmentSections
+          kitchen={kitchen}
+          section="included"
+          alwaysExpanded
+          columns={2}
+        />
+      </InventoryModal>
+
+      <InventoryModal
+        open={equipmentSectionModal === "rental"}
+        onOpenChange={(open) => setEquipmentSectionModal(open ? "rental" : null)}
+        title={t("optionalRentals", "Optional Rentals")}
+        description={t(
+          "rentalEquipmentExplain",
+          "Optional add-ons you can rent by the session for an extra fee. You can add rental equipment after selecting your date and time."
+        )}
+        stacked
+      >
+        <KitchenEquipmentSections
+          kitchen={kitchen}
+          section="rental"
+          alwaysExpanded
+          columns={2}
+        />
+      </InventoryModal>
+
+      <Dialog
+        open={explainOpen === "equipment"}
+        onOpenChange={(open) => {
+          // Keep info modal open while a stacked Show-all list is up.
+          if (!open && equipmentSectionModal) return;
+          setExplainOpen(open ? "equipment" : null);
+        }}
+      >
+        <DialogContent
+          showCloseButton={false}
+          className="w-[min(100vw-1.5rem,34rem)] sm:max-w-lg"
+          onPointerDownOutside={(event) => {
+            if (equipmentSectionModal) event.preventDefault();
+          }}
+          onInteractOutside={(event) => {
+            if (equipmentSectionModal) event.preventDefault();
+          }}
+          onFocusOutside={(event) => {
+            if (equipmentSectionModal) event.preventDefault();
+          }}
+        >
+          <DialogHeader className="text-left">
+            <DialogTitle className="flex items-center gap-2">
+              <Icon
+                icon="mdi:pot-steam"
+                className="h-4 w-4 shrink-0 text-[#F51042]"
+                aria-hidden
+              />
+              {t("equipmentTypesTitle", "Equipment")}
+            </DialogTitle>
+            <DialogDescription className="pt-2 text-sm leading-relaxed text-muted-foreground">
+              {t(
+                "equipmentTypesLead",
+                "What’s included with your booking, and optional rentals you can add by the session."
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-5 text-sm">
+            <div>
+              <p className="font-semibold text-foreground">
+                {t("comesWithBooking", "Included")}
+                {included.length > 0 ? (
+                  <span className="ml-1.5 font-normal text-muted-foreground">
+                    ({included.length})
+                  </span>
+                ) : null}
+              </p>
+              <p className="mt-1 leading-relaxed text-muted-foreground">
+                {t(
+                  "includedEquipmentExplain",
+                  "Comes with your kitchen booking at no extra charge."
+                )}
+              </p>
+              {included.length > 0 ? (
+                <button
+                  type="button"
+                  className="mt-0 inline-flex items-center gap-0.5 text-sm font-medium text-[#F51042] hover:text-[#d10e39]"
+                  onClick={() => setEquipmentSectionModal("included")}
+                >
+                  {t("showAllDescription", "Show all")}
+                  <PreviewIcon icon="mdi:chevron-right" size={16} />
+                </button>
+              ) : null}
+            </div>
+            <div>
+              <p className="font-semibold text-foreground">
+                {t("optionalRentals", "Optional Rentals")}
+                {rental.length > 0 ? (
+                  <span className="ml-1.5 font-normal text-muted-foreground">
+                    ({rental.length})
+                  </span>
+                ) : null}
+              </p>
+              <p className="mt-1 leading-relaxed text-muted-foreground">
+                {t(
+                  "rentalEquipmentExplain",
+                  "Optional add-ons you can rent by the session for an extra fee. You can add rental equipment after selecting your date and time."
+                )}
+              </p>
+              {rental.length > 0 ? (
+                <button
+                  type="button"
+                  className="mt-0 inline-flex items-center gap-0.5 text-sm font-medium text-[#F51042] hover:text-[#d10e39]"
+                  onClick={() => setEquipmentSectionModal("rental")}
+                >
+                  {t("showAllDescription", "Show all")}
+                  <PreviewIcon icon="mdi:chevron-right" size={16} />
+                </button>
+              ) : null}
+            </div>
+          </div>
+          <Button
+            className="mt-2 w-full"
+            variant="outline"
+            onClick={() => setExplainOpen(null)}
+          >
+            {t("sheetClosePolicy", "Got it")}
+          </Button>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={explainOpen === "storage"}
+        onOpenChange={(open) => setExplainOpen(open ? "storage" : null)}
+      >
+        <DialogContent
+          showCloseButton={false}
+          className="w-[min(100vw-1.5rem,34rem)] sm:max-w-lg"
+        >
+          <DialogHeader className="text-left">
+            <DialogTitle className="flex items-center gap-2">
+              <Icon
+                icon="mdi:warehouse"
+                className="h-4 w-4 shrink-0 text-[#F51042]"
+                aria-hidden
+              />
+              {t("storageExplainTitle", "Storage options")}
+            </DialogTitle>
+            <DialogDescription className="pt-2 text-sm leading-relaxed text-muted-foreground">
+              {t(
+                "storageExplainBody",
+                "After selecting your date, time, and equipment, you can add optional storage to your booking. Storage is priced separately from your kitchen session."
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2 text-sm">
+            <button
+              type="button"
+              className="self-start font-medium text-foreground underline underline-offset-2 hover:text-[#F51042]"
+              onClick={() => {
+                setExplainOpen(null);
+                setTermsOpen(true);
+              }}
+            >
+              {t("thingsToKnowTermsTitle", "Kitchen terms & policies")}
+            </button>
+          </div>
+          <Button
+            className="mt-2 w-full"
+            variant="outline"
+            onClick={() => setExplainOpen(null)}
+          >
+            {t("sheetClosePolicy", "Got it")}
+          </Button>
+        </DialogContent>
+      </Dialog>
+
+      <KitchenTermsDialog
+        open={termsOpen}
+        onOpenChange={setTermsOpen}
+        kitchenTermsUrl={kitchenTermsUrl}
+      />
     </div>
   );
 }
@@ -1397,27 +1758,35 @@ function KitchenAmenitiesList({ amenities }: { amenities: string[] }) {
 function KitchenFactChip({
   icon,
   label,
-  emphasize = false,
   onClick,
 }: {
   icon: string;
   label: string;
+  /** @deprecated Ignored — chips use shared white InfoChip surface. */
   emphasize?: boolean;
   onClick?: () => void;
 }) {
   return (
-    <Badge
-      variant={emphasize ? undefined : "outline"}
-      className={cn(
-        "text-xs",
-        emphasize && "border-[#F51042]/30 bg-[#F51042]/10 text-[#F51042]",
-        onClick && "cursor-pointer hover:bg-[#F51042]/15"
-      )}
+    <InfoChip
+      tone="success"
+      icon={<PreviewIcon icon={icon} size={12} />}
+      className={cn(onClick && "cursor-pointer hover:bg-gray-50")}
       onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
     >
-      <PreviewIcon icon={icon} size={12} className="mr-1" />
       {label}
-    </Badge>
+    </InfoChip>
   );
 }
 
@@ -1480,7 +1849,7 @@ function RateHoursFacts({
   return (
     <div
       className={cn(
-        "grid gap-2.5",
+        "grid gap-2",
         count === 2
           ? "grid-cols-1 sm:grid-cols-2"
           : extra
@@ -1489,11 +1858,11 @@ function RateHoursFacts({
       )}
     >
       {hoursSummary && (
-        <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
+        <div className="rounded-xl border border-gray-200 bg-white px-3 py-2">
           <p className="text-xs font-medium uppercase tracking-wider text-gray-500">
             {t("openDaysLabel", "Open days")}
           </p>
-          <p className="mt-1 text-base font-semibold text-gray-900">{hoursSummary}</p>
+          <p className="mt-0.5 text-sm font-semibold text-gray-900">{hoursSummary}</p>
         </div>
       )}
       {extra}
@@ -1512,11 +1881,11 @@ function ThingsToKnowSection({
 }) {
   const { t } = useTranslation("kitchen");
   const [policyOpen, setPolicyOpen] = useState(false);
+  const [termsOpen, setTermsOpen] = useState(false);
   const hours = cancellationPolicyHours ?? 24;
   const firstLine = cancellationPolicyFirstLine(hours, cancellationPolicyMessage, (key, options) =>
     String(t(key, options as never))
   );
-  const termsHref = kitchenTermsUrl ? getR2ProxyUrl(kitchenTermsUrl) : "/terms";
 
   const columns = [
     {
@@ -1539,9 +1908,7 @@ function ThingsToKnowSection({
             "thingsToKnowTermsBodyFallback",
             "Kitchen usage policies and food safety standards apply to every booking."
           ),
-      href: termsHref,
       linkLabel: t("thingsToKnowLearnMore", "Learn more"),
-      external: !!kitchenTermsUrl,
     },
     {
       id: "resources" as const,
@@ -1567,8 +1934,10 @@ function ThingsToKnowSection({
             key={col.title}
             className="flex flex-col py-4 first:pt-0 last:pb-0 sm:px-5 sm:py-0 first:sm:pl-0 last:sm:pr-0"
           >
-            <PreviewIcon icon={col.icon} size={18} className="text-gray-900" />
-            <h3 className="mt-2.5 text-sm font-semibold text-gray-900">{col.title}</h3>
+            <div className="flex items-center gap-2">
+              <PreviewIcon icon={col.icon} size={16} className="shrink-0 text-[#F51042]" />
+              <h3 className="text-sm font-semibold text-gray-900">{col.title}</h3>
+            </div>
             <p className="mt-1.5 line-clamp-1 text-sm leading-relaxed text-gray-600">{col.body}</p>
             {col.id === "cancellation" ? (
               <button
@@ -1578,12 +1947,17 @@ function ThingsToKnowSection({
               >
                 {col.linkLabel}
               </button>
+            ) : col.id === "terms" ? (
+              <button
+                type="button"
+                onClick={() => setTermsOpen(true)}
+                className="mt-2 self-start text-sm font-medium text-gray-900 underline underline-offset-2 hover:text-[#F51042]"
+              >
+                {col.linkLabel}
+              </button>
             ) : (
               <a
                 href={"href" in col ? col.href : "#"}
-                {...("external" in col && col.external
-                  ? { target: "_blank", rel: "noopener noreferrer" }
-                  : {})}
                 className="mt-2 text-sm font-medium text-gray-900 underline underline-offset-2 hover:text-[#F51042]"
               >
                 {col.linkLabel}
@@ -1597,6 +1971,11 @@ function ThingsToKnowSection({
         onOpenChange={setPolicyOpen}
         hours={cancellationPolicyHours}
         customMessage={cancellationPolicyMessage}
+      />
+      <KitchenTermsDialog
+        open={termsOpen}
+        onOpenChange={setTermsOpen}
+        kitchenTermsUrl={kitchenTermsUrl}
       />
     </section>
   );
@@ -1627,7 +2006,7 @@ function GuestHoursCard({
   calendarOpen: calendarOpenProp,
   onCalendarOpenChange,
   onDatesOkChange,
-  extraInfoTip,
+  bookingAccessChip,
 }: {
   availability?: PublicKitchen["availability"];
   kitchenId?: string;
@@ -1663,8 +2042,8 @@ function GuestHoursCard({
   calendarOpen?: boolean;
   onCalendarOpenChange?: (open: boolean) => void;
   onDatesOkChange?: (ok: boolean) => void;
-  /** Extra status tip shown in the CTA info popover (e.g. apply-first notice). */
-  extraInfoTip?: string | null;
+  /** Ready-to-book chip beside the rate (approved chefs only). */
+  bookingAccessChip?: BookingAccessChip | null;
 }) {
   const { t } = useTranslation("kitchen");
   const { openAuthModal } = useAuthModal();
@@ -2051,18 +2430,44 @@ function GuestHoursCard({
     </Button>
   ) : null;
 
-  const bookingInfoBody = (
-    <>
-      <p>
-        {t(
-          "pickDateToBook",
-          "Select the day you'd like. You won't be charged until you complete a booking."
-        )}
-      </p>
-      {extraInfoTip ? <p className="mt-2">{extraInfoTip}</p> : null}
-    </>
-  );
-  const showBookingInfo = showDateGatedCta || !!extraInfoTip;
+  const rateRow =
+    kitchenRate || bookingAccessChip ? (
+      <div className="mb-2 flex items-center gap-2">
+        {kitchenRate ? (
+          <p className="min-w-0 text-lg font-bold text-gray-900">{kitchenRate}</p>
+        ) : null}
+        {bookingAccessChip ? (
+          <div className="ml-auto flex shrink-0 items-center gap-1">
+            <InfoChip
+              tone="success"
+              icon={<PreviewIcon icon="mdi:check-decagram" size={12} />}
+            >
+              {bookingAccessChip.title}
+            </InfoChip>
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    "inline-flex h-6 w-6 items-center justify-center rounded-full",
+                    "text-muted-foreground/70 hover:bg-muted hover:text-muted-foreground",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]/40"
+                  )}
+                  aria-label={t("bookingAccessInfo", "More about this status")}
+                >
+                  <PreviewIcon icon="mdi:information-outline" size={14} />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent side="top" align="end" className="w-[280px] p-3">
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  {bookingAccessChip.description}
+                </p>
+              </PopoverContent>
+            </Popover>
+          </div>
+        ) : null}
+      </div>
+    ) : null;
 
   if (!bookingDatesReady) {
     return (
@@ -2071,27 +2476,15 @@ function GuestHoursCard({
         className={cn(
           "relative bg-white rounded-2xl border border-gray-200/70 flex flex-col w-full",
           PREMIUM_CARD_SHADOW,
-          bento ? "p-3 sm:p-3.5 h-full" : "p-5"
+          bento ? "p-3 sm:p-3.5 h-full" : "p-4"
         )}
         data-preview-tour="hours"
       >
-        {extraInfoTip ? (
-          <div className={cn("absolute z-10", bento ? "right-2 top-2" : "right-3 top-3")}>
-            <PreviewInfoTip label={t("bookingInfoTip", "Booking info")}>
-              {extraInfoTip}
-            </PreviewInfoTip>
-          </div>
-        ) : null}
-        <div
-          className={cn(
-            "flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50/80 px-4 py-8 text-center",
-            extraInfoTip && "pr-10"
-          )}
-        >
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold uppercase tracking-wider text-gray-600">
-            <PreviewIcon icon="mdi:clock-outline" size={14} />
+        {rateRow}
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50/80 px-4 py-8 text-center">
+          <InfoChip tone="progress">
             {t("applyFlowComingSoonBadge", "Coming Soon")}
-          </span>
+          </InfoChip>
           <p className="mt-3 text-sm font-medium text-gray-900">
             {t("bookingDatesComingSoonTitle", "Booking dates aren’t open yet")}
           </p>
@@ -2113,7 +2506,7 @@ function GuestHoursCard({
           </p>
         </div>
         {showDateGatedCta ? (
-          <div className="mt-4 shrink-0 space-y-2 border-t border-gray-200 pt-3" data-preview-tour="cta">
+          <div className="mt-3 shrink-0 space-y-2 border-t border-gray-200 pt-2.5" data-preview-tour="cta">
             {ctaButton}
           </div>
         ) : null}
@@ -2127,28 +2520,11 @@ function GuestHoursCard({
       className={cn(
         "relative bg-white rounded-2xl border border-gray-200/70 flex flex-col w-full",
         PREMIUM_CARD_SHADOW,
-        bento ? "p-3 sm:p-3.5 h-full" : "p-5"
+        bento ? "p-3 sm:p-3.5 h-full" : "p-4"
       )}
       data-preview-tour="hours"
     >
-      {showBookingInfo ? (
-        <div className={cn("absolute z-10", bento ? "right-2 top-2" : "right-3 top-3")}>
-          <PreviewInfoTip label={t("bookingInfoTip", "Booking info")}>
-            {showDateGatedCta ? bookingInfoBody : extraInfoTip}
-          </PreviewInfoTip>
-        </div>
-      ) : null}
-
-      {kitchenRate ? (
-        <p
-          className={cn(
-            "mb-3 text-lg font-bold text-gray-900",
-            showBookingInfo && "pr-9"
-          )}
-        >
-          {kitchenRate}
-        </p>
-      ) : null}
+      {rateRow}
 
       <div data-preview-tour="cta">
       <Collapsible open={calendarOpen} onOpenChange={setCalendarOpen}>
@@ -2265,7 +2641,7 @@ function GuestHoursCard({
       </Collapsible>
 
       {showDateGatedCta && (
-        <div className="mt-4 shrink-0 space-y-2 border-t border-gray-200 pt-3">
+        <div className="mt-3 shrink-0 space-y-2 border-t border-gray-200 pt-2.5">
           {pricePreview ? <PreviewBookingTotalAboveCta preview={pricePreview} /> : null}
           {ctaButton}
         </div>
@@ -2290,6 +2666,9 @@ interface KitchenDetailsSectionProps {
   hideOverview?: boolean;
   inventoryModal?: "equipment" | "storage" | null;
   onInventoryModalChange?: (modal: "equipment" | "storage" | null) => void;
+  cancellationPolicyHours?: number | null;
+  cancellationPolicyMessage?: string | null;
+  kitchenTermsUrl?: string | null;
 }
 
 function KitchenDetailsSection({
@@ -2303,6 +2682,9 @@ function KitchenDetailsSection({
   hideOverview = false,
   inventoryModal,
   onInventoryModalChange,
+  cancellationPolicyHours,
+  cancellationPolicyMessage,
+  kitchenTermsUrl,
 }: KitchenDetailsSectionProps) {
   const [activeTab, setActiveTab] = useState("overview");
   const isStacked = layout === "stacked";
@@ -2331,14 +2713,14 @@ function KitchenDetailsSection({
       animate="visible"
       exit={{ opacity: 0, y: -20 }}
       variants={fadeInUp}
-      className="space-y-5"
+      className="space-y-3"
     >
       {!hidePhotoCollage && (
         <KitchenPhotoCollage images={allImages} kitchenName={kitchen.name} />
       )}
 
       {!hideOverview && (
-        <div id="preview-overview" className="space-y-2 scroll-mt-32">
+        <div id="preview-overview" className="space-y-1.5 scroll-mt-32">
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
             <h2 className="text-lg sm:text-xl font-bold text-gray-900">{kitchen.name}</h2>
             {rateLabel && !hidePhotoCollage && (
@@ -2354,8 +2736,8 @@ function KitchenDetailsSection({
       {isStacked ? (
         <>
           {kitchen.amenities && kitchen.amenities.length > 0 && (
-            <div id="preview-amenities" className="bg-white rounded-xl border border-gray-200 p-5 sm:p-6 scroll-mt-32">
-              <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <div id="preview-amenities" className="bg-white rounded-xl border border-gray-200 p-3 scroll-mt-32">
+              <h3 className="text-sm font-semibold text-gray-900 mb-1.5 flex items-center gap-2">
                 <PreviewIcon icon="mdi:format-list-checks" size={16} className="text-[#F51042]" />
                 {t("amenities")}
               </h3>
@@ -2364,10 +2746,10 @@ function KitchenDetailsSection({
           )}
 
           {addonsLoading && (
-            <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
+            <div className="bg-white rounded-xl border border-gray-200 p-3 space-y-2">
               <Skeleton className="h-4 w-32" />
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
             </div>
           )}
 
@@ -2378,12 +2760,13 @@ function KitchenDetailsSection({
               hasStorage={!!hasStorage}
               openModal={inventoryModal}
               onOpenModalChange={onInventoryModalChange}
+              kitchenTermsUrl={kitchenTermsUrl}
             />
           )}
 
           {locationAddress && (
-            <div id="preview-location" className="bg-white rounded-xl border border-gray-200 p-5 sm:p-6 scroll-mt-32">
-              <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <div id="preview-location" className="bg-white rounded-xl border border-gray-200 p-3 sm:p-4 scroll-mt-32">
+              <h3 className="text-sm font-semibold text-gray-900 mb-2 flex items-center gap-2">
                 <PreviewIcon icon="mdi:map-marker" size={16} className="text-[#F51042]" />
                 {t("whereItIs", "Location")}
               </h3>
@@ -3266,7 +3649,6 @@ export default function KitchenPreviewPage() {
   const mainContent = (locationData: PublicLocation & { kitchens: PublicKitchen[] }) => {
     const { kitchens, ...location } = locationData;
     const display = kitchenDisplay;
-    const canReapply = display?.actionKind === "discover";
     const ctaSpec = resolvePreviewPrimaryCta({
       t: (key, fallback) => t(key, fallback ?? key),
       applicationLoading,
@@ -3287,76 +3669,17 @@ export default function KitchenPreviewPage() {
     const storageCount = kitchenStorage?.length ?? 0;
     const amenityCount = selectedKitchen?.amenities?.length ?? 0;
 
-    const heroHelper = (() => {
-      if (applicationLoading) return null;
-      if (activeLocationTour && !alreadyApplied) {
-        return activeLocationTour.status === "confirmed"
-          ? t(
-              "tourConfirmedNotice",
-              "Your tour is confirmed. See the time and details under My Tours."
-            )
-          : t(
-              "tourPendingNotice",
-              "You’ve already requested a tour here. We’re waiting on the kitchen to confirm."
-            );
-      }
-      if (!isAuthenticated && location.canAcceptApplications === false) {
-        return t(
-          "notAcceptingAppsNotice",
-          "This location isn’t accepting new chef applications yet. You’re welcome to look around and check back later."
-        );
-      }
-      if (!isAuthenticated || (!alreadyApplied && !canBook && !globalAppPending && location.canAcceptApplications !== false)) {
-        return t(
-          "applyFirstThenBook",
-          "Request to apply first — booking opens after you’re approved."
-        );
-      }
-      if (canBook || display?.actionKind === "book") {
-        return t(
-          "youAreApprovedBookNotice",
-          "You’re approved here. Book a cooking session whenever you’re ready."
-        );
-      }
-      if (display?.actionKind === "complete-step") {
-        return t(
-          "finishRemainingStepsNotice",
-          "A few steps remain, then you can start booking sessions here."
-        );
-      }
-      if (alreadyApplied) {
-        return display?.label === "In review"
-          ? t(
-              "alreadyAppliedInReview",
-              "The kitchen is reviewing your application. You can book once you’re approved."
-            )
-          : t(
-              "alreadyAppliedReviewFinished",
-              "You can book sessions once this kitchen finishes review."
-            );
-      }
-      if (canReapply) {
-        return application?.status === "rejected"
-          ? t(
-              "applicationRejectedReapply",
-              "Your last application wasn’t approved. You’re welcome to apply again with updated details."
-            )
-          : t(
-              "applicationCancelledReapply",
-              "Your previous application was cancelled. You can apply again if you’d still like to cook here."
-            );
-      }
-      if (globalAppPending) {
-        return t(
-          "globalApplicationUnderReview",
-          "Your initial application is currently under review by our team."
-        );
-      }
-      if (location.canAcceptApplications === false) {
-        return t("notAcceptingNewChefApps");
-      }
-      return null;
-    })();
+    // Ready-to-book chip beside sticky CTA rate — only when chef can book.
+    const bookingAccessChip: BookingAccessChip | null =
+      !applicationLoading && (canBook || display?.actionKind === "book")
+        ? {
+            title: t("readyToBookBannerTitle", "Ready to book"),
+            description: t(
+              "readyToBookBannerBody",
+              "You’re approved to book this kitchen. Pick a date and book a cooking session whenever you’re ready."
+            ),
+          }
+        : null;
 
     const tourCta = (() => {
       if (alreadyApplied) return null;
@@ -3551,7 +3874,7 @@ export default function KitchenPreviewPage() {
           : null;
 
     return (
-      <div className={cn("font-sans space-y-5 sm:space-y-6", "pb-24 lg:pb-0")}>
+      <div className={cn("font-sans space-y-3 sm:space-y-4", "pb-24 lg:pb-0")}>
         <Helmet>
           <title>{location.name} Commercial Kitchen | Local Cooks</title>
           <meta
@@ -3572,26 +3895,27 @@ export default function KitchenPreviewPage() {
               className="h-10 w-10 sm:h-12 sm:w-12 rounded-lg object-cover flex-shrink-0"
             />
           ) : null}
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{location.name}</h1>
-              {alreadyApplied && display && (
-                <Badge variant={toneToBadgeVariant(display.tone)} className="text-xs font-medium">
-                  {display.label}
-                </Badge>
-              )}
-              {location.kitchenLicenseStatus === "pending" && (
-                <Badge variant="warning" className="text-xs">
-                  <PreviewIcon icon="mdi:clock-outline" size={12} className="mr-1" />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-3">
+              <h1 className="min-w-0 text-xl sm:text-2xl font-bold text-gray-900">{location.name}</h1>
+              {location.kitchenLicenseStatus === "pending" ? (
+                <InfoChip
+                  tone="warning"
+                  className="shrink-0"
+                  icon={<PreviewIcon icon="mdi:clock-outline" size={12} />}
+                >
                   {t("verificationInProgress")}
-                </Badge>
-              )}
-              {location.kitchenLicenseStatus === "approved" && (
-                <Badge variant="success" className="text-xs">
-                  <PreviewIcon icon="mdi:shield-check" size={12} className="mr-1" />
+                </InfoChip>
+              ) : null}
+              {location.kitchenLicenseStatus === "approved" ? (
+                <InfoChip
+                  tone="success"
+                  className="shrink-0"
+                  icon={<PreviewIcon icon="mdi:shield-check" size={12} />}
+                >
                   {t("licensedKitchenBadge", "Licensed kitchen")}
-                </Badge>
-              )}
+                </InfoChip>
+              ) : null}
             </div>
             <p className="mt-1 text-sm text-gray-600">{location.address}</p>
             <p className="mt-0.5 text-sm text-gray-500">
@@ -3721,15 +4045,10 @@ export default function KitchenPreviewPage() {
           : null}
 
         {/* Airbnb-style: left listing content + sticky date/CTA card on the right */}
-        <div className="flex flex-col lg:grid lg:grid-cols-12 gap-x-6 gap-y-4 sm:gap-x-8 sm:gap-y-5 lg:items-start">
-          <div className="order-1 lg:col-span-7 xl:col-span-8 space-y-2.5 min-w-0">
-            {(hoursSummary ||
-              includedCount > 0 ||
-              rentalCount > 0 ||
-              storageCount > 0 ||
-              amenityCount > 0 ||
-              tourFactCard) && (
-              <div className="space-y-2.5">
+        <div className="flex flex-col lg:grid lg:grid-cols-12 gap-x-6 gap-y-3 sm:gap-x-8 sm:gap-y-3 lg:items-start">
+          <div className="order-1 lg:col-span-7 xl:col-span-8 space-y-2 min-w-0">
+            {(hoursSummary || amenityCount > 0 || tourFactCard) && (
+              <div className="space-y-1.5">
                 <RateHoursFacts
                   hoursSummary={hoursSummary}
                   extra={
@@ -3740,53 +4059,15 @@ export default function KitchenPreviewPage() {
                     ) : undefined
                   }
                 />
-                {(includedCount > 0 ||
-                  rentalCount > 0 ||
-                  storageCount > 0 ||
-                  amenityCount > 0) && (
+                {amenityCount > 0 && (
                   <div className="flex flex-wrap gap-1.5">
-                    {includedCount > 0 && (
-                      <KitchenFactChip
-                        emphasize
-                        icon="mdi:check-decagram"
-                        label={t("includedEquipmentCount", {
-                          count: includedCount,
-                          defaultValue: `${includedCount} included`,
-                        })}
-                        onClick={() => setInventoryModal("equipment")}
-                      />
-                    )}
-                    {rentalCount > 0 && (
-                      <KitchenFactChip
-                        emphasize
-                        icon="mdi:cash-plus"
-                        label={t("equipmentRentalCount", {
-                          count: rentalCount,
-                          defaultValue: `${rentalCount} available to rent`,
-                        })}
-                        onClick={() => setInventoryModal("equipment")}
-                      />
-                    )}
-                    {storageCount > 0 && (
-                      <KitchenFactChip
-                        emphasize
-                        icon="mdi:warehouse"
-                        label={t("storageOptionsCount", {
-                          count: storageCount,
-                          defaultValue: `${storageCount} storage ${storageCount === 1 ? "option" : "options"}`,
-                        })}
-                        onClick={() => setInventoryModal("storage")}
-                      />
-                    )}
-                    {amenityCount > 0 && (
-                      <KitchenFactChip
-                        icon="mdi:format-list-checks"
-                        label={t("amenitiesCount", {
-                          count: amenityCount,
-                          defaultValue: `${amenityCount} ${amenityCount === 1 ? "amenity" : "amenities"}`,
-                        })}
-                      />
-                    )}
+                    <KitchenFactChip
+                      icon="mdi:format-list-checks"
+                      label={t("amenitiesCount", {
+                        count: amenityCount,
+                        defaultValue: `${amenityCount} ${amenityCount === 1 ? "amenity" : "amenities"}`,
+                      })}
+                    />
                   </div>
                 )}
               </div>
@@ -3794,11 +4075,11 @@ export default function KitchenPreviewPage() {
 
             {kitchens.length > 1 && (
               <div>
-                <p className="text-xs font-medium uppercase tracking-wider text-gray-500 mb-2">
+                <p className="text-xs font-medium uppercase tracking-wider text-gray-500 mb-1.5">
                   {t("chooseAKitchen")}
                 </p>
                 <div
-                  className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1"
+                  className="flex gap-2 overflow-x-auto pb-0.5 -mx-1 px-1"
                   data-preview-tour="kitchen-picker"
                 >
                   {kitchens.map((kitchen) => {
@@ -3810,7 +4091,7 @@ export default function KitchenPreviewPage() {
                         type="button"
                         onClick={() => setSelectedKitchen(kitchen)}
                         className={cn(
-                          "shrink-0 rounded-xl border px-4 py-2.5 text-left transition-colors",
+                          "shrink-0 rounded-xl border px-3 py-2 text-left transition-colors",
                           selected
                             ? "border-[#F51042] bg-[#FFF8F5] shadow-sm"
                             : "border-gray-200 bg-white hover:border-gray-300"
@@ -3833,14 +4114,15 @@ export default function KitchenPreviewPage() {
             )}
 
             {selectedKitchen && (
-              <div id="preview-overview" className="space-y-1.5 scroll-mt-32">
+              <div id="preview-overview" className="space-y-1 scroll-mt-32">
                 <h2 className="text-lg sm:text-xl font-bold text-gray-900">
                   {selectedKitchen.name}
                 </h2>
                 {selectedKitchen.description ? (
-                  <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">
-                    {selectedKitchen.description}
-                  </p>
+                  <ExpandableDescription
+                    text={selectedKitchen.description}
+                    title={t("aboutThisKitchen", "About this kitchen")}
+                  />
                 ) : null}
               </div>
             )}
@@ -3892,7 +4174,7 @@ export default function KitchenPreviewPage() {
                 calendarOpen={calendarOpen}
                 onCalendarOpenChange={setCalendarOpen}
                 onDatesOkChange={setDatesOk}
-                extraInfoTip={heroHelper}
+                bookingAccessChip={bookingAccessChip}
               />
               <AnimatePresence initial={false}>
                 {!tourInView && tourButton ? (
@@ -3934,6 +4216,9 @@ export default function KitchenPreviewPage() {
                   hideOverview
                   inventoryModal={inventoryModal}
                   onInventoryModalChange={setInventoryModal}
+                  cancellationPolicyHours={location.cancellationPolicyHours}
+                  cancellationPolicyMessage={location.cancellationPolicyMessage}
+                  kitchenTermsUrl={location.kitchenTermsUrl}
                 />
               ) : (
                 <motion.div

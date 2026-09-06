@@ -236,7 +236,7 @@ export function StorageSelection({
       <div className="flex w-72 flex-col">
         <div className="border-b border-border px-3 pb-2 pt-3">
           <p className="text-sm font-medium text-foreground">{storage.name}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
+          <p className="mt-0.5 text-sm text-muted-foreground">
             {t("storageSelMinDaysPrice", {
               minDays,
               price: formatCents(storage.basePrice),
@@ -276,21 +276,21 @@ export function StorageSelection({
 
         <div className="space-y-2 border-t border-border px-3 pb-3 pt-2">
           {error && (
-            <div className="flex items-center gap-1.5 text-xs text-destructive">
+            <div className="flex items-center gap-1.5 text-sm text-destructive">
               <Icon icon="mdi:alert-circle-outline" className="h-3 w-3 flex-shrink-0" aria-hidden />
               <span>{error}</span>
             </div>
           )}
 
           {range?.from && !range?.to && (
-            <p className="text-xs text-muted-foreground text-center py-1">
+            <p className="text-sm text-muted-foreground text-center py-1">
               {t("storageSelClickEndDate")}
             </p>
           )}
 
           {price && !error && (
             <div className="flex items-center justify-between rounded-md bg-muted/50 px-2.5 py-1.5">
-              <span className="text-xs text-muted-foreground">
+              <span className="text-sm text-muted-foreground">
                 {t("storageSelDaysTimesPrice", {
                   days: price.days,
                   price: formatCents(storage.basePrice),
@@ -384,7 +384,7 @@ export function StorageSelection({
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-sm font-medium text-gray-900 truncate">{storage.name}</p>
-                <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                <p className="text-sm text-muted-foreground mt-0.5 truncate">
                   {typeText}
                   {storage.climateControl ? ` · ${t("storageSelClimateCtrl")}` : ""}
                   {` · ${t("storageSelMinDaysShort", { minDays })}`}
@@ -392,7 +392,7 @@ export function StorageSelection({
               </div>
               <p className="text-sm font-semibold text-gray-900 shrink-0">
                 {formatCents(storage.basePrice)}
-                <span className="text-xs font-normal text-muted-foreground">
+                <span className="text-sm font-normal text-muted-foreground">
                   {t("storageSelPerDay")}
                 </span>
               </p>
@@ -404,12 +404,12 @@ export function StorageSelection({
                   <div className="flex items-center gap-1.5 min-w-0">
                     <Icon icon="mdi:check" className="h-3.5 w-3.5 text-primary flex-shrink-0" aria-hidden />
                     <div className="min-w-0">
-                      <p className="truncate text-xs font-semibold text-gray-900">
-                        {format(selection.startDate, "MMM d")} &mdash;{" "}
-                        {format(selection.endDate, "MMM d")}
+                      <p className="truncate text-sm font-semibold text-gray-900">
+                        {format(selection.startDate, "MMM d, yyyy")} &mdash;{" "}
+                        {format(selection.endDate, "MMM d, yyyy")}
                       </p>
                       {selectionPrice && (
-                        <p className="text-[11px] text-muted-foreground">
+                        <p className="text-sm text-muted-foreground">
                           {formatCents(selectionPrice.total)}
                         </p>
                       )}
@@ -441,7 +441,7 @@ export function StorageSelection({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="w-full justify-start text-xs h-8 font-normal text-muted-foreground hover:text-foreground"
+                      className="w-full justify-start text-sm h-8 font-normal text-muted-foreground hover:text-foreground"
                     >
                       <Icon icon="mdi:calendar-month-outline" className="h-3.5 w-3.5 mr-2" aria-hidden />
                       {t("storageSelSelectDates")}
@@ -488,7 +488,10 @@ export function StorageSelection({
           </button>
 
           <Dialog open={showAllOpen} onOpenChange={setShowAllOpen}>
-            <DialogContent className="flex max-h-[85vh] w-[min(100vw-1.5rem,48rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
+            <DialogContent
+              showCloseButton={false}
+              className="flex max-h-[85vh] w-[min(100vw-1.5rem,48rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl"
+            >
               <DialogHeader className="border-b border-gray-100 px-5 pb-4 pt-5 text-left">
                 <DialogTitle>
                   {t("storageSelAllTitle", "Storage options")}

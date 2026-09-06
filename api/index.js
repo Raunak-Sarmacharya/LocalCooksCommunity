@@ -14830,28 +14830,28 @@ async function sendSystemNotification(conversationId, eventType, data) {
     let content = "";
     switch (eventType) {
       case "TIER1_APPROVED":
-        content = `\u2705 Step 1 Approved: Your food handler certificate has been verified. You can now proceed to Step 2 - Kitchen Coordination.`;
+        content = `Request to apply approved: Chat with your kitchen manager is now open. Upload your kitchen coordination documents to continue.`;
         break;
       case "TIER1_REJECTED":
-        content = `\u274C Step 1 Rejected: ${data?.reason || "Your application did not meet the requirements."}`;
+        content = `Request to apply was not approved: ${data?.reason || "Your application did not meet the requirements."}`;
         break;
       case "TIER2_COMPLETE":
-        content = `\u2705 Step 2 Complete: All kitchen coordination requirements have been met. Your application is now fully approved.`;
+        content = `Kitchen coordination complete: You're approved to book this kitchen.`;
         break;
       case "TIER3_SUBMITTED":
-        content = `\u{1F4CB} Step 3 Submitted: Your government application has been submitted. We'll notify you once it's approved.`;
+        content = `Kitchen coordination submitted: Your documents are with the kitchen manager for review.`;
         break;
       case "TIER4_APPROVED":
-        content = `\u{1F389} Step 4 Approved: Congratulations! Your license has been entered and you're fully approved to use the kitchen.`;
+        content = `Kitchen coordination complete: You're approved to book this kitchen.`;
         break;
       case "DOCUMENT_UPLOADED":
-        content = `\u{1F4C4} Document Uploaded: ${data?.fileName || "A document"} has been uploaded for review.`;
+        content = `Document uploaded: ${data?.fileName || "A document"} has been uploaded for review.`;
         break;
       case "DOCUMENT_VERIFIED":
-        content = `\u2705 Document Verified: ${data?.documentName || "Your document"} has been verified.`;
+        content = `Document verified: ${data?.documentName || "Your document"} has been verified.`;
         break;
       case "STATUS_CHANGED":
-        content = `\u{1F4CA} Status Changed: Application status updated to ${data?.status || "new status"}.`;
+        content = `Status changed: Application status updated to ${data?.status || "new status"}.`;
         break;
       default:
         content = data?.message || "System notification";

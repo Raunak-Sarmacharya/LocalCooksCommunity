@@ -273,7 +273,7 @@ export function StorageCheckinDialog({
                           )}
                         </span>
                         {item.description && (
-                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                          <p className="text-xs text-muted-foreground mt-0.5">
                             {item.description}
                           </p>
                         )}

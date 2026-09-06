@@ -2,6 +2,9 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
+/** Shared card corner radius — matches KitchenGridCard / chef discovery surfaces. */
+export const CARD_RADIUS = "rounded-[1.35rem]"
+
 const Card = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -9,7 +12,8 @@ const Card = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      "rounded-lg border bg-card text-card-foreground shadow-sm",
+      CARD_RADIUS,
+      "border bg-card text-card-foreground shadow-sm",
       className
     )}
     {...props}

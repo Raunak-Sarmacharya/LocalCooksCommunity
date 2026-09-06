@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { InfoChip } from "@/components/chef/info-chip";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/sheet";
 import {
   Building,
-  Calendar,
   CheckCircle,
   Clock,
   FileText,
@@ -38,8 +37,8 @@ import { TruncatedText } from "@/components/common/TruncatedText";
 import {
   getKitchenDisplayStatus,
   hasStep2BeenSubmitted,
-  toneToBadgeVariant,
 } from "./status";
+import { KitchenStatusChip, bookNowIcon as BookNowIcon } from "./status-icons";
 import { SmartImage } from "@/components/ui/smart-image";
 
 interface KitchenApplicationWithLocation extends ChefKitchenApplication {
@@ -147,10 +146,9 @@ function KitchenApplicationDetails({
           </div>
           <p className="text-sm font-bold text-foreground">{t("apptabStep1Title", "Request to apply")}</p>
           {(app as any).tier1_completed_at && (
-            <Badge variant="success">
-              <CheckCircle className="mr-1 h-3 w-3" />
+            <InfoChip variant="success" icon={<CheckCircle className="h-3 w-3" />}>
               {t("apptabSubmittedOn", { date: new Date((app as any).tier1_completed_at || app.createdAt).toLocaleDateString(i18n.language), defaultValue: "Submitted {date}" })}
-            </Badge>
+            </InfoChip>
           )}
         </div>
 
@@ -275,7 +273,7 @@ function KitchenApplicationDetails({
             {t("apptabDocumentsLabel", "Documents")}
           </p>
           <div className="grid grid-cols-1 gap-3">
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-card p-3">
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-card p-3">
               <div className="flex min-w-0 items-center gap-2">
                 <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <div className="min-w-0">
@@ -288,9 +286,9 @@ function KitchenApplicationDetails({
               <div className="flex shrink-0 items-center gap-2">
                 {app.foodSafetyLicenseUrl ? (
                   <>
-                    <Badge variant={getDocStatusBadge(app.foodSafetyLicenseStatus, t).variant}>
+                    <InfoChip variant={getDocStatusBadge(app.foodSafetyLicenseStatus, t).variant}>
                       {getDocStatusBadge(app.foodSafetyLicenseStatus, t).label}
-                    </Badge>
+                    </InfoChip>
                     <SecureDocumentLink
                       url={app.foodSafetyLicenseUrl}
                       fileName="Food Safety License"
@@ -299,13 +297,13 @@ function KitchenApplicationDetails({
                     />
                   </>
                 ) : (
-                  <Badge variant="outline" className="bg-muted">
+                  <InfoChip variant="outline">
                     {t("apptabNotUploaded", "Not Uploaded")}
-                  </Badge>
+                  </InfoChip>
                 )}
               </div>
             </div>
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-card p-3">
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-card p-3">
               <div className="flex min-w-0 items-center gap-2">
                 <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <div className="min-w-0">
@@ -318,9 +316,9 @@ function KitchenApplicationDetails({
               <div className="flex shrink-0 items-center gap-2">
                 {app.foodEstablishmentCertUrl ? (
                   <>
-                    <Badge variant={getDocStatusBadge(app.foodEstablishmentCertStatus, t).variant}>
+                    <InfoChip variant={getDocStatusBadge(app.foodEstablishmentCertStatus, t).variant}>
                       {getDocStatusBadge(app.foodEstablishmentCertStatus, t).label}
-                    </Badge>
+                    </InfoChip>
                     <SecureDocumentLink
                       url={app.foodEstablishmentCertUrl}
                       fileName="Establishment Certificate"
@@ -329,9 +327,9 @@ function KitchenApplicationDetails({
                     />
                   </>
                 ) : (
-                  <Badge variant="outline" className="bg-muted">
+                  <InfoChip variant="outline">
                     {t("apptabNotUploaded", "Not Uploaded")}
-                  </Badge>
+                  </InfoChip>
                 )}
               </div>
             </div>
@@ -347,17 +345,15 @@ function KitchenApplicationDetails({
               <div className="flex h-6 w-6 items-center justify-center rounded-full bg-muted">
                 <span className="text-xs font-medium text-muted-foreground">2</span>
               </div>
-              <p className="text-sm font-bold text-foreground">{t("apptabStep2Title", "Step 2 - Additional Requirements")}</p>
+              <p className="text-sm font-bold text-foreground">{t("apptabStep2Title", "Additional Requirements")}</p>
               {(app as any).tier2_completed_at ? (
-                <Badge variant="success">
-                  <CheckCircle className="mr-1 h-3 w-3" />
+                <InfoChip variant="success" icon={<CheckCircle className="h-3 w-3" />}>
                   {t("apptabSubmittedOn", { date: new Date((app as any).tier2_completed_at).toLocaleDateString(i18n.language), defaultValue: "Submitted {date}" })}
-                </Badge>
+                </InfoChip>
               ) : currentStep === 2 ? (
-                <Badge variant="warning">
-                  <Clock className="mr-1 h-3 w-3" />
+                <InfoChip variant="warning" icon={<Clock className="h-3 w-3" />}>
                   {t("apptabInProgress", "In Progress")}
-                </Badge>
+                </InfoChip>
               ) : null}
             </div>
 
@@ -440,14 +436,14 @@ function KitchenApplicationDetails({
                     {step2Data.documents && Object.keys(step2Data.documents).length > 0 && (
                       <>
                         <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                          {t("apptabStep2Documents", "Step 2 Documents")}
+                          {t("apptabStep2Documents", "Documents")}
                         </p>
                         <div className="grid grid-cols-1 gap-3">
                           {Object.entries(step2Data.documents).map(
                             ([docKey, docValue]: [string, any]) => (
                               <div
                                 key={docKey}
-                                className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-card p-3"
+                                className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-card p-3"
                               >
                                 <div className="flex min-w-0 items-center gap-2">
                                   <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -463,9 +459,9 @@ function KitchenApplicationDetails({
                                     showIcon={false}
                                   />
                                 ) : (
-                                  <Badge variant="outline" className="bg-muted">
+                                  <InfoChip variant="outline">
                                     {t("apptabNotUploaded", "Not Uploaded")}
-                                  </Badge>
+                                  </InfoChip>
                                 )}
                               </div>
                             )
@@ -477,9 +473,9 @@ function KitchenApplicationDetails({
                 )}
               </div>
             ) : currentStep >= 2 && !hasStep2Data ? (
-              <div className="rounded-md border px-3 py-3">
+              <div className="rounded-xl border px-3 py-3">
                 <p className="text-sm text-muted-foreground">
-                  {t("apptabStep2Outstanding", "Step 2 is still outstanding. Complete it to get full kitchen access.")}
+                  {t("apptabStep2Outstanding", "Complete additional requirements to get full kitchen access.")}
                 </p>
               </div>
             ) : null}
@@ -507,16 +503,15 @@ function KitchenApplicationDetails({
               onBookKitchen(app.locationId, app.location?.name || t("apptabKitchenFallback", "Kitchen"), app.location?.address)
             }
           >
-            <Calendar className="mr-1 h-4 w-4" />
+            <BookNowIcon className="mr-1 h-4 w-4" />
             {t("apptabBookKitchen", "Book Kitchen")}
           </Button>
         )}
         {app.status === "approved" && currentStep < 3 &&
           (step2Submitted ? (
-            <Badge variant="outline" className="text-xs">
-              <FileCheck className="mr-1 h-3 w-3" />
-              {t("apptabStep2SubmittedAwaiting", "Step 2 submitted — awaiting manager review")}
-            </Badge>
+            <InfoChip variant="outline" icon={<FileCheck className="h-3 w-3" />}>
+              {t("apptabStep2SubmittedAwaiting", "Application submitted — awaiting manager review")}
+            </InfoChip>
           ) : (
             <Button variant="outline" size="sm" asChild>
               <Link href={`/kitchen-requirements/${app.locationId}`}>
@@ -570,9 +565,7 @@ export default function KitchenApplicationCard({
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <TruncatedText className="truncate font-medium">{kitchenName}</TruncatedText>
-                <Badge variant={toneToBadgeVariant(display.tone)} className="font-medium">
-                  {display.label}
-                </Badge>
+                <KitchenStatusChip display={display} />
               </div>
               <p className="mt-1 flex items-center gap-1 truncate text-sm text-muted-foreground">
                 <MapPin className="h-3 w-3 shrink-0" />
@@ -603,6 +596,7 @@ export default function KitchenApplicationCard({
                     )
                   }
                 >
+                  <BookNowIcon />
                   {t("apptabBook")}
                 </Button>
               )}
@@ -626,7 +620,7 @@ export default function KitchenApplicationCard({
           <SheetHeader className="pr-8 text-left">
             <div className="flex items-start gap-3">
               {imageUrl ? (
-                <div className="h-11 w-11 shrink-0 overflow-hidden rounded-md border">
+                <div className="h-11 w-11 shrink-0 overflow-hidden rounded-xl border">
                   <SmartImage
                     src={getR2ProxyUrl(imageUrl)}
                     alt={kitchenName}
@@ -634,16 +628,14 @@ export default function KitchenApplicationCard({
                   />
                 </div>
               ) : (
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-muted">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-muted">
                   <Building className="h-5 w-5 text-muted-foreground" />
                 </div>
               )}
               <div className="min-w-0 space-y-1">
                 <SheetTitle className="flex flex-wrap items-center gap-2">
                   <TruncatedText className="truncate">{kitchenName}</TruncatedText>
-                  <Badge variant={toneToBadgeVariant(display.tone)} className="font-medium">
-                    {display.label}
-                  </Badge>
+                  <KitchenStatusChip display={display} />
                 </SheetTitle>
                 <SheetDescription className="flex items-center gap-1">
                   <MapPin className="h-3 w-3 shrink-0" />

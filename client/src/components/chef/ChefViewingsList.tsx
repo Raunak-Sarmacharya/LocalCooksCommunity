@@ -13,7 +13,7 @@ import {
 } from "@tanstack/react-table";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { InfoChip } from "@/components/chef/info-chip";
 import {
   Table,
   TableBody,
@@ -122,9 +122,9 @@ function getTourColumns(
       cell: ({ row }) => {
         const badge = viewingStatusBadge(row.original.status);
         return (
-          <Badge variant={badge.variant} className="text-[10px] uppercase tracking-wide">
+          <InfoChip variant={badge.variant} className="uppercase tracking-wide">
             {t(badge.labelKey, badge.defaultLabel)}
-          </Badge>
+          </InfoChip>
         );
       },
     },
@@ -211,7 +211,7 @@ function TourDetailPanel({
       )}
 
       {tour.status === "pending" && (
-        <p className="text-amber-900 bg-amber-50 border border-amber-200/80 rounded-md px-2.5 py-1.5 text-xs sm:text-sm">
+        <p className="text-amber-900 bg-amber-50 border border-amber-200/80 rounded-xl px-2.5 py-1.5 text-xs sm:text-sm">
           {t(
             "tourListPendingNext",
             "Waiting for the kitchen to confirm. You’ll get an email when they approve this tour."
@@ -220,7 +220,7 @@ function TourDetailPanel({
       )}
 
       {tour.status === "confirmed" && (
-        <p className="text-emerald-950 bg-emerald-50 border border-emerald-200/80 rounded-md px-2.5 py-1.5 text-xs sm:text-sm">
+        <p className="text-emerald-950 bg-emerald-50 border border-emerald-200/80 rounded-xl px-2.5 py-1.5 text-xs sm:text-sm">
           {t(
             "tourListConfirmedNext",
             "Tour confirmed. Arrive on time — bring questions about equipment, storage, and access."
@@ -340,7 +340,7 @@ export default function ChefViewingsList({ onExploreKitchens }: { onExploreKitch
         )}
       </p>
 
-      <div className="rounded-md border overflow-x-auto">
+      <div className="rounded-xl border overflow-x-auto">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (

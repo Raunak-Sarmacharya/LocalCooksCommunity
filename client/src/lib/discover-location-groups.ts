@@ -2,7 +2,9 @@
 
 import {
   mergeEquipmentLists,
+  mergeEquipmentSummaries,
   mergeStorageSummaries,
+  type KitchenGridEquipmentSummary,
   type KitchenGridStorageSummary,
 } from "@/lib/kitchen-grid-card";
 
@@ -16,6 +18,7 @@ export type DiscoverKitchenLike = {
   imageUrl?: string | null;
   galleryImages?: string[];
   equipment?: string[];
+  equipmentSummary?: KitchenGridEquipmentSummary | null;
   hourlyRate?: number | null;
   currency?: string;
   minimumBookingHours?: number | null;
@@ -40,6 +43,7 @@ export type DiscoverLocationCard = {
   hourlyRate: number | null;
   /** Aggregated across all kitchens at this location. */
   equipment: string[];
+  equipmentSummary: KitchenGridEquipmentSummary;
   storageSummary: KitchenGridStorageSummary;
 };
 
@@ -88,6 +92,7 @@ export function groupKitchensByLocation(
       canAcceptBookings: group.some((k) => k.canAcceptBookings),
       hourlyRate,
       equipment: mergeEquipmentLists(group.map((k) => k.equipment)),
+      equipmentSummary: mergeEquipmentSummaries(group.map((k) => k.equipmentSummary)),
       storageSummary: mergeStorageSummaries(group.map((k) => k.storageSummary)),
     };
   });

@@ -216,15 +216,15 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
     if (status === 'inReview') return 'inReview';
 
     if (status === 'approved') {
-      // Step 2 needs review: tier=2 and tier2_completed_at is set
+      // Kitchen coordination submitted, awaiting manager review
       if (tier === 2 && app.tier2_completed_at) {
         return 'step2_review';
       }
-      // Step 1 approved, awaiting Step 2: tier=1
-      if (tier === 1) {
+      // Request to apply approved; kitchen coordination docs still needed (chat open)
+      if (tier === 1 || (tier === 2 && !app.tier2_completed_at)) {
         return 'step1_approved';
       }
-      // Fully approved: tier >= 3
+      // Manager approved kitchen coordination — ready to book
       if (tier >= 3) {
         return 'fully_approved';
       }

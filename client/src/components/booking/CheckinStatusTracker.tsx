@@ -22,7 +22,7 @@ import {
   LogIn,
 } from "lucide-react";
 import { auth } from "@/lib/firebase";
-import { Badge } from "@/components/ui/badge";
+import { InfoChip } from "@/components/chef/info-chip";
 import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
@@ -212,9 +212,9 @@ export function CheckinStatusTracker({
                         {step.label}
                       </span>
                       {step.state === "active" && (
-                        <Badge variant="outline" className="text-xs font-normal">
+                        <InfoChip variant="outline" className="font-normal">
                           In Progress
-                        </Badge>
+                        </InfoChip>
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">

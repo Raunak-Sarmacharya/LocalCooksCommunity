@@ -32,7 +32,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { InfoChip } from "@/components/chef/info-chip";
 import { Calendar } from "@/components/ui/calendar";
 import {
   Dialog,
@@ -555,7 +555,7 @@ export function ScheduleViewingWidget({
             if (calMetadata.fullyBookedDates?.includes(ds)) return true;
             return false;
           }}
-          className="rounded-md border"
+          className="rounded-xl border"
         />
       </div>
     </div>
@@ -682,7 +682,7 @@ export function ScheduleViewingWidget({
 
   const renderVerifyStep = () => (
     <div className="space-y-4">
-      <div className="rounded-xl border-2 border-[#F51042]/30 bg-[#F51042]/5 p-5 text-center space-y-3">
+      <div className="rounded-[1.35rem] border-2 border-[#F51042]/30 bg-[#F51042]/5 p-5 text-center space-y-3">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#F51042] text-white">
           <Mail className="h-6 w-6" aria-hidden />
         </div>
@@ -861,7 +861,7 @@ export function ScheduleViewingWidget({
           <h3 className="text-lg font-semibold">
             {t("kitchenTourRequested", "Kitchen Tour Requested")}
           </h3>
-          <Badge variant="success">{t("confirmed", "Confirmed")}</Badge>
+          <InfoChip variant="success">{t("confirmed", "Confirmed")}</InfoChip>
         </div>
         <p className="text-sm text-muted-foreground">
           {t("kitchenTourRequestedAwaitingApproval", {

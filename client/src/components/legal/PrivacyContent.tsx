@@ -23,7 +23,7 @@ export default function PrivacyContent() {
         We aim to comply with the <strong>Personal Information Protection and Electronic Documents Act (PIPEDA)</strong> and applicable privacy and consumer protection laws in Newfoundland & Labrador.
       </p>
       <p className="mb-4">
-        By creating an account, submitting documents, or making/accepting bookings on the Platform, you consent to the collection, use, and disclosure of your Personal Information as described in this Privacy Policy, except where otherwise permitted or required by law.
+        By creating an account, submitting documents, or making/Accepting Requests on the Platform, you consent to the collection, use, and disclosure of your Personal Information as described in this Privacy Policy, except where otherwise permitted or required by law.
       </p>
 
       <h2 className="text-2xl font-bold mt-8 mb-4">2. Who we are and how to contact us</h2>

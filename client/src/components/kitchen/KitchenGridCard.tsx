@@ -4,18 +4,19 @@ import { SmartImage } from "@/components/ui/smart-image";
 import { TruncatedText } from "@/components/common/TruncatedText";
 import { KitchenPhotoPlaceholder } from "@/components/kitchen/KitchenPhotoPlaceholder";
 import {
-  formatEquipmentLine,
+  formatEquipmentBreakdown,
   formatStorageLine,
+  type KitchenGridEquipmentSummary,
   type KitchenGridStorageSummary,
 } from "@/lib/kitchen-grid-card";
+import { CARD_RADIUS } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 
-export type { KitchenGridStorageSummary };
+export type { KitchenGridStorageSummary, KitchenGridEquipmentSummary };
 
-/** Match card `rounded-[1.35rem]` so the photo clips to the same corner radius. */
-const CARD_RADIUS = "rounded-[1.35rem]";
-const PHOTO_RADIUS = "rounded-[1.35rem]";
+/** Match Card / CARD_RADIUS so the photo clips to the same corner radius. */
+const PHOTO_RADIUS = CARD_RADIUS;
 
 type KitchenGridCardProps = {
   title: string;
@@ -23,7 +24,9 @@ type KitchenGridCardProps = {
   imageUrl?: string | null;
   /** Hourly rate in cents. */
   hourlyRateCents?: number | null;
+  /** @deprecated Prefer equipmentSummary for included/rental counts. */
   equipment?: string[];
+  equipmentSummary?: KitchenGridEquipmentSummary | null;
   storageSummary?: KitchenGridStorageSummary | null;
   /** Optional chip overlaid on the photo (status / open / coming soon). */
   overlayChip?: ReactNode;
@@ -53,7 +56,7 @@ export function KitchenGridCard({
   address,
   imageUrl,
   hourlyRateCents,
-  equipment,
+  equipmentSummary,
   storageSummary,
   overlayChip,
   onCardClick,
@@ -65,16 +68,19 @@ export function KitchenGridCard({
   const hasImage = !!imageUrl?.trim();
   const price = rateBadge(hourlyRateCents);
 
-  const storageLine = formatStorageLine(storageSummary, {
-    dry: t("gridCardStorageDry", "Dry"),
-    cold: t("gridCardStorageCold", "Cold"),
-    freezer: t("gridCardStorageFreezer", "Freezer"),
-    none: t("gridCardNone", "—"),
-  });
-  const equipmentLine = formatEquipmentLine(
-    equipment,
+  const storageLine = formatStorageLine(
+    storageSummary,
     t("gridCardNone", "—")
   );
+  const equipmentLine = formatEquipmentBreakdown(equipmentSummary, {
+    included: t("gridCardEquipmentIncluded", "included"),
+    rental: t("gridCardEquipmentRental", "rental"),
+    none: t("gridCardNone", "—"),
+  });
+  const equipmentTitle =
+    equipmentSummary && (equipmentSummary.included > 0 || equipmentSummary.rental > 0)
+      ? equipmentLine
+      : undefined;
 
   return (
     <article
@@ -108,25 +114,29 @@ export function KitchenGridCard({
             <KitchenPhotoPlaceholder className={PHOTO_RADIUS} />
           )}
 
-          {/* Status always top-left; price always top-right — positions never swap */}
+          {/* Status always top-left — price lives beside the title for scanability */}
           <div className="absolute left-3 top-3 z-10 min-h-7">{overlayChip}</div>
-          <div className="absolute right-3 top-3 z-10 min-h-7">
-            {price ? (
-              <span className="inline-flex rounded-full bg-white px-3 py-1 text-xs font-bold text-[#1A1A1A] shadow-sm">
-                {price}
-              </span>
-            ) : null}
-          </div>
         </div>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-4">
-        <TruncatedText
-          as="h3"
-          className="line-clamp-1 min-h-7 text-[1.05rem] font-bold leading-snug text-[#1A1A1A]"
-        >
-          {title || "\u00a0"}
-        </TruncatedText>
+        <div className="flex min-h-7 items-start gap-3">
+          <TruncatedText
+            as="h3"
+            className="min-w-0 flex-1 line-clamp-1 text-[1.05rem] font-bold leading-snug text-[#1A1A1A]"
+          >
+            {title || "\u00a0"}
+          </TruncatedText>
+          <span
+            className={cn(
+              "shrink-0 tabular-nums text-sm font-bold leading-snug text-[#F51042]",
+              !price && "invisible"
+            )}
+            aria-hidden={!price}
+          >
+            {price || "$0/hr"}
+          </span>
+        </div>
         <TruncatedText
           as="p"
           className="mt-1 line-clamp-1 min-h-5 truncate text-sm leading-relaxed text-[#8A8A8A]"
@@ -147,7 +157,10 @@ export function KitchenGridCard({
             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#9A8A80]">
               {t("gridCardEquipmentLabel", "Equipment")}
             </p>
-            <p className="mt-1 truncate text-sm font-medium text-[#2C2C2C]">
+            <p
+              className="mt-1 line-clamp-2 text-sm font-medium leading-snug text-[#2C2C2C]"
+              title={equipmentTitle}
+            >
               {equipmentLine}
             </p>
           </div>

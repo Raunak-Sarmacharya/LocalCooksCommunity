@@ -1404,5 +1404,8 @@
   "gridCardStorageFreezer": "Congélateur",
   "gridCardStorageLabel": "Entreposage",
   "gridCardVisualsSubtitle": "Photos de qualité bientôt disponibles",
-  "gridCardVisualsTitle": "Visuels en préparation"
+  "gridCardVisualsTitle": "Visuels en préparation",
+  "thingsToKnowViewPlatformTerms": "Voir les conditions de la plateforme",
+  "gridCardEquipmentIncluded": "inclus",
+  "gridCardEquipmentRental": "location"
 }

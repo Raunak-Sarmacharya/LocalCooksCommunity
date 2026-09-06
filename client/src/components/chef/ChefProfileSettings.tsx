@@ -272,10 +272,10 @@ export default function ChefProfileSettings() {
     return (
       <div className="mx-auto max-w-4xl space-y-6 pb-16">
         <div className="h-8 w-48 animate-pulse rounded bg-muted" />
-        <div className="h-44 animate-pulse rounded-2xl bg-muted" />
+        <div className="h-44 animate-pulse rounded-[1.35rem] bg-muted" />
         <div className="grid gap-4 lg:grid-cols-3">
-          <div className="h-64 animate-pulse rounded-2xl bg-muted lg:col-span-2" />
-          <div className="h-64 animate-pulse rounded-2xl bg-muted" />
+          <div className="h-64 animate-pulse rounded-[1.35rem] bg-muted lg:col-span-2" />
+          <div className="h-64 animate-pulse rounded-[1.35rem] bg-muted" />
         </div>
       </div>
     );
@@ -325,7 +325,7 @@ export default function ChefProfileSettings() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-        className="relative overflow-hidden rounded-2xl border bg-card"
+        className="relative overflow-hidden rounded-[1.35rem] border bg-card"
       >
         <div
           aria-hidden
@@ -596,7 +596,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border bg-card">
+    <div className="rounded-[1.35rem] border bg-card">
       <div className="flex items-start gap-3 border-b px-5 py-4 sm:px-6">
         {icon ? (
           <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border bg-primary/5">

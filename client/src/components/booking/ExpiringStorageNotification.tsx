@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { AlertTriangle, Package, CalendarPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { InfoChip } from "@/components/chef/info-chip";
 import { StorageExtensionDialog } from "./StorageExtensionDialog";
 import { getAuthHeaders } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -87,7 +87,7 @@ export function ExpiringStorageNotification() {
             <div
               key={booking.id}
               className={cn(
-                "rounded-lg border p-4",
+                "rounded-[1.35rem] border p-4",
                 booking.isExpired && "border-destructive/30"
               )}
             >
@@ -103,9 +103,9 @@ export function ExpiringStorageNotification() {
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="text-sm font-semibold">{title}</h3>
-                        <Badge variant={badgeVariant} className="text-xs">
+                        <InfoChip variant={badgeVariant}>
                           {booking.isExpired ? t('sbBadgeExpired') : booking.daysUntilExpiry === 0 ? t('sbBadgeToday') : t('sbBadgeDaysLeft', { count: booking.daysUntilExpiry })}
-                        </Badge>
+                        </InfoChip>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1"
                         dangerouslySetInnerHTML={{ __html: t('sbExtendBody', { kitchen: booking.kitchenName }) }}
@@ -124,9 +124,9 @@ export function ExpiringStorageNotification() {
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 text-xs text-muted-foreground">
                     <div className="flex items-center gap-1.5">
                       <span className="font-medium">{booking.storageName}</span>
-                      <Badge variant="outline" className="text-[10px] capitalize px-1.5 py-0">
+                      <InfoChip variant="outline" className="capitalize">
                         {booking.storageType}
-                      </Badge>
+                      </InfoChip>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <span>{t("sbEnds")}</span>

@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { InfoChip } from "@/components/chef/info-chip";
 import {
   Card,
   CardContent,
@@ -274,9 +274,9 @@ export default function ChefSellerAccount({ onOpenApplications }: ChefSellerAcco
                   <CardDescription className="mt-1">{t("sellerShopCardDesc")}</CardDescription>
                 </div>
               </div>
-              <Badge variant={hasShop ? "success" : "outline"} className="shrink-0 font-medium">
+              <InfoChip variant={hasShop ? "success" : "outline"} className="shrink-0">
                 {hasShop ? t("statusReady") : t("statusPending")}
-              </Badge>
+              </InfoChip>
             </div>
           </CardHeader>
           <CardContent className="flex-1 pt-0">
@@ -311,12 +311,12 @@ export default function ChefSellerAccount({ onOpenApplications }: ChefSellerAcco
                   <CardDescription className="mt-1">{t("stripeCardDesc")}</CardDescription>
                 </div>
               </div>
-              <Badge
+              <InfoChip
                 variant={stripeConnected ? "success" : hasShop ? "warning" : "outline"}
-                className="shrink-0 font-medium"
+                className="shrink-0"
               >
                 {stripeConnected ? t("statusConnected") : hasShop ? t("statusNotConnected") : t("statusPending")}
-              </Badge>
+              </InfoChip>
             </div>
           </CardHeader>
           <CardContent className="flex-1 pt-0">

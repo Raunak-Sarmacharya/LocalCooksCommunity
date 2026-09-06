@@ -172,7 +172,7 @@ export default function CompletionSummaryStep() {
         item.status === 'complete' || item.status === 'pending'
     );
     
-    // For accepting bookings: only fully complete items count
+    // For Accepting Requests: only fully complete items count
     const fullyCompletedRequired = requiredItems.filter(item => item.status === 'complete');
     
     // License status helpers

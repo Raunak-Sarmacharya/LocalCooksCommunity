@@ -9,7 +9,7 @@ import { useTranslation } from "react-i18next";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { InfoChip } from "@/components/chef/info-chip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, CreditCard, Package, Calendar, Building2 } from "lucide-react";
 import { format } from "date-fns";
@@ -134,9 +134,9 @@ export function PendingOverstayPenalties() {
           <CardTitle className="text-lg">
             {t("overstayPenaltiesTitle", "Outstanding Overstay Penalties")}
           </CardTitle>
-          <Badge variant="destructive" className="text-xs">
+          <InfoChip variant="destructive">
             {t("overstayPaymentRequired", "Payment required")}
-          </Badge>
+          </InfoChip>
         </div>
         <CardDescription>
           {t("overstayPenaltiesDesc", {
@@ -152,16 +152,16 @@ export function PendingOverstayPenalties() {
         {pendingPenalties.map((penalty) => (
           <div
             key={penalty.overstayId}
-            className="rounded-lg border p-4 space-y-3"
+            className="rounded-[1.35rem] border p-4 space-y-3"
           >
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <Package className="h-4 w-4 text-purple-600" />
                   <span className="font-medium">{penalty.storageName}</span>
-                  <Badge variant="outline" className="capitalize text-xs">
+                  <InfoChip variant="outline" className="capitalize">
                     {penalty.storageType}
-                  </Badge>
+                  </InfoChip>
                 </div>
 
                 <div className="flex items-center gap-4 text-sm text-muted-foreground">
@@ -181,12 +181,12 @@ export function PendingOverstayPenalties() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <Badge variant="destructive" className="text-xs">
+                  <InfoChip variant="destructive">
                     {t("overstayDaysOverdue", {
                       count: penalty.daysOverdue,
                       defaultValue: `${penalty.daysOverdue} day${penalty.daysOverdue !== 1 ? "s" : ""} overdue`,
                     })}
-                  </Badge>
+                  </InfoChip>
                 </div>
               </div>
 

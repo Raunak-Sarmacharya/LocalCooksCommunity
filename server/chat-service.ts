@@ -103,29 +103,31 @@ export async function sendSystemNotification(
 
     let content = '';
     switch (eventType) {
+      // New flow: request to apply → admin approves (chat opens) → kitchen coordination docs → manager approves booking
       case 'TIER1_APPROVED':
-        content = `✅ Request to apply approved: Your food handler certificate has been verified. You can now proceed to kitchen documents.`;
+        content = `Request to apply approved: Chat with your kitchen manager is now open. Upload your kitchen coordination documents to continue.`;
         break;
       case 'TIER1_REJECTED':
-        content = `❌ Request to apply was not approved: ${data?.reason || 'Your application did not meet the requirements.'}`;
+        content = `Request to apply was not approved: ${data?.reason || 'Your application did not meet the requirements.'}`;
         break;
       case 'TIER2_COMPLETE':
-        content = `✅ Step 2 Complete: All kitchen coordination requirements have been met. Your application is now fully approved.`;
+        content = `Kitchen coordination complete: You're approved to book this kitchen.`;
         break;
       case 'TIER3_SUBMITTED':
-        content = `📋 Step 3 Submitted: Your government application has been submitted. We'll notify you once it's approved.`;
+        content = `Kitchen coordination submitted: Your documents are with the kitchen manager for review.`;
         break;
       case 'TIER4_APPROVED':
-        content = `🎉 Step 4 Approved: Congratulations! Your license has been entered and you're fully approved to use the kitchen.`;
+        // Legacy event name; same outcome as kitchen coordination complete
+        content = `Kitchen coordination complete: You're approved to book this kitchen.`;
         break;
       case 'DOCUMENT_UPLOADED':
-        content = `📄 Document Uploaded: ${data?.fileName || 'A document'} has been uploaded for review.`;
+        content = `Document uploaded: ${data?.fileName || 'A document'} has been uploaded for review.`;
         break;
       case 'DOCUMENT_VERIFIED':
-        content = `✅ Document Verified: ${data?.documentName || 'Your document'} has been verified.`;
+        content = `Document verified: ${data?.documentName || 'Your document'} has been verified.`;
         break;
       case 'STATUS_CHANGED':
-        content = `📊 Status Changed: Application status updated to ${data?.status || 'new status'}.`;
+        content = `Status changed: Application status updated to ${data?.status || 'new status'}.`;
         break;
       default:
         content = data?.message || 'System notification';
@@ -249,7 +251,20 @@ export async function deleteConversation(conversationId: string): Promise<void> 
 }
 
 /**
- * Helper: Send tier transition notifications
+ * Map internal tier jumps to chat system events.
+ * User-facing phases: request to apply → kitchen coordination → ready to book.
+ */
+export function phaseTransitionEvent(fromTier: number, toTier: number): string | null {
+  if (toTier === 2 && fromTier === 1) return 'TIER1_APPROVED';
+  if (toTier >= 3 && fromTier < 3) return 'TIER2_COMPLETE';
+  if (toTier === 4) return 'TIER4_APPROVED';
+  return null;
+}
+
+/**
+ * Notify chat of application-phase transitions.
+ * Internal tier numbers stay for DB compatibility; user-facing copy uses:
+ * request to apply → kitchen coordination → ready to book.
  */
 export async function notifyTierTransition(
   applicationId: number,
@@ -266,13 +281,13 @@ export async function notifyTierTransition(
       .limit(1);
 
     if (!application) {
-      logger.error('Application not found for tier transition notification');
+      logger.error('Application not found for phase transition notification');
       return;
     }
 
     let conversationId = application.chat_conversation_id;
 
-    // Initialize conversation if it doesn't exist
+    // Chat opens when request-to-apply is approved (tier 1 → 2)
     if (!conversationId) {
       conversationId = await initializeConversation({
         id: applicationId,
@@ -280,24 +295,16 @@ export async function notifyTierTransition(
         locationId: application.locationId,
       });
       if (!conversationId) {
-        logger.error('Failed to initialize conversation for tier transition');
+        logger.error('Failed to initialize conversation for phase transition');
         return;
       }
     }
 
-    let eventType = '';
-    if (toTier === 2 && fromTier === 1) {
-      eventType = 'TIER1_APPROVED';
-    } else if (toTier === 3 && fromTier === 2) {
-      eventType = 'TIER2_COMPLETE';
-    } else if (toTier === 4) {
-      eventType = 'TIER4_APPROVED';
-    }
-
+    const eventType = phaseTransitionEvent(fromTier, toTier);
     if (eventType && conversationId) {
       await sendSystemNotification(conversationId, eventType, { reason });
     }
   } catch (error) {
-    logger.error('Error notifying tier transition:', error);
+    logger.error('Error notifying phase transition:', error);
   }
 }

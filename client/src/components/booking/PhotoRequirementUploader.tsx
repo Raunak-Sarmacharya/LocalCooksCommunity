@@ -13,7 +13,7 @@ import { Camera, Upload, X, Loader2, CheckCircle } from "lucide-react"
 import { toast } from "sonner"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { InfoChip } from "@/components/chef/info-chip"
 import { cn } from "@/lib/utils"
 import { getR2ProxyUrl } from "@/utils/r2-url-helper"
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload"
@@ -149,7 +149,7 @@ function SingleRequirementSlot({
   return (
     <div
       className={cn(
-        "rounded-lg border p-3 space-y-2 transition-colors",
+        "rounded-xl border p-3 space-y-2 transition-colors",
         hasPhotos ? "border-success/30 bg-success/10" : "border-border bg-background",
       )}
     >
@@ -164,14 +164,13 @@ function SingleRequirementSlot({
             </span>
           </p>
           {description && (
-            <p className="text-[11px] text-muted-foreground mt-0.5 ml-5">{description}</p>
+            <p className="text-xs text-muted-foreground mt-0.5 ml-5">{description}</p>
           )}
         </div>
         {hasPhotos && (
-          <Badge variant="success" className="text-[10px] shrink-0">
-            <CheckCircle className="h-2.5 w-2.5 mr-0.5" />
+          <InfoChip variant="success" icon={<CheckCircle className="h-2.5 w-2.5" />} className="shrink-0">
             {photos.length}/{max}
-          </Badge>
+          </InfoChip>
         )}
       </div>
 
@@ -183,7 +182,7 @@ function SingleRequirementSlot({
               <SmartImage
                 src={getR2ProxyUrl(url)}
                 alt={`${label} photo ${i + 1}`}
-                className="w-full h-16 object-cover rounded-md border"
+                className="w-full h-16 object-cover rounded-xl border"
               />
               <button
                 type="button"
@@ -203,7 +202,7 @@ function SingleRequirementSlot({
       {photos.length < max && (
         <div
           className={cn(
-            "border-2 border-dashed rounded-md p-2.5 transition-colors",
+            "border-2 border-dashed rounded-xl p-2.5 transition-colors",
             isUploading
               ? "border-primary"
               : hasPhotos
@@ -310,14 +309,13 @@ export function PhotoRequirementUploader({
           <Camera className="h-4 w-4" />
           {t("photosRequired", "Photos Required")}
         </Label>
-        <Badge
+        <InfoChip
           variant={completedRequired === totalRequired ? "success" : "outline"}
-          className="text-[10px]"
         >
           {completedRequired}/{totalRequired} {t("completed", "completed")}
-        </Badge>
+        </InfoChip>
       </div>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         {t("onePhotoRequiredPerItem", "One photo required per item. You can upload up to {max} per slot.", { max: MAX_PHOTOS_PER_REQUIREMENT })}
       </p>
       <div className="space-y-2">

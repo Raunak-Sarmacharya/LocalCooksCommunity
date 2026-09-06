@@ -41,3 +41,17 @@ export function useChefShellChrome(chrome: ChefShellChrome): boolean {
 export function useIsChefShell(): boolean {
   return React.useContext(ChefShellContext) != null;
 }
+
+const shellUiFallback: ChefShellContextValue = {
+  isChefShell: true,
+  setChrome: () => {},
+};
+
+/** Ensures CTA button styling inside ChefDashboardLayout even without the outer route shell. */
+export function ChefShellUiProvider({ children }: { children: React.ReactNode }) {
+  const existing = React.useContext(ChefShellContext);
+  if (existing) return <>{children}</>;
+  return (
+    <ChefShellContext.Provider value={shellUiFallback}>{children}</ChefShellContext.Provider>
+  );
+}

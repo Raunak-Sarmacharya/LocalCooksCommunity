@@ -2,10 +2,11 @@ import { logger } from "@/lib/logger";
 import { useState, useMemo, useEffect } from "react";
 import { Calendar, Clock, MapPin, X, CheckCircle, XCircle, AlertCircle, Building, ChevronDown, ChevronUp, Filter, Package, CalendarPlus, Search, ArrowUpDown, Download, Loader2, FileText } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { Badge } from "@/components/ui/badge";
+import { InfoChip } from "@/components/chef/info-chip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
 import { DEFAULT_TIMEZONE, isBookingUpcoming, isBookingPast, createBookingDateTime } from "@/utils/timezone-utils";
 import { useQuery } from "@tanstack/react-query";
 import { StorageExtensionDialog } from "./StorageExtensionDialog";
@@ -427,39 +428,30 @@ export default function BookingControlPanel({
   };
 
   const getStatusBadge = (status: string) => {
-    const config = {
+    const config: Record<string, { variant: "warning" | "success" | "destructive" | "outline"; icon: React.ReactNode; label: string }> = {
       pending: {
-        bg: "bg-yellow-100",
-        text: "text-yellow-800",
-        border: "border-yellow-300",
+        variant: "warning",
         icon: <Clock className="h-3 w-3" />,
         label: t("bkStatusPendingLabel"),
       },
       confirmed: {
-        bg: "bg-green-100",
-        text: "text-green-800",
-        border: "border-green-300",
+        variant: "success",
         icon: <CheckCircle className="h-3 w-3" />,
         label: t("bkStatusConfirmedLabel"),
       },
       cancelled: {
-        bg: "bg-red-100",
-        text: "text-red-800",
-        border: "border-red-300",
+        variant: "destructive",
         icon: <XCircle className="h-3 w-3" />,
         label: "Cancelled",
       },
     };
 
-    const statusConfig = config[status as keyof typeof config] || config.pending;
+    const statusConfig = config[status] || config.pending;
 
     return (
-      <div
-        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium ${statusConfig.bg} ${statusConfig.text} ${statusConfig.border}`}
-      >
-        {statusConfig.icon}
-        <span>{statusConfig.label}</span>
-      </div>
+      <InfoChip variant={statusConfig.variant} icon={statusConfig.icon}>
+        {statusConfig.label}
+      </InfoChip>
     );
   };
 
@@ -730,7 +722,7 @@ export default function BookingControlPanel({
       {isLoading ? (
         <div className="text-center py-12">
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <p className="text-gray-500 mt-3 text-sm">{t("bkLoadingBookings", "Loading bookings...")}</p>
+          <p className="text-muted-foreground mt-3 text-sm">{t("bkLoadingBookings", "Loading bookings...")}</p>
         </div>
       ) : (
         <div className="space-y-4 flex-1 overflow-y-auto pr-2 custom-scrollbar min-h-0">
@@ -738,7 +730,7 @@ export default function BookingControlPanel({
           {filteredBookings.length === 0 ? (
             <div className="text-center py-8">
               <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-500 font-medium mb-1">
+              <p className="text-muted-foreground font-medium mb-1">
                 {viewType === "upcoming"
                   ? t("bkNoUpcomingBookings", "No upcoming bookings")
                   : viewType === "past"
@@ -760,10 +752,10 @@ export default function BookingControlPanel({
                 {/* Group Header */}
                 {groupBy !== "none" && (
                   <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200 py-2 px-3 -mx-2">
-                    <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                    <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
                       <Calendar className="h-4 w-4" />
                       {translateGroupLabel(groupKey)}
-                      <span className="text-xs font-normal text-gray-500 ml-1">
+                      <span className="text-xs font-normal text-muted-foreground ml-1">
                         ({groupBookings.length})
                       </span>
                     </h3>
@@ -852,7 +844,7 @@ export default function BookingControlPanel({
                         </p>
                       </div>
 
-                      <div className="flex items-center gap-4 text-xs text-gray-600">
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
                         <div className="flex items-center gap-1">
                           <Calendar className="h-3 w-3" />
                           <span>{formatDate(booking.bookingDate)}</span>
@@ -940,7 +932,7 @@ export default function BookingControlPanel({
                       <div className="flex items-start gap-2">
                         <MapPin className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
                         <div>
-                          <p className="text-xs text-gray-500 mb-0.5">Location</p>
+                          <p className="text-xs text-muted-foreground mb-0.5">{bt("bcpLocation")}</p>
                           <p className="text-gray-900">{kitchenInfo.location}</p>
                         </div>
                       </div>
@@ -948,7 +940,7 @@ export default function BookingControlPanel({
                       <div className="flex items-start gap-2">
                         <Clock className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
                         <div>
-                          <p className="text-xs text-gray-500 mb-0.5">Scheduled Time</p>
+                          <p className="text-xs text-muted-foreground mb-0.5">{bt("bcpScheduledTime")}</p>
                           <p className="text-gray-900">
                             {formatDateTime(booking.bookingDate, booking.startTime)} -{" "}
                             {formatTime(booking.endTime)}
@@ -960,7 +952,7 @@ export default function BookingControlPanel({
                         <div className="flex items-start gap-2">
                           <AlertCircle className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
                           <div>
-                            <p className="text-xs text-gray-500 mb-0.5">Special Notes</p>
+                            <p className="text-xs text-muted-foreground mb-0.5">{bt("bcpSpecialNotes")}</p>
                             <p className="text-gray-900">{booking.specialNotes}</p>
                           </div>
                         </div>
@@ -969,7 +961,7 @@ export default function BookingControlPanel({
                       <div className="flex items-start gap-2">
                         <Calendar className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
                         <div>
-                          <p className="text-xs text-gray-500 mb-0.5">Created</p>
+                          <p className="text-xs text-muted-foreground mb-0.5">Created</p>
                           <p className="text-gray-900">
                             {new Date(booking.createdAt).toLocaleString("en-US", {
                               month: "short",
@@ -986,7 +978,7 @@ export default function BookingControlPanel({
                     {!canCancel && booking.status !== "cancelled" && isUpcoming && (
                       <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
                         <p className="text-xs text-yellow-800">
-                          <strong>Note:</strong> {booking.location?.cancellationPolicyMessage 
+                          <strong>{bt("bcpNoteLabel")}</strong> {booking.location?.cancellationPolicyMessage 
                             ?.replace('{hours}', (booking.location.cancellationPolicyHours ?? 24).toString())
                             ?? `Bookings cannot be cancelled within ${booking.location?.cancellationPolicyHours ?? 24} hours of the scheduled time.`}
                         </p>
@@ -1119,7 +1111,7 @@ export default function BookingControlPanel({
                             </p>
                           </div>
 
-                          <div className="flex items-center gap-4 text-xs text-gray-600">
+                          <div className="flex items-center gap-4 text-xs text-muted-foreground">
                             <div className="flex items-center gap-1">
                               <Building className="h-3 w-3" />
                               <span>{storageBooking.kitchenName}</span>
@@ -1163,7 +1155,7 @@ export default function BookingControlPanel({
                           <div className="flex items-start gap-2">
                             <Package className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
                             <div>
-                              <p className="text-xs text-gray-500 mb-0.5">Storage Type</p>
+                              <p className="text-xs text-muted-foreground mb-0.5">{bt("bcpStorageType")}</p>
                               <p className="text-gray-900 capitalize">{storageBooking.storageType}</p>
                             </div>
                           </div>
@@ -1171,7 +1163,7 @@ export default function BookingControlPanel({
                           <div className="flex items-start gap-2">
                             <Calendar className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
                             <div>
-                              <p className="text-xs text-gray-500 mb-0.5">Period</p>
+                              <p className="text-xs text-muted-foreground mb-0.5">Period</p>
                               <p className="text-gray-900">
                                 {format(new Date(storageBooking.startDate), "PPP")} - {format(endDate, "PPP")}
                               </p>
@@ -1181,7 +1173,7 @@ export default function BookingControlPanel({
                           <div className="flex items-start gap-2">
                             <Building className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
                             <div>
-                              <p className="text-xs text-gray-500 mb-0.5">Kitchen</p>
+                              <p className="text-xs text-muted-foreground mb-0.5">Kitchen</p>
                               <p className="text-gray-900">{storageBooking.kitchenName}</p>
                             </div>
                           </div>
@@ -1189,7 +1181,7 @@ export default function BookingControlPanel({
                           <div className="flex items-start gap-2">
                             <CheckCircle className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
                             <div>
-                              <p className="text-xs text-gray-500 mb-0.5">Total Storage Cost(Incl. Storage Extension)</p>
+                              <p className="text-xs text-muted-foreground mb-0.5">{bt("bcpTotalStorageCostInclExt")}</p>
                               <p className="text-gray-900">
                                 ${(storageBooking.totalPrice || 0).toFixed(2)} CAD
                               </p>
@@ -1202,7 +1194,7 @@ export default function BookingControlPanel({
                           <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                             <div className="flex items-center gap-2">
                               <CheckCircle className="h-4 w-4 text-green-600" />
-                              <span className="font-medium text-green-800">Overstay Penalty Resolved</span>
+                              <span className="font-medium text-green-800">{bt("bcpOverstayPenaltyResolved")}</span>
                             </div>
                             <p className="text-sm text-green-700 mt-1">
                               ${storageBooking.paidPenalty.amountDollars} CAD paid

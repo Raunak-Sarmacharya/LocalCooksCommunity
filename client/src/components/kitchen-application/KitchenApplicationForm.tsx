@@ -29,7 +29,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
+import { InfoChip } from "@/components/chef/info-chip";
 import { ChefPageHeader } from "@/components/chef/ui";
 import {
   Form,
@@ -1230,7 +1230,7 @@ export default function KitchenApplicationForm({
                       </span>
                     </div>
 
-                    <div className="rounded-lg border p-4 rounded-r-lg mb-6">
+                    <div className="rounded-[1.35rem] border p-4 mb-6">
                       <div className="flex gap-2">
                         <Info className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
                         <p className="text-sm text-muted-foreground">
@@ -1451,16 +1451,16 @@ export default function KitchenApplicationForm({
                       </span>
                     </div>
 
-                    <div className="rounded-lg border p-4">
+                    <div className="rounded-[1.35rem] border p-4">
                       <div className="flex gap-2">
                         <Check className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
                         <div className="text-sm text-muted-foreground">
                           <p className="mb-2 font-medium text-foreground">
-                            {t("docsRequiredForStep2Title", { defaultValue: "Documents will be requested in Step 2" })}
+                            {t("docsRequiredForStep2Title", { defaultValue: "Documents will be requested in the later steps" })}
                           </p>
                           <p>
                             {t("docsRequiredForStep2Desc", {
-                              defaultValue: "All chefs must upload a current Food Safety License (and any other documents this kitchen requires) in Step 2 after your request to apply is approved."
+                              defaultValue: "All chefs must upload a current Food Safety License (and any other documents this kitchen requires) in the later steps after your request to apply is approved."
                             })}
                           </p>
                         </div>
@@ -1792,7 +1792,7 @@ export default function KitchenApplicationForm({
                   <div className="space-y-4">
                     {/* Kitchen-specific Terms & Policies */}
                     {location.kitchenTermsUrl && (
-                      <div className="rounded-lg border p-4 mb-4">
+                      <div className="rounded-[1.35rem] border p-4 mb-4">
                         <div className="flex items-start gap-3">
                           <FileText className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
                           <div className="flex-1">
@@ -1874,24 +1874,24 @@ export default function KitchenApplicationForm({
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between mb-6 border-b pb-3">
                     <div>
-                      <h3 className="font-semibold">{t("step2KitchenCoordination", { defaultValue: "Step 2: Kitchen Coordination" })}</h3>
+                      <h3 className="font-semibold">{t("step2KitchenCoordination", { defaultValue: "Kitchen Coordination" })}</h3>
                       <p className="mt-1 text-sm text-muted-foreground">{t("uploadDocsCoordinate", { defaultValue: "Upload required documents and coordinate with the manager" })}</p>
                     </div>
-                    <Badge variant={application?.tier2_completed_at ? "success" : "outline"} className="font-medium">
+                    <InfoChip variant={application?.tier2_completed_at ? "success" : "outline"}>
                       {application?.tier2_completed_at ? t("submitted", { defaultValue: "Submitted" }) : t("inProgress", { defaultValue: "In progress" })}
-                    </Badge>
+                    </InfoChip>
                   </div>
 
                   {/* Show submitted confirmation when Tier 2 is already completed */}
                   {application?.tier2_completed_at ? (
                     <div className="space-y-4">
-                      <div className="rounded-lg border p-4">
+                      <div className="rounded-[1.35rem] border p-4">
                         <div className="flex items-center gap-3">
                           <Check className="h-6 w-6 text-success" />
                           <div>
                             <p className="font-medium">{t("docsSubmittedSuccessfully", { defaultValue: "Documents Submitted Successfully" })}</p>
                             <p className="text-sm text-muted-foreground mt-1">
-                              {t("step2DocsAwaitingReview", { defaultValue: "Your Step 2 documents have been submitted and are awaiting manager review." })}
+                              {t("step2DocsAwaitingReview", { defaultValue: "Your documents have been submitted and are awaiting manager review." })}
                             </p>
                           </div>
                         </div>
@@ -1917,7 +1917,7 @@ export default function KitchenApplicationForm({
                     </div>
                   ) : (
                     <div className="space-y-6">
-                      <div className="rounded-lg border p-4 mb-4">
+                      <div className="rounded-[1.35rem] border p-4 mb-4">
                         <p className="text-sm text-muted-foreground">
                           <strong>{t("note", { defaultValue: "Note:" })}</strong> {t("uploadDocsManagerWillShare", { defaultValue: "Upload the required documents below. The manager will share facility information via chat." })}
                         </p>
@@ -1950,7 +1950,7 @@ export default function KitchenApplicationForm({
                       {/* Food Safety License — mandatory on Step 2 (request-to-apply only asks yes/no).
                           Stored in foodSafetyLicenseUrl; distinct from establishment license / insurance. */}
                       <div>
-                        <div className="mb-6 rounded-lg border p-4">
+                        <div className="mb-6 rounded-[1.35rem] border p-4">
                           <div className="flex gap-2">
                             <Check className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
                             <p className="text-sm text-muted-foreground">

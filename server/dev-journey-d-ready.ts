@@ -801,7 +801,7 @@ export type JourneyFullChunkCReadyResult = {
 };
 
 /**
- * Chunk C prep (backend): manager tier-3 / Ready to book + kitchen ready + fixture revoke.
+ * Chunk C prep (backend): manager tier-3 / Book Now + kitchen ready + fixture revoke.
  * Does not create a booking — UI books via Stripe.
  */
 export async function prepareJourneyFullChunkCReady(): Promise<JourneyFullChunkCReadyResult> {

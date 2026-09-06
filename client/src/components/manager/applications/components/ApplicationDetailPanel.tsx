@@ -493,7 +493,7 @@ export function ApplicationDetailPanel({
                         <div className="flex-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                             {mt("awaitingAdminStep1Review", {
                                 defaultValue:
-                                    "Awaiting LocalCooks admin review of this request to apply. You can approve Step 2 once the chef submits kitchen documents.",
+                                    "Awaiting LocalCooks admin review of this request to apply. You can approve application once the chef submits kitchen documents.",
                             })}
                         </div>
                     )}

@@ -17,10 +17,19 @@ const TARGETS = ["fr-CA", "uk"];
 const MANAGER_PATH_RE =
   /(?:pages\/Manager|components\/manager|layouts\/DashboardLayout|layouts\/ManagerBookingLayout|components\/app-sidebar|components\/layout\/ManagerHeader|pages\/KitchenAvailability|pages\/StorageListing|pages\/EquipmentListing|pages\/KitchenPricing)/;
 
+const CHEF_PATH_RE =
+  /(?:components\/chef|layouts\/ChefDashboardLayout|layouts\/chef-shell|pages\/ApplicantDashboard|pages\/ApplyToKitchen|pages\/KitchenBookingPage|pages\/BookingDetailsPage|pages\/KitchenRequirementsPage|components\/booking|components\/kitchen-application|components\/document-verification|hooks\/use-chef)/;
+
 /** Legacy manager pages not wired in App.tsx — skip hardcoded-string audit */
 const MANAGER_LINT_SKIP = new Set([
   "client/src/pages/ManagerChefProfiles.tsx",
   "client/src/pages/ManagerPortalApplications.tsx",
+]);
+
+/** Manager-only payout tiles living under booking/ — skip chef hardcoded audit */
+const CHEF_LINT_SKIP = new Set([
+  "client/src/components/booking/BookingPricingBreakdown.tsx",
+  "client/src/components/chef/onboarding/BrandName.tsx",
 ]);
 
 function flatten(obj, prefix = "") {
@@ -175,7 +184,7 @@ verifyUsedKeys("chef", usedChefKeys);
 verifyUsedKeys("booking", usedBookingKeys);
 verifyUsedKeys("common", usedCommonKeys);
 
-// ── 3. Likely hardcoded visible strings in manager surfaces ───────────────
+// ── 3. Likely hardcoded visible strings in manager / chef surfaces ────────
 const jsxTextRe = />\s*([A-Za-z][^<{]{3,}?)\s*</g;
 const attrRe =
   /(?:title|description|label|placeholder|aria-label)=["']([A-Za-z][^"'{]{3,})["']/g;
@@ -183,6 +192,7 @@ const toastRe = /toast\(\{[^}]*?(?:title|description):\s*["']([A-Za-z][^"']{3,})
 
 const allowLiteral = new Set([
   "LocalCooks",
+  "Local Cooks",
   "CAD",
   "Stripe",
   "OK",
@@ -196,16 +206,16 @@ const allowLiteral = new Set([
   "EXT",
   "OP",
   "DC",
+  "HST",
+  "CSV",
 ]);
 
-for (const file of walk(clientRoot)) {
-  const rel = relative(repoRoot, file);
-  if (!MANAGER_PATH_RE.test(rel)) continue;
-  if (rel.includes(".test.")) continue;
-  if (MANAGER_LINT_SKIP.has(rel)) continue;
-
-  const text = readFileSync(file, "utf8");
-
+/**
+ * @param {string} rel
+ * @param {string} text
+ * @param {"manager" | "chef"} surface
+ */
+function auditHardcodedLiterals(rel, text, surface) {
   /** @type {Set<string>} */
   const hits = new Set();
   for (const re of [jsxTextRe, attrRe, toastRe]) {
@@ -220,18 +230,48 @@ for (const file of walk(clientRoot)) {
     }
   }
 
-  if (hits.size > 0 && !text.includes("useTranslation") && !text.includes('mt(') && !text.includes('from "@/i18n/manager"')) {
+  const hasI18n =
+    text.includes("useTranslation") ||
+    text.includes("mt(") ||
+    text.includes("ct(") ||
+    text.includes("bt(") ||
+    text.includes("kt(") ||
+    text.includes("tt(") ||
+    text.includes('from "@/i18n/manager"') ||
+    text.includes('from "@/i18n/chef-ns"') ||
+    text.includes('from "@/i18n/booking-ns"');
+
+  if (hits.size > 0 && !hasI18n) {
     const sample = [...hits].slice(0, 3).join(" | ");
     console.error(
-      `[hardcoded manager string] ${rel} — no useTranslation; e.g. ${sample}`
+      `[hardcoded ${surface} string] ${rel} — no useTranslation; e.g. ${sample}`
     );
     errors++;
-  } else if (hits.size > 20 && !text.includes('mt(') && !text.includes('useTranslation("manager")')) {
+  } else if (hits.size > 20 && surface === "manager" && !text.includes("mt(") && !text.includes('useTranslation("manager")')) {
     const sample = [...hits].slice(0, 3).join(" | ");
     console.error(
       `[hardcoded manager string] ${rel} — ${hits.size} likely literals; e.g. ${sample}`
     );
     errors++;
+  } else if (hits.size > 20 && surface === "chef" && !text.includes("ct(") && !text.includes("bt(") && !text.includes('useTranslation("chef")') && !text.includes('useTranslation("booking")') && !text.includes('useTranslation(["booking"')) {
+    const sample = [...hits].slice(0, 3).join(" | ");
+    console.error(
+      `[hardcoded chef string] ${rel} — ${hits.size} likely literals; e.g. ${sample}`
+    );
+    errors++;
+  }
+}
+
+for (const file of walk(clientRoot)) {
+  const rel = relative(repoRoot, file);
+  if (rel.includes(".test.")) continue;
+  const text = readFileSync(file, "utf8");
+
+  if (MANAGER_PATH_RE.test(rel) && !MANAGER_LINT_SKIP.has(rel)) {
+    auditHardcodedLiterals(rel, text, "manager");
+  }
+  if (CHEF_PATH_RE.test(rel) && !CHEF_LINT_SKIP.has(rel)) {
+    auditHardcodedLiterals(rel, text, "chef");
   }
 }
 

@@ -260,9 +260,9 @@ export function StorageExtensionDialog({
               </div>
             </div>
             <div className="mt-3 pt-3 border-t flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Daily Rate:</span>
+              <span className="text-muted-foreground">{t("sxDailyRateLabel")}</span>
               <span className="font-bold px-2 py-1 rounded border bg-muted/50">
-                ${((booking.basePrice || 0) / 100).toFixed(2)}/day
+                ${((booking.basePrice || 0) / 100).toFixed(2)}{t("sxPerDay")}
               </span>
             </div>
           </div>
@@ -272,8 +272,8 @@ export function StorageExtensionDialog({
             <div className="rounded-lg border border-warning/30 p-3 flex items-start gap-2">
               <Clock className="h-5 w-5 text-warning mt-0.5 flex-shrink-0" />
               <div className="text-sm">
-                <p className="font-semibold">Expiring {differenceInDays(currentEndDate, today) === 0 ? 'Today' : `in ${differenceInDays(currentEndDate, today)} day${differenceInDays(currentEndDate, today) !== 1 ? 's' : ''}`}</p>
-                <p className="text-muted-foreground">Extend now to keep your storage.</p>
+                <p className="font-semibold">{differenceInDays(currentEndDate, today) === 0 ? t("sxExpiringToday") : t("sxExpiringInDays", { count: differenceInDays(currentEndDate, today) })}</p>
+                <p className="text-muted-foreground">{t("sxExtendNowKeep")}</p>
               </div>
             </div>
           )}

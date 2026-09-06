@@ -7,6 +7,11 @@ export type KitchenGridStorageSummary = {
   totalStorageUnits: number;
 };
 
+export type KitchenGridEquipmentSummary = {
+  included: number;
+  rental: number;
+};
+
 /** Turn template ids / slugs into display names (e.g. commercial-oven → Commercial Oven). */
 export function resolveEquipmentLabel(raw: string): string {
   const value = raw.trim();
@@ -52,32 +57,37 @@ export function mergeEquipmentLists(lists: Array<string[] | null | undefined>): 
   return out;
 }
 
-/**
- * Storage line for cards.
- * Types first (Dry / Cold / Freezer); leftover types as +N.
- * Single type with multiple units → "Dry +2".
- */
+/** Sum included/rental counts across kitchens at one location. */
+export function mergeEquipmentSummaries(
+  summaries: Array<KitchenGridEquipmentSummary | null | undefined>
+): KitchenGridEquipmentSummary {
+  return {
+    included: summaries.reduce((n, s) => n + (s?.included ?? 0), 0),
+    rental: summaries.reduce((n, s) => n + (s?.rental ?? 0), 0),
+  };
+}
+
+/** Card line: "3 included + 2 rental". Omits a side when its count is 0. */
+export function formatEquipmentBreakdown(
+  summary: KitchenGridEquipmentSummary | null | undefined,
+  labels: { included: string; rental: string; none: string }
+): string {
+  const included = summary?.included ?? 0;
+  const rental = summary?.rental ?? 0;
+  if (included <= 0 && rental <= 0) return labels.none;
+  const parts: string[] = [];
+  if (included > 0) parts.push(`${included} ${labels.included}`);
+  if (rental > 0) parts.push(`${rental} ${labels.rental}`);
+  return parts.join(" + ");
+}
+
+/** Storage line for cards — unit count only. */
 export function formatStorageLine(
   summary: KitchenGridStorageSummary | null | undefined,
-  labels: { dry: string; cold: string; freezer: string; none: string }
+  noneLabel: string
 ): string {
-  if (!summary || summary.totalStorageUnits <= 0) return labels.none;
-  const types: string[] = [];
-  if (summary.hasDryStorage) types.push(labels.dry);
-  if (summary.hasColdStorage) types.push(labels.cold);
-  if (summary.hasFreezerStorage) types.push(labels.freezer);
-
-  if (types.length === 0) {
-    // Units exist but type flags missing — show count, not a blank em dash
-    return `${summary.totalStorageUnits}`;
-  }
-  if (types.length === 1) {
-    if (summary.totalStorageUnits > 1) {
-      return `${types[0]} +${summary.totalStorageUnits - 1}`;
-    }
-    return types[0];
-  }
-  return `${types[0]} +${types.length - 1}`;
+  if (!summary || summary.totalStorageUnits <= 0) return noneLabel;
+  return String(summary.totalStorageUnits);
 }
 
 /** First equipment item(s) + leftover count, e.g. "Commercial Oven, Range/Stove +5". */

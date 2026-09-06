@@ -4,7 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
   Building2,
-  Calendar,
   Check,
   ChefHat,
   Clock,
@@ -23,14 +22,17 @@ import {
   peekDiscoverKitchensWalkthroughRequest,
 } from "@/components/kitchen-application/DiscoverKitchensButtonTour";
 
-import { ChefPageHeader } from "@/components/chef/ui";
+import { ChefPageHeader, InfoChip } from "@/components/chef/ui";
 import {
   getKitchenDisplayStatus,
   kitchenLocationId,
-  toneToBadgeVariant,
 } from "@/components/chef/applications/status";
+import {
+  KitchenStatusChip,
+  acceptingRequestsIcon as AcceptingRequestsIcon,
+  bookNowIcon as BookNowIcon,
+} from "@/components/chef/applications/status-icons";
 import { KitchenGridCard } from "@/components/kitchen/KitchenGridCard";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -49,15 +51,16 @@ import { auth } from "@/lib/firebase";
 import { cn } from "@/lib/utils";
 import { tt } from "@/i18n/common-ns";
 
-/** Readable on photo overlays — same surface as price / Coming Soon chips. */
-const overlayChipClass =
-  "inline-flex items-center gap-1 rounded-full bg-background/95 px-3 py-1.5 text-xs font-medium shadow-sm";
-
 interface StorageSummary {
   hasDryStorage: boolean;
   hasColdStorage: boolean;
   hasFreezerStorage: boolean;
   totalStorageUnits: number;
+}
+
+interface EquipmentSummary {
+  included: number;
+  rental: number;
 }
 
 interface PublicKitchen {
@@ -67,6 +70,7 @@ interface PublicKitchen {
   imageUrl?: string | null;
   galleryImages?: string[];
   equipment?: string[];
+  equipmentSummary?: EquipmentSummary;
   hourlyRate?: number | null;
   currency?: string;
   minimumBookingHours?: number | null;
@@ -224,8 +228,8 @@ export default function KitchenDiscovery({
 
   const firstWalkthroughCardId = discoverLocationCards[0]?.locationId;
 
-  const kitchenStatusVariant = (status: string) =>
-    toneToBadgeVariant(getKitchenDisplayStatus({ status }, tChef).tone);
+  const kitchenStatusTone = (status: string) =>
+    getKitchenDisplayStatus({ status }, tChef).tone;
 
   const kitchenStatusLabel = (status: string) => getKitchenDisplayStatus({ status }, tChef).label;
 
@@ -262,11 +266,11 @@ export default function KitchenDiscovery({
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid grid-cols-2 gap-2 text-center">
-            <div className="rounded-lg border p-2">
+            <div className="rounded-xl border p-2">
               <p className="text-2xl font-semibold">{approvedCount}</p>
               <p className="text-xs text-muted-foreground">{t("applyFlowApprovedLabel", "Approved")}</p>
             </div>
-            <div className="rounded-lg border p-2">
+            <div className="rounded-xl border p-2">
               <p className="text-2xl font-semibold">{pendingCount}</p>
               <p className="text-xs text-muted-foreground">{t("applyFlowPendingLabel", "Pending")}</p>
             </div>
@@ -276,7 +280,7 @@ export default function KitchenDiscovery({
             {hasAnyApproved && (
               <Link href="/compare-kitchens">
                 <Button className={chefPrimaryCtaClass("w-full")} size="sm">
-                  <Calendar className="mr-2 h-4 w-4" />
+                  <BookNowIcon className="mr-2 h-4 w-4" />
                   {t("applyFlowBookAKitchenButton", "Book a Kitchen")}
                 </Button>
               </Link>
@@ -311,9 +315,9 @@ export default function KitchenDiscovery({
                     <span className="min-w-0 flex-1 truncate">
                       {app.location?.name || t("location", "Location")}
                     </span>
-                    <Badge variant={kitchenStatusVariant(app.status)} className="text-xs font-medium">
+                    <InfoChip tone={kitchenStatusTone(app.status)} className="shrink-0">
                       {kitchenStatusLabel(app.status)}
-                    </Badge>
+                    </InfoChip>
                   </div>
                 ))}
               </div>
@@ -352,7 +356,7 @@ export default function KitchenDiscovery({
               <button
                 type="button"
                 onClick={() => setActiveTab("approved")}
-                className="rounded-lg border px-3 py-2 text-center transition-colors hover:border-[#F51042]/40 hover:bg-[#F51042]/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]/30"
+                className="rounded-xl border px-3 py-2 text-center transition-colors hover:border-[#F51042]/40 hover:bg-[#F51042]/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]/30"
                 aria-label={t("applyFlowApprovedTabLabel", {
                   count: approvedCount,
                   defaultValue: `Approved (${approvedCount})`,
@@ -368,7 +372,7 @@ export default function KitchenDiscovery({
               <button
                 type="button"
                 onClick={() => setActiveTab("applications")}
-                className="rounded-lg border px-3 py-2 text-center transition-colors hover:border-[#F51042]/40 hover:bg-[#F51042]/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]/30"
+                className="rounded-xl border px-3 py-2 text-center transition-colors hover:border-[#F51042]/40 hover:bg-[#F51042]/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]/30"
                 aria-label={t("applyFlowMyApplicationsTabLabel", {
                   count: pendingCount,
                   defaultValue: `My Applications (${pendingCount})`,
@@ -384,7 +388,7 @@ export default function KitchenDiscovery({
               <button
                 type="button"
                 onClick={() => setActiveTab("tours")}
-                className="rounded-lg border px-3 py-2 text-center transition-colors hover:border-[#F51042]/40 hover:bg-[#F51042]/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]/30"
+                className="rounded-xl border px-3 py-2 text-center transition-colors hover:border-[#F51042]/40 hover:bg-[#F51042]/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]/30"
                 aria-label={t("applyFlowKitchenToursTab", "Kitchen Tours")}
               >
                 <p className="text-xl font-semibold leading-none">{activeTourCount}</p>
@@ -490,17 +494,15 @@ export default function KitchenDiscovery({
                 const openPreview = () => navigate(previewHref);
 
                 const overlayChip = display ? (
-                  <span className={overlayChipClass}>{display.label}</span>
+                  <KitchenStatusChip display={display} />
                 ) : card.canAcceptBookings ? (
-                  <span className={overlayChipClass}>
-                    <Check className="h-3 w-3 text-muted-foreground" />
-                    {t("applyFlowAcceptingBookings", "Open")}
-                  </span>
+                  <InfoChip tone="success" icon={<AcceptingRequestsIcon />}>
+                    {t("applyFlowAcceptingBookings", "Accepting Requests")}
+                  </InfoChip>
                 ) : (
-                  <span className={overlayChipClass}>
-                    <Clock className="h-3 w-3 text-muted-foreground" />
+                  <InfoChip tone="progress">
                     {t("applyFlowComingSoonBadge", "Coming Soon")}
-                  </span>
+                  </InfoChip>
                 );
 
                 return (
@@ -510,7 +512,7 @@ export default function KitchenDiscovery({
                       address={card.address}
                       imageUrl={kitchen.imageUrl}
                       hourlyRateCents={card.hourlyRate}
-                      equipment={card.equipment}
+                      equipmentSummary={card.equipmentSummary}
                       storageSummary={card.storageSummary}
                       overlayChip={overlayChip}
                       onCardClick={openPreview}
@@ -524,6 +526,7 @@ export default function KitchenDiscovery({
                               handleBookClick(card.locationId, card.locationSlug)
                             }
                           >
+                            <BookNowIcon className="mr-1.5 h-4 w-4" />
                             {t("applyFlowBookButton", "Book")}
                           </Button>
                         ) : (
@@ -583,12 +586,9 @@ export default function KitchenDiscovery({
                                 {app.location?.name ||
                                   t("applyFlowUnknownLocation", "Unknown Location")}
                               </h3>
-                              <Badge
-                                variant={kitchenStatusVariant(app.status)}
-                                className="font-medium"
-                              >
+                              <InfoChip tone={kitchenStatusTone(app.status)}>
                                 {kitchenStatusLabel(app.status)}
-                              </Badge>
+                              </InfoChip>
                             </div>
                             <TruncatedText
                               as="p"
@@ -618,7 +618,7 @@ export default function KitchenDiscovery({
                                   )
                                 }
                               >
-                                <Calendar className="mr-2 h-4 w-4" />
+                                <BookNowIcon className="mr-2 h-4 w-4" />
                                 {t("applyFlowBookButton", "Book")}
                               </Button>
                             )}
@@ -653,7 +653,7 @@ export default function KitchenDiscovery({
                         </div>
 
                         {app.feedback && app.status === "rejected" && (
-                          <div className="mt-3 rounded-lg border border-destructive/30 px-3 py-2 text-sm">
+                          <div className="mt-3 rounded-xl border border-destructive/30 px-3 py-2 text-sm">
                             <strong className="font-medium">
                               {t("applyFlowFeedbackLabel", "Feedback:")}
                             </strong>{" "}
@@ -723,7 +723,7 @@ export default function KitchenDiscovery({
                                     )
                                   }
                                 >
-                                  <Calendar className="mr-2 h-4 w-4" />
+                                  <BookNowIcon className="mr-2 h-4 w-4" />
                                   {t("applyFlowBookKitchenButton", "Book Kitchen")}
                                 </Button>
                               ) : (

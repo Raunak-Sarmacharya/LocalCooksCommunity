@@ -28,7 +28,7 @@ import {
   Lock,
   Info,
 } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
+import { InfoChip } from "@/components/chef/info-chip"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
@@ -336,12 +336,12 @@ export function KitchenCheckinTracker({
                           {step.label}
                         </span>
                         {step.state === "active" && (
-                          <Badge
+                          <InfoChip
                             variant="outline"
-                            className="text-xs font-normal"
+                            className="font-normal"
                           >
                             In Progress
-                          </Badge>
+                          </InfoChip>
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">
@@ -365,7 +365,7 @@ export function KitchenCheckinTracker({
               {/* Confirmed Checklist Audit (shown after check-in / checkout) */}
               {data?.checkinChecklistItems && Array.isArray(data.checkinChecklistItems) && data.checkinChecklistItems.length > 0 && (
                 <div className="rounded-lg border p-3 mb-4">
-                  <p className="text-xs font-medium mb-2">Your Check-In Checklist</p>
+                  <p className="text-xs font-medium mb-2">{t("kciCheckInChecklist")}</p>
                   <div className="space-y-1">
                     {data.checkinChecklistItems.map((item: { id: string; label: string; checked: boolean }, index: number) => (
                       <div key={item.id} className="flex items-center gap-2">
@@ -381,7 +381,7 @@ export function KitchenCheckinTracker({
               )}
               {data?.checkoutChecklistItems && Array.isArray(data.checkoutChecklistItems) && data.checkoutChecklistItems.length > 0 && (
                 <div className="rounded-lg border p-3 mb-4">
-                  <p className="text-xs font-medium mb-2">Your Check-Out Checklist</p>
+                  <p className="text-xs font-medium mb-2">{t("kciCheckoutChecklist")}</p>
                   <div className="space-y-1">
                     {data.checkoutChecklistItems.map((item: { id: string; label: string; checked: boolean }, index: number) => (
                       <div key={item.id} className="flex items-center gap-2">
@@ -404,7 +404,7 @@ export function KitchenCheckinTracker({
                   onClick={() => setShowCheckinForm(true)}
                 >
                   <LogIn className="h-4 w-4 mr-2" />
-                  Check In Now
+                  {t("bdCheckInNow")}
                 </Button>
               )}
 
@@ -413,7 +413,7 @@ export function KitchenCheckinTracker({
                   {/* Manager Instructions */}
                   {checklist?.checkinInstructions && (
                     <div className="rounded-lg border p-3">
-                      <p className="text-xs font-medium mb-1">Instructions from Manager</p>
+                      <p className="text-xs font-medium mb-1">{t("ciManagerInstructions")}</p>
                       <p className="text-xs text-muted-foreground whitespace-pre-line">{checklist.checkinInstructions}</p>
                     </div>
                   )}
@@ -431,7 +431,7 @@ export function KitchenCheckinTracker({
                       <div className="rounded-lg border p-3 space-y-2">
                         <div className="flex items-center gap-1.5">
                           <Lock className="size-3.5 text-muted-foreground" />
-                          <p className="text-xs font-medium">Smart Lock Access</p>
+                          <p className="text-xs font-medium">{t("kciSmartLockAccess")}</p>
                         </div>
                         {checklist?.smartLockCheckinInstructions && (
                           <p className="text-xs text-muted-foreground whitespace-pre-line">{checklist.smartLockCheckinInstructions}</p>
@@ -441,9 +441,9 @@ export function KitchenCheckinTracker({
                             <span className="text-lg font-mono font-bold tracking-[0.2em]">{accessCode}</span>
                           </div>
                         ) : accessCode && visibility === 'at_checkin' && !canCheckin ? (
-                          <p className="text-[11px] text-muted-foreground italic">Access code will be shown when check-in window opens</p>
+                          <p className="text-xs text-muted-foreground italic">{t("kciAccessCodeWhenWindowOpens")}</p>
                         ) : accessCode && visibility === 'manual' ? (
-                          <p className="text-[11px] text-muted-foreground italic">Contact your kitchen manager for the access code</p>
+                          <p className="text-xs text-muted-foreground italic">{t("kciContactManagerForAccessCode")}</p>
                         ) : null}
                       </div>
                     ) : null;
@@ -452,7 +452,7 @@ export function KitchenCheckinTracker({
                   {/* Checklist Items */}
                   {(checklist?.checkinItems || []).length > 0 && (
                     <div className="space-y-2">
-                      <Label className="text-sm font-medium">Checklist</Label>
+                      <Label className="text-sm font-medium">{t("kciChecklistLabel")}</Label>
                       {(checklist?.checkinItems || []).map((item: ChecklistItem, index: number) => (
                         <label key={item.id} className="flex items-start gap-2.5 p-2 rounded-lg border bg-background hover:bg-muted/50 cursor-pointer transition-colors">
                           <Checkbox
@@ -474,7 +474,7 @@ export function KitchenCheckinTracker({
                               {item.required && <span className="text-destructive ml-0.5">*</span>}
                             </span>
                             {item.description && (
-                              <p className="text-[11px] text-muted-foreground mt-0.5">{item.description}</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
                             )}
                           </div>
                         </label>
@@ -488,7 +488,7 @@ export function KitchenCheckinTracker({
                     photos={checkinPhotos}
                     onPhotosChange={setCheckinPhotos}
                     uploadFolder="kitchen-checkin"
-                    genericInstruction="Take photos of the kitchen before you start. This protects you from pre-existing damage claims."
+                    genericInstruction={t("kciCheckinPhotoInstruction")}
                     disabled={isCheckingIn}
                   />
 
@@ -538,7 +538,7 @@ export function KitchenCheckinTracker({
                   onClick={() => setShowCheckoutForm(true)}
                 >
                   <LogOut className="h-4 w-4 mr-2" />
-                  Request Checkout
+                  {t("kciRequestCheckoutBtn")}
                 </Button>
               )}
 
@@ -547,7 +547,7 @@ export function KitchenCheckinTracker({
                   {/* Manager Checkout Instructions */}
                   {checklist?.checkoutInstructions && (
                     <div className="rounded-lg border p-3">
-                      <p className="text-xs font-medium mb-1">Instructions from Manager</p>
+                      <p className="text-xs font-medium mb-1">{t("ciManagerInstructions")}</p>
                       <p className="text-xs text-muted-foreground whitespace-pre-line">{checklist.checkoutInstructions}</p>
                     </div>
                   )}
@@ -555,7 +555,7 @@ export function KitchenCheckinTracker({
                   {/* Checkout Checklist Items */}
                   {(checklist?.checkoutItems || []).length > 0 && (
                     <div className="space-y-2">
-                      <Label className="text-sm font-medium">Checkout Checklist</Label>
+                      <Label className="text-sm font-medium">{t("coChecklistLabel")}</Label>
                       {(checklist?.checkoutItems || []).map((item: ChecklistItem, index: number) => (
                         <label key={item.id} className="flex items-start gap-2.5 p-2 rounded-lg border bg-background hover:bg-muted/50 cursor-pointer transition-colors">
                           <Checkbox
@@ -577,7 +577,7 @@ export function KitchenCheckinTracker({
                               {item.required && <span className="text-destructive ml-0.5">*</span>}
                             </span>
                             {item.description && (
-                              <p className="text-[11px] text-muted-foreground mt-0.5">{item.description}</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
                             )}
                           </div>
                         </label>
@@ -785,10 +785,9 @@ function buildSteps(
       timestamp: data?.checkoutApprovedAt,
       icon: <FileWarning className="h-4 w-4" />,
       detail: (
-        <Badge variant="warning" className="text-xs font-normal mt-1">
-          <FileWarning className="h-3 w-3 mr-1" />
+        <InfoChip variant="warning" icon={<FileWarning className="h-3 w-3" />} className="font-normal mt-1">
           Check Damage Claims in your dashboard
-        </Badge>
+        </InfoChip>
       ),
     })
   } else {

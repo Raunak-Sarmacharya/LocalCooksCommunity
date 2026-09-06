@@ -42,6 +42,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { InfoChip } from "@/components/chef/info-chip"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTranslation } from "react-i18next"
 import type { TFunction } from "i18next"
@@ -441,32 +442,30 @@ const getChefBookingColumns = ({
       let checkinBadge: { label: string; variant: "success" | "warning" | "destructive" | "outline"; icon: React.ReactNode } | null = null
       if ((status === 'confirmed' || status === 'completed') && checkinStatus) {
         if (checkinStatus === 'checked_in') {
-          checkinBadge = { label: 'Checked In', variant: 'success', icon: <LogIn className="h-2.5 w-2.5" /> }
+          checkinBadge = { label: t("bdCiCheckedIn"), variant: 'success', icon: <LogIn className="h-2.5 w-2.5" /> }
         } else if (checkinStatus === 'checkout_requested') {
-          checkinBadge = { label: 'Checkout Pending Review', variant: 'warning', icon: <Clock className="h-2.5 w-2.5" /> }
+          checkinBadge = { label: t("bkStatusCheckoutPendingReview"), variant: 'warning', icon: <Clock className="h-2.5 w-2.5" /> }
         } else if (checkinStatus === 'checked_out') {
-          checkinBadge = { label: 'Checked Out', variant: 'success', icon: <CheckCircle className="h-2.5 w-2.5" /> }
+          checkinBadge = { label: t("bdCiCheckedOut"), variant: 'success', icon: <CheckCircle className="h-2.5 w-2.5" /> }
         } else if (checkinStatus === 'no_show') {
-          checkinBadge = { label: 'No-Show', variant: 'destructive', icon: <XCircle className="h-2.5 w-2.5" /> }
+          checkinBadge = { label: t("bdCiNoShow"), variant: 'destructive', icon: <XCircle className="h-2.5 w-2.5" /> }
         } else if (checkinStatus === 'checkout_claim_filed') {
-          checkinBadge = { label: 'Claim Filed', variant: 'warning', icon: <AlertTriangle className="h-2.5 w-2.5" /> }
+          checkinBadge = { label: t("bdCiClaimFiled"), variant: 'warning', icon: <AlertTriangle className="h-2.5 w-2.5" /> }
         }
       }
 
       return (
         <div className="flex flex-col gap-1">
           <div className="flex items-center">
-            <Badge variant={variant} className="items-center flex w-fit text-xs">
-              {icon}
+            <InfoChip variant={variant} icon={icon} className="w-fit">
               {label}
-            </Badge>
+            </InfoChip>
             {timeBadge}
           </div>
           {checkinBadge && (
-            <Badge variant={checkinBadge.variant} className="items-center flex w-fit text-xs gap-1">
-              {checkinBadge.icon}
+            <InfoChip variant={checkinBadge.variant} icon={checkinBadge.icon} className="w-fit">
               {checkinBadge.label}
-            </Badge>
+            </InfoChip>
           )}
           {isVoided && (
             <div className="flex items-center gap-1 text-xs text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded border border-border w-fit">
@@ -475,37 +474,32 @@ const getChefBookingColumns = ({
             </div>
           )}
           {isAuthHold && status === 'pending' && (
-            <Badge variant="outline" className="items-center flex w-fit text-xs gap-1 text-muted-foreground">
-              <Clock className="h-2.5 w-2.5" />
+            <InfoChip variant="outline" icon={<Clock className="h-2.5 w-2.5" />} className="w-fit">
               {t("bdPaymentHeldLower")}
-            </Badge>
+            </InfoChip>
           )}
           {/* Only show individual addon rejection badges when the booking itself was NOT fully voided.
               Full voided auth already communicates everything was rejected — individual badges would be redundant
               and misleading (implying kitchen was approved but specific addons were individually rejected). */}
           {!isVoided && rejectedStorageCount > 0 && (
-            <Badge variant="destructive" className="items-center flex w-fit text-xs gap-1">
-              <Package className="h-2.5 w-2.5" />
+            <InfoChip variant="destructive" icon={<Package className="h-2.5 w-2.5" />} className="w-fit">
               {t("storageDeclinedCount", { count: rejectedStorageCount })}
-            </Badge>
+            </InfoChip>
           )}
           {!isVoided && rejectedEquipmentCount > 0 && (
-            <Badge variant="destructive" className="items-center flex w-fit text-xs gap-1">
-              <Package className="h-2.5 w-2.5" />
+            <InfoChip variant="destructive" icon={<Package className="h-2.5 w-2.5" />} className="w-fit">
               {t("equipmentDeclinedCount", { count: rejectedEquipmentCount })}
-            </Badge>
+            </InfoChip>
           )}
           {pendingStorageCount > 0 && status === 'confirmed' && (
-            <Badge variant="warning" className="items-center flex w-fit text-xs gap-1">
-              <Package className="h-2.5 w-2.5" />
+            <InfoChip variant="warning" icon={<Package className="h-2.5 w-2.5" />} className="w-fit">
               {t("storagePendingCount", { count: pendingStorageCount })}
-            </Badge>
+            </InfoChip>
           )}
           {status === 'cancelled' && booking.paymentStatus === 'partially_refunded' && (
-            <Badge variant="warning" className="items-center flex w-fit text-xs gap-1">
-              <AlertTriangle className="h-2.5 w-2.5" />
+            <InfoChip variant="warning" icon={<AlertTriangle className="h-2.5 w-2.5" />} className="w-fit">
               {t("partialRefund")}
-            </Badge>
+            </InfoChip>
           )}
         </div>
       )
@@ -938,9 +932,9 @@ const getStorageBookingColumns = ({
     cell: ({ row }) => {
       const storageType = row.getValue("storageType") as string
       return (
-        <Badge variant="outline" className="capitalize">
+        <InfoChip variant="outline" className="capitalize">
           {storageType || 'Standard'}
-        </Badge>
+        </InfoChip>
       )
     },
   },
@@ -996,17 +990,15 @@ const getStorageBookingColumns = ({
       // Completed bookings — checkout cleared or claim filed
       if (status === 'completed' && checkoutStatus === 'checkout_claim_filed') {
         return (
-          <Badge variant="warning">
-            <AlertTriangle className="h-3 w-3 mr-1" />
+          <InfoChip variant="warning" icon={<AlertTriangle className="h-3 w-3" />}>
             {t("bkClaimFiled")}
-          </Badge>
+          </InfoChip>
         )
       } else if (status === 'completed') {
         return (
-          <Badge variant="success">
-            <CheckCircle className="h-3 w-3 mr-1" />
+          <InfoChip variant="success" icon={<CheckCircle className="h-3 w-3" />}>
             {t("bkCleared")}
-          </Badge>
+          </InfoChip>
         )
       // Cancelled bookings — distinguish by cause for intuitive labels
       // Industry standard: Expired (payment failed), Cancelled (chef-initiated), Declined (manager rejected)
@@ -1018,90 +1010,79 @@ const getStorageBookingColumns = ({
         const isManagerDeclined = parentKB && (parentKB.status === 'confirmed' || parentKB.paymentStatus === 'paid')
         if (isManagerDeclined) {
           return (
-            <Badge variant="outline" className="text-destructive border-destructive/30">
-              <XCircle className="h-3 w-3 mr-1" />
+            <InfoChip variant="destructive" icon={<XCircle className="h-3 w-3" />}>
               Declined
-            </Badge>
+            </InfoChip>
           )
         }
         // Payment auth expired or failed — never charged
         return (
-          <Badge variant="outline" className="bg-muted text-muted-foreground border-border">
-            <Clock className="h-3 w-3 mr-1" />
+          <InfoChip variant="outline" icon={<Clock className="h-3 w-3" />}>
             Expired
-          </Badge>
+          </InfoChip>
         )
       } else if (status === 'cancelled' && storageBooking.cancellationRequestedAt) {
         // Chef requested cancellation, manager accepted
         return (
-          <Badge variant="outline" className="bg-muted text-muted-foreground border-border">
-            <XCircle className="h-3 w-3 mr-1" />
+          <InfoChip variant="outline" icon={<XCircle className="h-3 w-3" />}>
             {t("bkStatusCancelled")}
-          </Badge>
+          </InfoChip>
         )
       } else if (status === 'cancelled' && storageBooking.paymentStatus === 'refunded') {
         // Cancelled and fully refunded
         return (
-          <Badge variant="outline" className="bg-muted text-muted-foreground border-border">
-            <XCircle className="h-3 w-3 mr-1" />
+          <InfoChip variant="outline" icon={<XCircle className="h-3 w-3" />}>
             {t("bkStatusRefunded")}
-          </Badge>
+          </InfoChip>
         )
       } else if (status === 'cancelled') {
         // Manager declined the booking (no chef cancellation request, payment was paid)
         return (
-          <Badge variant="outline" className="text-destructive border-destructive/30">
-            <XCircle className="h-3 w-3 mr-1" />
+          <InfoChip variant="destructive" icon={<XCircle className="h-3 w-3" />}>
             {t("bkStatusDeclined")}
-          </Badge>
+          </InfoChip>
         )
       } else if (status === 'cancellation_requested') {
         return (
-          <Badge variant="warning">
-            <Clock className="h-3 w-3 mr-1" />
+          <InfoChip variant="warning" icon={<Clock className="h-3 w-3" />}>
             {t("bkStatusCancellationPending")}
-          </Badge>
+          </InfoChip>
         )
       } else if (status === 'pending') {
         return (
-          <Badge variant="warning">
-            <Clock className="h-3 w-3 mr-1" />
+          <InfoChip variant="warning" icon={<Clock className="h-3 w-3" />}>
             {t("bkStatusPendingApproval")}
-          </Badge>
+          </InfoChip>
         )
       } else if (status === 'confirmed' && checkoutStatus === 'checkout_requested') {
         return (
-          <Badge variant="warning">
-            <Clock className="h-3 w-3 mr-1" />
+          <InfoChip variant="warning" icon={<Clock className="h-3 w-3" />}>
             {t("bkCheckoutUnderReview")}
-          </Badge>
+          </InfoChip>
         )
       } else if (status === 'confirmed' && checkoutStatus === 'checkout_approved') {
         return (
-          <Badge variant="success">
-            <CheckCircle className="h-3 w-3 mr-1" />
+          <InfoChip variant="success" icon={<CheckCircle className="h-3 w-3" />}>
             {t("bkCheckoutApproved")}
-          </Badge>
+          </InfoChip>
         )
       } else if (status === 'confirmed' && checkoutStatus === 'active') {
         return (
-          <Badge variant="success">
-            <CheckCircle className="h-3 w-3 mr-1" />
+          <InfoChip variant="success" icon={<CheckCircle className="h-3 w-3" />}>
             {t("bkActive")}
-          </Badge>
+          </InfoChip>
         )
       } else if (status === 'confirmed') {
         return (
-          <Badge variant="success">
-            <CheckCircle className="h-3 w-3 mr-1" />
+          <InfoChip variant="success" icon={<CheckCircle className="h-3 w-3" />}>
             {t("bkStatusConfirmed")}
-          </Badge>
+          </InfoChip>
         )
       }
       return (
-        <Badge variant="outline" className="capitalize">
+        <InfoChip variant="outline" className="capitalize">
           {status}
-        </Badge>
+        </InfoChip>
       )
     },
   },
@@ -1731,7 +1712,7 @@ export default function ChefBookingsView({
 
       {/* ── Check-In Action Banner ──────────────────────────────────────── */}
       {needsCheckinBookings.length > 0 && (
-        <div className="rounded-lg border p-4">
+        <div className="rounded-[1.35rem] border p-4">
           <div className="flex items-start gap-3">
             <LogIn className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
@@ -1766,7 +1747,7 @@ export default function ChefBookingsView({
 
       {/* ── Check-Out Action Banner ─────────────────────────────────────── */}
       {needsCheckoutBookings.length > 0 && (
-        <div className="rounded-lg border p-4">
+        <div className="rounded-[1.35rem] border p-4">
           <div className="flex items-start gap-3">
             <LogOut className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
@@ -1802,7 +1783,7 @@ export default function ChefBookingsView({
 
       {/* ── Storage Check-In Action Banner (only when not checked in) ──── */}
       {needsStorageCheckin.length > 0 && (
-        <div className="rounded-lg border p-4">
+        <div className="rounded-[1.35rem] border p-4">
           <div className="flex items-start gap-3">
             <Package className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
@@ -1832,7 +1813,7 @@ export default function ChefBookingsView({
 
       {/* ── Storage Check-Out Action Banner (only after check-in completed) ── */}
       {needsStorageCheckout.length > 0 && (
-        <div className="rounded-lg border p-4">
+        <div className="rounded-[1.35rem] border p-4">
           <div className="flex items-start gap-3">
             <LogOut className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
@@ -1973,7 +1954,7 @@ export default function ChefBookingsView({
           <Separator />
 
           {/* Table */}
-          <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+          <div className="rounded-xl border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
             <Table>
               <TableHeader>
                 {table.getHeaderGroups().map((headerGroup) => (
@@ -2083,7 +2064,7 @@ export default function ChefBookingsView({
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+            <div className="rounded-xl border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
               <Table>
                 <TableHeader>
                   {storageTable.getHeaderGroups().map((headerGroup) => (

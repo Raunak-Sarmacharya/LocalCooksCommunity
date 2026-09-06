@@ -26,6 +26,7 @@ function kitchen(
       imageUrl: null,
       hourlyRate: 5000,
       equipment: ["fryer"],
+      equipmentSummary: { included: 1, rental: 0 },
       storageSummary: {
         hasDryStorage: false,
         hasColdStorage: true,
@@ -40,6 +41,7 @@ function kitchen(
       imageUrl: "https://img/b.jpg",
       hourlyRate: 3000,
       equipment: ["commercial-oven"],
+      equipmentSummary: { included: 0, rental: 2 },
       storageSummary: {
         hasDryStorage: true,
         hasColdStorage: false,
@@ -57,6 +59,7 @@ function kitchen(
   assert.equal(cards[0].hourlyRate, 3000); // min rate
   // Aggregates inventory from ALL kitchens at the location (not just display kitchen)
   assert.deepEqual(cards[0].equipment, ["Deep Fryer", "Commercial Oven"]);
+  assert.deepEqual(cards[0].equipmentSummary, { included: 1, rental: 2 });
   assert.deepEqual(cards[0].storageSummary, {
     hasDryStorage: true,
     hasColdStorage: true,
@@ -66,6 +69,7 @@ function kitchen(
   assert.equal(cards[1].locationId, 20);
   assert.equal(cards[1].kitchenCount, 1);
   assert.deepEqual(cards[1].equipment, []);
+  assert.deepEqual(cards[1].equipmentSummary, { included: 0, rental: 0 });
   assert.equal(cards[1].storageSummary.totalStorageUnits, 0);
 }
 

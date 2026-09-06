@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { InfoChip } from "@/components/chef/info-chip";
 import {
   Card,
   CardContent,
@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { ArrowLeft } from "lucide-react";
 import DocumentUpload from "@/components/document-verification/DocumentUpload";
 import { ChefPageHeader, QuietNotice } from "@/components/chef/ui";
-import { documentToneFromLabel, toneToBadgeVariant } from "@/components/chef/applications/status";
+import { documentToneFromLabel } from "@/components/chef/applications/status";
 import { useTranslation } from "react-i18next";
 
 interface DocumentVerificationData {
@@ -80,9 +80,9 @@ export default function DocumentVerificationView({
               <CardTitle className="text-base">{t("dvStatusLabel")}</CardTitle>
               <CardDescription>{t("dvStatusDesc")}</CardDescription>
             </div>
-            <Badge variant={toneToBadgeVariant(documentToneFromLabel(overallLabel))} className="font-medium">
+            <InfoChip tone={documentToneFromLabel(overallLabel)}>
               {overallLabel}
-            </Badge>
+            </InfoChip>
           </div>
         </CardHeader>
         <CardContent>

@@ -23,7 +23,7 @@ import {
   Timer,
 } from "lucide-react";
 import { auth } from "@/lib/firebase";
-import { Badge } from "@/components/ui/badge";
+import { InfoChip } from "@/components/chef/info-chip";
 import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
@@ -219,12 +219,12 @@ export function CheckoutStatusTracker({
                         {step.label}
                       </span>
                       {step.state === "active" && (
-                        <Badge
+                        <InfoChip
                           variant="outline"
-                          className="text-xs font-normal"
+                          className="font-normal"
                         >
                           In Progress
-                        </Badge>
+                        </InfoChip>
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">
@@ -298,15 +298,15 @@ function buildSteps(
     const deadlineDate = new Date(data.reviewDeadline);
     const expired = data.isReviewExpired || isPast(deadlineDate);
     reviewDetail = (
-      <Badge
+      <InfoChip
         variant={expired ? "warning" : "outline"}
-        className="text-xs font-normal"
+        icon={<Timer className="h-3 w-3" />}
+        className="font-normal"
       >
-        <Timer className="h-3 w-3 mr-1" />
         {expired
           ? t("costReviewExpired", "Review period expired")
           : `${t("costReviewDeadline", "Review deadline: ")}${format(deadlineDate, "MMM d, h:mm a")}`}
-      </Badge>
+      </InfoChip>
     );
   }
 
@@ -344,13 +344,13 @@ function buildSteps(
       timestamp: data?.checkoutApprovedAt,
       icon: <FileWarning className="h-4 w-4" />,
       detail: (
-        <Badge
+        <InfoChip
           variant="warning"
-          className="text-xs font-normal mt-1"
+          icon={<FileWarning className="h-3 w-3" />}
+          className="font-normal mt-1"
         >
-          <FileWarning className="h-3 w-3 mr-1" />
           Check Damage Claims in your dashboard
-        </Badge>
+        </InfoChip>
       ),
     });
   } else {

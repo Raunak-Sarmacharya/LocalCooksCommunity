@@ -1,12 +1,23 @@
 import type { ReactNode } from "react";
 import { Info } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
+import { CARD_RADIUS } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { TruncatedText } from "@/components/common/TruncatedText";
 import type { StatusTone } from "@/components/chef/applications/status";
-import { applicationStatusVariant, toneToBadgeVariant } from "@/components/chef/applications/status";
+import { applicationStatusVariant } from "@/components/chef/applications/status";
 import type { StatusVariant } from "@/components/chef/dashboard/types";
+import { InfoChip } from "@/components/chef/info-chip";
+
+export {
+  InfoChip,
+  infoChipClassName,
+  infoChipIconClass,
+  statusVariantToTone,
+  defaultInfoChipIcon,
+  sanitizeInfoChipIconClass,
+  prepareInfoChipIcon,
+} from "@/components/chef/info-chip";
 
 export function StatusDot({ tone, className }: { tone: StatusTone; className?: string }) {
   return (
@@ -60,7 +71,7 @@ export function QuietNotice({
   className?: string;
 }) {
   return (
-    <div className={cn("rounded-lg border px-4 py-3", className)}>
+    <div className={cn(CARD_RADIUS, "border px-4 py-3", className)}>
       {title ? <p className="text-sm font-medium">{title}</p> : null}
       <div className={cn("text-sm text-muted-foreground", title && "mt-1")}>{children}</div>
     </div>
@@ -81,7 +92,7 @@ export function StatTile({
   tooltip?: string;
 }) {
   return (
-    <div className="rounded-lg border bg-card p-4">
+    <div className={cn(CARD_RADIUS, "border bg-card p-4")}>
       <div className="flex items-center gap-2">
         <TruncatedText className="min-w-0 truncate text-xs text-muted-foreground">{label}</TruncatedText>
         {tooltip ? (
@@ -137,14 +148,17 @@ export function kitchenStatusLabel(status: string): string {
 export function StatusBadge({
   tone,
   children,
+  icon,
 }: {
   tone: StatusTone;
   children: ReactNode;
+  /** Optional custom icon; tone default used when omitted/null. Color+size always enforced. */
+  icon?: ReactNode | null;
 }) {
   return (
-    <Badge variant={toneToBadgeVariant(tone)} className="font-medium">
+    <InfoChip tone={tone} icon={icon ?? undefined}>
       {children}
-    </Badge>
+    </InfoChip>
   );
 }
 

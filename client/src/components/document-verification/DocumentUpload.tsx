@@ -1,6 +1,6 @@
 import { logger } from "@/lib/logger";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
+import { InfoChip } from "@/components/chef/info-chip";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -163,7 +163,7 @@ function DocumentUploadModal({
         <div className="space-y-6">
           {/* Current Document Display */}
           {currentDocumentUrl && (
-            <div className="rounded-lg border px-4 py-3">
+            <div className="rounded-[1.35rem] border px-4 py-3">
               <p className="text-sm font-medium mb-2">{t("duCurrentDocument")}</p>
               <div className="flex items-center gap-2">
                 <FileText className="h-4 w-4 text-muted-foreground" />
@@ -419,10 +419,9 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
     const Icon = config.icon;
 
     return (
-      <Badge variant={config.variant}>
-        <Icon className="w-3 h-3 mr-1" />
+      <InfoChip variant={config.variant} icon={<Icon className="w-3 h-3" />}>
         {config.text}
-      </Badge>
+      </InfoChip>
     );
   };
 
@@ -545,7 +544,7 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
                   <div className="flex items-center gap-3">
                     <FileText className="h-5 w-5 text-muted-foreground" />
                     <div>
-                      <p className="font-medium">Food Establishment Certificate</p>
+                      <p className="font-medium">{t("duEstablishmentTitle")}</p>
                       <p className="text-sm text-muted-foreground">
                         {getFileDisplayName(verification.foodEstablishmentCertUrl)}
                       </p>

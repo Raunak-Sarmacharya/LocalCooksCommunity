@@ -26,7 +26,7 @@ export function OverviewSkeleton() {
         {Array.from({ length: 2 }).map((_, i) => (
           <Card key={i} className="overflow-hidden shadow-none">
             <CardContent className="p-3 pb-0">
-              <Skeleton className="h-40 w-full rounded-md sm:h-48" />
+              <Skeleton className="h-40 w-full rounded-[1.35rem] sm:h-48" />
             </CardContent>
             <CardHeader className="pb-3">
               <Skeleton className="h-5 w-40" />

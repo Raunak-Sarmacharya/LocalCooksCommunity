@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { InfoChip } from "@/components/chef/info-chip";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -169,7 +170,7 @@ function getStatusBadge(status: string, t: TFunction<'chef'>) {
 
   const config = statusConfig[status] || { variant: "outline" as const, labelKey: status };
   const label = statusConfig[status] ? String(t(config.labelKey as never)) : status;
-  return <Badge variant={config.variant}>{label}</Badge>;
+  return <InfoChip variant={config.variant}>{label}</InfoChip>;
 }
 
 function getEvidenceTypeLabel(type: string, t: TFunction<'chef'>): string {
@@ -249,11 +250,11 @@ function ResponseDialog({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>{isResolved ? 'Damage Claim Details' : 'Respond to Damage Claim'}</SheetTitle>
+          <SheetTitle>{isResolved ? t("dcDetailsTitle") : t("dcRespondTitle")}</SheetTitle>
           <SheetDescription>
             {isResolved 
-              ? 'View the details of this resolved damage claim.'
-              : 'Review the claim details and evidence, then choose to accept or dispute.'}
+              ? t("dcDetailsResolvedDesc")
+              : t("dcRespondDesc")}
           </SheetDescription>
         </SheetHeader>
 
@@ -264,8 +265,7 @@ function ResponseDialog({
             <AlertTitle>{t("dcStatusEscalated")}</AlertTitle>
             <AlertDescription>
               <p className="mb-3">
-                We were unable to automatically charge your saved payment method for this damage claim.
-                Please pay {formatCurrency(claim.finalAmountCents || claim.claimedAmountCents)} to resolve this claim.
+                {t("dcEscalatedPayBody", { amount: formatCurrency(claim.finalAmountCents || claim.claimedAmountCents) })}
               </p>
               <Button
                 size="sm"
@@ -280,7 +280,7 @@ function ResponseDialog({
                       window.location.href = data.checkoutUrl;
                     }
                   } catch (error: unknown) {
-                    const message = error instanceof Error ? error.message : 'Failed to start payment';
+                    const message = error instanceof Error ? error.message : t("dcPayFailed");
                     toast({ title: t("dcPaymentErrorTitle"), description: message, variant: "destructive" });
                     setIsPaying(false);
                   }
@@ -302,21 +302,21 @@ function ResponseDialog({
           <Alert className={claim.status === 'charge_succeeded' ? 'border-success/30' : 'border-border'}>
             <CheckCircle className={`h-4 w-4 ${claim.status === 'charge_succeeded' ? 'text-success' : 'text-muted-foreground'}`} />
             <AlertTitle>
-              {claim.status === 'charge_succeeded' ? 'Payment Completed' : 
-               claim.status === 'rejected' ? 'Claim Rejected' :
-               claim.status === 'expired' ? 'Claim Expired' :
+              {claim.status === 'charge_succeeded' ? t("dcPaymentCompleted") : 
+               claim.status === 'rejected' ? t("dcClaimRejectedTitle") :
+               claim.status === 'expired' ? t("dcClaimExpiredTitle") :
                claim.status === 'charge_failed' ? t("shellStatusPaymentFailed") : t("dcClaimResolved")}
             </AlertTitle>
             <AlertDescription className="text-muted-foreground">
               {claim.status === 'charge_succeeded' 
-                ? `Your card was charged ${formatCurrency(claim.finalAmountCents || claim.claimedAmountCents)} for this damage claim.`
+                ? t("dcCardChargedBody", { amount: formatCurrency(claim.finalAmountCents || claim.claimedAmountCents) })
                 : claim.status === 'rejected'
-                ? 'This claim was rejected by the admin. No payment was required.'
+                ? t("dcRejectedByAdminBody")
                 : claim.status === 'expired'
-                ? 'This claim expired without a response.'
+                ? t("dcExpiredNoResponseBody")
                 : claim.status === 'charge_failed'
-                ? 'The payment attempt failed. Please contact support.'
-                : 'This claim has been resolved.'}
+                ? t("dcChargeFailedBody")
+                : t("dcResolvedGenericBody")}
             </AlertDescription>
           </Alert>
         )}
@@ -325,9 +325,9 @@ function ResponseDialog({
         {!isResolved && !isExpired && hoursRemaining <= 24 && (
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>Response Deadline Approaching</AlertTitle>
+            <AlertTitle>{t("dcDeadlineApproachingTitle")}</AlertTitle>
             <AlertDescription>
-              You have {hoursRemaining} hours to respond. If you don&apos;t respond, the claim may be automatically approved.
+              {t("dcDeadlineApproachingBody", { hours: hoursRemaining })}
             </AlertDescription>
           </Alert>
         )}
@@ -335,29 +335,29 @@ function ResponseDialog({
         {!isResolved && isExpired && (
           <Alert variant="destructive">
             <XCircle className="h-4 w-4" />
-            <AlertTitle>Response Deadline Passed</AlertTitle>
+            <AlertTitle>{t("dcDeadlinePassedTitle")}</AlertTitle>
             <AlertDescription>
-              The response deadline has passed. Please contact support if you believe this is an error.
+              {t("dcDeadlinePassedBody")}
             </AlertDescription>
           </Alert>
         )}
 
         {/* Claim Details */}
         <div className="space-y-4">
-          <div className="bg-muted p-4 rounded-lg space-y-2">
+          <div className="bg-muted p-4 rounded-xl space-y-2">
             <h4 className="font-semibold">{claim.claimTitle}</h4>
             <p className="text-sm text-muted-foreground">{claim.claimDescription}</p>
             <div className="flex flex-wrap gap-4 text-sm">
-              <span><strong>Amount:</strong> {formatCurrency(claim.claimedAmountCents)}</span>
-              <span><strong>Damage Date:</strong> {format(new Date(claim.damageDate), 'MMM d, yyyy')}</span>
-              <span><strong>Location:</strong> {claim.locationName || 'Unknown'}</span>
+              <span><strong>{t("dcAmountLabel")}</strong> {formatCurrency(claim.claimedAmountCents)}</span>
+              <span><strong>{t("dcDamageDateLabel")}</strong> {format(new Date(claim.damageDate), 'MMM d, yyyy')}</span>
+              <span><strong>{t("dcLocationLabel")}</strong> {claim.locationName || t("kdUnknown")}</span>
             </div>
           </div>
 
           {/* Damaged Equipment */}
           {claim.damagedItems && claim.damagedItems.length > 0 && (
             <div className="border rounded-md p-3 space-y-2">
-              <h4 className="text-sm font-semibold text-muted-foreground">Damaged Equipment ({claim.damagedItems.length})</h4>
+              <h4 className="text-sm font-semibold text-muted-foreground">{t("dcDamagedEquipmentTitle", { count: claim.damagedItems.length })}</h4>
               <div className="space-y-1">
                 {claim.damagedItems.map((item, idx) => (
                   <div key={idx} className="flex items-center justify-between text-sm p-2 rounded border bg-muted/30">
@@ -366,9 +366,9 @@ function ResponseDialog({
                       <span className="font-medium capitalize">{item.equipmentType}</span>
                       {item.brand && <span className="text-muted-foreground">({item.brand})</span>}
                     </div>
-                    <Badge variant="outline" className="text-xs">
-                      {item.equipmentBookingId ? 'Rented' : 'Included'}
-                    </Badge>
+                    <InfoChip variant="outline">
+                      {item.equipmentBookingId ? t("dcRented") : t("dcIncluded")}
+                    </InfoChip>
                   </div>
                 ))}
               </div>
@@ -378,7 +378,7 @@ function ResponseDialog({
           {/* Evidence */}
           {claim.evidence.length > 0 && (
             <div>
-              <h4 className="font-semibold mb-2">Evidence ({claim.evidence.length} items)</h4>
+              <h4 className="font-semibold mb-2">{t("dcEvidenceTitle", { count: claim.evidence.length })}</h4>
               <div className="grid grid-cols-2 gap-2">
                 {claim.evidence.map((ev) => (
                   <a
@@ -386,7 +386,7 @@ function ResponseDialog({
                     href={getR2ProxyUrl(ev.fileUrl)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-2 p-2 border rounded-lg hover:bg-muted transition-colors"
+                    className="flex items-center gap-2 p-2 border rounded-xl hover:bg-muted transition-colors"
                   >
                     {ev.evidenceType.includes('photo') || ev.evidenceType === 'video' ? (
                       <Image className="w-4 h-4 text-blue-500" />
@@ -412,10 +412,9 @@ function ResponseDialog({
           {canRespond && (
             <Alert className="border-warning/30">
               <CreditCard className="h-4 w-4 text-warning" />
-              <AlertTitle>Payment Method on File</AlertTitle>
+              <AlertTitle>{t("dcPaymentMethodOnFile")}</AlertTitle>
               <AlertDescription className="text-muted-foreground">
-                If you accept this claim, your card from the original booking will be <strong>automatically charged</strong> for {formatCurrency(claim.claimedAmountCents)}.
-                If you dispute and an admin approves the claim, your card will also be charged automatically.
+                {t("dcAutoChargeBody", { amount: formatCurrency(claim.claimedAmountCents) })}
               </AlertDescription>
             </Alert>
           )}
@@ -423,7 +422,7 @@ function ResponseDialog({
           {/* Response Options - only show if can respond */}
           {canRespond && (
             <div className="space-y-4">
-              <Label>Your Response</Label>
+              <Label>{t("dcYourResponse")}</Label>
               <div className="grid grid-cols-2 gap-4">
                 <Button
                   type="button"
@@ -432,9 +431,9 @@ function ResponseDialog({
                   onClick={() => setAction('accept')}
                 >
                   <CheckCircle className="w-6 h-6" />
-                  <span className="font-semibold">Accept Claim</span>
+                  <span className="font-semibold">{t("dcAcceptClaim")}</span>
                   <span className="text-xs text-muted-foreground">
-                    Agree to pay {formatCurrency(claim.claimedAmountCents)}
+                    {t("dcAgreeToPay", { amount: formatCurrency(claim.claimedAmountCents) })}
                   </span>
                 </Button>
                 <Button
@@ -444,9 +443,9 @@ function ResponseDialog({
                   onClick={() => setAction('dispute')}
                 >
                   <XCircle className="w-6 h-6" />
-                  <span className="font-semibold">Dispute Claim</span>
+                  <span className="font-semibold">{t("dcDisputeClaim")}</span>
                   <span className="text-xs text-muted-foreground">
-                    Request admin review
+                    {t("dcRequestAdminReview")}
                   </span>
                 </Button>
               </div>
@@ -454,14 +453,14 @@ function ResponseDialog({
               {action && (
                 <div className="space-y-2">
                   <Label htmlFor="response">
-                    {action === 'accept' ? 'Optional Comments' : 'Reason for Dispute (Required)'}
+                    {action === 'accept' ? t("dcOptionalComments") : t("dcReasonForDisputeRequired")}
                   </Label>
                   <Textarea
                     id="response"
                     placeholder={
                       action === 'accept'
-                        ? "Any comments about the claim..."
-                        : "Explain why you are disputing this claim (minimum 50 characters)..."
+                        ? t("dcAcceptCommentsPlaceholder")
+                        : t("dcDisputeReasonPlaceholder")
                     }
                     value={response}
                     onChange={(e) => setResponse(e.target.value)}
@@ -470,7 +469,7 @@ function ResponseDialog({
                   />
                   {action === 'dispute' && response.length < 50 && (
                     <p className="text-xs text-muted-foreground">
-                      {50 - response.length} more characters required
+                      {t("dcMoreCharsRequired", { count: 50 - response.length })}
                     </p>
                   )}
                 </div>
@@ -481,7 +480,7 @@ function ResponseDialog({
 
         <SheetFooter className="mt-6">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {isResolved ? 'Close' : 'Cancel'}
+            {isResolved ? t("ciClose") : t("bkCommonCancel")}
           </Button>
           {canRespond && action && (
             <Button
@@ -493,10 +492,10 @@ function ResponseDialog({
               variant={action === 'accept' ? 'default' : 'destructive'}
             >
               {respondMutation.isPending
-                ? "Submitting..."
+                ? t("ciSubmitting")
                 : action === 'accept'
-                ? "Accept & Pay"
-                : "Submit Dispute"}
+                ? t("dcAcceptAndPay")
+                : t("dcSubmitDispute")}
             </Button>
           )}
         </SheetFooter>
@@ -557,7 +556,7 @@ const getDamageClaimColumns = (t: any, {
           <TruncatedText className="font-medium text-sm truncate">{claim.claimTitle}</TruncatedText>
           <div className="flex items-center text-xs text-muted-foreground mt-0.5">
             <MapPin className="h-3 w-3 mr-1 flex-shrink-0" />
-            <TruncatedText className="truncate">{claim.locationName || 'Unknown Location'}</TruncatedText>
+            <TruncatedText className="truncate">{claim.locationName || t("dcUnknownLocation")}</TruncatedText>
           </div>
         </div>
       );
@@ -630,9 +629,9 @@ const getDamageClaimColumns = (t: any, {
     cell: ({ row }) => {
       const type = row.getValue("bookingType") as string;
       return (
-        <Badge variant="outline" className="capitalize">
+        <InfoChip variant="outline" className="capitalize">
           {type === 'storage' ? 'Storage' : 'Kitchen'}
-        </Badge>
+        </InfoChip>
       );
     },
   },
@@ -767,7 +766,7 @@ export function PendingDamageClaims() {
       
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to download invoice');
+        throw new Error(errorData.error || t("revInvoiceFailed"));
       }
       
       const blob = await response.blob();
@@ -780,11 +779,11 @@ export function PendingDamageClaims() {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
       
-      toast({ title: tt("invoiceDownloaded"), description: "Your damage claim invoice has been downloaded." });
+      toast({ title: tt("invoiceDownloaded"), description: t("dcInvoiceDownloadedDesc") });
     } catch (err) {
       toast({ 
         title: tt("downloadFailed"), 
-        description: err instanceof Error ? err.message : 'Failed to download invoice',
+        description: err instanceof Error ? err.message : t("revInvoiceFailed"),
         variant: "destructive" 
       });
     } finally {
@@ -920,7 +919,7 @@ export function PendingDamageClaims() {
           </Tabs>
 
           {/* Table */}
-          <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+          <div className="rounded-xl border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
             <Table>
               <TableHeader>
                 {table.getHeaderGroups().map((headerGroup) => (

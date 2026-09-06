@@ -33,8 +33,8 @@ function ChefShellContentLoader() {
   return (
     <div className="space-y-4 py-2" aria-busy="true" aria-label="Loading">
       <div className="h-8 w-48 animate-pulse rounded-md bg-muted" />
-      <div className="h-40 w-full animate-pulse rounded-xl bg-muted" />
-      <div className="h-64 w-full animate-pulse rounded-xl bg-muted" />
+      <div className="h-40 w-full animate-pulse rounded-[1.35rem] bg-muted" />
+      <div className="h-64 w-full animate-pulse rounded-[1.35rem] bg-muted" />
     </div>
   );
 }

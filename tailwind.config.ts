@@ -80,6 +80,10 @@ export default {
           DEFAULT: "hsl(var(--info))",
           foreground: "hsl(var(--info-foreground))",
         },
+        invert: {
+          DEFAULT: "hsl(var(--invert))",
+          foreground: "hsl(var(--invert-foreground))",
+        },
         /** Official Stripe brand purple (#635BFF) — links, docs, logos */
         stripe: {
           DEFAULT: "#635BFF",

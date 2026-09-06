@@ -71,8 +71,8 @@ export function OnboardingStatusBanner({
                 <h3 className="text-base font-semibold text-white tracking-tight">{mt("completeYourKitchenSetup")}</h3>
                 <p className="text-sm text-slate-400 mt-0.5 truncate">
                   {stepsRemaining === 1 
-                    ? `Just 1 step remaining to start accepting bookings`
-                    : `${stepsRemaining} steps remaining to start accepting bookings`
+                    ? `Just 1 step remaining to start Accepting Requests`
+                    : `${stepsRemaining} steps remaining to start Accepting Requests`
                   }
                 </p>
               </div>

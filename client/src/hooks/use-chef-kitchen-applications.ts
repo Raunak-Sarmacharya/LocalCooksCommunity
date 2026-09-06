@@ -440,7 +440,7 @@ export function useChefApprovedKitchens() {
  * Enterprise 3-Tier System:
  * - Tier 1: Application submitted, pending review (current_tier = 1)
  * - Tier 2: Step 1 approved, chef completing Step 2 (current_tier = 2)
- * - Tier 3: Fully approved - ready to book (current_tier >= 3)
+ * - Tier 3: Fully approved - Book Now (current_tier >= 3)
  */
 export function useChefKitchenApplicationsStatus() {
   const { applications, isLoading } = useChefKitchenApplications();

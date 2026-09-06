@@ -1,5 +1,5 @@
 import { logger } from "@/lib/logger";
-import { useState, useEffect, useMemo, useRef, type Dispatch, type SetStateAction } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback, type Dispatch, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
 import { useKitchenBookings } from "@/hooks/use-kitchen-bookings";
@@ -119,19 +119,27 @@ function InventoryPreviewList({
   subtitle,
   items,
   rental,
+  columns = 2,
 }: {
   title: string;
   subtitle: string;
   items: any[];
   rental: boolean;
+  /** Item grid columns within this list (default 2 for modals). */
+  columns?: 1 | 2;
 }) {
   return (
-    <section>
+    <section className="min-w-0">
       <div className="mb-1">
-        <h4 className="text-sm font-semibold text-gray-900">{title}</h4>
-        <p className="text-xs text-muted-foreground">{subtitle}</p>
+        <h4 className="text-base font-semibold text-gray-900">{title}</h4>
+        <p className="text-sm text-muted-foreground">{subtitle}</p>
       </div>
-      <ul className="grid min-w-0 grid-cols-1 gap-x-6 sm:grid-cols-2">
+      <ul
+        className={cn(
+          "grid min-w-0 gap-x-6",
+          columns === 1 ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2"
+        )}
+      >
         {items.map((equipment) => (
           <li key={equipment.id} className="flex min-w-0 items-center gap-2.5 border-b border-gray-100 py-3">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#FFF3F5] text-[#F51042]">
@@ -146,7 +154,7 @@ function InventoryPreviewList({
               <span className="block truncate text-sm font-medium text-gray-900">
                 {equipmentName(equipment)}
               </span>
-              <span className="block truncate text-xs text-muted-foreground">
+              <span className="block truncate text-sm text-muted-foreground">
                 {rental ? `${formatCurrency(equipment.sessionRate || 0)} per session` : "Included"}
               </span>
             </span>
@@ -211,20 +219,26 @@ function BookingPlaceContext({
         <div className="flex min-w-0 items-center gap-3">
           <ConfirmKitchenThumbnail src={kitchenCoverUrl(kitchen)} alt={imageAlt} />
           <div className="min-w-0">
-            <p className="truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-[#F51042]">
+            <p className="truncate text-sm font-semibold uppercase tracking-[0.12em] text-[#F51042]">
               {t("sheetBookingAtLabel", "Booking at")}
             </p>
             <h1 className="truncate text-base font-semibold text-gray-900">{kitchen.name}</h1>
-            <p className="truncate text-xs text-muted-foreground">{locationName}</p>
+            <p className="truncate text-sm text-muted-foreground">{locationName}</p>
           </div>
         </div>
         <button
           type="button"
           onClick={onPolicyOpen}
-          className="flex w-full items-center gap-2 border-t border-gray-200/80 pt-2.5 text-left text-[11px] font-medium text-gray-700 transition-colors hover:text-[#F51042]"
+          className="flex w-full items-center gap-2 border-t border-gray-200/80 pt-2.5 text-left text-sm font-medium text-muted-foreground transition-colors hover:text-[#F51042]"
         >
-          <Icon icon="mdi:shield-check-outline" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#F51042]" aria-hidden />
-          <span className="flex-1">{t("sheetCancellationPolicyTitle", "Cancellation policy")}</span>
+          <span className="flex min-w-0 flex-1 items-center gap-2">
+            <Icon
+              icon="mdi:shield-check-outline"
+              className="h-3.5 w-3.5 shrink-0 text-[#F51042]"
+              aria-hidden
+            />
+            <span className="truncate">{t("sheetCancellationPolicyTitle", "Cancellation policy")}</span>
+          </span>
           <Icon icon="mdi:chevron-right" className="h-3.5 w-3.5 shrink-0" aria-hidden />
         </button>
       </div>
@@ -234,7 +248,7 @@ function BookingPlaceContext({
   return (
     <section
       aria-label={t("sheetSelectedKitchenSummary", "Selected kitchen summary")}
-      className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm"
+      className="overflow-hidden rounded-[1.35rem] border border-gray-200 bg-white shadow-sm"
     >
       <div className="grid gap-2 p-2">
         <div className="relative h-24 w-full overflow-hidden rounded-xl bg-gray-100">
@@ -250,15 +264,15 @@ function BookingPlaceContext({
         </div>
         <div className="rounded-xl bg-gray-50/80 p-2.5">
           <div className="min-w-0">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#F51042]">
+            <p className="text-sm font-semibold uppercase tracking-[0.14em] text-[#F51042]">
               {t("sheetBookingAtLabel", "Booking at")}
             </p>
             <h2 className="mt-1 truncate text-base font-semibold leading-tight text-gray-900">
               {kitchen.name}
             </h2>
-            <p className="mt-1 truncate text-xs font-medium text-gray-600">{locationName}</p>
+            <p className="mt-1 truncate text-sm font-medium text-muted-foreground">{locationName}</p>
             {locationAddress && (
-              <p className="mt-2 flex items-start gap-1.5 text-xs leading-relaxed text-muted-foreground">
+              <p className="mt-2 flex items-start gap-1.5 text-sm leading-relaxed text-muted-foreground">
                 <Icon icon="mdi:map-marker-outline" className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
                 <span className="truncate">{locationAddress}</span>
               </p>
@@ -271,12 +285,16 @@ function BookingPlaceContext({
         onClick={onPolicyOpen}
         className="flex w-full items-center gap-2.5 border-t border-gray-100 bg-gray-50/70 px-3.5 py-2.5 text-left transition-colors hover:bg-[#FFF7F8]"
       >
-          <Icon icon="mdi:shield-check-outline" className="mt-0.5 h-4 w-4 shrink-0 text-[#F51042]" aria-hidden />
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold text-gray-900">
+            <p className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+              <Icon
+                icon="mdi:shield-check-outline"
+                className="h-4 w-4 shrink-0 text-[#F51042]"
+                aria-hidden
+              />
               {t("sheetCancellationPolicyTitle", "Cancellation policy")}
             </p>
-            <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+            <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
               {t("sheetViewCancellationPolicy", "View cancellation and refund terms")}
             </p>
           </div>
@@ -294,6 +312,13 @@ export interface KitchenBookingFlowProps {
   kitchenId?: number | string;
   onCancel: () => void;
   onComplete?: (bookingId?: number) => void;
+  /**
+   * Lets the shell (sidebar / breadcrumbs) open the same cancel-confirm dialog.
+   * Call `proceed` only after the user confirms cancel. Pass `null` on unmount.
+   */
+  registerLeaveGuard?: (
+    requestLeave: ((proceed?: () => void) => void) | null
+  ) => void;
 }
 
 type BookingStep = "calendar" | "slots" | "equipment" | "storage" | "confirm";
@@ -305,20 +330,20 @@ const BOOKING_CALENDAR_CLASS_NAMES = {
   months: "flex w-full flex-col space-y-0",
   month: "w-full space-y-2",
   caption: "relative flex w-full items-center justify-center pt-0.5",
-  caption_label: "text-xs font-medium",
+  caption_label: "text-sm font-medium",
   nav_button:
     "inline-flex h-7 w-7 items-center justify-center rounded-md border-0 bg-transparent p-0 opacity-50 shadow-none hover:opacity-100",
   nav_button_previous: "absolute left-0",
   nav_button_next: "absolute right-0",
   table: "w-full table-fixed border-collapse",
   head_cell:
-    "w-[14.28%] pb-0.5 text-center text-[0.65rem] font-normal text-muted-foreground",
+    "w-[14.28%] pb-0.5 text-center text-sm font-normal text-muted-foreground",
   row: "mt-0.5",
   cell: cn(
-    "relative z-0 h-8 p-0 text-center text-xs",
+    "relative z-0 h-8 p-0 text-center text-sm",
     "[&:has([aria-selected])]:before:absolute [&:has([aria-selected])]:before:left-1/2 [&:has([aria-selected])]:before:top-1/2 [&:has([aria-selected])]:before:h-8 [&:has([aria-selected])]:before:w-8 [&:has([aria-selected])]:before:-translate-x-1/2 [&:has([aria-selected])]:before:-translate-y-1/2 [&:has([aria-selected])]:before:-z-10 [&:has([aria-selected])]:before:rounded-full [&:has([aria-selected])]:before:border-2 [&:has([aria-selected])]:before:border-[#F51042]"
   ),
-  day: "mx-auto flex h-8 w-8 max-w-[32px] items-center justify-center rounded-full bg-transparent p-0 text-xs font-normal text-gray-900 transition-colors hover:bg-gray-100 aria-selected:opacity-100",
+  day: "mx-auto flex h-8 w-8 max-w-[32px] items-center justify-center rounded-full bg-transparent p-0 text-sm font-normal text-gray-900 transition-colors hover:bg-gray-100 aria-selected:opacity-100",
   day_selected:
     "bg-transparent text-gray-900 hover:bg-transparent focus:bg-transparent",
   day_disabled:
@@ -343,6 +368,7 @@ export default function KitchenBookingFlow({
   kitchenId: preferredKitchenId,
   onCancel,
   onComplete,
+  registerLeaveGuard,
 }: KitchenBookingFlowProps) {
   const { t, i18n } = useTranslation(["booking", "kitchen"]);
   const { kitchens, createBooking, isLoadingKitchens } = useKitchenBookings();
@@ -431,6 +457,7 @@ export default function KitchenBookingFlow({
   const [discardModal, setDiscardModal] = useState<"equipment" | "storage" | "time" | null>(null);
   const [confirmDatePopoverOpen, setConfirmDatePopoverOpen] = useState(false);
   const storageStepRef = useRef<HTMLDivElement>(null);
+  const pendingLeaveRef = useRef<(() => void) | null>(null);
 
   // Storage pricing
   const storagePricing = useStoragePricing(selectedStorage, storageListings);
@@ -1010,9 +1037,9 @@ export default function KitchenBookingFlow({
 
   const formatDate = (date: Date) => {
     return date.toLocaleDateString(i18n.language, {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric'
+      month: "short",
+      day: "numeric",
+      year: "numeric",
     });
   };
 
@@ -1027,27 +1054,27 @@ export default function KitchenBookingFlow({
       {
         key: "calendar",
         label: t("sheetStepDate", "Date"),
-        subtext: t("sheetStepDateSubtext", "Pick your kitchen day"),
+        subtext: t("sheetStepDateSubtext", "Pick your day"),
       },
       {
         key: "slots",
         label: t("sheetStepTime", "Time"),
-        subtext: t("sheetStepTimeSubtext", "Choose consecutive hours"),
+        subtext: t("sheetStepTimeSubtext", "Choose hours"),
       },
       {
         key: "equipment",
         label: t("sheetStepEquipment", "Equipment"),
-        subtext: t("sheetStepEquipmentSubtext", "Add included or rental gear"),
+        subtext: t("sheetStepEquipmentSubtext", "Add gear"),
       },
       {
         key: "storage",
         label: t("sheetStepStorage", "Storage"),
-        subtext: t("sheetStepStorageSubtext", "Reserve fridge or dry storage"),
+        subtext: t("sheetStepStorageSubtext", "Add storage"),
       },
       {
         key: "confirm",
         label: t("sheetStepConfirm", "Confirm"),
-        subtext: t("sheetStepConfirmSubtext", "Review and pay"),
+        subtext: t("sheetStepConfirmSubtext", "Review & pay"),
       },
     ];
     return all.filter((s) => {
@@ -1320,14 +1347,14 @@ export default function KitchenBookingFlow({
                 <Icon icon="mdi:calendar-month-outline" className="h-4 w-4 text-[#F51042]" aria-hidden />
                 {t("sheetSelectDateTitle", "Select Date")}
               </h3>
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-sm text-muted-foreground mt-1">
                 {t("sheetTapDateToContinue", "Tap an available date to continue")}
               </p>
             </div>
             {selectedDate && (
               <button
                 type="button"
-                className="shrink-0 text-xs font-medium text-gray-500 hover:text-[#F51042]"
+                className="shrink-0 text-sm font-medium text-muted-foreground hover:text-[#F51042]"
                 onClick={() => {
                   setSelectedDate(null);
                   setSelectedSlots([]);
@@ -1338,7 +1365,7 @@ export default function KitchenBookingFlow({
             )}
           </div>
 
-          <div className="relative mx-auto w-full max-w-[640px] rounded-xl border border-gray-100 bg-gray-50/40 p-2 sm:p-3">
+          <div className="relative mx-auto w-full max-w-[640px] rounded-[1.35rem] border border-gray-100 bg-gray-50/40 p-2 sm:p-3">
             {isLoadingAvailability && (
               <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-white/60">
                 <Icon icon="mdi:loading" className="h-5 w-5 animate-spin text-[#F51042]" aria-hidden />
@@ -1361,15 +1388,11 @@ export default function KitchenBookingFlow({
           </div>
 
           {selectedDate && (
-            <div className="mx-auto w-full max-w-[640px] rounded-xl border border-[#F51042]/20 bg-[#F51042]/5 px-3 py-2.5">
+            <div className="mx-auto w-full max-w-[640px] rounded-[1.35rem] border border-[#F51042]/20 bg-[#F51042]/5 px-3 py-2.5">
               <p className="text-sm font-semibold text-gray-900">
-                {selectedDate.toLocaleDateString(i18n.language, {
-                  weekday: "long",
-                  month: "short",
-                  day: "numeric",
-                })}
+                {formatDate(selectedDate)}
               </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
+              <p className="text-sm text-muted-foreground mt-0.5">
                 {isLoadingSlots
                   ? t("sheetLoadingSlotsText", "Loading time slots…")
                   : t("sheetSlotsAvailable", {
@@ -1393,7 +1416,7 @@ export default function KitchenBookingFlow({
                 <Icon icon="mdi:clock-outline" className="h-4 w-4 text-[#F51042]" aria-hidden />
                 {t("sheetSelectTimeTitle", "Select Time")}
               </h3>
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-sm text-muted-foreground mt-1">
                 {formatDate(selectedDate)}
                 {kitchenPricing?.minimumBookingHours && kitchenPricing.minimumBookingHours > 0
                   ? ` · ${t("sheetMinHourBadge", { minHours: kitchenPricing.minimumBookingHours, defaultValue: `Min ${kitchenPricing.minimumBookingHours}hr` })}`
@@ -1403,7 +1426,7 @@ export default function KitchenBookingFlow({
             </div>
             <button
               type="button"
-              className="shrink-0 text-xs font-medium text-gray-500 hover:text-[#F51042]"
+              className="shrink-0 text-sm font-medium text-muted-foreground hover:text-[#F51042]"
               onClick={() => {
                 setHideDateStep(false);
                 setCurrentStep("calendar");
@@ -1424,7 +1447,7 @@ export default function KitchenBookingFlow({
               ))}
             </div>
           ) : allSlots.length === 0 ? (
-            <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed py-10 text-center">
+            <div className="flex flex-1 items-center justify-center rounded-[1.35rem] border border-dashed py-10 text-center">
               <div>
                 <Icon icon="mdi:clock-outline" className="h-7 w-7 text-muted-foreground/40 mx-auto mb-2" aria-hidden />
                 <p className="text-sm text-muted-foreground">{t("sheetNoAvailableHours", "No available hours on this day")}</p>
@@ -1435,7 +1458,7 @@ export default function KitchenBookingFlow({
               {kitchenPricing?.minimumBookingHours && kitchenPricing.minimumBookingHours > 1 && selectedSlots.length === 0 && (
                 <div className="shrink-0 rounded-lg border bg-muted/30 px-3 py-2 flex items-start gap-2">
                   <Icon icon="mdi:clock-outline" className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" aria-hidden />
-                  <p className="text-xs text-muted-foreground leading-relaxed">
+                  <p className="text-sm text-muted-foreground leading-relaxed">
                     <strong>{t("sheetMinBookingNoticeBold", { minHours: kitchenPricing.minimumBookingHours, defaultValue: `Minimum ${kitchenPricing.minimumBookingHours}-hour booking.` })}</strong>{" "}
                     {t("sheetMinBookingNoticeDetail", { minHours: kitchenPricing.minimumBookingHours, defaultValue: `Selecting a time slot will automatically reserve ${kitchenPricing.minimumBookingHours} consecutive hours.` })}
                   </p>
@@ -1452,7 +1475,7 @@ export default function KitchenBookingFlow({
                       onClick={() => handleSlotClick(slot)}
                       disabled={isFullyBooked}
                       className={cn(
-                        "flex min-h-[44px] w-full items-center justify-center rounded-xl border px-3 py-2.5 text-center text-xs font-medium transition-colors",
+                        "flex min-h-[44px] w-full items-center justify-center rounded-xl border px-3 py-2.5 text-center text-sm font-medium transition-colors",
                         isSelected && "bg-[#F51042] text-white border-[#F51042]",
                         !isSelected && !isFullyBooked && "bg-white text-gray-700 border-gray-200 hover:border-[#F51042]/40",
                         isFullyBooked && "bg-muted/50 text-muted-foreground/50 cursor-not-allowed border-transparent line-through"
@@ -1478,17 +1501,20 @@ export default function KitchenBookingFlow({
 
     // Step: Equipment
     if (currentStep === "equipment" && selectedKitchen) {
-      const includedPreview = equipmentListings.included.slice(0, 4);
-      const rentalPreview = equipmentListings.rental.slice(0, 4);
+      const EQUIPMENT_PREVIEW = 5;
+      const includedPreview = equipmentListings.included.slice(0, EQUIPMENT_PREVIEW);
+      const rentalPreview = equipmentListings.rental.slice(0, EQUIPMENT_PREVIEW);
       const includedRemaining = Math.max(0, equipmentListings.included.length - includedPreview.length);
       const rentalRemaining = Math.max(0, equipmentListings.rental.length - rentalPreview.length);
+      const showIncluded = equipmentListings.included.length > 0;
+      const showRental = equipmentListings.rental.length > 0;
 
       return (
         <div className="space-y-4">
           <div className="flex items-start justify-between gap-4">
             <div>
               <h3 className="text-base font-semibold text-gray-900">{t("sheetEquipmentTitle", "Equipment")}</h3>
-              <p className="mt-1 text-xs text-muted-foreground">
+              <p className="mt-1 text-sm text-muted-foreground">
                 {t("sheetEquipmentBrowseDesc", "See what is included, then add any optional rentals you need.")}
               </p>
             </div>
@@ -1503,7 +1529,7 @@ export default function KitchenBookingFlow({
               }}
               disabled={equipmentListings.rental.length === 0}
             >
-              <Icon icon="mdi:toolbox-outline" width={17} height={17} className="mr-1.5" aria-hidden />
+              <Icon icon="solar:oven-mitts-minimalistic-outline" width={17} height={17} className="mr-1.5" aria-hidden />
               {selectedEquipmentIds.length > 0 ? `Edit (${selectedEquipmentIds.length})` : t("sheetSelectEquipment", "Select equipment")}
             </Button>
           </div>
@@ -1513,48 +1539,61 @@ export default function KitchenBookingFlow({
               <Icon icon="mdi:loading" className="h-5 w-5 animate-spin text-[#F51042]" aria-hidden />
             </div>
           ) : (
-            <div className="space-y-5">
-              {equipmentListings.included.length > 0 ? (
-                <InventoryPreviewList
-                  title={t("sheetIncludedLabel", "Included")}
-                  subtitle={t("sheetIncludedEquipmentDesc", "Available with your kitchen booking at no extra charge.")}
-                  items={includedPreview}
-                  rental={false}
-                />
+            <div
+              className={cn(
+                "grid gap-6",
+                showIncluded && showRental ? "sm:grid-cols-2" : "grid-cols-1"
+              )}
+            >
+              {showIncluded ? (
+                <div className="min-w-0">
+                  <InventoryPreviewList
+                    title={t("sheetIncludedLabel", "Included")}
+                    subtitle={t("sheetIncludedEquipmentDesc", "Included at no extra charge.")}
+                    items={includedPreview}
+                    rental={false}
+                    columns={1}
+                  />
+                  {includedRemaining > 0 ? (
+                    <button
+                      type="button"
+                      className="mt-1 inline-flex items-center pb-1 text-sm font-semibold text-[#F51042] hover:text-[#D40E38]"
+                      onClick={() => {
+                        setEquipmentModalOpen(false);
+                        setEquipmentInventoryModal("included");
+                      }}
+                    >
+                      {t("sheetShowAllButton", { defaultValue: "Show all" })}{" "}
+                      <span className="ml-1">+{includedRemaining}</span>
+                      <Icon icon="mdi:chevron-right" className="ml-1 h-4 w-4" aria-hidden />
+                    </button>
+                  ) : null}
+                </div>
               ) : null}
-              {includedRemaining > 0 ? (
-                <button
-                  type="button"
-                  className="-mt-3 inline-flex items-center pb-1 text-sm font-semibold text-[#F51042] hover:text-[#D40E38]"
-                  onClick={() => {
-                    setEquipmentModalOpen(false);
-                    setEquipmentInventoryModal("included");
-                  }}
-                >
-                  {t("sheetShowAllButton", { defaultValue: "Show all" })} <span className="ml-1">+{includedRemaining}</span>
-                  <Icon icon="mdi:chevron-right" className="ml-1 h-4 w-4" aria-hidden />
-                </button>
-              ) : null}
-              {equipmentListings.rental.length > 0 ? (
-                <InventoryPreviewList
-                  title={t("sheetOptionalRentalsLabel", "Optional rentals")}
-                  subtitle={t("sheetRentalEquipmentDesc", "Available to rent for this kitchen session.")}
-                  items={rentalPreview}
-                  rental
-                />
-              ) : null}
-              {rentalRemaining > 0 ? (
-                <button
-                  type="button"
-                  className="-mt-3 inline-flex items-center pb-1 text-sm font-semibold text-[#F51042] hover:text-[#D40E38]"
-                  onClick={() => {
-                    setEquipmentModalOpen(false);
-                    setEquipmentInventoryModal("rental");
-                  }}
-                >
-                  {t("sheetShowAllButton", { defaultValue: "Show all" })} <span className="ml-1">+{rentalRemaining}</span>
-                  <Icon icon="mdi:chevron-right" className="ml-1 h-4 w-4" aria-hidden />
-                </button>
+              {showRental ? (
+                <div className="min-w-0">
+                  <InventoryPreviewList
+                    title={t("sheetOptionalRentalsLabel", "Optional rentals")}
+                    subtitle={t("sheetRentalEquipmentDesc", "Optional rentals for this kitchen session.")}
+                    items={rentalPreview}
+                    rental
+                    columns={1}
+                  />
+                  {rentalRemaining > 0 ? (
+                    <button
+                      type="button"
+                      className="mt-1 inline-flex items-center pb-1 text-sm font-semibold text-[#F51042] hover:text-[#D40E38]"
+                      onClick={() => {
+                        setEquipmentModalOpen(false);
+                        setEquipmentInventoryModal("rental");
+                      }}
+                    >
+                      {t("sheetShowAllButton", { defaultValue: "Show all" })}{" "}
+                      <span className="ml-1">+{rentalRemaining}</span>
+                      <Icon icon="mdi:chevron-right" className="ml-1 h-4 w-4" aria-hidden />
+                    </button>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           )}
@@ -1572,7 +1611,7 @@ export default function KitchenBookingFlow({
           <div className="flex items-start justify-between gap-4">
             <div>
               <h3 className="text-base font-semibold text-gray-900">{t("sheetStorageOptionsTitle", "Storage options")}</h3>
-              <p className="mt-1 text-xs text-muted-foreground">
+              <p className="mt-1 text-sm text-muted-foreground">
                 {t("sheetNeedStorageDesc", "Reserve refrigerator, freezer, or dry storage for your ingredients.")}
               </p>
             </div>
@@ -1608,11 +1647,11 @@ export default function KitchenBookingFlow({
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-gray-900">{storage.name}</p>
-                        <p className="truncate text-xs text-muted-foreground">
+                        <p className="truncate text-sm text-muted-foreground">
                           {formatCurrency(storage.basePrice || 0)}/day
                         </p>
                         {selection ? (
-                          <p className="truncate text-xs font-medium text-gray-900">
+                          <p className="truncate text-sm font-medium text-gray-900">
                             {formatDate(selection.startDate)} – {formatDate(selection.endDate)}
                           </p>
                         ) : null}
@@ -1643,7 +1682,7 @@ export default function KitchenBookingFlow({
     // Step: Confirm — editable choices only (kitchen + price live in the left rail)
     if (currentStep === 'confirm' && selectedKitchen && selectedDate && selectedSlots.length > 0) {
       const editLinkClass =
-        "inline-flex items-center gap-1 text-xs font-medium text-[#F51042] hover:text-[#d10e39] shrink-0";
+        "inline-flex items-center gap-1 text-sm font-medium text-[#F51042] hover:text-[#d10e39] shrink-0";
 
       return (
         <div className="space-y-5">
@@ -1651,17 +1690,17 @@ export default function KitchenBookingFlow({
             <h3 className="text-base font-semibold text-gray-900">
               {t("sheetStepConfirm", "Confirm")}
             </h3>
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-sm text-muted-foreground mt-1">
               {t("sheetStepConfirmSubtext", "Review and pay")}
             </p>
           </div>
 
-          <div className="overflow-hidden rounded-xl border divide-y bg-white">
+          <div className="overflow-hidden rounded-[1.35rem] border divide-y bg-white">
             <div className="flex items-start justify-between gap-3 px-4 py-3.5">
               <div className="flex min-w-0 items-start gap-2.5">
                 <Icon icon="mdi:calendar-month-outline" className="mt-0.5 h-4 w-4 shrink-0 text-[#F51042]" aria-hidden />
                 <div className="min-w-0">
-                  <p className="text-[11px] font-medium text-muted-foreground">
+                  <p className="text-sm font-medium text-muted-foreground">
                     {t("sheetDateLabel", "Date")}
                   </p>
                   <p className="text-sm font-semibold text-gray-900">{formatDate(selectedDate)}</p>
@@ -1724,11 +1763,11 @@ export default function KitchenBookingFlow({
               <div className="flex min-w-0 items-start gap-2.5">
                 <Icon icon="mdi:clock-outline" className="mt-0.5 h-4 w-4 shrink-0 text-[#F51042]" aria-hidden />
                 <div className="min-w-0">
-                  <p className="text-[11px] font-medium text-muted-foreground">
+                  <p className="text-sm font-medium text-muted-foreground">
                     {t("sheetBookingTimeLabel", "Booking Time")}
                   </p>
                   <p className="text-sm font-semibold text-gray-900">{getBookingTimeRange()}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
+                  <p className="mt-0.5 text-sm text-muted-foreground">
                     {t("sheetHoursCount", {
                       count: selectedSlots.length,
                       defaultValue: `${selectedSlots.length} hour${selectedSlots.length > 1 ? "s" : ""}`,
@@ -1847,7 +1886,7 @@ export default function KitchenBookingFlow({
       return (
         <div className="flex items-center justify-between mb-3">
           <span className="text-sm font-medium text-muted-foreground">{t("sheetTotalLabel", "Total")}</span>
-          <span className="text-lg font-semibold text-[#F51042]">
+          <span className="text-base font-semibold text-[#F51042]">
             {formatCurrency(grandTotal)} {kitchenPricing?.currency || "CAD"}
           </span>
         </div>
@@ -1856,10 +1895,10 @@ export default function KitchenBookingFlow({
 
     // Desktop rail
     return (
-      <div className="rounded-xl border bg-white p-3 shadow-sm">
+      <div className="rounded-[1.35rem] border bg-white p-3 shadow-sm">
         <div className="mb-2 flex items-center gap-2">
           <Icon icon="mdi:currency-usd" className="h-4 w-4 text-[#F51042]" aria-hidden />
-          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <span className="text-base font-semibold text-muted-foreground">
             {t("sheetOrderSummaryLabel", "Booking Summary")}
           </span>
         </div>
@@ -1869,10 +1908,10 @@ export default function KitchenBookingFlow({
             {selectedKitchen && kitchenPricing?.hourlyRate != null ? (
               <>
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-2xl font-semibold text-gray-900">{formatCurrency(kitchenPricing.hourlyRate)}</span>
-                  <span className="text-xs text-muted-foreground">{t("sheetPerHour", "/hour")}</span>
+                  <span className="text-base font-semibold text-gray-900">{formatCurrency(kitchenPricing.hourlyRate)}</span>
+                  <span className="text-sm text-muted-foreground">{t("sheetPerHour", "/hour")}</span>
                 </div>
-                <p className="text-xs text-muted-foreground pt-1">
+                <p className="text-sm text-muted-foreground pt-1">
                   {t("sheetPriceHint", "Select time to see your total")}
                 </p>
               </>
@@ -1887,7 +1926,7 @@ export default function KitchenBookingFlow({
                 <div className="flex items-start gap-2.5">
                   <Icon icon="mdi:calendar-month-outline" className="mt-0.5 h-4 w-4 shrink-0 text-[#F51042]" aria-hidden />
                   <div className="min-w-0">
-                    <p className="text-[11px] font-medium text-muted-foreground">
+                    <p className="text-sm font-medium text-muted-foreground">
                       {t("sheetDateLabel", "Date")}
                     </p>
                     <p className="text-sm font-semibold text-gray-900">{formatDate(selectedDate)}</p>
@@ -1897,10 +1936,10 @@ export default function KitchenBookingFlow({
                   <div className="flex items-start gap-2.5">
                     <Icon icon="mdi:clock-outline" className="mt-0.5 h-4 w-4 shrink-0 text-[#F51042]" aria-hidden />
                     <div className="min-w-0">
-                      <p className="text-[11px] font-medium text-muted-foreground">
+                      <p className="text-sm font-medium text-muted-foreground">
                         {t("sheetTimeLabel", "Time")}
                       </p>
-                      <p className="line-clamp-2 text-[11px] font-medium leading-snug text-gray-900">
+                      <p className="line-clamp-2 text-sm font-medium leading-snug text-gray-900">
                         {selectedSlots.map(formatSlotRange).join(", ")}
                       </p>
                     </div>
@@ -1957,9 +1996,9 @@ export default function KitchenBookingFlow({
             )}
             <div className="mt-1 flex items-baseline justify-between gap-3 border-t pt-2">
               <span className="text-sm font-semibold">{t("sheetTotalLabel", "Total")}</span>
-              <span className="text-lg font-semibold text-[#F51042] tabular-nums">
+              <span className="text-base font-semibold text-[#F51042] tabular-nums">
                 {formatCurrency(grandTotal)}{" "}
-                <span className="text-xs font-medium text-muted-foreground">{kitchenPricing?.currency || "CAD"}</span>
+                <span className="text-sm font-medium text-muted-foreground">{kitchenPricing?.currency || "CAD"}</span>
               </span>
             </div>
           </div>
@@ -1985,8 +2024,21 @@ export default function KitchenBookingFlow({
   const confirmCancelBooking = () => {
     clearPersistedBookingPrefs();
     setCancelConfirmOpen(false);
-    onCancel();
+    const proceed = pendingLeaveRef.current;
+    pendingLeaveRef.current = null;
+    if (proceed) proceed();
+    else onCancel();
   };
+
+  const requestLeave = useCallback((proceed?: () => void) => {
+    pendingLeaveRef.current = proceed ?? null;
+    setCancelConfirmOpen(true);
+  }, []);
+
+  useEffect(() => {
+    registerLeaveGuard?.(requestLeave);
+    return () => registerLeaveGuard?.(null);
+  }, [registerLeaveGuard, requestLeave]);
 
   const confirmDiscardModalChanges = () => {
     if (discardModal === "equipment") {
@@ -2031,7 +2083,7 @@ export default function KitchenBookingFlow({
       type="button"
       variant="ghost"
       className="min-h-[44px] shrink-0 rounded-xl"
-      onClick={() => setCancelConfirmOpen(true)}
+      onClick={() => requestLeave()}
       disabled={isRedirectingToCheckout || isProcessingBooking || createBooking.isPending}
     >
       {t("sheetCancelButton", "Cancel")}
@@ -2140,23 +2192,33 @@ export default function KitchenBookingFlow({
               completed: <Icon icon="mdi:check" className="size-3.5" aria-hidden />,
               loading: <Icon icon="mdi:loading" className="size-3.5 animate-spin" aria-hidden />,
             }}
-            className="w-full rounded-xl border bg-white px-3 py-3 shadow-sm sm:px-5"
+            className="w-full rounded-[1.35rem] border bg-white px-3 py-3 shadow-sm sm:px-5"
             aria-label={t("sheetBookingStepsAria", "Booking steps")}
           >
-            <StepperNav className="w-full">
+            <StepperNav className="w-full flex-row items-start">
               {steps.map((step, index) => (
-                <StepperItem key={step.key} step={index + 1} className="relative">
-                  <StepperTrigger className="flex shrink-0 cursor-default justify-start gap-1.5">
-                    <StepperIndicator>{index + 1}</StepperIndicator>
-                    <div className="flex min-w-0 flex-col items-start gap-0.5">
-                      <StepperTitle className="truncate">{step.label}</StepperTitle>
-                      <StepperDescription className="hidden truncate text-xs sm:block">
+                <StepperItem
+                  key={step.key}
+                  step={index + 1}
+                  className="relative flex-row items-start"
+                >
+                  <StepperTrigger
+                    tabIndex={-1}
+                    className="pointer-events-none flex shrink-0 items-start justify-start gap-1.5 rounded-none text-left"
+                  >
+                    <StepperIndicator className="mt-0.5 shrink-0">{index + 1}</StepperIndicator>
+                    <div className="min-w-0 text-left">
+                      <StepperTitle className="text-base font-semibold">
+                        {step.label}
+                      </StepperTitle>
+                      <StepperDescription className="mt-0.5 hidden leading-snug sm:block">
                         {step.subtext}
                       </StepperDescription>
                     </div>
                   </StepperTrigger>
-
-                  {index < steps.length - 1 ? <StepperSeparator /> : null}
+                  {index < steps.length - 1 ? (
+                    <StepperSeparator className="mx-2 mt-3 h-0.5 min-w-[0.75rem] flex-1 self-start sm:mx-2.5" />
+                  ) : null}
                 </StepperItem>
               ))}
             </StepperNav>
@@ -2184,7 +2246,7 @@ export default function KitchenBookingFlow({
           </aside>
 
           {/* Main column */}
-          <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border bg-white shadow-sm lg:h-full lg:min-h-0">
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[1.35rem] border bg-white shadow-sm lg:h-full lg:min-h-0">
             {/* Mobile kitchen context */}
             <div className="flex-shrink-0 border-b bg-gray-50/50 px-4 py-3 lg:hidden">
               {selectedKitchen ? (
@@ -2235,7 +2297,7 @@ export default function KitchenBookingFlow({
                     disabled={slot.isFullyBooked}
                     onClick={() => updateSlotSelection(setPendingTimeSlots, slot)}
                     className={cn(
-                      "flex min-h-[44px] w-full items-center justify-center rounded-xl border px-3 py-2.5 text-center text-xs font-medium transition-colors",
+                      "flex min-h-[44px] w-full items-center justify-center rounded-xl border px-3 py-2.5 text-center text-sm font-medium transition-colors",
                       selected && "border-[#F51042] bg-[#F51042] text-white",
                       !selected && !slot.isFullyBooked && "border-gray-200 bg-white text-gray-700 hover:border-[#F51042]/40",
                       slot.isFullyBooked && "cursor-not-allowed border-transparent bg-muted/50 text-muted-foreground/50 line-through"
@@ -2248,8 +2310,8 @@ export default function KitchenBookingFlow({
             </div>
           </div>
           <div className="flex items-center justify-between gap-3 border-t bg-white px-5 py-4">
-            <Button variant="ghost" className="rounded-xl" onClick={() => setDiscardModal("time")}>Cancel</Button>
-            <p className="text-xs text-muted-foreground">{pendingTimeSlots.length} hour{pendingTimeSlots.length === 1 ? "" : "s"} selected</p>
+            <Button variant="ghost" className="rounded-xl" onClick={() => setDiscardModal("time")}>{t("sheetCancelButton")}</Button>
+            <p className="text-sm text-muted-foreground">{pendingTimeSlots.length} hour{pendingTimeSlots.length === 1 ? "" : "s"} selected</p>
             <Button
               disabled={pendingTimeSlots.length === 0}
               className={chefPrimaryCtaClass()}
@@ -2270,7 +2332,10 @@ export default function KitchenBookingFlow({
           if (!open) setEquipmentInventoryModal(null);
         }}
       >
-        <DialogContent className="flex max-h-[85vh] w-[min(100vw-1.5rem,48rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
+        <DialogContent
+          showCloseButton={false}
+          className="flex max-h-[85vh] w-[min(100vw-1.5rem,48rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl"
+        >
           <DialogHeader className="border-b border-gray-100 px-5 pb-4 pt-5 text-left">
             <DialogTitle>
               {equipmentInventoryModal === "included"
@@ -2279,8 +2344,8 @@ export default function KitchenBookingFlow({
             </DialogTitle>
             <DialogDescription>
               {equipmentInventoryModal === "included"
-                ? t("sheetIncludedEquipmentDesc", "These items come with your kitchen booking at no extra charge.")
-                : t("sheetRentalEquipmentDesc", "These items are available to rent for this kitchen session.")}
+                ? t("sheetIncludedEquipmentDesc", "Included at no extra charge.")
+                : t("sheetRentalEquipmentDesc", "Optional rentals for this kitchen session.")}
             </DialogDescription>
           </DialogHeader>
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
@@ -2289,8 +2354,8 @@ export default function KitchenBookingFlow({
                 ? t("sheetIncludedLabel", "Included")
                 : t("sheetOptionalRentalsLabel", "Optional rentals")}
               subtitle={equipmentInventoryModal === "included"
-                ? t("sheetIncludedEquipmentDesc", "Available at no extra charge.")
-                : t("sheetRentalEquipmentDesc", "Available to rent for this session.")}
+                ? t("sheetIncludedEquipmentDesc", "Included at no extra charge.")
+                : t("sheetRentalEquipmentDesc", "Optional rentals for this session.")}
               items={equipmentInventoryModal === "included"
                 ? equipmentListings.included
                 : equipmentListings.rental}
@@ -2327,8 +2392,8 @@ export default function KitchenBookingFlow({
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
             <section>
               <div className="mb-3">
-                <h4 className="text-sm font-semibold text-gray-900">{t("sheetOptionalRentalsLabel", "Optional rentals")}</h4>
-                <p className="text-xs text-muted-foreground">Select as many as you need.</p>
+                <h4 className="text-base font-semibold text-gray-900">{t("sheetOptionalRentalsLabel", "Optional rentals")}</h4>
+                <p className="text-sm text-muted-foreground">{t("kbfSelectAsMany")}</p>
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {equipmentListings.rental.map((equipment: any) => {
@@ -2344,7 +2409,7 @@ export default function KitchenBookingFlow({
                           : [...current, equipment.id]
                       )}
                       className={cn(
-                        "flex items-center gap-3 rounded-xl border p-3 text-left transition-all",
+                        "flex items-center gap-3 rounded-[1.35rem] border p-3 text-left transition-all",
                         selected
                           ? "border-[#F51042] bg-[#F51042]/[0.04] ring-1 ring-[#F51042]/20"
                           : "border-gray-200 hover:border-[#F51042]/40"
@@ -2355,7 +2420,7 @@ export default function KitchenBookingFlow({
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-semibold text-gray-900">{equipmentName(equipment)}</span>
-                        <span className="block text-xs text-muted-foreground">{formatCurrency(equipment.sessionRate || 0)} per session</span>
+                        <span className="block text-sm text-muted-foreground">{formatCurrency(equipment.sessionRate || 0)} per session</span>
                       </span>
                       <span className={cn(
                         "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border",
@@ -2380,8 +2445,8 @@ export default function KitchenBookingFlow({
               focusAddon="equipment"
             />
             <div className="flex items-center justify-between gap-3 border-t pt-3">
-              <Button variant="ghost" className="rounded-xl" onClick={() => setDiscardModal("equipment")}>Cancel</Button>
-              <p className="text-xs text-muted-foreground">
+              <Button variant="ghost" className="rounded-xl" onClick={() => setDiscardModal("equipment")}>{t("sheetCancelButton")}</Button>
+              <p className="text-sm text-muted-foreground">
                 {pendingEquipmentIds.length
                   ? `${pendingEquipmentIds.length} rental${pendingEquipmentIds.length === 1 ? "" : "s"} selected`
                   : t("sheetNoRentalsSelected", "No rentals selected")}
@@ -2430,13 +2495,20 @@ export default function KitchenBookingFlow({
       </Dialog>
 
       <Dialog open={cancellationPolicyOpen} onOpenChange={setCancellationPolicyOpen}>
-        <DialogContent className="w-[min(100vw-1.5rem,34rem)] sm:max-w-lg">
+        <DialogContent
+          showCloseButton={false}
+          className="w-[min(100vw-1.5rem,34rem)] sm:max-w-lg"
+        >
           <DialogHeader className="text-left">
-            <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-[#FFF3F5] text-[#F51042]">
-              <Icon icon="mdi:shield-check-outline" className="h-5 w-5" aria-hidden />
-            </div>
-            <DialogTitle>{t("sheetCancellationPolicyTitle", "Cancellation policy")}</DialogTitle>
-            <DialogDescription className="pt-2 text-sm leading-relaxed text-gray-600">
+            <DialogTitle className="flex items-center gap-2">
+              <Icon
+                icon="mdi:shield-check-outline"
+                className="h-4 w-4 shrink-0 text-[#F51042]"
+                aria-hidden
+              />
+              {t("sheetCancellationPolicyTitle", "Cancellation policy")}
+            </DialogTitle>
+            <DialogDescription className="pt-2 text-sm leading-relaxed text-muted-foreground">
               {selectedKitchen
                 ? cancellationPolicyCopy(selectedKitchen, (key, options) =>
                     String(t(`kitchen:${key}`, options as any))
@@ -2453,19 +2525,25 @@ export default function KitchenBookingFlow({
       <AlertDialog open={discardModal !== null} onOpenChange={(open) => { if (!open) setDiscardModal(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
+            <AlertDialogTitle>{t("kbfDiscardUnsavedTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Nothing from this modal will be added unless you use its save or continue button.
+              {t("kbfDiscardUnsavedDesc")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Keep editing</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDiscardModalChanges}>Discard changes</AlertDialogAction>
+            <AlertDialogCancel>{t("kbfKeepEditing")}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDiscardModalChanges}>{t("kbfDiscardChanges")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>
+      <AlertDialog
+        open={cancelConfirmOpen}
+        onOpenChange={(open) => {
+          setCancelConfirmOpen(open);
+          if (!open) pendingLeaveRef.current = null;
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>

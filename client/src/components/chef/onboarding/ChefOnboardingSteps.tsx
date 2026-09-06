@@ -61,7 +61,7 @@ export function WelcomeStep() {
             ),
           },
         ].map((item) => (
-          <div key={item.title} className="flex items-start gap-4 rounded-xl border border-border/80 p-4">
+          <div key={item.title} className="flex items-start gap-4 rounded-[1.35rem] border border-border/80 p-4">
             <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
               <item.icon className="h-5 w-5" />
             </div>
@@ -74,14 +74,14 @@ export function WelcomeStep() {
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-xl border border-border p-4">
+        <div className="rounded-[1.35rem] border border-border p-4">
           <Store className="h-5 w-5 text-primary mb-2" />
           <p className="text-sm font-medium">{t("onboardWelcomeSellFoodTitle", "Sell food")}</p>
           <p className="text-xs text-muted-foreground mt-1">
             {t("onboardWelcomeSellFoodDescription", "We handle delivery, payments, and customer support.")}
           </p>
         </div>
-        <div className="rounded-xl border border-border p-4">
+        <div className="rounded-[1.35rem] border border-border p-4">
           <Building className="h-5 w-5 text-foreground/70 mb-2" />
           <p className="text-sm font-medium">{t("onboardWelcomeBookKitchensTitle", "Book kitchens")}</p>
           <p className="text-xs text-muted-foreground mt-1">
@@ -172,7 +172,7 @@ function PathCard({
       data-testid={`chef-onboarding-path-${accent === "primary" ? "localcooks" : "kitchen"}`}
       aria-pressed={selected}
       className={cn(
-        "w-full p-5 rounded-2xl border-2 text-left transition-all",
+        "w-full p-5 rounded-[1.35rem] border-2 text-left transition-all",
         selected
           ? accent === "primary"
             ? "border-primary bg-primary/[0.04] shadow-sm"
@@ -282,7 +282,7 @@ export function LocalCooksApplicationStep({ hasApplication }: { hasApplication: 
             ))}
           </div>
 
-          <div className="rounded-xl border border-border bg-muted/30 p-4 flex items-start gap-3">
+          <div className="rounded-[1.35rem] border border-border bg-muted/30 p-4 flex items-start gap-3">
             <Clock className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
             <p className="text-sm text-muted-foreground">
               {t(
@@ -322,13 +322,13 @@ export function TrainingStep({ hasCompleted }: { hasCompleted: boolean }) {
       ) : (
         <>
           <div className="grid gap-3">
-            <div className="rounded-xl border border-border p-4">
+            <div className="rounded-[1.35rem] border border-border p-4">
               <p className="text-sm font-semibold">{t("onboardTrainingBasicsTitle", "Food Safety Basics")}</p>
               <p className="text-sm text-muted-foreground mt-1">
                 {t("onboardTrainingBasicsDescription", "14 short videos on HACCP, contamination, and safe handling.")}
               </p>
             </div>
-            <div className="rounded-xl border border-border p-4">
+            <div className="rounded-[1.35rem] border border-border p-4">
               <p className="text-sm font-semibold">{t("onboardTrainingHygieneTitle", "Safety & Hygiene How-To's")}</p>
               <p className="text-sm text-muted-foreground mt-1">
                 {t("onboardTrainingHygieneDescription", "8 practical demos for kitchen hygiene and cleaning.")}
@@ -336,7 +336,7 @@ export function TrainingStep({ hasCompleted }: { hasCompleted: boolean }) {
             </div>
           </div>
 
-          <div className="rounded-xl border border-border bg-muted/30 p-4">
+          <div className="rounded-[1.35rem] border border-border bg-muted/30 p-4">
             <p className="text-sm text-muted-foreground">
               {t(
                 "onboardTrainingCertNoticePrefix",
@@ -417,7 +417,7 @@ export function BrowseKitchensStep({
                 ),
               },
             ].map((item) => (
-              <div key={item.step} className="flex items-start gap-4 rounded-xl border border-border/80 p-4">
+              <div key={item.step} className="flex items-start gap-4 rounded-[1.35rem] border border-border/80 p-4">
                 <span className="w-8 h-8 rounded-full bg-primary/10 text-primary text-xs font-semibold flex items-center justify-center shrink-0">
                   {item.step}
                 </span>
@@ -518,7 +518,7 @@ export function SummaryStep() {
       {summaryItems.map((item) => (
         <div
           key={item.id}
-          className="flex items-center justify-between gap-4 rounded-xl border border-border p-4"
+          className="flex items-center justify-between gap-4 rounded-[1.35rem] border border-border p-4"
         >
           <div className="flex items-center gap-3 min-w-0">
             {item.status === "done" && (

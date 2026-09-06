@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { InfoChip } from "@/components/chef/info-chip";
 import {
   Card,
   CardContent,
@@ -154,12 +154,11 @@ export function ChefOverview({
                 </div>
               </div>
               {applications?.length > 0 && (
-                <Badge
+                <InfoChip
                   variant={applicationStatusVariant(getMostRecentApplication()?.status || "")}
-                  className="text-xs"
                 >
                   {formatApplicationStatus(getMostRecentApplication()?.status || "")}
-                </Badge>
+                </InfoChip>
               )}
             </div>
           </CardHeader>
@@ -170,7 +169,7 @@ export function ChefOverview({
 
             {applications?.length > 0 ? (
               <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-border/50">
+                <div className="flex items-center justify-between p-3 bg-muted/30 rounded-xl border border-border/50">
                   <div className="flex items-center gap-2">
                     <FileText className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm font-medium">
@@ -183,18 +182,18 @@ export function ChefOverview({
                       : ""}
                   </span>
                 </div>
-                <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-border/50">
+                <div className="flex items-center justify-between p-3 bg-muted/30 rounded-xl border border-border/50">
                   <div className="flex items-center gap-2">
                     <Shield className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm font-medium">{t("overviewDocuments", "Documents")}</span>
                   </div>
-                  <Badge variant="outline" className="text-xs">
+                  <InfoChip variant="outline">
                     {getDocumentStatus()}
-                  </Badge>
+                  </InfoChip>
                 </div>
               </div>
             ) : (
-              <div className="p-4 rounded-lg border text-center">
+              <div className="p-4 rounded-xl border text-center">
                 <Utensils className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
                 <p className="text-sm font-medium">{t("overviewReadyToStartSelling", "Ready to start selling?")}</p>
                 <p className="text-xs text-muted-foreground">
@@ -239,9 +238,9 @@ export function ChefOverview({
                 </div>
               </div>
               {kitchenApplications.length > 0 && (
-                <Badge variant={kitchenSummary.variant} className="text-xs">
+                <InfoChip variant={kitchenSummary.variant}>
                   {kitchenSummary.label}
-                </Badge>
+                </InfoChip>
               )}
             </div>
           </CardHeader>
@@ -255,7 +254,7 @@ export function ChefOverview({
                 {kitchenApplications.slice(0, 2).map((app) => (
                   <div
                     key={app.id}
-                    className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-border/50"
+                    className="flex items-center justify-between p-3 bg-muted/30 rounded-xl border border-border/50"
                   >
                     <div className="flex items-center gap-2">
                       <Building className="h-4 w-4 text-muted-foreground" />
@@ -263,12 +262,11 @@ export function ChefOverview({
                         {app.location?.name || t("overviewKitchenFallbackName", "Kitchen")}
                       </TruncatedText>
                     </div>
-                    <Badge
+                    <InfoChip
                       variant={app.status === "approved" ? "success" : "outline"}
-                      className="text-xs"
                     >
                       {app.status === "approved" ? t("overviewStatusApproved", "Approved") : t("overviewStatusPending", "Pending")}
-                    </Badge>
+                    </InfoChip>
                   </div>
                 ))}
                 {kitchenApplications.length > 2 && (
@@ -278,7 +276,7 @@ export function ChefOverview({
                 )}
               </div>
             ) : (
-              <div className="p-4 rounded-lg border text-center">
+              <div className="p-4 rounded-xl border text-center">
                 <Building className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
                 <p className="text-sm font-medium">{t("overviewNeedCommercialKitchen", "Need a commercial kitchen?")}</p>
                 <p className="text-xs text-muted-foreground">{t("overviewExplorePartnerKitchens", "Explore our partner kitchens")}</p>

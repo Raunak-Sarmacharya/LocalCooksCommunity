@@ -4,7 +4,8 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { InfoChip } from "@/components/chef/info-chip";
+import { KitchenStatusChip } from "@/components/chef/applications/status-icons";
 import {
   Card,
   CardContent,
@@ -31,7 +32,6 @@ import {
   applicationStatusVariant,
   documentToneFromLabel,
   getKitchenDisplayStatus,
-  toneToBadgeVariant,
   type StatusTone,
 } from "@/components/chef/applications/status";
 import type {
@@ -480,13 +480,13 @@ export default function OverviewTabContent({
                   </CardDescription>
                 </div>
                 {shopStatus?.linked ? (
-                  <Badge variant="success" className="shrink-0 font-medium">
+                  <InfoChip variant="success" className="shrink-0">
                     {t("ovConnected")}
-                  </Badge>
+                  </InfoChip>
                 ) : (
-                  <Badge variant="warning" className="shrink-0 font-medium">
+                  <InfoChip variant="warning" className="shrink-0">
                     {t("ovPayoutsOff")}
-                  </Badge>
+                  </InfoChip>
                 )}
               </div>
             </CardHeader>
@@ -554,9 +554,9 @@ export default function OverviewTabContent({
                     {t("ovSellerAppDesc")}
                   </CardDescription>
                 </div>
-                <Badge variant={applicationStatusVariant(latestApp.status)} className="shrink-0 font-medium">
+                <InfoChip variant={applicationStatusVariant(latestApp.status)} className="shrink-0">
                   {formatApplicationStatus(latestApp.status, t)}
-                </Badge>
+                </InfoChip>
               </div>
             </CardHeader>
             <CardContent className="flex-1 pt-0">
@@ -619,9 +619,7 @@ export default function OverviewTabContent({
                       </TruncatedText>
                       <TruncatedText as="p" className="truncate text-xs text-muted-foreground">{display.stepCaption}</TruncatedText>
                     </div>
-                    <Badge variant={toneToBadgeVariant(display.tone)} className="shrink-0 font-medium">
-                      {display.label}
-                    </Badge>
+                    <KitchenStatusChip display={display} className="shrink-0" />
                   </div>
                 ))}
               </div>
@@ -787,9 +785,9 @@ function UpcomingBookings({
                     <TruncatedText as="p" className="truncate text-xs text-muted-foreground">{timeLabel}</TruncatedText>
                   )}
                 </div>
-                <Badge variant={config.variant} className="shrink-0 font-medium">
+                <InfoChip variant={config.variant} className="shrink-0">
                   {t(config.labelKey as never, { defaultValue: config.fallback })}
-                </Badge>
+                </InfoChip>
               </button>
             );
           })}

@@ -25,6 +25,7 @@ import {
     findChefNavItem,
     type ChefBreadcrumb,
 } from "@/lib/chef-nav-sections"
+import { ChefShellUiProvider } from "@/layouts/chef-shell-context"
 
 interface ChefDashboardLayoutProps {
     children: React.ReactNode
@@ -107,6 +108,7 @@ export default function ChefDashboardLayout({
     }, [breadcrumbs, activeView, onViewChange, t, tr])
 
     return (
+        <ChefShellUiProvider>
         <SidebarProvider>
             <ChefSidebar
                 activeView={activeView}
@@ -201,5 +203,6 @@ export default function ChefDashboardLayout({
                 hiddenItems={sidebarHiddenItems}
             />
         </SidebarProvider>
+        </ChefShellUiProvider>
     )
 }

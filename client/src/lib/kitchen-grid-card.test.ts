@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import {
+  formatEquipmentBreakdown,
   formatEquipmentLine,
   formatStorageLine,
   mergeEquipmentLists,
+  mergeEquipmentSummaries,
   mergeStorageSummaries,
   resolveEquipmentLabel,
 } from "./kitchen-grid-card";
@@ -16,9 +18,9 @@ import {
         hasFreezerStorage: false,
         totalStorageUnits: 2,
       },
-      { dry: "Dry", cold: "Cold", freezer: "Freezer", none: "—" }
+      "—"
     ),
-    "Dry +1"
+    "2"
   );
   assert.equal(
     formatStorageLine(
@@ -28,9 +30,9 @@ import {
         hasFreezerStorage: false,
         totalStorageUnits: 3,
       },
-      { dry: "Dry", cold: "Cold", freezer: "Freezer", none: "—" }
+      "—"
     ),
-    "Dry +2"
+    "3"
   );
   assert.equal(
     formatStorageLine(
@@ -40,19 +42,11 @@ import {
         hasFreezerStorage: false,
         totalStorageUnits: 4,
       },
-      { dry: "Dry", cold: "Cold", freezer: "Freezer", none: "—" }
+      "—"
     ),
     "4"
   );
-  assert.equal(
-    formatStorageLine(null, {
-      dry: "Dry",
-      cold: "Cold",
-      freezer: "Freezer",
-      none: "—",
-    }),
-    "—"
-  );
+  assert.equal(formatStorageLine(null, "—"), "—");
 }
 
 {
@@ -67,9 +61,29 @@ import {
 }
 
 {
+  const labels = { included: "included", rental: "rental", none: "—" };
+  assert.equal(
+    formatEquipmentBreakdown({ included: 3, rental: 2 }, labels),
+    "3 included + 2 rental"
+  );
+  assert.equal(formatEquipmentBreakdown({ included: 4, rental: 0 }, labels), "4 included");
+  assert.equal(formatEquipmentBreakdown({ included: 0, rental: 2 }, labels), "2 rental");
+  assert.equal(formatEquipmentBreakdown({ included: 0, rental: 0 }, labels), "—");
+  assert.equal(formatEquipmentBreakdown(null, labels), "—");
+}
+
+{
   assert.deepEqual(
     mergeEquipmentLists([["commercial-oven"], ["range-stove", "commercial-oven"]]),
     ["Commercial Oven", "Range/Stove"]
+  );
+  assert.deepEqual(
+    mergeEquipmentSummaries([
+      { included: 2, rental: 1 },
+      { included: 1, rental: 3 },
+      null,
+    ]),
+    { included: 3, rental: 4 }
   );
   assert.deepEqual(
     mergeStorageSummaries([

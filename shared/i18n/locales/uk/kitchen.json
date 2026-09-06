@@ -1404,5 +1404,8 @@
   "gridCardStorageFreezer": "Морозилка",
   "gridCardStorageLabel": "Зберігання",
   "gridCardVisualsSubtitle": "Якісні фото незабаром",
-  "gridCardVisualsTitle": "Візуали готуються"
+  "gridCardVisualsTitle": "Візуали готуються",
+  "thingsToKnowViewPlatformTerms": "Переглянути умови платформи",
+  "gridCardEquipmentIncluded": "включено",
+  "gridCardEquipmentRental": "оренда"
 }

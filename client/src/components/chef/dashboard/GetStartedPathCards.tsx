@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { InfoChip } from "@/components/chef/info-chip";
 import {
   Card,
   CardContent,
@@ -59,9 +59,9 @@ function GetStartedPathCard({
               <CardTitle className="text-base">{title}</CardTitle>
               <CardDescription className="mt-1">{description}</CardDescription>
             </div>
-            <Badge variant="outline" className="shrink-0 font-medium">
+            <InfoChip variant="outline" className="shrink-0">
               {t("gsNotStartedBadge")}
-            </Badge>
+            </InfoChip>
           </div>
         </CardHeader>
         <CardContent className="flex-1 pt-0">
@@ -92,7 +92,7 @@ function GetStartedPathCard({
   return (
     <Card className="flex h-full flex-col overflow-hidden shadow-none">
       <div className="p-3 pb-0">
-        <div className="group relative overflow-hidden rounded-md ring-1 ring-inset ring-black/10">
+        <div className="group relative overflow-hidden rounded-[1.35rem] ring-1 ring-inset ring-black/10">
           <SmartImage
             src={image}
             alt={imageAlt}

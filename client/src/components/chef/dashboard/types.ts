@@ -21,6 +21,10 @@ export interface PublicKitchen {
   imageUrl?: string | null;
   galleryImages?: string[];
   equipment?: string[];
+  equipmentSummary?: {
+    included: number;
+    rental: number;
+  };
   hourlyRate?: number | null;
   locationId: number;
   locationName: string;

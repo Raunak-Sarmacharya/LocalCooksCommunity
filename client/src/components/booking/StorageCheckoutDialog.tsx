@@ -212,7 +212,7 @@ export function StorageCheckoutDialog({
                       {item.required && <span className="text-destructive ml-0.5">*</span>}
                     </span>
                     {item.description && (
-                      <p className="text-[11px] text-muted-foreground mt-0.5">{item.description}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
                     )}
                   </div>
                 </label>
