@@ -442,25 +442,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (response.ok) {
         const userData = await response.json();
 
-        // If user is not verified, check Firebase email verification
+        // Firebase is authoritative for ownership of the email address. Always
+        // reload and check it, even if an old database row says verified.
+        await cred.user.reload();
+
+        if (!cred.user.emailVerified) {
+          logger.info('❌ User not verified in Firebase - signing out');
+          setAuthPhase('error');
+          await signOut(auth);
+          throw new Error('Please verify your email before logging in. Check your inbox and spam folder for the verification link, then click it to continue.');
+        }
+
         if (!userData.is_verified) {
-          logger.info('❌ User not verified in database - checking Firebase verification');
-
-          // Reload user to get latest verification status
-          await cred.user.reload();
-
-          if (cred.user.emailVerified) {
-            // User verified in Firebase but not in our database - update our database
-            logger.info('✅ Firebase verified but database not updated - syncing...');
-            setPendingSync(true);
-            // Don't sign out, let the sync update the verification status
-          } else {
-            // User not verified in Firebase either
-            logger.info('❌ User not verified in Firebase - signing out');
-            setAuthPhase('error');
-            await signOut(auth);
-            throw new Error('Please verify your email before logging in. Check your inbox and spam folder for the verification link, then click it to continue.');
-          }
+          // User verified in Firebase but not in our database - update our database
+          logger.info('✅ Firebase verified but database not updated - syncing...');
+          setPendingSync(true);
         }
 
         // User is verified, allow login

@@ -17,6 +17,10 @@ import LoadingOverlay from "./LoadingOverlay";
 import { getEmailContinueMessage } from "./EmailContinueHint";
 import { ArrowLeft, ArrowRight, Lock, Mail, Phone, User } from "lucide-react";
 import { phoneNumberSchema } from "@shared/phone-validation";
+import { hasVerifiedEmail } from "@/lib/auth-verification";
+import { saveRegistrationName } from "@/lib/registration-identity";
+import { sendVerificationEmailWithFallback } from "@/lib/send-verification-email";
+import { updateProfile } from "firebase/auth";
 
 const registerSchema = z.object({
   displayName: z.string().min(2, "Name must be at least 2 characters"),
@@ -190,6 +194,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       ]);
 
       logger.info('✅ Registration successful - Firebase email verification handled automatically');
+      saveRegistrationName(data.email, data.displayName);
 
       // Step 3: Show email verification screen / success message
       setAuthState('success');
@@ -249,6 +254,20 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
     try {
       // Start Google registration
       await signInWithGoogle(true); // Pass true for registration
+
+      // Explicit form input wins over the name supplied by the Google account.
+      const enteredName = form.getValues("displayName").trim();
+      const googleUser = auth.currentUser;
+      if (googleUser?.email && enteredName.length >= 2) {
+        saveRegistrationName(googleUser.email, enteredName);
+        try {
+          await updateProfile(googleUser, { displayName: enteredName });
+        } catch (profileError) {
+          // Account creation succeeded; the saved registration name still
+          // gives the seller form the correct explicit value.
+          logger.warn("Could not update the Google profile display name:", profileError);
+        }
+      }
 
       // Wait for sync to complete - poll for user profile to be available
       let attempts = 0;
@@ -351,17 +370,11 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
 
       if (currentUser) {
         // User is still signed in, send verification directly
-        // Send custom verification email
-        const response = await fetch('/api/firebase/send-verification-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: currentUser.email, role: 'chef' }) // Form handles both, backend determines actual role
+        await sendVerificationEmailWithFallback({
+          email: currentUser.email!,
+          role: 'chef',
         });
-        
-        if (!response.ok) {
-          throw new Error('Failed to send verification email');
-        }
-        logger.info('✅ Firebase verification email resent successfully');
+        logger.info('✅ Verification email resent successfully');
       } else {
         // User is signed out - they need to use the "resend" flow
         // which requires them to enter their email again
@@ -393,37 +406,46 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
 
   if (showEmailVerification) {
     return (
-      <EmailVerificationScreen
-        email={emailForVerification}
-        onResend={handleResendVerification}
-        onGoBack={() => {
-          setShowEmailVerification(false);
-          setAuthState('idle');
-          if (onSwitchToLogin) {
-            onSwitchToLogin();
-          }
-        }}
-        onCheckVerified={async () => {
-          try {
-            const updatedUser = await updateUserVerification();
-            const verified =
-              !!(updatedUser?.is_verified || updatedUser?.isVerified || updatedUser?.emailVerified) ||
-              !!auth.currentUser?.emailVerified;
-            if (verified) {
-              window.location.reload();
-              return;
+      <>
+        <LoadingOverlay
+          isVisible={showLoadingOverlay}
+          message={t("overlayFinishingAccount", "Finishing your account setup...")}
+          submessage={t("overlayPreparingWelcome", "Your email is verified. We're preparing your welcome experience.")}
+          type="loading"
+        />
+        <EmailVerificationScreen
+          email={emailForVerification}
+          onResend={handleResendVerification}
+          onGoBack={() => {
+            setShowEmailVerification(false);
+            setAuthState('idle');
+            if (onSwitchToLogin) {
+              onSwitchToLogin();
             }
-            showAlert({
-              title: "Not verified yet",
-              description:
-                "We haven't detected your verification yet. Please click the link in your email, or wait a few seconds and try again.",
-              type: "warning",
-            });
-          } catch (err) {
-            logger.error("Error checking verification status:", err);
-          }
-        }}
-      />
+          }}
+          onCheckVerified={async () => {
+            try {
+              const updatedUser = await updateUserVerification();
+              const verified = hasVerifiedEmail(auth.currentUser, updatedUser);
+              if (verified) {
+                setAuthState('loading');
+                setShowLoadingOverlay(true);
+                sessionStorage.setItem('localcooks:completing-verification', 'true');
+                window.location.reload();
+                return;
+              }
+              showAlert({
+                title: "Not verified yet",
+                description:
+                  "We haven't detected your verification yet. Please click the link in your email, or wait a few seconds and try again.",
+                type: "warning",
+              });
+            } catch (err) {
+              logger.error("Error checking verification status:", err);
+            }
+          }}
+        />
+      </>
     );
   }
 
@@ -733,4 +755,4 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       </motion.div>
     </>
   );
-} 
+}

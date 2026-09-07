@@ -195,6 +195,7 @@ export const updateDocumentVerificationSchema = z.object({
   id: z.number(),
   foodSafetyLicenseStatus: z.enum(["pending", "approved", "rejected"]).optional(),
   foodEstablishmentCertStatus: z.enum(["pending", "approved", "rejected"]).optional(),
+  foodEstablishmentCert: z.enum(["yes", "no", "notSure"]).optional(),
   documentsAdminFeedback: z.string().optional(),
   documentsReviewedBy: z.number().optional(),
 });

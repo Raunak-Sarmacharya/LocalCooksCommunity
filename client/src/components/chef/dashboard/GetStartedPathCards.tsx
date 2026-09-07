@@ -53,69 +53,36 @@ function GetStartedPathCard({
 }) {
   const { t } = useTranslation("chef");
 
-  if (compact) {
-    return (
-      <Card className="flex h-full flex-col shadow-none">
-        <CardHeader className="pb-3">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <CardTitle className="text-base">{title}</CardTitle>
-              <CardDescription className="mt-1">{description}</CardDescription>
-            </div>
-            <InfoChip variant="outline" className="shrink-0">
-              {t("gsNotStartedBadge")}
-            </InfoChip>
-          </div>
-        </CardHeader>
-        <CardContent className="flex-1 pt-0">
-          <ol role="list" className="divide-y border-y list-none p-0">
-            {steps.map((item, index) => (
-              <li key={item.title} className="flex items-center gap-3 py-2">
-                <span
-                  aria-hidden
-                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-medium text-muted-foreground"
-                >
-                  {index + 1}
-                </span>
-                <TruncatedText as="p" className="min-w-0 truncate text-sm font-medium">{item.title}</TruncatedText>
-              </li>
-            ))}
-          </ol>
-        </CardContent>
-        <CardFooter className="mt-auto flex-row justify-end gap-2">
-          <Button size="sm" onClick={onCta} data-testid={ctaTestId}>
-            <Icon icon={ctaIcon} className="size-4" aria-hidden />
-            {ctaLabel}
-          </Button>
-        </CardFooter>
-      </Card>
-    );
-  }
-
   return (
     <Card className="flex h-full flex-col overflow-hidden shadow-none">
-      <div className="p-3 pb-0">
-        <div className="group relative overflow-hidden rounded-[1.35rem] ring-1 ring-inset ring-black/10">
-          <SmartImage
-            src={image}
-            alt={imageAlt}
-            loading={loading}
-            sizes="(max-width: 1024px) 100vw, 50vw"
-            className={cn(
-              "h-40 w-full object-cover transition-transform duration-500 group-hover:scale-[1.03] sm:h-48",
-              imagePositionClass
-            )}
-          />
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
-          <p className="absolute bottom-2.5 left-3 right-3 text-sm font-medium leading-snug text-white">
-            {imageCaption}
-          </p>
+      {!compact && (
+        <div className="p-3 pb-0">
+          <div className="group relative overflow-hidden rounded-[1.35rem] ring-1 ring-inset ring-black/10">
+            <SmartImage
+              src={image}
+              alt={imageAlt}
+              loading={loading}
+              sizes="(max-width: 1024px) 100vw, 50vw"
+              className={cn(
+                "h-40 w-full object-cover transition-transform duration-500 group-hover:scale-[1.03] sm:h-48",
+                imagePositionClass
+              )}
+            />
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
+            <p className="absolute bottom-2.5 left-3 right-3 text-sm font-medium leading-snug text-white">
+              {imageCaption}
+            </p>
+          </div>
         </div>
-      </div>
+      )}
 
       <CardContent className="flex flex-1 flex-col pt-4">
-        <CardTitle className="text-base">{title}</CardTitle>
-        <CardDescription className="mt-1">{description}</CardDescription>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle className="text-base">{title}</CardTitle>
+            <CardDescription className="mt-1">{description}</CardDescription>
+          </div>
+        </div>
 
         <ol role="list" className="mt-4 list-none space-y-3 p-0">
           {steps.map((item, index) => (

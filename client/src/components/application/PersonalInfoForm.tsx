@@ -11,6 +11,10 @@ import { Label } from "@/components/ui/label";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { ApplicationStepFooter } from "./ApplicationStepFooter";
+import {
+  clearRegistrationName,
+  getRegistrationName,
+} from "@/lib/registration-identity";
 
 // Phone validation helper (matches server-side validation)
 const phoneNumberSchema = z.string()
@@ -67,6 +71,7 @@ export default function PersonalInfoForm() {
   
   // Get email from authenticated user - they must be logged in to access this form
   const userEmail = user?.email || "";
+  const registrationName = getRegistrationName(userEmail);
   
   const [phoneValue, setPhoneValue] = useState(() => {
     // Initialize with +1 prefix if not already present
@@ -79,7 +84,7 @@ export default function PersonalInfoForm() {
   const form = useForm<PersonalInfoFormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      fullName: formData.fullName || user?.displayName || "",
+      fullName: formData.fullName || registrationName || user?.displayName || "",
       email: userEmail,
       phone: phoneValue,
     },
@@ -90,10 +95,11 @@ export default function PersonalInfoForm() {
     if (userEmail && !form.getValues("email")) {
       form.setValue("email", userEmail);
     }
-    if (user?.displayName && !form.getValues("fullName")) {
-      form.setValue("fullName", user.displayName);
+    const preferredName = registrationName || user?.displayName;
+    if (preferredName && !form.getValues("fullName")) {
+      form.setValue("fullName", preferredName);
     }
-  }, [userEmail, user?.displayName, form]);
+  }, [userEmail, registrationName, user?.displayName, form]);
 
   // Update form value when phoneValue changes
   useEffect(() => {
@@ -246,6 +252,7 @@ export default function PersonalInfoForm() {
 
   const onSubmit = (data: PersonalInfoFormData) => {
     updateFormData(data);
+    clearRegistrationName(userEmail);
     goToNextStep();
   };
 

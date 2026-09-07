@@ -2,6 +2,7 @@ import { logger } from "@/lib/logger";
 import { useTranslation } from "react-i18next";
 import EnhancedLoginForm from "@/components/auth/EnhancedLoginForm";
 import EnhancedRegisterForm from "@/components/auth/EnhancedRegisterForm";
+import { hasVerifiedEmail } from "@/lib/auth-verification";
 import EmailVerificationScreen from "@/components/auth/EmailVerificationScreen";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import LoadingOverlay from "@/components/auth/LoadingOverlay";
@@ -202,11 +203,11 @@ export default function ManagerLogin() {
     if (!loading && !userMetaLoading && user && userMetaData && location === '/manager/login' && !hasRedirected.current) {
       const isManager = userMetaData.role === 'manager' || userMetaData.isManager;
       
-      if (isManager && userMetaData.is_verified) {
+      if (isManager && hasVerifiedEmail(user, userMetaData)) {
         logger.info('✅ Manager verified - redirecting to dashboard (wizard will show if needed)');
         hasRedirected.current = true;
         setLocation('/manager/dashboard');
-      } else if (isManager && !userMetaData.is_verified) {
+      } else if (isManager && !hasVerifiedEmail(user, userMetaData)) {
         logger.info('📧 EMAIL VERIFICATION REQUIRED');
         // Stay on login page to show verification message
       } else if (!isManager) {
@@ -335,10 +336,10 @@ export default function ManagerLogin() {
             />
           ) : (
             <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "login" | "register")} className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-6">
-                <TabsTrigger value="login" className="flex items-center gap-2">
+              <TabsList className="grid w-full grid-cols-2 mb-6 rounded-full">
+                <TabsTrigger value="login" className="flex items-center gap-2 rounded-full">
                   <LogIn className="w-4 h-4" />{t("login")}</TabsTrigger>
-                <TabsTrigger value="register" className="flex items-center gap-2">
+                <TabsTrigger value="register" className="flex items-center gap-2 rounded-full">
                   <UserPlus className="w-4 h-4" />{t("register")}</TabsTrigger>
               </TabsList>
 
@@ -356,6 +357,7 @@ export default function ManagerLogin() {
 
               <TabsContent value="register">
                 <EnhancedRegisterForm
+                  hideApplyingToggle
                   onSuccess={async () => {
                     logger.info('🎯 GOOGLE REGISTRATION SUCCESS - Invalidating cache and refreshing data');
                     // ENTERPRISE FIX: Invalidate React Query cache to force refetch of user profile

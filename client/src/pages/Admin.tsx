@@ -1637,7 +1637,31 @@ function AdminDashboard() {
                       </div>
                       <div className="p-3 bg-green-50 rounded-lg border border-green-200">
                         <h5 className="text-xs font-medium text-green-800">Food Establishment Cert</h5>
-                        <p className="text-sm font-semibold text-green-900">{formatCertificationStatus(selectedApplication.foodEstablishmentCert)}</p>
+                        <div className="flex flex-col gap-2 mt-1">
+                          <p className="text-sm font-semibold text-green-900">{formatCertificationStatus(selectedApplication.foodEstablishmentCert)}</p>
+                          {selectedApplication.foodEstablishmentCert !== 'yes' && (
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              className="w-full text-xs bg-white hover:bg-green-100 text-green-700 border-green-300"
+                              onClick={() => {
+                                updateDocumentStatusMutation.mutate({
+                                  id: selectedApplication.id,
+                                  field: 'foodEstablishmentCert',
+                                  status: 'yes'
+                                });
+                                // Optimistically update selected application
+                                setSelectedApplication({
+                                  ...selectedApplication,
+                                  foodEstablishmentCert: 'yes'
+                                });
+                              }}
+                              disabled={updateDocumentStatusMutation.isPending}
+                            >
+                              {updateDocumentStatusMutation.isPending ? 'Updating...' : 'Make Required'}
+                            </Button>
+                          )}
+                        </div>
                       </div>
                       <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
                         <h5 className="text-xs font-medium text-purple-800">Kitchen Preference</h5>

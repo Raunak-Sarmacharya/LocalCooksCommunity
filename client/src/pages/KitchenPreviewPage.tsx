@@ -39,9 +39,8 @@ import { resolveChefDashboardNavigation } from "@shared/subdomain-utils";
 import {
   useChefKitchenApplicationForLocation,
   useChefKitchenApplications,
-  useGlobalMyApplications,
 } from "@/hooks/use-chef-kitchen-applications";
-import { getKitchenDisplayStatus, kitchenLocationId, type KitchenActionKind, type KitchenDisplayStatus } from "@/components/chef/applications/status";
+import { getKitchenDisplayStatus, kitchenLocationId } from "@/components/chef/applications/status";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
 import { useChefShellChrome } from "@/layouts/chef-shell-context";
@@ -68,6 +67,7 @@ import {
   parseLocalDateInput,
 } from "@/lib/kitchen-typed-date";
 import { fitDescriptionPreview } from "@/lib/fit-description-preview";
+import { resolvePreviewPrimaryCta } from "@/lib/kitchen-preview-cta";
 
 /** Iconify icon used across kitchen preview chrome (MDI, bundled offline). */
 function PreviewIcon({
@@ -512,91 +512,6 @@ function DockBookingTotalBesideApply({
       </p>
     </div>
   );
-}
-
-/** Single source of truth for preview primary CTA copy (hero, sticky, calendar). */
-function resolvePreviewPrimaryCta(args: {
-  t: (key: string, fallback?: string) => string;
-  applicationLoading: boolean;
-  canBook: boolean;
-  alreadyApplied: boolean;
-  globalAppPending: boolean;
-  canAcceptApplications: boolean;
-  display: KitchenDisplayStatus | null;
-}): {
-  label: string;
-  kind: KitchenActionKind | "request" | "pending" | "loading" | "closed";
-  /** Calendar proceed needs dates only when starting a new request. */
-  requireDates: boolean;
-  variant: "default" | "outline";
-} | null {
-  const { t, applicationLoading, canBook, alreadyApplied, globalAppPending, canAcceptApplications, display } =
-    args;
-
-  if (applicationLoading) {
-    return {
-      label: t("checkingApplication", "Checking your application…"),
-      kind: "loading",
-      requireDates: false,
-      variant: "default",
-    };
-  }
-
-  if (canBook || display?.actionKind === "book") {
-    return {
-      label: t("bookThisKitchen", "Book"),
-      kind: "book",
-      requireDates: false,
-      variant: "default",
-    };
-  }
-
-  if (display?.actionKind === "complete-step") {
-    return {
-      label: t("continueApplication", "Continue"),
-      kind: "complete-step",
-      requireDates: false,
-      variant: "default",
-    };
-  }
-
-  if (alreadyApplied && display?.actionKind !== "discover") {
-    return {
-      label: t("applicationInProgress", "Application in progress"),
-      kind: "wait",
-      requireDates: false,
-      variant: "outline",
-    };
-  }
-
-  if (display?.actionKind === "discover" && canAcceptApplications) {
-    return {
-      label: t("applyAgain", "Apply again"),
-      kind: "discover",
-      requireDates: true,
-      variant: "default",
-    };
-  }
-
-  if (globalAppPending) {
-    return {
-      label: t("applicationInProgress", "Application in progress"),
-      kind: "pending",
-      requireDates: false,
-      variant: "outline",
-    };
-  }
-
-  if (!canAcceptApplications) {
-    return null;
-  }
-
-  return {
-    label: t("requestToApply", "Request to apply"),
-    kind: "request",
-    requireDates: true,
-    variant: "default",
-  };
 }
 
 function availableDaySummary(availability: PublicKitchen["availability"] | undefined, t: any): string | null {
@@ -3303,29 +3218,20 @@ export default function KitchenPreviewPage() {
     isLoading: locationApplicationLoading,
   } = useChefKitchenApplicationForLocation(isAuthenticated && locationId ? locationId : null);
   const { applications, isLoading: applicationsListLoading } = useChefKitchenApplications();
-  const { applications: globalApplications, isLoading: globalApplicationsLoading } = useGlobalMyApplications();
   const listApplication = useMemo(
     () => applications.find((app) => kitchenLocationId(app) === locationId) ?? null,
     [applications, locationId]
   );
   
-  // Find the most recent global application (Step 1)
-  const globalApplication = globalApplications?.[0] || null;
-  const globalAppPending = globalApplication?.status === 'inReview';
   const application = locationApplication ?? listApplication;
   const hasApplication = locationHasApplication || Boolean(listApplication);
   const kitchenDisplay =
     application?.status ? getKitchenDisplayStatus(application, tChef) : null;
   const canBook = locationCanBook || kitchenDisplay?.actionKind === "book";
-  // NOTE - Application model (3 distinct things, do NOT confuse them):
-  //   1. Seller application  -> /applications, Sell on LocalCooks (independent)
-  //   2. Global application  -> /api/firebase/applications
-  //      *This* is Step 1 of the chef_kitchen_application process
-  //      (admin-approved, personal/business info for the chef).
-  //   3. Kitchen application -> /api/firebase/chef/kitchen-applications
-  //      The chef_kitchen_application row per location with Tier 1/2/3.
+  // Seller applications (/applications) and kitchen applications
+  // (/api/firebase/chef/kitchen-applications) are independent paths.
   //
-  // For `alreadyApplied` below we ONLY care about #3 - whether a
+  // For `alreadyApplied` below we ONLY care whether a
   // chef_kitchen_application row EXISTS for this location (from either
   // the per-location query OR the list query), regardless of status.
   // "new", "pending", "inreview", "approved", "rejected", "cancelled" -
@@ -3692,7 +3598,6 @@ export default function KitchenPreviewPage() {
       applicationLoading,
       canBook,
       alreadyApplied,
-      globalAppPending,
       canAcceptApplications: location.canAcceptApplications !== false,
       display,
     });

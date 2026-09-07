@@ -18,6 +18,8 @@ import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import FadeInSection from "@/components/ui/FadeInSection";
 import SEOHead from "@/components/SEO/SEOHead";
 import { getChefPostAuthPath } from "@/config/chef-onboarding-steps";
+import { hasVerifiedEmail } from "@/lib/auth-verification";
+import LoadingOverlay from "@/components/auth/LoadingOverlay";
 
 export default function EnhancedAuthPage() {
   const { t } = useTranslation("auth");
@@ -30,6 +32,10 @@ export default function EnhancedAuthPage() {
   const [userMetaLoading, setUserMetaLoading] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [successMessageType, setSuccessMessageType] = useState<'password-reset' | 'email-verified'>('password-reset');
+  const [isCompletingVerification, setIsCompletingVerification] = useState(() =>
+    typeof window !== 'undefined' &&
+    sessionStorage.getItem('localcooks:completing-verification') === 'true'
+  );
 
   const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasCheckedUser = useRef(false);
@@ -103,6 +109,23 @@ export default function EnhancedAuthPage() {
     }
   }, [loading]);
 
+  // A hard refresh is needed to rebuild auth/profile state after Firebase email
+  // verification. Keep the transition covered until the verified profile is
+  // ready, so the login form never flashes between verification and welcome.
+  useEffect(() => {
+    if (
+      isCompletingVerification &&
+      !loading &&
+      !userMetaLoading &&
+      user &&
+      userMeta &&
+      hasVerifiedEmail(user, userMeta)
+    ) {
+      sessionStorage.removeItem('localcooks:completing-verification');
+      setIsCompletingVerification(false);
+    }
+  }, [isCompletingVerification, loading, userMetaLoading, user, userMeta]);
+
 
 
   // Fetch user metadata to check welcome screen status
@@ -145,13 +168,13 @@ export default function EnhancedAuthPage() {
             
             // **CRITICAL WELCOME SCREEN LOGIC**
             // Show welcome screen if user is verified but hasn't seen welcome
-            if (userData.is_verified && !userData.has_seen_welcome) {
+            if (hasVerifiedEmail(user, userData) && !userData.has_seen_welcome) {
               logger.info('🎉 WELCOME SCREEN REQUIRED - User needs onboarding');
               return; // Don't proceed with redirect, let the render logic handle welcome screen
             }
             
             // Check if user needs email verification (for email/password users)
-            if (!userData.is_verified) {
+            if (!hasVerifiedEmail(user, userData)) {
               logger.info('📧 EMAIL VERIFICATION REQUIRED');
               return; // MUST RETURN HERE so it doesn't execute the redirect logic below which bounces unverified users back to login
             }
@@ -288,6 +311,14 @@ export default function EnhancedAuthPage() {
     }
 
     if (!loading && !isInitialLoad && user && hasAttemptedLogin && userMeta) {
+      // Email ownership is the first gate. In particular, an authenticated
+      // Firebase session exists immediately after registration; that must not
+      // be mistaken for a verified session and allowed into onboarding.
+      if (!hasVerifiedEmail(user, userMeta)) {
+        logger.info('📧 EMAIL VERIFICATION REQUIRED - holding on auth page');
+        return;
+      }
+
       // Terms acceptance gate
       const needsTermsAcceptance =
         !userMeta.termsAccepted ||
@@ -320,7 +351,7 @@ export default function EnhancedAuthPage() {
       // Admins: Go straight to admin dashboard
       // Managers: Go to dashboard where ManagerOnboardingWizard will show
       // Other users: Show welcome screen if needed
-      if (userMeta.is_verified && !userMeta.has_seen_welcome) {
+      if (!userMeta.has_seen_welcome) {
         if (userMeta.role === 'admin') {
           logger.info('👑 Admin user - skipping welcome screen, redirecting to admin');
           setLocation('/admin');
@@ -389,11 +420,22 @@ export default function EnhancedAuthPage() {
     }, 3000);
   };
 
+  if (isCompletingVerification) {
+    return (
+      <LoadingOverlay
+        isVisible
+        message={t("overlayFinishingAccount", "Finishing your account setup...")}
+        submessage={t("overlayPreparingWelcome", "Your email is verified. We're preparing your welcome experience.")}
+        type="loading"
+      />
+    );
+  }
+
   // Skip welcome screen for admins and managers
   // Admins: Go straight to admin dashboard
   // Managers: Go to dashboard where ManagerOnboardingWizard will show
   // Only show welcome screen for chefs
-  if (!loading && !userMetaLoading && user && userMeta && userMeta.is_verified && !userMeta.has_seen_welcome) {
+  if (!loading && !userMetaLoading && user && userMeta && hasVerifiedEmail(user, userMeta) && !userMeta.has_seen_welcome) {
     if (userMeta.role === 'admin') {
       return <Redirect to="/admin" />;
     } else if (userMeta.role === 'manager') {
@@ -502,12 +544,12 @@ export default function EnhancedAuthPage() {
 
             {/* Tabs */}
             <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "login" | "register")} className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-6">
-                <TabsTrigger value="login" className="flex items-center gap-2">
+              <TabsList className="grid w-full grid-cols-2 mb-6 rounded-full">
+                <TabsTrigger value="login" className="flex items-center gap-2 rounded-full">
                   <LogIn className="w-4 h-4" />
                   {t("loginTab", "Login")}
                 </TabsTrigger>
-                <TabsTrigger value="register" className="flex items-center gap-2">
+                <TabsTrigger value="register" className="flex items-center gap-2 rounded-full">
                   <UserPlus className="w-4 h-4" />
                   {t("registerTab", "Register")}
                 </TabsTrigger>
@@ -524,6 +566,7 @@ export default function EnhancedAuthPage() {
                 <EnhancedRegisterForm
                   onSuccess={handleSuccess}
                   setHasAttemptedLogin={setHasAttemptedLogin}
+                  hideApplyingToggle
                 />
               </TabsContent>
             </Tabs>
@@ -539,7 +582,7 @@ export default function EnhancedAuthPage() {
                 {activeTab === "login" ? t("noAccount", "Don't have an account?") : t("alreadyHaveAccount", "Already have an account?")}{" "}
                 <Button
                   variant="link"
-                  className="text-blue-600 hover:text-blue-700 font-semibold p-0 h-auto"
+                  className="h-auto p-0 font-semibold text-[#F51042] hover:text-[#D90E3A]"
                   onClick={() => setActiveTab(activeTab === "login" ? "register" : "login")}
                 >
                   {activeTab === "login" ? t("registerTab", "Register") : t("loginTab", "Login")}
@@ -589,7 +632,7 @@ export default function EnhancedAuthPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.6 }}
             >
-              {t("heroJoinDesc", "Apply to become a verified cook and start your culinary journey with us. Track your application status and get updates on your approval process.")}
+              {t("heroJoinDesc", "Sell food on LocalCooks or book a licensed commercial kitchen—all from one chef account.")}
             </motion.p>
             <motion.ul
               initial={{ opacity: 0 }}
@@ -598,9 +641,10 @@ export default function EnhancedAuthPage() {
               className="space-y-4"
             >
               {[
-                t("heroBullet1", "Monitor your application progress"),
-                t("heroBullet2", "Receive updates on your status"),
-                t("heroBullet3", "Access exclusive cooking resources")
+                t("heroBullet1", "Sell food through the LocalCooks marketplace"),
+                t("heroBullet2", "We handle customer delivery and secure payments"),
+                t("heroBullet3", "Book licensed commercial kitchens by the hour"),
+                t("heroBullet4", "Track applications, bookings, and updates")
               ].map((item, index) => (
                 <motion.li
                   key={index}
@@ -639,4 +683,4 @@ export default function EnhancedAuthPage() {
 
     </>
   );
-} 
+}

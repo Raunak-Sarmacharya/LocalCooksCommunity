@@ -71,9 +71,10 @@ export default function AnimatedButton({
       type={type}
       variant={getVariant()}
       className={cn(
-        "w-full h-12 text-base font-semibold",
+        "w-full h-12 rounded-full text-base font-semibold transition-all duration-300",
+        variant === 'primary' && state === 'idle' && "bg-[#F51042] text-white shadow-lg hover:bg-[#D90E3A] hover:shadow-xl",
         state === 'success' && "bg-green-500 hover:bg-green-600",
-        variant === 'google' && "bg-white border border-gray-200 text-gray-900 shadow-sm hover:bg-gray-50",
+        variant === 'google' && "bg-white border border-gray-200 text-gray-900 shadow-sm hover:bg-gray-50 hover:shadow-md",
         className
       )}
       disabled={disabled || state === 'loading'}
@@ -82,4 +83,4 @@ export default function AnimatedButton({
       {renderContent()}
     </Button>
   );
-} 
+}

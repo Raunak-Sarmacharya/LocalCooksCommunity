@@ -320,19 +320,16 @@ export const sendEmail = async (content: EmailContent, options?: { trackingId?: 
       html: content.html,
       // Add attachments if provided (e.g., .ics calendar files)
       attachments: content.attachments || [],
-      // Optimized headers for better deliverability with Hostinger SMTP
+      // Keep transport headers minimal. The authenticated SMTP relay owns DKIM
+      // and Return-Path; declaring those manually can create conflicting
+      // identities after the relay rewrites the envelope.
       headers: {
         'Organization': organizationName,
         'X-Mailer': 'Local Cooks Community',
-        // Proper sender identification for DKIM/SPF alignment
-        'Sender': config.auth.user,
-        'Return-Path': config.auth.user,
-        'Reply-To': config.auth.user,
-        // Standard priority headers (avoid high priority to reduce spam score)
-        'Importance': 'Normal',
         // Merge any additional headers from content
         ...(content.headers || {})
       },
+      replyTo: config.auth.user,
       // Proper encoding settings for DKIM
       encoding: 'utf8' as const,
       // Enhanced delivery options for Hostinger SMTP
@@ -1802,10 +1799,7 @@ The Local Cooks Team
     text,
     html,
     headers: {
-      'X-Priority': '3',
-      'X-MSMail-Priority': 'Normal',
-      'Importance': 'Normal',
-      'List-Unsubscribe': `<mailto:${getUnsubscribeEmail()}>`
+      'X-Transactional-Type': 'account-verification'
     }
   };
 };

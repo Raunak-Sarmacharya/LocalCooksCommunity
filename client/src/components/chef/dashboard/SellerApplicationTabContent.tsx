@@ -9,6 +9,7 @@ import { ChefPageHeader, QuietNotice, StatTile, StatusDot } from "@/components/c
 import { TruncatedText } from "@/components/common/TruncatedText";
 import { KitchenApplicationCard } from "@/components/chef/applications";
 import EmptyApplicationState from "./EmptyApplicationState";
+import { KitchenPathEmptyCard, SellerPathEmptyCard } from "./GetStartedPathCards";
 import {
   documentToneFromLabel,
   getKitchenDisplayStatus,
@@ -251,102 +252,105 @@ export default function SellerApplicationTabContent({
               </InfoChip>
             ) : null}
           </div>
-          <Card className="flex flex-1 flex-col shadow-none" data-testid="seller-application-card">
-            <CardContent className="flex-1 pt-4">
-              {current && foodSafety && establishment ? (
-                <div className="space-y-4">
-                  <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
-                    <div>
-                      <dt className="text-xs text-muted-foreground">{t("apRowReference")}</dt>
-                      <dd className="mt-1 truncate text-sm font-medium">#{current.id}</dd>
+          {current ? (
+            <Card className="flex flex-1 flex-col shadow-none" data-testid="seller-application-card">
+              <CardContent className="flex-1 pt-4">
+                {foodSafety && establishment ? (
+                  <div className="space-y-4">
+                    <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+                      <div>
+                        <dt className="text-xs text-muted-foreground">{t("apRowReference")}</dt>
+                        <dd className="mt-1 truncate text-sm font-medium">#{current.id}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-muted-foreground">{t("apRowSubmitted")}</dt>
+                        <dd className="mt-1 truncate text-sm font-medium">{submitted}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-muted-foreground">{t("apRowName")}</dt>
+                        <dd className="mt-1">
+                          <TruncatedText className="block truncate text-sm font-medium">{current.fullName || "—"}</TruncatedText>
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-muted-foreground">{t("apRowKitchen")}</dt>
+                        <dd className="mt-1">
+                          <TruncatedText className="block truncate text-sm font-medium">{kitchenPref}</TruncatedText>
+                        </dd>
+                      </div>
+                    </dl>
+                    <div className="grid grid-cols-1 gap-2">
+                      <div className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5">
+                        <span className="text-sm">{t("apFoodSafetyLicense")}</span>
+                        <InfoChip variant={foodSafety.variant}>
+                          {foodSafety.label}
+                        </InfoChip>
+                      </div>
+                      {(current.foodEstablishmentCert === "yes" || current.foodEstablishmentCertUrl) ? (
+                        <div className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5">
+                          <span className="text-sm">{t("apEstablishmentCert")}</span>
+                          <InfoChip variant={establishment.variant}>
+                            {establishment.label}
+                          </InfoChip>
+                        </div>
+                      ) : null}
                     </div>
-                    <div>
-                      <dt className="text-xs text-muted-foreground">{t("apRowSubmitted")}</dt>
-                      <dd className="mt-1 truncate text-sm font-medium">{submitted}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-xs text-muted-foreground">{t("apRowName")}</dt>
-                      <dd className="mt-1">
-                        <TruncatedText className="block truncate text-sm font-medium">{current.fullName || "—"}</TruncatedText>
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-xs text-muted-foreground">{t("apRowKitchen")}</dt>
-                      <dd className="mt-1">
-                        <TruncatedText className="block truncate text-sm font-medium">{kitchenPref}</TruncatedText>
-                      </dd>
-                    </div>
-                  </dl>
-                  <div className="grid grid-cols-1 gap-2">
-                    <div className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5">
-                      <span className="text-sm">{t("apFoodSafetyLicense")}</span>
-                      <InfoChip variant={foodSafety.variant}>
-                        {foodSafety.label}
-                      </InfoChip>
-                    </div>
-                    <div className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5">
-                      <span className="text-sm">{t("apEstablishmentCert")}</span>
-                      <InfoChip variant={establishment.variant}>
-                        {establishment.label}
-                      </InfoChip>
-                    </div>
+                    {current.feedback ? (
+                      <QuietNotice title={t("apReviewerFeedback")}>{current.feedback}</QuietNotice>
+                    ) : null}
+                    {earlier.length > 0 ? (
+                      <ul className="divide-y border-t pt-1">
+                        {earlier.map((app) => (
+                          <li key={app.id} className="flex items-center justify-between gap-3 py-2.5">
+                            <TruncatedText as="p" className="truncate text-sm text-muted-foreground">{`#${app.id}`}</TruncatedText>
+                            <span className="flex items-center gap-2 text-sm">
+                              <StatusDot tone={sellerTone(app.status)} />
+                              {formatApplicationStatus(app.status, t)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
                   </div>
-                  {current.feedback ? (
-                    <QuietNotice title={t("apReviewerFeedback")}>{current.feedback}</QuietNotice>
-                  ) : null}
-                  {earlier.length > 0 ? (
-                    <ul className="divide-y border-t pt-1">
-                      {earlier.map((app) => (
-                        <li key={app.id} className="flex items-center justify-between gap-3 py-2.5">
-                          <TruncatedText as="p" className="truncate text-sm text-muted-foreground">{`#${app.id}`}</TruncatedText>
-                          <span className="flex items-center gap-2 text-sm">
-                            <StatusDot tone={sellerTone(app.status)} />
-                            {formatApplicationStatus(app.status, t)}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  {t("apOneApplicationNote")}
-                </p>
-              )}
-            </CardContent>
-            <CardFooter className="mt-auto w-full flex-row justify-between gap-2">
-              {current && canCancel ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-muted-foreground"
-                  onClick={() => onCancelApplication("chef", current.id)}
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    {t("apOneApplicationNote")}
+                  </p>
+                )}
+              </CardContent>
+              <CardFooter className="mt-auto w-full flex-row justify-between gap-2">
+                {canCancel ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground"
+                    onClick={() => onCancelApplication("chef", current.id)}
+          >
+            <Icon icon="mdi:close-circle-outline" className="size-4" aria-hidden />
+            {t("apCancelBtn")}
+                  </Button>
+                ) : (
+                  <span />
+                )}
+                {canManageDocs ? (
+                  <Button
+                    className="ml-auto"
+                    variant={docsNeedAction ? "default" : "outline"}
+                    onClick={onManageDocuments}
         >
-          <Icon icon="mdi:close-circle-outline" className="size-4" aria-hidden />
-          {t("apCancelBtn")}
-                </Button>
-              ) : (
-                <span />
-              )}
-              {current && canManageDocs ? (
-                <Button
-                  className="ml-auto"
-                  variant={docsNeedAction ? "default" : "outline"}
-                  onClick={onManageDocuments}
-      >
-        <Icon icon="mdi:file-document-edit-outline" className="size-4" aria-hidden />
-        {docsNeedAction ? t("apUpdateDocuments") : t("apManageDocuments")}
-                  <ArrowRight />
-                </Button>
-              ) : !hasActiveSeller ? (
-                <Button className="ml-auto w-full" onClick={onStartApplication}>
-                  <Store />
-                  {t("apStartSellerApplication")}
-                  <ArrowRight />
-                </Button>
-              ) : null}
-            </CardFooter>
-          </Card>
+          <Icon icon="mdi:file-document-edit-outline" className="size-4" aria-hidden />
+          {docsNeedAction ? t("apUpdateDocuments") : t("apManageDocuments")}
+                    <ArrowRight />
+                  </Button>
+                ) : null}
+              </CardFooter>
+            </Card>
+          ) : (
+            <SellerPathEmptyCard
+              compact={true}
+              onApply={onStartApplication}
+            />
+          )}
         </section>
 
         <section className="flex min-h-full flex-col">
@@ -382,20 +386,10 @@ export default function SellerApplicationTabContent({
               </Button>
             </div>
           ) : (
-            <Card className="flex flex-1 flex-col shadow-none">
-              <CardContent className="flex-1 pt-4">
-                <p className="text-sm text-muted-foreground">
-                  {t("apBrowsePartnerKitchens")}
-                </p>
-              </CardContent>
-              <CardFooter className="mt-auto w-full">
-                <Button variant="outline" className="w-full" onClick={onDiscoverKitchens}>
-                  <Building />
-                  {t("apBrowseKitchens")}
-                  <ArrowRight />
-                </Button>
-              </CardFooter>
-            </Card>
+            <KitchenPathEmptyCard
+              compact={true}
+              onExplore={onDiscoverKitchens}
+            />
           )}
         </section>
       </div>

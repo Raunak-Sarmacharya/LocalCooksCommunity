@@ -338,62 +338,44 @@ function DocumentUploadModal({
 
 export function DocumentManagementModal({ open, onOpenChange }: DocumentManagementModalProps) {
   const { t } = useTranslation("chef");
-  const [discardOpen, setDiscardOpen] = useState(false);
 
-  const requestClose = () => setDiscardOpen(true);
-  const confirmClose = () => {
-    setDiscardOpen(false);
+  const requestClose = () => {
     onOpenChange(false);
   };
 
   return (
-    <>
-      <Dialog open={open}>
-        <DialogContent
-          className="max-w-4xl w-full max-h-screen overflow-y-auto p-0 sm:p-6 rounded-lg sm:rounded-2xl"
-          showCloseButton={false}
-          onEscapeKeyDown={(e) => {
-            e.preventDefault();
-            requestClose();
-          }}
-          onPointerDownOutside={(e) => {
-            e.preventDefault();
-            requestClose();
-          }}
-        >
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {t("duManageTitle")}
-              <InfoHint title={t("duGoodToKnow")}>
-                <p className="font-medium text-foreground">{t("duStatusResetTitle")}</p>
-                <p>{t("duStatusResetBody")}</p>
-              </InfoHint>
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 p-4 sm:p-0">
-            <div className="flex justify-end">
-              <Button variant="outline" size="sm" onClick={requestClose}>
-                {t("duCancel")}
-              </Button>
-            </div>
-            <DocumentUpload forceShowForm embedded />
+    <Dialog open={open}>
+      <DialogContent
+        className="max-w-4xl w-full max-h-screen overflow-y-auto p-0 sm:p-6 rounded-lg sm:rounded-2xl"
+        showCloseButton={false}
+        onEscapeKeyDown={(e) => {
+          e.preventDefault();
+          requestClose();
+        }}
+        onPointerDownOutside={(e) => {
+          e.preventDefault();
+          requestClose();
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            {t("duManageTitle")}
+            <InfoHint title={t("duGoodToKnow")}>
+              <p className="font-medium text-foreground">{t("duStatusResetTitle")}</p>
+              <p>{t("duStatusResetBody")}</p>
+            </InfoHint>
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 p-4 sm:p-0">
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={requestClose}>
+              {t("duCancel")}
+            </Button>
           </div>
-        </DialogContent>
-      </Dialog>
-
-      <AlertDialog open={discardOpen} onOpenChange={setDiscardOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("apLeaveTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>{t("apLeaveDesc")}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("apLeaveKeep")}</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmClose}>{t("apLeaveConfirm")}</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+          <DocumentUpload forceShowForm embedded />
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -754,52 +736,54 @@ export default function DocumentUpload({
           </div>
         </div>
 
-        {/* Food Establishment Certificate */}
-        <div className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5">
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">{t("duEstablishmentTitle")}</p>
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              {verification?.foodEstablishmentCertUrl ? (
-                <>
-                  <span className="text-xs text-muted-foreground">{t("duDocumentUploaded")}</span>
-                  {verification.foodEstablishmentCertStatus && getStatusBadge(verification.foodEstablishmentCertStatus)}
-                </>
-              ) : (
-                <span className="text-xs text-muted-foreground">{t("duNotUploaded")}</span>
+        {/* Food Establishment Certificate - Optional/Conditional */}
+        {(verification?.foodEstablishmentCert === "yes" || verification?.foodEstablishmentCertUrl) && (
+          <div className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">{t("duEstablishmentTitle")}</p>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                {verification?.foodEstablishmentCertUrl ? (
+                  <>
+                    <span className="text-xs text-muted-foreground">{t("duDocumentUploaded")}</span>
+                    {verification.foodEstablishmentCertStatus && getStatusBadge(verification.foodEstablishmentCertStatus)}
+                  </>
+                ) : (
+                  <span className="text-xs text-muted-foreground">{t("duNotUploaded")}</span>
+                )}
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {verification?.foodEstablishmentCertUrl && (
+                <Button variant="ghost" size="sm" asChild>
+                  <AuthenticatedDocumentLink
+                    url={verification.foodEstablishmentCertUrl}
+                    className="inline-flex items-center gap-1.5"
+                  >
+                    <FileText className="h-4 w-4" />
+                    {t("duViewDocument")}
+                  </AuthenticatedDocumentLink>
+                </Button>
               )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setEstablishmentModalOpen(true)}
+              >
+                {verification?.foodEstablishmentCertUrl ? (
+                  <>
+                    <Upload className="h-4 w-4" />
+                    {t("duUpdateBtn")}
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-4 w-4" />
+                    {t("duUploadBtn")}
+                  </>
+                )}
+              </Button>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {verification?.foodEstablishmentCertUrl && (
-              <Button variant="ghost" size="sm" asChild>
-                <AuthenticatedDocumentLink
-                  url={verification.foodEstablishmentCertUrl}
-                  className="inline-flex items-center gap-1.5"
-                >
-                  <FileText className="h-4 w-4" />
-                  {t("duViewDocument")}
-                </AuthenticatedDocumentLink>
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setEstablishmentModalOpen(true)}
-            >
-              {verification?.foodEstablishmentCertUrl ? (
-                <>
-                  <Upload className="h-4 w-4" />
-                  {t("duUpdateBtn")}
-                </>
-              ) : (
-                <>
-                  <Plus className="h-4 w-4" />
-                  {t("duUploadBtn")}
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
+        )}
       </div>
 
       {verification?.documentsAdminFeedback && (

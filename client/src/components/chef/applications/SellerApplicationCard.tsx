@@ -192,12 +192,14 @@ export default function SellerApplicationCard({
                     {foodSafety.label}
                   </InfoChip>
                 </div>
-                <div className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5">
-                  <span className="text-sm">{t("establishmentCert", "Establishment Cert")}</span>
-                  <InfoChip variant={establishment.variant}>
-                    {establishment.label}
-                  </InfoChip>
-                </div>
+                {(app.foodEstablishmentCert === "yes" || app.foodEstablishmentCertUrl) ? (
+                  <div className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5">
+                    <span className="text-sm">{t("establishmentCert", "Establishment Cert")}</span>
+                    <InfoChip variant={establishment.variant}>
+                      {establishment.label}
+                    </InfoChip>
+                  </div>
+                ) : null}
               </div>
             </div>
 

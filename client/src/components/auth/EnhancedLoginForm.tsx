@@ -487,7 +487,7 @@ export default function EnhancedLoginForm({
                 type="button"
                 onClick={() => switchChallenge("password")}
                 disabled={busy}
-                className="w-full text-sm font-medium text-gray-700 hover:text-gray-900 py-2 rounded-lg border border-gray-200 hover:border-gray-300 bg-white transition-colors disabled:opacity-50"
+                className="w-full rounded-full border border-gray-200 bg-white py-2 text-sm font-medium text-gray-700 transition-colors hover:border-[#F51042]/40 hover:bg-[#FFF7F9] hover:text-[#F51042] disabled:opacity-50"
               >
                 {t("signInWithPassword", "Sign in with password")}
               </button>
@@ -496,7 +496,7 @@ export default function EnhancedLoginForm({
                 type="button"
                 onClick={() => switchChallenge("email-link")}
                 disabled={busy}
-                className="w-full text-sm font-medium text-gray-700 hover:text-gray-900 py-2 rounded-lg border border-gray-200 hover:border-gray-300 bg-white transition-colors disabled:opacity-50"
+                className="w-full rounded-full border border-gray-200 bg-white py-2 text-sm font-medium text-gray-700 transition-colors hover:border-[#F51042]/40 hover:bg-[#FFF7F9] hover:text-[#F51042] disabled:opacity-50"
               >
                 {t("emailMeASignInLink", "Email me a sign-in link instead")}
               </button>
@@ -505,7 +505,7 @@ export default function EnhancedLoginForm({
               {challenge === "email-link"
                 ? t(
                     "passwordChallengeHint",
-                    "Have a password, or need to set one up? Use password sign-in or forgot password."
+                    "Have a password, or need to set one up?"
                   )
                 : t(
                     "emailLinkChallengeHint",

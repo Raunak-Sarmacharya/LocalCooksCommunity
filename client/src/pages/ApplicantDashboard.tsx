@@ -143,8 +143,7 @@ export default function ApplicantDashboard() {
   const applicationLeaveRef = useRef<(() => void) | null>(null);
   const [applicationLeaveOpen, setApplicationLeaveOpen] = useState(false);
   const [applicationBusy, setApplicationBusy] = useState(false);
-  const isApplicationFlowActive =
-    applicationViewMode === "form" || applicationViewMode === "documents";
+  const isApplicationFlowActive = applicationViewMode === "form";
 
   const requestLeaveApplication = useCallback(
     (proceed?: () => void) => {
@@ -205,12 +204,14 @@ export default function ApplicantDashboard() {
         setActiveTabState(view === 'damage-claims' ? 'issues-refunds' : view);
 
         // If navigating to applications with action=new, open the form
-        if (view === 'applications' && action === 'new') {
-          setApplicationViewMode('form');
-        }
-        // If navigating to applications with action=documents, open document verification
-        if (view === 'applications' && action === 'documents') {
-          setApplicationViewMode('documents');
+        if (view === 'applications') {
+          if (action === 'new') {
+            setApplicationViewMode('form');
+          } else if (action === 'documents') {
+            setApplicationViewMode('documents');
+          } else {
+            setApplicationViewMode('list');
+          }
         }
       } else if (!view) {
         // No ?view param — user is on the bare /dashboard URL (e.g. after
@@ -1012,7 +1013,7 @@ export default function ApplicantDashboard() {
   const onShellViewChange = useCallback((view: string) => {
     guardedApplicationNavigate(() => {
       setActiveTab(view);
-      if (view !== "applications") setApplicationViewMode("list");
+      setApplicationViewMode("list"); // Reset to list view regardless of which tab is clicked
       if (view !== "training") setTrainingViewMode("overview");
     });
   }, [guardedApplicationNavigate]);

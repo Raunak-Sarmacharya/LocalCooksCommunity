@@ -545,6 +545,7 @@ router.patch("/:id/document-verification", async (req: Request, res: Response) =
             id: applicationId,
             foodSafetyLicenseStatus: parsedData.data.foodSafetyLicenseStatus || existingApplication.foodSafetyLicenseStatus,
             foodEstablishmentCertStatus: parsedData.data.foodEstablishmentCertStatus || existingApplication.foodEstablishmentCertStatus,
+            foodEstablishmentCert: parsedData.data.foodEstablishmentCert,
             documentsAdminFeedback: parsedData.data.documentsAdminFeedback,
             documentsReviewedBy: req.neonUser.id
         };

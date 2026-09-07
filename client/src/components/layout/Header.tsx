@@ -304,7 +304,7 @@ export default function Header({ position = "fixed" }: { position?: "fixed" | "s
                     <ChevronDown className="h-4 w-4 opacity-70" />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-72 p-2">
+                <DropdownMenuContent align="start" className="w-80 p-2">
                   <DropdownMenuItem asChild>
                     <a
                       href={serviceUrls.chef}
@@ -382,7 +382,7 @@ export default function Header({ position = "fixed" }: { position?: "fixed" | "s
                   <Button
                     asChild
                     variant="outline"
-                    className="border-[#F51042] text-[#F51042] hover:bg-[#F51042] hover:text-white transition-all duration-300 rounded-lg font-medium shadow-sm hover:shadow-md ml-2"
+                    className="border-[#F51042] text-[#F51042] hover:bg-[#F51042] hover:text-white transition-all duration-300 rounded-full font-medium shadow-sm hover:shadow-md ml-2"
                   >
                     <Link href={showPartnerLogin ? "/manager/login" : "/auth"}>
                       {showPartnerLogin ? t("partnerLoginRegister") : t("loginRegister")}
@@ -568,7 +568,7 @@ export default function Header({ position = "fixed" }: { position?: "fixed" | "s
                   <li className="pt-2">
                     <Button
                       asChild
-                      className="w-full bg-primary hover:bg-opacity-90 hover-standard text-white"
+                      className="w-full rounded-full bg-primary hover:bg-opacity-90 hover-standard text-white"
                     >
                       <Link href={showPartnerLogin ? "/manager/login" : "/auth"} onClick={closeMenu}>
                         {showPartnerLogin ? t("partnerLoginRegister") : t("loginRegister")}

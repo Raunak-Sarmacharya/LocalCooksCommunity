@@ -9,7 +9,7 @@ import { getSubdomainOriginForEnvironment } from "@shared/subdomain-utils";
 
 export type VerificationSendChannel = "server" | "firebase";
 
-/** Custom branded verification via server SMTP; Firebase only if that fails. */
+/** Send branded verification through our SMTP host; use Firebase on failure. */
 export async function sendVerificationEmailWithFallback(options: {
   email: string;
   role?: string;
