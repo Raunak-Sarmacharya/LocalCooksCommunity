@@ -502,11 +502,12 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
               exit={{ opacity: 0, x: 20 }}
               className="space-y-5"
             >
-              <div className="mb-2 text-sm text-gray-500 font-medium">{isApplying ? "Request to apply · Basic info" : "Basic Info"}</div>
+              <div className="mb-2 text-sm text-gray-500 font-medium">{isApplying ? " " : " "}</div>
               {/* Name Field */}
               <AnimatedInput
                 label={t("fullNameLabel", "Full Name")}
                 type="text"
+                required
                 icon={<User className="w-4 h-4" />}
                 validationState={getFieldValidationState('displayName')}
                 error={form.formState.errors.displayName?.message}
@@ -521,6 +522,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
               <AnimatedInput
                 label={t("emailAddressLabel", "Email Address")}
                 type="email"
+                required
                 icon={<Mail className="w-4 h-4" />}
                 validationState={getFieldValidationState('email')}
                 error={form.formState.errors.email?.message}
@@ -535,6 +537,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
               <AnimatedInput
                 label={t("phoneNumberLabel", "Phone Number")}
                 type="tel"
+                required
                 icon={<Phone className="w-4 h-4" />}
                 validationState={getFieldValidationState('phone')}
                 error={form.formState.errors.phone?.message}
@@ -615,14 +618,16 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
 
               {/* Required first */}
               <div className="space-y-1">
-                <label className="block text-sm font-medium text-gray-700">
-                  How often will you use the kitchen? <span className="text-red-500">*</span>
+                <label htmlFor="usageFrequency" className="block text-sm font-medium text-gray-700">
+                  How often will you use the kitchen? <span className="text-red-500" aria-hidden="true">*</span>
                 </label>
                 <select
+                  id="usageFrequency"
                   className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 text-gray-900 bg-white"
                   {...form.register('usageFrequency', {
-                    required: forceApplying ? t("requiredField", "This field is required") : false,
+                    required: forceApplying || isApplying ? t("requiredField", "This field is required") : false,
                   })}
+                  required={forceApplying || isApplying}
                 >
                   <option value="">-- Select frequency --</option>
                   <option value="weekly">Weekly</option>
@@ -637,12 +642,14 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
               </div>
 
               <div className="space-y-1">
-                <label className="block text-sm font-medium text-gray-700">
-                  Do you have a Food Safety License? <span className="text-red-500">*</span>
+                <label htmlFor="foodSafetyLicense" className="block text-sm font-medium text-gray-700">
+                  Do you have a Food Safety License? <span className="text-red-500" aria-hidden="true">*</span>
                 </label>
                 <select 
+                  id="foodSafetyLicense"
                   className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 text-gray-900 bg-white"
                   {...form.register('foodSafetyLicense')}
+                  required
                 >
                   <option value="yes">Yes</option>
                   <option value="no">No</option>
@@ -655,10 +662,14 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
 
               {(forceApplying || isApplying) ? null : (
               <div className="space-y-1">
-                <label className="block text-sm font-medium text-gray-700">Kitchen Preference</label>
+                <label htmlFor="kitchenPreference" className="block text-sm font-medium text-gray-700">
+                  Kitchen Preference <span className="text-red-500" aria-hidden="true">*</span>
+                </label>
                 <select 
+                  id="kitchenPreference"
                   className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 text-gray-900 bg-white"
                   {...form.register('kitchenPreference')}
+                  required
                 >
                   <option value="notSure">Not sure</option>
                   <option value="commercial">Commercial Kitchen</option>

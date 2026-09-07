@@ -180,13 +180,16 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin, onRegist
             name="displayName"
             render={({ field }) => (
               <FormItem className="space-y-2">
-                <FormLabel className="text-sm font-semibold text-gray-900">Full name</FormLabel>
+                <FormLabel className="text-sm font-semibold text-gray-900">
+                  Full name <span className="text-red-500" aria-hidden="true">*</span>
+                </FormLabel>
                 <FormControl>
                   <div className="relative group">
                     <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-blue-500 transition-colors pointer-events-none" />
                     <Input 
                       className="pl-11 h-12 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all duration-200 text-sm placeholder:text-gray-400" 
                       placeholder="John Doe" 
+                      required
                       {...field}
                       onChange={(e) => {
                         field.onChange(e);
@@ -208,7 +211,9 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin, onRegist
             name="email"
             render={({ field }) => (
               <FormItem className="space-y-2">
-                <FormLabel className="text-sm font-semibold text-gray-900">Email address</FormLabel>
+                <FormLabel className="text-sm font-semibold text-gray-900">
+                  Email address <span className="text-red-500" aria-hidden="true">*</span>
+                </FormLabel>
                 <FormControl>
                   <div className="relative group">
                     <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-blue-500 transition-colors pointer-events-none" />
@@ -216,6 +221,7 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin, onRegist
                       className="pl-11 h-12 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all duration-200 text-sm placeholder:text-gray-400" 
                       placeholder="you@company.com" 
                       autoComplete="email"
+                      required
                       {...field}
                       onChange={(e) => {
                         field.onChange(e);
@@ -237,7 +243,9 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin, onRegist
             name="password"
             render={({ field }) => (
               <FormItem className="space-y-2">
-                <FormLabel className="text-sm font-semibold text-gray-900">Password</FormLabel>
+                <FormLabel className="text-sm font-semibold text-gray-900">
+                  Password <span className="text-red-500" aria-hidden="true">*</span>
+                </FormLabel>
                 <FormControl>
                   <div className="relative group">
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-blue-500 transition-colors pointer-events-none" />
@@ -246,6 +254,7 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin, onRegist
                       className="pl-11 h-12 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all duration-200 text-sm placeholder:text-gray-400" 
                       placeholder="Create a secure password" 
                       autoComplete="new-password"
+                      required
                       {...field}
                       onChange={(e) => {
                         field.onChange(e);

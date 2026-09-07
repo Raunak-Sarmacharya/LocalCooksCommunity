@@ -36,6 +36,9 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
             )}
           >
             {label}
+            {props.required && (
+              <span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
+            )}
           </Label>
         )}
 
@@ -51,6 +54,7 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
           {/* Input */}
           <Input
             ref={ref}
+            id={props.id || props.name}
             type={inputType}
             value={value}
             className={cn(
@@ -143,4 +147,4 @@ function PasswordStrengthIndicator({ password }: { password: string }) {
   );
 }
 
-export default AnimatedInput; 
+export default AnimatedInput;

@@ -21,7 +21,10 @@ import { SKILLSPASS_OFFICIAL_CERT_URL } from "@/config/skillspass";
 import { GuidanceCards } from "./GuidanceCards";
 import { BrandName } from "./BrandName";
 import { QuietNotice } from "@/components/chef/ui";
+import { chefDashboardHref } from "@/lib/chef-dashboard-nav";
 import { useChefOnboarding, type ChefPath } from "./ChefOnboardingContext";
+
+const DISCOVER_KITCHENS_HREF = chefDashboardHref("discover-kitchens");
 
 export function WelcomeStep() {
   const { t } = useTranslation("chef");
@@ -433,7 +436,7 @@ export function BrowseKitchensStep({
 
       {hasApplications && (
         <Button asChild variant="outline">
-          <Link href="/compare-kitchens">{t("onboardBrowseMoreKitchensLink", "Browse more kitchens")}</Link>
+          <Link href={DISCOVER_KITCHENS_HREF}>{t("onboardBrowseMoreKitchensLink", "Browse more kitchens")}</Link>
         </Button>
       )}
 
@@ -509,7 +512,7 @@ export function SummaryStep() {
           })
         : t("onboardSummaryKitchenAccessNotStarted", "Browse and apply to commercial kitchens anytime"),
       actionLabel: t("onboardSummaryBrowseKitchensLabel", "Browse kitchens"),
-      actionHref: "/compare-kitchens",
+      actionHref: DISCOVER_KITCHENS_HREF,
     });
   }
 

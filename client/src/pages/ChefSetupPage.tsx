@@ -21,6 +21,7 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import TidioController, { useTidioChat } from "@/components/chat/TidioController";
 import { ArrowRight, HelpCircle, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { chefDashboardHref } from "@/lib/chef-dashboard-nav";
 
 function ChefSetupContent() {
   const [, navigate] = useLocation();
@@ -122,7 +123,7 @@ function ChefSetupContent() {
         }
         return {
           primaryLabel: currentMeta?.ctaLabel ?? t("chefSetupBrowseKitchens"),
-          onPrimary: () => navigate("/compare-kitchens"),
+          onPrimary: () => navigate(chefDashboardHref("discover-kitchens")),
           disabled: false,
           showSkip: true,
           skipLabel,

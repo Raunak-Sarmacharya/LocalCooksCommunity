@@ -196,7 +196,7 @@
   "awaitingPayment": "Awaiting payment",
   "back": "Back",
   "basePenalty": "Base Penalty:",
-  "basicInfo": "Basic Info",
+  "basicInfo": " ",
   "basicInformationAboutThisLocation": "Basic information about this location",
   "billableDays": "Billable Days",
   "blockOffDatesWhenViewingsAreCompletelyUnavailable": "Block off dates when viewings are completely unavailable.",
