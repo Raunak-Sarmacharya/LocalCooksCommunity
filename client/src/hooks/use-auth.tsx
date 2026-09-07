@@ -5,6 +5,7 @@ import { sendVerificationEmailWithFallback } from "@/lib/send-verification-email
 import { queryClient } from "@/lib/queryClient";
 import {
   createUserWithEmailAndPassword,
+  getAdditionalUserInfo,
   GoogleAuthProvider,
   isSignInWithEmailLink,
   onAuthStateChanged,
@@ -24,6 +25,7 @@ import {
 import { createContext, ReactNode, useContext, useEffect, useState, useRef, useCallback } from "react";
 import { getSubdomainFromHostname, getRoleLoginOrigin } from "@shared/subdomain-utils";
 import { User, UserWithFlags } from "@shared/schema";
+import { createDuplicateAccountError, isDuplicateAccountError } from "@/lib/registration-error";
 
 // ENTERPRISE: Auth Phase State Machine
 // Separates Firebase Auth State from Sync State to prevent timing issues
@@ -215,10 +217,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         const errorText = await response.text();
         logger.error('❌ SYNC FAILED:', response.status, errorText);
+        if (isRegistration) {
+          let errorPayload: { code?: string; message?: string; error?: string } | null = null;
+          try {
+            errorPayload = JSON.parse(errorText);
+          } catch {
+            // Non-JSON responses continue through the existing generic failure path.
+          }
+
+          if (response.status === 409 || errorPayload?.code === "EMAIL_EXISTS") {
+            throw createDuplicateAccountError(errorPayload?.message || errorPayload?.error);
+          }
+        }
         return false;
       }
     } catch (error) {
       logger.error('❌ SYNC ERROR:', error);
+      if (isRegistration && isDuplicateAccountError(error)) throw error;
       return false;
     }
   };
@@ -590,7 +605,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logger.warn(`   - Full URL: ${currentUrl}`);
       }
 
-      const syncSuccess = await syncUserWithBackend(updatedUser, detectedRole, true, password);
+      let syncSuccess = false;
+      try {
+        syncSuccess = await syncUserWithBackend(updatedUser, detectedRole, true, password);
+      } catch (syncError) {
+        if (isDuplicateAccountError(syncError)) {
+          try {
+            await cred.user.delete();
+            logger.info('✅ Rolled back Firebase user after duplicate database account was detected');
+          } catch (deleteError) {
+            logger.error('❌ Failed to roll back Firebase user after duplicate account conflict:', deleteError);
+          }
+        }
+        throw syncError;
+      }
 
       if (syncSuccess) {
         logger.info('✅ User synced successfully during registration');
@@ -732,6 +760,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const result = await signInWithPopup(auth, provider);
         logger.info('✅ GOOGLE REGISTRATION - Firebase sign-in complete:', result.user.uid);
 
+        const isNewGoogleUser = getAdditionalUserInfo(result)?.isNewUser === true;
+        if (!isNewGoogleUser) {
+          await auth.signOut();
+          throw createDuplicateAccountError();
+        }
+
         // Auto-determine role from subdomain AND URL path before sync
         const currentPath = window.location.pathname;
         const hostname = window.location.hostname;
@@ -776,7 +810,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         // Manually trigger sync for registration with detected role
-        const syncSuccess = await syncUserWithBackend(result.user, detectedRole, true);
+        let syncSuccess = false;
+        try {
+          syncSuccess = await syncUserWithBackend(result.user, detectedRole, true);
+        } catch (syncError) {
+          if (isDuplicateAccountError(syncError)) {
+            try {
+              await result.user.delete();
+              logger.info('✅ Rolled back new Google user after duplicate database account was detected');
+            } catch (deleteError) {
+              logger.error('❌ Failed to roll back Google user after duplicate account conflict:', deleteError);
+            }
+          }
+          throw syncError;
+        }
 
         // Create/update Firestore document with the correct role
         try {

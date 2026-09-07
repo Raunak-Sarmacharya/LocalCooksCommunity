@@ -21,6 +21,7 @@ import { hasVerifiedEmail } from "@/lib/auth-verification";
 import { saveRegistrationName } from "@/lib/registration-identity";
 import { sendVerificationEmailWithFallback } from "@/lib/send-verification-email";
 import { updateProfile } from "firebase/auth";
+import { isDuplicateAccountError } from "@/lib/registration-error";
 
 const registerSchema = z.object({
   displayName: z.string().min(2, "Name must be at least 2 characters"),
@@ -222,10 +223,18 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       setAuthState('error');
 
       // Handle Firebase-specific errors with user-friendly messages via custom alerts
-      const errorTitle = t("registrationFailedTitle", "Registration Failed");
+      const duplicateAccount = isDuplicateAccountError(e);
+      const errorTitle = duplicateAccount
+        ? t("accountAlreadyExistsTitle", "Account already exists")
+        : t("registrationFailedTitle", "Registration Failed");
       let errorMessage = "";
 
-      if (e.message.includes('too-many-requests')) {
+      if (duplicateAccount) {
+        errorMessage = t(
+          "errEmailExists",
+          "An account already exists for this email address. Sign in instead, or use a different email."
+        );
+      } else if (e.message.includes('too-many-requests')) {
         errorMessage = t("errTooManyAttempts", "Too many attempts. Please wait a few minutes before trying again.");
       } else if (e.message.includes('network-request-failed')) {
         errorMessage = t("errNetworkFailed", "Network error. Please check your connection and try again.");
@@ -339,10 +348,18 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       setAuthState('error');
 
       // Handle Google registration errors with user-friendly messages via custom alerts
-      const errorTitle = "Google Registration Failed";
+      const duplicateAccount = isDuplicateAccountError(e);
+      const errorTitle = duplicateAccount
+        ? t("accountAlreadyExistsTitle", "Account already exists")
+        : t("registrationFailedTitle", "Registration Failed");
       let errorMessage = "";
 
-      if (e.message.includes('popup-closed-by-user')) {
+      if (duplicateAccount) {
+        errorMessage = t(
+          "errEmailExists",
+          "An account already exists for this email address. Sign in instead, or use a different email."
+        );
+      } else if (e.message.includes('popup-closed-by-user')) {
         errorMessage = 'Registration was cancelled. Please try again.';
       } else if (e.message.includes('popup-blocked')) {
         errorMessage = 'Pop-up blocked. Please allow pop-ups for this site and try again.';

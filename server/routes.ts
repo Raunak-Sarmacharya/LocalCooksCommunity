@@ -720,28 +720,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // This handles the case where user was deleted from Firebase but not Neon, or vice versa
       const existingByUsername = await userService.getUserByUsername(email);
       if (existingByUsername) {
-        // User exists in Neon but with different/no Firebase UID
-        // Link the new Firebase account to existing Neon user
-        if (!existingByUsername.firebaseUid) {
-          logger.info(`🔗 Linking Firebase UID ${uid} to existing Neon user ${existingByUsername.id}`);
-          const updatedUser = await userService.updateUser(existingByUsername.id, {
-            firebaseUid: uid,
-            isVerified: decodedToken.email_verified || existingByUsername.isVerified
-          });
-          return res.json(updatedUser || existingByUsername);
-        } else if (existingByUsername.firebaseUid !== uid) {
-          // User exists with a DIFFERENT Firebase UID - this is a conflict
-          // The old Firebase account may have been deleted and user is re-registering
-          logger.info(`⚠️ User ${email} exists with different Firebase UID. Old: ${existingByUsername.firebaseUid}, New: ${uid}`);
-          logger.info(`🔄 Updating Firebase UID to new account (user may have re-registered in Firebase)`);
-          const updatedUser = await userService.updateUser(existingByUsername.id, {
-            firebaseUid: uid,
-            isVerified: decodedToken.email_verified || false // Reset verification for new Firebase account
-          });
-          return res.json(updatedUser || existingByUsername);
-        }
-        // Same Firebase UID - just return existing user
-        return res.json(existingByUsername);
+        logger.info(`⚠️ Registration blocked because ${email} already exists in the application database`);
+        return res.status(409).json({
+          error: "Email already registered",
+          code: "EMAIL_EXISTS",
+          message: "An account already exists for this email address. Sign in instead, or use a different email."
+        });
       }
 
       // Create new user - no existing user found
@@ -825,7 +809,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(409).json({
           error: "Email already registered",
           code: "EMAIL_EXISTS",
-          message: "This email is already registered. Please try signing in instead."
+          message: "An account already exists for this email address. Sign in instead, or use a different email."
         });
       }
 

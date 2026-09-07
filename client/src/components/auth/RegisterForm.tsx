@@ -16,6 +16,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import EmailVerificationScreen from "./EmailVerificationScreen";
+import { isDuplicateAccountError } from "@/lib/registration-error";
 
 const registerSchema = z.object({
   email: z.string().email("Valid email required"),
@@ -72,8 +73,8 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin, onRegist
       // Reset the registration guard so the parent's useEffect works normally again
       onRegistrationError?.();
       // Handle different Firebase error types with user-friendly messages
-      if (e.message.includes('email-already-in-use') || e.message.includes('EMAIL_EXISTS')) {
-        setFormError("This email is already registered. Please try signing in instead.");
+      if (isDuplicateAccountError(e)) {
+        setFormError("An account already exists for this email address. Sign in instead, or use a different email.");
       } else if (e.message.includes('weak-password')) {
         setFormError("Password is too weak. Please choose a stronger password with at least 8 characters.");
       } else if (e.message.includes('invalid-email')) {
@@ -127,7 +128,9 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin, onRegist
             logger.info('❌ GOOGLE REGISTER ERROR:', e.message);
             
             // Handle Google registration errors with user-friendly messages
-            if (e.message.includes('popup-closed-by-user')) {
+            if (isDuplicateAccountError(e)) {
+              setFormError("An account already exists for this email address. Sign in instead, or use a different email.");
+            } else if (e.message.includes('popup-closed-by-user')) {
               setFormError("Registration was cancelled. Please try again.");
             } else if (e.message.includes('popup-blocked')) {
               setFormError("Pop-up blocked. Please allow pop-ups for this site and try again.");
