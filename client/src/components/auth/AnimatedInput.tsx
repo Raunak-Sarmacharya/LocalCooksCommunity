@@ -2,7 +2,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Eye, EyeOff } from "lucide-react";
+import { Icon } from "@iconify/react";
 import { forwardRef, useState } from "react";
 
 interface AnimatedInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onDrag'> {
@@ -35,8 +35,7 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
                 htmlFor={props.id || props.name}
                 className={cn(
                   "text-sm font-medium",
-                  validationState === 'invalid' && "text-destructive",
-                  validationState === 'valid' && "text-green-600"
+                  validationState === 'invalid' && "text-destructive"
                 )}
               >
                 {label}
@@ -69,7 +68,6 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
               icon && "pl-10",
               showPasswordToggle && "pr-10",
               validationState === 'invalid' && "border-destructive focus-visible:ring-destructive",
-              validationState === 'valid' && "border-green-500 focus-visible:ring-green-500",
               className
             )}
             onChange={(e) => {
@@ -89,7 +87,11 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
               onClick={() => setShowPassword(!showPassword)}
               tabIndex={-1}
             >
-              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              <Icon
+                icon={showPassword ? "mdi:eye-off-outline" : "mdi:eye-outline"}
+                className="h-4 w-4"
+                aria-hidden
+              />
             </Button>
           )}
         </div>
@@ -126,7 +128,7 @@ function PasswordStrengthIndicator({ password }: { password: string }) {
 
   const strength = getStrength(password);
   const strengthLabels = ['Very Weak', 'Weak', 'Fair', 'Good', 'Strong'];
-  const strengthColors = ['bg-red-500', 'bg-orange-500', 'bg-yellow-500', 'bg-blue-500', 'bg-green-500'];
+  const strengthColors = ['bg-red-500', 'bg-orange-500', 'bg-yellow-500', 'bg-blue-500', 'bg-indigo-600'];
 
   return (
     <div className="space-y-1">
@@ -147,7 +149,7 @@ function PasswordStrengthIndicator({ password }: { password: string }) {
           strength <= 1 ? "text-red-500" :
           strength <= 2 ? "text-orange-500" :
           strength <= 3 ? "text-yellow-500" :
-          strength <= 4 ? "text-blue-500" : "text-green-500"
+          strength <= 4 ? "text-blue-500" : "text-indigo-600"
         )}>{strengthLabels[strength] || strengthLabels[0]}</span>
       </p>
     </div>

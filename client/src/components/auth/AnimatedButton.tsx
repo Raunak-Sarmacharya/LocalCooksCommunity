@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { AlertCircle, Check, Loader2 } from "lucide-react";
+import { Icon } from "@iconify/react";
 import { ReactNode } from "react";
 
 type ButtonState = 'idle' | 'loading' | 'success' | 'error';
@@ -43,21 +43,21 @@ export default function AnimatedButton({
       case 'loading':
         return (
           <>
-            <Loader2 className="w-4 h-4 animate-spin" />
+            <Icon icon="mdi:loading" className="h-4 w-4 animate-spin" aria-hidden />
             <span>{loadingText}</span>
           </>
         );
       case 'success':
         return (
           <>
-            <Check className="w-4 h-4" />
+            <Icon icon="mdi:check" className="h-4 w-4" aria-hidden />
             <span>{successText}</span>
           </>
         );
       case 'error':
         return (
           <>
-            <AlertCircle className="w-4 h-4" />
+            <Icon icon="mdi:alert-circle-outline" className="h-4 w-4" aria-hidden />
             <span>{errorText}</span>
           </>
         );

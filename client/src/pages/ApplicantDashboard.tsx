@@ -96,6 +96,10 @@ export default function ApplicantDashboard() {
   const user = authUser as UserWithFlags | null;
   const [showVendorPortalPopup, setShowVendorPortalPopup] = useState(false);
   const [showChatDialog, setShowChatDialog] = useState(false);
+  const journeyDocumentModalPendingRef = useRef(
+    window.sessionStorage.getItem("localcooks:seller-journey-result") === "submitted" ||
+      new URLSearchParams(window.location.search).get("journey") === "submitted"
+  );
 
   useEffect(() => {
     const result = window.sessionStorage.getItem("localcooks:seller-journey-result");
@@ -155,9 +159,7 @@ export default function ApplicantDashboard() {
 
   // Application form state. Document management stays on the list and opens as a modal.
   const [applicationViewMode, setApplicationViewMode] = useState<'list' | 'form' | 'documents'>(() =>
-    window.sessionStorage.getItem("localcooks:seller-journey-result") === "submitted"
-      ? "documents"
-      : "list"
+    journeyDocumentModalPendingRef.current ? "documents" : "list"
   );
   const applicationLeaveRef = useRef<(() => void) | null>(null);
   const [applicationLeaveOpen, setApplicationLeaveOpen] = useState(false);
@@ -227,6 +229,9 @@ export default function ApplicantDashboard() {
           if (action === 'new') {
             setApplicationViewMode('form');
           } else if (action === 'documents') {
+            setApplicationViewMode('documents');
+          } else if (journeyDocumentModalPendingRef.current) {
+            journeyDocumentModalPendingRef.current = false;
             setApplicationViewMode('documents');
           } else {
             setApplicationViewMode('list');

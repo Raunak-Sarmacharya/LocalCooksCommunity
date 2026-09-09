@@ -18,6 +18,10 @@ import { hasVerifiedEmail } from "@/lib/auth-verification";
 import LoadingOverlay from "@/components/auth/LoadingOverlay";
 import ChefAuthShowcase from "@/components/auth/ChefAuthShowcase";
 import { getSellerJourneyDraft } from "@/lib/seller-journey";
+import { addCollection, Icon } from "@iconify/react";
+import { icons as mdiIcons } from "@iconify-json/mdi";
+
+addCollection(mdiIcons);
 
 export default function EnhancedAuthPage() {
   const { t } = useTranslation("auth");
@@ -537,9 +541,7 @@ export default function EnhancedAuthPage() {
               >
                 <div className="flex items-center gap-3">
                   <div className="flex-shrink-0 w-6 h-6 bg-green-100 rounded-full flex items-center justify-center">
-                    <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
+                    <Icon icon="mdi:check" className="h-4 w-4 text-green-600" aria-hidden />
                   </div>
                   <div className="flex-1">
                     {successMessageType === 'password-reset' ? (
@@ -558,9 +560,7 @@ export default function EnhancedAuthPage() {
                     onClick={() => setShowSuccessMessage(false)}
                     className="flex-shrink-0 text-green-400 hover:text-green-600 transition-colors"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
+                    <Icon icon="mdi:close" className="h-4 w-4" aria-hidden />
                   </button>
                 </div>
               </motion.div>

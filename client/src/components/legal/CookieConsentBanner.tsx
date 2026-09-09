@@ -50,14 +50,14 @@ export default function CookieConsentBanner() {
         <button
           type="button"
           onClick={() => choose("rejected")}
-          className="min-h-9 rounded-xl border border-[#d9d2cc] bg-white px-3 text-xs font-semibold text-[#332e2b] transition-colors hover:border-[#aaa19a] hover:bg-[#f8f5f2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f51042] focus-visible:ring-offset-2"
+          className="group inline-flex items-center justify-center border-2 border-[#2C2C2C]/20 text-[#2C2C2C] hover:border-[#F51042] hover:text-[#F51042] hover:bg-[#F51042]/5 font-semibold py-2 px-3 text-xs sm:text-sm rounded-full transition-all duration-300 min-h-[36px] sm:min-h-[40px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f51042] focus-visible:ring-offset-2 bg-transparent"
         >
           {t("cookieConsent.reject")}
         </button>
         <button
           type="button"
           onClick={() => choose("accepted")}
-          className="min-h-9 rounded-xl bg-[#f51042] px-3 text-xs font-semibold text-white shadow-[0_8px_20px_-10px_rgba(245,16,66,0.85)] transition-colors hover:bg-[#d90e3a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f51042] focus-visible:ring-offset-2"
+          className="group relative bg-[#F51042] hover:bg-[#D90E3A] text-white font-bold py-2 px-3 text-xs sm:text-sm rounded-full transition-all duration-300 shadow-xl hover:shadow-2xl hover:shadow-[#F51042]/30 hover:-translate-y-1 overflow-hidden min-h-[36px] sm:min-h-[40px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f51042] focus-visible:ring-offset-2"
         >
           {t("cookieConsent.accept")}
         </button>
