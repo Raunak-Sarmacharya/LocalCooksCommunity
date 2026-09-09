@@ -180,7 +180,7 @@ export function getKitchenDisplayStatus(
       label: tr("kdStep1Approved", "Request to apply approved"),
       tone: "progress",
       step: 1,
-      stepCaption: tr("kdContinueToStep2", "Continue to Step 2"),
+      stepCaption: tr("kdContinueToStep2", "Continue"),
       actionLabel: tr("kdContinue", "Continue"),
       actionKind: "complete-step",
     };

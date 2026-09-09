@@ -118,13 +118,21 @@ export async function requireFirebaseAuthWithUser(req: Request, res: Response, n
     };
 
     // Now translate Firebase UID to Neon user (NO SESSIONS)
-    const neonUser = await userService.getUserByFirebaseUid(req.firebaseUser.uid);
+    let neonUser = await userService.getUserByFirebaseUid(req.firebaseUser.uid);
 
     if (!neonUser) {
       return res.status(404).json({
         error: 'User not found',
         message: 'This account is not registered with Local Cooks. Please create an account first.'
       });
+    }
+
+    // Firebase is authoritative for email ownership. Repair a stale database
+    // mirror during any authenticated request so verified users are never
+    // blocked while waiting for a separate profile-sync call.
+    if (req.firebaseUser.email_verified === true && neonUser.isVerified !== true) {
+      const syncedUser = await userService.updateUser(neonUser.id, { isVerified: true });
+      if (syncedUser) neonUser = syncedUser;
     }
 
     // Set both Firebase and Neon user info on request
@@ -258,4 +266,4 @@ export function requireManager(req: Request, res: Response, next: NextFunction) 
   }
 
   next();
-} 
+}

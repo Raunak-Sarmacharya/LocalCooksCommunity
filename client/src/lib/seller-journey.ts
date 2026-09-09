@@ -8,6 +8,8 @@ export interface SellerJourneyDraft {
   email: string;
   phone: string;
   kitchenPreference: "commercial" | "home" | "notSure";
+  termsAccepted: true;
+  termsAcceptedAt: number;
   savedAt: number;
 }
 
@@ -21,6 +23,7 @@ export function getSellerJourneyDraft(): SellerJourneyDraft | null {
     if (!raw) return null;
     const draft = JSON.parse(raw) as SellerJourneyDraft;
     if (!draft.fullName || !draft.email || !draft.phone || !draft.kitchenPreference) return null;
+    if (draft.termsAccepted !== true || !draft.termsAcceptedAt) return null;
     if (Date.now() - draft.savedAt > MAX_AGE_MS) {
       clearSellerJourneyDraft();
       return null;

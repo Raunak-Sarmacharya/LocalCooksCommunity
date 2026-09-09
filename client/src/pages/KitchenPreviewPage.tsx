@@ -3522,6 +3522,10 @@ export default function KitchenPreviewPage() {
       openBookingPage();
       return;
     }
+    if (kitchenDisplay?.actionKind === "complete-step" && locationId) {
+      navigate(`/kitchen-requirements/${locationId}`);
+      return;
+    }
     if (alreadyApplied) {
       goToChefApplications();
       return;

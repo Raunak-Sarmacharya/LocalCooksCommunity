@@ -5434,6 +5434,50 @@ The Local Cooks Team
   };
 };
 
+// Notify the kitchen manager when an admin-approved chef submits the
+// kitchen-specific coordination documents for review.
+export const generateKitchenCoordinationSubmittedManagerEmail = (data: {
+  managerEmail: string;
+  managerName?: string;
+  chefName: string;
+  chefEmail: string;
+  locationName: string;
+  applicationId: number;
+  submittedAt: Date;
+}): EmailContent => {
+  const subject = `Kitchen Coordination Ready for Review – ${data.chefName}`;
+  const dashboardUrl = `${getDashboardUrl('kitchen')}?view=applications`;
+  const managerFirstName = data.managerName
+    ? data.managerName.split(' ')[0]
+    : data.managerEmail.split('@')[0];
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head>
+<body>
+  <div class="email-container">
+    <div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div>
+    <div class="content">
+      <h2 class="greeting">Hi ${managerFirstName},</h2>
+      <p class="message"><strong>${data.chefName}</strong> has submitted Kitchen Coordination documents for <strong>${data.locationName}</strong>.</p>
+      <p class="message">Please review the documents and approve or request changes so the chef can complete kitchen access.</p>
+      <div style="text-align:center;margin:24px 0"><a href="${dashboardUrl}" class="cta-button">Review Kitchen Coordination</a></div>
+      <p style="font-size:13px;color:#94a3b8">Submitted ${data.submittedAt.toLocaleString('en-CA')} · Application #${data.applicationId}</p>
+    </div>
+    <div class="footer"><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks</p></div>
+  </div>
+</body>
+</html>`;
+
+  return {
+    to: data.managerEmail,
+    subject,
+    text: `Hi ${managerFirstName},\n\n${data.chefName} has submitted Kitchen Coordination documents for ${data.locationName}. Please review them in your dashboard so the chef can complete kitchen access.\n\nReview: ${dashboardUrl}\nApplication #${data.applicationId}`,
+    html,
+  };
+};
+
 // Notify chef immediately after they submit their kitchen application (submission confirmation)
 export const generateKitchenApplicationReceivedChefEmail = (data: {
   chefEmail: string;

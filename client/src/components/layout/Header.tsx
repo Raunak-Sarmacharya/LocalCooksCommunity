@@ -305,36 +305,73 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-80 p-2">
-                  <DropdownMenuItem asChild>
-                    <a
-                      href="https://localcook.shop/"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-start gap-3 py-2.5 px-2 cursor-pointer rounded-lg"
-                    >
-                      <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#F51042]/10 text-[#F51042]">
-                        <ShoppingBag className="h-5 w-5" />
-                      </span>
-                      <span className="min-w-0">
-                        <span className="font-medium text-sm text-gray-900">{t("chefServiceSell")}</span>
-                        <span className="block text-xs text-gray-500 mt-0.5">{t("chefServiceSellDesc")}</span>
-                      </span>
-                    </a>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <a
-                      href="/#how-it-works"
-                      className="flex items-start gap-3 py-2.5 px-2 cursor-pointer rounded-lg"
-                    >
-                      <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700"><Store className="h-5 w-5" /></span>
-                      <span className="min-w-0">
-                        <span className="font-medium text-sm text-gray-900">{t("chefServiceStorefront")}</span>
-                        <span className="block text-xs text-gray-500 mt-0.5">{t("chefServiceStorefrontDesc")}</span>
-                      </span>
-                    </a>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild><a href="/#how-it-works" className="flex items-start gap-3 py-2.5 px-2 cursor-pointer rounded-lg"><span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700"><CreditCard className="h-5 w-5" /></span><span><span className="font-medium text-sm text-gray-900">{t("chefServiceOperations")}</span><span className="block text-xs text-gray-500 mt-0.5">{t("chefServiceOperationsDesc")}</span></span></a></DropdownMenuItem>
-                  <DropdownMenuItem asChild><a href="/#kitchen-access" className="flex items-start gap-3 py-2.5 px-2 cursor-pointer rounded-lg"><span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700"><CookingPot className="h-5 w-5" /></span><span><span className="font-medium text-sm text-gray-900">{t("chefServiceBookKitchen")}</span><span className="block text-xs text-gray-500 mt-0.5">{t("chefServiceBookKitchenDesc")}</span></span></a></DropdownMenuItem>
+                  {currentSubdomain === 'kitchen' ? (
+                    <>
+                      <DropdownMenuItem asChild>
+                        <a
+                          href="/#how-it-works"
+                          className="flex items-start gap-3 py-2.5 px-2 cursor-pointer rounded-lg"
+                        >
+                          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700"><Store className="h-5 w-5" /></span>
+                          <span className="min-w-0">
+                            <span className="font-medium text-sm text-gray-900">{t("kitchenServiceListSpace")}</span>
+                            <span className="block text-xs text-gray-500 mt-0.5">{t("kitchenServiceListSpaceDesc")}</span>
+                          </span>
+                        </a>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <a href="/#how-it-works" className="flex items-start gap-3 py-2.5 px-2 cursor-pointer rounded-lg">
+                          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700"><CookingPot className="h-5 w-5" /></span>
+                          <span>
+                            <span className="font-medium text-sm text-gray-900">{t("kitchenServiceManageBookings")}</span>
+                            <span className="block text-xs text-gray-500 mt-0.5">{t("kitchenServiceManageBookingsDesc")}</span>
+                          </span>
+                        </a>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <a href="/#how-it-works" className="flex items-start gap-3 py-2.5 px-2 cursor-pointer rounded-lg">
+                          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700"><CreditCard className="h-5 w-5" /></span>
+                          <span>
+                            <span className="font-medium text-sm text-gray-900">{t("kitchenServiceEarn")}</span>
+                            <span className="block text-xs text-gray-500 mt-0.5">{t("kitchenServiceEarnDesc")}</span>
+                          </span>
+                        </a>
+                      </DropdownMenuItem>
+                    </>
+                  ) : (
+                    <>
+                      <DropdownMenuItem asChild>
+                        <a
+                          href="https://localcook.shop/"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-start gap-3 py-2.5 px-2 cursor-pointer rounded-lg"
+                        >
+                          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#F51042]/10 text-[#F51042]">
+                            <ShoppingBag className="h-5 w-5" />
+                          </span>
+                          <span className="min-w-0">
+                            <span className="font-medium text-sm text-gray-900">{t("chefServiceSell")}</span>
+                            <span className="block text-xs text-gray-500 mt-0.5">{t("chefServiceSellDesc")}</span>
+                          </span>
+                        </a>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <a
+                          href="/#how-it-works"
+                          className="flex items-start gap-3 py-2.5 px-2 cursor-pointer rounded-lg"
+                        >
+                          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700"><Store className="h-5 w-5" /></span>
+                          <span className="min-w-0">
+                            <span className="font-medium text-sm text-gray-900">{t("chefServiceStorefront")}</span>
+                            <span className="block text-xs text-gray-500 mt-0.5">{t("chefServiceStorefrontDesc")}</span>
+                          </span>
+                        </a>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild><a href="/#how-it-works" className="flex items-start gap-3 py-2.5 px-2 cursor-pointer rounded-lg"><span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700"><CreditCard className="h-5 w-5" /></span><span><span className="font-medium text-sm text-gray-900">{t("chefServiceOperations")}</span><span className="block text-xs text-gray-500 mt-0.5">{t("chefServiceOperationsDesc")}</span></span></a></DropdownMenuItem>
+                      <DropdownMenuItem asChild><a href="/#kitchen-access" className="flex items-start gap-3 py-2.5 px-2 cursor-pointer rounded-lg"><span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700"><CookingPot className="h-5 w-5" /></span><span><span className="font-medium text-sm text-gray-900">{t("chefServiceBookKitchen")}</span><span className="block text-xs text-gray-500 mt-0.5">{t("chefServiceBookKitchenDesc")}</span></span></a></DropdownMenuItem>
+                    </>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </li>
@@ -407,10 +444,17 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
               </>
             )}
             <li>
-              <a href={serviceUrls.kitchen} className="group ml-1 flex items-center gap-2 rounded-lg border-l border-gray-200 px-3 py-1.5 text-gray-700 transition-colors hover:bg-gray-50 hover:text-[#F51042]">
-                <Warehouse className="h-4 w-4 shrink-0" />
-                <span><span className="block text-xs font-semibold leading-tight">{t("kitchenPartnerLink")}</span><span className="block text-[9px] leading-tight text-gray-500 group-hover:text-gray-600">{t("kitchenPartnerLinkDesc")}</span></span>
-              </a>
+              {currentSubdomain === 'kitchen' ? (
+                <a href={serviceUrls.chef} className="group ml-1 flex items-center gap-2 rounded-lg border-l border-gray-200 px-3 py-1.5 text-gray-700 transition-colors hover:bg-gray-50 hover:text-[#F51042]">
+                  <Store className="h-4 w-4 shrink-0" />
+                  <span><span className="block text-xs font-semibold leading-tight">{t("chefPartnerLink")}</span><span className="block text-[9px] leading-tight text-gray-500 group-hover:text-gray-600">{t("chefPartnerLinkDesc")}</span></span>
+                </a>
+              ) : (
+                <a href={serviceUrls.kitchen} className="group ml-1 flex items-center gap-2 rounded-lg border-l border-gray-200 px-3 py-1.5 text-gray-700 transition-colors hover:bg-gray-50 hover:text-[#F51042]">
+                  <Warehouse className="h-4 w-4 shrink-0" />
+                  <span><span className="block text-xs font-semibold leading-tight">{t("kitchenPartnerLink")}</span><span className="block text-[9px] leading-tight text-gray-500 group-hover:text-gray-600">{t("kitchenPartnerLinkDesc")}</span></span>
+                </a>
+              )}
             </li>
           </ul>
         </nav>
@@ -458,29 +502,46 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
             <ul className="space-y-3">
               <li>
                 <p className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-gray-400">{t("services")}</p>
-                <a
-                  href="https://localcook.shop/"
-                  className="flex items-center gap-3 py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
-                  onClick={closeMenu}
-                >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#F51042]/10 text-[#F51042]">
-                    <ShoppingBag className="h-5 w-5" />
-                  </span>
-                  <span>
-                    <span className="block text-sm font-medium text-gray-900">{t("chefServiceSell")}</span>
-                    <span className="block text-xs text-gray-500">{t("chefServiceSellDesc")}</span>
-                  </span>
-                </a>
-                {([
-                  [Store, "chefServiceStorefront", "chefServiceStorefrontDesc"],
-                  [CreditCard, "chefServiceOperations", "chefServiceOperationsDesc"],
-                  [CookingPot, "chefServiceBookKitchen", "chefServiceBookKitchenDesc"],
-                ] as const).map(([Icon, title, description]) => (
-                  <a key={title} href={title === "chefServiceBookKitchen" ? "/#kitchen-access" : "/#how-it-works"} className="flex items-center gap-3 px-2 py-3 rounded-lg hover:bg-primary/5" onClick={closeMenu}>
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-700"><Icon className="h-5 w-5" /></span>
-                    <span><span className="block text-sm font-medium text-gray-900">{t(title)}</span><span className="block text-xs text-gray-500">{t(description)}</span></span>
-                  </a>
-                ))}
+                {currentSubdomain === 'kitchen' ? (
+                  <>
+                    {([
+                      [Store, "kitchenServiceListSpace", "kitchenServiceListSpaceDesc"],
+                      [CookingPot, "kitchenServiceManageBookings", "kitchenServiceManageBookingsDesc"],
+                      [CreditCard, "kitchenServiceEarn", "kitchenServiceEarnDesc"],
+                    ] as const).map(([Icon, title, description]) => (
+                      <a key={title} href="/#how-it-works" className="flex items-center gap-3 px-2 py-3 rounded-lg hover:bg-primary/5" onClick={closeMenu}>
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-700"><Icon className="h-5 w-5" /></span>
+                        <span><span className="block text-sm font-medium text-gray-900">{t(title)}</span><span className="block text-xs text-gray-500">{t(description)}</span></span>
+                      </a>
+                    ))}
+                  </>
+                ) : (
+                  <>
+                    <a
+                      href="https://localcook.shop/"
+                      className="flex items-center gap-3 py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
+                      onClick={closeMenu}
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#F51042]/10 text-[#F51042]">
+                        <ShoppingBag className="h-5 w-5" />
+                      </span>
+                      <span>
+                        <span className="block text-sm font-medium text-gray-900">{t("chefServiceSell")}</span>
+                        <span className="block text-xs text-gray-500">{t("chefServiceSellDesc")}</span>
+                      </span>
+                    </a>
+                    {([
+                      [Store, "chefServiceStorefront", "chefServiceStorefrontDesc"],
+                      [CreditCard, "chefServiceOperations", "chefServiceOperationsDesc"],
+                      [CookingPot, "chefServiceBookKitchen", "chefServiceBookKitchenDesc"],
+                    ] as const).map(([Icon, title, description]) => (
+                      <a key={title} href={title === "chefServiceBookKitchen" ? "/#kitchen-access" : "/#how-it-works"} className="flex items-center gap-3 px-2 py-3 rounded-lg hover:bg-primary/5" onClick={closeMenu}>
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-700"><Icon className="h-5 w-5" /></span>
+                        <span><span className="block text-sm font-medium text-gray-900">{t(title)}</span><span className="block text-xs text-gray-500">{t(description)}</span></span>
+                      </a>
+                    ))}
+                  </>
+                )}
               </li>
               <li role="separator" className="border-t border-gray-200/70 my-1" />
               {!hideHowItWorks && <li>
@@ -565,10 +626,17 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
                 </>
               )}
               <li className="mt-3 border-t border-gray-200/70 pt-3">
-                <a href={serviceUrls.kitchen} className="flex items-center gap-3 rounded-lg px-2 py-3 hover:bg-primary/5" onClick={closeMenu}>
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-700"><Warehouse className="h-5 w-5" /></span>
-                  <span><span className="block text-sm font-medium text-gray-900">{t("kitchenPartnerLink")}</span><span className="block text-xs text-gray-500">{t("kitchenPartnerLinkDesc")}</span></span>
-                </a>
+                {currentSubdomain === 'kitchen' ? (
+                  <a href={serviceUrls.chef} className="flex items-center gap-3 rounded-lg px-2 py-3 hover:bg-primary/5" onClick={closeMenu}>
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-700"><Store className="h-5 w-5" /></span>
+                    <span><span className="block text-sm font-medium text-gray-900">{t("chefPartnerLink")}</span><span className="block text-xs text-gray-500">{t("chefPartnerLinkDesc")}</span></span>
+                  </a>
+                ) : (
+                  <a href={serviceUrls.kitchen} className="flex items-center gap-3 rounded-lg px-2 py-3 hover:bg-primary/5" onClick={closeMenu}>
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-700"><Warehouse className="h-5 w-5" /></span>
+                    <span><span className="block text-sm font-medium text-gray-900">{t("kitchenPartnerLink")}</span><span className="block text-xs text-gray-500">{t("kitchenPartnerLinkDesc")}</span></span>
+                  </a>
+                )}
               </li>
             </ul>
           </div>

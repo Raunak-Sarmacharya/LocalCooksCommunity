@@ -126,8 +126,8 @@ export function kitchenActor(isSignedIn: boolean, registeredInFlow: boolean): Ki
   return "signed_in";
 }
 
-export function skipKitchenVerify(actor: KitchenActor): boolean {
-  return actor === "signed_in";
+export function skipKitchenVerify(actor: KitchenActor, emailVerified: boolean): boolean {
+  return actor === "signed_in" && emailVerified;
 }
 
 export function resolvePendingApplyPhase(
@@ -137,27 +137,28 @@ export function resolvePendingApplyPhase(
 ): PendingApplicationPhase {
   if (phase === "submitted") return phase;
   if (phase !== "awaiting_verification") return phase;
-  if (actor === "signed_in" || emailVerified) return "ready_to_submit";
+  if (emailVerified) return "ready_to_submit";
   return phase;
 }
 
 export function nextTourStepAfterSlot(
-  actor: KitchenActor
+  actor: KitchenActor,
+  emailVerified: boolean
 ): "account" | "verify" | "confirm" {
   if (actor === "guest") return "account";
-  if (actor === "registering") return "verify";
-  return "confirm";
+  return emailVerified ? "confirm" : "verify";
 }
 
 export function coerceTourStepForActor(
   step: string,
   actor: KitchenActor,
-  hasSlot: boolean
+  hasSlot: boolean,
+  emailVerified: boolean
 ): string {
-  if (actor === "signed_in" && (step === "verify" || step === "account") && hasSlot) {
+  if (actor === "signed_in" && emailVerified && (step === "verify" || step === "account") && hasSlot) {
     return "confirm";
   }
-  if (actor === "registering" && step === "account" && hasSlot) {
+  if (actor !== "guest" && !emailVerified && (step === "account" || step === "confirm") && hasSlot) {
     return "verify";
   }
   if (actor === "guest" && (step === "verify" || step === "confirm")) {

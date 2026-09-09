@@ -355,12 +355,6 @@ export default function KitchenRequirementsPage() {
             {/* CTA Section */}
             <Card className="shadow-none border-border/50">
                 <CardContent className="p-8 text-center">
-                    <div className="w-14 h-14 rounded-lg border flex items-center justify-center mx-auto mb-4">
-                        {isReadyForStep2
-                            ? <ArrowRight className="h-7 w-7 text-muted-foreground" />
-                            : <Utensils className="h-7 w-7 text-muted-foreground" />
-                        }
-                    </div>
                     {isReadyForStep2 ? (
                         <>
                             <h3 className="text-xl font-semibold mb-2">{t("step1CompleteTimeForStep2", "Request to apply approved — next up: kitchen documents")}</h3>
@@ -370,10 +364,11 @@ export default function KitchenRequirementsPage() {
                             <div className="flex gap-4 justify-center">
                                 <Button 
                                     size="lg" 
+                                    data-testid="kitchen-requirements-submit-documents"
                                     onClick={() => setLocation(`/apply-kitchen/${locationId}`)}
                                 >
                                     <ArrowRight className="mr-2 h-4 w-4" />
-                                    {t("continueToStep2", "Continue to Kitchen Coordination")}
+                                    {t("submitKitchenDocuments", "Submit kitchen documents")}
                                 </Button>
                             </div>
                         </>

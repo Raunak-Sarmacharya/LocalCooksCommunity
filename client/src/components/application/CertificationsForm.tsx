@@ -5,7 +5,7 @@ import { useFileUpload } from "@/hooks/useFileUpload";
 import { ApplicationFormData } from "@/lib/applicationSchema";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, Link as LinkIcon, Loader2, Upload, CheckCircle2 } from "lucide-react";
+import { ExternalLink, Loader2, CheckCircle2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useLocation } from "wouter";
@@ -18,10 +18,7 @@ import { ApplicationStepFooter } from "./ApplicationStepFooter";
 
 import { FileUpload } from "@/components/ui/file-upload";
 import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -300,18 +297,7 @@ export default function CertificationsForm() {
                 <DialogContent showCloseButton={false} className="max-w-lg rounded-2xl sm:rounded-2xl" onEscapeKeyDown={event => { if (isUploading) event.preventDefault(); }} onPointerDownOutside={event => { if (isUploading) event.preventDefault(); }}>
                   <DialogHeader><DialogTitle>{t("sellerApp_uploadFoodSafety")}</DialogTitle><DialogDescription>{t("sellerApp_uploadFromDevice")} {t("sellerApp_uploadFoodSafetyTip")}</DialogDescription></DialogHeader>
                 <fieldset disabled={isUploading} className="min-w-0">
-                <Tabs defaultValue="upload" className="w-full">
-                  <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="upload" disabled={isUploading} className="h-9 w-full rounded-md gap-2 text-xs">
-                      <Upload className="h-3 w-3" />
-                      {t("sellerApp_uploadFile")}
-                    </TabsTrigger>
-                    <TabsTrigger value="url" disabled={isUploading} className="h-9 w-full rounded-md gap-2 text-xs">
-                      <LinkIcon className="h-3 w-3" />
-                      {t("sellerApp_provideUrl")}
-                    </TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="upload" className="mt-3">
+                <div className="mt-3">
                     <FileUpload
                       fieldName="foodSafetyLicense"
                       label={t("sellerApp_uploadFoodSafety")}
@@ -333,26 +319,7 @@ export default function CertificationsForm() {
                         </div>
                       </div>
                     )}
-                  </TabsContent>
-                  <TabsContent value="url" className="mt-3 space-y-2">
-                    <Label htmlFor="foodSafetyLicenseUrl">{t("sellerApp_foodSafetyUrl")}</Label>
-                    <Input
-                      id="foodSafetyLicenseUrl"
-                      type="url"
-                      placeholder="https://drive.google.com/file/your-document..."
-                      value={documentUrls.foodSafetyLicenseUrl}
-                      onChange={(e) =>
-                        setDocumentUrls((prev) => ({
-                          ...prev,
-                          foodSafetyLicenseUrl: e.target.value,
-                        }))
-                      }
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      {t("sellerApp_cloudStorage")} {t("sellerApp_cloudStorageTip")}
-                    </p>
-                  </TabsContent>
-                </Tabs>
+                </div>
                 </fieldset>
                 {uploadError && <p role="alert" className="text-sm text-destructive">{uploadError}</p>}
                 
@@ -430,18 +397,7 @@ export default function CertificationsForm() {
                 <DialogContent showCloseButton={false} className="max-w-lg rounded-2xl sm:rounded-2xl" onEscapeKeyDown={event => { if (isUploading) event.preventDefault(); }} onPointerDownOutside={event => { if (isUploading) event.preventDefault(); }}>
                   <DialogHeader><DialogTitle>{t("sellerApp_uploadFoodEst")}</DialogTitle><DialogDescription>{t("sellerApp_optionalRecommended")} {t("sellerApp_uploadFoodEstTip")}</DialogDescription></DialogHeader>
                 <fieldset disabled={isUploading} className="min-w-0">
-                <Tabs defaultValue="upload" className="w-full">
-                  <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="upload" disabled={isUploading} className="h-9 w-full rounded-md gap-2 text-xs">
-                      <Upload className="h-3 w-3" />
-                      {t("sellerApp_uploadFile")}
-                    </TabsTrigger>
-                    <TabsTrigger value="url" disabled={isUploading} className="h-9 w-full rounded-md gap-2 text-xs">
-                      <LinkIcon className="h-3 w-3" />
-                      {t("sellerApp_provideUrl")}
-                    </TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="upload" className="mt-3">
+                <div className="mt-3">
                     <FileUpload
                       fieldName="foodEstablishmentCert"
                       label={t("sellerApp_uploadFoodEst")}
@@ -463,26 +419,7 @@ export default function CertificationsForm() {
                         </div>
                       </div>
                     )}
-                  </TabsContent>
-                  <TabsContent value="url" className="mt-3 space-y-2">
-                    <Label htmlFor="foodEstablishmentCertUrl">{t("sellerApp_foodEstUrl")}</Label>
-                    <Input
-                      id="foodEstablishmentCertUrl"
-                      type="url"
-                      placeholder="https://drive.google.com/file/your-certificate..."
-                      value={documentUrls.foodEstablishmentCertUrl}
-                      onChange={(e) =>
-                        setDocumentUrls((prev) => ({
-                          ...prev,
-                          foodEstablishmentCertUrl: e.target.value,
-                        }))
-                      }
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      {t("sellerApp_optional")} {t("sellerApp_foodEstUrlTip")}
-                    </p>
-                  </TabsContent>
-                </Tabs>
+                </div>
                 </fieldset>
                 {uploadError && <p role="alert" className="text-sm text-destructive">{uploadError}</p>}
                 

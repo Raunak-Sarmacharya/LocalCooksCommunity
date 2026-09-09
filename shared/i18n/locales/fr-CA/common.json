@@ -303,5 +303,13 @@
   "adminDashboardNamed": "Tableau de bord admin de {name}",
   "chefDashboardNamed": "Tableau de bord de {name}",
   "previous": "Précédent",
-  "noResults": "Aucun résultat."
+  "noResults": "Aucun résultat.",
+  "kitchenServiceListSpace": "List your space",
+  "kitchenServiceListSpaceDesc": "Showcase your commercial kitchen",
+  "kitchenServiceManageBookings": "Manage bookings",
+  "kitchenServiceManageBookingsDesc": "Approve chefs and schedule time",
+  "kitchenServiceEarn": "Earn revenue",
+  "kitchenServiceEarnDesc": "Monetize your unused kitchen hours",
+  "chefPartnerLink": "For chefs",
+  "chefPartnerLinkDesc": "Sell food or book prep space at chef.localcooks.ca"
 }

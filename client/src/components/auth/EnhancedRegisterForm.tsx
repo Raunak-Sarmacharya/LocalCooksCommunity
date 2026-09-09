@@ -83,6 +83,8 @@ interface EnhancedRegisterFormProps {
   accountType?: PublicRegistrationRole;
   /** Whether to show the terms and conditions checkbox inline in the form. */
   showTermsInline?: boolean;
+  /** Consent already captured by a preceding first-party registration step. */
+  initialTermsAccepted?: boolean;
 }
 
 type AuthState = 'idle' | 'loading' | 'success' | 'error' | 'email-verification';
@@ -104,7 +106,7 @@ const itemVariants = {
   visible: { opacity: 1, y: 0 }
 };
 
-export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, onRegistrationStart, onRegistrationComplete, onRegistrationError, onSwitchToLogin, forceApplying, hideApplyingToggle, reviewAfterRegistration, onPreviousStep, accountType = 'chef', showTermsInline = false }: EnhancedRegisterFormProps) {
+export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, onRegistrationStart, onRegistrationComplete, onRegistrationError, onSwitchToLogin, forceApplying, hideApplyingToggle, reviewAfterRegistration, onPreviousStep, accountType = 'chef', showTermsInline = false, initialTermsAccepted = false }: EnhancedRegisterFormProps) {
   const { t } = useTranslation("auth");
   const registerSchema = useRegisterSchema();
   const { signup, signInWithGoogle, loading, error, updateUserVerification } = useFirebaseAuth();
@@ -115,7 +117,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
   const [emailForVerification, setEmailForVerification] = useState("");
   const [step, setStep] = useState(1);
   const [isApplying, setIsApplying] = useState(!!forceApplying);
-  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(initialTermsAccepted);
 
   // Sync isApplying if forceApplying prop changes
   useEffect(() => {
@@ -226,7 +228,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       logger.info('🔐 Auto-generated secure password for passwordless flow');
 
       await Promise.all([
-        signup(data.email, generatedPassword, data.displayName, accountType, showTermsInline ? acceptedTerms : false),
+        signup(data.email, generatedPassword, data.displayName, accountType, initialTermsAccepted || (showTermsInline && acceptedTerms)),
         new Promise(resolve => setTimeout(resolve, 1200)) // Minimum loading time for UX
       ]);
 
@@ -284,6 +286,10 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
         type: "error"
       });
 
+      if (duplicateAccount && onSwitchToLogin) {
+        setTimeout(onSwitchToLogin, 350);
+      }
+
       setTimeout(() => setAuthState('idle'), 2000);
     }
   };
@@ -306,7 +312,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
 
     try {
       // Start Google registration
-      await signInWithGoogle(true, accountType, showTermsInline ? acceptedTerms : false);
+      await signInWithGoogle(true, accountType, initialTermsAccepted || (showTermsInline && acceptedTerms));
 
       // Explicit form input wins over the name supplied by the Google account.
       const enteredName = form.getValues("displayName").trim();
@@ -420,6 +426,9 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
         description: errorMessage,
         type: "error"
       });
+      if (duplicateAccount && onSwitchToLogin) {
+        setTimeout(onSwitchToLogin, 350);
+      }
     }
   };
 

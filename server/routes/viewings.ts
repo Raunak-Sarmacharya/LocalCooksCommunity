@@ -741,6 +741,13 @@ router.post(
     try {
       const chefId = req.neonUser!.id;
 
+      if (req.firebaseUser?.email_verified !== true) {
+        return res.status(403).json({
+          error: "Please verify your email before requesting a kitchen tour.",
+          code: "EMAIL_NOT_VERIFIED",
+        });
+      }
+
       const parsed = insertKitchenViewingSchema.safeParse({
         ...req.body,
         chefId,

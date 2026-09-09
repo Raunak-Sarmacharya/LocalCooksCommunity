@@ -159,7 +159,7 @@ function ManagerKitchenApplicationsContentLegacy({
   );
 
   const { pendingApplications, awaitingStep2Applications, fullyApprovedApplications, rejectedApplications } = useMemo(() => {
-    // Pending Review: New applications OR Step 2 submitted needing manager review
+    // Pending Review: New applications needing manager review
     const pending = filteredApplications.filter(
       (a) => a.status === "inReview" || isStep2NeedsReview(a)
     );

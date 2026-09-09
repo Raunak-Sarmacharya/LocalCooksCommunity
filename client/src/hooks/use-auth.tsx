@@ -957,7 +957,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logger.info('🔄 UPDATING VERIFICATION STATUS');
       logger.info(`   - Firebase emailVerified: ${currentUser.emailVerified}`);
 
-      const token = await currentUser.getIdToken();
+      const token = await currentUser.getIdToken(true);
 
       // **CRITICAL: Call the manual sync endpoint to update database verification status**
       try {

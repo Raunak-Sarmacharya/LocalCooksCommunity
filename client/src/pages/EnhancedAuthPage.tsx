@@ -21,6 +21,7 @@ import { getChefPostAuthPath } from "@/config/chef-onboarding-steps";
 import { hasVerifiedEmail } from "@/lib/auth-verification";
 import LoadingOverlay from "@/components/auth/LoadingOverlay";
 import ChefAuthShowcase from "@/components/auth/ChefAuthShowcase";
+import { getSellerJourneyDraft } from "@/lib/seller-journey";
 
 export default function EnhancedAuthPage() {
   const { t } = useTranslation("auth");
@@ -45,6 +46,10 @@ export default function EnhancedAuthPage() {
   const hasUserMetaRef = useRef(false); // Track if userMeta was successfully fetched (avoids stale closure)
 
   const [retryCount, setRetryCount] = useState(0);
+  const sellerJourneyDraft =
+    new URLSearchParams(window.location.search).get("journey") === "seller"
+      ? getSellerJourneyDraft()
+      : null;
 
   // Check for success messages from URL parameters
   useEffect(() => {
@@ -561,6 +566,8 @@ export default function EnhancedAuthPage() {
                   onSuccess={handleSuccess}
                   setHasAttemptedLogin={setHasAttemptedLogin}
                   hideApplyingToggle
+                  initialTermsAccepted={sellerJourneyDraft?.termsAccepted === true}
+                  onSwitchToLogin={() => setActiveTab("login")}
                 />
               </TabsContent>
             </Tabs>

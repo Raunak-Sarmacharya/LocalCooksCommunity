@@ -57,10 +57,10 @@ import { cn } from "@/lib/utils";
 import { format, addDays, isBefore, startOfDay, endOfDay } from "date-fns";
 import { ct } from "@/i18n/chef-ns";
 
-async function getAuthHeaders(): Promise<HeadersInit> {
+async function getAuthHeaders(forceRefresh = false): Promise<HeadersInit> {
   const currentUser = auth.currentUser;
   if (currentUser) {
-    const token = await currentUser.getIdToken();
+    const token = await currentUser.getIdToken(forceRefresh);
     return {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
@@ -124,7 +124,8 @@ export function ScheduleViewingWidget({
   const isAuthenticated = !!user;
   const [registeredInFlow, setRegisteredInFlow] = useState(false);
   const actor = kitchenActor(isAuthenticated, registeredInFlow);
-  const skipVerify = skipKitchenVerify(actor);
+  const emailVerified = isUserVerified(user);
+  const skipVerify = skipKitchenVerify(actor, emailVerified);
 
   const [step, setStep] = useState<TourStep>("date");
   const [authTab, setAuthTab] = useState<"register" | "login">("register");
@@ -192,7 +193,12 @@ export function ScheduleViewingWidget({
         parsed.step === "intake" || parsed.step === "register"
           ? "account"
           : parsed.step || (parsed.slot ? "time" : "date");
-      const restored = coerceTourStepForActor(rawStep, restoreActor, !!parsed.slot) as TourStep;
+      const restored = coerceTourStepForActor(
+        rawStep,
+        restoreActor,
+        !!parsed.slot,
+        isUserVerified(user)
+      ) as TourStep;
       // Resume fields only — the preview page decides whether to reopen the dialog.
       if (restored !== "date") setStep(restored);
     } catch (e) {
@@ -206,7 +212,7 @@ export function ScheduleViewingWidget({
   useEffect(() => {
     if (!selectedSlot) return;
     if (step === "time" || step === "date" || step === "success") return;
-    const next = nextTourStepAfterSlot(actor);
+    const next = nextTourStepAfterSlot(actor, emailVerified);
     if (next === "confirm" && (step === "verify" || step === "account")) {
       setStep("confirm");
       onRequireOpen?.();
@@ -214,7 +220,7 @@ export function ScheduleViewingWidget({
       setStep("verify");
       onRequireOpen?.();
     }
-  }, [actor, selectedSlot, step, onRequireOpen]);
+  }, [actor, emailVerified, selectedSlot, step, onRequireOpen]);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -253,7 +259,7 @@ export function ScheduleViewingWidget({
   const bookMutation = useMutation({
     mutationFn: async () => {
       if (!selectedSlot) throw new Error(ct("noTimeSlotSelected"));
-      const headers = await getAuthHeaders();
+      const headers = await getAuthHeaders(true);
       const response = await fetch("/api/viewings/book", {
         method: "POST",
         headers,
@@ -315,12 +321,12 @@ export function ScheduleViewingWidget({
       sessionStorage.removeItem("pending_application_modal");
       saveAuthIntentFromCurrentPage("tour", locationId, targetedKitchenId);
 
-      const next = nextTourStepAfterSlot(actor);
+      const next = nextTourStepAfterSlot(actor, emailVerified);
       persistProgress({ slot, step: next });
       if (next === "account") setAuthTab("register");
       setStep(next);
     },
-    [actor, locationId, targetedKitchenId, persistProgress]
+    [actor, emailVerified, locationId, targetedKitchenId, persistProgress]
   );
 
   const handleBack = useCallback(() => {
@@ -830,7 +836,7 @@ export function ScheduleViewingWidget({
         size="lg"
         data-testid="tour-request-submit"
         onClick={() => bookMutation.mutate()}
-        disabled={bookMutation.isPending || !isAuthenticated}
+        disabled={bookMutation.isPending || !isAuthenticated || !emailVerified}
       >
         {bookMutation.isPending ? (
           <>

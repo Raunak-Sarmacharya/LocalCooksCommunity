@@ -308,10 +308,12 @@ export default function OverviewTabContent({
       .forEach(({ app, display }) => {
         items.push({
           id: `kitchen-step-${app.id}`,
-          title: display.stepCaption,
+          title: t("ovActionNeededKitchen", "Action needed"),
           description: app.location?.name || t("ovKitchenFallback"),
           cta: display.actionLabel || t("ovContinueCta"),
-          onClick: () => onSetActiveTab("kitchen-applications"),
+          onClick: () => {
+            window.location.href = `/kitchen-requirements/${app.locationId}`;
+          },
         });
       });
 
@@ -620,7 +622,17 @@ export default function OverviewTabContent({
                       <TruncatedText as="p" className="truncate text-sm font-medium">
                         {app.location?.name || t("ovKitchenFallback")}
                       </TruncatedText>
-                      <TruncatedText as="p" className="truncate text-xs text-muted-foreground">{display.stepCaption}</TruncatedText>
+                      {display.actionKind === "complete-step" ? (
+                        <a 
+                          href={`/kitchen-requirements/${app.locationId}`}
+                          className="text-xs text-primary underline hover:text-primary/80 transition-colors flex items-center gap-1 mt-0.5"
+                        >
+                          {t("ovContinueCta", "Continue")}
+                          <ArrowRight className="h-3 w-3" />
+                        </a>
+                      ) : (
+                        <TruncatedText as="p" className="truncate text-xs text-muted-foreground">{display.stepCaption}</TruncatedText>
+                      )}
                     </div>
                     <KitchenStatusChip display={display} className="shrink-0" />
                   </div>

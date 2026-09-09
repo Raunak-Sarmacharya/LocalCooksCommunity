@@ -15,6 +15,8 @@ describe("seller journey draft", () => {
       email: "ADA@example.com",
       phone: "+1 (709) 555-0123",
       kitchenPreference: "home",
+      termsAccepted: true,
+      termsAcceptedAt: Date.now(),
     });
     expect(getSellerJourneyDraft()).toMatchObject({ fullName: "Ada Cook", kitchenPreference: "home" });
     clearSellerJourneyDraft();
@@ -27,6 +29,8 @@ describe("seller journey draft", () => {
       email: "ADA@example.com",
       phone: "+1 (709) 555-0123",
       kitchenPreference: "commercial",
+      termsAccepted: true,
+      termsAcceptedAt: Date.now(),
       savedAt: Date.now(),
     });
     expect(payload).toMatchObject({

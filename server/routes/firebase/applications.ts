@@ -51,6 +51,14 @@ router.post('/firebase/applications',
             const userId = req.neonUser!.id;
             logger.info(`📝 POST /api/firebase/applications - User ${userId} submitting application`);
 
+            if (req.firebaseUser?.email_verified !== true) {
+                cleanupUploadedFiles(req);
+                return res.status(403).json({
+                    error: "Please verify your email before submitting an application.",
+                    code: "EMAIL_NOT_VERIFIED",
+                });
+            }
+
             // Strip userId from request body - we use the authenticated user's ID
             // This prevents spoofing and fixes type coercion issues from form data
             const { userId: _clientUserId, ...bodyWithoutUserId } = req.body;

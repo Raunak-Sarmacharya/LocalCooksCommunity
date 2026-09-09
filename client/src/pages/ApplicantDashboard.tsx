@@ -98,6 +98,22 @@ export default function ApplicantDashboard() {
   const [showVendorPortalPopup, setShowVendorPortalPopup] = useState(false);
   const [showChatDialog, setShowChatDialog] = useState(false);
 
+  useEffect(() => {
+    const result = window.sessionStorage.getItem("localcooks:seller-journey-result");
+    if (!result) return;
+    window.sessionStorage.removeItem("localcooks:seller-journey-result");
+    toast({
+      title: result === "submitted" ? "Application submitted" : "Application already on file",
+      description:
+        result === "submitted"
+          ? "Your seller application was submitted successfully. You can track its status here."
+          : "We found your existing seller application and opened it for you.",
+    });
+    const url = new URL(window.location.href);
+    url.searchParams.delete("journey");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  }, []);
+
   // Chef onboarding status for "Continue Setup" banner
   const { showSetupBanner } = useChefOnboardingStatus();
   const { hasAnyItems: hasResolutionItems, pendingDamageClaims, pendingPenalties } = useChefResolutionCenter();

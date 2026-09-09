@@ -3,7 +3,7 @@ import { Router, Request, Response } from 'express';
 import { upload, uploadToBlob } from '../../fileUpload';
 import { requireFirebaseAuthWithUser, requireManager, requireAdmin } from '../../firebase-auth-middleware';
 import { db } from '../../db';
-import { chefLocationAccess, insertChefKitchenApplicationSchema, updateApplicationTierSchema } from '@shared/schema';
+import { chefLocationAccess, insertChefKitchenApplicationSchema, updateApplicationTierSchema, users } from '@shared/schema';
 import { fromZodError } from 'zod-validation-error';
 // Import Domain Services
 import { chefApplicationService } from '../../domains/applications/chef-application.service';
@@ -14,12 +14,14 @@ import { KitchenService } from '../../domains/kitchens/kitchen.service';
 import { ApplicationRepository } from '../../domains/applications/application.repository';
 import { ApplicationService } from '../../domains/applications/application.service';
 
-import { sendSystemNotification, notifyTierTransition } from '../../chat-service';
-import { and, eq } from 'drizzle-orm';
+import { initializeConversation, sendSystemNotification, notifyTierTransition } from '../../chat-service';
+import { and, eq, isNotNull, ne } from 'drizzle-orm';
 import { notificationService } from '../../services/notification.service';
+import { getChefPhone } from '../../phone-utils';
 import { 
     sendEmail, 
     generateNewKitchenApplicationManagerEmail,
+    generateKitchenCoordinationSubmittedManagerEmail,
     generateKitchenApplicationReceivedChefEmail,
     generateKitchenApplicationStep2ReceivedChefEmail,
     generateKitchenApplicationSubmittedChefEmail,
@@ -51,6 +53,13 @@ router.post('/firebase/chef/kitchen-applications',
     async (req: Request, res: Response) => {
         try {
             logger.info(`🍳 POST /api/firebase/chef/kitchen-applications - Chef ${req.neonUser!.id} submitting kitchen application`);
+
+            if (req.firebaseUser?.email_verified !== true) {
+                return res.status(403).json({
+                    error: "Please verify your email before submitting an application.",
+                    code: "EMAIL_NOT_VERIFIED",
+                });
+            }
 
             // Handle file uploads if present
             // Convert array format from upload.any() to object format for easier access
@@ -180,7 +189,23 @@ router.post('/firebase/chef/kitchen-applications',
             // Parse and validate form data
             // Handle phone: validate based on location requirements
             let phoneValue: string = '';
-            const phoneInput = req.body.phone ? req.body.phone.trim() : '';
+            const profileData = req.neonUser?.managerProfileData && typeof req.neonUser.managerProfileData === 'object'
+                ? req.neonUser.managerProfileData as Record<string, unknown>
+                : {};
+            // Chef profile data is the source of truth. Older clients may still send a
+            // phone value, so retain it as a compatibility fallback.
+            const applicationPhone = await getChefPhone(req.neonUser!.id);
+            const existingKitchenApplicationForPhone = await chefApplicationService.getChefApplication(
+                req.neonUser!.id,
+                locationId
+            );
+            const phoneInput = String(
+                profileData.phone ||
+                req.body.phone ||
+                existingKitchenApplicationForPhone?.phone ||
+                applicationPhone ||
+                ''
+            ).trim();
 
             // For TIER 2 submissions (manager review, documents uploaded), apply strict
             // phone validation because the chef has had full access to the form UX to fix.
@@ -577,6 +602,52 @@ router.post('/firebase/chef/kitchen-applications',
 
             logger.info(`✅ Kitchen application created/updated: Chef ${req.neonUser!.id} → Location ${parsedData.data.locationId}, ID: ${application.id}`);
 
+            // Step 1 is reviewed by LocalCooks admins (not the kitchen manager). Notify
+            // every admin in-app and by email, matching the seller-application fan-out
+            // while keeping the two application workflows fully independent.
+            if (currentTierValue === 1) {
+                try {
+                    const admins = await db
+                        .select({ id: users.id, username: users.username })
+                        .from(users)
+                        .where(and(eq(users.role, 'admin'), isNotNull(users.username), ne(users.username, '')));
+
+                    for (const admin of admins) {
+                        await notificationService.createForManager({
+                            managerId: admin.id,
+                            type: 'application_new',
+                            priority: 'high',
+                            title: 'Kitchen application awaiting review',
+                            message: `${formData.fullName || 'A chef'} requested to apply to ${location.name || 'a kitchen'}.`,
+                            metadata: {
+                                applicationId: application.id,
+                                chefId: req.neonUser!.id,
+                                locationId: location.id,
+                                workflow: 'kitchen',
+                                step: 1,
+                            },
+                            actionUrl: '/admin?section=kitchen-applications-step1',
+                            actionLabel: 'Review application',
+                        });
+
+                        const adminEmail = generateNewKitchenApplicationManagerEmail({
+                            managerEmail: admin.username,
+                            chefName: formData.fullName || 'Chef',
+                            chefEmail: formData.email || '',
+                            locationName: location.name || 'Kitchen Location',
+                            applicationId: application.id,
+                            submittedAt: new Date(),
+                        });
+                        await sendEmail(adminEmail, {
+                            trackingId: `kitchen_app_admin_${admin.id}_${application.id}_${Date.now()}`,
+                        });
+                    }
+                    logger.info(`✅ Notified ${admins.length} admin(s) about kitchen application ${application.id}`);
+                } catch (adminNotificationError) {
+                    logger.error('Error notifying admins about kitchen application:', adminNotificationError);
+                }
+            }
+
             // Create in-app notification for manager about new application
             try {
                 if (location.managerId) {
@@ -599,21 +670,33 @@ router.post('/firebase/chef/kitchen-applications',
                 logger.error("Error creating application notification:", notifError);
             }
 
-            // Send email notification to manager about new kitchen application
+            // Send the corresponding manager email for both workflow phases.
             try {
-                if (currentTierValue === 1 && location.notificationEmail && location.managerId) {
-                    const managerEmailContent = generateNewKitchenApplicationManagerEmail({
-                        managerEmail: location.notificationEmail,
-                        chefName: formData.fullName || 'Chef',
-                        chefEmail: formData.email || '',
-                        locationName: location.name || 'Kitchen Location',
-                        applicationId: application.id,
-                        submittedAt: new Date()
-                    });
-                    await sendEmail(managerEmailContent, {
-                        trackingId: `kitchen_app_new_${application.id}_${Date.now()}`
-                    });
-                    logger.info(`✅ Sent new kitchen application email to manager: ${location.notificationEmail}`);
+                if (location.managerId) {
+                    const [manager] = await db
+                        .select({ username: users.username })
+                        .from(users)
+                        .where(eq(users.id, location.managerId))
+                        .limit(1);
+                    const managerEmail = location.notificationEmail || manager?.username;
+
+                    if (managerEmail) {
+                        const emailData = {
+                            managerEmail,
+                            chefName: formData.fullName || 'Chef',
+                            chefEmail: formData.email || '',
+                            locationName: location.name || 'Kitchen Location',
+                            applicationId: application.id,
+                            submittedAt: new Date(),
+                        };
+                        const managerEmailContent = currentTierValue === 2
+                            ? generateKitchenCoordinationSubmittedManagerEmail(emailData)
+                            : generateNewKitchenApplicationManagerEmail(emailData);
+                        await sendEmail(managerEmailContent, {
+                            trackingId: `kitchen_app_${currentTierValue === 2 ? 'coordination' : 'new'}_${application.id}_${Date.now()}`
+                        });
+                        logger.info(`✅ Sent kitchen application phase ${currentTierValue} email to manager: ${managerEmail}`);
+                    }
                 }
             } catch (emailError) {
                 logger.error("Error sending new kitchen application email to manager:", emailError);
@@ -684,6 +767,18 @@ router.get('/firebase/chef/kitchen-applications', requireFirebaseAuthWithUser, a
     try {
         const chefId = req.neonUser!.id;
         const applications = await chefApplicationService.getChefApplications(chefId);
+        // Heal legacy approved conversations that predate Firebase UID fields.
+        // This also makes already-approved chefs work without another admin action.
+        await Promise.all(applications
+            .filter((application) => application.status === 'approved')
+            .map(async (application) => {
+                const conversationId = await initializeConversation({
+                    id: application.id,
+                    chefId: application.chefId,
+                    locationId: application.locationId,
+                });
+                if (conversationId) application.chat_conversation_id = conversationId;
+            }));
         res.json(applications);
     } catch (error) {
         logger.error('Error getting chef kitchen applications:', error);
@@ -712,6 +807,15 @@ router.get('/firebase/chef/kitchen-applications/location/:locationId', requireFi
                 message: 'You have not applied to this kitchen yet.',
                 application: null
             });
+        }
+
+        if (application.status === 'approved') {
+            const conversationId = await initializeConversation({
+                id: application.id,
+                chefId: application.chefId,
+                locationId: application.locationId,
+            });
+            if (conversationId) application.chat_conversation_id = conversationId;
         }
 
         // Get location details (simple fetch if needed, but existing logic fetched it)
@@ -944,6 +1048,15 @@ router.patch('/firebase/admin/kitchen-applications/:id/status', requireFirebaseA
                     logger.info(`✅ Chat tier transition notification sent (${previousTier} → ${currentTier}) for application ${applicationId}`);
                 } catch (chatError) {
                     logger.error('Error sending tier transition chat notification:', chatError);
+                }
+            } else if (currentTier <= 1) {
+                // Admin approval completes request-to-apply, although the stored
+                // tier remains 1 until Kitchen Coordination is submitted.
+                try {
+                    await notifyTierTransition(applicationId, 1, 2);
+                    logger.info(`✅ Kitchen coordination chat opened for application ${applicationId}`);
+                } catch (chatError) {
+                    logger.error('Error opening kitchen coordination chat:', chatError);
                 }
             }
 

@@ -41,6 +41,10 @@ import KitchenLanding from "@/pages/KitchenLanding";
 import AdminLanding from "@/pages/AdminLanding";
 import CookieConsentBanner from "@/components/legal/CookieConsentBanner";
 import PendingSellerJourneySubmitter from "@/components/application/PendingSellerJourneySubmitter";
+// Eager-load the primary manager shell. In development, a stale Vite/HMR
+// module graph can otherwise strand authenticated managers behind a failed
+// dynamic import even though the dashboard and its dependencies compile.
+import ManagerBookingDashboard from "@/pages/ManagerBookingDashboard";
 // Eager: harnesses hit /dev-login first; lazy Suspense looks like a blank SPA under TestSprite.
 import DevLoginPage from "@/pages/DevLoginPage";
 
@@ -58,7 +62,6 @@ const ManagerChangePassword = lazy(() => import("@/pages/ManagerChangePassword")
 const ManagerProfile = lazy(() => import("@/pages/ManagerProfile"));
 const KitchenAvailabilityManagement = lazy(() => import("@/pages/KitchenAvailabilityManagement"));
 const ManagerBookingsPanel = lazy(() => import("@/pages/ManagerBookingsPanel"));
-const ManagerBookingDashboard = lazy(() => import("@/pages/ManagerBookingDashboard"));
 const KitchenBookingCalendar = lazy(() => import("@/pages/KitchenBookingCalendar"));
 const KitchenBookingPage = lazy(() => import("@/pages/KitchenBookingPage"));
 const BookingConfirmationPage = lazy(() => import("@/pages/BookingConfirmationPage"));
@@ -393,8 +396,8 @@ function App() {
           <AuthProvider>
             <DocumentLocaleSync />
             <LocaleProfileSync />
-            <PendingSellerJourneySubmitter />
             <CustomAlertsProvider>
+              <PendingSellerJourneySubmitter />
               <AuthModalProvider>
                 <TooltipProvider>
                   <RadixBodyCleanupProvider>

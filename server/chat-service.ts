@@ -2,8 +2,8 @@ import { logger } from "./logger";
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { initializeFirebaseAdmin } from './firebase-setup';
 import { db } from './db';
-import { chefKitchenApplications, locations } from '@shared/schema';
-import { eq } from 'drizzle-orm';
+import { chefKitchenApplications, locations, users } from '@shared/schema';
+import { eq, inArray } from 'drizzle-orm';
 
 let adminDb: FirebaseFirestore.Firestore | null = null;
 
@@ -54,6 +54,22 @@ export async function initializeConversation(applicationData: {
 
     const managerId = location.managerId;
 
+    const participants = await db
+      .select({ id: users.id, firebaseUid: users.firebaseUid })
+      .from(users)
+      .where(inArray(users.id, [applicationData.chefId, managerId]));
+    const chefFirebaseUid = participants.find((participant) => participant.id === applicationData.chefId)?.firebaseUid;
+    const managerFirebaseUid = participants.find((participant) => participant.id === managerId)?.firebaseUid;
+
+    if (!chefFirebaseUid || !managerFirebaseUid) {
+      logger.error('Cannot initialize chat without Firebase UIDs for both participants', {
+        applicationId: applicationData.id,
+        hasChefFirebaseUid: Boolean(chefFirebaseUid),
+        hasManagerFirebaseUid: Boolean(managerFirebaseUid),
+      });
+      return null;
+    }
+
     // Check if conversation already exists
     const existingQuery = await adminDb
       .collection('conversations')
@@ -62,7 +78,14 @@ export async function initializeConversation(applicationData: {
       .get();
 
     if (!existingQuery.empty) {
-      return existingQuery.docs[0].id;
+      const existingConversation = existingQuery.docs[0];
+      await existingConversation.ref.set({
+        chefId: applicationData.chefId,
+        managerId,
+        chefFirebaseUid,
+        managerFirebaseUid,
+      }, { merge: true });
+      return existingConversation.id;
     }
 
     // Create new conversation
@@ -70,6 +93,8 @@ export async function initializeConversation(applicationData: {
       applicationId: applicationData.id,
       chefId: applicationData.chefId,
       managerId: managerId,
+      chefFirebaseUid,
+      managerFirebaseUid,
       locationId: applicationData.locationId,
       createdAt: FieldValue.serverTimestamp(),
       lastMessageAt: FieldValue.serverTimestamp(),

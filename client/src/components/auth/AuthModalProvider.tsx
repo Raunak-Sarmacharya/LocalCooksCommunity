@@ -298,7 +298,8 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
   const pendingRestoredRef = useRef(false);
   const [registeredInFlow, setRegisteredInFlow] = useState(false);
   const actor: KitchenActor = kitchenActor(!!user, registeredInFlow);
-  const skipVerify = skipKitchenVerify(actor);
+  const emailVerified = isUserVerified(user);
+  const skipVerify = skipKitchenVerify(actor, emailVerified);
   const showBookingPrefs = !!options.bookingContext;
   const { preview: bookingPricePreview, isLoading: bookingPriceLoading } =
     usePersistedBookingPricePreview(
@@ -355,7 +356,10 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
     if (phase !== pending.phase) {
       savePendingApplicationModal({ ...pending, phase, registeredInFlow: registering });
     }
-    restorePendingModal({ ...pending, phase, registeredInFlow: registering }, skipKitchenVerify(restoreActor));
+    restorePendingModal(
+      { ...pending, phase, registeredInFlow: registering },
+      skipKitchenVerify(restoreActor, isUserVerified(user))
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user]);
 
@@ -381,7 +385,7 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
       savePendingApplicationModal({ ...pending, phase, registeredInFlow: registering });
       restorePendingModal(
         { ...pending, phase, registeredInFlow: registering },
-        skipKitchenVerify(urlActor)
+        skipKitchenVerify(urlActor, isUserVerified(user))
       );
       setTimeout(() => setShowVerificationSuccess(false), 5000);
       return;
@@ -481,7 +485,7 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
       setSubmitError("Application data not found. Please register again.");
       return;
     }
-    if (!isUserVerified(user) && !skipVerify) {
+    if (!isUserVerified(user)) {
       setSubmitError("Please verify your email first, then click Submit.");
       return;
     }
@@ -497,7 +501,9 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
         setSubmitError("Please sign in again to submit your application.");
         return;
       }
-      const token = await firebaseUser.getIdToken();
+      // Force-refresh so the server receives the latest email_verified claim
+      // immediately after the user returns from the verification link.
+      const token = await firebaseUser.getIdToken(true);
       const applicationData = JSON.parse(pendingData);
       if (!applicationData.fullName && applicationData.displayName) {
         applicationData.fullName = applicationData.displayName;
@@ -741,7 +747,6 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
       }
       setApplicationPhase("ready_to_submit");
       setBookingPrefsValid(true);
-      window.location.reload();
     } catch {
       setVerifyError(
         t("verifyCheckFailed", "Could not check verification status. Please try again.")

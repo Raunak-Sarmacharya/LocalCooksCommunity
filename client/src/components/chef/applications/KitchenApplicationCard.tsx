@@ -129,7 +129,11 @@ function KitchenApplicationDetails({
                   )}
                 />
                 <p className="mt-1 text-center text-xs text-muted-foreground">
-                  {step === 3 ? t("apptabCompleteWord", "Complete") : t("apptabStepN", { step, defaultValue: "Step {step}" })}
+                  {step === 1
+                    ? t("requestToApply", "Request")
+                    : step === 2
+                      ? t("kitchenDocuments", "Documents")
+                      : t("apptabCompleteWord", "Access")}
                 </p>
               </div>
             ))}
@@ -140,11 +144,8 @@ function KitchenApplicationDetails({
       <Separator className="bg-border/50" />
 
       <div className="space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-muted">
-            <span className="text-xs font-medium text-muted-foreground">1</span>
-          </div>
-          <p className="text-sm font-bold text-foreground">{t("apptabStep1Title", "Request to apply")}</p>
+          <div className="flex flex-wrap items-center gap-2">
+          <p className="text-sm font-bold text-foreground">{t("requestToApply", "Request to apply")}</p>
           {(app as any).tier1_completed_at && (
             <InfoChip variant="success" icon={<CheckCircle className="h-3 w-3" />}>
               {t("apptabSubmittedOn", { date: new Date((app as any).tier1_completed_at || app.createdAt).toLocaleDateString(i18n.language), defaultValue: "Submitted {date}" })}
@@ -342,10 +343,7 @@ function KitchenApplicationDetails({
           <Separator className="bg-border/50" />
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-muted">
-                <span className="text-xs font-medium text-muted-foreground">2</span>
-              </div>
-              <p className="text-sm font-bold text-foreground">{t("apptabStep2Title", "Additional Requirements")}</p>
+              <p className="text-sm font-bold text-foreground">{t("kitchenDocuments", "Kitchen documents")}</p>
               {(app as any).tier2_completed_at ? (
                 <InfoChip variant="success" icon={<CheckCircle className="h-3 w-3" />}>
                   {t("apptabSubmittedOn", { date: new Date((app as any).tier2_completed_at).toLocaleDateString(i18n.language), defaultValue: "Submitted {date}" })}
@@ -436,7 +434,7 @@ function KitchenApplicationDetails({
                     {step2Data.documents && Object.keys(step2Data.documents).length > 0 && (
                       <>
                         <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                          {t("apptabStep2Documents", "Documents")}
+                          {t("kitchenDocuments", "Kitchen documents")}
                         </p>
                         <div className="grid grid-cols-1 gap-3">
                           {Object.entries(step2Data.documents).map(
@@ -475,7 +473,7 @@ function KitchenApplicationDetails({
             ) : currentStep >= 2 && !hasStep2Data ? (
               <div className="rounded-xl border px-3 py-3">
                 <p className="text-sm text-muted-foreground">
-                  {t("apptabStep2Outstanding", "Complete additional requirements to get full kitchen access.")}
+                  {t("kitchenDocumentsOutstanding", "Upload the required documents to get full kitchen access.")}
                 </p>
               </div>
             ) : null}
@@ -510,13 +508,13 @@ function KitchenApplicationDetails({
         {app.status === "approved" && currentStep < 3 &&
           (step2Submitted ? (
             <InfoChip variant="outline" icon={<FileCheck className="h-3 w-3" />}>
-              {t("apptabStep2SubmittedAwaiting", "Application submitted — awaiting manager review")}
+              {t("documentsAwaitingManagerReview", "Documents submitted — awaiting manager review")}
             </InfoChip>
           ) : (
             <Button variant="outline" size="sm" asChild>
               <Link href={`/kitchen-requirements/${app.locationId}`}>
                 <ArrowRight className="mr-1 h-4 w-4" />
-                {t("apptabCompleteStepN", { step: currentStep === 1 ? 2 : currentStep, defaultValue: "Complete Step {step}" })}
+                {t("continueKitchenApplication", { defaultValue: "Continue application" })}
               </Link>
             </Button>
           ))}

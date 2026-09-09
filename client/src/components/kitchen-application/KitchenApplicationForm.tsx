@@ -8,6 +8,7 @@ import {
   AlertCircle,
   ArrowLeft,
   Building2,
+  CalendarDays,
   Check,
   Clock,
   FileText,
@@ -22,7 +23,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { type FieldErrors, useForm, useWatch } from "react-hook-form";
 import { useLocation } from "wouter";
 import { z } from "zod";
-import { phoneNumberSchema, optionalPhoneNumberSchema, normalizePhoneNumber, isValidNorthAmericanPhone } from "@shared/phone-validation";
+import { phoneNumberSchema, normalizePhoneNumber, isValidNorthAmericanPhone } from "@shared/phone-validation";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
@@ -51,6 +52,19 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { FormLegend } from "@/components/ui/form-legend";
 import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
+import { Calendar as UICalendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 // Helper component for authenticated document links
 function AuthenticatedDocumentLink({ url, className, children }: { url: string | null | undefined; className?: string; children: React.ReactNode }) {
@@ -67,6 +81,74 @@ function AuthenticatedDocumentLink({ url, className, children }: { url: string |
     >
       {children}
     </a>
+  );
+}
+
+function KitchenDocumentDatePicker({
+  value,
+  onChange,
+  label,
+  required,
+}: {
+  value?: string;
+  onChange: (value: string) => void;
+  label: string;
+  required?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = value ? new Date(`${value}T00:00:00`) : undefined;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="flex h-12 w-full items-center rounded-xl border px-3.5 text-left transition-colors hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              {label}{required ? " *" : ""}
+            </span>
+            <span className={cn("mt-0.5 block text-sm", value ? "text-foreground" : "text-muted-foreground")}>
+              {selected && !Number.isNaN(selected.getTime())
+                ? selected.toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })
+                : "Choose a date"}
+            </span>
+          </span>
+          <CalendarDays className="h-4 w-4 shrink-0 text-muted-foreground" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" sideOffset={6} className="w-[320px] rounded-xl p-2">
+          <UICalendar
+            mode="single"
+            selected={selected}
+            onSelect={(date) => {
+              if (!date) return;
+              const y = date.getFullYear();
+              const m = String(date.getMonth() + 1).padStart(2, "0");
+              const d = String(date.getDate()).padStart(2, "0");
+              onChange(`${y}-${m}-${d}`);
+              setOpen(false);
+            }}
+            disabled={(date) => date < today}
+            className="w-full bg-transparent p-1"
+            classNames={{
+              months: "flex flex-col space-y-0 w-full",
+              month: "space-y-2 w-full",
+              table: "w-full border-collapse table-fixed",
+              head_cell: "text-muted-foreground font-normal text-xs text-center pb-0.5 w-[14.28%]",
+              row: "mt-0.5",
+              day: "h-8 w-8 max-w-[32px] mx-auto p-0 font-normal text-xs rounded-full hover:bg-muted transition-colors flex items-center justify-center",
+              cell: cn(
+                "relative z-0 h-8 p-0 text-center text-xs",
+                "[&:has([aria-selected])]:before:absolute [&:has([aria-selected])]:before:left-1/2 [&:has([aria-selected])]:before:top-1/2 [&:has([aria-selected])]:before:h-8 [&:has([aria-selected])]:before:w-8 [&:has([aria-selected])]:before:-translate-x-1/2 [&:has([aria-selected])]:before:-translate-y-1/2 [&:has([aria-selected])]:before:-z-10 [&:has([aria-selected])]:before:rounded-full [&:has([aria-selected])]:before:border-2 [&:has([aria-selected])]:before:border-[#F51042]"
+              ),
+            }}
+          />
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -167,6 +249,19 @@ export default function KitchenApplicationForm({
   const [, navigate] = useLocation();
   const { createApplication, refetch } = useChefKitchenApplications();
   const { application, hasApplication, refetch: refetchLocationApp } = useChefKitchenApplicationForLocation(location.id);
+  const { data: chefProfile, isLoading: isLoadingChefProfile } = useQuery<{ phone?: string | null }>({
+    queryKey: ["/api/chef/my-profile"],
+    queryFn: async () => {
+      const { auth } = await import("@/lib/firebase");
+      const token = await auth.currentUser?.getIdToken();
+      const response = await fetch("/api/chef/my-profile", {
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) throw new Error("Failed to load chef profile");
+      return response.json();
+    },
+  });
 
   // Get current tier from application
   // If status is 'approved' but still on tier 1, we should effectively be on tier 2 for the form
@@ -206,6 +301,7 @@ export default function KitchenApplicationForm({
   }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
   
   // Custom field file uploads - map of field ID to File object
   const [customFieldFiles, setCustomFieldFiles] = useState<Record<string, File>>({});
@@ -224,10 +320,10 @@ export default function KitchenApplicationForm({
     // For Tier 2+, make all Tier 1 fields optional since they're already submitted
     const isTier2OrHigher = currentTier >= 2 || !!globalApp;
     // Phone is optional on request-to-apply — collect it on Step 2 if still missing
-    const needsPhoneOnStep2 =
-      isTier2OrHigher && !(application?.phone && String(application.phone).trim());
-
     const optionalText = z.string().optional().or(z.literal(''));
+    const hasPhoneOnFile = Boolean(
+      chefProfile?.phone || application?.phone || globalApp?.phone
+    );
     const requiredPhone = z.string()
       .min(1, t("valPhoneReq", { defaultValue: "Phone number is required" }))
       .refine(
@@ -261,7 +357,7 @@ export default function KitchenApplicationForm({
         firstName: optionalText,
         lastName: optionalText,
         email: z.string().email().optional().or(z.literal('')),
-        phone: needsPhoneOnStep2 ? requiredPhone : optionalPhone,
+        phone: hasPhoneOnFile ? optionalPhone : requiredPhone,
         businessName: optionalText,
         businessType: optionalText,
         experience: optionalText,
@@ -327,7 +423,7 @@ export default function KitchenApplicationForm({
       email: requirements.requireEmail
         ? z.string().email(t("valEmailReq", { defaultValue: "Please enter a valid email address" }))
         : z.string().email().optional().or(z.literal('')),
-      phone: requirements.requirePhone ? requiredPhone : optionalPhone,
+      phone: hasPhoneOnFile ? optionalPhone : requiredPhone,
       // Request-to-apply treats these as optional — never block on them
       businessName: optionalText,
       businessType: optionalText,
@@ -413,18 +509,20 @@ export default function KitchenApplicationForm({
     });
 
     return z.object({ ...baseFields, ...customFieldsSchema });
-  }, [requirements, currentTier, t, application?.phone, globalApp]);
+  }, [requirements, currentTier, t, application?.phone, globalApp, chefProfile?.phone]);
 
-  // Phone is optional on request-to-apply — ask on Step 2 if still missing
-  const needsPhoneOnStep2 =
-    currentTier >= 2 && !(application?.phone && String(application.phone).trim());
+  const needsPhoneInForm =
+    !isLoadingChefProfile &&
+    !chefProfile?.phone &&
+    !application?.phone &&
+    !globalApp?.phone;
   const getDefaultValues = useMemo(() => {
     // Start with default values from user data
     const defaults: any = {
       firstName: defaultFirstName,
       lastName: defaultLastName,
       email: user?.email || "",
-      phone: "",
+      phone: chefProfile?.phone || "",
       businessName: "",
       businessType: "",
       experience: "",
@@ -458,7 +556,7 @@ export default function KitchenApplicationForm({
         defaults.lastName = nameParts.slice(1).join(' ') || '';
       }
       defaults.email = application.email || defaults.email;
-      defaults.phone = application.phone || '';
+      defaults.phone = chefProfile?.phone || application.phone || '';
 
       // Business info (stored as JSON in businessDescription)
       if (application.businessDescription) {
@@ -548,7 +646,7 @@ export default function KitchenApplicationForm({
     }
 
     return defaults;
-  }, [requirements, defaultFirstName, defaultLastName, user?.email, application, currentTier]);
+  }, [requirements, defaultFirstName, defaultLastName, user?.email, application, currentTier, globalApp, chefProfile?.phone]);
 
   // Create a stable resolver that updates when dynamicSchema changes
   const resolver = useMemo(() => zodResolver(dynamicSchema), [dynamicSchema]);
@@ -573,7 +671,7 @@ export default function KitchenApplicationForm({
 
   // Calculate section progress
   const sectionProgress = useMemo(() => {
-    const section1Fields = ['firstName', 'lastName', 'email', 'phone'] as const;
+    const section1Fields = ['firstName', 'lastName', 'email'] as const;
     const section2Fields = ['businessName', 'businessType', 'experience'] as const;
     const section3Fields = ['foodHandlerCertExpiry'] as const;
     const section4Fields = ['usageFrequency', 'sessionDuration'] as const;
@@ -609,12 +707,6 @@ export default function KitchenApplicationForm({
       section5: calcSectionProgress(section5Fields),
     };
   }, [watchedValues, foodHandlerFile]);
-
-  // Calculate overall progress
-  const overallProgress = useMemo(() => {
-    const { section1, section2, section3, section4, section5 } = sectionProgress;
-    return Math.round((section1 + section2 + section3 + section4 + section5) / 5);
-  }, [sectionProgress]);
 
   const showValidationToast = (messages: string[]) => {
     const uniqueMessages = Array.from(new Set(messages.filter(Boolean)));
@@ -745,7 +837,7 @@ export default function KitchenApplicationForm({
         submittedFullName || existingFullName || "N/A",
       );
       formData.append("email", data.email || application?.email || "");
-      formData.append("phone", data.phone || application?.phone || "");
+      formData.append("phone", chefProfile?.phone || data.phone || application?.phone || "");
       formData.append("kitchenPreference", application?.kitchenPreference || "commercial");
 
       // Business info - store in businessDescription field
@@ -949,34 +1041,19 @@ export default function KitchenApplicationForm({
   // Success screen
   if (showSuccess) {
     return (
-      <div className="max-w-2xl mx-auto">
+      <div className="mx-auto max-w-xl">
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="text-center py-12 px-6"
+          className="rounded-2xl border bg-card px-6 py-12 text-center shadow-sm"
         >
-          <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mx-auto mb-6">
-            <Check className="h-10 w-10 text-muted-foreground" />
+          <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 ring-8 ring-emerald-50/50">
+            <Check className="h-7 w-7 text-emerald-700" />
           </div>
           <h2 className="mb-3 text-2xl font-semibold tracking-tight">{t("applicationSubmitted", { defaultValue: "Application submitted" })}</h2>
           <p className="mx-auto mb-8 max-w-md text-muted-foreground">
             {t("applicationSubmittedDesc", { defaultValue: "Thank you! We\'ve received your kitchen application and will review it within 24 hours. Check your email for updates." })}
           </p>
-
-          <div className="grid grid-cols-3 gap-4 mb-10">
-            <div className="p-4 bg-muted rounded-lg">
-              <div className="text-2xl font-bold text-muted-foreground mb-1">1</div>
-              <div className="text-xs text-muted-foreground">{t("documentsVerified", { defaultValue: "Documents Verified" })}<br />{t("twentyFourHours", { defaultValue: "(24 hours)" })}</div>
-            </div>
-            <div className="p-4 bg-muted rounded-lg">
-              <div className="text-2xl font-bold text-muted-foreground mb-1">2</div>
-              <div className="text-xs text-muted-foreground">{t("accountActivated", { defaultValue: "Account" })}<br />{t("activated", { defaultValue: "Activated" })}</div>
-            </div>
-            <div className="p-4 bg-muted rounded-lg">
-              <div className="text-2xl font-bold text-muted-foreground mb-1">3</div>
-              <div className="text-xs text-muted-foreground">{t("startBooking", { defaultValue: "Start Booking" })}<br />{t("kitchens", { defaultValue: "Kitchens" })}</div>
-            </div>
-          </div>
 
           <Button
             onClick={() => onSuccess ? onSuccess() : navigate("/dashboard")}
@@ -1115,7 +1192,7 @@ export default function KitchenApplicationForm({
     : null;
 
   // Show loading state while fetching requirements
-  if (isLoadingRequirements) {
+  if (isLoadingRequirements || isLoadingChefProfile) {
     return (
       <div className="max-w-[700px] mx-auto py-12 flex justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -1124,7 +1201,7 @@ export default function KitchenApplicationForm({
   }
 
   return (
-    <div className="max-w-[700px] mx-auto">
+    <div className="relative mx-auto max-w-3xl space-y-4 pb-12">
       {/* Re-application notice if previously rejected or cancelled */}
       {showReapplicationNotice && reapplicationConfig && (
         <div className="mb-6">
@@ -1153,69 +1230,41 @@ export default function KitchenApplicationForm({
 
       {/* Header */}
       <ChefPageHeader
-        title={t("requestToApply", { defaultValue: "Request to apply" })}
-        description={t("requestToApplyAt", {
+        title={currentTier >= 2
+          ? t("kitchenDocuments", { defaultValue: "Kitchen documents" })
+          : t("requestToApply", { defaultValue: "Request to apply" })}
+        description={currentTier >= 2
+          ? t("kitchenDocumentsFor", { defaultValue: "Documents required by {name}", name: location.name })
+          : t("requestToApplyAt", {
           defaultValue: "Request to apply at {name}",
           name: location.name,
         })}
-        className="mb-8"
+        className="mb-0"
       />
 
       <FormLegend />
 
       {/* Tier Progress Indicator */}
       {hasApplication && application && (
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-medium text-muted-foreground">{t("appProgress", { defaultValue: "Application Progress" })}</h3>
-            <span className="text-xs text-muted-foreground">
-              {currentTier === 1
-                ? t("requestToApplyProgress", { defaultValue: "Request to apply" })
-                : t("step2Of2KitchenDocs", { defaultValue: "Kitchen documents (Step 2)" })}
-            </span>
+        <div className="grid grid-cols-2 gap-2" aria-label={t("appProgress", { defaultValue: "Application progress" })}>
+          <div className="rounded-xl border bg-card p-3.5">
+            <div className="mb-1 flex items-center gap-2 text-xs font-medium text-emerald-700">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              {t("complete", { defaultValue: "Complete" })}
+            </div>
+            <p className="text-sm font-semibold">{t("requestToApplyProgress", { defaultValue: "Request to apply" })}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">{t("reviewedByLocalCooks", { defaultValue: "Reviewed by LocalCooks" })}</p>
           </div>
-          <div className="flex items-center gap-2">
-            {[1, 2].map((tier) => {
-              const isComplete = (tier === 1 && application.tier1_completed_at) ||
-                (tier === 2 && application.tier2_completed_at);
-              const isCurrent = tier === currentTier;
-              const isPast = tier < currentTier;
-
-              return (
-                <div key={tier} className="flex-1 flex items-center">
-                  <div className={`flex-1 h-2 rounded-full ${isComplete || isPast ? 'bg-foreground' :
-                    isCurrent ? 'bg-foreground/40' : 'bg-muted'
-                    }`} />
-                  {tier < 2 && (
-                    <div className={`w-2 h-2 rounded-full mx-1 ${isComplete || isPast ? 'bg-foreground' :
-                      isCurrent ? 'bg-foreground/40' : 'bg-muted'
-                      }`} />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          <div className="flex justify-between mt-2 text-xs text-muted-foreground">
-            <span>{t("step1Submit", { defaultValue: "Request to apply" })}</span>
-            <span>{t("step2Coordinate", { defaultValue: "Kitchen documents" })}</span>
+          <div className={`rounded-xl border p-3.5 ${application.tier2_completed_at ? "bg-card" : "border-primary/30 bg-primary/[0.03]"}`}>
+            <div className={`mb-1 flex items-center gap-2 text-xs font-medium ${application.tier2_completed_at ? "text-emerald-700" : "text-primary"}`}>
+              <span className={`h-2 w-2 rounded-full ${application.tier2_completed_at ? "bg-emerald-500" : "bg-primary"}`} />
+              {application.tier2_completed_at ? t("submitted", { defaultValue: "Submitted" }) : t("current", { defaultValue: "Current" })}
+            </div>
+            <p className="text-sm font-semibold">{t("kitchenDocuments", { defaultValue: "Kitchen documents" })}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">{t("reviewedByKitchen", { defaultValue: "Reviewed by the kitchen" })}</p>
           </div>
         </div>
       )}
-
-      {/* Progress Bar */}
-      <div className="mb-10">
-        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-          <motion.div
-            className="h-full bg-foreground rounded-full"
-            initial={{ width: 0 }}
-            animate={{ width: `${overallProgress}%` }}
-            transition={{ duration: 0.3 }}
-          />
-        </div>
-        <div className="text-right mt-1">
-          <span className="text-xs text-muted-foreground">{overallProgress}% {t("complete", { defaultValue: "complete" })}</span>
-        </div>
-      </div>
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit, handleInvalidSubmit)} className="space-y-6">
@@ -1295,22 +1344,6 @@ export default function KitchenApplicationForm({
                         )}
                       />
 
-                      <FormField
-                        control={form.control}
-                        name="phone"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-sm font-medium">
-                              {t("phoneNumber", { defaultValue: "Phone Number" })} {requirements?.requirePhone !== false && <span className="text-destructive">*</span>}
-                              {requirements?.requirePhone === false && <span className="text-muted-foreground text-xs ml-2">{t("optional", { defaultValue: "(Optional)" })}</span>}
-                            </FormLabel>
-                            <FormControl>
-                              <Input type="tel" placeholder="(709) 000-0000" {...field} className="h-11" />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
                     </div>
                   </CardContent>
                 </Card>
@@ -1450,7 +1483,7 @@ export default function KitchenApplicationForm({
                     <div className="flex items-center justify-between mb-6 pb-3 border-b">
                       <h3 className="font-semibold">{t("foodSafetyCertifications", { defaultValue: "Food Safety & Certifications" })}</h3>
                       <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded-full">
-                        {t("step2OnlyShort", { defaultValue: "Step 2" })}
+                        {t("afterRequestApproval", { defaultValue: "After request approval" })}
                       </span>
                     </div>
 
@@ -1459,11 +1492,11 @@ export default function KitchenApplicationForm({
                         <Check className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
                         <div className="text-sm text-muted-foreground">
                           <p className="mb-2 font-medium text-foreground">
-                            {t("docsRequiredForStep2Title", { defaultValue: "Documents will be requested in the later steps" })}
+                            {t("documentsRequestedAfterApproval", { defaultValue: "Documents are requested after approval" })}
                           </p>
                           <p>
-                            {t("docsRequiredForStep2Desc", {
-                              defaultValue: "All chefs must upload a current Food Safety License (and any other documents this kitchen requires) in the later steps after your request to apply is approved."
+                            {t("documentsRequestedAfterApprovalDesc", {
+                              defaultValue: "Once your request is approved, upload a current Food Safety License and any other documents required by this kitchen."
                             })}
                           </p>
                         </div>
@@ -1873,18 +1906,8 @@ export default function KitchenApplicationForm({
           {/* Note: Facility documents (floor plans, equipment, materials, ventilation) are sent by managers via chat */}
           {currentTier >= 2 && (
             <>
-              <Card className="shadow-none">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-6 border-b pb-3">
-                    <div>
-                      <h3 className="font-semibold">{t("step2KitchenCoordination", { defaultValue: "Kitchen Coordination" })}</h3>
-                      <p className="mt-1 text-sm text-muted-foreground">{t("uploadDocsCoordinate", { defaultValue: "Upload required documents and coordinate with the manager" })}</p>
-                    </div>
-                    <InfoChip variant={application?.tier2_completed_at ? "success" : "outline"}>
-                      {application?.tier2_completed_at ? t("submitted", { defaultValue: "Submitted" }) : t("inProgress", { defaultValue: "In progress" })}
-                    </InfoChip>
-                  </div>
-
+              <Card className="rounded-xl shadow-none">
+                <CardContent className="p-4 sm:p-5">
                   {/* Show submitted confirmation when Tier 2 is already completed */}
                   {application?.tier2_completed_at ? (
                     <div className="space-y-4">
@@ -1894,7 +1917,7 @@ export default function KitchenApplicationForm({
                           <div>
                             <p className="font-medium">{t("docsSubmittedSuccessfully", { defaultValue: "Documents Submitted Successfully" })}</p>
                             <p className="text-sm text-muted-foreground mt-1">
-                              {t("step2DocsAwaitingReview", { defaultValue: "Your documents have been submitted and are awaiting manager review." })}
+                              {t("documentsAwaitingManagerReview", { defaultValue: "Your documents have been submitted and are awaiting manager review." })}
                             </p>
                           </div>
                         </div>
@@ -1919,30 +1942,37 @@ export default function KitchenApplicationForm({
                       </p>
                     </div>
                   ) : (
-                    <div className="space-y-6">
-                      <div className="rounded-[1.35rem] border p-4 mb-4">
-                        <p className="text-sm text-muted-foreground">
-                          <strong>{t("note", { defaultValue: "Note:" })}</strong> {t("uploadDocsManagerWillShare", { defaultValue: "Upload the required documents below. The manager will share facility information via chat." })}
-                        </p>
+                    <div className="space-y-4">
+                      <div className="flex items-start gap-3 rounded-xl border bg-background p-4 text-sm">
+                        <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                        <div>
+                          <p className="font-medium text-foreground">{t("whatHappensNext", { defaultValue: "What happens next" })}</p>
+                          <p className="mt-0.5 leading-5 text-muted-foreground">{t("uploadDocsManagerWillShare", { defaultValue: "The kitchen reviews these files and can contact you through chat if anything else is needed." })}</p>
+                        </div>
                       </div>
 
-                      {needsPhoneOnStep2 && (
+                      {needsPhoneInForm && (
                         <FormField
                           control={form.control}
                           name="phone"
                           render={({ field }) => (
-                            <FormItem>
+                            <FormItem className="rounded-xl border p-4">
                               <FormLabel className="text-sm font-medium">
-                                {t("phoneNumber", { defaultValue: "Phone Number" })}{" "}
-                                <span className="text-destructive">*</span>
+                                {t("phoneNumber", { defaultValue: "Phone number" })} <span className="text-destructive">*</span>
                               </FormLabel>
-                              <p className="text-xs text-muted-foreground mb-2">
-                                {t("phoneNeededForStep2", {
-                                  defaultValue: "We don’t have a phone number on your request to apply. Please add one so the kitchen can reach you.",
-                                })}
+                              <p className="text-sm leading-5 text-muted-foreground">
+                                {t("phoneMissingFromProfile", { defaultValue: "Add a phone number so the kitchen can contact you about your application." })}
                               </p>
                               <FormControl>
-                                <Input type="tel" placeholder="(709) 000-0000" {...field} value={field.value ?? ""} className="h-11" />
+                                <Input
+                                  type="tel"
+                                  inputMode="tel"
+                                  autoComplete="tel"
+                                  placeholder="(709) 000-0000"
+                                  {...field}
+                                  value={field.value || ""}
+                                  className="h-11"
+                                />
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -1950,10 +1980,11 @@ export default function KitchenApplicationForm({
                         />
                       )}
 
+                      <div className="space-y-4">
                       {/* Food Safety License — mandatory on Step 2 (request-to-apply only asks yes/no).
                           Stored in foodSafetyLicenseUrl; distinct from establishment license / insurance. */}
-                      <div>
-                        <div className="mb-6 rounded-[1.35rem] border p-4">
+                      <div className="rounded-xl border p-4">
+                        <div className="mb-4 rounded-lg bg-muted/45 p-3">
                           <div className="flex gap-2">
                             <Check className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
                             <p className="text-sm text-muted-foreground">
@@ -1962,11 +1993,11 @@ export default function KitchenApplicationForm({
                           </div>
                         </div>
 
-                        <Label className="text-sm font-medium block mb-2">
+                        <Label className="mb-1 block text-sm font-medium">
                           {t("foodSafetyLicenseLabel", { defaultValue: "Food Safety License" })}{" "}
                           <span className="text-destructive">*</span>
                         </Label>
-                        <p className="text-xs text-muted-foreground mb-3">
+                        <p className="mb-3 text-sm leading-5 text-muted-foreground">
                           {t("uploadFoodSafetyLicenseDesc", { defaultValue: "Upload a photo or PDF of your current Food Safety License (must be valid and current)" })}
                         </p>
 
@@ -1975,7 +2006,7 @@ export default function KitchenApplicationForm({
                             <Check className="h-5 w-5 text-success" />
                             <div className="flex-1">
                               <p className="text-sm font-medium">{t("foodSafetyLicense", { defaultValue: "Food Safety License" })}</p>
-                              <p className="text-xs text-muted-foreground">{t("previouslyUploadedApproved", { defaultValue: "Previously uploaded - approved" })}</p>
+                              <p className="text-xs text-muted-foreground">{t("documentAlreadyOnFile", { defaultValue: "Document already on file" })}</p>
                               <a
                                 href={existingFoodHandlerUrl}
                                 target="_blank"
@@ -1990,29 +2021,33 @@ export default function KitchenApplicationForm({
 
                         <label
                           htmlFor="step2-foodSafetyLicense"
-                          className={`flex items-center justify-center gap-3 p-5 border-2 border-dashed rounded-lg cursor-pointer transition-all
+                          className={`flex min-h-24 cursor-pointer items-center gap-3 rounded-xl border border-dashed p-4 transition-colors
                             ${foodHandlerFile
-                              ? 'border-success/40 bg-success/10'
+                              ? 'border-emerald-300 bg-emerald-50/60'
                               : existingFoodHandlerUrl
-                                ? 'border-border bg-muted'
-                                : 'border-border bg-muted hover:border-foreground/30 hover:bg-muted'
+                                ? 'border-border bg-muted/30'
+                                : 'border-border bg-muted/20 hover:border-primary/40 hover:bg-muted/40'
                             }`}
                         >
                           <FileText className={`h-5 w-5 text-muted-foreground`} />
-                          <div className="text-left">
+                          <div className="min-w-0 flex-1 text-left">
                             <p className="text-sm font-medium">
                               {foodHandlerFile
                                 ? foodHandlerFile.name
                                 : existingFoodHandlerUrl
-                                  ? t("replaceExistingLicense", { defaultValue: "Replace existing license" })
+                                  ? t("chooseDifferentFile", { defaultValue: "Choose a different file" })
                                   : t("clickToUploadLicense", { defaultValue: "Click to upload license" })
                               }
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              {existingFoodHandlerUrl ? t("uploadNewFileToReplace", { defaultValue: "Upload new file to replace" }) : t("fileFormatMax5MB", { defaultValue: "PDF, JPG, PNG (max 5MB)" })}
+                              {existingFoodHandlerUrl ? t("currentFileKeptUnlessChanged", { defaultValue: "Your current file stays on record unless you choose another" }) : t("fileFormatMax5MB", { defaultValue: "PDF, JPG, PNG (max 5MB)" })}
                             </p>
                           </div>
-                          {foodHandlerFile && <Check className="h-5 w-5 text-muted-foreground ml-auto" />}
+                          <span className="shrink-0 rounded-lg border bg-background px-3 py-2 text-xs font-medium shadow-sm">
+                            {foodHandlerFile || existingFoodHandlerUrl
+                              ? t("changeFile", { defaultValue: "Change file" })
+                              : t("chooseFile", { defaultValue: "Choose file" })}
+                          </span>
                         </label>
                         <input
                           type="file"
@@ -2022,27 +2057,22 @@ export default function KitchenApplicationForm({
                           className="hidden"
                         />
 
-                        {foodHandlerFile && (
-                          <div className="flex items-center gap-2 mt-2 p-2 bg-muted rounded text-muted-foreground text-sm">
-                            <Check className="h-4 w-4" />
-                            {t("newFoodSafetyLicenseUploaded", { defaultValue: "New Food Safety License uploaded - will replace existing" })}
-                          </div>
-                        )}
                       </div>
 
                       <FormField
                         control={form.control}
                         name="foodHandlerCertExpiry"
                         render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-sm font-medium">
-                              {t("foodSafetyLicenseExpiryLabel", { defaultValue: "Food Safety License Expiry Date" })}{" "}
-                              <span className="text-destructive">*</span>
-                            </FormLabel>
+                          <FormItem className="rounded-xl border p-4">
                             <FormControl>
-                              <Input type="date" {...field} className="h-11" />
+                              <KitchenDocumentDatePicker
+                                value={field.value}
+                                onChange={field.onChange}
+                                label={t("foodSafetyLicenseExpiryLabel", { defaultValue: "Food Safety License Expiry Date" })}
+                                required
+                              />
                             </FormControl>
-                            <p className="text-xs text-muted-foreground mt-1">
+                            <p className="mt-1 text-sm text-muted-foreground">
                               {t("licenseValid6Months", { defaultValue: "Your license must be valid for at least 6 months" })}
                             </p>
                             <FormMessage />
@@ -2051,13 +2081,13 @@ export default function KitchenApplicationForm({
                       />
 
                       {/* Food Establishment License/Permit */}
-                        <div>
+                        <div className="rounded-xl border p-4">
                           <Label className="text-sm font-medium block mb-2">
                             {t("foodEstablishmentLicenseLabel", { defaultValue: "Food Establishment License/Permit" })}
                             {requirements?.tier2_food_establishment_cert_required && <span className="text-destructive">*</span>}
                             {!requirements?.tier2_food_establishment_cert_required && <span className="text-muted-foreground text-xs ml-2">{t("optional", { defaultValue: "(Optional)" })}</span>}
                           </Label>
-                          <p className="text-xs text-muted-foreground mb-3">
+                          <p className="mb-3 text-sm leading-5 text-muted-foreground">
                             {t("foodEstablishmentLicenseDesc", { defaultValue: "If you operate as a registered food business, upload proof of license." })}
                           </p>
 
@@ -2067,7 +2097,7 @@ export default function KitchenApplicationForm({
                               <Check className="h-5 w-5 text-success" />
                               <div className="flex-1">
                                 <p className="text-sm font-medium">{t("businessLicense", { defaultValue: "Business License" })}</p>
-                                <p className="text-xs text-muted-foreground">{t("previouslyUploadedApproved", { defaultValue: "Previously uploaded - approved" })}</p>
+                                <p className="text-xs text-muted-foreground">{t("documentAlreadyOnFile", { defaultValue: "Document already on file" })}</p>
                                 <a
                                   href={existingBusinessLicenseUrl}
                                   target="_blank"
@@ -2082,31 +2112,35 @@ export default function KitchenApplicationForm({
 
                           <label
                             htmlFor="businessLicense"
-                            className={`flex items-center justify-center gap-3 p-5 border-2 border-dashed rounded-lg cursor-pointer transition-all
+                            className={`flex min-h-24 cursor-pointer items-center gap-3 rounded-xl border border-dashed p-4 transition-colors
                             ${fileErrors.businessLicense
                                 ? 'border-destructive/50 bg-muted/30'
                                 : businessLicenseFile
-                                ? 'border-success/40 bg-success/10'
+                                ? 'border-emerald-300 bg-emerald-50/60'
                                 : existingBusinessLicenseUrl
-                                  ? 'border-border bg-muted'
-                                  : 'border-border bg-muted hover:border-foreground/30 hover:bg-muted'
+                                  ? 'border-border bg-muted/30'
+                                  : 'border-border bg-muted/20 hover:border-primary/40 hover:bg-muted/40'
                               }`}
                           >
                             <Upload className={`h-5 w-5 ${businessLicenseFile || existingBusinessLicenseUrl ? 'text-muted-foreground' : 'text-muted-foreground'}`} />
-                            <div className="text-left">
+                            <div className="min-w-0 flex-1 text-left">
                               <p className="text-sm font-medium">
                                 {businessLicenseFile
                                   ? businessLicenseFile.name
                                   : existingBusinessLicenseUrl
-                                    ? t("replaceExistingLicense", { defaultValue: "Replace existing license" })
+                                    ? t("chooseDifferentFile", { defaultValue: "Choose a different file" })
                                     : t("clickToUploadLicense", { defaultValue: "Click to upload license" })
                                 }
                               </p>
                               <p className="text-xs text-muted-foreground">
-                                {existingBusinessLicenseUrl ? t("uploadNewFileToReplace", { defaultValue: "Upload new file to replace" }) : t("fileFormatMax5MB", { defaultValue: "PDF, JPG, PNG (max 5MB)" })}
+                                {existingBusinessLicenseUrl ? t("currentFileKeptUnlessChanged", { defaultValue: "Your current file stays on record unless you choose another" }) : t("fileFormatMax5MB", { defaultValue: "PDF, JPG, PNG (max 5MB)" })}
                               </p>
                             </div>
-                            {businessLicenseFile && <Check className="h-5 w-5 text-muted-foreground ml-auto" />}
+                            <span className="shrink-0 rounded-lg border bg-background px-3 py-2 text-xs font-medium shadow-sm">
+                              {businessLicenseFile || existingBusinessLicenseUrl
+                                ? t("changeFile", { defaultValue: "Change file" })
+                                : t("chooseFile", { defaultValue: "Choose file" })}
+                            </span>
                           </label>
                           <input
                             type="file"
@@ -2116,12 +2150,6 @@ export default function KitchenApplicationForm({
                             className="hidden"
                           />
 
-                          {businessLicenseFile && (
-                            <div className="flex items-center gap-2 mt-2 p-2 bg-muted rounded text-muted-foreground text-sm">
-                              <Check className="h-4 w-4" />
-                              {t("newBusinessLicenseUploaded", { defaultValue: "New Business License uploaded - will replace existing" })}
-                            </div>
-                          )}
                           {fileErrors.businessLicense && (
                             <p className="text-sm font-medium text-destructive mt-2">{fileErrors.businessLicense}</p>
                           )}
@@ -2132,14 +2160,14 @@ export default function KitchenApplicationForm({
                           control={form.control}
                           name="foodEstablishmentCertExpiry"
                           render={({ field }) => (
-                            <FormItem>
-                              <FormLabel className="text-sm font-medium">
-                                {t("foodEstablishmentExpiryLabel", { defaultValue: "Food Establishment License Expiry Date" })}
-                                {requirements?.tier2_food_establishment_expiry_required && <span className="text-destructive">*</span>}
-                                {!requirements?.tier2_food_establishment_expiry_required && <span className="text-muted-foreground text-xs ml-2">{t("optional", { defaultValue: "(Optional)" })}</span>}
-                              </FormLabel>
+                          <FormItem className="rounded-xl border p-4">
                               <FormControl>
-                                <Input type="date" {...field} className="h-11" />
+                                <KitchenDocumentDatePicker
+                                  value={field.value}
+                                  onChange={field.onChange}
+                                  label={t("foodEstablishmentExpiryLabel", { defaultValue: "Food Establishment License Expiry Date" })}
+                                  required={requirements?.tier2_food_establishment_expiry_required}
+                                />
                               </FormControl>
                               <p className="text-xs text-muted-foreground mt-1">
                                 {requirements?.tier2_food_establishment_expiry_required
@@ -2152,32 +2180,37 @@ export default function KitchenApplicationForm({
                         />
 
                       {/* Insurance Document */}
-                        <div className="pt-4 border-t border-gray-100">
+                        <div className="rounded-xl border p-4">
                           <Label className="text-sm font-medium block mb-2">
                             {t("insuranceDocument", { defaultValue: "Insurance Document" })}
                             {requirements?.tier2_insurance_document_required && <span className="text-destructive">*</span>}
                             {!requirements?.tier2_insurance_document_required && <span className="text-muted-foreground text-xs ml-2">{t("optional", { defaultValue: "(Optional)" })}</span>}
                           </Label>
-                          <p className="text-xs text-muted-foreground mb-3">
+                          <p className="mb-3 text-sm leading-5 text-muted-foreground">
                             {t("uploadLiabilityInsurance", { defaultValue: "Upload your current commercial liability insurance document." })}
                           </p>
                           <label
                             htmlFor="insuranceDoc"
-                            className={`flex items-center justify-center gap-3 p-5 border-2 border-dashed rounded-lg cursor-pointer transition-all
+                            className={`flex min-h-24 cursor-pointer items-center gap-3 rounded-xl border border-dashed p-4 transition-colors
                             ${fileErrors.insurance
                                 ? 'border-destructive/50 bg-muted/30'
                                 : insuranceFile
-                                ? 'border-success/40 bg-success/10'
-                                : 'border-border bg-muted hover:border-foreground/30 hover:bg-muted'
+                                ? 'border-emerald-300 bg-emerald-50/60'
+                                : 'border-border bg-muted/20 hover:border-primary/40 hover:bg-muted/40'
                               }`}
                           >
                             <Upload className={`h-5 w-5 ${insuranceFile ? 'text-muted-foreground' : 'text-muted-foreground'}`} />
-                            <div className="text-left">
+                            <div className="min-w-0 flex-1 text-left">
                               <p className="text-sm font-medium">
                                 {insuranceFile ? insuranceFile.name : t("clickToUploadInsurance", { defaultValue: "Click to upload insurance document" })}
                               </p>
                               <p className="text-xs text-muted-foreground">{t("fileFormatMax10MB", { defaultValue: "PDF, JPG, PNG (max 10MB)" })}</p>
                             </div>
+                            <span className="shrink-0 rounded-lg border bg-background px-3 py-2 text-xs font-medium shadow-sm">
+                              {insuranceFile
+                                ? t("changeFile", { defaultValue: "Change file" })
+                                : t("chooseFile", { defaultValue: "Choose file" })}
+                            </span>
                           </label>
                           <input
                             type="file"
@@ -2190,10 +2223,11 @@ export default function KitchenApplicationForm({
                             <p className="text-sm font-medium text-destructive mt-2">{fileErrors.insurance}</p>
                           )}
                         </div>
+                      </div>
 
                       {/* Kitchen Experience Description */}
                       {requirements?.tier2_kitchen_experience_required && (
-                        <div className="pt-4 border-t border-gray-100">
+                        <div className="rounded-xl border p-4">
                           <FormField
                             control={form.control}
                             name="kitchenExperienceDescription"
@@ -2223,8 +2257,8 @@ export default function KitchenApplicationForm({
 
                       {/* Tier 2 Custom Fields */}
                       {requirements?.tier2_custom_fields && Array.isArray(requirements.tier2_custom_fields) && requirements.tier2_custom_fields.length > 0 && (
-                        <div className="pt-4 border-t border-gray-100">
-                          <p className="text-sm font-medium text-muted-foreground mb-4">{t("additionalRequirements", { defaultValue: "Additional Requirements" })}</p>
+                        <div className="rounded-xl border p-4">
+                          <p className="mb-4 text-sm font-semibold text-foreground">{t("additionalRequirements", { defaultValue: "Additional requirements" })}</p>
                           <div className="space-y-4">
                             {requirements.tier2_custom_fields.map((field: CustomField) => {
                               if (!field || !field.id || !field.type) return null;
@@ -2342,16 +2376,16 @@ export default function KitchenApplicationForm({
                                       inputElement = (
                                         <div className="space-y-2">
                                           <label
-                                            className={`flex flex-col items-center justify-center p-4 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
-                                              hasFile 
-                                                ? 'border-border bg-muted/30 hover:border-foreground/20' 
-                                                : 'border-border hover:border-foreground/30'
+                                            className={`flex min-h-20 cursor-pointer items-center gap-3 rounded-xl border border-dashed p-4 transition-colors ${
+                                              hasFile
+                                                ? 'border-emerald-300 bg-emerald-50/60'
+                                                : 'border-border bg-muted/20 hover:border-primary/40 hover:bg-muted/40'
                                             }`}
                                           >
-                                            <div className="flex items-center gap-2 text-muted-foreground">
+                                            <div className="flex min-w-0 flex-1 items-center gap-2 text-muted-foreground">
                                               <Upload className={`h-5 w-5 ${hasFile ? 'text-success' : ''}`} />
-                                              <span className="text-sm">
-                                                {existingFile ? existingFile.name : (formField.value ? t("fileUploadedClickToReplace", { defaultValue: "File uploaded - Click to replace" }) : (field.placeholder || t("clickToUploadFile", { defaultValue: "Click to upload file" })))}
+                                              <span className="truncate text-sm">
+                                                {existingFile ? existingFile.name : (formField.value ? t("documentAlreadyOnFile", { defaultValue: "Document already on file" }) : (field.placeholder || t("clickToUploadFile", { defaultValue: "Choose a file" })))}
                                               </span>
                                             </div>
                                             <input
@@ -2379,17 +2413,11 @@ export default function KitchenApplicationForm({
                                                 }
                                               }}
                                             />
-                                            <span className="text-xs text-muted-foreground mt-1">{t("fileFormatMax10MB_doc", { defaultValue: "PDF, JPG, PNG, DOC (max 10MB)" })}</span>
+                                            <span className="shrink-0 rounded-lg border bg-background px-3 py-2 text-xs font-medium shadow-sm">
+                                              {hasFile ? t("changeFile", { defaultValue: "Change file" }) : t("chooseFile", { defaultValue: "Choose file" })}
+                                            </span>
                                           </label>
-                                          {existingFile && (
-                                            <p className="text-xs text-success flex items-center gap-1">
-                                              <Check className="h-3 w-3" />
-                                              {t("readyToUpload", { defaultValue: "Ready to upload:" })} {existingFile.name}
-                                            </p>
-                                          )}
-                                          {!existingFile && formField.value && (
-                                            <p className="text-xs text-muted-foreground">{t("previouslyUploaded", { defaultValue: "Previously uploaded" })}</p>
-                                          )}
+                                          <p className="text-xs text-muted-foreground">{t("fileFormatMax10MB_doc", { defaultValue: "PDF, JPG, PNG, DOC (max 10MB)" })}</p>
                                         </div>
                                       );
                                     }
@@ -2438,20 +2466,24 @@ export default function KitchenApplicationForm({
           )}
 
           {/* Submit Button */}
-          <div className="flex gap-3 pt-4">
+          <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
             <Button
               type="button"
               variant="outline"
-              onClick={onCancel || (() => window.history.back())}
-              className="flex-shrink-0"
+              onClick={() => setDiscardOpen(true)}
+              size="sm"
+              className="shrink-0 rounded-xl"
             >
-              {t("cancelBtn", { defaultValue: "Cancel" })}
+              {currentTier >= 2
+                ? t("backBtn", { defaultValue: "Back" })
+                : t("cancelBtn", { defaultValue: "Cancel" })}
             </Button>
             <Button
               type="submit"
               data-testid="kitchen-application-submit"
               disabled={isSubmitting}
-              className="flex-1 h-12 text-base font-semibold"
+              size="sm"
+              className="min-w-[9rem] rounded-xl"
             >
               {isSubmitting ? (
                 <>
@@ -2460,7 +2492,9 @@ export default function KitchenApplicationForm({
                 </>
               ) : (
                 <>
-                  {t("submitApplicationBtn", { defaultValue: "Submit Application" })}
+                  {currentTier >= 2
+                    ? t("submitDocuments", { defaultValue: "Submit documents" })
+                    : t("submitApplicationBtn", { defaultValue: "Submit application" })}
                   <span className="ml-2">→</span>
                 </>
               )}
@@ -2468,6 +2502,28 @@ export default function KitchenApplicationForm({
           </div>
         </form>
       </Form>
+      <AlertDialog open={discardOpen} onOpenChange={setDiscardOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("discardKitchenDocumentsTitle", { defaultValue: "Leave without submitting?" })}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("discardKitchenDocumentsDesc", { defaultValue: "Files and changes selected on this page will not be saved." })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("keepEditing", { defaultValue: "Keep editing" })}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setDiscardOpen(false);
+                if (onCancel) onCancel();
+                else window.history.back();
+              }}
+            >
+              {t("leavePage", { defaultValue: "Leave page" })}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

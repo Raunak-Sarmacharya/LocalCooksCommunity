@@ -14,9 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useDocumentVerification } from "@/hooks/use-document-verification";
 import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
 import { useToast } from "@/hooks/use-toast";
@@ -95,7 +93,6 @@ function DocumentUploadModal({
   currentDocumentUrl,
   isRequired
 }: DocumentUploadModalProps) {
-  const [url, setUrl] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -104,7 +101,6 @@ function DocumentUploadModal({
   const { t } = useTranslation("chef");
 
   const resetAndClose = () => {
-    setUrl("");
     setSelectedFile(null);
     setErrors({});
     setDiscardOpen(false);
@@ -116,39 +112,23 @@ function DocumentUploadModal({
     setDiscardOpen(true);
   };
 
-  const validateUrl = (url: string): boolean => {
-    try {
-      new URL(url);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;
     setSelectedFile(file);
-    if (file) setUrl(""); // Clear URL if file is selected
   };
 
   const handleSubmit = async () => {
     setErrors({});
 
-    if (!selectedFile && !url.trim()) {
-      setErrors({ general: t("duSelectFileOrUrl") });
-      return;
-    }
-
-    if (url.trim() && !validateUrl(url.trim())) {
-      setErrors({ url: t("duInvalidUrl") });
+    if (!selectedFile) {
+      setErrors({ general: t("duSelectDocument") });
       return;
     }
 
     setIsSubmitting(true);
     try {
       await onSubmit({
-        url: url.trim() || undefined,
-        file: selectedFile || undefined
+        file: selectedFile
       });
 
       resetAndClose();
@@ -215,13 +195,7 @@ function DocumentUploadModal({
               </div>
             )}
 
-            <Tabs defaultValue="file" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="file">{t("duTabUploadFile")}</TabsTrigger>
-                <TabsTrigger value="url">{t("duTabProvideUrl")}</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="file" className="space-y-4">
+            <div className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor={`file-${documentType}`}>{t("duSelectDocument")}</Label>
                   <div className="relative">
@@ -259,31 +233,7 @@ function DocumentUploadModal({
                     {t("duFileFormats")}
                   </p>
                 </div>
-              </TabsContent>
-
-              <TabsContent value="url" className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor={`url-${documentType}`}>{t("duDocumentUrl")}</Label>
-                  <Input
-                    id={`url-${documentType}`}
-                    type="url"
-                    placeholder="https://example.com/document.pdf"
-                    value={url}
-                    onChange={(e) => setUrl(e.target.value)}
-                    className={errors.url ? "border-destructive" : ""}
-                  />
-                  {errors.url && (
-                    <p className="flex items-center gap-1 text-sm text-destructive">
-                      <AlertTriangle className="h-3 w-3" />
-                      {errors.url}
-                    </p>
-                  )}
-                  <p className="text-xs text-muted-foreground">
-                    {t("duUrlHint")}
-                  </p>
-                </div>
-              </TabsContent>
-            </Tabs>
+            </div>
 
             {errors.general && (
               <Alert variant="destructive">
@@ -821,4 +771,3 @@ export default function DocumentUpload({
     </div>
   );
 }
- 

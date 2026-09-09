@@ -5,7 +5,6 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -177,18 +176,16 @@ export default function Success() {
               </h1>
               <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div>
               {user ? (
                 <Button onClick={() => navigate("/dashboard")}>
                   <LayoutDashboard />
                   Go to dashboard
                   <ArrowRight />
                 </Button>
-              ) : null}
-              <Button variant="outline" onClick={() => navigate("/")}>
-                <Home />
-                Home
-              </Button>
+              ) : (
+                <Button variant="outline" onClick={() => navigate("/")}><Home />Home</Button>
+              )}
             </div>
           </div>
 
@@ -255,14 +252,6 @@ export default function Success() {
                   <MetaRow label="Status" value={status.label} tone={status.tone} />
                 </div>
               </CardContent>
-              {user ? (
-                <CardFooter className="mt-auto w-full">
-                  <Button variant="outline" className="w-full" onClick={() => navigate("/dashboard")}>
-                    View in dashboard
-                    <ArrowRight />
-                  </Button>
-                </CardFooter>
-              ) : null}
             </Card>
           </div>
 

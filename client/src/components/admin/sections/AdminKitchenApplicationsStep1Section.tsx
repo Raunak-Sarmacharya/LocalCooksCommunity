@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 // New Modular Imports
 import { ApplicationsTable } from "../../manager/applications";
@@ -31,6 +32,33 @@ import { Application } from "../../manager/applications/types";
 interface ManagerKitchenApplicationsProps {
   embedded?: boolean;
   locationId?: number;
+}
+
+const humanizeKey = (key: string) =>
+  key.replace(/^custom_/, "").replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+function ApplicationData({ data }: { data: unknown }) {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  const entries = Object.entries(data as Record<string, unknown>).filter(([, value]) => value !== "" && value != null);
+  if (!entries.length) return null;
+  return (
+    <dl className="grid gap-3 sm:grid-cols-2">
+      {entries.map(([key, value]) => (
+        <div key={key} className="min-w-0 rounded-lg border bg-background p-3">
+          <dt className="text-xs font-medium text-muted-foreground">{humanizeKey(key)}</dt>
+          <dd className="mt-1 break-words text-sm text-foreground">
+            {Array.isArray(value)
+              ? value.join(", ")
+              : typeof value === "boolean"
+                ? value ? "Yes" : "No"
+                : typeof value === "object"
+                  ? <ApplicationData data={value} />
+                  : String(value)}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
 }
 
 export function AdminKitchenApplicationsStep1Section({
@@ -153,7 +181,7 @@ export function AdminKitchenApplicationsStep1Section({
       });
       toast({
         title: "Request to apply approved",
-        description: "Chef can now complete Step 2 kitchen documents.",
+        description: "Chef can now upload kitchen documents.",
       });
 
       setShowReviewDialog(false);
@@ -282,7 +310,8 @@ export function AdminKitchenApplicationsStep1Section({
 
       {/* Review Dialog */}
       <Dialog open={showReviewDialog} onOpenChange={setShowReviewDialog}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-3xl max-h-[90vh] overflow-hidden p-0">
+          <div className="border-b px-6 py-5">
           <DialogHeader>
             <DialogTitle>Review Application</DialogTitle>
             <DialogDescription>
@@ -290,32 +319,32 @@ export function AdminKitchenApplicationsStep1Section({
               {selectedApplication?.location?.name}
             </DialogDescription>
           </DialogHeader>
+          </div>
 
           {selectedApplication && (
-            <div className="space-y-4">
-              <div className="p-4 bg-gray-50 rounded-lg space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Email:</span>
-                  <span>{selectedApplication.email}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Phone:</span>
-                  <span>{selectedApplication.phone}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Kitchen Type:</span>
-                  <span className="capitalize">{selectedApplication.kitchenPreference}</span>
-                </div>
+            <ScrollArea className="max-h-[calc(90vh-190px)]">
+            <div className="space-y-5 px-6 py-5">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Email</p><p className="mt-1 break-all text-sm font-medium">{selectedApplication.email}</p></div>
+                <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Phone</p><p className="mt-1 text-sm font-medium">{selectedApplication.phone || "On chef profile"}</p></div>
+                <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Kitchen type</p><p className="mt-1 text-sm font-medium capitalize">{selectedApplication.kitchenPreference}</p></div>
               </div>
 
               {selectedApplication.businessDescription && (
                 <div>
-                  <p className="text-sm font-medium text-gray-700 mb-1">Business Description:</p>
-                  <p className="text-sm text-gray-600 p-3 bg-gray-50 rounded-lg">
-                    {selectedApplication.businessDescription}
-                  </p>
+                  <p className="mb-2 text-sm font-semibold">Business information</p>
+                  {(() => {
+                    try { return <ApplicationData data={JSON.parse(selectedApplication.businessDescription)} />; }
+                    catch { return <p className="rounded-lg border p-3 text-sm text-muted-foreground">{selectedApplication.businessDescription}</p>; }
+                  })()}
                 </div>
               )}
+
+              <div>
+                <p className="mb-2 text-sm font-semibold">Application answers</p>
+                <ApplicationData data={selectedApplication.customFieldsData} />
+                {!selectedApplication.customFieldsData && <p className="text-sm text-muted-foreground">No additional answers submitted.</p>}
+              </div>
 
               <div>
                 <label className="text-sm font-medium text-gray-700 block mb-1">
@@ -329,9 +358,10 @@ export function AdminKitchenApplicationsStep1Section({
                 />
               </div>
             </div>
+            </ScrollArea>
           )}
 
-          <DialogFooter className="flex gap-2">
+          <DialogFooter className="border-t bg-background px-6 py-4 flex gap-2">
             <Button variant="outline" onClick={() => setShowReviewDialog(false)}>
               Cancel
             </Button>
