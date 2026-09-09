@@ -1,32 +1,27 @@
 import { useEffect, useState } from "react";
 import {
   SpotlightWalkthrough,
-  hasCompletedTourFamily,
-  migrateTourFamilyCompletion,
   walkthroughStorageKey,
 } from "@/components/ui/spotlight-walkthrough";
 import { useAuthModal } from "@/components/auth/AuthModalProvider";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useTranslation } from "react-i18next";
 
-/** Stable key — never bump; versioned keys are migrated into this. */
-const PREVIEW_WALKTHROUGH_FAMILY = "lc.kitchenPreview.walkthrough";
-const PREVIEW_WALKTHROUGH_SEEN = `${PREVIEW_WALKTHROUGH_FAMILY}.seen`;
+/**
+ * Recovery revision for completion values written by the former first-frame bug.
+ * Keep this stable: dismissals recorded with this key are authoritative.
+ */
+const PREVIEW_WALKTHROUGH_COMPLETED = "lc.kitchenPreview.walkthrough.completed.v2";
+
+export function previewWalkthroughCompletionKey(uid: string) {
+  return walkthroughStorageKey(PREVIEW_WALKTHROUGH_COMPLETED, uid);
+}
 
 export function KitchenPreviewWalkthrough({ enabled }: { enabled: boolean }) {
   const { t } = useTranslation("kitchen");
   const { user } = useFirebaseAuth();
   const { isOpen } = useAuthModal();
   const [hasOpenDialog, setHasOpenDialog] = useState(false);
-
-  useEffect(() => {
-    if (!user?.uid) return;
-    migrateTourFamilyCompletion(
-      PREVIEW_WALKTHROUGH_FAMILY,
-      user.uid,
-      walkthroughStorageKey(PREVIEW_WALKTHROUGH_SEEN, user.uid)
-    );
-  }, [user?.uid]);
 
   useEffect(() => {
     // Suppress while another dialog is open. Ignore the spotlight overlay itself
@@ -90,12 +85,10 @@ export function KitchenPreviewWalkthrough({ enabled }: { enabled: boolean }) {
   ];
 
   if (!user?.uid) return null;
-  // Any prior completion for this account (stable or versioned) → never show again.
-  if (hasCompletedTourFamily(PREVIEW_WALKTHROUGH_FAMILY, user.uid)) return null;
 
   return (
     <SpotlightWalkthrough
-      storageKey={walkthroughStorageKey(PREVIEW_WALKTHROUGH_SEEN, user.uid)}
+      storageKey={previewWalkthroughCompletionKey(user.uid)}
       attr="data-preview-tour"
       steps={STEPS}
       enabled={enabled && !isOpen && !hasOpenDialog}

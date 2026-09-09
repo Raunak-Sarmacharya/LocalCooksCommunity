@@ -7,6 +7,8 @@ import { forwardRef, useState } from "react";
 
 interface AnimatedInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onDrag'> {
   label?: string;
+  /** Optional element rendered right-aligned on the same line as the label (e.g. "Forgot password?"). */
+  labelRight?: React.ReactNode;
   error?: string;
   icon?: React.ReactNode;
   showPasswordToggle?: boolean;
@@ -16,7 +18,7 @@ interface AnimatedInputProps extends Omit<React.InputHTMLAttributes<HTMLInputEle
 }
 
 const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
-  ({ label, error, icon, showPasswordToggle, showPasswordStrength = false, validationState = 'idle', className, type = 'text', value, ...props }, ref) => {
+  ({ label, labelRight, error, icon, showPasswordToggle, showPasswordStrength = false, validationState = 'idle', className, type = 'text', value, ...props }, ref) => {
     const [showPassword, setShowPassword] = useState(false);
     const [internalValue, setInternalValue] = useState(value || '');
 
@@ -25,21 +27,26 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
 
     return (
       <div className="space-y-2">
-        {/* Label */}
-        {label && (
-          <Label 
-            htmlFor={props.id || props.name}
-            className={cn(
-              "text-sm font-medium",
-              validationState === 'invalid' && "text-destructive",
-              validationState === 'valid' && "text-green-600"
+        {/* Label row */}
+        {(label || labelRight) && (
+          <div className="flex items-baseline justify-between gap-2">
+            {label && (
+              <Label 
+                htmlFor={props.id || props.name}
+                className={cn(
+                  "text-sm font-medium",
+                  validationState === 'invalid' && "text-destructive",
+                  validationState === 'valid' && "text-green-600"
+                )}
+              >
+                {label}
+                {props.required && (
+                  <span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
+                )}
+              </Label>
             )}
-          >
-            {label}
-            {props.required && (
-              <span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
-            )}
-          </Label>
+            {labelRight && <div className="flex-shrink-0">{labelRight}</div>}
+          </div>
         )}
 
         {/* Input Container */}

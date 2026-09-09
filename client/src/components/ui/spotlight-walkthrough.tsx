@@ -87,6 +87,26 @@ function selectorFor(attr: string, id: string) {
   return `[${attr}="${id}"]`;
 }
 
+/** Return the rendered target when responsive markup contains duplicate ids. */
+export function findWalkthroughTarget(attr: string, id: string) {
+  const candidates = document.querySelectorAll(selectorFor(attr, id));
+  for (let index = 0; index < candidates.length; index++) {
+    const candidate = candidates[index];
+    if (!(candidate instanceof HTMLElement)) continue;
+    const rect = candidate.getBoundingClientRect();
+    const style = getComputedStyle(candidate);
+    if (
+      rect.width > 0 &&
+      rect.height > 0 &&
+      style.display !== "none" &&
+      style.visibility !== "hidden"
+    ) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
 function readHighlight(el: HTMLElement): Highlight {
   const rect = el.getBoundingClientRect();
   const computedRadius = Number.parseFloat(getComputedStyle(el).borderRadius);
@@ -133,9 +153,9 @@ function scrollPageToTop(fromEl: HTMLElement) {
 
 function sortStepsTopDown(items: readonly SpotlightWalkthroughStep[], attr: string) {
   return [...items].sort((a, b) => {
-    const elA = document.querySelector(selectorFor(attr, a.id));
-    const elB = document.querySelector(selectorFor(attr, b.id));
-    if (!(elA instanceof HTMLElement) || !(elB instanceof HTMLElement)) return 0;
+    const elA = findWalkthroughTarget(attr, a.id);
+    const elB = findWalkthroughTarget(attr, b.id);
+    if (!elA || !elB) return 0;
     const ra = elA.getBoundingClientRect();
     const rb = elB.getBoundingClientRect();
     const dy = ra.top - rb.top;
@@ -177,13 +197,13 @@ export function SpotlightWalkthrough({
   }, [storageKey]);
 
   const tryStart = useCallback(() => {
-    const found = steps.filter((item) => document.querySelector(selectorFor(attr, item.id)));
+    const found = steps.filter((item) => findWalkthroughTarget(attr, item.id));
     const ids = found.map((item) => item.id);
     if (found.length === 0) return false;
     if (readyWhen && !readyWhen(ids)) return false;
 
-    const probe = document.querySelector(selectorFor(attr, found[0].id));
-    if (probe instanceof HTMLElement) scrollPageToTop(probe);
+    const probe = findWalkthroughTarget(attr, found[0].id);
+    if (probe) scrollPageToTop(probe);
 
     setVisibleSteps(sortStepsTopDown(found, attr));
     setStepIndex(0);
@@ -195,7 +215,7 @@ export function SpotlightWalkthrough({
   tryStartRef.current = tryStart;
 
   useEffect(() => {
-    if (!enabled || hasCompletedTour(storageKey)) return;
+    if (!enabled || open || hasCompletedTour(storageKey)) return;
 
     let cancelled = false;
     let retryTimer = 0;
@@ -212,7 +232,7 @@ export function SpotlightWalkthrough({
       window.clearTimeout(timer);
       window.clearTimeout(retryTimer);
     };
-  }, [enabled, storageKey]);
+  }, [enabled, open, storageKey]);
 
   useEffect(() => {
     if (!enabled || replayToken === 0) return;
@@ -234,36 +254,28 @@ export function SpotlightWalkthrough({
   }, [enabled, replayToken]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !enabled) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") close();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, close]);
-
-  // Pause when a dialog covers the page. Do not treat that as "never started"
-  // or the tour restarts from step 1 after every modal.
-  useEffect(() => {
-    if (!enabled && open) {
-      setOpen(false);
-    }
-  }, [enabled, open]);
-
-  useEffect(() => {
-    if (!open || !highlight || highlight.width === 0) return;
-    markTourComplete(storageKey);
-  }, [open, highlight, storageKey]);
+  }, [enabled, open, close]);
 
   useLayoutEffect(() => {
-    if (!open || !step) {
+    if (!open || !enabled || !step) {
       setHighlight(null);
       return;
     }
 
-    const el = document.querySelector(selectorFor(attr, step.id));
-    if (!(el instanceof HTMLElement)) {
+    const el = findWalkthroughTarget(attr, step.id);
+    if (!el) {
       setHighlight(null);
+      const nextIndex = visibleSteps.findIndex(
+        (item, index) => index > stepIndex && !!findWalkthroughTarget(attr, item.id)
+      );
+      if (nextIndex >= 0) setStepIndex(nextIndex);
+      else close();
       return;
     }
 
@@ -273,10 +285,19 @@ export function SpotlightWalkthrough({
     let running = true;
     const tick = () => {
       if (!running) return;
-      const target = document.querySelector(selectorFor(attr, step.id));
-      if (target instanceof HTMLElement) {
+      const target = findWalkthroughTarget(attr, step.id);
+      if (target) {
         const next = readHighlight(target);
         setHighlight((prev) => (sameHighlight(prev, next) ? prev : next));
+      } else {
+        running = false;
+        setHighlight(null);
+        const nextIndex = visibleSteps.findIndex(
+          (item, index) => index > stepIndex && !!findWalkthroughTarget(attr, item.id)
+        );
+        if (nextIndex >= 0) setStepIndex(nextIndex);
+        else close();
+        return;
       }
       frame = window.requestAnimationFrame(tick);
     };
@@ -286,14 +307,14 @@ export function SpotlightWalkthrough({
       running = false;
       window.cancelAnimationFrame(frame);
     };
-  }, [attr, open, step]);
+  }, [attr, close, enabled, open, step, stepIndex, visibleSteps]);
 
   useLayoutEffect(() => {
     if (!popoverRef.current) return;
     setPopoverHeight(Math.round(popoverRef.current.getBoundingClientRect().height));
   }, [step, highlight]);
 
-  if (!open || !step || !highlight || highlight.width === 0) return null;
+  if (!enabled || !open || !step || !highlight || highlight.width === 0) return null;
 
   const placeBelow =
     window.innerHeight - (highlight.top + highlight.height) > popoverHeight + GAP + 16;

@@ -17,6 +17,7 @@
   "no": "Ні",
   "or": "або",
   "required": "Обов'язково",
+  "requiredFieldLegend": "Позначає обов'язкове поле",
   "optional": "Необов'язково",
   "actions": "Дії",
   "status": "Статус",

@@ -37,6 +37,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
+import { FormLegend } from "@/components/ui/form-legend";
 import {
   PhotoRequirementUploader,
   flattenPhotos,
@@ -198,6 +199,12 @@ export function StorageCheckinDialog({
             {t("ciDialogDesc")}
           </SheetDescription>
         </SheetHeader>
+
+        {!isAlreadySubmitted &&
+          (storageCheckinItems.some((item) => item.required) ||
+            storageCheckinPhotoReqs.some((item) => item.required)) && (
+            <FormLegend className="mt-4 mb-0" />
+          )}
 
         <div className="space-y-4 py-4">
           {/* Storage Info */}

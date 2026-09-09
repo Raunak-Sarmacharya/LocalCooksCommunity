@@ -43,6 +43,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { CustomField, CUSTOM_FIELD_TYPES } from './types';
+import { FormLegend } from '@/components/ui/form-legend';
 
 interface CustomFieldBuilderProps {
   fields: CustomField[];
@@ -313,6 +314,8 @@ export function CustomFieldBuilder({
                 : 'Configure a new field to collect custom information from applicants'}
             </DialogDescription>
           </DialogHeader>
+
+          <FormLegend />
 
           <div className="space-y-4 py-4">
             {/* Field Label */}

@@ -53,6 +53,7 @@ import DashboardLayout from "@/layouts/DashboardLayout";
 import { Input } from "@/components/ui/input";
 import { NumericInput } from "@/components/ui/numeric-input";
 import { Label } from "@/components/ui/label";
+import { FormLegend } from "@/components/ui/form-legend";
 import ManagerProfileSettings from "@/components/manager/ManagerProfileSettings";
 import { useManagerOnboarding } from "@/components/manager/onboarding/ManagerOnboardingContext";
 import { OnboardingStatusBanner } from "@/components/manager/OnboardingStatusBanner";
@@ -2121,6 +2122,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
 
                   {shouldShowUpload && (
                     <>
+                      <FormLegend />
                       {/* Context header — message differs by current status */}
                       {location.kitchenLicenseStatus === 'pending' && location.kitchenLicenseUrl && !isLicenseExpired && (
                         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-2">
@@ -3105,4 +3107,3 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     </div>
   );
 }
-

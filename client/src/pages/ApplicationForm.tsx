@@ -20,6 +20,7 @@ import { useTranslation } from "react-i18next";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useLocation } from "wouter";
 import { Icon } from "@iconify/react";
+import { FormLegend } from "@/components/ui/form-legend";
 
 // Helper to check if an application is active (not cancelled, rejected)
 const isApplicationActive = (app: Application) => {
@@ -64,6 +65,7 @@ function FormStep() {
               </Button>
             </div>
             <h1 className="mb-2 px-2 text-center text-xl font-semibold tracking-tight sm:text-2xl">Local Cooks Application</h1>
+            <FormLegend className="justify-center" />
 
             {currentStep === 1 && (
               <div className="fade-in">

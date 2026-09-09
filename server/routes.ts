@@ -56,6 +56,7 @@ import { normalizeImageUrl } from "./routes/utils";
 
 import { UserRepository } from "./domains/users/user.repository";
 import { UserService } from "./domains/users/user.service";
+import { CURRENT_POLICY_VERSION } from "@shared/policy-config";
 
 // Note: Express Request.user type is already defined by @types/passport
 // We use type assertions where needed for isChef properties
@@ -144,16 +145,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   const userRepo = new UserRepository();
   const userService = new UserService(userRepo);
-
-  // Check if user exists by username (for Google+password flow)
-  app.get("/api/user-exists", async (req, res) => {
-    const username = req.query.username as string;
-    if (!username) {
-      return res.status(400).json({ error: "Username required" });
-    }
-    const exists = await userService.checkUsernameExists(username);
-    res.json({ exists });
-  });
 
   // Get current user from Firebase auth (used by manager applications page)
   app.get("/api/firebase/user/me", requireFirebaseAuthWithUser, async (req, res) => {
@@ -445,8 +436,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Custom branded passwordless sign-in email with CTA button instead of raw Firebase template
   app.post("/api/firebase/send-magic-link-email", async (req, res) => {
     try {
-      const { email, returnUrl } = req.body;
-      if (!email) {
+      const email = typeof req.body?.email === 'string'
+        ? req.body.email.trim().toLowerCase()
+        : '';
+      const { returnUrl } = req.body;
+      if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
         return res.status(400).json({ error: "Email is required" });
       }
 
@@ -459,9 +453,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         throw new Error('Firebase Admin not initialized');
       }
 
-      // Lookup user in DB to determine role and get full name
+      // Passwordless sign-in is login-only. Firebase email links can create a
+      // brand-new Firebase identity, so never generate one until both identity
+      // stores agree that this is an existing linked account. The response is
+      // deliberately indistinguishable from the success response to prevent
+      // account enumeration.
       const existingUser = await userService.getUserByUsername(email);
-      const userRole = existingUser ? (existingUser as any).role || 'chef' : 'chef';
+      const genericResponse = { success: true, message: "If an account exists, a sign-in link has been sent." };
+      if (!existingUser?.firebaseUid) {
+        logger.warn(`Magic-link request suppressed for an unlinked or unknown account: ${email}`);
+        return res.json(genericResponse);
+      }
+
+      const firebaseUser = await getAuth(firebaseApp).getUser(existingUser.firebaseUid).catch(() => null);
+      if (!firebaseUser?.email || firebaseUser.email.trim().toLowerCase() !== email) {
+        logger.error(`Magic-link request suppressed because Firebase/Neon identity linkage is inconsistent for user ${existingUser.id}`);
+        return res.json(genericResponse);
+      }
+
+      const userRole = existingUser.role === 'manager'
+        ? 'manager'
+        : existingUser.role === 'admin'
+          ? 'admin'
+          : 'chef';
 
       // Determine the correct subdomain for the action code URL
       // EmailAction handles cross-subdomain routing, but we set a sensible default here
@@ -483,20 +497,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let redirectPath = postSignInPath;
       if (returnUrl && typeof returnUrl === 'string' && returnUrl.startsWith('/')) {
         const blocked = ['/email-action', '/auth', '/login'];
-        if (!blocked.some((p) => returnUrl.startsWith(p))) {
-          redirectPath = returnUrl.split('?')[0] === returnUrl ? returnUrl : returnUrl;
+        const belongsToRole = userRole === 'manager'
+          ? returnUrl.startsWith('/manager/')
+          : userRole === 'admin'
+            ? returnUrl.startsWith('/admin')
+            : !returnUrl.startsWith('/manager/') && !returnUrl.startsWith('/admin');
+        if (belongsToRole && !blocked.some((p) => returnUrl.startsWith(p))) {
+          redirectPath = returnUrl;
         }
       }
 
       const { getFirebaseContinueUrl } = await import('./email');
       const continueUrlObj = new URL(getFirebaseContinueUrl(userType, redirectPath));
-      continueUrlObj.searchParams.set('email', email);
-      const continueUrlWithEmail = continueUrlObj.toString();
+      const continueUrl = continueUrlObj.toString();
 
       // Action code settings: handleCodeInApp=true sends mode=signIn to /email-action
       // (instead of Firebase's default auth handler URL), which we process in EmailAction.tsx
       const actionCodeSettings = {
-        url: continueUrlWithEmail,
+        url: continueUrl,
         handleCodeInApp: true,
       };
 
@@ -610,7 +628,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       logger.info(`✅ Custom branded magic link email sent to ${email} (role: ${userRole})`);
-      res.json({ success: true, message: "Sign-in link sent." });
+      res.json(genericResponse);
     } catch (error: any) {
       logger.error("Error sending magic link email:", error);
       res.status(500).json({ error: "Failed to send sign-in link" });
@@ -703,11 +721,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "Invalid token" });
       }
 
-      const { email, uid, role, ...otherData } = req.body;
+      const uid = typeof req.body?.uid === 'string' ? req.body.uid : '';
+      const tokenEmail = typeof decodedToken.email === 'string'
+        ? decodedToken.email.trim().toLowerCase()
+        : '';
+      const accountType = req.body?.accountType;
+      const termsAccepted = req.body?.termsAccepted;
+      const displayName = typeof req.body?.displayName === 'string'
+        ? req.body.displayName.trim().slice(0, 120)
+        : '';
 
       if (decodedToken.uid !== uid) {
         return res.status(403).json({ error: "Token mismatch" });
       }
+      if (!tokenEmail) {
+        return res.status(400).json({ error: "A Firebase email identity is required" });
+      }
+      if (accountType !== 'chef' && accountType !== 'manager') {
+        return res.status(403).json({
+          error: "Public registration is available only for chef and kitchen manager accounts",
+          code: "INVALID_REGISTRATION_TYPE",
+        });
+      }
+      // Standalone signup may defer consent to /accept-terms. Inline flows
+      // send true; never record acceptance merely because an account was created.
 
       // Check if user already exists by Firebase UID
       const existingByUid = await userService.getUserByFirebaseUid(uid);
@@ -718,9 +755,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // ENTERPRISE FIX: Also check if user exists by email/username
       // This handles the case where user was deleted from Firebase but not Neon, or vice versa
-      const existingByUsername = await userService.getUserByUsername(email);
+      const existingByUsername = await userService.getUserByUsername(tokenEmail);
       if (existingByUsername) {
-        logger.info(`⚠️ Registration blocked because ${email} already exists in the application database`);
+        logger.info(`⚠️ Registration blocked because ${tokenEmail} already exists in the application database`);
         return res.status(409).json({
           error: "Email already registered",
           code: "EMAIL_EXISTS",
@@ -729,15 +766,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Create new user - no existing user found
-      logger.info(`📝 Creating new user: ${email} with role: ${role || 'chef'}`);
-      const finalRole = role || "chef";
-      const newUser = await userService.createUser({
-        username: email,
+      const finalRole: 'chef' | 'manager' = accountType;
+      logger.info(`📝 Creating new public ${finalRole} account: ${tokenEmail}`);
+      let newUser = await userService.createUser({
+        username: tokenEmail,
         firebaseUid: uid,
         role: finalRole,
         isVerified: decodedToken.email_verified || false,
-        ...otherData
+        has_seen_welcome: finalRole === 'manager',
       });
+
+      try {
+        const roleAndConsentUpdate = await userService.updateUser(newUser.id, {
+          isChef: finalRole === 'chef',
+          isManager: finalRole === 'manager',
+          termsAccepted: termsAccepted === true,
+          termsAcceptedAt: termsAccepted === true ? new Date() : null,
+          termsVersion: termsAccepted === true ? CURRENT_POLICY_VERSION : null,
+        });
+        if (!roleAndConsentUpdate) throw new Error('Registration profile update returned no user');
+        newUser = roleAndConsentUpdate;
+      } catch (profileError) {
+        // Compensate the first insert so the client can safely roll back the
+        // Firebase identity without leaving another split-brain account.
+        await userService.deleteUser(newUser.id).catch((cleanupError) => {
+          logger.error(`Failed to remove partial Neon registration ${newUser.id}`, cleanupError);
+        });
+        throw profileError;
+      }
 
       // Send registration emails
       try {
@@ -746,14 +802,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const { users } = await import('@shared/schema');
         const { eq } = await import('drizzle-orm');
 
-        const displayName = otherData.displayName || email.split('@')[0];
+        const email = tokenEmail;
+        const recipientName = displayName || email.split('@')[0];
 
         // ENTERPRISE: Only send welcome email if the user is verified (e.g. Google Auth)
         // For email/password users, they will get this email after they verify via /api/sync-verification-status
         if (decodedToken.email_verified) {
           logger.info(`📧 Sending welcome email to VERIFIED new ${finalRole}: ${email}`);
           const welcomeEmail = generateWelcomeEmail({
-            fullName: displayName,
+            fullName: recipientName,
             email,
             role: finalRole as 'chef' | 'manager' | 'admin'
           });
@@ -781,7 +838,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (admin.username && admin.username !== email) {
             const adminEmail = generateNewUserRegistrationAdminEmail({
               adminEmail: admin.username,
-              newUserName: displayName,
+              newUserName: recipientName,
               newUserEmail: email,
               userRole: finalRole,
               registrationDate: new Date(),

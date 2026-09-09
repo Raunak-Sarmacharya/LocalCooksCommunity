@@ -241,19 +241,3 @@ export const CustomAlertsProvider: React.FC<{ children: ReactNode }> = ({ childr
     </CustomAlertsContext.Provider>
   );
 };
-
-export const showEmailPrompt = (): Promise<string | null> => {
-  return new Promise((resolve) => {
-    const handleConfirm = (value: string) => {
-      resolve(value || null);
-    };
-    
-    const handleCancel = () => {
-      resolve(null);
-    };
-
-    // This is a temporary fallback - in a real app, you'd want to integrate this with the provider
-    const email = window.prompt('Please provide your email for confirmation') || '';
-    resolve(email);
-  });
-}; 

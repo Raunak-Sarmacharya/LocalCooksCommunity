@@ -49,6 +49,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { FormLegend } from "@/components/ui/form-legend";
 import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
 
 // Helper component for authenticated document links
@@ -1159,6 +1160,8 @@ export default function KitchenApplicationForm({
         })}
         className="mb-8"
       />
+
+      <FormLegend />
 
       {/* Tier Progress Indicator */}
       {hasApplication && application && (

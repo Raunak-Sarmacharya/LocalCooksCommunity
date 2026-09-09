@@ -68,6 +68,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import AddressAutocomplete from "@/components/ui/address-autocomplete";
+import { FormLegend } from "@/components/ui/form-legend";
 import ChangePassword from "@/components/auth/ChangePassword";
 import { useToast } from "@/hooks/use-toast";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -1769,6 +1770,7 @@ function AdminDashboard() {
                                 <CheckCircle className="h-4 w-4" />
                                 All documents verified - Ready to create shop
                               </div>
+                              <FormLegend />
                               <div className="space-y-2">
                                 <div>
                                   <label className="text-xs font-medium text-gray-600">Shop Name <span className="text-red-500">*</span></label>
@@ -2032,4 +2034,3 @@ export default function Admin() {
     </AdminProtectedRoute>
   );
 }
-

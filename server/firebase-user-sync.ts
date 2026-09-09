@@ -1,5 +1,3 @@
-import { CURRENT_POLICY_VERSION } from "../shared/policy-config";
-
 import { logger } from "./logger";
 import { User } from '@shared/schema';
 import { userService } from './domains/users/user.service';
@@ -115,10 +113,6 @@ export async function syncFirebaseUserToNeon(params: {
       isVerified: isUserVerified, // Google users are verified, email/password users need verification
       hasSeenWelcome: hasSeenWelcome, // Admins and managers skip welcome screen
       managerProfileData: {},
-      termsAccepted: true,
-      termsAcceptedAt: new Date(),
-      termsVersion: CURRENT_POLICY_VERSION,
-
     };
 
     logger.info(`➕ CREATING NEW USER with data:`, userData);
@@ -261,4 +255,4 @@ export async function ensureNeonUserExists(userData: FirebaseUserData): Promise<
     logger.error('❌ Error ensuring Neon user exists:', error);
     return null;
   }
-} 
+}

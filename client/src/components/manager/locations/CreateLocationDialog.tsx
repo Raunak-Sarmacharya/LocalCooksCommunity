@@ -30,6 +30,7 @@ import {
     FormLabel,
     FormMessage,
 } from "@/components/ui/form";
+import { FormLegend } from "@/components/ui/form-legend";
 
 interface CreateLocationDialogProps {
     open: boolean;
@@ -210,6 +211,8 @@ export function CreateLocationDialog({
                     </DialogTitle>
                     <DialogDescription>{mt("enterTheDetailsForYourNewKitchenLocation")}</DialogDescription>
                 </DialogHeader>
+
+                <FormLegend />
 
                 <Alert className="bg-amber-50 border-amber-200">
                     <AlertTitle className="text-amber-800 flex items-center gap-2">

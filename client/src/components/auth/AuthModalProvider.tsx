@@ -1332,6 +1332,7 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
                 </>
               ) : (
                 <EnhancedRegisterForm 
+                  showTermsInline={!!options.requireApplication}
                   onSuccess={() => {
                     if (!options.requireApplication) closeAuthModal();
                   }}

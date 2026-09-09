@@ -10,7 +10,6 @@ import {
   isSignInWithEmailLink,
   onAuthStateChanged,
   sendEmailVerification,
-  sendSignInLinkToEmail,
   signInWithEmailAndPassword,
   signInWithEmailLink,
   signInWithPopup,
@@ -64,15 +63,17 @@ interface AuthUserLegacyFields {
   application_type: 'chef';
 }
 
+export type PublicRegistrationRole = 'chef' | 'manager';
+
 interface AuthContextType {
   user: AuthUser | null;
   loading: boolean;
   error: string | null;
   authPhase: AuthPhase; // ENTERPRISE: Explicit auth phase for state machine
   login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string, displayName?: string) => Promise<void>;
+  signup: (email: string, password: string, displayName?: string, accountType?: PublicRegistrationRole, termsAccepted?: boolean) => Promise<void>;
   logout: () => Promise<void>;
-  signInWithGoogle: (isRegistration?: boolean) => Promise<void>;
+  signInWithGoogle: (isRegistration?: boolean, accountType?: PublicRegistrationRole, termsAccepted?: boolean) => Promise<void>;
   sendEmailLink: (email: string) => Promise<void>;
   handleEmailLinkSignIn: () => Promise<void>;
   isUserVerified: (user: AuthUser | null) => boolean;
@@ -81,7 +82,7 @@ interface AuthContextType {
   resendFirebaseVerification: () => Promise<boolean>;
   resendEmailVerification: (email: string, password: string) => Promise<boolean>;
   refreshUserData: () => Promise<void>;
-  syncUserWithBackend: (firebaseUser: any, role?: string, isRegistration?: boolean, password?: string) => Promise<boolean>;
+  syncUserWithBackend: (firebaseUser: any, accountType?: PublicRegistrationRole, isRegistration?: boolean, termsAccepted?: boolean) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -118,69 +119,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isInitializingRef.current = isInitializing;
   }, [isInitializing]);
 
-  const syncUserWithBackend = async (firebaseUser: any, role?: string, isRegistration = false, password?: string) => {
+  const syncUserWithBackend = async (firebaseUser: any, accountType?: PublicRegistrationRole, isRegistration = false, termsAccepted = false) => {
     try {
       logger.info('🔥 SYNC DEBUG - Starting backend sync for:', firebaseUser.uid, isRegistration ? '(REGISTRATION)' : '(SIGN-IN)');
 
       const token = await firebaseUser.getIdToken();
-
-      // Auto-determine role based on current URL path AND subdomain during registration
-      let finalRole = role;
-      if (isRegistration && !finalRole) {
-        const currentPath = window.location.pathname;
-        const hostname = window.location.hostname;
-        const subdomain = getSubdomainFromHostname(hostname);
-        logger.info(`🔍 Role detection for registration - Current path: ${currentPath}, Subdomain: ${subdomain}, Provided role: ${role}`);
-
-        // CRITICAL: Check subdomain first (most reliable indicator)
-        if (subdomain === 'admin') {
-          finalRole = 'admin';
-          logger.info('👑 Auto-setting role to admin based on admin subdomain');
-        } else if (subdomain === 'kitchen') {
-          // Kitchen subdomain could be manager or chef - check path
-          if (currentPath.includes('/manager') || currentPath.includes('manager')) {
-            finalRole = 'manager';
-            logger.info('🏢 Auto-setting role to manager based on kitchen subdomain + manager path');
-          } else {
-            finalRole = 'chef';
-            logger.info('👨‍🍳 Auto-setting role to chef based on kitchen subdomain');
-          }
-        } else if (subdomain === 'chef') {
-          finalRole = 'chef';
-          logger.info('👨‍🍳 Auto-setting role to chef based on chef subdomain');
-        } else {
-          // No subdomain match - check URL path as fallback
-          if (currentPath === '/admin-login' || currentPath === '/admin/login') {
-            finalRole = 'admin';
-            logger.info('👑 Auto-setting role to admin based on admin URL path');
-          } else if (currentPath === '/manager-register' || currentPath === '/manager/register' || currentPath === '/manager-login' || currentPath === '/manager/login') {
-            finalRole = 'manager';
-            logger.info('🏢 Auto-setting role to manager based on manager URL path');
-          } else if (currentPath === '/auth') {
-            finalRole = 'chef';
-            logger.info('👨‍🍳 Auto-setting role to chef based on /auth URL');
-          } else if (
-            currentPath.includes('/kitchen-preview') ||
-            currentPath.includes('/apply-kitchen') ||
-            currentPath.includes('/book-kitchen') ||
-            currentPath.includes('/book/')
-          ) {
-            finalRole = 'chef';
-            logger.info('👨‍🍳 Auto-setting role to chef based on kitchen preview/book path');
-          } else {
-            // CRITICAL: Don't default to chef - this causes admins/managers to be created as chefs
-            // Instead, log a warning and let the backend handle it
-            logger.warn(`⚠️ WARNING: No role detected from subdomain "${subdomain}" or URL path "${currentPath}" during registration. Role will be determined by backend.`);
-            finalRole = undefined; // Let backend determine or fail
-          }
-        }
-
-        logger.info(`✅ Final role determined: ${finalRole || 'undefined (will be determined by backend)'}`);
-      } else if (isRegistration && finalRole) {
-        logger.info(`✅ Using provided role for registration: ${finalRole}`);
-      } else {
-        logger.info(`ℹ️ Not a registration, using provided role: ${finalRole || 'none'}`);
-      }
 
       // Use different endpoints based on whether this is registration or sign-in
       const endpoint = isRegistration ? "/api/firebase-register-user" : "/api/firebase-sync-user";
@@ -196,16 +139,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: firebaseUser.email,
           displayName: firebaseUser.displayName,
           emailVerified: firebaseUser.emailVerified,
-          role: finalRole || undefined, // Use auto-determined role (send undefined if not set, not null)
+          accountType: isRegistration ? accountType : undefined,
+          termsAccepted: isRegistration ? termsAccepted : undefined,
           isRegistration: isRegistration,
-          password: password // Include password for email/password registrations
         })
       });
 
       logger.info('📤 SYNC REQUEST DEBUG:', {
         endpoint,
         isRegistration,
-        role: finalRole,
+        accountType,
         currentPath: window.location.pathname,
         email: firebaseUser.email
       });
@@ -318,7 +261,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
 
           // ENTERPRISE: Use refs to check sync conditions (prevents stale closures)
-          const shouldSync = isInitializingRef.current || pendingSyncRef.current || pendingRegistrationRef.current || isVerificationRedirect;
+          // Registration is provisioned explicitly by signup/signInWithGoogle so
+          // the selected public account type and consent evidence travel in the
+          // same request. The auth-state listener must not race that request.
+          const shouldSync = !pendingRegistrationRef.current &&
+            (isInitializingRef.current || pendingSyncRef.current || isVerificationRedirect);
 
           if (shouldSync && !hasSyncedThisSession.current) {
             logger.info('🔥 SYNCING USER - Conditions met:', {
@@ -331,7 +278,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               emailVerified: firebaseUser.emailVerified
             });
 
-            const syncSuccess = await syncUserWithBackend(firebaseUser, role, pendingRegistrationRef.current);
+            const syncSuccess = await syncUserWithBackend(firebaseUser);
             if (syncSuccess) {
               setPendingSync(false);
               setPendingRegistration(false);
@@ -376,8 +323,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 logger.error('❌ FAILED TO RE-FETCH PROFILE AFTER SYNC', e);
               }
             } else {
-              logger.error('❌ USER SYNC FAILED - Will retry on next auth state change');
+              logger.error('❌ USER SYNC FAILED - clearing Firebase-only session');
+              await signOut(auth);
+              setUser(null);
               setAuthPhase('error');
+              return;
             }
           } else if (hasSyncedThisSession.current) {
             logger.info('ℹ️ SKIPPING SYNC - Already synced this session');
@@ -406,6 +356,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             termsVersion: applicationData?.termsVersion,
             chefOnboardingCompleted: applicationData?.chefOnboardingCompleted,
           });
+
+          if (pendingRegistrationRef.current) {
+            // signup()/Google registration is still performing the authoritative
+            // Neon provisioning request. It will mark the phase ready only after
+            // that request succeeds.
+            setAuthPhase('syncing');
+            return;
+          }
           
           // ENTERPRISE: Set auth phase to ready after successful user setup
           logger.info('📊 AUTH PHASE: syncing → ready');
@@ -497,7 +455,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signup = async (email: string, password: string, displayName?: string) => {
+  const signup = async (email: string, password: string, displayName?: string, accountType: PublicRegistrationRole = 'chef', termsAccepted = false) => {
     setError(null);
     setLoading(true);
     setAuthPhase('authenticating'); // ENTERPRISE: Set auth phase to authenticating
@@ -505,44 +463,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setPendingSync(true); // Force sync on new signup
       setPendingRegistration(true); // Mark as registration
+      pendingSyncRef.current = true;
+      pendingRegistrationRef.current = true;
       const cred = await createUserWithEmailAndPassword(auth, email, password);
 
       // Update the Firebase profile with displayName
       if (displayName) {
         await updateProfile(cred.user, { displayName });
         logger.info('📝 Updated Firebase profile with displayName:', displayName);
-
-        // Also update Firestore document with displayName and role (if detected)
-        try {
-          // Detect role from URL path
-          const currentPath = window.location.pathname;
-          let detectedRole: string | null = null;
-
-          if (currentPath === '/admin-login' || currentPath === '/admin/login') {
-            detectedRole = 'admin';
-          } else if (currentPath === '/manager-register' || currentPath === '/manager/register' || currentPath === '/manager-login' || currentPath === '/manager/login') {
-            detectedRole = 'manager';
-          } else if (currentPath === '/auth') {
-            detectedRole = 'chef';
-          }
-
-          const userDocRef = doc(db, "users", cred.user.uid);
-          await setDoc(userDocRef, {
-            email: cred.user.email,
-            displayName: displayName,
-            role: detectedRole, // Set detected role instead of null
-            isChef: detectedRole === 'chef' || detectedRole === 'admin',
-            isManager: detectedRole === 'manager',
-            isAdmin: detectedRole === 'admin', // Track admin in Firestore
-            createdAt: serverTimestamp(),
-            lastLoginAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-          logger.info('📝 Updated Firestore with displayName and role:', { displayName, role: detectedRole });
-        } catch (firestoreError) {
-          logger.error('❌ Failed to update Firestore:', firestoreError);
-          // Don't fail registration if Firestore fails
-        }
       }
 
       // IMPORTANT: Manually sync the user before signing them out
@@ -556,58 +484,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Wait a moment for profile update to propagate
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      // Detect role from URL path for registration
-      const currentPath = window.location.pathname;
-      const currentUrl = window.location.href;
-      let detectedRole: string | undefined = undefined;
-
-      logger.info('🔍 ROLE DETECTION DEBUG:', {
-        pathname: currentPath,
-        fullUrl: currentUrl,
-        hash: window.location.hash,
-        search: window.location.search
-      });
-
-      // Check for admin paths first (most specific)
-      if (currentPath === '/admin-login' || currentPath === '/admin/login' ||
-        currentPath.startsWith('/admin-login') || currentPath.startsWith('/admin/login')) {
-        detectedRole = 'admin';
-        logger.info('👑 Detected admin role from URL path during signup');
-      } else if (currentPath === '/manager-register' || currentPath === '/manager/register' ||
-        currentPath === '/manager-login' || currentPath === '/manager/login' ||
-        currentPath.startsWith('/manager-register') || currentPath.startsWith('/manager/register') ||
-        currentPath.startsWith('/manager-login') || currentPath.startsWith('/manager/login')) {
-        detectedRole = 'manager';
-        logger.info('🏢 Detected manager role from URL path during signup');
-      } else if (currentPath === '/auth' || currentPath.startsWith('/auth')) {
-        detectedRole = 'chef';
-        logger.info('👨‍🍳 Detected chef role from URL path during signup');
-      } else if (
-        currentPath.includes('/kitchen-preview') ||
-        currentPath.includes('/apply-kitchen') ||
-        currentPath.includes('/book-kitchen') ||
-        currentPath.includes('/book/')
-      ) {
-        detectedRole = 'chef';
-        logger.info('👨‍🍳 Detected chef role from kitchen preview/book path during signup');
-      } else {
-        logger.warn(`⚠️ No role detected from URL path "${currentPath}" during signup - role will be determined by backend`);
-        logger.warn(`   Full URL: ${currentUrl}`);
-      }
-
-      logger.info(`✅ Final detected role for registration: "${detectedRole || 'undefined'}"`);
-
-      // We don't throw an error if no role is detected from the URL path.
-      // The backend will determine the default role (usually "user").
-      if (!detectedRole) {
-        logger.warn(`⚠️ No role detected during registration! Falling back to backend default.`);
-        logger.warn(`   - Current path: ${currentPath}`);
-        logger.warn(`   - Full URL: ${currentUrl}`);
-      }
-
       let syncSuccess = false;
       try {
-        syncSuccess = await syncUserWithBackend(updatedUser, detectedRole, true, password);
+        syncSuccess = await syncUserWithBackend(updatedUser, accountType, true, termsAccepted);
       } catch (syncError) {
         if (isDuplicateAccountError(syncError)) {
           try {
@@ -622,6 +501,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (syncSuccess) {
         logger.info('✅ User synced successfully during registration');
+        setAuthPhase('ready');
       } else {
         logger.error('❌ User sync failed during registration, rolling back Firebase user');
         // CRITICAL FIX: Rollback the Firebase user if backend sync fails
@@ -639,13 +519,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error('Failed to create account in the database. Please try again.');
       }
 
+      // Write optional metadata only after the authoritative database accepts signup.
+      // Firestore rules intentionally disallow client deletion, so it cannot be rolled back.
+      if (displayName) {
+        // Firestore contains non-authoritative profile data only. Application
+        // roles are assigned and enforced by the backend/Neon profile.
+        try {
+          const userDocRef = doc(db, "users", cred.user.uid);
+          await setDoc(userDocRef, {
+            email: cred.user.email,
+            displayName: displayName,
+            createdAt: serverTimestamp(),
+            lastLoginAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+          logger.info('📝 Updated non-authoritative Firestore profile data');
+        } catch (firestoreError) {
+          logger.error('❌ Failed to update Firestore:', firestoreError);
+          // Don't fail registration if Firestore fails
+        }
+      }
+
       // CRITICAL: Send Custom Backend email verification
       logger.info('📧 Sending Custom email verification...');
       let emailSent = false;
       try {
         await sendVerificationEmailWithFallback({
           email: updatedUser.email!,
-          role: detectedRole || "chef",
+          role: accountType,
           returnUrl:
             getAuthIntent()?.returnPath ||
             `${window.location.pathname}${window.location.search}`,
@@ -740,7 +641,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signInWithGoogle = async (isRegistration = false) => {
+  const signInWithGoogle = async (isRegistration = false, accountType: PublicRegistrationRole = 'chef', termsAccepted = false) => {
     setError(null);
     setLoading(true);
     setAuthPhase('authenticating'); // ENTERPRISE: Set auth phase to authenticating
@@ -756,100 +657,95 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logger.info('🔥 GOOGLE REGISTRATION - Starting registration flow');
         setPendingSync(true);
         setPendingRegistration(true);
+        pendingSyncRef.current = true;
+        pendingRegistrationRef.current = true;
 
         const result = await signInWithPopup(auth, provider);
         logger.info('✅ GOOGLE REGISTRATION - Firebase sign-in complete:', result.user.uid);
 
         const isNewGoogleUser = getAdditionalUserInfo(result)?.isNewUser === true;
-        if (!isNewGoogleUser) {
-          await auth.signOut();
-          throw createDuplicateAccountError();
+
+        // Firebase's `isNewUser` describes the Google identity in Firebase, not
+        // whether a LocalCooks profile exists. Always use Neon as the
+        // authoritative application-account check. This also lets an
+        // interrupted registration safely resume when Firebase was created but
+        // backend provisioning never completed.
+        const token = await result.user.getIdToken();
+        const profileResponse = await fetch('/api/user/profile', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (profileResponse.ok) {
+          logger.info('✅ GOOGLE REGISTRATION - Existing LocalCooks profile found; completing as sign-in');
+          hasSyncedThisSession.current = true;
+          pendingSyncRef.current = false;
+          pendingRegistrationRef.current = false;
+          setPendingSync(false);
+          setPendingRegistration(false);
+          await refreshUserData();
+          setAuthPhase('ready');
+          return;
         }
 
-        // Auto-determine role from subdomain AND URL path before sync
-        const currentPath = window.location.pathname;
-        const hostname = window.location.hostname;
-        const subdomain = getSubdomainFromHostname(hostname);
-        let detectedRole: string | undefined = undefined;
-
-        logger.info(`🔍 Role detection - Path: ${currentPath}, Subdomain: ${subdomain}`);
-
-        // CRITICAL: Check subdomain first (most reliable indicator)
-        if (subdomain === 'admin') {
-          detectedRole = 'admin';
-          logger.info('👑 Detected role: admin from admin subdomain');
-        } else if (subdomain === 'kitchen') {
-          // Kitchen subdomain could be manager or chef - check path
-          if (currentPath.includes('/manager') || currentPath.includes('manager')) {
-            detectedRole = 'manager';
-            logger.info('🏢 Detected role: manager from kitchen subdomain + manager path');
-          } else {
-            detectedRole = 'chef';
-            logger.info('👨‍🍳 Detected role: chef from kitchen subdomain');
-          }
-        } else if (subdomain === 'chef') {
-          detectedRole = 'chef';
-          logger.info('👨‍🍳 Detected role: chef from chef subdomain');
-        } else {
-          // No subdomain match - check URL path as fallback
-          if (currentPath === '/admin-login' || currentPath === '/admin/login') {
-            detectedRole = 'admin';
-            logger.info('👑 Detected role: admin from URL path');
-          } else if (currentPath === '/manager-register' || currentPath === '/manager/register' || currentPath === '/manager-login' || currentPath === '/manager/login') {
-            detectedRole = 'manager';
-            logger.info('🏢 Detected role: manager from URL path');
-          } else if (currentPath === '/auth') {
-            detectedRole = 'chef';
-            logger.info('👨‍🍳 Detected role: chef from URL path');
-          } else {
-            // CRITICAL: Don't default to 'chef' - this causes admins/managers to be created as chefs
-            // Log warning and let backend handle it or fail
-            logger.warn(`⚠️ WARNING: No role detected from subdomain "${subdomain}" or URL path "${currentPath}" during Google registration. Role will be determined by backend or registration will fail.`);
-            detectedRole = undefined; // Let backend determine or fail
-          }
+        if (profileResponse.status !== 404) {
+          await auth.signOut();
+          throw new Error('Unable to verify your account. Please try again.');
         }
 
         // Manually trigger sync for registration with detected role
         let syncSuccess = false;
         try {
-          syncSuccess = await syncUserWithBackend(result.user, detectedRole, true);
+          syncSuccess = await syncUserWithBackend(result.user, accountType, true, termsAccepted);
         } catch (syncError) {
-          if (isDuplicateAccountError(syncError)) {
+          if (isNewGoogleUser) {
             try {
               await result.user.delete();
-              logger.info('✅ Rolled back new Google user after duplicate database account was detected');
+              logger.info('✅ Rolled back new Google identity after backend provisioning failed');
             } catch (deleteError) {
-              logger.error('❌ Failed to roll back Google user after duplicate account conflict:', deleteError);
+              logger.error('❌ Failed to roll back Google identity after provisioning failure:', deleteError);
             }
+          } else {
+            await auth.signOut();
           }
           throw syncError;
         }
 
-        // Create/update Firestore document with the correct role
+        // Keep Firestore profile data non-authoritative; role comes from Neon.
         try {
           const userDocRef = doc(db, "users", result.user.uid);
           await setDoc(userDocRef, {
             email: result.user.email,
             displayName: result.user.displayName,
-            role: detectedRole || null, // Set the detected role (null if undefined)
-            isChef: detectedRole === 'chef' || detectedRole === 'admin',
-            isManager: detectedRole === 'manager',
-            isAdmin: detectedRole === 'admin', // Track admin in Firestore (not in Neon schema)
             createdAt: serverTimestamp(),
             lastLoginAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           }, { merge: true }); // Use merge to update if document already exists
-          logger.info(`📝 Created/updated Firestore document for Google user with role: ${detectedRole}`);
+          logger.info('📝 Created/updated non-authoritative Firestore profile data');
         } catch (firestoreError) {
           logger.error('❌ Failed to create/update Firestore document:', firestoreError);
           // Don't fail registration if Firestore fails
         }
         if (syncSuccess) {
           logger.info('✅ Google registration sync completed');
+          hasSyncedThisSession.current = true;
+          pendingSyncRef.current = false;
+          pendingRegistrationRef.current = false;
           setPendingSync(false);
           setPendingRegistration(false);
+          await refreshUserData();
+          setAuthPhase('ready');
         } else {
           logger.error('❌ Google registration sync failed');
+          if (isNewGoogleUser) {
+            await result.user.delete().catch((deleteError) => {
+              logger.error('❌ Failed to roll back Google identity after provisioning failure:', deleteError);
+            });
+          } else {
+            await auth.signOut();
+          }
           throw new Error('Failed to create account. Please try again.');
         }
       } else {
@@ -924,29 +820,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ email, returnUrl })
       });
 
-      if (customEmailResponse.ok) {
-        logger.info(`✅ Custom magic link email queued successfully for: ${email}`);
-        // Store email for sign-in confirmation when user clicks the link
-        // (EmailAction.tsx uses checkActionCode to get email, this is fallback)
-        window.localStorage.setItem('emailForSignIn', email);
-        return;
+      if (!customEmailResponse.ok) {
+        const customError = await customEmailResponse.json().catch(() => null);
+        throw new Error(customError?.error || 'Unable to request a sign-in link. Please try again.');
       }
 
-      // Fallback: if custom endpoint fails, fall back to Firebase client-side method
-      logger.warn(`⚠️ Custom magic link endpoint failed (status: ${customEmailResponse.status}), falling back to Firebase default`);
-      const customError = await customEmailResponse.json().catch(() => null);
-
-      const actionCodeSettingsFallback = {
-        url: window.location.origin + "/auth",
-        handleCodeInApp: true,
-      };
-
-      await sendSignInLinkToEmail(auth, email, actionCodeSettingsFallback);
+      logger.info(`✅ Magic-link request accepted for: ${email}`);
+      // The server intentionally returns the same response for known and unknown
+      // accounts. Never bypass that eligibility check with the client SDK.
       window.localStorage.setItem('emailForSignIn', email);
-
-      if (customError?.error) {
-        logger.warn(`   - Custom endpoint error detail: ${customError.error}`);
-      }
     } catch (e: any) {
       logger.error('❌ Error sending magic link email:', e);
       setError(e.message);
@@ -963,7 +845,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (isSignInWithEmailLink(auth, window.location.href)) {
         let email = window.localStorage.getItem('emailForSignIn');
         if (!email) {
-          email = window.prompt('Please provide your email for confirmation') || '';
+          // Keep cross-device confirmation inside the branded EmailAction UI.
+          // Preserving the Firebase query parameters keeps the one-time link valid.
+          const actionUrl = `/email-action${window.location.search}${window.location.hash}`;
+          window.location.replace(actionUrl);
+          return;
         }
         await signInWithEmailLink(auth, email, window.location.href);
         window.localStorage.removeItem('emailForSignIn');

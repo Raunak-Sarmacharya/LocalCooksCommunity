@@ -11,6 +11,7 @@ import { ChefPageHeader, InfoHint } from "@/components/chef/ui";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
+import { FormLegend } from "@/components/ui/form-legend";
 
 interface ApplicationFormPanelProps {
   onBack?: () => void;
@@ -84,7 +85,8 @@ function FormStepContent() {
           onCancel ? (
             <Button
               type="button"
-              className="rounded-xl shadow-md font-medium"
+              variant="outline"
+              className="rounded-xl font-medium"
               size="sm"
               disabled={isBusy}
               onClick={onCancel}
@@ -97,6 +99,7 @@ function FormStepContent() {
         }
       />
 
+      <FormLegend />
       <ProgressIndicator step={currentStep} />
 
       <Card className="shadow-none rounded-xl">

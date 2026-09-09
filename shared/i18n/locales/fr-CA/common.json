@@ -17,6 +17,7 @@
   "no": "Non",
   "or": "ou",
   "required": "Obligatoire",
+  "requiredFieldLegend": "Indique un champ obligatoire",
   "optional": "Facultatif",
   "actions": "Actions",
   "status": "Statut",

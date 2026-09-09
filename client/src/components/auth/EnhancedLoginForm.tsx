@@ -8,12 +8,11 @@ import {
 } from "@/lib/login-challenge";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AnimatePresence, motion } from "framer-motion";
-import { Lock, Mail } from "lucide-react";
+import { Info, Lock, Mail } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import AnimatedButton from "./AnimatedButton";
-import { getEmailContinueMessage } from "./EmailContinueHint";
 import AnimatedInput from "./AnimatedInput";
 import EmailVerificationScreen from "./EmailVerificationScreen";
 import ForgotPasswordForm from "./ForgotPasswordForm";
@@ -74,6 +73,7 @@ export default function EnhancedLoginForm({
   const [showEmailVerification, setShowEmailVerification] = useState(false);
   const [emailForVerification, setEmailForVerification] = useState("");
   const [unverifiedPassword, setUnverifiedPassword] = useState("");
+  const [showMagicLinkNudge, setShowMagicLinkNudge] = useState(false);
   const { showAlert } = useCustomAlerts();
 
   const busy = pendingMethod !== null && authState === "loading";
@@ -96,15 +96,20 @@ export default function EnhancedLoginForm({
     setHasAttemptedLogin?.(true);
     setPendingMethod("form");
     setAuthState("loading");
+    setShowMagicLinkNudge(false);
 
     const email = data.email.trim();
 
     try {
       await sendEmailLink(email);
       setAuthState("success");
+      setShowMagicLinkNudge(true);
       showAlert({
         title: t("signInEmailSentTitle", "Check your email"),
-        description: t("signInEmailSentDesc", getEmailContinueMessage("sign-in")),
+        description: t(
+          "signInEmailSentDesc",
+          "If an account exists for this email, a sign-in link has been sent. Check spam or promotions if it doesn't arrive within a few minutes."
+        ),
         type: "success",
       });
       resetAuthUi(4000);
@@ -249,6 +254,7 @@ export default function EnhancedLoginForm({
     setChallenge(next);
     setAuthState("idle");
     setPendingMethod(null);
+    setShowMagicLinkNudge(false);
     form.clearErrors("password");
   };
 
@@ -407,6 +413,41 @@ export default function EnhancedLoginForm({
             </motion.div>
           )}
 
+          {/* Nudge banner — appears after magic link request to help unregistered users */}
+          <AnimatePresence>
+            {showMagicLinkNudge && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.3 }}
+                className="rounded-xl bg-amber-50 border border-amber-200 p-4 flex items-start gap-3 mb-2 overflow-hidden"
+              >
+                <Info className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm text-amber-800">
+                    {t(
+                      "magicLinkNudge",
+                      "Didn't receive an email? Please verify your email address is correct, or you may need to register for an account first."
+                    )}
+                  </p>
+                  {onSwitchToRegister && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMagicLinkNudge(false);
+                        onSwitchToRegister();
+                      }}
+                      className="mt-1.5 text-sm font-medium text-amber-700 hover:text-amber-900 underline underline-offset-2"
+                    >
+                      {t("createAccountLink", "Create an account")}
+                    </button>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <motion.div variants={itemVariants}>
             <AnimatedInput
               label={t("emailOrUsername", "Email Address or Username")}
@@ -424,6 +465,7 @@ export default function EnhancedLoginForm({
               {...form.register("email", {
                 onChange: () => {
                   if (authState === "error") setAuthState("idle");
+                  if (showMagicLinkNudge) setShowMagicLinkNudge(false);
                 },
               })}
             />
@@ -441,6 +483,16 @@ export default function EnhancedLoginForm({
               >
                 <AnimatedInput
                   label={t("password", "Password")}
+                  labelRight={
+                    <button
+                      type="button"
+                      onClick={() => switchChallenge("forgot-password")}
+                      className="text-sm text-[#F51042] hover:underline font-medium"
+                      disabled={authState === "loading"}
+                    >
+                      {t("forgotPassword", "Forgot password?")}
+                    </button>
+                  }
                   type="password"
                   autoComplete="current-password"
                   showPasswordToggle
@@ -453,16 +505,6 @@ export default function EnhancedLoginForm({
                     },
                   })}
                 />
-                <div className="mt-2 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => switchChallenge("forgot-password")}
-                    className="text-sm text-[#F51042] hover:underline font-medium"
-                    disabled={authState === "loading"}
-                  >
-                    {t("forgotPassword", "Forgot password?")}
-                  </button>
-                </div>
               </motion.div>
             )}
           </AnimatePresence>

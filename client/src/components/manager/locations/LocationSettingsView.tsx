@@ -25,6 +25,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { ImageWithReplace } from "@/components/ui/image-with-replace";
+import { FormLegend } from "@/components/ui/form-legend";
 
 import { KitchenGalleryImages } from "../kitchen/KitchenGalleryImages";
 import LocationRequirementsSettings from "@/components/manager/LocationRequirementsSettings";
@@ -312,6 +313,7 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                     <CardDescription>{mt("uploadOrUpdateYourKitchenLicenseBookingsArePausedUntilApprov")}</CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-4">
+                                    {shouldShowUpload && <FormLegend />}
                                     {/* Status Blocks */}
                                     {location.kitchenLicenseUrl && location.kitchenLicenseStatus !== "rejected" && location.kitchenLicenseStatus !== "expired" && (
                                         <div className={cn(

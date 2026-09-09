@@ -44,6 +44,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { FormLegend } from "@/components/ui/form-legend";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -218,6 +219,8 @@ function ChefViewPreview({
           <p className="text-[11px] text-muted-foreground">{mt("thisIsExactlyWhatChefsWillSee")}</p>
         </div>
       </div>
+
+      {(filledItems.length > 0 || filledPhotos.length > 0) && <FormLegend />}
 
       {/* Manager instructions */}
       {instructions && (

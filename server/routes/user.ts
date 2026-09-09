@@ -24,18 +24,9 @@ router.get("/profile", requireFirebaseAuthWithUser, async (req: Request, res: Re
     // CRITICAL: Update is_verified status if Firebase reports email is verified
     // This handles the case where user verifies email via Firebase but Neon DB wasn't updated
     const firebaseEmailVerified = req.firebaseUser?.email_verified;
-    if (firebaseEmailVerified && (!user.isVerified || !user.termsAccepted)) {
+    if (firebaseEmailVerified && !user.isVerified) {
       logger.info(`📧 Updating is_verified for user ${user.id} - Firebase email verified (profile fetch)`);
-      const updatedUser = await userService.updateUser(user.id, { isVerified: true, termsAccepted: true, termsAcceptedAt: new Date(), termsVersion: CURRENT_POLICY_VERSION });
-      if (updatedUser) {
-        user = updatedUser;
-      }
-    }
-    
-    // Drizzle maps is_verified -> isVerified, but legacy frontend code expects is_verified
-    if (user && (!user.termsAccepted || user.termsVersion !== CURRENT_POLICY_VERSION)) {
-      logger.info(`📧 Updating termsAccepted for user ${user.id} - (profile fetch)`);
-      const updatedUser = await userService.updateUser(user.id, { termsAccepted: true, termsAcceptedAt: new Date(), termsVersion: CURRENT_POLICY_VERSION });
+      const updatedUser = await userService.updateUser(user.id, { isVerified: true });
       if (updatedUser) {
         user = updatedUser;
       }
@@ -119,9 +110,9 @@ router.post("/sync", requireFirebaseAuthWithUser, async (req: Request, res: Resp
     // CRITICAL: Update is_verified status if Firebase reports email is verified
     // This handles the case where user verifies email via Firebase but Neon DB wasn't updated
     const firebaseEmailVerified = req.firebaseUser?.email_verified;
-    if (firebaseEmailVerified && (!user.isVerified || !user.termsAccepted)) {
+    if (firebaseEmailVerified && !user.isVerified) {
       logger.info(`📧 Updating is_verified for user ${user.id} - Firebase email verified`);
-      const updatedUser = await userService.updateUser(user.id, { isVerified: true, termsAccepted: true, termsAcceptedAt: new Date(), termsVersion: CURRENT_POLICY_VERSION });
+      const updatedUser = await userService.updateUser(user.id, { isVerified: true });
       if (updatedUser) {
         user = updatedUser;
       }
@@ -226,7 +217,7 @@ router.post("/sync-verification-status", requireFirebaseAuthWithUser, async (req
       // Check if we need to update verification status in database
       if (!user.isVerified) {
         logger.info(`📧 Updating is_verified for user ${user.id} - Firebase email verified`);
-        const updatedUser = await userService.updateUser(user.id, { isVerified: true, termsAccepted: true, termsAcceptedAt: new Date(), termsVersion: CURRENT_POLICY_VERSION });
+        const updatedUser = await userService.updateUser(user.id, { isVerified: true });
         if (updatedUser) {
           user = updatedUser;
           verificationUpdated = true;
@@ -316,7 +307,13 @@ router.post("/sync-verification-status", requireFirebaseAuthWithUser, async (req
  */
 router.post("/verify-email-complete", async (req: Request, res: Response) => {
   try {
-    const { email } = req.body;
+    const email = typeof req.body?.email === 'string'
+      ? req.body.email.trim().toLowerCase()
+      : '';
+    const genericResponse = {
+      success: true,
+      message: "If this verification belongs to an eligible account, its status has been updated.",
+    };
     
     if (!email) {
       return res.status(400).json({ error: "Email is required" });
@@ -329,7 +326,7 @@ router.post("/verify-email-complete", async (req: Request, res: Response) => {
     
     if (!firebaseUser) {
       logger.info(`❌ Firebase user not found for email: ${email}`);
-      return res.status(404).json({ error: "User not found in Firebase" });
+      return res.json(genericResponse);
     }
     
     logger.info(`   - Firebase emailVerified: ${firebaseUser.emailVerified}`);
@@ -337,18 +334,15 @@ router.post("/verify-email-complete", async (req: Request, res: Response) => {
     
     if (!firebaseUser.emailVerified) {
       logger.info(`⚠️ Firebase email NOT verified for: ${email}`);
-      return res.status(400).json({ 
-        error: "Email not verified in Firebase",
-        firebaseVerified: false 
-      });
+      return res.json(genericResponse);
     }
     
     // Find user in Neon database by email (username)
     const user = await userService.getUserByUsername(email);
     
-    if (!user) {
-      logger.info(`❌ User not found in Neon DB for email: ${email}`);
-      return res.status(404).json({ error: "User not found in database" });
+    if (!user || user.firebaseUid !== firebaseUser.uid) {
+      logger.info(`❌ No matching linked Neon identity for verified Firebase email: ${email}`);
+      return res.json(genericResponse);
     }
     
     logger.info(`   - Neon user ID: ${user.id}`);
@@ -441,93 +435,12 @@ router.post("/verify-email-complete", async (req: Request, res: Response) => {
       logger.info(`ℹ️ Welcome email already sent at ${user.welcomeEmailSentAt} - skipping`);
     }
     
-    res.json({
-      success: true,
-      userId: user.id,
-      email: email,
-      firebaseVerified: true,
-      databaseVerified: true,
-      verificationUpdated,
-      welcomeEmailSent,
-      welcomeEmailPreviouslySent: !!user.welcomeEmailSentAt && !welcomeEmailSent,
-      role: user.role,
-      // ENTERPRISE: Include email config status for debugging
-      emailConfigStatus: {
-        hasEmailUser: !!process.env.EMAIL_USER,
-        hasEmailPass: !!process.env.EMAIL_PASS,
-        hasEmailFrom: !!process.env.EMAIL_FROM,
-        environment: process.env.VERCEL_ENV || process.env.NODE_ENV || 'unknown'
-      }
-    });
+    res.json(genericResponse);
     
   } catch (error) {
     logger.error("❌ Error in verify-email-complete:", error);
     res.status(500).json({ 
       error: "Failed to complete email verification",
-      details: error instanceof Error ? error.message : 'Unknown error'
-    });
-  }
-});
-
-// ===================================
-// PUBLIC ROLE LOOKUP (NO AUTH REQUIRED)
-// ===================================
-
-/**
- * POST /api/user/lookup-role
- * 
- * PUBLIC ENDPOINT: Lightweight role lookup for magic link routing.
- * Used by EmailAction page to determine which subdomain to redirect to
- * before completing the sign-in (so auth state lives on the correct origin).
- * 
- * SECURITY:
- * - Only returns email + role (no passwords, tokens, or PII beyond email)
- * - Rate limiting should be applied at infrastructure level
- */
-router.post("/lookup-role", async (req: Request, res: Response) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({ error: "Email is required" });
-    }
-
-    logger.info(`🔍 PUBLIC ROLE LOOKUP for email: ${email}`);
-
-    const user = await userService.getUserByUsername(email);
-
-    if (!user) {
-      logger.info(`   - User not found in database, defaulting to chef role`);
-      return res.json({
-        email,
-        role: 'chef',
-        userExists: false,
-      });
-    }
-
-    const userRole: 'manager' | 'chef' | 'admin' = (() => {
-      if (user.role === 'manager' || user.role === 'chef' || user.role === 'admin') {
-        return user.role;
-      }
-      // Fallback to flags if role field is empty/null
-      if ((user as any).isManager || (user as any).is_manager) return 'manager';
-      if ((user as any).isAdmin || (user as any).is_admin) return 'admin';
-      return 'chef';
-    })();
-
-    logger.info(`   - Resolved role: ${userRole}`);
-
-    return res.json({
-      email,
-      role: userRole,
-      userExists: true,
-    });
-  } catch (error) {
-    logger.error("❌ Error in lookup-role:", error);
-    // Graceful fallback: return chef role so user can still sign in
-    res.status(500).json({
-      error: "Failed to look up role",
-      role: 'chef',
       details: error instanceof Error ? error.message : 'Unknown error'
     });
   }

@@ -8,6 +8,7 @@ import {
     FormLabel,
     FormMessage,
 } from "@/components/ui/form";
+import { FormLegend } from "@/components/ui/form-legend";
 import { Input } from "@/components/ui/input";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -273,6 +274,8 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin, onRegist
               </FormItem>
             )}
           />
+
+          <FormLegend className="mt-4 mb-2 justify-center" />
 
           <Button 
             type="submit" 

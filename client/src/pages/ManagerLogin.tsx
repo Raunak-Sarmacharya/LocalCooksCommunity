@@ -357,6 +357,7 @@ export default function ManagerLogin() {
 
               <TabsContent value="register">
                 <EnhancedRegisterForm
+                  accountType="manager"
                   hideApplyingToggle
                   onSuccess={async () => {
                     logger.info('🎯 GOOGLE REGISTRATION SUCCESS - Invalidating cache and refreshing data');

@@ -61,6 +61,21 @@
   }
 }
 
+/* Keep the public registration form centered within short desktop viewports.
+   Mobile remains naturally scrollable so fields and validation stay accessible. */
+@media (min-width: 1024px) and (max-height: 920px) {
+  .auth-register-fit {
+    transform: scale(0.88);
+    transform-origin: center center;
+  }
+}
+
+@media (min-width: 1024px) and (max-height: 790px) {
+  .auth-register-fit {
+    transform: scale(0.76);
+  }
+}
+
 :root {
   --background: 0 0% 100%;
   --foreground: 224 71.4% 4.1%;

@@ -41,6 +41,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
+import { FormLegend } from "@/components/ui/form-legend"
 import { format } from "date-fns"
 import { toast } from "sonner"
 import { useKitchenCheckin, type KitchenCheckinStatus } from "@/hooks/use-kitchen-checkin"
@@ -277,6 +278,13 @@ export function KitchenCheckinTracker({
             {kitchenName || t("kitchenDefault", "Kitchen")} {timeLabel && `— ${timeLabel}`}
           </SheetDescription>
         </SheetHeader>
+
+        {((checklist?.checkinItems || []).some((item: ChecklistItem) => item.required) ||
+          (checklist?.checkoutItems || []).some((item: ChecklistItem) => item.required) ||
+          checkinPhotoReqs.some((item) => item.required) ||
+          checkoutPhotoReqs.some((item) => item.required)) && (
+          <FormLegend className="mt-4 mb-0" />
+        )}
 
         <div className="py-6">
           {isLoading ? (

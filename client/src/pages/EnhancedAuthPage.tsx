@@ -20,6 +20,7 @@ import SEOHead from "@/components/SEO/SEOHead";
 import { getChefPostAuthPath } from "@/config/chef-onboarding-steps";
 import { hasVerifiedEmail } from "@/lib/auth-verification";
 import LoadingOverlay from "@/components/auth/LoadingOverlay";
+import ChefAuthShowcase from "@/components/auth/ChefAuthShowcase";
 
 export default function EnhancedAuthPage() {
   const { t } = useTranslation("auth");
@@ -408,16 +409,6 @@ export default function EnhancedAuthPage() {
       setRetryCount(c => c + 1); // Force a re-render to trigger fetchUserMeta again
     }
     setHasAttemptedLogin(true);
-
-    // Fallback: If we're still stuck on the auth page after 3 seconds, force a hard reload.
-    // This catches edge cases where state updates fail to trigger the redirect.
-    setTimeout(() => {
-      const currentPath = window.location.pathname;
-      if (currentPath === '/auth' || currentPath.includes('login') || currentPath.includes('register')) {
-        logger.warn('⚠️ STUCK ON AUTH PAGE DETECTED! Forcing hard page reload to complete login.');
-        window.location.reload();
-      }
-    }, 3000);
   };
 
   if (isCompletingVerification) {
@@ -462,27 +453,28 @@ export default function EnhancedAuthPage() {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.5 }}
-        className="min-h-screen flex flex-col md:flex-row bg-gray-50 relative"
+        className="relative flex min-h-screen bg-[#FFFDFC] lg:h-screen lg:min-h-0 lg:overflow-hidden"
       >
-        <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
+        <ChefAuthShowcase />
         {/* Form Section */}
         <motion.div
-          initial={{ opacity: 0, x: -50 }}
+          initial={{ opacity: 0, x: 36 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.6, delay: 0.1 }}
-          className="w-full md:w-1/2 p-8 flex flex-col justify-center bg-white relative z-10"
+          className="relative z-10 flex min-h-screen w-full flex-col justify-center bg-white px-6 py-10 sm:px-10 lg:h-screen lg:min-h-0 lg:w-[46%] lg:overflow-hidden lg:px-12 xl:px-16"
         >
-          <div className="max-w-md mx-auto w-full">
+          <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
+          <div className={`relative z-10 mx-auto w-full max-w-md ${activeTab === "register" ? "auth-register-fit" : ""}`}>
             {/* Header */}
             <motion.div
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.2 }}
-              className="mb-8"
+              className="mb-7"
             >
-              <Logo className="h-12 mb-6" />
+              <Logo className="mb-7 h-11" />
               <motion.h1
-                className="text-3xl font-bold tracking-tight text-gray-900"
+                className="text-3xl font-bold tracking-[-0.03em] text-gray-950 sm:text-4xl"
                 key={activeTab} // Re-animate on tab change
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -491,7 +483,7 @@ export default function EnhancedAuthPage() {
                 {activeTab === "login" ? t("welcomeBack", "Welcome back") : t("createYourAccount", "Create your account")}
               </motion.h1>
               <motion.p
-                className="text-gray-600 mt-2 leading-relaxed"
+                className="mt-3 max-w-sm text-gray-600 leading-relaxed"
                 key={`${activeTab}-subtitle`}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -544,7 +536,7 @@ export default function EnhancedAuthPage() {
 
             {/* Tabs */}
             <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "login" | "register")} className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-6 rounded-full">
+              <TabsList className="mb-6 grid w-full grid-cols-2 rounded-full bg-slate-100/80 p-1">
                 <TabsTrigger value="login" className="flex items-center gap-2 rounded-full">
                   <LogIn className="w-4 h-4" />
                   {t("loginTab", "Login")}
@@ -592,92 +584,6 @@ export default function EnhancedAuthPage() {
           </div>
         </motion.div>
 
-        {/* Hero Section */}
-        <motion.div
-          initial={{ opacity: 0, x: 50 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-          className="w-full md:w-1/2 bg-gradient-to-br from-primary to-primary/80 p-8 flex items-center hidden md:flex relative overflow-hidden"
-        >
-          {/* Background Pattern */}
-          <motion.div
-            className="absolute inset-0 opacity-10"
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 0.1 }}
-            transition={{ duration: 1, delay: 0.5 }}
-          >
-            <div className="absolute top-10 left-10 w-20 h-20 bg-white rounded-full" />
-            <div className="absolute top-32 right-20 w-16 h-16 bg-white rounded-full" />
-            <div className="absolute bottom-20 left-20 w-12 h-12 bg-white rounded-full" />
-            <div className="absolute bottom-40 right-10 w-24 h-24 bg-white rounded-full" />
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.4 }}
-            className="max-w-md mx-auto text-white relative z-10"
-          >
-            <motion.h2
-              className="text-4xl font-bold mb-6"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.5 }}
-            >
-              {t("heroJoinTitle", "Join")} <span className="font-logo">{t("heroJoinBrand", "Local Cooks")}</span>
-            </motion.h2>
-            <motion.p
-              className="text-white/90 mb-8 text-lg leading-relaxed"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.6 }}
-            >
-              {t("heroJoinDesc", "Sell food on LocalCooks or book a licensed commercial kitchen—all from one chef account.")}
-            </motion.p>
-            <motion.ul
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.5, delay: 0.7 }}
-              className="space-y-4"
-            >
-              {[
-                t("heroBullet1", "Sell food through the LocalCooks marketplace"),
-                t("heroBullet2", "We handle customer delivery and secure payments"),
-                t("heroBullet3", "Book licensed commercial kitchens by the hour"),
-                t("heroBullet4", "Track applications, bookings, and updates")
-              ].map((item, index) => (
-                <motion.li
-                  key={index}
-                  className="flex items-center"
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.4, delay: 0.8 + index * 0.1 }}
-                >
-                  <motion.div
-                    className="rounded-full bg-white/20 p-2 mr-4"
-                    whileHover={{ scale: 1.1, backgroundColor: "rgba(255,255,255,0.3)" }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <polyline points="20,6 9,17 4,12" />
-                    </svg>
-                  </motion.div>
-                  <span>{item}</span>
-                </motion.li>
-              ))}
-            </motion.ul>
-          </motion.div>
-        </motion.div>
       </motion.div>
 
 

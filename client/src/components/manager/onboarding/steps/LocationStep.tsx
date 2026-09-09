@@ -13,6 +13,7 @@ import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter";
 import AddressAutocomplete from "@/components/ui/address-autocomplete";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { FormLegend } from "@/components/ui/form-legend";
 
 function formatFileSize(bytes: number): string {
   if (bytes === 0) return '';
@@ -95,6 +96,7 @@ export default function LocationStep() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
+      <FormLegend />
       {/* Business Information Section */}
       <Card className="border-slate-200/60 dark:border-slate-700/60 shadow-sm">
         <CardHeader className="pb-4">

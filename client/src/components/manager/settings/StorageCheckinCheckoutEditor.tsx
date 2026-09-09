@@ -55,6 +55,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { FormLegend } from "@/components/ui/form-legend";
 import {
   Sheet,
   SheetContent,
@@ -363,6 +364,8 @@ function ChefPreviewSheet({
             This is exactly what the chef sees — updates as you edit.
           </SheetDescription>
         </SheetHeader>
+
+        {filledItems.length > 0 && <FormLegend className="mt-4 mb-0" />}
 
         <div className="py-4 space-y-3">
           {instructions && (

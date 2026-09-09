@@ -310,7 +310,9 @@ export function registerSecurityMiddleware(app: Express): void {
     windowMs: DEFAULT_RATE_LIMITS.authWindowMs,
     max: async () => {
       const config = await loadRateLimitConfig();
-      return config.authMaxRequests;
+      // A database misconfiguration must not silently disable protection in
+      // production (the historical value 999999 effectively did so).
+      return isProduction ? Math.min(config.authMaxRequests, 30) : config.authMaxRequests;
     },
     standardHeaders: true,
     legacyHeaders: false,
@@ -327,7 +329,11 @@ export function registerSecurityMiddleware(app: Express): void {
   app.use('/api/portal-login', authLimiter);
   app.use('/api/firebase-register-user', authLimiter);
   app.use('/api/firebase-sync-user', authLimiter);
-  app.use('/api/user-exists', authLimiter);
+  app.use('/api/firebase/send-magic-link-email', authLimiter);
+  app.use('/api/firebase/send-verification-email', authLimiter);
+  app.use('/api/firebase/forgot-password', authLimiter);
+  app.use('/api/manager/forgot-password', authLimiter);
+  app.use('/api/user/verify-email-complete', authLimiter);
 
   // Webhook-specific rate limit (higher ceiling for Stripe event bursts)
   const webhookLimiter = rateLimit({

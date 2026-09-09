@@ -3,6 +3,7 @@
  * Used by registration/preview auth modal and /apply-kitchen so both paths stay uniform.
  */
 import { useTranslation } from "react-i18next";
+import { FormLegend } from "@/components/ui/form-legend";
 
 export const REQUEST_TO_APPLY_BUSINESS_TYPES = [
   { value: "catering", key: "btCatering", fallback: "Catering & Events" },
@@ -76,6 +77,7 @@ export function RequestToApplyFields({
 
   return (
     <div className="space-y-3" data-testid="request-to-apply-fields">
+      <FormLegend />
       {/* —— Required —— */}
       <div className="space-y-1">
         <label className="block text-sm font-medium text-gray-700">

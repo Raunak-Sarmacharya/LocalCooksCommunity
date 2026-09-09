@@ -633,6 +633,7 @@ export function ScheduleViewingWidget({
         />
       ) : (
         <EnhancedRegisterForm
+          showTermsInline={true}
           hideApplyingToggle
           onSwitchToLogin={() => setAuthTab("login")}
           onRegistrationComplete={() => {

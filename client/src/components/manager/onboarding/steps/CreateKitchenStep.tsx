@@ -19,6 +19,7 @@ import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter";
 import { cn } from "@/lib/utils";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { SmartImage } from "@/components/ui/smart-image";
+import { FormLegend } from "@/components/ui/form-legend";
 
 // Enterprise-grade Kitchen Card Component
 interface KitchenCardProps {
@@ -263,6 +264,7 @@ export default function CreateKitchenStep() {
       {showCreate && (
         <Card className="border-slate-200/60 dark:border-slate-700/60 shadow-sm animate-in fade-in zoom-in-95 duration-200">
           <CardContent className="space-y-6 pt-6">
+            <FormLegend />
             {/* Basic Information Section */}
             <div className="space-y-4">
               <div className="space-y-2">

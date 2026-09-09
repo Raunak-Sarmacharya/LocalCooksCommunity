@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { FormLegend } from "@/components/ui/form-legend";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import {
   Alert,
@@ -212,6 +213,7 @@ function DecisionDialog({
             Review the evidence and make a decision on this disputed damage claim.
           </DialogDescription>
         </DialogHeader>
+        <FormLegend />
 
         <Tabs defaultValue="details" className="w-full">
           <TabsList className="grid w-full grid-cols-3">

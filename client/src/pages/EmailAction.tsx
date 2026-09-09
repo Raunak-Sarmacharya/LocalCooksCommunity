@@ -20,20 +20,21 @@ import { logger } from "@/lib/logger";
 import { applyActionCode } from "firebase/auth";
 import { clearAuthIntent, getAuthIntent, resolveVerificationReturnPath } from "@/lib/auth-intent";
 import { motion } from "framer-motion";
-import { CheckCircle2, Loader2, XCircle, ArrowRight } from "lucide-react";
-import { useEffect, useState, useRef, useCallback } from "react";
+import { CheckCircle2, Loader2, XCircle, ArrowRight, Mail, ShieldCheck, Link2, LayoutDashboard } from "lucide-react";
+import { useEffect, useState, useRef, useCallback, type FormEvent } from "react";
 import { useLocation } from "wouter";
 import { useFirebaseAuth } from "../hooks/use-auth";
 import { auth } from "../lib/firebase";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import Logo from "@/components/ui/logo";
 
 // ============================================================================
 // TYPES & CONSTANTS
 // ============================================================================
 
-type ActionStatus = 'loading' | 'success' | 'error';
+type ActionStatus = 'loading' | 'awaiting-email' | 'success' | 'error';
 type ActionMode = 'verifyEmail' | 'resetPassword' | 'recoverEmail' | 'signIn';
 
 /**
@@ -450,7 +451,10 @@ export default function EmailAction() {
   const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(3);
   const [progress, setProgress] = useState(0);
+  const [confirmationEmail, setConfirmationEmail] = useState('');
+  const [confirmationError, setConfirmationError] = useState('');
   const { updateUserVerification } = useFirebaseAuth();
+  const emailConfirmationResolver = useRef<((email: string | null) => void) | null>(null);
 
   // Prevent double execution in React StrictMode
   const hasExecuted = useRef(false);
@@ -558,7 +562,7 @@ export default function EmailAction() {
         throw new Error(errorData.error || 'Failed to sync email verification');
       }
       const syncResult = await syncResponse.json();
-      const databaseRole = syncResult.role ?? null;
+      const databaseRole = null;
       try {
         await updateUserVerification();
       } catch {
@@ -610,20 +614,7 @@ export default function EmailAction() {
 
             if (syncResponse.ok) {
               const syncResult = await syncResponse.json();
-              if (syncResult.role) {
-                databaseRole = syncResult.role;
-              }
               logger.info('✅ DATABASE VERIFICATION SYNC SUCCESS:', JSON.stringify(syncResult, null, 2));
-              logger.info(`   - Database verified: ${syncResult.databaseVerified}`);
-              logger.info(`   - Welcome email sent: ${syncResult.welcomeEmailSent}`);
-              logger.info(`   - Role from DB: ${databaseRole}`);
-              logger.info(`   - Email config status:`, syncResult.emailConfigStatus);
-              
-              // ENTERPRISE: Warn if email wasn't sent so we can investigate
-              if (!syncResult.welcomeEmailSent && !syncResult.welcomeEmailPreviouslySent) {
-                logger.warn('⚠️ Welcome email was NOT sent! Check server logs for details.');
-                logger.warn('⚠️ Email config:', syncResult.emailConfigStatus);
-              }
             } else {
               const errorData = await syncResponse.json().catch(() => ({}));
               logger.error('❌ DATABASE VERIFICATION SYNC FAILED:', syncResponse.status, JSON.stringify(errorData, null, 2));
@@ -775,51 +766,26 @@ export default function EmailAction() {
         }
 
         if (!email) {
-          logger.info('📧 Email resolution step 3: prompting user (cross-device / standard Firebase UX)');
-          const userProvided = window.prompt(
-            'To complete sign-in, enter the email address you used to request the sign-in link.\n\nThis confirmation protects your account from phishing.'
-          );
-          email = userProvided ? userProvided.trim() : null;
+          logger.info('📧 Email resolution step 3: requesting confirmation in the LocalCooks UI');
+          setStatus('awaiting-email');
+          email = await new Promise<string | null>((resolve) => {
+            emailConfirmationResolver.current = resolve;
+          });
           if (!email) {
             throw new Error('Email confirmation is required to sign in. Please request a new sign-in email and try again.');
           }
-          logger.info(`📧 Email resolution step 3 (prompt): user provided → ${email}`);
+          logger.info(`📧 Email resolution step 3 (on-page confirmation): user provided → ${email}`);
+          setStatus('loading');
         }
 
-        // ---------------------------------------------------------------------
-        // STEP 3 — Look up the user's role from the database (lightweight public API)
-        // ---------------------------------------------------------------------
-        let databaseRole: 'manager' | 'chef' | 'admin' | null = null;
-        try {
-          logger.info('🔍 Looking up user role from database for:', email);
-          const roleResponse = await fetch('/api/user/lookup-role', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email })
-          });
-
-          if (roleResponse.ok) {
-            const roleData = await roleResponse.json();
-            const r = roleData.role;
-            if (r === 'manager' || r === 'chef' || r === 'admin') {
-              databaseRole = r;
-            }
-            logger.info(`✅ Resolved role from DB: ${databaseRole}`);
-          } else {
-            logger.warn('⚠️ Role lookup failed, falling back to continueUrl/hostname detection');
-          }
-        } catch (lookupError) {
-          logger.error('❌ Role lookup error (continuing with fallback):', lookupError);
-        }
-
-        // ---------------------------------------------------------------------
-        // STEP 4 — Determine target subdomain based on role
-        // ---------------------------------------------------------------------
+        // The server generated this link for an existing account and encoded
+        // its backend role into the target/continue URL. Do not expose a public
+        // email-to-role lookup before authentication.
+        const databaseRole: 'manager' | 'chef' | 'admin' | null = null;
         const detectedFromContinueUrl = continueUrl ? detectRoleFromContinueUrl(continueUrl) : null;
         const detectedFromHostname = detectRoleFromCurrentHostname();
         const finalRole: 'manager' | 'chef' | 'admin' =
-          databaseRole
-          || detectedFromContinueUrl
+          detectedFromContinueUrl
           || detectedFromHostname
           || 'chef';
 
@@ -858,17 +824,6 @@ export default function EmailAction() {
         if (!onCorrectSubdomain) {
           logger.info(`🔀 Redirecting to correct subdomain: ${targetOrigin}`);
           const params = new URLSearchParams(allParams);
-          // Inject resolved email into continueUrl so the target subdomain page
-          // can resolve it without needing localStorage or another prompt
-          if (email && continueUrl) {
-            try {
-              const cu = new URL(decodeURIComponent(continueUrl));
-              if (!cu.searchParams.has('email')) {
-                cu.searchParams.set('email', email);
-                params.set('continueUrl', encodeURIComponent(cu.toString()));
-              }
-            } catch { /* ignore, continue without injection */ }
-          }
           const preservedParams = params.toString();
           const redirectTo = `${targetOrigin}/email-action?${preservedParams}`;
           logger.info(`🔗 Final subdomain redirect URL: ${redirectTo}`);
@@ -998,52 +953,147 @@ export default function EmailAction() {
     }
   }, [redirectUrl, setLocation]);
 
+  const handleEmailConfirmation = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const email = confirmationEmail.trim();
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      setConfirmationError('Enter the complete email address used to request this sign-in link.');
+      return;
+    }
+
+    setConfirmationError('');
+    setStatus('loading');
+    const resolve = emailConfirmationResolver.current;
+    emailConfirmationResolver.current = null;
+    resolve?.(email);
+  };
+
   // ============================================================================
   // RENDER
   // ============================================================================
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-red-50 flex items-center justify-center p-4">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#FFFDFC] p-4 sm:p-8">
+      <div className="pointer-events-none absolute -left-28 -top-28 h-96 w-96 rounded-full bg-[#F51042]/[0.07] blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-32 -right-24 h-96 w-96 rounded-full bg-amber-200/20 blur-3xl" />
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="w-full max-w-md"
+        className="relative z-10 w-full max-w-[520px]"
       >
-        <Card className="shadow-2xl border-0 overflow-hidden">
-          <CardContent className="p-8">
+        <div className="mb-7 flex justify-center">
+          <Logo className="h-12" />
+        </div>
+        <Card className="overflow-hidden rounded-[1.75rem] border border-slate-200/80 bg-white shadow-[0_24px_80px_-38px_rgba(15,23,42,0.32)]">
+          <div className="h-1.5 bg-gradient-to-r from-[#F51042] via-[#FF496C] to-[#F51042]" />
+          <CardContent className="p-7 sm:p-10">
             {/* Loading State */}
             {status === 'loading' && (
-              <div className="text-center space-y-6">
+              <div className="space-y-8">
                 <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: "spring", stiffness: 200 }}
-                  className="flex justify-center"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.45 }}
+                  className="flex items-center justify-between gap-4"
                 >
-                  <div className="relative">
-                    <div className="w-20 h-20 rounded-full bg-blue-100 flex items-center justify-center">
-                      <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
-                    </div>
-                    <motion.div
-                      className="absolute inset-0 rounded-full border-4 border-blue-200"
-                      animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0, 0.5] }}
-                      transition={{ duration: 2, repeat: Infinity }}
-                    />
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F51042]/10 text-[#F51042]">
+                    <ShieldCheck className="h-6 w-6" />
                   </div>
+                  <span className="inline-flex items-center gap-2 rounded-full border border-[#F51042]/15 bg-[#F51042]/5 px-3 py-1.5 text-xs font-bold text-[#D90E3A]">
+                    <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#F51042] opacity-50" /><span className="relative inline-flex h-2 w-2 rounded-full bg-[#F51042]" /></span>
+                    Secure connection
+                  </span>
                 </motion.div>
-                
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-900 mb-2">
+
+                <div className="text-left">
+                  <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-[#F51042]">LocalCooks account access</p>
+                  <h1 className="text-3xl font-bold tracking-[-0.035em] text-slate-950 sm:text-4xl">
                     {actionType === 'verifyEmail' && 'Verifying your email...'}
                     {actionType === 'resetPassword' && 'Processing...'}
                     {actionType === 'recoverEmail' && 'Recovering email...'}
                     {actionType === 'signIn' && 'Signing you in...'}
                     {!actionType && 'Processing...'}
                   </h1>
-                  <p className="text-gray-500">Please wait a moment</p>
+                  <p className="mt-3 leading-relaxed text-slate-600">Securely confirming your link and preparing your account. This usually takes only a moment.</p>
+                </div>
+
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/70">
+                  <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-4">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700"><CheckCircle2 className="h-5 w-5" /></span>
+                    <div className="min-w-0 flex-1"><p className="text-sm font-bold text-slate-900">Secure link received</p><p className="text-xs text-slate-500">The sign-in request is recognized</p></div>
+                    <span className="text-xs font-semibold text-emerald-700">Complete</span>
+                  </div>
+                  <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-4">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F51042]/10 text-[#F51042]"><Loader2 className="h-5 w-5 animate-spin" /></span>
+                    <div className="min-w-0 flex-1"><p className="text-sm font-bold text-slate-900">Confirming your account</p><p className="text-xs text-slate-500">Matching your secure session</p></div>
+                    <span className="text-xs font-semibold text-[#F51042]">In progress</span>
+                  </div>
+                  <div className="flex items-center gap-3 px-4 py-4 opacity-55">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-500"><LayoutDashboard className="h-5 w-5" /></span>
+                    <div className="min-w-0 flex-1"><p className="text-sm font-bold text-slate-900">Opening your dashboard</p><p className="text-xs text-slate-500">Your next page is prepared automatically</p></div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 text-xs leading-relaxed text-slate-500">
+                  <Link2 className="h-4 w-4 shrink-0 text-slate-400" />
+                  Keep this page open. You’ll be redirected as soon as verification finishes.
                 </div>
               </div>
+            )}
+
+            {/* Cross-device magic-link email confirmation */}
+            {status === 'awaiting-email' && (
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="space-y-7"
+              >
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#F51042]/10 text-[#F51042]">
+                  <Mail className="h-7 w-7" />
+                </div>
+                <div>
+                  <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-[#F51042]">One secure step</p>
+                  <h1 className="text-3xl font-bold tracking-[-0.035em] text-slate-950">Confirm your email</h1>
+                  <p className="mt-3 leading-relaxed text-slate-600">
+                    Enter the email address that received this magic link. This protects your account when the link is opened on a different browser or device.
+                  </p>
+                </div>
+
+                <form onSubmit={handleEmailConfirmation} className="space-y-4" noValidate>
+                  <div>
+                    <label htmlFor="magic-link-email" className="mb-2 block text-sm font-semibold text-slate-800">Email address</label>
+                    <div className="relative">
+                      <Mail className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-slate-400" />
+                      <input
+                        id="magic-link-email"
+                        type="email"
+                        inputMode="email"
+                        autoComplete="email"
+                        autoFocus
+                        value={confirmationEmail}
+                        onChange={(event) => {
+                          setConfirmationEmail(event.target.value);
+                          if (confirmationError) setConfirmationError('');
+                        }}
+                        aria-invalid={Boolean(confirmationError)}
+                        aria-describedby={confirmationError ? 'magic-link-email-error' : undefined}
+                        placeholder="you@example.com"
+                        className="h-[52px] w-full rounded-xl border border-slate-200 bg-white pl-11 pr-4 text-slate-950 outline-none transition focus:border-[#F51042] focus:ring-4 focus:ring-[#F51042]/10"
+                      />
+                    </div>
+                    {confirmationError && <p id="magic-link-email-error" className="mt-2 text-sm font-medium text-red-600">{confirmationError}</p>}
+                  </div>
+                  <Button type="submit" className="h-12 w-full rounded-xl bg-[#F51042] text-base font-semibold text-white shadow-lg shadow-[#F51042]/15 hover:bg-[#D90E3A]">
+                    Continue secure sign-in <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                </form>
+
+                <div className="flex gap-3 rounded-xl border border-slate-200 bg-slate-50/80 p-4 text-sm leading-relaxed text-slate-600">
+                  <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+                  Your email is used only to match this sign-in link. We’ll redirect you automatically after verification.
+                </div>
+              </motion.div>
             )}
 
             {/* Success State */}
@@ -1055,7 +1105,7 @@ export default function EmailAction() {
                   transition={{ type: "spring", stiffness: 200, delay: 0.1 }}
                   className="flex justify-center"
                 >
-                  <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center">
+                    <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-green-100">
                     <CheckCircle2 className="w-10 h-10 text-green-600" />
                   </div>
                 </motion.div>
@@ -1103,7 +1153,7 @@ export default function EmailAction() {
                     onClick={handleRedirectNow}
                     variant="outline"
                     size="sm"
-                    className="mt-2"
+                    className="mt-2 rounded-xl"
                   >
                     {actionType === 'signIn' ? 'Go to Dashboard Now' : 'Go to Login Now'}
                     <ArrowRight className="w-4 h-4 ml-2" />
@@ -1121,7 +1171,7 @@ export default function EmailAction() {
                   transition={{ type: "spring", stiffness: 200 }}
                   className="flex justify-center"
                 >
-                  <div className="w-20 h-20 rounded-full bg-red-100 flex items-center justify-center">
+                  <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-red-100">
                     <XCircle className="w-10 h-10 text-red-600" />
                   </div>
                 </motion.div>
@@ -1143,7 +1193,7 @@ export default function EmailAction() {
                   <Button
                     onClick={handleGoToLogin}
                     variant="destructive"
-                    className="w-full"
+                    className="h-12 w-full rounded-xl bg-[#F51042] hover:bg-[#D90E3A]"
                   >
                     Go to Login
                     <ArrowRight className="w-4 h-4 ml-2" />
@@ -1159,9 +1209,9 @@ export default function EmailAction() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.6 }}
-          className="text-center text-xs text-gray-400 mt-4"
+          className="mt-5 flex items-center justify-center gap-1.5 text-center text-xs font-medium text-slate-400"
         >
-          LocalCooks • Secure Email Verification
+          <ShieldCheck className="h-3.5 w-3.5" /> LocalCooks secure account verification
         </motion.p>
       </motion.div>
     </div>

@@ -29,6 +29,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
+import { FormLegend } from "@/components/ui/form-legend";
 import {
   PhotoRequirementUploader,
   flattenPhotos,
@@ -164,6 +165,11 @@ export function StorageCheckoutDialog({
             {t("coDialogDesc")}
           </SheetDescription>
         </SheetHeader>
+
+        {(storageCheckoutItems.some((item) => item.required) ||
+          storageCheckoutPhotoReqs.some((item) => item.required)) && (
+          <FormLegend className="mt-4 mb-0" />
+        )}
 
         <div className="space-y-4 py-4">
           {/* Storage Info */}
