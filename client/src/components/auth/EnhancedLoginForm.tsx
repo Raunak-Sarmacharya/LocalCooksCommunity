@@ -17,6 +17,7 @@ import AnimatedInput from "./AnimatedInput";
 import EmailVerificationScreen from "./EmailVerificationScreen";
 import ForgotPasswordForm from "./ForgotPasswordForm";
 import LoadingOverlay from "./LoadingOverlay";
+import { getSellerJourneyDraft } from "@/lib/seller-journey";
 
 function useLoginSchema() {
   const { t } = useTranslation("auth");
@@ -80,7 +81,7 @@ export default function EnhancedLoginForm({
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: "", password: "" },
+    defaultValues: { email: getSellerJourneyDraft()?.email || "", password: "" },
   });
 
   const resetAuthUi = (delayMs = 0) => {

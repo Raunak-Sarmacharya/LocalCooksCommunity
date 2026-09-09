@@ -26,7 +26,9 @@ export default function EnhancedAuthPage() {
   const { t } = useTranslation("auth");
   const [location, setLocation] = useLocation();
   const { user, loading, logout, refreshUserData, handleEmailLinkSignIn } = useFirebaseAuth();
-  const [activeTab, setActiveTab] = useState<"login" | "register">("login");
+  const [activeTab, setActiveTab] = useState<"login" | "register">(() =>
+    new URLSearchParams(window.location.search).get("tab") === "register" ? "register" : "login"
+  );
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [userMeta, setUserMeta] = useState<any>(null);

@@ -54,10 +54,29 @@
   }
 }
 
+@keyframes cookie-consent-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.cookie-consent-card {
+  animation: cookie-consent-arrive 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .image-shimmer {
     animation: none;
     background-image: radial-gradient(ellipse at 28% 35%, hsl(348 85% 59% / 0.08), transparent 52%);
+  }
+
+  .cookie-consent-card {
+    animation: none;
   }
 }
 

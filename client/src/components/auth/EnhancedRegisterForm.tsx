@@ -29,6 +29,7 @@ import { sendVerificationEmailWithFallback } from "@/lib/send-verification-email
 import { updateProfile } from "firebase/auth";
 import { isDuplicateAccountError } from "@/lib/registration-error";
 import type { PublicRegistrationRole } from "@/hooks/use-auth";
+import { getSellerJourneyDraft } from "@/lib/seller-journey";
 
 const registerSchema = z.object({
   displayName: z.string().min(2, "Name must be at least 2 characters"),
@@ -138,20 +139,21 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
     }
   };
 
+  const journeyDraft = getSellerJourneyDraft();
   const form = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
     defaultValues: { 
-      displayName: "", 
-      email: "", 
-      phone: "",
+      displayName: journeyDraft?.fullName || "",
+      email: journeyDraft?.email || "",
+      phone: journeyDraft?.phone || "",
       shopName: "", 
       shopAddress: "",
       businessType: "",
       experience: "",
       businessDescription: "",
-      kitchenPreference: "commercial",
-      foodSafetyLicense: "notSure",
-      foodEstablishmentCert: "notSure",
+      kitchenPreference: journeyDraft?.kitchenPreference || "commercial",
+      foodSafetyLicense: journeyDraft ? "no" : "notSure",
+      foodEstablishmentCert: journeyDraft ? "no" : "notSure",
       usageFrequency: "",
     },
   });

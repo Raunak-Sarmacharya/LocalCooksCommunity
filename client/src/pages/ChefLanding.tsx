@@ -39,6 +39,8 @@ import iosMessagesIcon from "@assets/iosmessages.png";
 import truckIcon from "@assets/truck.png";
 import interacIcon from "@assets/Interac.svg";
 import kitchenTableIcon from "@assets/kitchen-table.png";
+import SellerJourneyDialog from "@/components/home/SellerJourneyDialog";
+import { ChefServiceIllustration } from "@/components/home/ChefServiceIllustration";
 
 // Icon image mapping for the chaos icons section
 const APP_ICON_IMAGES: Record<string, string> = {
@@ -984,7 +986,14 @@ export default function ChefLanding() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  const handleGetStarted = () => navigate(landingDashboardPath(user));
+  const [sellerJourneyOpen, setSellerJourneyOpen] = useState(false);
+  const handleGetStarted = () => {
+    if (user) {
+      navigate(landingDashboardPath(user));
+      return;
+    }
+    setSellerJourneyOpen(true);
+  };
   const handleBrowseKitchens = () => navigate(landingBrowseKitchensPath(user));
 
   return (
@@ -1020,7 +1029,7 @@ export default function ChefLanding() {
         ]}
       />
       <CustomerSupportButton />
-      <Header />
+      <Header hideHowItWorks />
 
       <main className="flex-grow">
         {/* ═══════════════════════════════════════════════════════════════════════
@@ -1159,12 +1168,12 @@ export default function ChefLanding() {
                   className="flex flex-row gap-2 sm:gap-3 md:gap-4 mb-10"
                 >
                   <Button
-                    onClick={handleGetStarted}
+                    onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
                     size="lg"
                     className="group relative bg-[#F51042] hover:bg-[#D90E3A] text-white font-bold py-3 sm:py-4 md:py-7 px-3 sm:px-6 md:px-12 text-[11px] sm:text-sm md:text-lg rounded-full transition-all duration-300 shadow-xl hover:shadow-2xl hover:shadow-[#F51042]/30 hover:-translate-y-1 overflow-hidden flex-1 min-w-0 min-h-[44px] sm:min-h-[48px]"
                   >
                     <span className="relative z-10 flex items-center justify-center truncate">
-                      <TruncatedText className="truncate">{t("startYourJourney")}</TruncatedText>
+                      <TruncatedText className="truncate">{t("howItWorksQuestion", "How it works?")}</TruncatedText>
                       <ArrowRight className="ml-1 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5 shrink-0 group-hover:translate-x-1 transition-transform" />
                     </span>
                     <motion.div
@@ -1581,29 +1590,33 @@ export default function ChefLanding() {
               </div>
             </FadeInSection>
 
-            {/* Steps - 3 Column Grid with White Cards */}
-            <div className="grid md:grid-cols-3 gap-4 md:gap-6 lg:gap-8 mb-12 md:mb-16">
+            {/* Connected visual story — an infographic rather than three isolated cards. */}
+            <div className="relative grid md:grid-cols-3 gap-7 md:gap-10 lg:gap-14 mb-12 md:mb-16">
+              <div className="pointer-events-none absolute left-[16%] right-[16%] top-16 hidden h-0.5 md:block">
+                <div className="h-full w-full bg-[repeating-linear-gradient(90deg,#f51042_0_8px,transparent_8px_16px)] opacity-25" />
+              </div>
 
               {/* Step 1 - Apply (Coral/Red accent) */}
               <FadeInSection delay={1}>
                 <motion.div
                   whileHover={{ y: -6 }}
                   transition={{ duration: 0.3 }}
-                  className="group h-full"
+                  className="group relative h-full text-center"
                 >
-                  <div className="relative h-full bg-white rounded-2xl p-5 md:p-6 lg:p-8 shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100">
+                  <div className="relative h-full rounded-[2rem] bg-[#fff7f4] p-6 md:p-7 lg:p-8 transition-all duration-300">
                     {/* Step Number Badge */}
-                    <div className="flex items-center gap-2 md:gap-3 mb-4 md:mb-5">
-                      <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-gradient-to-br from-[#F51042] to-[#FF6B7A] flex items-center justify-center shadow-md shadow-[#F51042]/20 group-hover:scale-110 transition-transform duration-300">
+                    <div className="relative z-10 mb-5">
+                      <ChefServiceIllustration variant="storefront" />
+                      <div className="absolute -right-1 top-0 w-8 h-8 rounded-full bg-[#1f1b19] flex items-center justify-center shadow-md">
                         <span className="text-white font-bold text-xs md:text-sm">1</span>
                       </div>
-                      <span className="font-mono text-xs md:text-[10px] uppercase tracking-[0.15em] text-[#F51042]/60">{t("stepOne")}</span>
                     </div>
 
-                    <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C] mb-1">{t("applyStep")}</h3>
-                    <p className="text-xs md:text-sm font-medium text-[#F51042] mb-2 md:mb-3">{t("lessThan5Min")}</p>
+                    <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C] mb-1">{t("serviceStorefrontTitle", "Build your storefront")}</h3>
+                    <p className="text-xs md:text-sm font-medium text-[#F51042] mb-2 md:mb-3">{t("serviceStorefrontEyebrow", "Your brand, menu and prices")}</p>
 
-                    <p className="text-[#6B6B6B] leading-relaxed text-xs md:text-sm">{t("applyDesc")}</p>
+                    <p className="text-[#6B6B6B] leading-relaxed text-xs md:text-sm">{t("serviceStorefrontDesc", "Create your own storefront and publish menus to sell directly through the LocalCooks marketplace.")}</p>
+                    <a href="https://localcook.shop/" target="_blank" rel="noopener noreferrer" className="relative z-20 mt-5 inline-flex items-center justify-center rounded-full border border-[#F51042]/25 bg-white px-4 py-2 text-xs font-bold text-[#F51042] shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#F51042] hover:shadow-md">{t("visitMarketplace", "Explore the live marketplace")}<ArrowRight className="ml-1.5 h-3.5 w-3.5" /></a>
 
                     {/* Decorative accent */}
                     <div className="absolute bottom-0 left-0 w-16 h-16 bg-gradient-to-tr from-[#F51042]/5 to-transparent rounded-br-2xl rounded-tl-[60px]" />
@@ -1616,21 +1629,21 @@ export default function ChefLanding() {
                 <motion.div
                   whileHover={{ y: -6 }}
                   transition={{ duration: 0.3 }}
-                  className="group h-full"
+                  className="group relative h-full text-center"
                 >
-                  <div className="relative h-full bg-white rounded-2xl p-5 md:p-6 lg:p-8 shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100">
+                  <div className="relative h-full rounded-[2rem] bg-[#f0fbf9] p-6 md:p-7 lg:p-8 transition-all duration-300">
                     {/* Step Number Badge */}
-                    <div className="flex items-center gap-2 md:gap-3 mb-4 md:mb-5">
-                      <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-gradient-to-br from-[#0D9488] to-[#14B8A6] flex items-center justify-center shadow-md shadow-[#0D9488]/20 group-hover:scale-110 transition-transform duration-300">
+                    <div className="relative z-10 mb-5">
+                      <ChefServiceIllustration variant="operations" />
+                      <div className="absolute -right-1 top-0 w-8 h-8 rounded-full bg-[#1f1b19] flex items-center justify-center shadow-md">
                         <span className="text-white font-bold text-xs md:text-sm">2</span>
                       </div>
-                      <span className="font-mono text-xs md:text-[10px] uppercase tracking-[0.15em] text-[#0D9488]/60">{t("stepTwo")}</span>
                     </div>
 
-                    <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C] mb-1">{t("weGetYouLive")}</h3>
-                    <p className="text-xs md:text-sm font-medium text-[#0D9488] mb-2 md:mb-3">{t("approvedIn24h")}</p>
+                    <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C] mb-1">{t("serviceOperationsTitle", "Cook—we handle the rest")}</h3>
+                    <p className="text-xs md:text-sm font-medium text-[#0D9488] mb-2 md:mb-3">{t("serviceOperationsEyebrow", "Orders, payments and delivery")}</p>
 
-                    <p className="text-[#6B6B6B] leading-relaxed text-xs md:text-sm">{t("weGetYouLiveDesc")}</p>
+                    <p className="text-[#6B6B6B] leading-relaxed text-xs md:text-sm">{t("serviceOperationsDesc", "Accept customer orders while LocalCooks coordinates secure payments and delivery logistics for you.")}</p>
 
                     {/* Decorative accent */}
                     <div className="absolute bottom-0 left-0 w-16 h-16 bg-gradient-to-tr from-[#0D9488]/5 to-transparent rounded-br-2xl rounded-tl-[60px]" />
@@ -1643,21 +1656,21 @@ export default function ChefLanding() {
                 <motion.div
                   whileHover={{ y: -6 }}
                   transition={{ duration: 0.3 }}
-                  className="group h-full"
+                  className="group relative h-full text-center"
                 >
-                  <div className="relative h-full bg-white rounded-2xl p-5 md:p-6 lg:p-8 shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100">
+                  <div className="relative h-full rounded-[2rem] bg-[#fff9e9] p-6 md:p-7 lg:p-8 transition-all duration-300">
                     {/* Step Number Badge */}
-                    <div className="flex items-center gap-2 md:gap-3 mb-4 md:mb-5">
-                      <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-gradient-to-br from-[#F59E0B] to-[#FBBF24] flex items-center justify-center shadow-md shadow-[#F59E0B]/20 group-hover:scale-110 transition-transform duration-300">
+                    <div className="relative z-10 mb-5">
+                      <ChefServiceIllustration variant="kitchen" />
+                      <div className="absolute -right-1 top-0 w-8 h-8 rounded-full bg-[#1f1b19] flex items-center justify-center shadow-md">
                         <span className="text-white font-bold text-xs md:text-sm">3</span>
                       </div>
-                      <span className="font-mono text-xs md:text-[10px] uppercase tracking-[0.15em] text-[#F59E0B]/60">{t("stepThree")}</span>
                     </div>
 
-                    <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C] mb-1">{t("buildMenuSell")}</h3>
-                    <p className="text-xs md:text-sm font-medium text-[#F59E0B] mb-2 md:mb-3">{t("startEarningToday")}</p>
+                    <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C] mb-1">{t("serviceKitchenTitle", "Cook in the right kitchen")}</h3>
+                    <p className="text-xs md:text-sm font-medium text-[#F59E0B] mb-2 md:mb-3">{t("serviceKitchenEyebrow", "Commercial kitchens by the hour")}</p>
 
-                    <p className="text-[#6B6B6B] leading-relaxed text-xs md:text-sm">{t("buildMenuSellDesc")}</p>
+                    <p className="text-[#6B6B6B] leading-relaxed text-xs md:text-sm">{t("serviceKitchenDesc", "Browse partner commercial kitchens, compare what they offer and book prep time when you need it.")}</p>
 
                     {/* Decorative accent */}
                     <div className="absolute bottom-0 left-0 w-16 h-16 bg-gradient-to-tr from-[#F59E0B]/5 to-transparent rounded-br-2xl rounded-tl-[60px]" />
@@ -1714,7 +1727,7 @@ export default function ChefLanding() {
                   onClick={handleGetStarted}
                   className="bg-[#F51042] hover:bg-[#D90E3A] text-white font-bold py-4 px-4 md:py-6 md:px-12 text-xs md:text-lg rounded-full shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
                 >
-                  <span className="flex items-center justify-center">{t("startYourApp")}<ArrowRight className="ml-1.5 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5" />
+                  <span className="flex items-center justify-center">{t("startYourJourney")}<ArrowRight className="ml-1.5 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5" />
                   </span>
                 </Button>
               </div>
@@ -2318,6 +2331,7 @@ export default function ChefLanding() {
       </main>
 
       <Footer />
+      <SellerJourneyDialog open={sellerJourneyOpen} onOpenChange={setSellerJourneyOpen} />
     </div>
   );
 }

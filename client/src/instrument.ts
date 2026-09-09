@@ -15,11 +15,17 @@
  */
 
 import * as Sentry from '@sentry/react';
+import { COOKIE_CONSENT_EVENT, hasOptionalCookieConsent } from './lib/cookie-consent';
 
 const sentryDsn = import.meta.env.VITE_SENTRY_DSN;
 const isProduction = import.meta.env.PROD;
 
-if (sentryDsn) {
+let sentryInitialized = false;
+
+function initializeSentry(): void {
+  if (!sentryDsn || sentryInitialized) return;
+  sentryInitialized = true;
+
   Sentry.init({
     dsn: sentryDsn,
 
@@ -108,5 +114,15 @@ if (sentryDsn) {
     ],
   });
 }
+
+if (hasOptionalCookieConsent()) {
+  initializeSentry();
+}
+
+window.addEventListener(COOKIE_CONSENT_EVENT, (event) => {
+  if ((event as CustomEvent<string>).detail === 'accepted') {
+    initializeSentry();
+  }
+});
 
 export { Sentry };

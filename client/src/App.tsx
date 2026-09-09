@@ -39,6 +39,8 @@ import TermsAcceptanceScreen from "@/pages/TermsAcceptanceScreen";
 import ChefLanding from "@/pages/ChefLanding";
 import KitchenLanding from "@/pages/KitchenLanding";
 import AdminLanding from "@/pages/AdminLanding";
+import CookieConsentBanner from "@/components/legal/CookieConsentBanner";
+import PendingSellerJourneySubmitter from "@/components/application/PendingSellerJourneySubmitter";
 // Eager: harnesses hit /dev-login first; lazy Suspense looks like a blank SPA under TestSprite.
 import DevLoginPage from "@/pages/DevLoginPage";
 
@@ -391,12 +393,14 @@ function App() {
           <AuthProvider>
             <DocumentLocaleSync />
             <LocaleProfileSync />
+            <PendingSellerJourneySubmitter />
             <CustomAlertsProvider>
               <AuthModalProvider>
                 <TooltipProvider>
                   <RadixBodyCleanupProvider>
                     <SonnerToaster />
                     <Router />
+                    <CookieConsentBanner />
                   </RadixBodyCleanupProvider>
                 </TooltipProvider>
               </AuthModalProvider>
