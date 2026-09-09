@@ -69,8 +69,8 @@ const SECTIONS: Section[] = [{
     id: "coverage-requirements",
     title: "Exigences de couverture"
   }, {
-    id: "flip-insurance",
-    title: "Assurance FLIP"
+    id: "choosing-an-insurer",
+    title: "Choisir un assureur"
   }, {
     id: "additional-insured",
     title: "Assuré additionnel"
@@ -457,7 +457,7 @@ export default function ChefResourcesPage_en_fr() {
     }
   }, []);
   return <div className="min-h-screen flex flex-col bg-background">
-      <SEOHead title={t("seoChefResourcesTitle", "Chef Resources — Start Your Food Business in Canada")} description={t("seoChefResourcesDesc", "Complete guide to food safety certification, business registration, insurance, and licensing for food entrepreneurs in Newfoundland & Labrador and across Canada.")} canonicalUrl="/resources" keywords={["food business Canada", "food handler certificate NL", "commercial kitchen rental", "food entrepreneur guide", "food safety Newfoundland", "start food business", "FLIP insurance", "food establishment licence", "SkillsPass NL"]} faq={[{
+      <SEOHead title={t("seoChefResourcesTitle", "Chef Resources — Start Your Food Business in Canada")} description={t("seoChefResourcesDesc", "Complete guide to food safety certification, business registration, insurance, and licensing for food entrepreneurs in Newfoundland & Labrador and across Canada.")} canonicalUrl="/resources" keywords={["food business Canada", "food handler certificate NL", "commercial kitchen rental", "food entrepreneur guide", "food safety Newfoundland", "start food business", "food business insurance", "food establishment licence", "SkillsPass NL"]} faq={[{
       question: "Do I need a food safety certificate to use LocalCooks?",
       answer: "Yes, all chefs using LocalCooks must complete a food safety certification. In Newfoundland & Labrador, you can get certified for free through SkillsPass NL, which covers food handler training."
     }, {
@@ -465,7 +465,7 @@ export default function ChefResourcesPage_en_fr() {
       answer: "You can register as a sole proprietor or corporation through Service Newfoundland and Labrador. Home-based food businesses require additional registration through the Department of Health and Community Services."
     }, {
       question: "What insurance do I need as a food entrepreneur?",
-      answer: "LocalCooks requires minimum $2 million liability coverage. FLIP (Food Liability Insurance Program) offers affordable coverage specifically for food entrepreneurs starting at $199/year."
+      answer: "LocalCooks exige une couverture de responsabilité d'au moins 2 millions de dollars. Demandez à un assureur ou courtier canadien agréé une couverture adaptée aux entreprises alimentaires et aux locataires de cuisines commerciales."
     }, {
       question: "Can I operate a home-based food business in NL?",
       answer: "Yes, but you must register as a Home-Based Food Business and comply with specific restrictions. Low-risk baked goods and preserves are typically allowed, while high-risk items require a commercial kitchen."
@@ -635,11 +635,10 @@ export default function ChefResourcesPage_en_fr() {
               <SubHeading id="coverage-requirements">Exigences de couverture</SubHeading>
               <ResourceTable headers={["Couverture", "Minimum", "Objectif"]} rows={[["Responsabilité civile générale (RCG)", "2 000 000 $ au total", "Couvre les accidents, blessures, dommages matériels"], ["Responsabilité du fait des produits", "2 000 000 $ au total", "Couvre les intoxications alimentaires, les réclamations pour allergènes"], ["Dommages aux locaux loués", "300 000 $", "Couvre les dommages accidentels causés à la cuisine"], ["Assuré additionnel", "La cuisine nommée sur votre police", "Étend votre couverture à la cuisine"]]} />
 
-              <SubHeading id="flip-insurance">Assurance FLIP (recommandée)</SubHeading>
+              <SubHeading id="choosing-an-insurer">Choisir un assureur</SubHeading>
               <p className="text-gray-600">
-                FLIP (Food Liability Insurance Program) se spécialise dans la couverture abordable pour les entreprises alimentaires louant des espaces de cuisine commerciale.Il s’agit de l’option la plus largement utilisée par les locataires de cuisines partagées partout au Canada.
+                Demandez à un assureur ou courtier canadien agréé une police adaptée aux entreprises alimentaires et aux locataires de cuisines commerciales. Avant d’acheter, confirmez les limites exigées, la responsabilité liée aux produits, les dommages aux locaux loués, les frais d’ajout d’une cuisine, les franchises, les exclusions et le délai d’émission du certificat.
               </p>
-              <ResourceTable headers={["", ""]} rows={[["Coût", "À partir d'environ 25,92 $/mois ou 299 $/an"], ["Assurés additionnels", "Gratuit et illimité — ajoutez des cuisines sans frais supplémentaires"], ["Franchise", "Aucune sur les réclamations en responsabilité"], ["Achat", "Instantané en ligne — certificat disponible immédiatement"], ["Ajouts", "Équipement (+8,25 $/mois), cyber-responsabilité (+8,25 $/mois), responsabilité civile complémentaire (à partir de 41,67 $/mois)"], ["Site Web", "fliprogram.com"]]} />
 
               <SubHeading id="additional-insured">Comprendre les « assurés supplémentaires »</SubHeading>
               <p className="text-gray-600 leading-relaxed">
@@ -802,7 +801,7 @@ export default function ChefResourcesPage_en_fr() {
                 a: "Oui, mais vous avez besoin d'une licence appropriée pour chaque emplacement. Conservez des registres détaillés de l'endroit où chaque produit est préparé."
               }, {
                 q: "Comment ajouter une cuisine comme assuré additionnel ?",
-                a: "Via le portail de votre assureur. Avec FLIP, c'est instantané et gratuit — entrez le nom commercial légal et l'adresse de la cuisine, puis générez un certificat d'assurance mis à jour."
+                a: "Communiquez avec votre assureur ou utilisez son portail en ligne. Fournissez le nom légal exact et l’adresse de la cuisine, confirmez les frais éventuels et demandez un certificat d’assurance mis à jour."
               }].map((item, i) => <AccordionItem key={i} value={`faq-${i}`}>
                     <AccordionTrigger className="text-sm font-medium text-left">{item.q}</AccordionTrigger>
                     <AccordionContent className="text-sm text-muted-foreground leading-relaxed">{item.a}</AccordionContent>
@@ -816,7 +815,7 @@ export default function ChefResourcesPage_en_fr() {
               items: ["Terminer le cours SkillsPass NL de manipulateur d'aliments (gratuit, en ligne)", "Réussir l'examen de certification et télécharger votre certificat", "Rechercher quels aliments vous souhaitez préparer", "Décider : cuisine à domicile ou commerciale", "Consulter le Règlement sur les établissements alimentaires de T.-N.-L."]
             }, {
               title: "Semaines 3\u20134 : Assurance et enregistrement",
-              items: ["Obtenir un devis d'assurance responsabilité de FLIP ou d'une alternative", "Acheter une assurance responsabilité minimale de 2 M$", "Télécharger votre certificat d'assurance", "Enregistrer l'entreprise alimentaire à domicile (si applicable)", "Ouvrir un compte bancaire commercial dédié"]
+              items: ["Obtenir un devis d’assurance responsabilité auprès d’un assureur ou courtier canadien agréé", "Acheter une assurance responsabilité minimale de 2 M$", "Télécharger votre certificat d'assurance", "Enregistrer l'entreprise alimentaire à domicile (si applicable)", "Ouvrir un compte bancaire commercial dédié"]
             }, {
               title: "Semaines 5\u20136 : Cuisine et documentation",
               items: ["Parcourir les cuisines commerciales sur Local Cooks", "Postuler aux cuisines qui correspondent à vos besoins", "Communiquer avec les gestionnaires de cuisine via la messagerie", "Échanger les documents (plans d'étage, info de licence, certificat d'assurance)", "Ajouter la cuisine comme assuré additionnel sur votre assurance"]
@@ -832,7 +831,7 @@ export default function ChefResourcesPage_en_fr() {
               <h4 className="font-semibold text-gray-800 mb-3 mt-6">Fédéral / Partout au Canada</h4>
               <ResourceTable headers={["Ressource", "Lien"]} rows={[["Trousse de l'ACIA pour les entreprises alimentaires", "inspection.canada.ca/food-safety-industry/toolkit-food-businesses"], ["Allergènes prioritaires de Santé Canada", "canada.ca/fr/sante-canada/services/aliments-nutrition/salubrite-aliments/allergies-intolerances-alimentaires.html"], ["Agence du revenu du Canada (TPS/TVH)", "canada.ca/fr/agence-revenu.html"], ["Liste de contrôle des permis PerLE", "bizpal.ca"]]} />
               <h4 className="font-semibold text-gray-800 mb-3 mt-6">Assurance</h4>
-              <ResourceTable headers={["Fournisseur", "Site Web"]} rows={[["Assurance FLIP (Recommandé)", "fliprogram.com"], ["Zensurance", "zensurance.com"], ["BFL Canada", "bflcanada.ca"]]} />
+              <ResourceTable headers={["Fournisseur", "Site Web"]} rows={[["Zensurance", "zensurance.com"], ["BFL Canada", "bflcanada.ca"]]} />
 
               {/* Disclaimer */}
               <Separator className="mt-16 mb-8" />

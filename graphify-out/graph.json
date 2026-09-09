@@ -86297,14 +86297,14 @@
       "source_location": "L57"
     },
     {
-      "id": "docs_chef_resources_recommended_flip_insurance",
-      "label": "Recommended: FLIP Insurance",
+      "id": "docs_chef_resources_choosing_an_insurance_provider",
+      "label": "Choosing an Insurance Provider",
       "_origin": "ast",
       "community": 55,
       "community_name": "Chef Resources: Your Guide to Starting a Legal Food Business in Canada",
       "file_type": "document",
       "node_kind": "heading",
-      "norm_label": "recommended: flip insurance",
+      "norm_label": "choosing an insurance provider",
       "source_file": "docs/Chef Resources.md",
       "source_location": "L135"
     },
@@ -291087,7 +291087,7 @@
     },
     {
       "source": "docs_chef_resources_step_3_get_liability_insurance",
-      "target": "docs_chef_resources_recommended_flip_insurance",
+      "target": "docs_chef_resources_choosing_an_insurance_provider",
       "relation": "contains",
       "_origin": "ast",
       "confidence": "EXTRACTED",

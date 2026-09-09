@@ -77,11 +77,6 @@ export default function KitchenBookingPage() {
   const breadcrumbs = useMemo((): ChefBreadcrumb[] => {
     const trail: ChefBreadcrumb[] = [
       {
-        label: t("shellDashboard", { ns: "chef" }),
-        onClick: () => guardedNavigate(() => navigate("/dashboard")),
-        navId: "overview",
-      },
-      {
         label: t("shellDiscoverKitchens", { ns: "chef" }),
         onClick: () => guardedNavigate(() => navigate("/dashboard?view=discover-kitchens")),
         navId: "discover-kitchens",

@@ -288,6 +288,7 @@ function DocumentUploadModal({
 
 export function DocumentManagementModal({ open, onOpenChange }: DocumentManagementModalProps) {
   const { t } = useTranslation("chef");
+  const { verification } = useDocumentVerification();
 
   const requestClose = () => {
     onOpenChange(false);
@@ -317,6 +318,31 @@ export function DocumentManagementModal({ open, onOpenChange }: DocumentManageme
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 p-4 sm:p-0">
+          {verification && (
+            <div className="rounded-xl border bg-muted/20 p-4">
+              <p className="mb-3 text-sm font-semibold text-foreground">
+                {t("sellerSubmittedInformation", "Submitted information")}
+              </p>
+              <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+                <div>
+                  <dt className="text-xs text-muted-foreground">{t("fullName", "Full name")}</dt>
+                  <dd className="text-sm font-medium">{verification.fullName || t("notAvailable", "N/A")}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">{t("email", "Email")}</dt>
+                  <dd className="break-all text-sm font-medium">{verification.email || t("notAvailable", "N/A")}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">{t("phone", "Phone")}</dt>
+                  <dd className="text-sm font-medium">{verification.phone || t("notAvailable", "N/A")}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">{t("kitchenPreference", "Kitchen preference")}</dt>
+                  <dd className="text-sm font-medium capitalize">{verification.kitchenPreference || t("notAvailable", "N/A")}</dd>
+                </div>
+              </dl>
+            </div>
+          )}
           <div className="flex justify-end">
             <Button variant="outline" size="sm" onClick={requestClose}>
               {t("duCancel")}

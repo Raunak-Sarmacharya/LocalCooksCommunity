@@ -2,7 +2,7 @@ import { logger } from "@/lib/logger";
 import { motion } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Calendar, ArrowRight } from "lucide-react";
+import { Icon } from "@iconify/react";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { useState } from "react";
 import { SmartImage } from "@/components/ui/smart-image";
@@ -103,7 +103,7 @@ export function KitchenLocationCard({ location, navigate }: KitchenLocationCardP
                     </TruncatedText>
                     {location.address && (
                         <div className="flex items-start gap-1.5 mb-2">
-                            <span className="text-[#F51042] mt-0.5">📍</span>
+                            <Icon icon="mdi:map-marker-outline" className="mt-0.5 h-4 w-4 shrink-0 text-[#2C2C2C]" aria-hidden />
                             <TruncatedText as="p" className="text-sm text-[#6B6B6B] leading-relaxed line-clamp-1">{location.address}</TruncatedText>
                         </div>
                     )}
@@ -115,12 +115,12 @@ export function KitchenLocationCard({ location, navigate }: KitchenLocationCardP
                     )}
 
                     <Button
-                        className="w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold rounded-lg py-2.5 text-sm transition-all duration-300 group/btn"
+                        className="w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold rounded-full py-2.5 text-sm transition-all duration-300 group/btn"
                         onClick={() => navigate(`/kitchen-preview/${location.slug || location.id}`)}
                     >
-                        <Calendar className="mr-1.5 h-4 w-4" />
+                        <Icon icon="mdi:calendar-month-outline" className="mr-1.5 h-4 w-4 text-white" aria-hidden />
                         {t("viewAvailability", "View Availability")}
-                        <ArrowRight className="ml-1.5 h-4 w-4 group-hover/btn:translate-x-0.5 transition-transform" />
+                        <Icon icon="mdi:arrow-right" className="ml-1.5 h-4 w-4 text-white group-hover/btn:translate-x-0.5 transition-transform" aria-hidden />
                     </Button>
                 </div>
             </Card>

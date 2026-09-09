@@ -203,15 +203,6 @@ export default function SellerApplicationCard({
               </div>
             </div>
 
-            {app.feedback && (
-              <div>
-                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  {t("reviewerFeedback", "Reviewer feedback")}
-                </p>
-                <p className="text-sm text-muted-foreground">{app.feedback}</p>
-              </div>
-            )}
-
             {app.status !== "approved" && app.status !== "cancelled" && (
               <Button
                 variant="ghost"

@@ -34,6 +34,7 @@ interface EnhancedLoginFormProps {
   onSwitchToRegister?: () => void;
   setHasAttemptedLogin?: (v: boolean) => void;
   showVerificationSuccess?: boolean;
+  animateEntrance?: boolean;
 }
 
 type AuthState = "idle" | "loading" | "success" | "error" | "email-verification";
@@ -41,20 +42,28 @@ type AuthState = "idle" | "loading" | "success" | "error" | "email-verification"
 type PendingMethod = null | "google" | "form";
 
 const containerVariants = {
-  hidden: { opacity: 0, y: 20 },
+  hidden: { opacity: 0, y: 15 },
   visible: {
     opacity: 1,
     y: 0,
     transition: {
-      duration: 0.4,
-      staggerChildren: 0.1,
+      duration: 0.6,
+      staggerChildren: 0.12,
+      ease: [0.22, 1, 0.36, 1]
     },
   },
 };
 
 const itemVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0 },
+  hidden: { opacity: 0, y: 15 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.5,
+      ease: [0.22, 1, 0.36, 1]
+    }
+  },
 };
 
 export default function EnhancedLoginForm({
@@ -62,6 +71,7 @@ export default function EnhancedLoginForm({
   onSwitchToRegister,
   setHasAttemptedLogin,
   showVerificationSuccess = false,
+  animateEntrance = true,
 }: EnhancedLoginFormProps) {
   const { t } = useTranslation("auth");
   const [challenge, setChallenge] = useState<LoginChallenge>("email-link");
@@ -332,7 +342,7 @@ export default function EnhancedLoginForm({
       <motion.div
         className="w-full max-w-md mx-auto mt-4"
         variants={containerVariants}
-        initial="hidden"
+        initial={animateEntrance ? "hidden" : false}
         animate="visible"
       >
         <motion.div variants={itemVariants} className="mb-6">

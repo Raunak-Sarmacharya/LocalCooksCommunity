@@ -441,7 +441,6 @@ export default function KitchenRequirementsPage() {
 
     const reqBreadcrumbs = useMemo(
         () => [
-            { label: t("shellDashboard", "Dashboard"), onClick: () => setLocation("/dashboard"), navId: "overview" as const },
             {
                 label: t("shellDiscoverKitchens", "Discover Kitchens"),
                 onClick: () => setLocation("/dashboard?view=discover-kitchens"),

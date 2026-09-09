@@ -934,7 +934,7 @@ export default function KitchenResourcesPage_en_uk() {
               <h4 className="font-semibold text-gray-800 mb-3 mt-6">Посібники з найкращих галузевих практик</h4>
               <ResourceTable headers={["Ресурс", "Посилання"]} rows={[["Спільні кухні — Посібник для власників (Онтаріо, 2025)", "wdgpublichealth.ca (PDF)"], ["Шаблон договору оренди кухні (Манітоба)", "gov.mb.ca (PDF)"], ["Інструментарій комерційної кухні: Управління ризиками (Альберта)", "open.alberta.ca"], ["The Food Corridor — Моделі ціноутворення", "thefoodcorridor.com"]]} />
               <h4 className="font-semibold text-gray-800 mb-3 mt-6">страхування</h4>
-              <ResourceTable headers={["Постачальник", "Вебсайт"]} rows={[["Страхування FLIP (Рекомендовано для орендарів)", "fliprogram.com"], ["BFL Canada", "bflcanada.ca"], ["Zensurance", "zensurance.com"], ["Aligned Insurance", "alignedinsurance.com"]]} />
+              <ResourceTable headers={["Постачальник", "Вебсайт"]} rows={[["BFL Canada", "bflcanada.ca"], ["Zensurance", "zensurance.com"], ["Aligned Insurance", "alignedinsurance.com"]]} />
 
               {/* Disclaimer */}
               <Separator className="mt-16 mb-8" />

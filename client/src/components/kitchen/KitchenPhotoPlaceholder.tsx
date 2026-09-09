@@ -1,4 +1,4 @@
-import { Camera } from "lucide-react";
+import { Icon } from "@iconify/react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 
@@ -12,7 +12,7 @@ export function KitchenPhotoPlaceholder({ className }: { className?: string }) {
         className
       )}
     >
-      <Camera className="h-8 w-8 text-[#F51042]" strokeWidth={1.75} />
+      <Icon icon="mdi:camera-outline" className="h-8 w-8 text-[#2C2C2C]" aria-hidden />
       <div>
         <p className="text-sm font-semibold text-[#6B6B6B]">
           {t("gridCardVisualsTitle", "Visuals in the Oven")}

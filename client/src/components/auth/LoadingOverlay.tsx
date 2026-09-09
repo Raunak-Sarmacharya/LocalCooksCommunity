@@ -72,7 +72,7 @@ export default function LoadingOverlay({
     <AnimatePresence>
       {isVisible && (
         <motion.div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/15 px-4 backdrop-blur-[2px]"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 px-4 backdrop-blur-md"
           variants={overlayVariants}
           initial="hidden"
           animate="visible"

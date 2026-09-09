@@ -1791,8 +1791,6 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
             {/* Settings Header with Breadcrumbs */}
             <div className="mb-6 space-y-4">
               <div className="flex items-center gap-2 text-sm text-gray-600">
-                <span>{mt("shellDashboard")}</span>
-                <span>/</span>
                 <span className="text-gray-900 font-medium">{mt("settings")}</span>
               </div>
               <div>

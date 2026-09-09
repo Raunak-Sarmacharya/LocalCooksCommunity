@@ -4227,7 +4227,6 @@ export default function KitchenPreviewPage() {
 
   const previewBreadcrumbs = useMemo(
     () => [
-      { label: t("shellDashboard"), onClick: () => navigate("/dashboard"), navId: "overview" as const },
       {
         label: t("shellDiscoverKitchens"),
         onClick: () => navigate("/dashboard?view=discover-kitchens"),

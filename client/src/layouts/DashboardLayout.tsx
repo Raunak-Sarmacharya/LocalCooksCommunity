@@ -39,7 +39,7 @@ export default function DashboardLayout({
     breadcrumbs
 }: DashboardLayoutProps) {
     const { t } = useTranslation("manager");
-    const displayBreadcrumbs = breadcrumbs ?? [{ label: t("shellDashboard") }];
+    const displayBreadcrumbs = breadcrumbs ?? [];
 
     const [isCommandOpen, setIsCommandOpen] = React.useState(false);
 

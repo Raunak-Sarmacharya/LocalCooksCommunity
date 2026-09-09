@@ -1,136 +1,258 @@
-import { motion } from "framer-motion";
-import {
-  ArrowUpRight,
-  CalendarDays,
-  Check,
-  Clock3,
-  MapPin,
-  PackageCheck,
-  ShoppingBag,
-  TrendingUp,
-  Truck,
-  WalletCards,
-} from "lucide-react";
+import { motion, useReducedMotion } from "framer-motion";
+import { Icon } from "@iconify/react";
 import harbourKitchenImage from "@/assets/harbour-kitchen-hub.jpg";
 
-const reveal = {
-  hidden: { opacity: 0, y: 18 },
-  visible: (delay: number) => ({
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.52, delay, ease: [0.22, 1, 0.36, 1] as const },
-  }),
-};
+const products = [
+  ["Smoky Bacon Burger", "45 sold"],
+  ["Jerk Chicken Bowl", "31 sold"],
+  ["Maple Brisket Melt", "24 sold"],
+];
 
 export default function ChefAuthShowcase() {
-  return (
-    <section
-      aria-label="A preview of LocalCooks chef tools"
-      className="relative hidden min-h-screen overflow-hidden border-r border-[#D90E3A]/30 bg-gradient-to-br from-primary to-primary/80 p-7 lg:flex lg:h-screen lg:min-h-0 lg:w-[54%] xl:p-10"
-    >
-      <div className="absolute -left-16 top-16 h-56 w-56 rounded-full bg-white/10" />
-      <div className="absolute -right-20 top-[34%] h-72 w-72 rounded-full bg-white/[0.08]" />
-      <div className="absolute bottom-10 left-[38%] h-36 w-36 rounded-full bg-white/[0.07]" />
+  const reduceMotion = useReducedMotion();
+  const reveal = (delay: number, x = 0, y = 18) => ({
+    initial: reduceMotion ? false as const : { opacity: 0, x, y },
+    animate: { opacity: 1, x: 0, y: 0 },
+    transition: { duration: 0.55, delay: reduceMotion ? 0 : delay, ease: [0.22, 1, 0.36, 1] as const },
+  });
 
-      <div className="relative mx-auto flex w-full max-w-[760px] flex-col">
-        <motion.div custom={0.08} initial="hidden" animate="visible" variants={reveal} className="flex items-start justify-between gap-6">
-          <div>
-            <div className="mb-3 inline-flex items-center rounded-full border border-white/25 bg-white/15 px-3 py-1.5 text-xs font-semibold text-white shadow-sm backdrop-blur">
-              Built for independent food businesses
-            </div>
-            <h2 className="max-w-lg text-[clamp(2rem,3.2vw,3.4rem)] font-bold leading-[1.02] tracking-[-0.045em] text-white">
-              Your kitchen business,
-              <span className="block text-white">all in one place.</span>
-            </h2>
-          </div>
+  return (
+    <section aria-label="A preview of LocalCooks seller and kitchen booking tools" className="relative hidden min-h-screen overflow-hidden px-7 py-8 lg:flex lg:h-screen lg:min-h-0 lg:w-[58%] xl:px-12">
+      <div className="absolute -left-20 top-12 h-64 w-64 rounded-full bg-white/10 blur-sm" />
+      <div className="absolute right-[5%] top-[38%] h-80 w-80 rounded-full bg-white/[0.07]" />
+
+      <div className="relative mx-auto flex w-full max-w-[790px] flex-col justify-center">
+        <motion.div {...reveal(0.06, -18)}>
+          <h2 className="max-w-[660px] text-[clamp(2rem,3.2vw,3.5rem)] font-bold leading-[1.02] tracking-[-0.05em] text-white">
+            Everything your food business needs, in one place.
+          </h2>
+          <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/75 xl:text-base">
+            Local food starts with local cooks — like you. Open your own storefront. Cook in a professional kitchen, on your schedule.
+          </p>
         </motion.div>
 
-        <motion.div
-          custom={0.18}
-          initial="hidden"
-          animate="visible"
-          variants={reveal}
-          className="relative mt-8 min-h-[590px] flex-1 xl:mt-10"
-        >
-          <div className="absolute left-[2%] top-[3%] w-[64%] rounded-[1.65rem] border border-slate-200/90 bg-white p-5 shadow-[0_22px_60px_-32px_rgba(15,23,42,0.34)] xl:p-6">
-            <div className="flex items-start justify-between gap-4">
+        <div className="relative mt-7 h-[500px] xl:h-[550px] w-full perspective-[1200px]">
+          {/* ═════════ CLUSTER 1: STOREFRONT & REVENUE (Top Right) ═════════ */}
+          
+          {/* Revenue & Top Sellers (Base Card) */}
+          <motion.div
+            {...reveal(0.14, 20, -10)}
+            whileHover={reduceMotion ? undefined : { y: -5, rotate: 2 }}
+            className="absolute right-[2%] top-[0%] z-10 w-[60%] rounded-[1.4rem] border border-white/45 bg-white p-4 shadow-[0_22px_55px_-24px_rgba(41,8,18,0.55)]"
+            style={{ rotate: 1.5 }}
+          >
+            <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-                  <WalletCards className="h-4 w-4 text-[#F51042]" /> Revenue this month
+                <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  <Icon icon="lucide:wallet" className="h-3.5 w-3.5 text-[#F51042]" /> Revenue this month
                 </div>
-                <p className="mt-3 text-3xl font-bold tracking-tight text-slate-950">$4,286.40</p>
+                <p className="mt-1 text-2xl font-bold tracking-tight text-slate-950">$4,286.40</p>
               </div>
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">
-                <TrendingUp className="h-3.5 w-3.5" /> 18.4%
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700">
+                <Icon icon="lucide:trending-up" className="h-3 w-3" /> 18.4%
               </span>
             </div>
-            <div className="mt-5 flex h-16 items-end gap-2" aria-hidden="true">
-              {[38, 54, 45, 68, 58, 82, 73, 94].map((height, index) => (
-                <div key={height} className="flex-1 rounded-t-md bg-[#F51042]/10">
-                  <div className="ml-auto h-full rounded-t-md bg-[#F51042]" style={{ height: `${height}%`, opacity: 0.58 + index * 0.05 }} />
+            <div className="mt-3 divide-y divide-slate-100 border-t border-slate-100">
+              {products.map(([name, sold], index) => (
+                <div key={name} className="flex items-center gap-2 py-2 text-xs">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
+                    <Icon icon="lucide:shopping-bag" className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[9px] text-slate-500">#{index + 1} top seller</p>
+                    <p className="truncate font-bold text-slate-900">{name}</p>
+                  </div>
+                  <p className="font-bold text-slate-700">{sold}</p>
                 </div>
               ))}
             </div>
-            <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600"><ShoppingBag className="h-5 w-5" /></div>
-                <div><p className="text-xs text-slate-500">Top selling item</p><p className="text-sm font-bold text-slate-900">Smoky Bacon Burger</p></div>
+          </motion.div>
+
+          {/* Example 2: Customer Message (Top Right, Overlapping Revenue) */}
+          <motion.div
+            {...reveal(0.35, -20, 0)}
+            whileHover={reduceMotion ? undefined : { y: -5, rotate: 1 }}
+            className="absolute top-[-6%] right-[5%] z-30 w-[42%] rounded-[1rem] border border-white/45 bg-white/95 backdrop-blur-md p-2.5 shadow-xl"
+            style={{ rotate: -3 }}
+          >
+            <div className="flex gap-2">
+              <div className="h-6 w-6 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 flex-shrink-0">
+                <span className="text-[10px] font-bold">JW</span>
               </div>
-              <p className="text-sm font-bold text-slate-900">45 sold</p>
-            </div>
-          </div>
-
-          <div className="absolute right-[1%] top-[10%] w-[34%] rounded-[1.45rem] border border-slate-200/90 bg-white p-4 shadow-[0_20px_50px_-28px_rgba(15,23,42,0.35)]">
-            <div className="flex items-center justify-between">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-50 text-teal-700"><Truck className="h-4.5 w-4.5" /></div>
-              <span className="rounded-full bg-slate-50 px-2 py-1 text-[10px] font-bold text-slate-500">LIVE</span>
-            </div>
-            <p className="mt-4 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Fulfillment</p>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full w-[86%] rounded-full bg-teal-500" /></div>
-            <div className="mt-2 flex justify-between text-[11px] font-medium text-slate-500"><span>14% pickup</span><span>86% delivery</span></div>
-          </div>
-
-          <div className="absolute bottom-[10%] left-[8%] w-[54%] rounded-[1.65rem] border border-slate-200/90 bg-white p-3 shadow-[0_24px_64px_-30px_rgba(15,23,42,0.38)] xl:p-4">
-            <div className="relative h-28 overflow-hidden rounded-[1.15rem] bg-[#FDE7E3]">
-              <img
-                src={harbourKitchenImage}
-                alt="A bright shared commercial kitchen with professional equipment"
-                className="h-full w-full object-cover object-center"
-              />
-              <div className="absolute inset-0 bg-gradient-to-r from-black/5 via-transparent to-black/10" />
-              <div className="absolute right-5 top-5 rounded-full border border-white/80 bg-white/80 px-3 py-1.5 text-xs font-bold text-slate-700 backdrop-blur">$24/hour</div>
-            </div>
-            <div className="px-1 pb-1 pt-4">
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#F51042]">Next kitchen booking</p>
-              <p className="mt-1 text-base font-bold text-slate-950">Harbour Kitchen Hub</p>
-              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-                <span className="flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5 text-[#F51042]" /> Sep 17</span>
-                <span className="flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5 text-[#F51042]" /> 10:00–12:00</span>
-                <span className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-[#F51042]" /> St. John’s</span>
+              <div className="min-w-0 flex-1">
+                <div className="flex justify-between items-center">
+                  <p className="text-[9px] font-bold text-slate-900">Jennifer W.</p>
+                  <span className="text-[7px] text-slate-500">2m ago</span>
+                </div>
+                <p className="text-[9px] text-slate-600 truncate">Can you do less spicy for the kids?</p>
               </div>
             </div>
-          </div>
+          </motion.div>
 
-          <div className="absolute bottom-[4%] right-[2%] w-[38%] rounded-[1.45rem] border border-slate-200/90 bg-white p-4 shadow-[0_20px_50px_-26px_rgba(15,23,42,0.34)] xl:p-5">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700"><PackageCheck className="h-5 w-5" /></div>
-              <div><p className="text-sm font-bold text-slate-900">Seller account</p><p className="text-xs text-emerald-700">Ready to sell</p></div>
+          {/* Example 1: 5★ Review (Top Left, Overlapping Revenue) */}
+          <motion.div
+            {...reveal(0.25, -20, -10)}
+            whileHover={reduceMotion ? undefined : { y: -5, rotate: 1 }}
+            className="absolute left-[8%] top-[2%] z-30 w-[35%] rounded-[1rem] border border-white/45 bg-white/95 backdrop-blur-md p-2.5 shadow-xl"
+            style={{ rotate: -4 }}
+          >
+            <div className="flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-100 text-amber-500 flex-shrink-0">
+                <Icon icon="lucide:star" className="h-4 w-4 fill-amber-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="truncate text-[10px] font-bold text-slate-900">"Best patties!"</p>
+                <p className="text-[8px] text-slate-500">From Michael T.</p>
+              </div>
             </div>
-            <div className="my-4 h-px bg-slate-100" />
-            <div className="space-y-2.5 text-xs font-medium text-slate-600">
-              {['Menu published', 'Payouts connected', 'Profile verified'].map((item) => (
-                <div key={item} className="flex items-center gap-2"><span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-50 text-emerald-700"><Check className="h-3 w-3" /></span>{item}</div>
-              ))}
-            </div>
-            <div className="mt-4 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5 text-xs font-bold text-slate-800">
-              Open storefront <ArrowUpRight className="h-3.5 w-3.5 text-[#F51042]" />
-            </div>
-          </div>
-        </motion.div>
+          </motion.div>
 
-        <motion.p custom={0.34} initial="hidden" animate="visible" variants={reveal} className="mt-3 text-xs leading-relaxed text-white/75">
-          Preview data shown for illustration. Your real dashboard updates as your business grows.
-        </motion.p>
+          {/* Orders & Delivery (Overlapping Bottom Left of Revenue) */}
+          <motion.div
+            {...reveal(0.22, -20, 10)}
+            whileHover={reduceMotion ? undefined : { y: -5, rotate: -3 }}
+            className="absolute left-[3%] top-[22%] z-20 w-[42%] rounded-[1.25rem] border border-white/45 bg-white/95 backdrop-blur-md p-3.5 shadow-xl"
+            style={{ rotate: -2 }}
+          >
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-50 text-teal-700">
+                <Icon icon="lucide:truck" className="h-4 w-4" />
+              </div>
+              <p className="text-xs font-bold text-slate-900">Live Orders</p>
+              <span className="ml-auto text-[9px] font-bold text-emerald-600">TRACKING</span>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-center text-[10px]">
+              <div className="rounded-lg bg-slate-50 p-2">
+                <strong className="block text-base text-slate-950">18</strong>
+                <span className="text-slate-500">today</span>
+              </div>
+              <div className="rounded-lg bg-teal-50 p-2">
+                <strong className="block text-base text-teal-800">86%</strong>
+                <span className="text-teal-700">delivered</span>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Smaller Stripe Payouts (Overlapping Bottom Right of Revenue) */}
+          <motion.div
+            {...reveal(0.28, 20, 20)}
+            whileHover={reduceMotion ? undefined : { y: -5, rotate: -1 }}
+            className="absolute right-[0%] top-[40%] z-30 w-[34%] rounded-[1rem] border border-white/45 bg-white/95 backdrop-blur-md p-2 shadow-xl"
+            style={{ rotate: 3 }}
+          >
+            <div className="flex items-center justify-between gap-2 px-1">
+              <div className="flex items-center gap-2">
+                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-indigo-50 text-[#635BFF]">
+                  <Icon icon="lucide:dollar-sign" className="h-3 w-3" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[9px] font-bold text-slate-900 leading-tight">Payout</p>
+                  <p className="text-[8px] text-emerald-600 font-medium leading-tight">Tomorrow</p>
+                </div>
+              </div>
+              <strong className="text-[11px] text-slate-900 pr-1">$812.60</strong>
+            </div>
+          </motion.div>
+
+
+          {/* ═════════ CLUSTER 2: KITCHEN BOOKING & TOUR (Bottom Left) ═════════ */}
+          
+          {/* Kitchen Hub Booking (Base Card) */}
+          <motion.div
+            {...reveal(0.32, -20, 20)}
+            whileHover={reduceMotion ? undefined : { y: -5, rotate: -1 }}
+            className="absolute bottom-[2%] left-[2%] z-10 flex w-[58%] flex-col overflow-hidden rounded-[1.4rem] border border-white/45 bg-white p-1.5 shadow-[0_24px_60px_-20px_rgba(41,8,18,0.55)]"
+            style={{ rotate: -2 }}
+          >
+            <div className="relative h-[110px] w-full rounded-t-xl rounded-b-sm overflow-hidden bg-slate-100 group">
+              <img src={harbourKitchenImage} alt="Harbour Kitchen Hub" className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
+              <div className="absolute top-2 right-2 bg-white/95 backdrop-blur-sm rounded-full px-2 py-1 text-[9px] font-bold text-emerald-700 flex items-center gap-1 shadow-sm">
+                <Icon icon="lucide:check-circle" className="h-3 w-3" /> Confirmed
+              </div>
+            </div>
+            <div className="p-3.5 bg-white">
+              <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-[#F51042]">Upcoming Booking</p>
+              <p className="mt-1 text-sm font-bold text-slate-950">Harbour Kitchen Hub</p>
+              <div className="mt-2 space-y-1 text-[10px] text-slate-500">
+                <span className="flex items-center gap-1.5"><Icon icon="lucide:calendar-days" className="h-3 w-3 text-[#F51042]" /> Sep 17 · 10:00–12:00</span>
+                <span className="flex items-center gap-1.5"><Icon icon="lucide:map-pin" className="h-3 w-3 text-[#F51042]" /> Station 3 · $24/hour</span>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Tour & Actions (Overlapping Right edge of Kitchen) */}
+          <motion.div
+            {...reveal(0.38, 20, 30)}
+            whileHover={reduceMotion ? undefined : { y: -5, rotate: 2 }}
+            className="absolute bottom-[8%] right-[4%] z-20 w-[42%] rounded-[1.25rem] border border-white/45 bg-white/95 backdrop-blur-md p-3.5 shadow-2xl"
+            style={{ rotate: 1.5 }}
+          >
+            <p className="mb-2 text-xs font-bold text-slate-900">Kitchen Access</p>
+            <div className="flex flex-col gap-2">
+              <div className="w-full rounded-lg bg-[#F51042] py-2 text-center text-[11px] font-bold text-white shadow-md flex items-center justify-center gap-1.5 cursor-default pointer-events-none">
+                <Icon icon="lucide:play-circle" className="h-3.5 w-3.5" /> Kitchen Tour
+              </div>
+              <div className="w-full rounded-lg border border-slate-200 bg-slate-50 py-1.5 text-center text-[11px] font-semibold text-slate-700 flex items-center justify-center gap-1.5 cursor-default pointer-events-none">
+                <Icon icon="lucide:calendar-plus" className="h-3.5 w-3.5" /> Extend Storage Booking
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Example: Priority Support (Floating near bottom right) */}
+          <motion.div
+            {...reveal(0.4, 30, 20)}
+            whileHover={reduceMotion ? undefined : { y: -5, rotate: -2 }}
+            className="absolute bottom-[-2%] right-[10%] z-30 w-[32%] rounded-xl border border-white/45 bg-white/95 backdrop-blur-md p-2 shadow-xl"
+            style={{ rotate: 4 }}
+          >
+            <div className="flex items-center gap-2 px-1">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-blue-600 flex-shrink-0">
+                <Icon icon="lucide:headset" className="h-3 w-3" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[9px] font-bold text-slate-900 leading-tight">Chef Support</p>
+                <p className="text-[8px] text-blue-600 font-semibold leading-tight">24/7 Priority</p>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* New Example: Storage Unit Active */}
+          <motion.div
+            {...reveal(0.42, -30, 10)}
+            whileHover={reduceMotion ? undefined : { y: -5, rotate: 1 }}
+            className="absolute bottom-[36%] left-[0%] z-30 w-[36%] rounded-xl border border-white/45 bg-white/95 backdrop-blur-md p-2 shadow-xl"
+            style={{ rotate: -5 }}
+          >
+            <div className="flex items-center gap-2 px-1">
+              <div className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-50 text-amber-600 flex-shrink-0">
+                <Icon icon="lucide:box" className="h-3 w-3" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[9px] font-bold text-slate-900 leading-tight">Storage D4</p>
+                <p className="text-[8px] text-slate-500 font-semibold leading-tight">Active till Friday</p>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* New Example: Included Equipment */}
+          <motion.div
+            {...reveal(0.45, -20, 20)}
+            whileHover={reduceMotion ? undefined : { y: -5, rotate: 2 }}
+            className="absolute bottom-[24%] left-[25%] z-30 w-[34%] rounded-xl border border-white/45 bg-white/95 backdrop-blur-md p-2 shadow-xl"
+            style={{ rotate: 3 }}
+          >
+            <div className="flex items-center gap-2 px-1">
+              <div className="flex h-6 w-6 items-center justify-center rounded-md bg-indigo-50 text-indigo-600 flex-shrink-0">
+                <Icon icon="lucide:utensils" className="h-3 w-3" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[9px] font-bold text-slate-900 leading-tight">Equipment</p>
+                <p className="text-[8px] text-slate-500 font-semibold leading-tight">Comml. Oven</p>
+              </div>
+            </div>
+          </motion.div>
+        </div>
       </div>
     </section>
   );

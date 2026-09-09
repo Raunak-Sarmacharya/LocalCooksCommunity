@@ -3,19 +3,15 @@ import { useTranslation } from "react-i18next";
 import EnhancedLoginForm from "@/components/auth/EnhancedLoginForm";
 import EnhancedRegisterForm from "@/components/auth/EnhancedRegisterForm";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import Logo from "@/components/ui/logo";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import WelcomeScreen from "@/pages/welcome-screen";
-import { motion } from "framer-motion";
-import { LogIn, UserPlus } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { motion, useReducedMotion } from "framer-motion";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, Redirect } from "wouter";
 import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
-import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
-import FadeInSection from "@/components/ui/FadeInSection";
 import SEOHead from "@/components/SEO/SEOHead";
 import { getChefPostAuthPath } from "@/config/chef-onboarding-steps";
 import { hasVerifiedEmail } from "@/lib/auth-verification";
@@ -44,12 +40,30 @@ export default function EnhancedAuthPage() {
   const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasCheckedUser = useRef(false);
   const hasUserMetaRef = useRef(false); // Track if userMeta was successfully fetched (avoids stale closure)
+  const authCardRef = useRef<HTMLDivElement>(null);
+  const authContentRef = useRef<HTMLDivElement>(null);
+  const [cardHeight, setCardHeight] = useState<number>();
+  const reduceMotion = useReducedMotion();
+
+  useLayoutEffect(() => {
+    const content = authContentRef.current;
+    if (!content) return;
+    const measure = () => setCardHeight(content.offsetHeight + 2);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [isCompletingVerification, loading, userMetaLoading, user, userMeta]);
 
   const [retryCount, setRetryCount] = useState(0);
   const sellerJourneyDraft =
     new URLSearchParams(window.location.search).get("journey") === "seller"
       ? getSellerJourneyDraft()
       : null;
+
+  useLayoutEffect(() => {
+    authCardRef.current?.scrollTo({ top: 0, behavior: "instant" });
+  }, [activeTab]);
 
   // Check for success messages from URL parameters
   useEffect(() => {
@@ -459,48 +473,59 @@ export default function EnhancedAuthPage() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        transition={{ duration: 0.5 }}
-        className="relative flex min-h-screen bg-[#FFFDFC] lg:h-screen lg:min-h-0 lg:overflow-hidden"
+        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+        className="relative flex min-h-screen bg-gradient-to-br from-[#F51042] via-[#df123e] to-[#a90c31] lg:h-screen lg:min-h-0 lg:overflow-hidden"
       >
         <ChefAuthShowcase />
         {/* Form Section */}
         <motion.div
           initial={{ opacity: 0, x: 36 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.6, delay: 0.1 }}
-          className="relative z-10 flex min-h-screen w-full flex-col justify-center bg-white px-6 py-10 sm:px-10 lg:h-screen lg:min-h-0 lg:w-[46%] lg:overflow-hidden lg:px-12 xl:px-16"
+          transition={{ duration: 0.7, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+          className="relative z-10 flex min-h-screen w-full items-center justify-center px-3 py-3 sm:px-6 sm:py-6 lg:h-screen lg:min-h-0 lg:w-[42%] lg:px-5 xl:px-8"
         >
-          <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
-          <div className={`relative z-10 mx-auto w-full max-w-md ${activeTab === "register" ? "auth-register-fit" : ""}`}>
+          <motion.div
+            initial={false}
+            animate={{ height: cardHeight ?? "auto" }}
+            transition={{ duration: reduceMotion ? 0 : 0.3, ease: [0.22, 1, 0.36, 1] }}
+            style={{ scrollbarGutter: "stable", overflowAnchor: "none" }}
+            ref={authCardRef}
+            className="relative z-10 max-h-[calc(100vh-1.5rem)] w-full max-w-[510px] overflow-y-auto rounded-[1.75rem] border border-white/70 bg-[#FFFDFC] shadow-[0_24px_80px_-30px_rgba(69,10,27,0.58)] sm:max-h-[calc(100vh-3rem)] lg:max-h-[calc(100vh-2.5rem)]"
+          >
+            <div ref={authContentRef} className="px-6 py-7 sm:px-9 sm:py-9 xl:px-11">
             {/* Header */}
             <motion.div
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.2 }}
+              transition={{ duration: 0.6, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
               className="mb-7"
             >
-              <Logo className="mb-7 h-11" />
-              <motion.h1
-                className="text-3xl font-bold tracking-[-0.03em] text-gray-950 sm:text-4xl"
-                key={activeTab} // Re-animate on tab change
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4 }}
-              >
-                {activeTab === "login" ? t("welcomeBack", "Welcome back") : t("createYourAccount", "Create your account")}
-              </motion.h1>
-              <motion.p
-                className="mt-3 max-w-sm text-gray-600 leading-relaxed"
-                key={`${activeTab}-subtitle`}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.4, delay: 0.1 }}
-              >
-                {activeTab === "login"
-                  ? t("loginSubtitle", "Sign in to access your Local Cooks account and track your application status")
-                  : t("registerSubtitle", "Join Local Cooks and start your culinary journey with us")}
-              </motion.p>
+              <a href="/" className="inline-flex items-center gap-2.5 transition-transform duration-300 hover:scale-[1.02]">
+                <Logo variant="brand" className="h-9 w-auto flex-shrink-0" />
+                <span className="flex flex-col justify-center">
+                  <span className="font-logo text-xl font-normal leading-none tracking-tight text-[#F51042]">LocalCooks</span>
+                  <span className="mt-0.5 text-[9px] font-medium uppercase leading-none tracking-wider text-gray-500/70">For chefs</span>
+                </span>
+              </a>
             </motion.div>
+
+            <motion.div
+              key={activeTab}
+              initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: reduceMotion ? 0 : 0.2, ease: "easeOut" }}
+              className="w-full"
+            >
+              <div className="mb-6">
+              <h1 className="text-3xl font-bold tracking-[-0.03em] text-gray-950">
+                {activeTab === "login" ? t("welcomeBack", "Welcome back") : t("createYourAccount", "Create your account")}
+              </h1>
+              <p className="mt-2.5 max-w-sm text-sm leading-relaxed text-gray-600">
+                {activeTab === "login"
+                  ? t("loginSubtitle", "Sign in to manage your storefront and kitchen bookings")
+                  : t("registerSubtitle", "Create an account to sell on our marketplace or book kitchen")}
+              </p>
+              </div>
 
             {/* Success Message for Password Reset */}
             {showSuccessMessage && (
@@ -541,56 +566,39 @@ export default function EnhancedAuthPage() {
               </motion.div>
             )}
 
-            {/* Tabs */}
-            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "login" | "register")} className="w-full">
-              <TabsList className="mb-6 grid w-full grid-cols-2 rounded-full bg-slate-100/80 p-1">
-                <TabsTrigger value="login" className="flex items-center gap-2 rounded-full">
-                  <LogIn className="w-4 h-4" />
-                  {t("loginTab", "Login")}
-                </TabsTrigger>
-                <TabsTrigger value="register" className="flex items-center gap-2 rounded-full">
-                  <UserPlus className="w-4 h-4" />
-                  {t("registerTab", "Register")}
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="login">
+            {activeTab === "login" ? (
                 <EnhancedLoginForm
                   onSuccess={handleSuccess}
                   setHasAttemptedLogin={setHasAttemptedLogin}
+                  animateEntrance={false}
                 />
-              </TabsContent>
-
-              <TabsContent value="register">
+              ) : (
                 <EnhancedRegisterForm
                   onSuccess={handleSuccess}
                   setHasAttemptedLogin={setHasAttemptedLogin}
                   hideApplyingToggle
                   initialTermsAccepted={sellerJourneyDraft?.termsAccepted === true}
                   onSwitchToLogin={() => setActiveTab("login")}
+                  animateEntrance={false}
                 />
-              </TabsContent>
-            </Tabs>
+              )}
 
             {/* Footer Links */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.5, delay: 0.6 }}
-              className="mt-8 text-center"
-            >
+            {activeTab === "login" && <div className="mt-8 text-center">
               <p className="text-sm text-gray-500">
-                {activeTab === "login" ? t("noAccount", "Don't have an account?") : t("alreadyHaveAccount", "Already have an account?")}{" "}
+                {t("noAccount", "Don't have an account?")}{" "}
                 <Button
                   variant="link"
                   className="h-auto p-0 font-semibold text-[#F51042] hover:text-[#D90E3A]"
-                  onClick={() => setActiveTab(activeTab === "login" ? "register" : "login")}
+                  onClick={() => setActiveTab("register")}
                 >
-                  {activeTab === "login" ? t("registerTab", "Register") : t("loginTab", "Login")}
+                  {t("registerTab", "Register")}
                 </Button>
               </p>
+            </div>}
             </motion.div>
-          </div>
+            </div>
+          </motion.div>
         </motion.div>
 
       </motion.div>

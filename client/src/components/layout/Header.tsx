@@ -18,6 +18,7 @@ import { getSubdomainFromHostname, getSubdomainOriginForEnvironment } from "@sha
 import { parseLocationLocale } from "@/i18n/routing";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
+import { scrollToPageSection } from "@/lib/scroll-to-page-section";
 
 // Helper to check if an application is active (not cancelled, rejected)
 const isApplicationActive = (app: Application) => {
@@ -193,10 +194,7 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
     event?.preventDefault();
 
     const scrollToElement = () => {
-      const element = document.getElementById(sectionId);
-      if (element) {
-        // Use scrollIntoView - sections have scroll-mt-24 class for header offset
-        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (scrollToPageSection(sectionId)) {
         closeMenu();
         return true;
       }
@@ -208,9 +206,6 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
     // otherwise the locale-prefixed URL makes us navigate instead of scroll.
     const { pathWithoutLocale } = parseLocationLocale(location);
     if (pathWithoutLocale === "/") {
-      // Update the URL hash without triggering a wouter navigation/re-render
-      window.history.replaceState(window.history.state, "", `#${sectionId}`);
-
       // Try immediately
       if (scrollToElement()) return;
 
@@ -222,12 +217,17 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
       return;
     }
 
-    // On a non-landing page: navigate to the landing root with the hash —
-    // the landing page will scroll to the section once mounted
+    // Chef navigation uses a one-time session target so refreshing the landing
+    // page always starts at the top instead of replaying an old URL hash.
+    if (currentSubdomain === "chef") {
+      window.sessionStorage.setItem("chef-landing-scroll-target", sectionId);
+      setLocation("/");
+      return;
+    }
+
+    // Other landing pages retain their existing deep-link behavior.
     setLocation(`/#${sectionId}`);
-    // Also update the URL hash directly to ensure it survives the locale redirect
-    window.location.hash = sectionId;
-  }, [location, setLocation]);
+  }, [currentSubdomain, location, setLocation]);
 
   // Helper function to get dashboard link and text
   const getDashboardInfo = () => {
@@ -276,17 +276,17 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
       )}
     >
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 h-[var(--header-height)] flex justify-between items-center">
-        <Link href="/" className="flex items-center gap-2 sm:gap-3 md:gap-4 transition-all duration-300 hover:scale-[1.02] group">
-          <Logo variant="brand" className="h-8 sm:h-10 md:h-12 lg:h-14 w-auto transition-transform duration-300 group-hover:scale-110 flex-shrink-0" />
+        <Link href="/" className="flex items-center gap-2 sm:gap-2.5 transition-all duration-300 hover:scale-[1.02] group">
+          <Logo variant="brand" className="h-7 sm:h-8 md:h-9 w-auto transition-transform duration-300 group-hover:scale-105 flex-shrink-0" />
           <div className="flex flex-col justify-center min-w-0">
-            <span className="font-logo text-lg sm:text-xl md:text-2xl lg:text-3xl leading-none text-[#F51042] tracking-tight font-normal truncate">
+            <span className="font-logo text-base sm:text-lg md:text-xl leading-none text-[#F51042] tracking-tight font-normal truncate">
               LocalCooks
             </span>
             {currentSubdomain === 'chef' && (
-              <span className="text-[9px] sm:text-[10px] md:text-xs font-sans font-medium text-gray-500/80 uppercase tracking-wider mt-0.5 leading-none">{t("forChefs")}</span>
+              <span className="text-[8px] sm:text-[9px] md:text-[10px] font-sans font-medium text-gray-500/70 uppercase tracking-wider mt-0.5 leading-none">{t("forChefs")}</span>
             )}
             {currentSubdomain === 'kitchen' && (
-              <span className="text-[9px] sm:text-[10px] md:text-xs font-sans font-medium text-gray-500/80 uppercase tracking-wider mt-0.5 leading-none">{t("forKitchens")}</span>
+              <span className="text-[8px] sm:text-[9px] md:text-[10px] font-sans font-medium text-gray-500/70 uppercase tracking-wider mt-0.5 leading-none">{t("forKitchens")}</span>
             )}
           </div>
         </Link>
@@ -297,43 +297,44 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
-                    className="flex items-center gap-1 text-gray-700 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-sm px-4 py-2 rounded-lg hover:bg-gray-50/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]/40"
+                    className="flex items-center gap-1 text-gray-600 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-[13px] px-3 py-1.5 rounded-md hover:bg-gray-50/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]/40"
                     aria-haspopup="menu"
                   >
                     {t("services")}
                     <ChevronDown className="h-4 w-4 opacity-70" />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-80 p-2">
+                <DropdownMenuContent align="start" className="w-72 p-1.5">
                   {currentSubdomain === 'kitchen' ? (
                     <>
                       <DropdownMenuItem asChild>
                         <a
                           href="/#how-it-works"
-                          className="flex items-start gap-3 py-2.5 px-2 cursor-pointer rounded-lg"
+                          className="flex items-start gap-2.5 py-2 px-2 cursor-pointer rounded-md"
+                          onClick={(e) => scrollToSection("how-it-works", e)}
                         >
-                          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700"><Store className="h-5 w-5" /></span>
+                          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-amber-50 text-amber-700"><Store className="h-4 w-4" /></span>
                           <span className="min-w-0">
-                            <span className="font-medium text-sm text-gray-900">{t("kitchenServiceListSpace")}</span>
-                            <span className="block text-xs text-gray-500 mt-0.5">{t("kitchenServiceListSpaceDesc")}</span>
+                            <span className="font-medium text-[13px] text-gray-900">{t("kitchenServiceListSpace")}</span>
+                            <span className="block text-[11px] text-gray-500 mt-0.5">{t("kitchenServiceListSpaceDesc")}</span>
                           </span>
                         </a>
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild>
-                        <a href="/#how-it-works" className="flex items-start gap-3 py-2.5 px-2 cursor-pointer rounded-lg">
-                          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700"><CookingPot className="h-5 w-5" /></span>
+                        <a href="/#how-it-works" className="flex items-start gap-2.5 py-2 px-2 cursor-pointer rounded-md" onClick={(e) => scrollToSection("how-it-works", e)}>
+                          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-blue-50 text-blue-700"><CookingPot className="h-4 w-4" /></span>
                           <span>
-                            <span className="font-medium text-sm text-gray-900">{t("kitchenServiceManageBookings")}</span>
-                            <span className="block text-xs text-gray-500 mt-0.5">{t("kitchenServiceManageBookingsDesc")}</span>
+                            <span className="font-medium text-[13px] text-gray-900">{t("kitchenServiceManageBookings")}</span>
+                            <span className="block text-[11px] text-gray-500 mt-0.5">{t("kitchenServiceManageBookingsDesc")}</span>
                           </span>
                         </a>
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild>
-                        <a href="/#how-it-works" className="flex items-start gap-3 py-2.5 px-2 cursor-pointer rounded-lg">
-                          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700"><CreditCard className="h-5 w-5" /></span>
+                        <a href="/#how-it-works" className="flex items-start gap-2.5 py-2 px-2 cursor-pointer rounded-md" onClick={(e) => scrollToSection("how-it-works", e)}>
+                          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-emerald-50 text-emerald-700"><CreditCard className="h-4 w-4" /></span>
                           <span>
-                            <span className="font-medium text-sm text-gray-900">{t("kitchenServiceEarn")}</span>
-                            <span className="block text-xs text-gray-500 mt-0.5">{t("kitchenServiceEarnDesc")}</span>
+                            <span className="font-medium text-[13px] text-gray-900">{t("kitchenServiceEarn")}</span>
+                            <span className="block text-[11px] text-gray-500 mt-0.5">{t("kitchenServiceEarnDesc")}</span>
                           </span>
                         </a>
                       </DropdownMenuItem>
@@ -342,34 +343,29 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
                     <>
                       <DropdownMenuItem asChild>
                         <a
-                          href="https://localcook.shop/"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-start gap-3 py-2.5 px-2 cursor-pointer rounded-lg"
-                        >
-                          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#F51042]/10 text-[#F51042]">
-                            <ShoppingBag className="h-5 w-5" />
-                          </span>
-                          <span className="min-w-0">
-                            <span className="font-medium text-sm text-gray-900">{t("chefServiceSell")}</span>
-                            <span className="block text-xs text-gray-500 mt-0.5">{t("chefServiceSellDesc")}</span>
-                          </span>
-                        </a>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <a
                           href="/#how-it-works"
-                          className="flex items-start gap-3 py-2.5 px-2 cursor-pointer rounded-lg"
+                          className="flex items-start gap-2.5 py-2 px-2 cursor-pointer rounded-md"
+                          onClick={(e) => scrollToSection("how-it-works", e)}
                         >
-                          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700"><Store className="h-5 w-5" /></span>
+                          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-700">
+                            <ShoppingBag className="h-4 w-4" />
+                          </span>
                           <span className="min-w-0">
-                            <span className="font-medium text-sm text-gray-900">{t("chefServiceStorefront")}</span>
-                            <span className="block text-xs text-gray-500 mt-0.5">{t("chefServiceStorefrontDesc")}</span>
+                            <span className="font-medium text-[13px] text-gray-900">{t("chefServiceSell")}</span>
+                            <span className="block text-[11px] text-gray-500 mt-0.5">{t("chefServiceSellDesc")}</span>
                           </span>
                         </a>
                       </DropdownMenuItem>
-                      <DropdownMenuItem asChild><a href="/#how-it-works" className="flex items-start gap-3 py-2.5 px-2 cursor-pointer rounded-lg"><span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700"><CreditCard className="h-5 w-5" /></span><span><span className="font-medium text-sm text-gray-900">{t("chefServiceOperations")}</span><span className="block text-xs text-gray-500 mt-0.5">{t("chefServiceOperationsDesc")}</span></span></a></DropdownMenuItem>
-                      <DropdownMenuItem asChild><a href="/#kitchen-access" className="flex items-start gap-3 py-2.5 px-2 cursor-pointer rounded-lg"><span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700"><CookingPot className="h-5 w-5" /></span><span><span className="font-medium text-sm text-gray-900">{t("chefServiceBookKitchen")}</span><span className="block text-xs text-gray-500 mt-0.5">{t("chefServiceBookKitchenDesc")}</span></span></a></DropdownMenuItem>
+                      <DropdownMenuItem asChild><a href="/#how-it-works" className="flex items-start gap-2.5 py-2 px-2 cursor-pointer rounded-md" onClick={(e) => scrollToSection("how-it-works", e)}><span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-700"><CreditCard className="h-4 w-4" /></span><span><span className="font-medium text-[13px] text-gray-900">{t("chefServiceOperations")}</span><span className="block text-[11px] text-gray-500 mt-0.5">{t("chefServiceOperationsDesc")}</span></span></a></DropdownMenuItem>
+                      <DropdownMenuItem asChild><a href="/#kitchen-access" className="flex items-start gap-2.5 py-2 px-2 cursor-pointer rounded-md" onClick={(e) => scrollToSection("kitchen-access", e)}><span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-700"><CookingPot className="h-4 w-4" /></span><span><span className="font-medium text-[13px] text-gray-900">{t("chefServiceBookKitchen")}</span><span className="block text-[11px] text-gray-500 mt-0.5">{t("chefServiceBookKitchenDesc")}</span></span></a></DropdownMenuItem>
+                      <div role="separator" className="mx-2 my-2 border-t border-gray-200" />
+                      <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">{t("kitchenPartnerLink")}</p>
+                      <DropdownMenuItem asChild>
+                        <a href={serviceUrls.kitchen} className="flex items-start gap-2.5 rounded-md px-2 py-2">
+                          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-700"><Warehouse className="h-4 w-4" /></span>
+                          <span><span className="font-medium text-[13px] text-gray-900">{t("servicesForKitchensDesc")}</span><span className="mt-0.5 block text-[11px] text-gray-500">{t("kitchenPartnerLinkDesc")}</span></span>
+                        </a>
+                      </DropdownMenuItem>
                     </>
                   )}
                 </DropdownMenuContent>
@@ -378,21 +374,21 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
             {!hideHowItWorks && <li>
               <a
                 href="#how-it-works"
-                className="text-gray-700 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-sm px-4 py-2 rounded-lg hover:bg-gray-50/80"
+                className="text-gray-600 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-[13px] px-3 py-1.5 rounded-md hover:bg-gray-50/80"
                 onClick={(e) => scrollToSection("how-it-works", e)}
               >{t("howItWorks")}</a>
             </li>}
             <li>
               <a
                 href="#resources"
-                className="text-gray-700 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-sm px-4 py-2 rounded-lg hover:bg-gray-50/80"
+                className="text-gray-600 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-[13px] px-3 py-1.5 rounded-md hover:bg-gray-50/80"
                 onClick={(e) => scrollToSection("resources", e)}
               >{t("resources")}</a>
             </li>
             <li>
               <a
                 href="#faq"
-                className="text-gray-700 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-sm px-4 py-2 rounded-lg hover:bg-gray-50/80"
+                className="text-gray-600 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-[13px] px-3 py-1.5 rounded-md hover:bg-gray-50/80"
                 onClick={(e) => scrollToSection("faq", e)}
               >{t("faq")}</a>
             </li>
@@ -400,7 +396,7 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
               <li>
                 <Link
                   href="/microlearning/overview"
-                  className="flex items-center gap-2 hover:text-primary hover-text cursor-pointer px-4 py-2 rounded-lg transition-all duration-200 text-sm font-medium hover:bg-gray-50/80"
+                  className="flex items-center gap-1.5 hover:text-primary hover-text cursor-pointer px-3 py-1.5 rounded-md transition-all duration-200 text-[13px] font-medium hover:bg-gray-50/80"
                 >
                   <GraduationCap className="h-4 w-4" />{t("foodSafetyTraining")}</Link>
               </li>
@@ -411,7 +407,8 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
                   <Button
                     asChild
                     variant="outline"
-                    className="border-[#F51042] text-[#F51042] hover:bg-[#F51042] hover:text-white transition-all duration-300 rounded-full font-medium shadow-sm hover:shadow-md ml-2"
+                    size="sm"
+                    className="border-[#F51042]/80 text-[#F51042] hover:bg-[#F51042] hover:text-white transition-all duration-300 rounded-full font-medium text-[13px] ml-2"
                   >
                     <Link href={showPartnerLogin ? "/manager/login" : "/auth"}>
                       {showPartnerLogin ? t("partnerLoginRegister") : t("loginRegister")}
@@ -426,7 +423,7 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
                 <li>
                   <Link
                     href={getDashboardInfo().href}
-                    className="flex items-center gap-2 hover:text-primary hover-text cursor-pointer px-4 py-2 rounded-lg transition-all duration-200 text-sm font-medium hover:bg-gray-50/80"
+                    className="flex items-center gap-1.5 hover:text-primary hover-text cursor-pointer px-3 py-1.5 rounded-md transition-all duration-200 text-[13px] font-medium hover:bg-gray-50/80"
                   >
                     <User className="h-4 w-4" />
                     {getDashboardInfo().text}
@@ -437,25 +434,20 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
                     variant="outline"
                     size="sm"
                     onClick={handleLogout}
-                    className="gap-2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300 rounded-lg font-medium shadow-sm hover:shadow-md transition-all duration-200 ml-2"
+                    className="gap-1.5 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300 rounded-md font-medium text-[13px] transition-all duration-200 ml-2"
                   >
-                    <LogOut className="h-4 w-4" />{t("logout")}</Button>
+                    <LogOut className="h-3.5 w-3.5" />{t("logout")}</Button>
                 </li>
               </>
             )}
-            <li>
-              {currentSubdomain === 'kitchen' ? (
+            {currentSubdomain === 'kitchen' && (
+              <li>
                 <a href={serviceUrls.chef} className="group ml-1 flex items-center gap-2 rounded-lg border-l border-gray-200 px-3 py-1.5 text-gray-700 transition-colors hover:bg-gray-50 hover:text-[#F51042]">
                   <Store className="h-4 w-4 shrink-0" />
                   <span><span className="block text-xs font-semibold leading-tight">{t("chefPartnerLink")}</span><span className="block text-[9px] leading-tight text-gray-500 group-hover:text-gray-600">{t("chefPartnerLinkDesc")}</span></span>
                 </a>
-              ) : (
-                <a href={serviceUrls.kitchen} className="group ml-1 flex items-center gap-2 rounded-lg border-l border-gray-200 px-3 py-1.5 text-gray-700 transition-colors hover:bg-gray-50 hover:text-[#F51042]">
-                  <Warehouse className="h-4 w-4 shrink-0" />
-                  <span><span className="block text-xs font-semibold leading-tight">{t("kitchenPartnerLink")}</span><span className="block text-[9px] leading-tight text-gray-500 group-hover:text-gray-600">{t("kitchenPartnerLinkDesc")}</span></span>
-                </a>
-              )}
-            </li>
+              </li>
+            )}
           </ul>
         </nav>
 
@@ -509,7 +501,7 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
                       [CookingPot, "kitchenServiceManageBookings", "kitchenServiceManageBookingsDesc"],
                       [CreditCard, "kitchenServiceEarn", "kitchenServiceEarnDesc"],
                     ] as const).map(([Icon, title, description]) => (
-                      <a key={title} href="/#how-it-works" className="flex items-center gap-3 px-2 py-3 rounded-lg hover:bg-primary/5" onClick={closeMenu}>
+                      <a key={title} href="/#how-it-works" className="flex items-center gap-3 px-2 py-3 rounded-lg hover:bg-primary/5" onClick={(e) => scrollToSection("how-it-works", e)}>
                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-700"><Icon className="h-5 w-5" /></span>
                         <span><span className="block text-sm font-medium text-gray-900">{t(title)}</span><span className="block text-xs text-gray-500">{t(description)}</span></span>
                       </a>
@@ -518,11 +510,11 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
                 ) : (
                   <>
                     <a
-                      href="https://localcook.shop/"
+                      href="/#how-it-works"
                       className="flex items-center gap-3 py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
-                      onClick={closeMenu}
+                      onClick={(e) => scrollToSection("how-it-works", e)}
                     >
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#F51042]/10 text-[#F51042]">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-700">
                         <ShoppingBag className="h-5 w-5" />
                       </span>
                       <span>
@@ -531,15 +523,20 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
                       </span>
                     </a>
                     {([
-                      [Store, "chefServiceStorefront", "chefServiceStorefrontDesc"],
                       [CreditCard, "chefServiceOperations", "chefServiceOperationsDesc"],
                       [CookingPot, "chefServiceBookKitchen", "chefServiceBookKitchenDesc"],
                     ] as const).map(([Icon, title, description]) => (
-                      <a key={title} href={title === "chefServiceBookKitchen" ? "/#kitchen-access" : "/#how-it-works"} className="flex items-center gap-3 px-2 py-3 rounded-lg hover:bg-primary/5" onClick={closeMenu}>
+                      <a key={title} href={title === "chefServiceBookKitchen" ? "/#kitchen-access" : "/#how-it-works"} className="flex items-center gap-3 px-2 py-3 rounded-lg hover:bg-primary/5" onClick={(e) => scrollToSection(title === "chefServiceBookKitchen" ? "kitchen-access" : "how-it-works", e)}>
                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-700"><Icon className="h-5 w-5" /></span>
                         <span><span className="block text-sm font-medium text-gray-900">{t(title)}</span><span className="block text-xs text-gray-500">{t(description)}</span></span>
                       </a>
                     ))}
+                    <div role="separator" className="mx-2 my-2 border-t border-gray-200" />
+                    <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">{t("kitchenPartnerLink")}</p>
+                    <a href={serviceUrls.kitchen} className="flex items-center gap-3 rounded-lg px-2 py-3 hover:bg-primary/5" onClick={closeMenu}>
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-700"><Warehouse className="h-5 w-5" /></span>
+                      <span><span className="block text-sm font-medium text-gray-900">{t("servicesForKitchensDesc")}</span><span className="block text-xs text-gray-500">{t("kitchenPartnerLinkDesc")}</span></span>
+                    </a>
                   </>
                 )}
               </li>
@@ -625,19 +622,14 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
                   </li>
                 </>
               )}
-              <li className="mt-3 border-t border-gray-200/70 pt-3">
-                {currentSubdomain === 'kitchen' ? (
+              {currentSubdomain === 'kitchen' && (
+                <li className="mt-3 border-t border-gray-200/70 pt-3">
                   <a href={serviceUrls.chef} className="flex items-center gap-3 rounded-lg px-2 py-3 hover:bg-primary/5" onClick={closeMenu}>
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-700"><Store className="h-5 w-5" /></span>
                     <span><span className="block text-sm font-medium text-gray-900">{t("chefPartnerLink")}</span><span className="block text-xs text-gray-500">{t("chefPartnerLinkDesc")}</span></span>
                   </a>
-                ) : (
-                  <a href={serviceUrls.kitchen} className="flex items-center gap-3 rounded-lg px-2 py-3 hover:bg-primary/5" onClick={closeMenu}>
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-700"><Warehouse className="h-5 w-5" /></span>
-                    <span><span className="block text-sm font-medium text-gray-900">{t("kitchenPartnerLink")}</span><span className="block text-xs text-gray-500">{t("kitchenPartnerLinkDesc")}</span></span>
-                  </a>
-                )}
-              </li>
+                </li>
+              )}
             </ul>
           </div>
         </div>

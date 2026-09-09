@@ -85,28 +85,37 @@ interface EnhancedRegisterFormProps {
   showTermsInline?: boolean;
   /** Consent already captured by a preceding first-party registration step. */
   initialTermsAccepted?: boolean;
+  animateEntrance?: boolean;
 }
 
 type AuthState = 'idle' | 'loading' | 'success' | 'error' | 'email-verification';
 
 const containerVariants = {
-  hidden: { opacity: 0, y: 20 },
+  hidden: { opacity: 0, y: 15 },
   visible: {
     opacity: 1,
     y: 0,
     transition: {
-      duration: 0.4,
-      staggerChildren: 0.1
+      duration: 0.6,
+      staggerChildren: 0.12,
+      ease: [0.22, 1, 0.36, 1]
     }
   }
 };
 
 const itemVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0 }
+  hidden: { opacity: 0, y: 15 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.5,
+      ease: [0.22, 1, 0.36, 1]
+    }
+  }
 };
 
-export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, onRegistrationStart, onRegistrationComplete, onRegistrationError, onSwitchToLogin, forceApplying, hideApplyingToggle, reviewAfterRegistration, onPreviousStep, accountType = 'chef', showTermsInline = false, initialTermsAccepted = false }: EnhancedRegisterFormProps) {
+export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, onRegistrationStart, onRegistrationComplete, onRegistrationError, onSwitchToLogin, forceApplying, hideApplyingToggle, reviewAfterRegistration, onPreviousStep, accountType = 'chef', showTermsInline = false, initialTermsAccepted = false, animateEntrance = true }: EnhancedRegisterFormProps) {
   const { t } = useTranslation("auth");
   const registerSchema = useRegisterSchema();
   const { signup, signInWithGoogle, loading, error, updateUserVerification } = useFirebaseAuth();
@@ -501,7 +510,8 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
                 setAuthState('loading');
                 setShowLoadingOverlay(true);
                 sessionStorage.setItem('localcooks:completing-verification', 'true');
-                window.location.reload();
+                // Allow the full-screen loader to paint before rebuilding auth/profile state.
+                requestAnimationFrame(() => requestAnimationFrame(() => window.location.reload()));
                 return;
               }
               showAlert({
@@ -532,7 +542,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       <motion.div
         className="w-full max-w-md mx-auto"
         variants={containerVariants}
-        initial="hidden"
+        initial={animateEntrance ? "hidden" : false}
         animate="visible"
       >
 
@@ -579,7 +589,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-5">
           {step === 1 && (
             <motion.div 
-              initial={{ opacity: 0, x: -20 }}
+              initial={animateEntrance ? { opacity: 0, x: -20 } : false}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 20 }}
               className="space-y-5"
@@ -736,7 +746,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
 
           {step === 2 && (
             <motion.div 
-              initial={{ opacity: 0, x: 20 }}
+              initial={animateEntrance ? { opacity: 0, x: 20 } : false}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
               className="space-y-5"

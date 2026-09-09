@@ -200,7 +200,7 @@ export default function HeroSection() {
                 <Button
                   onClick={handleChefClick}
                   size="lg"
-                  className="w-full sm:w-auto bg-gradient-to-r from-brand-primary to-[#FF5470] hover:from-[#FF5470] hover:to-brand-primary text-white font-bold py-4 sm:py-5 md:py-7 px-8 sm:px-10 md:px-16 text-base sm:text-lg md:text-xl rounded-xl transition-all duration-300 shadow-2xl hover:shadow-[0_0_30px_rgba(245,16,66,0.5)] hover:-translate-y-1 transform min-h-[48px] sm:min-h-[56px]"
+                  className="w-full sm:w-auto bg-gradient-to-r from-brand-primary to-[#FF5470] hover:from-[#FF5470] hover:to-brand-primary text-white font-semibold py-3 sm:py-3.5 px-8 sm:px-10 md:px-12 text-sm sm:text-base md:text-lg rounded-full transition-all duration-300 shadow-lg hover:shadow-xl hover:shadow-brand-primary/25 hover:-translate-y-0.5 transform min-h-[44px] sm:min-h-[48px]"
                 >
                   {t("applyAsChef")}
                 </Button>
@@ -220,7 +220,7 @@ export default function HeroSection() {
                 onClick={handleChefClick}
                 disabled={isLoading}
                 size="lg"
-                className="w-full sm:w-auto bg-gradient-to-r from-brand-primary to-[#FF5470] hover:from-[#FF5470] hover:to-brand-primary text-white font-bold py-4 sm:py-5 md:py-7 px-8 sm:px-10 md:px-16 text-base sm:text-lg md:text-xl rounded-xl transition-all duration-300 shadow-2xl hover:shadow-[0_0_30px_rgba(245,16,66,0.5)] hover:-translate-y-1 transform disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px] sm:min-h-[56px]"
+                className="w-full sm:w-auto bg-gradient-to-r from-brand-primary to-[#FF5470] hover:from-[#FF5470] hover:to-brand-primary text-white font-semibold py-3 sm:py-3.5 px-8 sm:px-10 md:px-12 text-sm sm:text-base md:text-lg rounded-full transition-all duration-300 shadow-lg hover:shadow-xl hover:shadow-brand-primary/25 hover:-translate-y-0.5 transform disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] sm:min-h-[48px]"
               >
                 {isLoading ? t("loading", { ns: "common" }) : getPrimaryButtonText()}
               </Button>

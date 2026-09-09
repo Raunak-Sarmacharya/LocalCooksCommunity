@@ -65,7 +65,7 @@ const SECTIONS: Section[] = [
     icon: Shield,
     subsections: [
       { id: "coverage-requirements", title: "Coverage Requirements" },
-      { id: "flip-insurance", title: "FLIP Insurance" },
+      { id: "choosing-an-insurer", title: "Choosing an Insurer" },
       { id: "additional-insured", title: "Additional Insured" },
     ],
   },
@@ -464,12 +464,12 @@ export default function ChefResourcesPage_en() {
         keywords={[
           "food business Canada", "food handler certificate NL", "commercial kitchen rental",
           "food entrepreneur guide", "food safety Newfoundland", "start food business",
-          "FLIP insurance", "food establishment licence", "SkillsPass NL",
+          "food business insurance", "food establishment licence", "SkillsPass NL",
         ]}
         faq={[
           { question: "Do I need a food safety certificate to use LocalCooks?", answer: "Yes, all chefs using LocalCooks must complete a food safety certification. In Newfoundland & Labrador, you can get certified for free through SkillsPass NL, which covers food handler training." },
           { question: "How do I register my food business in Newfoundland?", answer: "You can register as a sole proprietor or corporation through Service Newfoundland and Labrador. Home-based food businesses require additional registration through the Department of Health and Community Services." },
-          { question: "What insurance do I need as a food entrepreneur?", answer: "LocalCooks requires minimum $2 million liability coverage. FLIP (Food Liability Insurance Program) offers affordable coverage specifically for food entrepreneurs starting at $199/year." },
+          { question: "What insurance do I need as a food entrepreneur?", answer: "LocalCooks requires a minimum of $2 million in liability coverage. Ask a licensed Canadian insurance provider or broker for coverage designed for food businesses and commercial kitchen renters." },
           { question: "Can I operate a home-based food business in NL?", answer: "Yes, but you must register as a Home-Based Food Business and comply with specific restrictions. Low-risk baked goods and preserves are typically allowed, while high-risk items require a commercial kitchen." },
           { question: "How long does it take to get approved on LocalCooks?", answer: "Most chef applications are reviewed and approved within 24 hours. You'll need to complete your food safety certification and provide government ID during the application process." },
         ]}
@@ -663,21 +663,10 @@ export default function ChefResourcesPage_en() {
                 ]}
               />
 
-              <SubHeading id="flip-insurance">FLIP Insurance (Recommended)</SubHeading>
+              <SubHeading id="choosing-an-insurer">Choosing an Insurer</SubHeading>
               <p className="text-gray-600">
-                FLIP (Food Liability Insurance Program) specializes in affordable coverage for food businesses renting commercial kitchen space. It is the most widely used option for shared kitchen renters across Canada.
+                Ask a licensed Canadian insurance provider or broker for a policy designed for food businesses and commercial kitchen renters. Confirm the required limits, product liability coverage, damage-to-rented-premises coverage, fees for adding kitchens, deductibles, exclusions, and certificate turnaround time before purchasing.
               </p>
-              <ResourceTable
-                headers={["", ""]}
-                rows={[
-                  ["Cost", "Starting at approximately $25.92/month or $299/year"],
-                  ["Additional Insureds", "Free and unlimited — add kitchens at no extra cost"],
-                  ["Deductible", "None on liability claims"],
-                  ["Purchasing", "Instant online — certificate available immediately"],
-                  ["Add-ons", "Equipment (+$8.25/mo), cyber liability (+$8.25/mo), excess liability (from $41.67/mo)"],
-                  ["Website", "fliprogram.com"],
-                ]}
-              />
 
               <SubHeading id="additional-insured">Understanding &ldquo;Additional Insured&rdquo;</SubHeading>
               <p className="text-gray-600 leading-relaxed">
@@ -850,7 +839,7 @@ export default function ChefResourcesPage_en() {
                   { q: "Do I need a licence just for farmers\u2019 markets?", a: "You need your Food Handler Certificate and business registration at minimum. Many markets also require proof of licensing and insurance. Submit documentation to organizers at least 14 days before the event (Service NL requirement)." },
                   { q: "What if I want to expand beyond Newfoundland?", a: "You will need a Safe Food for Canadians Licence from CFIA ($250 for 2 years) and must meet federal labelling, traceability, and preventive control requirements." },
                   { q: "Can I make some products at home and others in a commercial kitchen?", a: "Yes, but you need proper licensing for each location. Keep detailed records of where each product is prepared." },
-                  { q: "How do I add a kitchen as Additional Insured?", a: "Through your insurance provider portal. With FLIP, this is instant and free \u2014 enter the kitchen legal business name and address, then generate an updated Certificate of Insurance." },
+                  { q: "How do I add a kitchen as Additional Insured?", a: "Contact your insurance provider or use its online portal. Provide the kitchen's exact legal business name and address, confirm any fee, and request an updated Certificate of Insurance." },
                 ].map((item, i) => (
                   <AccordionItem key={i} value={`faq-${i}`}>
                     <AccordionTrigger className="text-sm font-medium text-left">{item.q}</AccordionTrigger>
@@ -865,7 +854,7 @@ export default function ChefResourcesPage_en() {
                 storageKey="chef-launch-checklist"
                 phases={[
                   { title: "Weeks 1\u20132: Foundation", items: ["Complete SkillsPass NL Food Handler course (free, online)", "Pass the certification exam and download your certificate", "Research which foods you want to prepare", "Decide: home-based or commercial kitchen", "Review the NL Food Premises Regulations"] },
-                  { title: "Weeks 3\u20134: Insurance & Registration", items: ["Get a liability insurance quote from FLIP or alternative", "Purchase minimum $2M liability insurance", "Download your Certificate of Insurance", "Register home-based food business (if applicable)", "Set up a dedicated business bank account"] },
+                  { title: "Weeks 3\u20134: Insurance & Registration", items: ["Get a liability insurance quote from a licensed Canadian provider or broker", "Purchase minimum $2M liability insurance", "Download your Certificate of Insurance", "Register home-based food business (if applicable)", "Set up a dedicated business bank account"] },
                   { title: "Weeks 5\u20136: Kitchen & Documentation", items: ["Browse commercial kitchens on Local Cooks", "Apply to kitchens that match your needs", "Connect with kitchen managers via messaging", "Exchange documentation (floor plans, licence info, COI)", "Add kitchen as Additional Insured on your insurance"] },
                   { title: "Weeks 7\u201310: Launch", items: ["Compile all documents for Food Establishment Licence", "Submit application to Service NL and pay fees", "Complete an in-person kitchen orientation", "Sign your rental agreement", "Book your first kitchen session"] },
                 ]}
@@ -898,7 +887,6 @@ export default function ChefResourcesPage_en() {
               <ResourceTable
                 headers={["Provider", "Website"]}
                 rows={[
-                  ["FLIP Insurance (Recommended)", "fliprogram.com"],
                   ["Zensurance", "zensurance.com"],
                   ["BFL Canada", "bflcanada.ca"],
                 ]}

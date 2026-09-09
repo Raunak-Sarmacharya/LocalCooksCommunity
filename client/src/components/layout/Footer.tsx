@@ -65,219 +65,223 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
   };
 
   return (
-    <footer ref={ref} className="relative overflow-hidden border-t-4 border-[#F51042] bg-[#101010] px-4 pb-24 pt-10 text-white sm:pb-8 lg:pt-12">
-      {/* Decorative background elements */}
-      <div className="pointer-events-none absolute inset-0 opacity-[0.07]">
-        <div className="absolute -left-32 -top-40 size-[28rem] rounded-full bg-brand-primary blur-3xl"></div>
-        <div className="absolute -bottom-52 right-0 size-96 rounded-full bg-gold blur-3xl"></div>
-      </div>
+    <footer ref={ref} className="relative overflow-hidden bg-[#0A0A0A] px-4 pb-20 pt-0 text-white sm:pb-8">
+      {/* Elegant gradient accent line */}
+      <div className="h-px w-full bg-gradient-to-r from-transparent via-[#F51042]/60 to-transparent" />
 
-      <div className="container mx-auto max-w-7xl relative z-10 px-4 sm:px-6 lg:px-8">
-        <div className="grid gap-8 border-b border-white/10 pb-9 lg:grid-cols-[0.9fr_2fr] lg:gap-20">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-5 lg:p-6">
-            <div className="mb-4">
-              <Logo variant="white" className="h-11 w-auto sm:h-12" />
+      <div className="container mx-auto max-w-6xl relative z-10 px-4 sm:px-6 lg:px-8 pt-10 lg:pt-12">
+        {/* Main grid */}
+        <div className="grid gap-10 pb-8 sm:grid-cols-2 lg:grid-cols-[1.2fr_1fr_1fr_1fr] lg:gap-12">
+
+          {/* Brand column */}
+          <div className="sm:col-span-2 lg:col-span-1">
+            <div className="flex items-center gap-2.5 mb-4">
+              <Logo variant="white" className="h-8 w-auto opacity-90" />
+              <span className="font-logo text-lg text-white/90 tracking-tight">LocalCooks</span>
             </div>
-            <p className="max-w-sm text-sm leading-6 text-white/60">{t("connectingTalentedHomeChefs")}</p>
+            <p className="max-w-xs text-[13px] leading-relaxed text-white/40">{t("connectingTalentedHomeChefs")}</p>
+
+            {/* Social icons — compact, calm */}
+            <div className="flex items-center gap-2 mt-5">
+              <a
+                href="https://www.facebook.com/LocalCooks"
+                className="flex items-center justify-center w-8 h-8 rounded-md bg-white/[0.06] text-white/50 hover:bg-white/[0.12] hover:text-white transition-all duration-200"
+                aria-label="Facebook"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <FaFacebook className="h-3.5 w-3.5" />
+              </a>
+              <a
+                href="https://www.linkedin.com/company/local-cooks/"
+                className="flex items-center justify-center w-8 h-8 rounded-md bg-white/[0.06] text-white/50 hover:bg-white/[0.12] hover:text-white transition-all duration-200"
+                aria-label="LinkedIn"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <FaLinkedin className="h-3.5 w-3.5" />
+              </a>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-8 py-2 sm:grid-cols-3 lg:gap-12">
-            <div>
-              <h3 className="mb-4 text-xs font-semibold uppercase tracking-[0.16em] text-white/45">{t("contactUs")}</h3>
-              <ul className="space-y-3">
-                <li>
-                  <a
-                    href="mailto:support@localcook.shop"
-                    className="flex items-center gap-3 text-gray-300 hover:text-white transition-all duration-300 group mobile-touch-target py-1"
-                  >
-                    <Mail className="h-5 w-5 text-brand-primary group-hover:scale-110 transition-transform duration-300 flex-shrink-0" />
-                    <span className="text-sm sm:text-base break-all">support@localcook.shop</span>
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="tel:+17096318480"
-                    className="flex items-center gap-3 text-gray-300 hover:text-white transition-all duration-300 group mobile-touch-target py-1"
-                  >
-                    <Phone className="h-5 w-5 text-brand-primary group-hover:scale-110 transition-transform duration-300 flex-shrink-0" />
-                    <span className="text-sm sm:text-base">+1 (709) 631-8480</span>
-                  </a>
-                </li>
-                <li>
-                  <div className="flex items-center gap-3 text-gray-300 py-1">
-                    <MapPin className="h-5 w-5 text-brand-primary flex-shrink-0" />
-                    <span className="text-sm sm:text-base">{t("stJohns")}</span>
-                  </div>
-                </li>
-              </ul>
-            </div>
+          {/* Quick Links column */}
+          <div>
+            <h3 className="mb-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/35">{t("quickLinks")}</h3>
+            <ul className="space-y-1">
+              {isChefLanding ? (
+                <>
+                  <li>
+                    <button
+                      onClick={() => handleAnchorClick('#how-it-works')}
+                      className="text-white/50 hover:text-white/90 transition-colors duration-200 text-[13px] block w-full text-left py-1.5"
+                    >{t("howItWorks")}</button>
+                  </li>
+                  <li>
+                    <button
+                      onClick={() => handleAnchorClick('#kitchen-access')}
+                      className="text-white/50 hover:text-white/90 transition-colors duration-200 text-[13px] block w-full text-left py-1.5"
+                    >{t("kitchenAccess")}</button>
+                  </li>
+                  <li>
+                    <button
+                      onClick={() => handleAnchorClick('#testimonials')}
+                      className="text-white/50 hover:text-white/90 transition-colors duration-200 text-[13px] block w-full text-left py-1.5"
+                    >{t("testimonials")}</button>
+                  </li>
+                  <li>
+                    <button
+                      onClick={() => handleAnchorClick('#faq')}
+                      className="text-white/50 hover:text-white/90 transition-colors duration-200 text-[13px] block w-full text-left py-1.5"
+                    >{t("faq")}</button>
+                  </li>
+                  <li>
+                    <Link
+                      href="/resources"
+                      className="text-white/50 hover:text-white/90 transition-colors duration-200 text-[13px] block w-full text-left py-1.5"
+                    >{t("resources")}</Link>
+                  </li>
+                  <li>
+                    <button
+                      onClick={handleCTAClick}
+                      disabled={isLoading}
+                      className="text-white/50 hover:text-white/90 transition-colors duration-200 text-[13px] block w-full text-left py-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {isLoading ? t("loading") : getApplyLinkText()}
+                    </button>
+                  </li>
+                </>
+              ) : isKitchenLanding ? (
+                <>
+                  <li>
+                    <button
+                      onClick={() => handleAnchorClick('#revenue-streams')}
+                      className="text-white/50 hover:text-white/90 transition-colors duration-200 text-[13px] block w-full text-left py-1.5"
+                    >{t("revenueStreams")}</button>
+                  </li>
+                  <li>
+                    <button
+                      onClick={() => handleAnchorClick('#how-it-works')}
+                      className="text-white/50 hover:text-white/90 transition-colors duration-200 text-[13px] block w-full text-left py-1.5"
+                    >{t("howItWorks")}</button>
+                  </li>
+                  <li>
+                    <button
+                      onClick={() => handleAnchorClick('#everything-included')}
+                      className="text-white/50 hover:text-white/90 transition-colors duration-200 text-[13px] block w-full text-left py-1.5"
+                    >{t("everythingIncluded")}</button>
+                  </li>
+                  <li>
+                    <button
+                      onClick={() => handleAnchorClick('#faq')}
+                      className="text-white/50 hover:text-white/90 transition-colors duration-200 text-[13px] block w-full text-left py-1.5"
+                    >{t("faq")}</button>
+                  </li>
+                  <li>
+                    <Link
+                      href="/resources"
+                      className="text-white/50 hover:text-white/90 transition-colors duration-200 text-[13px] block w-full text-left py-1.5"
+                    >{t("resources")}</Link>
+                  </li>
+                </>
+              ) : (
+                <>
+                  <li>
+                    <button
+                      onClick={() => handleAnchorClick('#how-it-works')}
+                      className="text-white/50 hover:text-white/90 transition-colors duration-200 text-[13px] block w-full text-left py-1.5"
+                    >{t("howItWorks")}</button>
+                  </li>
+                  <li>
+                    <button
+                      onClick={() => handleAnchorClick('#benefits')}
+                      className="text-white/50 hover:text-white/90 transition-colors duration-200 text-[13px] block w-full text-left py-1.5"
+                    >{t("benefits")}</button>
+                  </li>
+                  <li>
+                    <button
+                      onClick={() => handleAnchorClick('#about')}
+                      className="text-white/50 hover:text-white/90 transition-colors duration-200 text-[13px] block w-full text-left py-1.5"
+                    >{t("aboutUs")}</button>
+                  </li>
+                  <li>
+                    <button
+                      onClick={handleCTAClick}
+                      disabled={isLoading}
+                      className="text-white/50 hover:text-white/90 transition-colors duration-200 text-[13px] block w-full text-left py-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {isLoading ? t("loading") : getApplyLinkText()}
+                    </button>
+                  </li>
+                  <li>
+                    <Link
+                      href="/manager/login"
+                      className="text-white/50 hover:text-white/90 transition-colors duration-200 text-[13px] flex items-center gap-1.5 py-1.5"
+                    >
+                      <Building2 className="h-3.5 w-3.5 text-[#F51042]/60 flex-shrink-0" />{t("partnerLogin")}
+                    </Link>
+                  </li>
+                </>
+              )}
+            </ul>
+          </div>
 
-            <div>
-              <h3 className="mb-4 text-xs font-semibold uppercase tracking-[0.16em] text-white/45">{t("quickLinks")}</h3>
-              <ul className="space-y-2">
-                {isChefLanding ? (
-                  <>
-                    <li>
-                      <button
-                        onClick={() => handleAnchorClick('#how-it-works')}
-                        className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
-                      >{t("howItWorks")}</button>
-                    </li>
-                    <li>
-                      <button
-                        onClick={() => handleAnchorClick('#kitchen-access')}
-                        className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
-                      >{t("kitchenAccess")}</button>
-                    </li>
-                    <li>
-                      <button
-                        onClick={() => handleAnchorClick('#testimonials')}
-                        className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
-                      >{t("testimonials")}</button>
-                    </li>
-                    <li>
-                      <button
-                        onClick={() => handleAnchorClick('#faq')}
-                        className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
-                      >{t("faq")}</button>
-                    </li>
-                    <li>
-                      <Link
-                        href="/resources"
-                        className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
-                      >{t("resources")}</Link>
-                    </li>
-                    <li>
-                      <button
-                        onClick={handleCTAClick}
-                        disabled={isLoading}
-                        className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 disabled:opacity-50 disabled:cursor-not-allowed mobile-touch-target"
-                      >
-                        {isLoading ? t("loading") : getApplyLinkText()}
-                      </button>
-                    </li>
-                  </>
-                ) : isKitchenLanding ? (
-                  <>
-                    <li>
-                      <button
-                        onClick={() => handleAnchorClick('#revenue-streams')}
-                        className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
-                      >{t("revenueStreams")}</button>
-                    </li>
-                    <li>
-                      <button
-                        onClick={() => handleAnchorClick('#how-it-works')}
-                        className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
-                      >{t("howItWorks")}</button>
-                    </li>
-                    <li>
-                      <button
-                        onClick={() => handleAnchorClick('#everything-included')}
-                        className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
-                      >{t("everythingIncluded")}</button>
-                    </li>
-                    <li>
-                      <button
-                        onClick={() => handleAnchorClick('#faq')}
-                        className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
-                      >{t("faq")}</button>
-                    </li>
-                    <li>
-                      <Link
-                        href="/resources"
-                        className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
-                      >{t("resources")}</Link>
-                    </li>
-                  </>
-                ) : (
-                  <>
-                    <li>
-                      <button
-                        onClick={() => handleAnchorClick('#how-it-works')}
-                        className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
-                      >{t("howItWorks")}</button>
-                    </li>
-                    <li>
-                      <button
-                        onClick={() => handleAnchorClick('#benefits')}
-                        className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
-                      >{t("benefits")}</button>
-                    </li>
-                    <li>
-                      <button
-                        onClick={() => handleAnchorClick('#about')}
-                        className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
-                      >{t("aboutUs")}</button>
-                    </li>
-                    <li>
-                      <button
-                        onClick={handleCTAClick}
-                        disabled={isLoading}
-                        className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 disabled:opacity-50 disabled:cursor-not-allowed mobile-touch-target"
-                      >
-                        {isLoading ? t("loading") : getApplyLinkText()}
-                      </button>
-                    </li>
-                    <li>
-                      <Link
-                        href="/manager/login"
-                        className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium flex items-center gap-2 py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
-                      >
-                        <Building2 className="h-4 w-4 text-brand-primary flex-shrink-0" />{t("partnerLogin")}</Link>
-                    </li>
-                  </>
-                )}
-              </ul>
-            </div>
+          {/* Contact column */}
+          <div>
+            <h3 className="mb-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/35">{t("contactUs")}</h3>
+            <ul className="space-y-2.5">
+              <li>
+                <a
+                  href="mailto:support@localcook.shop"
+                  className="flex items-center gap-2 text-white/50 hover:text-white/90 transition-colors duration-200 py-0.5"
+                >
+                  <Mail className="h-3.5 w-3.5 text-[#F51042]/50 flex-shrink-0" />
+                  <span className="text-[13px] break-all">support@localcook.shop</span>
+                </a>
+              </li>
+              <li>
+                <a
+                  href="tel:+17096318480"
+                  className="flex items-center gap-2 text-white/50 hover:text-white/90 transition-colors duration-200 py-0.5"
+                >
+                  <Phone className="h-3.5 w-3.5 text-[#F51042]/50 flex-shrink-0" />
+                  <span className="text-[13px]">+1 (709) 631-8480</span>
+                </a>
+              </li>
+              <li>
+                <div className="flex items-center gap-2 text-white/50 py-0.5">
+                  <MapPin className="h-3.5 w-3.5 text-[#F51042]/50 flex-shrink-0" />
+                  <span className="text-[13px]">{t("stJohns")}</span>
+                </div>
+              </li>
+            </ul>
+          </div>
 
-            <div>
-              <h3 className="mb-4 text-xs font-semibold uppercase tracking-[0.16em] text-white/45">{t("connect")}</h3>
-              <div className="flex space-x-3 mb-4">
-                <a
-                  href="https://www.facebook.com/LocalCooks"
-                  className="bg-white/10 p-3 rounded-xl hover:bg-brand-primary transition-all duration-300 hover:scale-110 hover:-translate-y-1 mobile-touch-target"
-                  aria-label="Facebook"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <FaFacebook className="h-5 w-5" />
-                </a>
-                <a
-                  href="https://www.linkedin.com/company/local-cooks/"
-                  className="bg-white/10 p-3 rounded-xl hover:bg-brand-primary transition-all duration-300 hover:scale-110 hover:-translate-y-1 mobile-touch-target"
-                  aria-label="LinkedIn"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <FaLinkedin className="h-5 w-5" />
-                </a>
-              </div>
-              <p className="text-sm md:text-base text-gray-400 leading-relaxed">{t("followUsOnSocialMedia")}</p>
-            </div>
+          {/* Connect / Language column */}
+          <div>
+            <h3 className="mb-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/35">{t("connect")}</h3>
+            <p className="text-[13px] text-white/40 leading-relaxed mb-4">{t("followUsOnSocialMedia")}</p>
+            <LanguageSwitcher size="sm" variant="footer" />
           </div>
         </div>
 
-        <div className="flex flex-col items-center justify-between gap-4 pt-6 text-xs text-white/45 sm:flex-row">
-          <div className="flex items-center w-full sm:w-auto justify-center sm:justify-start">
-            <LanguageSwitcher size="sm" variant="footer" />
-          </div>
-          <div className="flex flex-wrap items-center justify-center sm:justify-end gap-2 sm:gap-3 text-center">
+        {/* Bottom bar */}
+        <div className="border-t border-white/[0.06] pt-5">
+          <div className="flex flex-col items-center justify-between gap-3 text-[11px] text-white/30 sm:flex-row">
             <p className="font-medium whitespace-nowrap">&copy; {new Date().getFullYear()} Local Cooks. {t("allRightsReserved")}</p>
-            <span className="text-gray-600 hidden sm:inline">|</span>
-            <a
-              href="https://www.localcooks.ca/terms"
-              className="text-gray-400 hover:text-white transition-colors duration-300 hover:underline whitespace-nowrap"
-              target="_blank"
-              rel="noopener noreferrer"
-            >{t("termsAndConditions")}</a>
-            <span className="text-gray-600 hidden sm:inline">|</span>
-            <a
-              href="https://www.localcooks.ca/privacy"
-              className="text-gray-400 hover:text-white transition-colors duration-300 hover:underline whitespace-nowrap"
-              target="_blank"
-              rel="noopener noreferrer"
-            >{t("privacyPolicy")}</a>
+            <div className="flex items-center gap-4">
+              <a
+                href="https://www.localcooks.ca/terms"
+                className="hover:text-white/60 transition-colors duration-200 whitespace-nowrap"
+                target="_blank"
+                rel="noopener noreferrer"
+              >{t("termsAndConditions")}</a>
+              <a
+                href="https://www.localcooks.ca/privacy"
+                className="hover:text-white/60 transition-colors duration-200 whitespace-nowrap"
+                target="_blank"
+                rel="noopener noreferrer"
+              >{t("privacyPolicy")}</a>
+            </div>
           </div>
         </div>
       </div>

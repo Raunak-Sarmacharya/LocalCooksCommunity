@@ -972,7 +972,6 @@ export default function KitchenResourcesPage_en() {
               <ResourceTable
                 headers={["Provider", "Website"]}
                 rows={[
-                  ["FLIP Insurance (Recommended for renters)", "fliprogram.com"],
                   ["BFL Canada", "bflcanada.ca"],
                   ["Zensurance", "zensurance.com"],
                   ["Aligned Insurance", "alignedinsurance.com"],

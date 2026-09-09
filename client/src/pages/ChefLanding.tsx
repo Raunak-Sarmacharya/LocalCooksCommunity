@@ -10,48 +10,37 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import FadeInSection from "@/components/ui/FadeInSection";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
-import {
-  ChefHat, Clock, Users, Target, Utensils,
-  Building2, ArrowRight, CheckCircle2, Check, X, Settings2,
-  Heart, Rocket, Star, Zap, Shield, MessageCircle,
-  CreditCard, Truck, Instagram, Phone, Calendar, ChevronLeft, ChevronRight,
-  HeartHandshake, HandCoins, BadgeCheck, Scale
-} from "lucide-react";
+import { addCollection, Icon } from "@iconify/react";
+import { icons as mdiIcons } from "@iconify-json/mdi";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { KitchenLocationCard } from "@/components/chef-landing/KitchenLocationCard";
 import { TruncatedText } from "@/components/common/TruncatedText";
 import { landingBrowseKitchensPath, landingDashboardPath } from "@/lib/landing-cta";
+import { scrollToPageSection } from "@/lib/scroll-to-page-section";
 import { motion, AnimatePresence, useScroll, useTransform, MotionValue } from "framer-motion";
 import useEmblaCarousel from "embla-carousel-react";
 import { SmartImage } from "@/components/ui/smart-image";
 import chefImage from "@/assets/chef-cooking.png";
 import logoWhite from "@assets/logo-white.png";
-
-// Import actual app icon images
-import instagramIcon from "@assets/instagram.png";
-import gmailIcon from "@assets/gmail.png";
-import messengerIcon from "@assets/messenger.png";
-import whatsappIcon from "@assets/whatsapp.png";
-import marketplaceIcon from "@assets/marketplace.png";
-import iosMessagesIcon from "@assets/iosmessages.png";
-import truckIcon from "@assets/truck.png";
-import interacIcon from "@assets/Interac.svg";
-import kitchenTableIcon from "@assets/kitchen-table.png";
 import SellerJourneyDialog from "@/components/home/SellerJourneyDialog";
 import { ChefServiceIllustration } from "@/components/home/ChefServiceIllustration";
 
-// Icon image mapping for the chaos icons section
-const APP_ICON_IMAGES: Record<string, string> = {
-  instagram: instagramIcon,
-  gmail: gmailIcon,
-  messenger: messengerIcon,
-  whatsapp: whatsappIcon,
-  marketplace: marketplaceIcon,
-  iosMessages: iosMessagesIcon,
-  truck: truckIcon,
-  interac: interacIcon,
+import truckIcon from "@assets/truck.png";
+import interacIcon from "@assets/Interac.svg";
+
+addCollection(mdiIcons);
+
+const APP_ICONS: Record<string, { icon?: string; imgSrc?: string; bg: string; color?: string; imgClass?: string }> = {
+  instagram: { icon: "mdi:instagram", bg: "linear-gradient(135deg, #833AB4, #FD1D1D, #F77737)", color: "#ffffff" },
+  gmail: { icon: "mdi:gmail", bg: "#ffffff", color: "#EA4335" },
+  messenger: { icon: "mdi:facebook-messenger", bg: "linear-gradient(135deg, #00B2FF, #006AFF)", color: "#ffffff" },
+  whatsapp: { icon: "mdi:whatsapp", bg: "#25D366", color: "#ffffff" },
+  marketplace: { icon: "mdi:storefront-outline", bg: "#1877F2", color: "#ffffff" },
+  iosMessages: { icon: "mdi:message-processing", bg: "#34C759", color: "#ffffff" },
+  truck: { imgSrc: truckIcon, bg: "#ffffff", imgClass: "w-[65%] h-[65%] object-contain" },
+  interac: { imgSrc: interacIcon, bg: "#ffffff", imgClass: "w-[90%] h-[90%] object-contain" },
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -65,7 +54,7 @@ const APP_ICON_IMAGES: Record<string, string> = {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 interface ParallaxIconProps {
-  iconKey: keyof typeof APP_ICON_IMAGES;
+  iconKey: string;
   // Position in viewport (percentage)
   position: { x: number; y: number };
   // Size in pixels - base size before depth scaling
@@ -99,7 +88,7 @@ function ParallaxIcon({
   const depthConfig = {
     1: { opacity: 1, scale: 1, blur: 0, baseZ: 30, shadow: '0 20px 40px -8px rgba(0, 0, 0, 0.25)' },
     2: { opacity: 0.95, scale: 1, blur: 0, baseZ: 20, shadow: '0 16px 32px -6px rgba(0, 0, 0, 0.20)' },
-    3: { opacity: 0.85, scale: 1, blur: 0.5, baseZ: 10, shadow: '0 12px 24px -4px rgba(0, 0, 0, 0.15)' },
+    3: { opacity: 0.85, scale: 1, blur: 0, baseZ: 10, shadow: '0 12px 24px -4px rgba(0, 0, 0, 0.15)' },
   };
 
   const config = depthConfig[depth];
@@ -121,8 +110,6 @@ function ParallaxIcon({
     hideOn === 'tablet' ? 'block md:hidden lg:block' :
       hideOn === 'desktop' ? 'lg:hidden' : '';
 
-  const iconSrc = APP_ICON_IMAGES[iconKey];
-
   return (
     <motion.div
       className={`absolute pointer-events-none ${hideClass}`}
@@ -143,21 +130,20 @@ function ParallaxIcon({
       viewport={{ once: true, margin: "-5%" }}
     >
       <div
-        className="rounded-[22%] overflow-hidden"
+        className="rounded-[22%] overflow-hidden flex items-center justify-center"
         style={{
           width: size,
           height: size,
           boxShadow: config.shadow,
-          transform: 'translateZ(0)', // GPU acceleration
+          background: APP_ICONS[iconKey]?.bg || '#fff',
+          transform: 'translateZ(0)',
         }}
       >
-        <SmartImage
-          src={iconSrc}
-          alt=""
-          className="w-full h-full object-cover"
-          loading="lazy"
-          draggable={false}
-        />
+        {APP_ICONS[iconKey]?.imgSrc ? (
+          <img src={APP_ICONS[iconKey].imgSrc} alt={iconKey} className={APP_ICONS[iconKey].imgClass || "w-full h-full object-cover"} />
+        ) : (
+          <Icon icon={APP_ICONS[iconKey]?.icon || 'mdi:help'} className="h-full w-full p-[18%]" style={{ color: APP_ICONS[iconKey]?.color || '#252832' }} aria-hidden />
+        )}
       </div>
     </motion.div>
   );
@@ -446,19 +432,19 @@ function ChaosNotificationFeed() {
   const getIcon = (iconType: string) => {
     switch (iconType) {
       case 'instagram':
-        return <svg className="w-4 h-4" viewBox="0 0 24 24" fill="white"><path d="M12 2c2.717 0 3.056.01 4.122.06 1.065.05 1.79.217 2.428.465.66.254 1.216.598 1.772 1.153a4.908 4.908 0 0 1 1.153 1.772c.247.637.415 1.363.465 2.428.047 1.066.06 1.405.06 4.122 0 2.717-.01 3.056-.06 4.122-.05 1.065-.218 1.79-.465 2.428a4.883 4.883 0 0 1-1.153 1.772 4.915 4.915 0 0 1-1.772 1.153c-.637.247-1.363.415-2.428.465-1.066.047-1.405.06-4.122.06-2.717 0-3.056-.01-4.122-.06-1.065-.05-1.79-.218-2.428-.465a4.89 4.89 0 0 1-1.772-1.153 4.904 4.904 0 0 1-1.153-1.772c-.248-.637-.415-1.363-.465-2.428C2.013 15.056 2 14.717 2 12c0-2.717.01-3.056.06-4.122.05-1.066.217-1.79.465-2.428a4.88 4.88 0 0 1 1.153-1.772A4.897 4.897 0 0 1 5.45 2.525c.638-.248 1.362-.415 2.428-.465C8.944 2.013 9.283 2 12 2zm0 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm6.5-.25a1.25 1.25 0 0 0-2.5 0 1.25 1.25 0 0 0 2.5 0zM12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z" /></svg>;
+        return <Icon icon="mdi:instagram" className="h-4 w-4 text-white" aria-hidden />;
       case 'whatsapp':
-        return <svg className="w-4 h-4" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" /></svg>;
+        return <Icon icon="mdi:whatsapp" className="h-4 w-4 text-white" aria-hidden />;
       case 'phone':
-        return <Phone className="w-4 h-4 text-white" />;
+        return <Icon icon="mdi:phone-outline" className="w-4 h-4 text-white" />;
       case 'marketplace':
-        return <svg className="w-4 h-4" viewBox="0 0 24 24" fill="white"><path d="M12.001 2C17.523 2 22 6.478 22 12.001C22 17.523 17.523 22 12.001 22C6.478 22 2 17.523 2 12.001C2 6.478 6.478 2 12.001 2Z" /></svg>;
+        return <Icon icon="mdi:facebook" className="h-4 w-4 text-white" aria-hidden />;
       case 'interac':
-        return <CreditCard className="w-4 h-4 text-white" />;
+        return <Icon icon="mdi:credit-card-outline" className="w-4 h-4 text-white" />;
       case 'messenger':
-        return <svg className="w-4 h-4" viewBox="0 0 24 24" fill="white"><path d="M12 2C6.36 2 2 6.13 2 11.7c0 2.91 1.19 5.44 3.14 7.17.16.13.26.35.27.57l.05 1.78c.04.57.61.94 1.13.71l1.98-.87c.17-.08.36-.1.55-.06.91.25 1.87.38 2.88.38 5.64 0 10-4.13 10-9.7C22 6.13 17.64 2 12 2z" /></svg>;
+        return <Icon icon="mdi:facebook-messenger" className="h-4 w-4 text-white" aria-hidden />;
       default:
-        return <Phone className="w-4 h-4 text-white" />;
+        return <Icon icon="mdi:phone-outline" className="w-4 h-4 text-white" />;
     }
   };
 
@@ -490,7 +476,7 @@ function ChaosNotificationFeed() {
                     <span className="text-[10px] font-semibold text-white/90">{notif.data.app}</span>
                     <span className="text-[9px] text-white/40">{notif.data.time}</span>
                   </div>
-                  <p className="text-[11px] font-semibold text-white truncate">{notif.data.sender}</p>
+                  <p className="text-[12px] font-semibold text-white truncate">{notif.data.sender}</p>
                   <p className="text-[10px] text-white/60 truncate">{notif.data.message}</p>
                 </div>
               </div>
@@ -774,9 +760,7 @@ function LocalCooksNotificationFeed() {
   );
 }
 
-// Typewriter component - exact implementation from localcooks.ca
-// Source: https://github.com/Raunak-Sarmacharya/LCLanding
-// Modified: Fixed-width container locks word position, only cursor moves
+// Typewriter component - centered over the CTA button
 function TypewriterText() {
   const { t } = useTranslation("chef");
   const words = [t("twCooks"), t("twCompany"), t("twCommunity")];
@@ -784,38 +768,11 @@ function TypewriterText() {
   const [currentText, setCurrentText] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const textRef = useRef<HTMLSpanElement>(null);
-  const measureRef = useRef<HTMLSpanElement>(null);
-  const [containerWidth, setContainerWidth] = useState(0);
-  const [cursorX, setCursorX] = useState(0);
 
   const currentWord = words[currentWordIndex];
   const typingSpeed = 120;
   const deletingSpeed = 80;
   const pauseDuration = 2500;
-
-  // Find longest word and measure its width
-  const longestWord = words.reduce((a, b) => (a.length > b.length ? a : b));
-
-  // Measure longest word to set fixed container width
-  useEffect(() => {
-    if (measureRef.current) {
-      const width = measureRef.current.offsetWidth;
-      setContainerWidth(width);
-    }
-  }, []);
-
-  // Update cursor position as text changes - cursor moves, text stays fixed
-  useEffect(() => {
-    if (textRef.current) {
-      requestAnimationFrame(() => {
-        if (textRef.current) {
-          const textWidth = textRef.current.offsetWidth;
-          setCursorX(textWidth);
-        }
-      });
-    }
-  }, [currentText]);
 
   const tick = useCallback(() => {
     if (isPaused) return;
@@ -851,53 +808,21 @@ function TypewriterText() {
   }, [tick, isDeleting, deletingSpeed, typingSpeed]);
 
   return (
-    <span className="inline-flex items-baseline text-3xl md:text-4xl lg:text-5xl">
-      {/* Hidden element to measure longest word width */}
+    <span
+      className="font-logo inline-flex items-center justify-center text-3xl md:text-4xl lg:text-5xl text-white whitespace-nowrap min-h-[1.3em]"
+      style={{ fontFamily: "'Lobster', cursive" }}
+    >
+      <span>{t("twLocal")}</span>
+      <span className="ml-2.5 md:ml-3.5">{currentText}</span>
       <span
-        ref={measureRef}
-        className="font-logo absolute opacity-0 pointer-events-none whitespace-nowrap"
+        className="typewriter-cursor inline-block"
         style={{
-          fontFamily: "'Lobster', cursive",
-          visibility: 'hidden',
-          fontSize: 'inherit'
+          backgroundColor: 'white',
+          marginLeft: '6px',
+          height: '0.85em',
+          verticalAlign: 'middle',
         }}
-      >
-        {longestWord}
-      </span>
-
-      <span
-        className="font-logo text-white whitespace-nowrap"
-        style={{ fontFamily: "'Lobster', cursive" }}
-      >
-        {t("twLocal")}
-      </span>
-      <span
-        className="relative ml-3 md:ml-4 inline-block whitespace-nowrap"
-        style={{
-          width: containerWidth > 0 ? `${containerWidth + 20}px` : 'auto',
-          textAlign: 'left',
-          minWidth: containerWidth > 0 ? `${containerWidth + 20}px` : 'auto'
-        }}
-      >
-        <span
-          ref={textRef}
-          className="font-logo inline-block text-white whitespace-nowrap"
-          style={{
-            fontFamily: "'Lobster', cursive"
-          }}
-        >
-          {currentText}
-        </span>
-        <span
-          className="typewriter-cursor absolute top-0"
-          style={{
-            backgroundColor: 'white',
-            left: `${cursorX}px`,
-            marginLeft: '4px',
-            height: '1em'
-          }}
-        />
-      </span>
+      />
     </span>
   );
 }
@@ -975,15 +900,24 @@ export default function ChefLanding() {
   }, [locations]);
 
   useEffect(() => {
-    const handleHashChange = () => {
-      const hash = window.location.hash;
-      if (hash) {
-        document.querySelector(hash)?.scrollIntoView({ behavior: 'smooth' });
-      }
-    };
-    window.addEventListener('hashchange', handleHashChange);
-    if (window.location.hash) setTimeout(handleHashChange, 100);
-    return () => window.removeEventListener('hashchange', handleHashChange);
+    const target = window.sessionStorage.getItem("chef-landing-scroll-target");
+    window.sessionStorage.removeItem("chef-landing-scroll-target");
+
+    if (target) {
+      const timeout = window.setTimeout(() => {
+        scrollToPageSection(target);
+      }, 100);
+      return () => window.clearTimeout(timeout);
+    }
+
+    if (window.location.hash) {
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `${window.location.pathname}${window.location.search}`,
+      );
+      window.scrollTo({ top: 0, behavior: "auto" });
+    }
   }, []);
 
   const [sellerJourneyOpen, setSellerJourneyOpen] = useState(false);
@@ -1070,38 +1004,10 @@ export default function ChefLanding() {
           </div>
 
           <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-20 sm:pt-24 md:pt-28 pb-12 sm:pb-14 md:pb-16 relative z-10">
-            {/* Mobile-only "Monetize Your Cooking" pill - appears above image on mobile */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-              className="mb-6 block lg:hidden"
-            >
-              <div className="relative inline-flex items-center gap-2 bg-[#F51042] text-white px-4 py-2 rounded-full border border-[#F51042]/30">
-                <div className="absolute inset-0 rounded-full bg-gradient-to-br from-white/10 to-transparent"></div>
-                <HandCoins className="h-3.5 w-3.5 relative z-10" />
-                <span className="font-semibold text-xs tracking-wide relative z-10">{t("monetizeYourCooking")}</span>
-              </div>
-            </motion.div>
-
             <div className="grid lg:grid-cols-2 gap-6 sm:gap-8 lg:gap-16 items-center min-h-[calc(100vh-180px)] sm:min-h-[calc(100vh-200px)]">
 
               {/* Left Content Column */}
               <div className="order-2 lg:order-1">
-                {/* Trial Badge - Desktop only */}
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.6, delay: 0.2 }}
-                  className="mb-8 hidden lg:block"
-                >
-                  <div className="relative inline-flex items-center gap-2 bg-[#F51042] text-white px-4 py-2 rounded-full shadow-xl shadow-[#F51042]/40 border border-[#F51042]/30">
-                    <div className="absolute inset-0 rounded-full bg-gradient-to-br from-white/10 to-transparent"></div>
-                    <HandCoins className="h-3.5 w-3.5 relative z-10" />
-                    <span className="font-semibold text-xs tracking-wide relative z-10">{t("monetizeYourCooking")}</span>
-                  </div>
-                </motion.div>
-
                 {/* Brand Identity */}
                 <motion.div
                   initial={{ opacity: 0, y: 30 }}
@@ -1168,13 +1074,13 @@ export default function ChefLanding() {
                   className="flex flex-row gap-2 sm:gap-3 md:gap-4 mb-10"
                 >
                   <Button
-                    onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
+                    onClick={() => scrollToPageSection("how-it-works")}
                     size="lg"
-                    className="group relative bg-[#F51042] hover:bg-[#D90E3A] text-white font-bold py-3 sm:py-4 md:py-7 px-3 sm:px-6 md:px-12 text-[11px] sm:text-sm md:text-lg rounded-full transition-all duration-300 shadow-xl hover:shadow-2xl hover:shadow-[#F51042]/30 hover:-translate-y-1 overflow-hidden flex-1 min-w-0 min-h-[44px] sm:min-h-[48px]"
+                    className="group relative bg-[#F51042] hover:bg-[#D90E3A] text-white font-bold py-3 md:py-4 px-3 sm:px-6 md:px-12 text-[11px] sm:text-sm md:text-lg rounded-full transition-all duration-300 shadow-xl hover:shadow-2xl hover:shadow-[#F51042]/30 hover:-translate-y-1 overflow-hidden flex-1 min-w-0 min-h-[44px] sm:min-h-[48px]"
                   >
                     <span className="relative z-10 flex items-center justify-center truncate">
                       <TruncatedText className="truncate">{t("howItWorksQuestion", "How it works?")}</TruncatedText>
-                      <ArrowRight className="ml-1 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5 shrink-0 group-hover:translate-x-1 transition-transform" />
+                      <Icon icon="mdi:arrow-right" className="ml-1 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5 shrink-0 group-hover:translate-x-1 transition-transform" />
                     </span>
                     <motion.div
                       className="absolute inset-0 bg-gradient-to-r from-[#D90E3A] to-[#F51042]"
@@ -1186,11 +1092,11 @@ export default function ChefLanding() {
                   <Button
                     variant="outline"
                     size="lg"
-                    className="group inline-flex items-center justify-center border-2 border-[#2C2C2C]/20 text-[#2C2C2C] hover:border-[#F51042] hover:text-[#F51042] hover:bg-[#F51042]/5 font-semibold py-3 sm:py-4 md:py-7 px-3 sm:px-6 md:px-10 text-[11px] sm:text-sm md:text-lg rounded-full transition-all duration-300 flex-1 min-w-0 min-h-[44px] sm:min-h-[48px]"
-                    onClick={() => document.getElementById('kitchen-access')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="group inline-flex items-center justify-center border-2 border-[#2C2C2C]/20 text-[#2C2C2C] hover:border-[#F51042] hover:text-[#F51042] hover:bg-[#F51042]/5 font-semibold py-3 md:py-4 px-3 sm:px-6 md:px-10 text-[11px] sm:text-sm md:text-lg rounded-full transition-all duration-300 flex-1 min-w-0 min-h-[44px] sm:min-h-[48px]"
+                    onClick={() => scrollToPageSection("kitchen-access")}
                     aria-label="Book a kitchen — scroll to kitchen listings"
                   >
-                    <Building2 className="mr-1 sm:mr-1.5 h-3.5 w-3.5 sm:h-4 sm:w-4 md:h-5 md:w-5 shrink-0 text-[#F51042] group-hover:scale-110 transition-transform" />
+                    <Icon icon="mdi:office-building-outline" className="mr-1 sm:mr-1.5 h-3.5 w-3.5 sm:h-4 sm:w-4 md:h-5 md:w-5 shrink-0 text-[#2C2C2C] group-hover:scale-110 transition-transform" />
                     <TruncatedText className="truncate sm:hidden">{t("bookKitchenSmall")}</TruncatedText>
                     <TruncatedText className="hidden sm:inline truncate">{t("bookAKitchen")}</TruncatedText>
                   </Button>
@@ -1204,9 +1110,9 @@ export default function ChefLanding() {
                   className="flex flex-nowrap md:flex-wrap gap-x-2 md:gap-x-6 gap-y-3"
                 >
                   {[
-                    { icon: CheckCircle2, text: t("approved24h") },
-                    { icon: Shield, text: t("noUpfront") },
-                    { icon: HeartHandshake, text: t("dedicatedSupport") }
+                    { icon: "mdi:check-circle-outline", text: t("approved24h") },
+                    { icon: "mdi:shield-outline", text: t("noUpfront") },
+                    { icon: "mdi:hand-heart-outline", text: t("dedicatedSupport") }
                   ].map((item, i) => (
                     <motion.span
                       key={i}
@@ -1215,7 +1121,7 @@ export default function ChefLanding() {
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ duration: 0.4, delay: 1 + (i * 0.1) }}
                     >
-                      <item.icon className="h-3 w-3 md:h-4 md:w-4 text-emerald-500 flex-shrink-0" />
+                      <Icon icon={item.icon} className="h-3 w-3 md:h-4 md:w-4 text-[#2C2C2C] flex-shrink-0" />
                       <span className="leading-tight">{item.text}</span>
                     </motion.span>
                   ))}
@@ -1291,7 +1197,7 @@ export default function ChefLanding() {
                   >
                     <div className="flex items-center gap-1.5 lg:gap-2.5">
                       <div className="w-6 h-6 lg:w-9 lg:h-9 bg-gradient-to-br from-teal-500 to-cyan-600 rounded-lg lg:rounded-xl flex items-center justify-center shadow-lg shadow-teal-500/30 flex-shrink-0">
-                        <Heart className="h-3.5 w-3.5 lg:h-5 lg:w-5 text-white" />
+                        <Icon icon="mdi:heart-outline" className="h-3.5 w-3.5 lg:h-5 lg:w-5 text-white" />
                       </div>
                       <div>
                         <p className="text-[8px] lg:text-[10px] font-medium text-slate-600 uppercase tracking-wide leading-tight">{t("builtForChefs")}</p>
@@ -1310,7 +1216,7 @@ export default function ChefLanding() {
                   >
                     <div className="flex items-center gap-1.5 lg:gap-2">
                       <div className="w-4 h-4 lg:w-6 lg:h-6 bg-gradient-to-br from-slate-700 to-slate-800 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
-                        <Zap className="h-2.5 w-2.5 lg:h-3.5 lg:w-3.5 text-white" />
+                        <Icon icon="mdi:lightning-bolt" className="h-2.5 w-2.5 lg:h-3.5 lg:w-3.5 text-white" />
                       </div>
                       <span className="text-[10px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">{t("fastApproval")}</span>
                     </div>
@@ -1325,7 +1231,7 @@ export default function ChefLanding() {
                   >
                     <div className="flex items-center gap-1.5 lg:gap-2">
                       <div className="w-4 h-4 lg:w-6 lg:h-6 bg-gradient-to-br from-slate-700 to-slate-800 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
-                        <Rocket className="h-2.5 w-2.5 lg:h-3.5 lg:w-3.5 text-white" />
+                        <Icon icon="mdi:rocket-launch-outline" className="h-2.5 w-2.5 lg:h-3.5 lg:w-3.5 text-white" />
                       </div>
                       <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">{t("joinLaunched")}</span>
                     </div>
@@ -1340,7 +1246,7 @@ export default function ChefLanding() {
                   >
                     <div className="flex items-center gap-1.5 lg:gap-2">
                       <div className="w-4 h-4 lg:w-6 lg:h-6 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
-                        <Clock className="h-2.5 w-2.5 lg:h-3.5 lg:w-3.5 text-white" />
+                        <Icon icon="mdi:clock-outline" className="h-2.5 w-2.5 lg:h-3.5 lg:w-3.5 text-white" />
                       </div>
                       <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">{t("moreTimeCooking")}</span>
                     </div>
@@ -1470,8 +1376,8 @@ export default function ChefLanding() {
                           <div className="relative z-10 px-5 pt-3 flex justify-between items-center text-[11px] text-white font-semibold">
                             <span>9:41</span>
                             <div className="flex items-center gap-1">
-                              <svg className="w-4 h-3" viewBox="0 0 18 12" fill="white"><path d="M1 4.5l2 2c2.5-2.5 6.5-2.5 9 0l2-2C10.5 1 4.5 1 1 4.5zm4 4l3 3 3-3c-1.5-1.5-4.5-1.5-6 0z" /></svg>
-                              <svg className="w-4 h-3" viewBox="0 0 17 11" fill="white"><path d="M15.5 4.5h-14C.67 4.5 0 5.17 0 6v3.5c0 .83.67 1.5 1.5 1.5h14c.83 0 1.5-.67 1.5-1.5V6c0-.83-.67-1.5-1.5-1.5z" /></svg>
+                              <Icon icon="mdi:wifi" className="h-3 w-4 text-white" aria-label="Wi-Fi" />
+                              <Icon icon="mdi:battery" className="h-3 w-4 text-white" aria-label="Battery" />
                             </div>
                           </div>
 
@@ -1513,10 +1419,8 @@ export default function ChefLanding() {
                           <div className="relative z-10 px-5 pt-3 flex justify-between items-center text-[11px] text-white font-semibold">
                             <span>9:41</span>
                             <div className="flex items-center gap-1">
-                              <svg className="w-4 h-3" viewBox="0 0 18 12" fill="white"><path d="M1 4.5l2 2c2.5-2.5 6.5-2.5 9 0l2-2C10.5 1 4.5 1 1 4.5zm4 4l3 3 3-3c-1.5-1.5-4.5-1.5-6 0z" /></svg>
-                              <div className="w-5 h-[9px] rounded-[2px] border border-white/80 relative">
-                                <div className="absolute inset-[1px] bg-[#34C759] rounded-[1px]" />
-                              </div>
+                              <Icon icon="mdi:wifi" className="h-3 w-4 text-white" aria-label="Wi-Fi" />
+                              <Icon icon="mdi:battery" className="h-3 w-5 text-white" aria-label="Battery" />
                             </div>
                           </div>
 
@@ -1596,88 +1500,85 @@ export default function ChefLanding() {
                 <div className="h-full w-full bg-[repeating-linear-gradient(90deg,#f51042_0_8px,transparent_8px_16px)] opacity-25" />
               </div>
 
-              {/* Step 1 - Apply (Coral/Red accent) */}
+              {/* Step 1 - Apply */}
               <FadeInSection delay={1}>
                 <motion.div
                   whileHover={{ y: -6 }}
                   transition={{ duration: 0.3 }}
                   className="group relative h-full text-center"
                 >
-                  <div className="relative h-full rounded-[2rem] bg-[#fff7f4] p-6 md:p-7 lg:p-8 transition-all duration-300">
-                    {/* Step Number Badge */}
-                    <div className="relative z-10 mb-5">
-                      <ChefServiceIllustration variant="storefront" />
-                      <div className="absolute -right-1 top-0 w-8 h-8 rounded-full bg-[#1f1b19] flex items-center justify-center shadow-md">
-                        <span className="text-white font-bold text-xs md:text-sm">1</span>
+                  <Card className="relative h-full rounded-2xl bg-white border-0 shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]">
+                    <CardContent className="p-6 md:p-7 lg:p-8 flex flex-col items-center h-full">
+                      <div className="relative z-10 mb-5 w-full">
+                        <ChefServiceIllustration variant="storefront" />
                       </div>
-                    </div>
 
-                    <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C] mb-1">{t("serviceStorefrontTitle", "Build your storefront")}</h3>
-                    <p className="text-xs md:text-sm font-medium text-[#F51042] mb-2 md:mb-3">{t("serviceStorefrontEyebrow", "Your brand, menu and prices")}</p>
+                      <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C] mb-1">{t("serviceStorefrontTitle", "Build your storefront")}</h3>
+                      <p className="text-xs md:text-sm font-medium text-[#6B6B6B] mb-2 md:mb-3">{t("serviceStorefrontEyebrow", "Your brand, menu and prices")}</p>
 
-                    <p className="text-[#6B6B6B] leading-relaxed text-xs md:text-sm">{t("serviceStorefrontDesc", "Create your own storefront and publish menus to sell directly through the LocalCooks marketplace.")}</p>
-                    <a href="https://localcook.shop/" target="_blank" rel="noopener noreferrer" className="relative z-20 mt-5 inline-flex items-center justify-center rounded-full border border-[#F51042]/25 bg-white px-4 py-2 text-xs font-bold text-[#F51042] shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#F51042] hover:shadow-md">{t("visitMarketplace", "Explore the live marketplace")}<ArrowRight className="ml-1.5 h-3.5 w-3.5" /></a>
-
-                    {/* Decorative accent */}
-                    <div className="absolute bottom-0 left-0 w-16 h-16 bg-gradient-to-tr from-[#F51042]/5 to-transparent rounded-br-2xl rounded-tl-[60px]" />
-                  </div>
+                      <p className="text-[#6B6B6B] leading-relaxed text-xs md:text-sm">{t("serviceStorefrontDesc", "Create your own storefront and publish menus to sell directly through the LocalCooks marketplace.")}</p>
+                    </CardContent>
+                  </Card>
                 </motion.div>
               </FadeInSection>
 
-              {/* Step 2 - We Approve You (Teal accent - complementary to coral) */}
+              {/* Step 2 - We Approve You */}
               <FadeInSection delay={2}>
                 <motion.div
                   whileHover={{ y: -6 }}
                   transition={{ duration: 0.3 }}
                   className="group relative h-full text-center"
                 >
-                  <div className="relative h-full rounded-[2rem] bg-[#f0fbf9] p-6 md:p-7 lg:p-8 transition-all duration-300">
-                    {/* Step Number Badge */}
-                    <div className="relative z-10 mb-5">
-                      <ChefServiceIllustration variant="operations" />
-                      <div className="absolute -right-1 top-0 w-8 h-8 rounded-full bg-[#1f1b19] flex items-center justify-center shadow-md">
-                        <span className="text-white font-bold text-xs md:text-sm">2</span>
+                  <Card className="relative h-full rounded-2xl bg-white border-0 shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]">
+                    <CardContent className="p-6 md:p-7 lg:p-8 flex flex-col items-center h-full">
+                      <div className="relative z-10 mb-5 w-full">
+                        <ChefServiceIllustration variant="operations" />
                       </div>
-                    </div>
 
-                    <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C] mb-1">{t("serviceOperationsTitle", "Cook—we handle the rest")}</h3>
-                    <p className="text-xs md:text-sm font-medium text-[#0D9488] mb-2 md:mb-3">{t("serviceOperationsEyebrow", "Orders, payments and delivery")}</p>
+                      <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C] mb-1">{t("serviceOperationsTitle", "Cook—we handle the rest")}</h3>
+                      <p className="text-xs md:text-sm font-medium text-[#6B6B6B] mb-2 md:mb-3">{t("serviceOperationsEyebrow", "Orders, payments and delivery")}</p>
 
-                    <p className="text-[#6B6B6B] leading-relaxed text-xs md:text-sm">{t("serviceOperationsDesc", "Accept customer orders while LocalCooks coordinates secure payments and delivery logistics for you.")}</p>
-
-                    {/* Decorative accent */}
-                    <div className="absolute bottom-0 left-0 w-16 h-16 bg-gradient-to-tr from-[#0D9488]/5 to-transparent rounded-br-2xl rounded-tl-[60px]" />
-                  </div>
+                      <p className="text-[#6B6B6B] leading-relaxed text-xs md:text-sm">{t("serviceOperationsDesc", "Accept customer orders while LocalCooks coordinates secure payments and delivery logistics for you.")}</p>
+                    </CardContent>
+                  </Card>
                 </motion.div>
               </FadeInSection>
 
-              {/* Step 3 - Menu. Price. Sell. (Amber/Gold accent - warm complement) */}
+              {/* Step 3 - Menu. Price. Sell. */}
               <FadeInSection delay={3}>
                 <motion.div
                   whileHover={{ y: -6 }}
                   transition={{ duration: 0.3 }}
                   className="group relative h-full text-center"
                 >
-                  <div className="relative h-full rounded-[2rem] bg-[#fff9e9] p-6 md:p-7 lg:p-8 transition-all duration-300">
-                    {/* Step Number Badge */}
-                    <div className="relative z-10 mb-5">
-                      <ChefServiceIllustration variant="kitchen" />
-                      <div className="absolute -right-1 top-0 w-8 h-8 rounded-full bg-[#1f1b19] flex items-center justify-center shadow-md">
-                        <span className="text-white font-bold text-xs md:text-sm">3</span>
+                  <Card className="relative h-full rounded-2xl bg-white border-0 shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]">
+                    <CardContent className="p-6 md:p-7 lg:p-8 flex flex-col items-center h-full">
+                      <div className="relative z-10 mb-5 w-full">
+                        <ChefServiceIllustration variant="kitchen" />
                       </div>
-                    </div>
 
-                    <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C] mb-1">{t("serviceKitchenTitle", "Cook in the right kitchen")}</h3>
-                    <p className="text-xs md:text-sm font-medium text-[#F59E0B] mb-2 md:mb-3">{t("serviceKitchenEyebrow", "Commercial kitchens by the hour")}</p>
+                      <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C] mb-1">{t("serviceKitchenTitle", "Cook in the right kitchen")}</h3>
+                      <p className="text-xs md:text-sm font-medium text-[#6B6B6B] mb-2 md:mb-3">{t("serviceKitchenEyebrow", "Commercial kitchens by the hour")}</p>
 
-                    <p className="text-[#6B6B6B] leading-relaxed text-xs md:text-sm">{t("serviceKitchenDesc", "Browse partner commercial kitchens, compare what they offer and book prep time when you need it.")}</p>
-
-                    {/* Decorative accent */}
-                    <div className="absolute bottom-0 left-0 w-16 h-16 bg-gradient-to-tr from-[#F59E0B]/5 to-transparent rounded-br-2xl rounded-tl-[60px]" />
-                  </div>
+                      <p className="text-[#6B6B6B] leading-relaxed text-xs md:text-sm">{t("serviceKitchenDesc", "Browse commercial kitchens, compare what they offer and book prep time when you need it.")}</p>
+                    </CardContent>
+                  </Card>
                 </motion.div>
               </FadeInSection>
             </div>
+
+            {/* CTA Section (Moved above What You Get) */}
+            <FadeInSection>
+              <div className="text-center mb-16 md:mb-20">
+                <Button
+                  onClick={handleGetStarted}
+                  className="bg-[#F51042] hover:bg-[#D90E3A] text-white font-bold py-3 px-4 md:py-4 md:px-12 text-xs md:text-lg rounded-full shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
+                >
+                  <span className="flex items-center justify-center">{t("startYourJourney")}<Icon icon="mdi:arrow-right" className="ml-1.5 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5" />
+                  </span>
+                </Button>
+              </div>
+            </FadeInSection>
 
             {/* What You Get - Compact Bento Grid */}
             <FadeInSection>
@@ -1688,24 +1589,26 @@ export default function ChefLanding() {
                   <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-200 to-transparent" />
                 </div>
 
-                <div className="grid grid-cols-3 sm:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   {[
-                    { text: t("wygSellFromHome"), icon: Building2, borderColor: "border-[#F51042]/20", iconColor: "text-[#F51042]" },
-                    { text: t("wygHandleComplexity"), icon: Shield, borderColor: "border-[#0D9488]/20", iconColor: "text-[#0D9488]" },
-                    { text: t("wygSmartTools"), icon: Settings2, borderColor: "border-[#8B5CF6]/20", iconColor: "text-[#8B5CF6]" },
-                    { text: t("wygStayInControl"), icon: Zap, borderColor: "border-[#F59E0B]/20", iconColor: "text-[#F59E0B]" },
-                    { text: t("wygMoneyFlows"), icon: CreditCard, borderColor: "border-[#F51042]/20", iconColor: "text-[#F51042]" },
-                    { text: t("wygRealSupport"), icon: Heart, borderColor: "border-[#0D9488]/20", iconColor: "text-[#0D9488]" },
+                    { text: t("wygStorefront"), icon: "mdi:storefront-outline" },
+                    { text: t("wygOrderManagement"), icon: "mdi:clipboard-list-outline" },
+                    { text: t("wygMoneyFlows"), icon: "mdi:credit-card-outline" },
+                    { text: t("wygDeliveryLogistics"), icon: "mdi:truck-delivery-outline" },
+                    { text: t("wygKitchenAccess"), icon: "mdi:chef-hat" },
+                    { text: t("wygHandleComplexity"), icon: "mdi:shield-check-outline" },
+                    { text: t("wygStayInControl"), icon: "mdi:tune-variant" },
+                    { text: t("wygRealSupport"), icon: "mdi:account-heart-outline" },
                   ].map((item, i) => (
                     <motion.div
                       key={i}
                       whileHover={{ y: -2, scale: 1.01 }}
                       className="group"
                     >
-                      <div className={`h-full bg-white rounded-lg md:rounded-xl p-2.5 md:p-4 border ${item.borderColor} hover:shadow-md transition-all duration-300`}>
+                      <div className="h-full bg-white rounded-2xl p-4 border border-[#2C2C2C]/10 hover:shadow-md transition-all duration-300">
                         <div className="flex flex-col items-center text-center gap-1.5 md:flex-row md:items-start md:text-left md:gap-2.5">
                           <div className="flex-shrink-0">
-                            <item.icon className={`h-3.5 w-3.5 md:h-4 md:w-4 ${item.iconColor}`} />
+                            <Icon icon={item.icon} className="h-4 w-4 text-[#2C2C2C]" />
                           </div>
                           <p className="text-[#4A5568] text-[10px] md:text-xs leading-tight md:leading-relaxed">
                             {item.text}
@@ -1718,18 +1621,13 @@ export default function ChefLanding() {
               </div>
             </FadeInSection>
 
-            {/* CTA Section */}
+            {/* Explore Marketplace CTA (Moved under What You Get) */}
             <FadeInSection>
-              <div className="text-center">
-                <p className="text-sm md:text-base lg:text-lg font-semibold text-[#2C2C2C] mb-4 md:mb-6">{t("ready")}</p>
-
-                <Button
-                  onClick={handleGetStarted}
-                  className="bg-[#F51042] hover:bg-[#D90E3A] text-white font-bold py-4 px-4 md:py-6 md:px-12 text-xs md:text-lg rounded-full shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
-                >
-                  <span className="flex items-center justify-center">{t("startYourJourney")}<ArrowRight className="ml-1.5 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5" />
-                  </span>
-                </Button>
+              <div className="text-center mt-12 mb-8">
+                <a href="https://localcook.shop/" target="_blank" rel="noopener noreferrer" className="relative z-20 inline-flex items-center justify-center rounded-full border border-[#F51042]/25 bg-white px-5 py-2 md:px-6 md:py-2.5 text-xs md:text-sm font-semibold text-[#F51042] shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#F51042] hover:shadow-md">
+                  {t("visitMarketplace", "Explore the live marketplace")}
+                  <Icon icon="mdi:arrow-right" className="ml-1.5 h-3.5 w-3.5" />
+                </a>
               </div>
             </FadeInSection>
           </div>
@@ -1799,17 +1697,6 @@ export default function ChefLanding() {
             {/* Section Header - White Text on Red */}
             <FadeInSection>
               <div className="text-center mb-12">
-                <motion.div
-                  initial={{ opacity: 0, y: 20, scale: 0.9 }}
-                  whileInView={{ opacity: 1, y: 0, scale: 1 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.6 }}
-                  className="mb-4"
-                >
-                  <span className="inline-flex items-center gap-2 font-mono text-xs md:text-xs uppercase tracking-[0.3em] text-white/90 px-4 py-2 bg-white/15 backdrop-blur-md rounded-full border border-white/20">
-                    <Building2 className="h-3.5 w-3.5 md:h-4 md:w-4" />{t("kitchenAccess")}</span>
-                </motion.div>
-
                 <motion.h2
                   className="text-2xl md:text-3xl lg:text-4xl font-bold text-white leading-tight mb-4"
                   initial={{ opacity: 0, y: 30 }}
@@ -1870,7 +1757,7 @@ export default function ChefLanding() {
                 <div className="flex justify-center mb-10 md:mb-12">
                   <div className="bg-white/15 backdrop-blur-md rounded-2xl border border-white/20 px-8 py-10 text-center max-w-md">
                     <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center mx-auto mb-4">
-                      <Building2 className="h-7 w-7 text-white" />
+                      <Icon icon="mdi:office-building-outline" className="h-7 w-7 text-white" />
                     </div>
                     <h3 className="text-xl font-bold text-white mb-2">{t("partnerKitchensComingSoon")}</h3>
                     <p className="text-sm text-white/80 leading-relaxed">{t("onboardingKitchens")}</p>
@@ -1886,10 +1773,10 @@ export default function ChefLanding() {
                   <Button
                     size="lg"
                     variant="outline"
-                    className="group inline-flex items-center justify-center bg-white/10 hover:bg-white text-white hover:text-[#F51042] border-2 border-white/40 hover:border-white font-semibold rounded-full px-6 sm:px-8 py-5 sm:py-6 text-sm sm:text-base transition-all duration-300 shadow-lg shadow-black/10 hover:shadow-xl hover:-translate-y-0.5"
+                    className="group inline-flex items-center justify-center bg-white text-[#F51042] border-2 border-white font-semibold rounded-full px-6 sm:px-8 py-3 md:py-4 text-sm sm:text-base transition-all duration-300 shadow-lg shadow-black/10 hover:shadow-xl hover:-translate-y-0.5"
                     onClick={handleBrowseKitchens}
                   >
-                    <Calendar className="mr-2 h-4 w-4 sm:h-5 sm:w-5 shrink-0" />{t("browseAllKitchens")}<ArrowRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5 shrink-0 group-hover:translate-x-1 transition-transform" />
+                    <Icon icon="mdi:calendar-month-outline" className="mr-2 h-4 w-4 sm:h-5 sm:w-5 shrink-0" />{t("browseAllKitchens")}<Icon icon="mdi:arrow-right" className="ml-2 h-4 w-4 sm:h-5 sm:w-5 shrink-0 group-hover:translate-x-1 transition-transform" />
                   </Button>
                 </div>
               </FadeInSection>
@@ -1908,11 +1795,7 @@ export default function ChefLanding() {
                 <div className="p-4 md:p-6">
                   {/* Header Row with Kitchen Icon */}
                   <div className="flex items-start gap-4 mb-4">
-                    <img
-                      src={kitchenTableIcon}
-                      alt={t("altKitchen")}
-                      className="w-12 h-12 object-contain"
-                    />
+                    <Icon icon="mdi:table-chair" className="h-12 w-12 shrink-0 text-[#2C2C2C]" aria-hidden />
                     <div>
                       <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#6B6B6B] block mb-1">{t("forKitchenOwners")}</span>
                       <h3 className="text-lg md:text-xl lg:text-2xl font-bold text-[#1A1A1A] leading-tight">
@@ -1955,7 +1838,7 @@ export default function ChefLanding() {
                       transition={{ duration: 0.2 }}
                     >
                       {/* Background Icon */}
-                      <CreditCard className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
+                      <Icon icon="mdi:credit-card-outline" className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
 
                       <div className="relative z-10">
                         <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">{t("reliableIncome")}</span>
@@ -1971,7 +1854,7 @@ export default function ChefLanding() {
                       transition={{ duration: 0.2 }}
                     >
                       {/* Background Icon */}
-                      <Shield className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
+                      <Icon icon="mdi:shield-outline" className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
 
                       <div className="relative z-10">
                         <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">{t("zeroRisk")}</span>
@@ -1987,7 +1870,7 @@ export default function ChefLanding() {
                       transition={{ duration: 0.2 }}
                     >
                       {/* Background Icon */}
-                      <Calendar className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
+                      <Icon icon="mdi:calendar-month-outline" className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
 
                       <div className="relative z-10">
                         <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">{t("automated")}</span>
@@ -2003,7 +1886,7 @@ export default function ChefLanding() {
                       transition={{ duration: 0.2 }}
                     >
                       {/* Background Icon */}
-                      <Zap className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
+                      <Icon icon="mdi:lightning-bolt" className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
 
                       <div className="relative z-10">
                         <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">{t("yourControl")}</span>
@@ -2019,7 +1902,7 @@ export default function ChefLanding() {
                       transition={{ duration: 0.2 }}
                     >
                       {/* Background Icon */}
-                      <Clock className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
+                      <Icon icon="mdi:clock-outline" className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
 
                       <div className="relative z-10">
                         <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">{t("flexible")}</span>
@@ -2037,13 +1920,13 @@ export default function ChefLanding() {
                     <div className="flex flex-col sm:flex-row gap-2">
                       <Button
                         onClick={() => window.location.href = 'https://kitchen.localcooks.ca'}
-                        className="bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold py-2.5 px-6 rounded-full text-sm transition-all duration-300 group"
-                      >{t("becomePartner")}<ArrowRight className="ml-1.5 h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
+                        className="bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold py-3 md:py-4 px-6 rounded-full text-sm transition-all duration-300 group"
+                      >{t("becomePartner")}<Icon icon="mdi:arrow-right" className="ml-1.5 h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
                       </Button>
                       <Button
                         variant="outline"
                         onClick={() => window.location.href = 'https://kitchen.localcooks.ca'}
-                        className="border border-[#2C2C2C]/20 text-[#2C2C2C] hover:border-[#F51042] hover:text-[#F51042] font-semibold py-2.5 px-6 rounded-full text-sm transition-all duration-300"
+                        className="border border-[#2C2C2C]/20 text-[#2C2C2C] hover:border-[#F51042] hover:text-[#F51042] font-semibold py-3 md:py-4 px-6 rounded-full text-sm transition-all duration-300"
                       >{t("learnMore")}</Button>
                     </div>
                   </div>
@@ -2088,7 +1971,6 @@ export default function ChefLanding() {
           <div className="container mx-auto max-w-6xl relative z-10">
             <FadeInSection>
               <div className="text-center mb-16">
-                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-[#F51042] mb-4 px-4 py-2 bg-[#F51042]/10 rounded-full">{t("knowledgeBase")}</span>
                 <motion.h2
                   initial={{ opacity: 0, y: 30 }}
                   whileInView={{ opacity: 1, y: 0 }}
@@ -2129,34 +2011,34 @@ export default function ChefLanding() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-12">
                 {[
                   {
-                    icon: Shield,
+                    icon: "mdi:shield-outline",
                     title: t("kbRegulatoryTitle"),
                     description: t("kbRegulatoryDesc"),
-                    color: "bg-blue-50 text-blue-600",
+                    color: "bg-gray-100 text-gray-700",
                   },
                   {
-                    icon: BadgeCheck,
+                    icon: "mdi:certificate-outline",
                     title: t("kbFoodSafetyTitle"),
                     description: t("kbFoodSafetyDesc"),
-                    color: "bg-emerald-50 text-emerald-600",
+                    color: "bg-gray-100 text-gray-700",
                   },
                   {
-                    icon: Building2,
+                    icon: "mdi:office-building-outline",
                     title: t("kbBizRegTitle"),
                     description: t("kbBizRegDesc"),
-                    color: "bg-amber-50 text-amber-600",
+                    color: "bg-gray-100 text-gray-700",
                   },
                   {
-                    icon: Scale,
+                    icon: "mdi:scale-balance",
                     title: t("kbInsuranceTitle"),
                     description: t("kbInsuranceDesc"),
-                    color: "bg-purple-50 text-purple-600",
+                    color: "bg-gray-100 text-gray-700",
                   },
                 ].map((item, i) => (
                   <Card key={i} className="group border border-gray-100 shadow-sm hover:shadow-md hover:border-gray-200 transition-all duration-300 bg-white">
                     <CardContent className="p-6">
                       <div className={`w-10 h-10 rounded-lg ${item.color} flex items-center justify-center mb-4`}>
-                        <item.icon className="h-5 w-5" />
+                        <Icon icon={item.icon} className="h-5 w-5" />
                       </div>
                       <h3 className="font-semibold text-[#2C2C2C] text-sm mb-2">{item.title}</h3>
                       <p className="text-[#6B6B6B] text-xs leading-relaxed">{item.description}</p>
@@ -2172,14 +2054,10 @@ export default function ChefLanding() {
                   <Link href="/resources">
                     <Button
                       size="lg"
-                      className="bg-[#F51042] hover:bg-[#D90935] text-white font-semibold py-6 px-10 text-base rounded-full shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all"
-                    >{t("exploreResourceGuide")}<ArrowRight className="ml-2 h-5 w-5" />
+                      className="bg-[#F51042] hover:bg-[#D90935] text-white font-semibold py-3 md:py-4 px-10 text-base rounded-full shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all"
+                    >{t("exploreResourceGuide")}<Icon icon="mdi:arrow-right" className="ml-2 h-5 w-5" />
                     </Button>
                   </Link>
-                  <span className="flex items-center gap-1.5 text-xs text-[#6B6B6B]">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                    10-minute read
-                  </span>
                 </div>
               </div>
             </FadeInSection>
@@ -2193,7 +2071,6 @@ export default function ChefLanding() {
           <div className="container mx-auto max-w-3xl">
             <FadeInSection>
               <div className="text-center mb-12">
-                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-[#F51042] mb-4 px-4 py-2 bg-[#F51042]/10 rounded-full">{t("questions")}</span>
                 <h2 className="font-display text-4xl md:text-5xl text-[#F51042]">{t("faq")}</h2>
               </div>
             </FadeInSection>
@@ -2211,7 +2088,7 @@ export default function ChefLanding() {
                   { q: t("chefFaqQ8"), a: t("chefFaqA8") },
                 ].map((item, i) => (
                   <AccordionItem key={i} value={`item-${i}`} className="border border-gray-100 rounded-xl bg-white px-6 shadow-sm">
-                    <AccordionTrigger className="text-left text-lg font-semibold text-[#2C2C2C] py-5 hover:no-underline hover:text-[#F51042]">
+                    <AccordionTrigger className="text-left text-lg font-semibold text-[#2C2C2C] py-3 md:py-5 hover:no-underline hover:text-[#F51042]">
                       {item.q}
                     </AccordionTrigger>
                     <AccordionContent className="text-[#6B6B6B] pb-5 text-base leading-relaxed">
@@ -2320,8 +2197,8 @@ export default function ChefLanding() {
                 <Button
                   onClick={handleGetStarted}
                   size="lg"
-                  className="bg-white text-[#F51042] hover:bg-gray-100 font-bold py-6 px-12 text-lg md:text-xl rounded-full shadow-2xl hover:shadow-white/30 hover:-translate-y-1 transition-all"
-                >{t("joinLocalCooks")}<ArrowRight className="ml-3 h-5 w-5 md:h-6 md:w-6" />
+                  className="bg-white text-[#F51042] hover:bg-gray-100 font-bold py-3 md:py-4 px-12 text-lg md:text-xl rounded-full shadow-2xl hover:shadow-white/30 hover:-translate-y-1 transition-all"
+                >{t("joinLocalCooks")}<Icon icon="mdi:arrow-right" className="ml-3 h-5 w-5 md:h-6 md:w-6" />
                 </Button>
                 <p className="text-white/70 mt-5 text-xs md:text-sm">{t("approved24hGuarantees")}</p>
               </motion.div>

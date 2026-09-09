@@ -934,7 +934,7 @@ export default function KitchenResourcesPage_en_fr() {
               <h4 className="font-semibold text-gray-800 mb-3 mt-6">Guides des meilleures pratiques de l'industrie</h4>
               <ResourceTable headers={["Ressource", "Lien"]} rows={[["Cuisines partagées — Guide du propriétaire (Ontario, 2025)", "wdgpublichealth.ca (PDF)"], ["Modèle de contrat de location de cuisine (Manitoba)", "gov.mb.ca (PDF)"], ["Trousse de cuisine commerciale : Gérer les risques (Alberta)", "open.alberta.ca"], ["The Food Corridor — Modèles de tarification", "thefoodcorridor.com"]]} />
               <h4 className="font-semibold text-gray-800 mb-3 mt-6">Assurance</h4>
-              <ResourceTable headers={["Fournisseur", "Site Web"]} rows={[["Assurance FLIP (Recommandé pour les locataires)", "fliprogram.com"], ["BFL Canada", "bflcanada.ca"], ["Zensurance", "zensurance.com"], ["Assurance Aligned", "alignedinsurance.com"]]} />
+              <ResourceTable headers={["Fournisseur", "Site Web"]} rows={[["BFL Canada", "bflcanada.ca"], ["Zensurance", "zensurance.com"], ["Assurance Aligned", "alignedinsurance.com"]]} />
 
               {/* Disclaimer */}
               <Separator className="mt-16 mb-8" />

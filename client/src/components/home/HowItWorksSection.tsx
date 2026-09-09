@@ -108,7 +108,6 @@ export default function HowItWorksSection() {
                 <div className="bg-white/30 p-3 sm:p-4 rounded-xl sm:rounded-2xl backdrop-blur-md ring-2 ring-white/40 group-hover:scale-110 transition-transform duration-300 relative z-10">
                   {step.icon}
                 </div>
-                <span className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-white/20 tracking-tight relative z-10">{step.number}</span>
                 <div className="absolute -bottom-4 sm:-bottom-6 left-1/2 transform -translate-x-1/2 w-8 h-8 sm:w-12 sm:h-12 rotate-45 bg-white shadow-lg"></div>
               </div>
               <div className="p-6 sm:p-8 md:p-10 relative z-10">

@@ -29,7 +29,7 @@ export default function ManagerBookingLayout({
 }: ManagerBookingLayoutProps) {
     const { t } = useTranslation("manager")
     const [, navigate] = useLocation()
-    const displayBreadcrumbs = breadcrumbs ?? [{ label: t("shellDashboard") }]
+    const displayBreadcrumbs = breadcrumbs ?? []
     const { locations } = useManagerDashboard()
 
     const selectedLocation = React.useMemo(() => {

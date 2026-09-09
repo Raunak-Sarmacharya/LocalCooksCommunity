@@ -1706,7 +1706,6 @@ export default function BookingDetailsPage() {
 
   const bookingBreadcrumbs = useMemo(
     () => [
-      { label: t("shellDashboard"), onClick: () => navigate("/dashboard"), navId: "overview" as const },
       {
         label: t("shellMyBookings"),
         onClick: () => navigate("/dashboard?view=bookings"),
@@ -1729,7 +1728,6 @@ export default function BookingDetailsPage() {
       <ManagerBookingLayout
         bookingLocationId={booking?.location?.id ?? booking?.kitchen?.locationId ?? null}
         breadcrumbs={[
-          { label: t("shellDashboard"), onClick: () => navigate("/manager/dashboard") },
           { label: t("bkMyBookings"), onClick: () => window.history.back() },
           { label: booking ? t("bdBookingRef", { id: booking.id }) : t("bdBookingDetails") }
         ]}

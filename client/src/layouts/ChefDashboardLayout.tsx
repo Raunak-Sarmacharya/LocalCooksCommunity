@@ -81,21 +81,10 @@ export default function ChefDashboardLayout({
 
         // Overview is the home — one crumb only so the sidebar does not nest "Overview" under itself
         if (activeView === "overview") {
-            return [
-                {
-                    label: t("shellOverview"),
-                    navId: "overview",
-                },
-            ]
+            return []
         }
 
-        const crumbs: ChefBreadcrumb[] = [
-            {
-                label: t("shellDashboard"),
-                onClick: () => onViewChange("overview"),
-                navId: "overview",
-            },
-        ]
+        const crumbs: ChefBreadcrumb[] = []
         const item = findChefNavItem(activeView)
         crumbs.push({
             label: item

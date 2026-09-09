@@ -69,8 +69,8 @@ const SECTIONS: Section[] = [{
     id: "coverage-requirements",
     title: "Вимоги до покриття"
   }, {
-    id: "flip-insurance",
-    title: "Страхування FLIP"
+    id: "choosing-an-insurer",
+    title: "Вибір страховика"
   }, {
     id: "additional-insured",
     title: "Додатково застрахований"
@@ -457,7 +457,7 @@ export default function ChefResourcesPage_en_uk() {
     }
   }, []);
   return <div className="min-h-screen flex flex-col bg-background">
-      <SEOHead title={t("seoChefResourcesTitle", "Chef Resources — Start Your Food Business in Canada")} description={t("seoChefResourcesDesc", "Complete guide to food safety certification, business registration, insurance, and licensing for food entrepreneurs in Newfoundland & Labrador and across Canada.")} canonicalUrl="/resources" keywords={["food business Canada", "food handler certificate NL", "commercial kitchen rental", "food entrepreneur guide", "food safety Newfoundland", "start food business", "FLIP insurance", "food establishment licence", "SkillsPass NL"]} faq={[{
+      <SEOHead title={t("seoChefResourcesTitle", "Chef Resources — Start Your Food Business in Canada")} description={t("seoChefResourcesDesc", "Complete guide to food safety certification, business registration, insurance, and licensing for food entrepreneurs in Newfoundland & Labrador and across Canada.")} canonicalUrl="/resources" keywords={["food business Canada", "food handler certificate NL", "commercial kitchen rental", "food entrepreneur guide", "food safety Newfoundland", "start food business", "food business insurance", "food establishment licence", "SkillsPass NL"]} faq={[{
       question: "Do I need a food safety certificate to use LocalCooks?",
       answer: "Yes, all chefs using LocalCooks must complete a food safety certification. In Newfoundland & Labrador, you can get certified for free through SkillsPass NL, which covers food handler training."
     }, {
@@ -465,7 +465,7 @@ export default function ChefResourcesPage_en_uk() {
       answer: "You can register as a sole proprietor or corporation through Service Newfoundland and Labrador. Home-based food businesses require additional registration through the Department of Health and Community Services."
     }, {
       question: "What insurance do I need as a food entrepreneur?",
-      answer: "LocalCooks requires minimum $2 million liability coverage. FLIP (Food Liability Insurance Program) offers affordable coverage specifically for food entrepreneurs starting at $199/year."
+      answer: "LocalCooks вимагає страхування відповідальності щонайменше на 2 мільйони доларів. Зверніться до ліцензованого канадського страховика або брокера щодо покриття для харчового бізнесу та орендарів комерційних кухонь."
     }, {
       question: "Can I operate a home-based food business in NL?",
       answer: "Yes, but you must register as a Home-Based Food Business and comply with specific restrictions. Low-risk baked goods and preserves are typically allowed, while high-risk items require a commercial kitchen."
@@ -635,11 +635,10 @@ export default function ChefResourcesPage_en_uk() {
               <SubHeading id="coverage-requirements">Вимоги до покриття</SubHeading>
               <ResourceTable headers={["Покриття", "Мінімум", "Мета"]} rows={[["Загальна комерційна відповідальність (CGL)", "$2 000 000 сукупно", "Покриває нещасні випадки, травми, пошкодження майна"], ["Відповідальність за продукцію", "$2 000 000 сукупно", "Покриває харчові отруєння, претензії щодо алергенів"], ["Пошкодження орендованих приміщень", "$300 000", "Покриває випадкове пошкодження кухні"], ["Додатково застрахований", "Кухня, зазначена у вашому полісі", "Поширює ваше покриття на кухню"]]} />
 
-              <SubHeading id="flip-insurance">Страхування FLIP (рекомендовано)</SubHeading>
+              <SubHeading id="choosing-an-insurer">Вибір страховика</SubHeading>
               <p className="text-gray-600">
-                FLIP (Програма страхування відповідальності за харчові продукти) спеціалізується на доступному страховому покритті для підприємств харчової промисловості, які орендують комерційні кухонні приміщення.Це найпоширеніший варіант для орендарів спільної кухні по всій Канаді.
+                Зверніться до ліцензованого канадського страховика або брокера щодо поліса для харчового бізнесу та орендарів комерційних кухонь. Перед придбанням уточніть необхідні ліміти, страхування відповідальності за продукцію, покриття пошкоджень орендованого приміщення, плату за додавання кухні, франшизи, винятки та строк видачі сертифіката.
               </p>
-              <ResourceTable headers={["", ""]} rows={[["Вартість", "Від приблизно $25.92/місяць або $299/рік"], ["Додатково застраховані", "Безкоштовно та необмежено — додавайте кухні без додаткових витрат"], ["Франшиза", "Немає на претензії щодо відповідальності"], ["Купівля", "Миттєво онлайн — сертифікат доступний негайно"], ["Додатки", "Обладнання (+$8.25/міс), кібервідповідальність (+$8.25/міс), додаткова відповідальність (від $41.67/міс)"], ["Вебсайт", "fliprogram.com"]]} />
 
               <SubHeading id="additional-insured">Розуміння «додаткового страхувальника»</SubHeading>
               <p className="text-gray-600 leading-relaxed">
@@ -804,7 +803,7 @@ export default function ChefResourcesPage_en_uk() {
                 a: "Так, але вам потрібна відповідна ліцензія для кожного місця. Ведіть детальні записи про те, де кожен продукт виготовляється."
               }, {
                 q: "Як додати кухню як Додатково застрахованого?",
-                a: "Через портал вашого страховика. З FLIP це миттєво і безкоштовно \u2014 введіть юридичну назву та адресу кухні, потім згенеруйте оновлений сертифікат страхування."
+                a: "Зверніться до страховика або скористайтеся його онлайн-порталом. Надайте точну юридичну назву й адресу кухні, уточніть можливу плату та запросіть оновлений страховий сертифікат."
               }].map((item, i) => <AccordionItem key={i} value={`faq-${i}`}>
                     <AccordionTrigger className="text-sm font-medium text-left">{item.q}</AccordionTrigger>
                     <AccordionContent className="text-sm text-muted-foreground leading-relaxed">{item.a}</AccordionContent>
@@ -818,7 +817,7 @@ export default function ChefResourcesPage_en_uk() {
               items: ["Пройдіть безкоштовний онлайн-курс з обробки харчових продуктів SkillsPass NL", "Складіть іспит на сертифікацію та завантажте свій сертифікат", "Дослідіть, які продукти ви хочете готувати", "Вирішіть: домашня чи комерційна кухня", "Ознайомтеся з правилами щодо харчових приміщень Ньюфаундленду і Лабрадору"]
             }, {
               title: "Тижні 3\u20134: Страхування та реєстрація",
-              items: ["Отримайте пропозицію зі страхування відповідальності від FLIP або альтернативного постачальника", "Придбайте страхування відповідальності щонайменше на 2 млн доларів", "Завантажте свій страховий сертифікат", "Зареєструйте домашній харчовий бізнес (якщо застосовно)", "Відкрийте окремий банківський рахунок для бізнесу"]
+              items: ["Отримайте пропозицію зі страхування відповідальності від ліцензованого канадського страховика або брокера", "Придбайте страхування відповідальності щонайменше на 2 млн доларів", "Завантажте свій страховий сертифікат", "Зареєструйте домашній харчовий бізнес (якщо застосовно)", "Відкрийте окремий банківський рахунок для бізнесу"]
             }, {
               title: "Тижні 5\u20136: Кухня та документи",
               items: ["Перегляньте комерційні кухні на Local Cooks", "Подайте заявки до кухонь, які відповідають вашим потребам", "Зв'яжіться з керівниками кухонь через обмін повідомленнями", "Обміняйтеся документами (плани поверхів, інформація про ліцензію, COI)", "Додайте кухню як додаткового застрахованого у своєму страхуванні"]
@@ -834,7 +833,7 @@ export default function ChefResourcesPage_en_uk() {
               <h4 className="font-semibold text-gray-800 mb-3 mt-6">Федеральний / Канадський</h4>
               <ResourceTable headers={["Ресурс", "Посилання"]} rows={[["Інструментарій CFIA для харчових підприємств", "inspection.canada.ca/food-safety-industry/toolkit-food-businesses"], ["Пріоритетні алергени Health Canada", "canada.ca/en/health-canada/services/food-nutrition/food-safety/food-allergies-intolerances.html"], ["Канадське податкове агентство (GST/HST)", "canada.ca/en/revenue-agency.html"], ["Контрольний список дозволів BizPaL", "bizpal.ca"]]} />
               <h4 className="font-semibold text-gray-800 mb-3 mt-6">страхування</h4>
-              <ResourceTable headers={["Постачальник", "Вебсайт"]} rows={[["Страхування FLIP (Рекомендовано)", "fliprogram.com"], ["Zensurance", "zensurance.com"], ["BFL Canada", "bflcanada.ca"]]} />
+              <ResourceTable headers={["Постачальник", "Вебсайт"]} rows={[["Zensurance", "zensurance.com"], ["BFL Canada", "bflcanada.ca"]]} />
 
               {/* Disclaimer */}
               <Separator className="mt-16 mb-8" />

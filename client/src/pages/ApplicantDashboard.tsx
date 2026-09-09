@@ -58,6 +58,7 @@ import { useChefOnboardingStatus } from "@/hooks/use-chef-onboarding-status";
 import KitchenDiscovery from "@/components/kitchen-application/KitchenDiscovery";
 import TrainingOverviewPanel from "@/components/training/TrainingOverviewPanel";
 import ApplicationFormPanel from "@/components/application/ApplicationFormPanel";
+import { DocumentManagementModal } from "@/components/document-verification/DocumentUpload";
 import { leaveSellerApplication } from "@/components/application/ApplicationFormContext";
 import ChefSupportPage from "@/components/chef/ChefSupportPage";
 import { IssuesAndRefunds } from "@/components/chef/IssuesAndRefunds";
@@ -70,7 +71,6 @@ import ChefProfileSettings from "@/components/chef/ChefProfileSettings";
 import ChefSellerRevenue from "@/components/chef/seller-revenue/ChefSellerRevenue";
 import ChefSellerAccount from "@/components/chef/ChefSellerAccount";
 import ChefNotificationCenter from "@/components/chef/ChefNotificationCenter";
-import { useDocumentVerification } from "@/hooks/use-document-verification";
 import { applicationStatusVariant, hasStep2BeenSubmitted } from "@/components/chef/applications/status";
 import { ChefPageHeader } from "@/components/chef/ui";
 import { useTranslation } from "react-i18next";
@@ -79,7 +79,6 @@ import { bt } from "@/i18n/booking-ns";
 import {
   OverviewTabContent,
   MyKitchensTabContent,
-  DocumentVerificationView,
   SellerApplicationTabContent,
   type PublicKitchen,
   type KitchenApplicationWithLocation,
@@ -154,8 +153,12 @@ export default function ApplicantDashboard() {
     }
   };
 
-  // Application form view mode - 'list' shows applications, 'form' shows the application form, 'documents' shows document verification
-  const [applicationViewMode, setApplicationViewMode] = useState<'list' | 'form' | 'documents'>('list');
+  // Application form state. Document management stays on the list and opens as a modal.
+  const [applicationViewMode, setApplicationViewMode] = useState<'list' | 'form' | 'documents'>(() =>
+    window.sessionStorage.getItem("localcooks:seller-journey-result") === "submitted"
+      ? "documents"
+      : "list"
+  );
   const applicationLeaveRef = useRef<(() => void) | null>(null);
   const [applicationLeaveOpen, setApplicationLeaveOpen] = useState(false);
   const [applicationBusy, setApplicationBusy] = useState(false);
@@ -240,9 +243,6 @@ export default function ApplicantDashboard() {
     window.addEventListener('popstate', syncFromUrl);
     return () => window.removeEventListener('popstate', syncFromUrl);
   }, [location]);
-
-  // Get document verification status for seller application
-  const { verification: docData, error: docError, forceRefresh: refetchDocs } = useDocumentVerification();
 
   // Get chef applications for chat access
   const { applications: kitchenApplications } = useChefKitchenApplications();
@@ -747,11 +747,6 @@ export default function ApplicantDashboard() {
     </div>
   ) : applicationViewMode === "form" ? (
     <ApplicationFormPanel onBack={() => requestLeaveApplication(() => setApplicationViewMode("list"))} onBusyChange={setApplicationBusy} />
-  ) : applicationViewMode === "documents" ? (
-    <DocumentVerificationView
-      documentVerification={docData || undefined}
-      onBack={() => requestLeaveApplication(() => setApplicationViewMode("list"))}
-    />
   ) : (
     <SellerApplicationTabContent
       applications={userDisplayInfo.applications || []}
@@ -925,19 +920,7 @@ export default function ApplicantDashboard() {
   // Generate dynamic breadcrumbs based on current view and sub-view
   // navId marks the sidebar parent — crumbs after it expand as a nested drawer
   const breadcrumbs = useMemo(() => {
-    const baseBreadcrumbs = [{ label: t("shellChefPortal"), href: "#", navId: "overview" as const }];
-
-    if (activeTab === 'applications' && applicationViewMode === 'documents') {
-      return [
-        ...baseBreadcrumbs,
-        {
-          label: t("shellMyApplication"),
-          onClick: () => guardedApplicationNavigate(() => setApplicationViewMode('list')),
-          navId: "applications" as const,
-        },
-        { label: t("shellDocumentVerification") },
-      ];
-    }
+    const baseBreadcrumbs: any[] = [];
 
     if (activeTab === 'applications' && applicationViewMode === 'form') {
       return [
@@ -1143,6 +1126,20 @@ export default function ApplicantDashboard() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <DocumentManagementModal
+        open={applicationViewMode === "documents"}
+        onOpenChange={(open) => {
+          if (open) {
+            setApplicationViewMode("documents");
+            return;
+          }
+          setApplicationViewMode("list");
+          const url = new URL(window.location.href);
+          url.searchParams.delete("action");
+          window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+        }}
+      />
 
       {/* Global Modals for Chat */}
       <Dialog open={showChatDialog} onOpenChange={setShowChatDialog}>

@@ -76,7 +76,7 @@ export default function SellerJourneyDialog({ open, onOpenChange }: { open: bool
   };
 
   const preferences = [
-    { value: "commercial" as const, label: "Partner commercial kitchen", icon: Building2 },
+    { value: "commercial" as const, label: "Commercial kitchen", icon: Building2 },
     { value: "home" as const, label: "My home kitchen", icon: Home },
     { value: "notSure" as const, label: "I’m not sure yet", icon: HelpCircle },
   ];
@@ -125,9 +125,8 @@ export default function SellerJourneyDialog({ open, onOpenChange }: { open: bool
           ) : (
           <>
           <DialogHeader>
-            <p className="font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-[#F51042]">Seller application · Step 1</p>
-            <DialogTitle className="text-2xl font-bold tracking-tight text-[#211d1b] sm:text-3xl">Tell us where your cooking journey begins</DialogTitle>
-            <DialogDescription className="leading-relaxed text-[#6b625e]">This starts your seller application. Your email will become your LocalCooks account email.</DialogDescription>
+            <DialogTitle className="text-2xl font-bold tracking-tight text-[#211d1b] sm:text-3xl">Start your journey with Local Cooks</DialogTitle>
+            <DialogDescription className="leading-relaxed text-[#6b625e]">We’ll use this email to send you updates and next steps.</DialogDescription>
           </DialogHeader>
 
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
@@ -157,7 +156,6 @@ export default function SellerJourneyDialog({ open, onOpenChange }: { open: bool
             </div>
           </fieldset>
 
-          <p className="mt-5 rounded-xl bg-white px-4 py-3 text-xs leading-relaxed text-[#6b625e]">Food-safety documents are not required now. We’ll ask you to upload them from your dashboard after sign-in.</p>
           <div className="mt-4 flex items-start gap-3 rounded-xl border border-[#e8dfda] bg-white px-4 py-3">
             <Checkbox
               id="journey-terms"
@@ -179,7 +177,6 @@ export default function SellerJourneyDialog({ open, onOpenChange }: { open: bool
           <Button disabled={stage === "creating"} onClick={continueToAccount} className="mt-5 h-12 w-full rounded-full bg-[#F51042] font-bold text-white hover:bg-[#d90e3a]">
             {stage === "creating" ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creating your secure account…</> : <>Continue to secure account <ArrowRight className="ml-2 h-4 w-4" /></>}
           </Button>
-          <p className="mt-3 text-center text-xs text-[#756b66]">Already registered? We’ll email you a secure sign-in link without leaving this flow.</p>
           </>
           )}
         </div>
