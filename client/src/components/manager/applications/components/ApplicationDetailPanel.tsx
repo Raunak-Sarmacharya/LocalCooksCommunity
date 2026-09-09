@@ -398,7 +398,7 @@ export function ApplicationDetailPanel({
                                             title={mt("foodSafetyLicense")}
                                             subtitle={application.foodSafetyLicenseExpiry
                                                 ? mt("expiresLabel", { date: new Date(application.foodSafetyLicenseExpiry).toLocaleDateString() })
-                                                : mt("requiredOnStep2", { defaultValue: "Required on Step 2" })}
+                                                : mt("requiredOnStep2", { defaultValue: "Required on Kitchen Coordination" })}
                                             url={application.foodSafetyLicenseUrl}
                                             status={application.foodSafetyLicenseUrl ? 'complete' : 'required'}
                                             variant="blue"
@@ -427,7 +427,7 @@ export function ApplicationDetailPanel({
                                             title={mt("foodEstablishmentCertificate")}
                                             subtitle={application.foodEstablishmentCertExpiry
                                                 ? mt("expiresLabel", { date: new Date(application.foodEstablishmentCertExpiry).toLocaleDateString() })
-                                                : 'Step 2 requirement'}
+                                                : 'Kitchen Coordination requirement'}
                                             url={application.foodEstablishmentCertUrl}
                                             status={application.foodEstablishmentCertUrl ? 'complete' : 'optional'}
                                             variant="blue"

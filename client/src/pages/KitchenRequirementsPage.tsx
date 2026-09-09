@@ -333,7 +333,7 @@ export default function KitchenRequirementsPage() {
                                     </li>
                                 ))
                             ) : (
-                                <li className="text-sm text-muted-foreground italic">{t("noDocsRequiredStep2", "No specific documents required for Step 2.")}</li>
+                                <li className="text-sm text-muted-foreground italic">{t("noDocsRequiredStep2", "No specific documents required for Kitchen Coordination.")}</li>
                             )}
                         </ul>
                     </CardContent>
@@ -365,7 +365,7 @@ export default function KitchenRequirementsPage() {
                         <>
                             <h3 className="text-xl font-semibold mb-2">{t("step1CompleteTimeForStep2", "Request to apply approved — next up: kitchen documents")}</h3>
                             <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                                {t("initialApplicationApprovedSubmitStep2", "Your initial application was approved. Submit your Step 2 documents to unlock full kitchen access.")}
+                                {t("initialApplicationApprovedSubmitStep2", "Your initial application was approved. Submit your Kitchen Coordination documents to unlock full kitchen access.")}
                             </p>
                             <div className="flex gap-4 justify-center">
                                 <Button 
@@ -373,7 +373,7 @@ export default function KitchenRequirementsPage() {
                                     onClick={() => setLocation(`/apply-kitchen/${locationId}`)}
                                 >
                                     <ArrowRight className="mr-2 h-4 w-4" />
-                                    {t("continueToStep2", "Continue to Step 2")}
+                                    {t("continueToStep2", "Continue to Kitchen Coordination")}
                                 </Button>
                             </div>
                         </>

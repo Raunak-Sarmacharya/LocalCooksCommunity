@@ -30,6 +30,7 @@ import {
     generateApplicationWithDocumentsEmail,
     generateApplicationWithoutDocumentsEmail,
     generateStatusChangeEmail,
+    generateNewSellerApplicationAdminEmail,
 } from '../../email';
 
 const router = Router();
@@ -157,12 +158,47 @@ router.post('/firebase/applications',
                         );
                         logger.info(`✅ Sent intended application notification to manager of location ${locationId}`);
                     }
-                } catch (notifyErr) {
-                    logger.error('❌ Failed to send intended application notification:', notifyErr);
+            } catch (notifyErr) {
+                logger.error('❌ Failed to send intended application notification:', notifyErr);
+            }
+        }
+
+        // Send admin notification email about new seller application
+        try {
+            const { users } = await import('@shared/schema');
+            const { eq: eqOp, isNotNull, ne, and: andOp } = await import('drizzle-orm');
+            const { db } = await import('../../db');
+            const adminUsers = await db
+                .select({ username: users.username })
+                .from(users)
+                .where(
+                    andOp(
+                        eqOp(users.role, 'admin'),
+                        isNotNull(users.username),
+                        ne(users.username, '')
+                    )
+                );
+            const hasDocuments = !!(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl);
+            for (const admin of adminUsers) {
+                if (admin.username) {
+                    const adminEmail = generateNewSellerApplicationAdminEmail({
+                        adminEmail: admin.username,
+                        chefName: application.fullName || 'Chef',
+                        chefEmail: application.email || '',
+                        hasDocuments,
+                        submittedAt: new Date(),
+                    });
+                    await sendEmail(adminEmail, {
+                        trackingId: `seller_app_admin_notify_fb_${admin.username}_${application.id}_${Date.now()}`
+                    });
                 }
             }
+            logger.info(`✅ Sent seller application admin notification to ${adminUsers.length} admin(s)`);
+        } catch (adminEmailError) {
+            logger.error('Error sending admin notification for new seller application:', adminEmailError);
+        }
 
-            res.status(201).json(application);
+        res.status(201).json(application);
 
         } catch (error) {
             logger.error('❌ Error creating application:', error);

@@ -417,7 +417,7 @@ export function ManagerKitchenApplicationsContent({
             closeDetailSheet();
         } catch (error: any) {
             toast({ title: mt("error"),
-                description: error.message || "Failed to approve Step 2",
+                description: error.message || "Failed to approve Kitchen Coordination",
                 variant: "destructive",
             });
         }

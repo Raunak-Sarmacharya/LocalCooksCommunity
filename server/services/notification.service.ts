@@ -429,8 +429,8 @@ async function notifyStep2ApplicationSubmitted(data: ApplicationNotificationData
     locationId: data.locationId,
     type: 'application_new',
     priority: 'high',
-    title: 'Step 2 Submitted',
-    message: `${data.chefName} (${data.chefEmail}) submitted Step 2 documents${data.locationName ? ` for ${data.locationName}` : ''}. Review Step 2 to approve full booking access.`,
+    title: 'Kitchen Coordination Submitted',
+    message: `${data.chefName} (${data.chefEmail}) submitted Kitchen Coordination documents${data.locationName ? ` for ${data.locationName}` : ''}. Review Kitchen Coordination to approve full booking access.`,
     metadata: {
       applicationId: data.applicationId,
       chefName: data.chefName,
@@ -439,7 +439,7 @@ async function notifyStep2ApplicationSubmitted(data: ApplicationNotificationData
       step: 2
     },
     actionUrl: managerDashboardView('applications'),
-    actionLabel: 'Review Step 2'
+    actionLabel: 'Review Kitchen Coordination'
   });
 }
 
@@ -751,7 +751,7 @@ async function notifyChefApplicationApproved(data: {
       : data.locationId
         ? `/kitchen-requirements/${data.locationId}`
         : chefDashboardView('kitchen-applications'),
-    actionLabel: isFullyApproved ? 'Book Now' : 'Complete Step 2'
+    actionLabel: isFullyApproved ? 'Book Now' : 'Complete Kitchen Coordination'
   });
 }
 

@@ -907,6 +907,13 @@ router.patch('/firebase/admin/kitchen-applications/:id/status', requireFirebaseA
             return res.status(400).json({ error: 'Status must be "approved", "rejected", or "inReview"' });
         }
 
+        // Fetch application BEFORE update so we can compare tiers
+        const applicationBeforeUpdate = await chefApplicationService.getApplicationById(applicationId);
+        if (!applicationBeforeUpdate) {
+            return res.status(404).json({ error: 'Application not found' });
+        }
+        const previousTier = applicationBeforeUpdate.current_tier ?? 1;
+
         let updatedApplication = await chefApplicationService.updateApplicationStatus(
             applicationId,
             status,
@@ -925,6 +932,129 @@ router.patch('/firebase/admin/kitchen-applications/:id/status', requireFirebaseA
         }
 
         logger.info(`✅ Application ${applicationId} ${status} by Admin ${user.id}`);
+
+        // ─── Approval: chat, notifications, emails ─────────────────────
+        if (status === 'approved' && updatedApplication) {
+            const currentTier = updatedApplication.current_tier ?? 1;
+
+            // 1. Initialize chat conversation & send tier transition system messages
+            if (currentTier > previousTier) {
+                try {
+                    await notifyTierTransition(applicationId, previousTier, currentTier);
+                    logger.info(`✅ Chat tier transition notification sent (${previousTier} → ${currentTier}) for application ${applicationId}`);
+                } catch (chatError) {
+                    logger.error('Error sending tier transition chat notification:', chatError);
+                }
+            }
+
+            // 2. Send in-app notification to chef
+            try {
+                const location = await locationService.getLocationById(applicationBeforeUpdate.locationId);
+                if (applicationBeforeUpdate.chefId) {
+                    await notificationService.notifyChefApplicationApproved({
+                        chefId: applicationBeforeUpdate.chefId,
+                        kitchenName: location?.name || 'Kitchen',
+                        locationName: location?.name || 'Kitchen Location',
+                        locationId: applicationBeforeUpdate.locationId,
+                        applicationId: applicationBeforeUpdate.id,
+                        currentTier
+                    });
+                    logger.info(`✅ In-app notification sent to chef ${applicationBeforeUpdate.chefId} for application ${applicationId}`);
+                }
+            } catch (notifError) {
+                logger.error('Error creating chef application approval notification:', notifError);
+            }
+
+            // 3. Send email to chef about approval
+            try {
+                if (applicationBeforeUpdate.email) {
+                    const location = await locationService.getLocationById(applicationBeforeUpdate.locationId);
+                    const approvalTier = currentTier;
+
+                    if (approvalTier <= 1) {
+                        // Step 1 approval: chef still has kitchen coordination — send "request approved, next steps" email
+                        const step1Email = generateKitchenApplicationSubmittedChefEmail({
+                            chefEmail: applicationBeforeUpdate.email,
+                            chefName: applicationBeforeUpdate.fullName || 'Chef',
+                            locationName: location?.name || 'Kitchen Location',
+                            locationAddress: location?.address || undefined
+                        });
+                        await sendEmail(step1Email, {
+                            trackingId: `kitchen_app_step1_approved_admin_${applicationId}_${Date.now()}`
+                        });
+                        logger.info(`✅ Sent step 1 approval email to chef: ${applicationBeforeUpdate.email} (Tier ${approvalTier})`);
+                    } else {
+                        // Tier 2+ approval: full access — send "APPROVED, book now" email
+                        const approvalEmail = generateKitchenApplicationApprovedEmail({
+                            chefEmail: applicationBeforeUpdate.email,
+                            chefName: applicationBeforeUpdate.fullName || 'Chef',
+                            locationName: location?.name || 'Kitchen Location'
+                        });
+                        await sendEmail(approvalEmail, {
+                            trackingId: `kitchen_app_approved_admin_${applicationId}_${Date.now()}`
+                        });
+                        logger.info(`✅ Sent full approval email to chef: ${applicationBeforeUpdate.email} (Tier ${approvalTier})`);
+                    }
+                }
+            } catch (emailError) {
+                logger.error('Error sending kitchen application approval email from admin:', emailError);
+            }
+
+            // 4. Notify manager that a chef was approved for their location
+            try {
+                const location = await locationService.getLocationById(applicationBeforeUpdate.locationId);
+                if (location && location.managerId) {
+                    await notificationService.notifyApplicationApproved({
+                        managerId: location.managerId,
+                        locationId: applicationBeforeUpdate.locationId,
+                        applicationId: applicationBeforeUpdate.id,
+                        chefName: applicationBeforeUpdate.fullName || 'Chef',
+                        chefEmail: applicationBeforeUpdate.email || ''
+                    });
+                    logger.info(`✅ In-app notification sent to manager ${location.managerId} for application ${applicationId}`);
+                }
+            } catch (notifError) {
+                logger.error('Error creating manager application approval notification:', notifError);
+            }
+        }
+
+        // ─── Rejection: notifications & emails ─────────────────────────
+        if (status === 'rejected' && updatedApplication) {
+            // Send email to chef about rejection
+            try {
+                if (applicationBeforeUpdate.email) {
+                    const location = await locationService.getLocationById(applicationBeforeUpdate.locationId);
+                    const rejectionEmail = generateKitchenApplicationRejectedEmail({
+                        chefEmail: applicationBeforeUpdate.email,
+                        chefName: applicationBeforeUpdate.fullName || 'Chef',
+                        locationName: location?.name || 'Kitchen Location',
+                        feedback: feedback || undefined
+                    });
+                    await sendEmail(rejectionEmail, {
+                        trackingId: `kitchen_app_rejected_admin_${applicationId}_${Date.now()}`
+                    });
+                    logger.info(`✅ Sent kitchen application rejection email to chef: ${applicationBeforeUpdate.email}`);
+                }
+            } catch (emailError) {
+                logger.error('Error sending kitchen application rejection email from admin:', emailError);
+            }
+
+            // Send in-app notification to chef about rejection
+            try {
+                if (applicationBeforeUpdate.chefId) {
+                    const location = await locationService.getLocationById(applicationBeforeUpdate.locationId);
+                    await notificationService.notifyChefApplicationRejected({
+                        chefId: applicationBeforeUpdate.chefId,
+                        kitchenName: location?.name || 'Kitchen',
+                        locationName: location?.name || 'Kitchen Location',
+                        reason: feedback || undefined
+                    });
+                }
+            } catch (notifError) {
+                logger.error('Error creating chef application rejection notification:', notifError);
+            }
+        }
+
         res.json(updatedApplication);
     } catch (error) {
         logger.error('Error updating application status:', error);
