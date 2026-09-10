@@ -3,7 +3,7 @@ import { mt } from "@/i18n/manager";
 
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Upload, Loader2, X, RefreshCw } from "lucide-react";
+import { Upload, Loader2, X, RefreshCw } from "@/components/ui/manager-icons";
 import { useToast } from "@/hooks/use-toast";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
 import { auth } from "@/lib/firebase";

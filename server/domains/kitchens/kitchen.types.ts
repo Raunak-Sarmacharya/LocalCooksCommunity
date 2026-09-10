@@ -30,6 +30,7 @@ export interface CreateKitchenDTO {
   amenities?: string[];
   isActive?: boolean;
   hourlyRate?: number;
+  dailyRate?: number;
   currency?: string;
   minimumBookingHours?: number;
   pricingModel?: PricingModel;
@@ -50,6 +51,7 @@ export interface UpdateKitchenDTO {
   amenities?: string[];
   isActive?: boolean;
   hourlyRate?: number | null;
+  dailyRate?: number | null;
   currency?: string;
   minimumBookingHours?: number;
   pricingModel?: PricingModel;
@@ -73,6 +75,7 @@ export interface KitchenDTO {
   amenities: string[];
   isActive: boolean;
   hourlyRate: number | null;
+  dailyRate: number | null;
   currency: string;
   minimumBookingHours: number;
   pricingModel: PricingModel;

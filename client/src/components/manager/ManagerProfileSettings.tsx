@@ -15,7 +15,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { 
   Loader2, Mail, Phone, User, KeyRound, Shield, 
   Camera, CheckCircle2, Building2, Edit3, Lock, MapPin, CreditCard, Clock
-} from "lucide-react";
+} from "@/components/ui/manager-icons";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
 import ChangePassword from "@/components/auth/ChangePassword";
@@ -606,11 +606,8 @@ export default function ManagerProfileSettings() {
                                                 <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0 text-slate-400" />
                                                 <span>{location.address}</span>
                                             </div>
-                                            <div className="flex items-center gap-2 text-sm text-slate-500">
-                                                <Clock className="h-4 w-4 text-slate-400" />
-                                                <span>{location.timezone}</span>
-                                            </div>
                                             
+
                                             {/* Editable Contact Info */}
                                             <div className="pt-2 mt-2 border-t border-slate-100 space-y-2">
                                                 <div className="flex items-center justify-between">

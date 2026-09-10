@@ -5,31 +5,23 @@ import {
     AlertTriangle,
     Bell,
     Boxes,
-    Building2,
     Calendar,
-    Check,
-    ChevronRight,
     ChevronsUpDown,
-    ChefHat,
     ClipboardCheck,
-    ClipboardList,
     Clock,
     CreditCard,
     DollarSign,
     Eye,
     FileText,
-    Globe,
     LayoutDashboard,
     LogOut,
-    MapPin,
-    Package,
-    PackageCheck,
+    ArchiveCheck,
     Send,
     Settings,
+    Storefront,
     User as UserIcon,
     Users,
-    Wrench,
-} from "lucide-react"
+} from "@/components/ui/manager-icons"
 
 import {
     Sidebar,
@@ -48,106 +40,88 @@ import {
     useSidebar,
 } from "@/components/ui/sidebar"
 import {
-    Collapsible,
-    CollapsibleContent,
-    CollapsibleTrigger,
-} from "@/components/ui/collapsible"
-import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
-    DropdownMenuLabel,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import Logo from "@/components/ui/logo"
-import { SmartImage } from "@/components/ui/smart-image";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { LanguageMenuSection } from "@/components/i18n/LanguageSwitcher";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { mt } from "@/i18n/manager";
+import type { ManagerBreadcrumb } from "@/lib/manager-kitchens-navigation";
 
 interface NavItem {
     labelKey: string;
     url: string;
     icon: React.ComponentType<{ className?: string }>;
-}
-
-interface CollapsibleNavItem {
-    labelKey: string;
-    icon: React.ComponentType<{ className?: string }>;
-    items: NavItem[];
+    children?: NavItem[];
 }
 
 interface NavGroup {
     labelKey: string;
-    items: (NavItem | CollapsibleNavItem)[];
-}
-
-function isCollapsibleItem(item: NavItem | CollapsibleNavItem): item is CollapsibleNavItem {
-    return 'items' in item && !('url' in item);
+    items: NavItem[];
 }
 
 const navData: { navMain: NavGroup[] } = {
     navMain: [
         {
-            labelKey: "navOverview",
+            labelKey: "navWorkspace",
             items: [
                 { labelKey: "navDashboard", url: "overview", icon: LayoutDashboard },
-                { labelKey: "navMyLocations", url: "my-locations", icon: MapPin },
-                { labelKey: "navMessages", url: "messages", icon: Send },
                 { labelKey: "navBookings", url: "bookings", icon: Calendar },
-            ],
-        },
-        {
-            labelKey: "navProperty",
-            items: [
-                { labelKey: "navKitchens", url: "kitchens", icon: ChefHat },
-                { labelKey: "navViewings", url: "viewings", icon: Eye },
-                { labelKey: "navAvailability", url: "availability", icon: Clock },
-                { labelKey: "navPricing", url: "pricing", icon: DollarSign },
+                { labelKey: "navRequests", url: "applications", icon: Users },
                 {
-                    labelKey: "navPropertySettings",
-                    icon: Settings,
-                    items: [
-                        { labelKey: "navLicense", url: "settings-license", icon: FileText },
-                        { labelKey: "navBookingRules", url: "settings-booking-rules", icon: Clock },
-                        { labelKey: "navFacilityDocs", url: "settings-facility-docs", icon: FileText },
-                        { labelKey: "navLocation", url: "settings-location", icon: Globe },
+                    labelKey: "navSpaces",
+                    url: "kitchens",
+                    icon: Storefront,
+                    children: [
+                        { labelKey: "navAvailability", url: "availability", icon: Clock },
                         { labelKey: "navCheckinCheckout", url: "settings-checkin-checkout", icon: ClipboardCheck },
-                        { labelKey: "navStorageCheckinCheckout", url: "settings-storage-checkin-checkout", icon: Boxes },
+                        { labelKey: "navDamageClaims", url: "damage-claims", icon: FileText },
                     ],
                 },
+                { labelKey: "navSettings", url: "settings", icon: Settings },
             ],
         },
         {
-            labelKey: "navInventory",
+            labelKey: "navKitchenOperations",
             items: [
-                { labelKey: "navStorage", url: "storage-listings", icon: Package },
-                { labelKey: "navEquipment", url: "equipment-listings", icon: Wrench },
+                { labelKey: "kitchenTours", url: "tour-availability", icon: Eye },
+                { labelKey: "navStorageCheckinCheckout", url: "settings-storage-checkin-checkout", icon: Boxes },
+                { labelKey: "navStorageInspections", url: "storage-checkouts", icon: ArchiveCheck },
+                { labelKey: "navOverstayPenalties", url: "overstays", icon: AlertTriangle },
             ],
         },
         {
-            labelKey: "navBusiness",
+            labelKey: "navMoney",
             items: [
-                { labelKey: "navApplications", url: "applications", icon: Users },
-                { labelKey: "navApplicationRequirements", url: "application-requirements", icon: ClipboardList },
                 { labelKey: "navRevenue", url: "revenue", icon: DollarSign },
                 { labelKey: "navPayments", url: "payments", icon: CreditCard },
-                { labelKey: "navOverstayPenalties", url: "overstays", icon: AlertTriangle },
-                { labelKey: "navDamageClaims", url: "damage-claims", icon: FileText },
-                { labelKey: "navStorageInspections", url: "storage-checkouts", icon: PackageCheck },
             ],
         },
         {
-            labelKey: "navAccount",
+            labelKey: "navInbox",
             items: [
+                { labelKey: "navMessages", url: "messages", icon: Send },
                 { labelKey: "navNotifications", url: "notifications", icon: Bell },
             ],
         },
     ],
 }
+
+const SETTINGS_VIEWS = new Set([
+    "settings",
+    "settings-license",
+    "settings-booking-rules",
+    "settings-facility-docs",
+    "settings-location",
+    "notification-settings",
+    "application-requirements",
+]);
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
     activeView: string;
@@ -156,19 +130,22 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
     selectedLocation: { id: number; name: string; address?: string; logoUrl?: string } | null;
     onLocationChange: (location: { id: number; name: string } | null) => void;
     onCreateLocation?: () => void;
+    breadcrumbs?: ManagerBreadcrumb[];
 }
 
 export function AppSidebar({
     activeView,
     onViewChange,
-    locations,
-    selectedLocation,
-    onLocationChange,
-    onCreateLocation,
+    breadcrumbs,
+    locations: _locations,
+    selectedLocation: _selectedLocation,
+    onLocationChange: _onLocationChange,
+    onCreateLocation: _onCreateLocation,
     ...props
 }: AppSidebarProps) {
     const { user, logout } = useFirebaseAuth();
     const { isMobile, state, setOpenMobile } = useSidebar();
+    const activeChildView = breadcrumbs?.[breadcrumbs.length - 1]?.navId;
 
     const handleAccountAction = (view: string) => {
         onViewChange(view);
@@ -195,152 +172,40 @@ export function AppSidebar({
                         </SidebarMenuButton>
                     </SidebarMenuItem>
                 </SidebarMenu>
-                <SidebarGroup className="p-0">
-                    <SidebarGroupLabel className="px-2 group-data-[collapsible=icon]:hidden">
-                        {mt("navMyLocations")}
-                    </SidebarGroupLabel>
-                    <SidebarMenu>
-                        <SidebarMenuItem>
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <SidebarMenuButton
-                                        tooltip={selectedLocation?.name || mt("shellSelectLocation")}
-                                        className="h-9 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-                                    >
-                                        <MapPin className="size-4 shrink-0 text-primary" />
-                                        <span className="truncate group-data-[collapsible=icon]:hidden">
-                                            {selectedLocation ? selectedLocation.name : mt("shellSelectLocation")}
-                                        </span>
-                                        <ChevronsUpDown className="ml-auto size-3.5 shrink-0 opacity-60 group-data-[collapsible=icon]:hidden" />
-                                    </SidebarMenuButton>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent
-                                    className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
-                                    align="start"
-                                    side={isMobile ? "bottom" : state === "collapsed" ? "right" : "bottom"}
-                                    sideOffset={4}
-                                >
-                                    <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
-                                        {mt("navMyLocations")}
-                                    </DropdownMenuLabel>
-                                    {locations.length > 0 ? (
-                                        locations.map((loc) => {
-                                            const isSelected = selectedLocation?.id === loc.id;
-                                            return (
-                                                <DropdownMenuItem
-                                                    key={loc.id}
-                                                    onClick={() => onLocationChange(loc)}
-                                                    className="gap-2 p-2"
-                                                >
-                                                    <div className="flex size-6 items-center justify-center rounded-sm border">
-                                                        {loc.logoUrl ? (
-                                                            <SmartImage src={loc.logoUrl} alt={loc.name} className="size-6 rounded-sm object-cover" />
-                                                        ) : (
-                                                            <MapPin className="size-4 shrink-0" />
-                                                        )}
-                                                    </div>
-                                                    <div className="flex min-w-0 flex-1 flex-col">
-                                                        <span className="truncate font-medium">{loc.name}</span>
-                                                        {loc.address ? (
-                                                            <span className="truncate text-xs text-muted-foreground">{loc.address}</span>
-                                                        ) : null}
-                                                    </div>
-                                                    {isSelected ? <Check className="ml-auto size-4 shrink-0 text-primary" /> : null}
-                                                </DropdownMenuItem>
-                                            );
-                                        })
-                                    ) : (
-                                        <DropdownMenuItem disabled>{mt("shellNoLocationsFound")}</DropdownMenuItem>
-                                    )}
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                        className="gap-2 p-2 cursor-pointer"
-                                        onSelect={() => onCreateLocation?.()}
-                                    >
-                                        <div className="flex size-6 items-center justify-center rounded-md border bg-primary/10">
-                                            <Building2 className="size-4 text-primary" />
-                                        </div>
-                                        <span className="font-medium">{mt("shellAddNewLocation")}</span>
-                                    </DropdownMenuItem>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                        </SidebarMenuItem>
-                    </SidebarMenu>
-                </SidebarGroup>
             </SidebarHeader>
-            <SidebarContent>
+            <SidebarContent className="gap-0">
                 {navData.navMain.map((group) => (
-                    <SidebarGroup key={group.labelKey}>
-                        <SidebarGroupLabel>{mt(group.labelKey)}</SidebarGroupLabel>
-                        <SidebarMenu>
+                    <SidebarGroup key={group.labelKey} className="px-2 py-2">
+                        <SidebarGroupLabel className="h-7 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{mt(group.labelKey)}</SidebarGroupLabel>
+                        <SidebarMenu className="gap-0.5">
                             {group.items.map((item) => {
-                                if (isCollapsibleItem(item)) {
-                                    const isAnyChildActive = item.items.some(
-                                        (subItem) => activeView === subItem.url
-                                    );
-                                    const parentLabel = mt(item.labelKey);
-                                    return (
-                                        <Collapsible
-                                            key={item.labelKey}
-                                            asChild
-                                            defaultOpen={isAnyChildActive}
-                                            className="group/collapsible"
-                                        >
-                                            <SidebarMenuItem>
-                                                <CollapsibleTrigger asChild>
-                                                    <SidebarMenuButton
-                                                        tooltip={parentLabel}
-                                                        className={cn(
-                                                            isAnyChildActive && "bg-sidebar-accent text-sidebar-accent-foreground"
-                                                        )}
-                                                    >
-                                                        {item.icon && <item.icon className="size-4" />}
-                                                        <span>{parentLabel}</span>
-                                                        <ChevronRight className="ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                                                    </SidebarMenuButton>
-                                                </CollapsibleTrigger>
-                                                <CollapsibleContent>
-                                                    <SidebarMenuSub>
-                                                        {item.items.map((subItem) => {
-                                                            const isSubActive = activeView === subItem.url;
-                                                            const subLabel = mt(subItem.labelKey);
-                                                            return (
-                                                                <SidebarMenuSubItem key={subItem.labelKey}>
-                                                                    <SidebarMenuSubButton
-                                                                        asChild
-                                                                        isActive={isSubActive}
-                                                                    >
-                                                                        <button
-                                                                            onClick={() => onViewChange(subItem.url)}
-                                                                            className="w-full cursor-pointer"
-                                                                        >
-                                                                            <subItem.icon />
-                                                                            <span>{subLabel}</span>
-                                                                        </button>
-                                                                    </SidebarMenuSubButton>
-                                                                </SidebarMenuSubItem>
-                                                            );
-                                                        })}
-                                                    </SidebarMenuSub>
-                                                </CollapsibleContent>
-                                            </SidebarMenuItem>
-                                        </Collapsible>
-                                    );
-                                }
-
-                                const isActive = activeView === item.url;
+                                const isActive = activeView === item.url || (item.url === "settings" && SETTINGS_VIEWS.has(activeView));
                                 const label = mt(item.labelKey);
                                 return (
                                     <SidebarMenuItem key={item.labelKey}>
                                         <SidebarMenuButton
                                             isActive={isActive}
-                                            onClick={() => onViewChange(item.url)}
+                                            onClick={() => handleAccountAction(item.url)}
                                             tooltip={label}
                                             className={cn(isActive && "text-sidebar-primary-foreground font-medium")}
                                         >
                                             {item.icon && <item.icon className="size-4" />}
                                             <span>{label}</span>
                                         </SidebarMenuButton>
+                                        {item.children && (
+                                            <SidebarMenuSub className="mx-2 mb-0 mt-0 translate-x-0 gap-0 border-l border-sidebar-border/80 px-2 py-0">
+                                                {item.children.map((child) => (
+                                                    <SidebarMenuSubItem key={child.url}>
+                                                        <SidebarMenuSubButton asChild isActive={activeChildView === child.url}>
+                                                            <button onClick={() => handleAccountAction(child.url)} className="w-full cursor-pointer">
+                                                                <child.icon />
+                                                                <span>{mt(child.labelKey)}</span>
+                                                            </button>
+                                                        </SidebarMenuSubButton>
+                                                    </SidebarMenuSubItem>
+                                                ))}
+                                            </SidebarMenuSub>
+                                        )}
                                     </SidebarMenuItem>
                                 );
                             })}

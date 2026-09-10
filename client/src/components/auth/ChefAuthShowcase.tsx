@@ -73,7 +73,7 @@ export default function ChefAuthShowcase() {
           <motion.div
             {...reveal(0.25, -20, -10)}
             whileHover={reduceMotion ? undefined : { y: -5 }}
-            className="absolute right-[50%] top-[-2%] z-30 w-max pr-6 rounded-[1rem] border border-white/45 bg-white/95 backdrop-blur-md p-2.5 shadow-xl"
+            className="absolute right-[56%] top-[1%] z-30 w-max pr-6 rounded-[1rem] border border-white/45 bg-white/95 backdrop-blur-md p-2.5 shadow-xl"
           >
             <div className="flex items-center gap-2">
               <div className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-100 text-amber-500 flex-shrink-0">
@@ -195,7 +195,7 @@ export default function ChefAuthShowcase() {
           <motion.div
             {...reveal(0.42, -30, 10)}
             whileHover={reduceMotion ? undefined : { y: -5 }}
-            className="absolute bottom-[35%] left-[2%] z-30 w-max pr-6 rounded-xl border border-white/45 bg-white/95 backdrop-blur-md p-2 shadow-xl"
+            className="absolute bottom-[-1%] left-[-1%] z-20 w-max pr-6 rounded-xl border border-white/45 bg-white/95 backdrop-blur-md p-2 shadow-xl"
           >
             <div className="flex items-center gap-2 px-1">
               <div className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-50 text-amber-600 flex-shrink-0">
@@ -212,7 +212,7 @@ export default function ChefAuthShowcase() {
           <motion.div
             {...reveal(0.45, -20, 20)}
             whileHover={reduceMotion ? undefined : { y: -5 }}
-            className="absolute bottom-[34%] left-[28%] z-30 w-max pr-6 rounded-xl border border-white/45 bg-white/95 backdrop-blur-md p-2 shadow-xl"
+            className="absolute bottom-[40%] left-[-2%] z-30 w-max pr-6 rounded-xl border border-white/45 bg-white/95 backdrop-blur-md p-2 shadow-xl"
           >
             <div className="flex items-center gap-2 px-1">
               <div className="flex h-6 w-6 items-center justify-center rounded-md bg-indigo-50 text-indigo-600 flex-shrink-0">

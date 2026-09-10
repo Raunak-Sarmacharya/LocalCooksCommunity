@@ -2637,7 +2637,7 @@ export const generatePromoCodeEmail = (
     }
 
     // Fallback to direct greeting parameter
-    return userData.greeting || 'Hello! 👋';
+    return userData.greeting || 'Hello! ';
   };
 
   // Improved message resolution

@@ -3845,15 +3845,7 @@ export default function KitchenPreviewPage() {
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-3">
               <h1 className="min-w-0 text-xl sm:text-2xl font-bold text-gray-900">{location.name}</h1>
-              {location.kitchenLicenseStatus === "pending" ? (
-                <InfoChip
-                  tone="warning"
-                  className="shrink-0"
-                  icon={<PreviewIcon icon="mdi:clock-outline" size={12} />}
-                >
-                  {t("verificationInProgress")}
-                </InfoChip>
-              ) : null}
+
               {location.kitchenLicenseStatus === "approved" ? (
                 <InfoChip
                   tone="success"

@@ -7,7 +7,7 @@
 
 import * as React from "react"
 import { mt } from "@/i18n/manager"
-import { CalendarIcon, ChevronDown } from "lucide-react"
+import { CalendarIcon, ChevronDown } from "@/components/ui/manager-icons"
 import { type DateRange } from "react-day-picker"
 import { startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, startOfYear, endOfYear, subDays, subMonths } from "date-fns"
 

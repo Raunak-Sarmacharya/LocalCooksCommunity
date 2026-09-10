@@ -1,4 +1,4 @@
-import { Clock, Check, BookOpen } from "lucide-react";
+import { Clock, Check, BookOpen } from "@/components/ui/manager-icons";
 import { mt } from "@/i18n/manager";
 
 interface BookingKPIStatsProps {

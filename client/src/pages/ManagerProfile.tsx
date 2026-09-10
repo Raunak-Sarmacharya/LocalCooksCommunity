@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
-import { User, Mail, Phone, Loader2, KeyRound } from "lucide-react";
+import { User, Mail, Phone, Loader2, KeyRound } from "@/components/ui/manager-icons";
 import ManagerHeader from "@/components/layout/ManagerHeader";
 import ChangePassword from "@/components/auth/ChangePassword";
 import { tt } from "@/i18n/common-ns";

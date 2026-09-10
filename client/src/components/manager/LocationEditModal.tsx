@@ -26,7 +26,7 @@ import {
   Building2, MapPin, Mail, Phone, Clock, Calendar,
   Globe, Save, Loader2, CheckCircle,
   XCircle, AlertCircle, FileText
-} from "lucide-react";
+} from "@/components/ui/manager-icons";
 import {
   Sheet,
   SheetContent,

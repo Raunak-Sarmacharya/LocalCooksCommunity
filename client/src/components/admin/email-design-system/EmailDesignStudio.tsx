@@ -575,7 +575,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         const newGreetingSection: EmailSection = {
           id: 'greeting-section',
           type: 'greeting',
-          text: "Hello! 👋",
+          text: "Hello! ",
           styling: {
             fontSize: '24px',
             color: '#1f2937',
@@ -853,7 +853,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
       // Get greeting from sections or direct field
       const greetingFromSections = currentDesign.content.sections?.['greeting']?.text ||
         currentDesign.content.sections?.['greeting-section']?.text || '';
-      const finalGreeting = greetingFromSections || currentDesign.content.greeting || 'Hello! 👋';
+      const finalGreeting = greetingFromSections || currentDesign.content.greeting || 'Hello! ';
 
       // Prepare order button data with proper fallbacks (prioritize sections data for consistency)
       const orderButton = {

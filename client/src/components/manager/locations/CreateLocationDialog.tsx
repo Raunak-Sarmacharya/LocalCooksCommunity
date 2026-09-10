@@ -3,7 +3,7 @@ import { useState } from "react";
 import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
 import { useQueryClient } from "@tanstack/react-query";
-import { FileText, Loader2, Plus, Upload, X } from "lucide-react";
+import { FileText, Loader2, Plus, Upload, X } from "@/components/ui/manager-icons";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";

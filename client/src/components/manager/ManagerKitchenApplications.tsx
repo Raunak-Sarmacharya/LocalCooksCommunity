@@ -6,7 +6,7 @@ import {
   ExternalLink,
   Loader2,
   Shield,
-} from "lucide-react";
+} from "@/components/ui/manager-icons";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import ChatPanel from "@/components/chat/ChatPanel";

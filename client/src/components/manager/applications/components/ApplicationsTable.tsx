@@ -6,7 +6,7 @@ import { DataTable } from "@/components/ui/data-table"
 import { getApplicationColumns } from "../columns"
 import { Application, ApplicationsTableProps } from "../types"
 import { Input } from "@/components/ui/input"
-import { Search } from "lucide-react"
+import { Search } from "@/components/ui/manager-icons"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 export function ApplicationsTable({

@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Manager Guidance State Lifecycle",
+    "subtitle": "Resolve every setup input before showing one stable dashboard banner",
+    "output": "docs/architecture/manager-guidance-state.lifecycle.html",
+    "viewBox": [960, 650],
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "views": [
+      { "id": "stable-entry", "label": "Stable dashboard entry", "focus": ["dashboardEntry", "loading", "resolved", "chooseState"], "note": "A fixed loading shell remains visible until every enabled readiness query settles." },
+      { "id": "guided-outcomes", "label": "Guided outcomes", "focus": ["chooseState", "stableDashboard", "ready"], "note": "Exactly one resolved state reaches the manager; incomplete tasks deep-link to their owning settings area." },
+      { "id": "save-refresh", "label": "Save and refresh", "focus": ["stableDashboard", "saveSettings", "refreshCache", "loading", "ready"], "note": "Saving the public description updates the API and shared query cache before guidance is recalculated." }
+    ]
+  },
+  "lanes": [
+    { "id": "main", "label": "Stable dashboard entry" },
+    { "id": "manager", "label": "Manager update loop" },
+    { "id": "terminal", "label": "Resolved outcomes" }
+  ],
+  "states": [
+    { "id": "dashboardEntry", "type": "start", "label": "Dashboard entry", "sublabel": "location selected", "lane": "main", "col": 0, "step": "01" },
+    { "id": "loading", "type": "waiting", "label": "Loading shell", "sublabel": "no partial banner", "lane": "main", "col": 1, "step": "02" },
+    { "id": "resolved", "type": "active", "label": "Resolve inputs", "sublabel": "all enabled checks", "lane": "main", "col": 2, "step": "03" },
+    { "id": "chooseState", "type": "decision", "label": "Choose state", "sublabel": "setup, review, improve, ready", "lane": "main", "col": 3, "step": "04" },
+    { "id": "stableDashboard", "type": "success", "label": "Stable dashboard", "sublabel": "one resolved state", "lane": "main", "col": 4, "step": "05" },
+    { "id": "saveSettings", "type": "active", "label": "Save public profile", "sublabel": "description included", "lane": "manager", "col": 0, "tag": "mutation", "width": 150 },
+    { "id": "refreshCache", "type": "active", "label": "Refresh cache", "sublabel": "recalculate guidance", "lane": "manager", "col": 2, "tag": "sync" },
+    { "id": "ready", "type": "success", "label": "Task completed", "sublabel": "removed after save", "lane": "terminal", "col": 2, "tag": "verified" }
+  ],
+  "transitions": [
+    { "id": "enter-loading", "from": "dashboardEntry", "to": "loading", "variant": "emphasis" },
+    { "id": "queries-settle", "from": "loading", "to": "resolved", "variant": "emphasis" },
+    { "id": "resolve-choice", "from": "resolved", "to": "chooseState" },
+    { "id": "render-stable", "from": "chooseState", "to": "stableDashboard", "variant": "emphasis" },
+    { "id": "open-profile", "from": "stableDashboard", "to": "saveSettings", "label": "task deep-link", "route": "drop" },
+    { "id": "save-refresh", "from": "saveSettings", "to": "refreshCache", "variant": "emphasis" },
+    { "id": "task-complete", "from": "refreshCache", "to": "ready", "label": "saved value observed", "route": "drop", "variant": "emphasis" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Stable first paint", "items": ["The banner never renders from a partial query result", "One resolved guidance state is selected after the readiness gate"] },
+    { "dot": "emerald", "title": "Completable tasks", "items": ["Public description crosses the mutation boundary", "The returned location refreshes the cache used by guidance"] }
+  ]
+}

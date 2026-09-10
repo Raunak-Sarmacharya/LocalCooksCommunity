@@ -1,9 +1,11 @@
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
 import { mt } from "@/i18n/manager";
-import { CheckCircle, FileText, Upload, X, AlertCircle, Calendar, Mail, Phone, Building, Bell, Info, User } from "lucide-react";
+import { CheckCircle, FileText, Upload, X, AlertCircle, Calendar, Mail, Phone, Building, Bell, Info, User, Image } from "@/components/ui/manager-icons";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { ImageWithReplace } from "@/components/ui/image-with-replace";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -135,6 +137,43 @@ export default function LocationStep() {
             <p className="text-xs text-slate-500 dark:text-slate-400">
               Only addresses inside Newfoundland &amp; Labrador (NL) are accepted currently.
             </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-slate-200/60 shadow-none dark:border-slate-700/60">
+        <CardHeader className="pb-4">
+          <CardTitle className="flex items-center gap-2 text-base font-semibold">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-muted">
+              <Image className="size-4 text-muted-foreground" />
+            </div>
+            Public profile
+          </CardTitle>
+          <CardDescription>This is the first information chefs see when comparing kitchens.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-5 md:grid-cols-[160px_1fr]">
+          <div className="space-y-2">
+            <Label>Location logo <span className="text-destructive">*</span></Label>
+            <ImageWithReplace
+              imageUrl={locationForm.logoUrl || undefined}
+              onImageChange={(url) => locationForm.setLogoUrl(url || "")}
+              onRemove={() => locationForm.setLogoUrl("")}
+              fieldName="location-logo"
+              aspectRatio="1/1"
+              className="size-36 rounded-xl object-cover"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="location-description">Short description <span className="text-destructive">*</span></Label>
+            <Textarea
+              id="location-description"
+              value={locationForm.description}
+              onChange={(event) => locationForm.setDescription(event.target.value)}
+              placeholder="Tell chefs what makes this location useful, reliable, and easy to work from."
+              rows={5}
+              maxLength={500}
+            />
+            <p className="text-xs text-muted-foreground">Keep it practical. Equipment details belong on the kitchen itself.</p>
           </div>
         </CardContent>
       </Card>
@@ -549,6 +588,8 @@ export default function LocationStep() {
           isSubmitting ||
           !locationForm.name || 
           !locationForm.address || 
+          !locationForm.logoUrl ||
+          !locationForm.description.trim() ||
           !isContactValid() ||
           (!licenseForm.file && !licenseForm.uploadedUrl && !hasExistingLicense) || 
           (!termsForm.file && !termsForm.uploadedUrl && !hasExistingTerms)

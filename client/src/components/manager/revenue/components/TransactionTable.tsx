@@ -18,7 +18,7 @@ import {
     getSortedRowModel,
     useReactTable,
 } from "@tanstack/react-table"
-import { Search, Download, ChevronDown, Receipt, FileSpreadsheet, X } from "lucide-react"
+import { Search, Download, ChevronDown, Receipt, FileSpreadsheet, X } from "@/components/ui/manager-icons"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"

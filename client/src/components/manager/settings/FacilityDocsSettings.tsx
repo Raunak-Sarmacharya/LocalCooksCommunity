@@ -25,11 +25,12 @@ import {
   Wind,
   Info,
   CheckCircle2,
-} from 'lucide-react';
+} from '@/components/ui/manager-icons';
 import { useFileUpload } from '@/hooks/useFileUpload';
 import { useToast } from '@/hooks/use-toast';
 import { auth } from '@/lib/firebase';
 import { usePresignedDocumentUrl } from '@/hooks/use-presigned-document-url';
+import { SettingsFileUpload } from './SettingsFileUpload';
 
 interface Location {
   id: number;
@@ -208,19 +209,17 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">{mt("facilityDocuments")}</h2>
+        <h2 className="text-xl font-semibold tracking-tight">{mt("facilityDocuments")}</h2>
         <p className="text-muted-foreground">
           Manage floor plans and ventilation specifications for {location.name}. These documents are automatically shared with approved chefs.
         </p>
       </div>
-
-
-
+      <div className="space-y-4">
       {/* Floor Plans */}
       <Card>
-        <CardHeader>
+        <CardHeader className="p-4 pb-3">
           <div className="flex items-center gap-3">
             <FileText className="h-5 w-5 text-slate-500" />
             <div>
@@ -229,10 +228,10 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
             </div>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3 p-4 pt-0">
           {/* Current Floor Plans */}
           {requirements?.floor_plans_url && (
-            <div className="flex items-center gap-3 p-4 rounded-lg bg-emerald-50 border border-emerald-200">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-50 border border-emerald-200">
               <div className="h-10 w-10 rounded-lg bg-emerald-100 flex items-center justify-center">
                 <CheckCircle2 className="h-5 w-5 text-emerald-600" />
               </div>
@@ -257,41 +256,7 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
 
           {/* Upload Floor Plans */}
           <div className="space-y-3">
-            <div className="relative">
-              <input
-                id="floor_plans_file"
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png,.webp"
-                onChange={(e) => setFloorPlansFile(e.target.files?.[0] || null)}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-              />
-              <div className="flex items-center justify-between p-4 border-2 border-dashed border-slate-200 rounded-lg bg-slate-50/50 hover:border-slate-300 transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-lg bg-slate-100 flex items-center justify-center">
-                    <FolderOpen className="h-5 w-5 text-slate-500" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-slate-700">
-                      {floorPlansFile ? floorPlansFile.name : 'Choose floor plans file'}
-                    </p>
-                    <p className="text-xs text-slate-500">{mt("pDFJPGPNGOrWebPMax45MB")}</p>
-                  </div>
-                </div>
-                {floorPlansFile && (
-                  <Button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setFloorPlansFile(null);
-                    }}
-                    variant="ghost"
-                    size="sm"
-                    className="relative z-20 text-red-500 hover:text-red-700"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-            </div>
+            <SettingsFileUpload id="floor_plans_file" accept=".pdf,.jpg,.jpeg,.png,.webp" file={floorPlansFile} label="Choose floor plans" hint={mt("pDFJPGPNGOrWebPMax45MB")} disabled={isUploading} onChange={setFloorPlansFile} />
 
             {floorPlansFile && (
               <Button
@@ -316,7 +281,7 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
 
       {/* Ventilation Specifications */}
       <Card>
-        <CardHeader>
+        <CardHeader className="p-4 pb-3">
           <div className="flex items-center gap-3">
             <Wind className="h-5 w-5 text-slate-500" />
             <div>
@@ -325,7 +290,7 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
             </div>
           </div>
         </CardHeader>
-        <CardContent className="space-y-5">
+        <CardContent className="space-y-3 p-4 pt-0">
           {/* Description */}
           <div className="space-y-2">
             <Label htmlFor="ventilation_specs">{mt("ventilationDescription")}</Label>
@@ -337,18 +302,20 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
                 setHasUnsavedChanges(true);
               }}
               placeholder={mt("placeholderVentilationSystem")}
-              rows={4}
+              rows={3}
               className="resize-none"
             />
             <p className="text-xs text-muted-foreground">{mt("includeDetailsAboutCFMCapacityHoodTypeAndExhaustLocations")}</p>
           </div>
 
           {hasUnsavedChanges && (
-            <StatusButton
-              status={saveVentilationAction.status}
-              onClick={saveVentilationAction.execute}
-              labels={{ idle: tt("saveDescription"), loading: mt("savingShort"), success: mt("saved") }}
-            />
+            <div className="flex justify-end pt-2">
+              <StatusButton
+                status={saveVentilationAction.status}
+                onClick={saveVentilationAction.execute}
+                labels={{ idle: tt("saveDescription"), loading: mt("savingShort"), success: mt("saved") }}
+              />
+            </div>
           )}
 
           {/* Divider */}
@@ -363,7 +330,7 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
 
           {/* Current Ventilation Document */}
           {requirements?.ventilation_specs_url && (
-            <div className="flex items-center gap-3 p-4 rounded-lg bg-emerald-50 border border-emerald-200">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-50 border border-emerald-200">
               <div className="h-10 w-10 rounded-lg bg-emerald-100 flex items-center justify-center">
                 <CheckCircle2 className="h-5 w-5 text-emerald-600" />
               </div>
@@ -389,41 +356,7 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
           {/* Upload Ventilation Document */}
           <div className="space-y-3">
             <Label>{mt("uploadDocumentationOptional")}</Label>
-            <div className="relative">
-              <input
-                id="ventilation_file"
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png,.webp"
-                onChange={(e) => setVentilationFile(e.target.files?.[0] || null)}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-              />
-              <div className="flex items-center justify-between p-4 border-2 border-dashed border-slate-200 rounded-lg bg-slate-50/50 hover:border-slate-300 transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-lg bg-slate-100 flex items-center justify-center">
-                    <FolderOpen className="h-5 w-5 text-slate-500" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-slate-700">
-                      {ventilationFile ? ventilationFile.name : 'Choose document'}
-                    </p>
-                    <p className="text-xs text-slate-500">{mt("pDFJPGPNGOrWebPMax45MB")}</p>
-                  </div>
-                </div>
-                {ventilationFile && (
-                  <Button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setVentilationFile(null);
-                    }}
-                    variant="ghost"
-                    size="sm"
-                    className="relative z-20 text-red-500 hover:text-red-700"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-            </div>
+            <SettingsFileUpload id="ventilation_file" accept=".pdf,.jpg,.jpeg,.png,.webp" file={ventilationFile} label="Choose ventilation document" hint={mt("pDFJPGPNGOrWebPMax45MB")} disabled={isUploading} onChange={setVentilationFile} />
 
             {ventilationFile && (
               <Button
@@ -445,6 +378,7 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
           </div>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

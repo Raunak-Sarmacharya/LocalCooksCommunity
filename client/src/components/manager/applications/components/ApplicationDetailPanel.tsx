@@ -30,7 +30,7 @@ import {
     ExternalLink,
     CheckCircle,
     AlertCircle
-} from "lucide-react"
+} from "@/components/ui/manager-icons"
 import { cn } from "@/lib/utils"
 
 interface LocationRequirements {

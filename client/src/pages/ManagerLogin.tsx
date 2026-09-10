@@ -4,32 +4,32 @@ import EnhancedLoginForm from "@/components/auth/EnhancedLoginForm";
 import EnhancedRegisterForm from "@/components/auth/EnhancedRegisterForm";
 import { hasVerifiedEmail } from "@/lib/auth-verification";
 import EmailVerificationScreen from "@/components/auth/EmailVerificationScreen";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import LoadingOverlay from "@/components/auth/LoadingOverlay";
 import Logo from "@/components/ui/logo";
+import { Button } from "@/components/ui/button";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 // Removed sendEmailVerification from firebase/auth
 // WelcomeScreen removed - managers use ManagerOnboardingWizard instead
-import { motion } from "framer-motion";
-import { Building2, Loader2, LogIn, UserPlus } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { useLocation, Redirect } from "wouter";
+import { motion, useReducedMotion } from "framer-motion";
+import { Check, Loader2, X } from "@/components/ui/manager-icons";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
-import FadeInSection from "@/components/ui/FadeInSection";
+import KitchenAuthShowcase from "@/components/auth/KitchenAuthShowcase";
 
 export default function ManagerLogin() {
   const { t } = useTranslation("manager");
 
   // Managers now use Firebase authentication (like chefs)
   const [location, setLocation] = useLocation();
-  const { user, loading, authPhase, logout, refreshUserData } = useFirebaseAuth();
+  const { user, loading, authPhase, refreshUserData } = useFirebaseAuth();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<"login" | "register">("login");
+  const [activeTab, setActiveTab] = useState<"login" | "register">(() =>
+    new URLSearchParams(window.location.search).get("tab") === "register" ? "register" : "login"
+  );
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
-  const [userMeta, setUserMeta] = useState<any>(null);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [successMessageType, setSuccessMessageType] = useState<'password-reset' | 'email-verified'>('password-reset');
   
@@ -42,8 +42,24 @@ export default function ManagerLogin() {
   const [loadingMessage, setLoadingMessage] = useState("Creating your account...");
   const [loadingSubmessage, setLoadingSubmessage] = useState("Please wait while we set up your account securely.");
 
-  const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const hasCheckedUser = useRef(false);
+  const authCardRef = useRef<HTMLDivElement>(null);
+  const authContentRef = useRef<HTMLDivElement>(null);
+  const [cardHeight, setCardHeight] = useState<number>();
+  const reduceMotion = useReducedMotion();
+
+  useLayoutEffect(() => {
+    const content = authContentRef.current;
+    if (!content) return;
+    const measure = () => setCardHeight(content.offsetHeight + 2);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [activeTab, showEmailVerification, showSuccessMessage]);
+
+  useLayoutEffect(() => {
+    authCardRef.current?.scrollTo({ top: 0, behavior: "instant" });
+  }, [activeTab, showEmailVerification]);
   
   // Handle resend verification email
   const handleResendVerification = async () => {
@@ -182,13 +198,6 @@ export default function ManagerLogin() {
     refetchOnWindowFocus: false,
   });
 
-  // Update userMeta state for backward compatibility
-  useEffect(() => {
-    if (userMetaData) {
-      setUserMeta(userMetaData);
-    }
-  }, [userMetaData]);
-
   // Redirect if already logged in as manager
   // Only redirect once when user data is loaded and we're on the login page
   // Use a ref to prevent multiple redirects
@@ -261,231 +270,162 @@ export default function ManagerLogin() {
   // Show login/register form
   return (
     <>
-      {/* Loading Overlay - lifted to parent for persistence across auth state changes */}
       <LoadingOverlay 
         isVisible={showLoadingOverlay}
         message={loadingMessage}
         submessage={loadingSubmessage}
         type="loading"
       />
-      
-    <div className="min-h-screen flex flex-col md:flex-row bg-gray-50">
-      {/* Form Section */}
+
       <motion.div
-        initial={{ opacity: 0, x: -50 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.6, delay: 0.1 }}
-        className="w-full md:w-1/2 p-8 flex flex-col justify-center bg-white"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+        className="relative flex min-h-screen bg-gradient-to-br from-[#F51042] via-[#df123e] to-[#a90c31] lg:h-screen lg:min-h-0 lg:overflow-hidden"
       >
-        <div className="max-w-md mx-auto w-full">
-          {/* Header */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-            className="mb-8"
-          >
-            <Logo className="h-12 mb-6" />
-            <motion.h1
-              className="text-3xl font-bold tracking-tight text-gray-900"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4 }}
-            >{t("managerPortal")}</motion.h1>
-            <motion.p
-              className="text-gray-600 mt-2 leading-relaxed"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.4, delay: 0.1 }}
-            >{t("signInToAccessYourCommercialKitchenDashboardAndManageYourLoc")}</motion.p>
-          </motion.div>
-
-          {/* Success Messages */}
-          {showSuccessMessage && (
-            <motion.div
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mb-6 rounded-xl bg-green-50 border border-green-200 p-4"
-            >
-              <div className="flex items-center gap-3">
-                <div className="flex-shrink-0 w-5 h-5 bg-green-100 rounded-full flex items-center justify-center">
-                  <svg className="w-3 h-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-green-800">
-                    {successMessageType === 'password-reset' 
-                      ? 'Password reset link sent! Open the email and click the link to continue. Check spam if you don\'t see it.' 
-                      : 'Email verified! You can now sign in.'}
-                  </p>
-                </div>
-              </div>
-            </motion.div>
-          )}
-
-          {/* Auth Forms or Email Verification Screen */}
-          {showEmailVerification ? (
-            <EmailVerificationScreen
-              email={emailForVerification}
-              onResend={handleResendVerification}
-              onGoBack={() => {
-                setShowEmailVerification(false);
-                setActiveTab('login');
-              }}
-            />
-          ) : (
-            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "login" | "register")} className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-6 rounded-full">
-                <TabsTrigger value="login" className="flex items-center gap-2 rounded-full">
-                  <LogIn className="w-4 h-4" />{t("login")}</TabsTrigger>
-                <TabsTrigger value="register" className="flex items-center gap-2 rounded-full">
-                  <UserPlus className="w-4 h-4" />{t("register")}</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="login">
-                <EnhancedLoginForm
-                  onSuccess={async () => {
-                    setHasAttemptedLogin(true);
-                    // Invalidate stale null profile cache so React Query refetches with the new user
-                    await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
-                    await refreshUserData();
-                  }}
-                  setHasAttemptedLogin={setHasAttemptedLogin}
-                />
-              </TabsContent>
-
-              <TabsContent value="register">
-                <EnhancedRegisterForm
-                  accountType="manager"
-                  hideApplyingToggle
-                  onSuccess={async () => {
-                    logger.info('🎯 GOOGLE REGISTRATION SUCCESS - Invalidating cache and refreshing data');
-                    // ENTERPRISE FIX: Invalidate React Query cache to force refetch of user profile
-                    // This ensures the redirect logic has fresh data after Google Sign-In registration
-                    await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
-                    setHasAttemptedLogin(true);
-                    await refreshUserData();
-                    // Force refetch after state update to ensure redirect logic has latest data
-                    queryClient.refetchQueries({ queryKey: ["/api/user/profile", user?.uid] });
-                  }}
-                  setHasAttemptedLogin={setHasAttemptedLogin}
-                  onRegistrationStart={handleRegistrationStart}
-                  onRegistrationComplete={handleRegistrationSuccess}
-                  onRegistrationError={handleRegistrationError}
-                />
-              </TabsContent>
-            </Tabs>
-          )}
-
-          {/* Footer */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 0.6 }}
-            className="mt-8 text-center"
-          >
-            <p className="text-sm text-gray-500">{t("partnerCommercialKitchenAccessOnly")}</p>
-          </motion.div>
-        </div>
-      </motion.div>
-
-      {/* Hero Section */}
-      <motion.div
-        initial={{ opacity: 0, x: 50 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.6, delay: 0.2 }}
-        className="w-full md:w-1/2 bg-gradient-to-br from-blue-600 to-blue-800 p-8 flex items-center hidden md:flex relative overflow-hidden"
-      >
-        {/* Background Pattern */}
-        <motion.div
-          className="absolute inset-0 opacity-10"
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 0.1 }}
-          transition={{ duration: 1, delay: 0.5 }}
-        >
-          <div className="absolute top-10 left-10 w-20 h-20 bg-white rounded-full" />
-          <div className="absolute top-32 right-20 w-16 h-16 bg-white rounded-full" />
-          <div className="absolute bottom-20 left-20 w-12 h-12 bg-white rounded-full" />
-          <div className="absolute bottom-40 right-10 w-24 h-24 bg-white rounded-full" />
-        </motion.div>
+        <KitchenAuthShowcase />
 
         <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.4 }}
-          className="max-w-md mx-auto text-white relative z-10"
+          initial={{ opacity: 0, x: 36 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.7, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+          className="relative z-10 flex min-h-screen w-full items-center justify-center px-3 py-3 sm:px-6 sm:py-6 lg:h-screen lg:min-h-0 lg:w-[42%] lg:px-5 xl:px-8"
         >
           <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.5, delay: 0.5 }}
-            className="mb-8"
+            ref={authCardRef}
+            initial={false}
+            animate={{ height: cardHeight ?? "auto" }}
+            transition={{ duration: reduceMotion ? 0 : 0.3, ease: [0.22, 1, 0.36, 1] }}
+            style={{ scrollbarGutter: "stable", overflowAnchor: "none" }}
+            className="relative z-10 max-h-[calc(100vh-1.5rem)] w-full max-w-[510px] overflow-y-auto rounded-[1.75rem] border border-white/70 bg-[#FFFDFC] shadow-[0_24px_80px_-30px_rgba(69,10,27,0.58)] sm:max-h-[calc(100vh-3rem)] lg:max-h-[calc(100vh-2.5rem)]"
           >
-            <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mb-6 backdrop-blur-sm">
-              <Building2 className="w-8 h-8 text-white" />
+            <div ref={authContentRef} className="px-6 py-7 sm:px-9 sm:py-9 xl:px-11">
+              <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                className="mb-7"
+              >
+                <a href="/" className="inline-flex items-center gap-2.5 transition-transform duration-300 hover:scale-[1.02]">
+                  <Logo variant="brand" className="h-9 w-auto flex-shrink-0" />
+                  <span className="flex flex-col justify-center">
+                    <span className="font-logo text-xl font-normal leading-none tracking-tight text-[#F51042]">LocalCooks</span>
+                    <span className="mt-0.5 text-[9px] font-medium uppercase leading-none tracking-wider text-gray-500/70">For kitchens</span>
+                  </span>
+                </a>
+              </motion.div>
+
+              <motion.div
+                key={showEmailVerification ? "verification" : activeTab}
+                initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: reduceMotion ? 0 : 0.2, ease: "easeOut" }}
+                className="w-full"
+              >
+                {!showEmailVerification && (
+                  <div className="mb-6">
+                    <h1 className="text-3xl font-bold tracking-[-0.03em] text-gray-950">
+                      {activeTab === "login" ? t("welcomeBack", "Welcome back") : t("createYourAccount", "Create your account")}
+                    </h1>
+                    <p className="mt-2.5 max-w-sm text-sm leading-relaxed text-gray-600">
+                      {activeTab === "login"
+                        ? t("kitchenLoginSubtitle", "Sign in to manage your kitchen, bookings, and availability")
+                        : t("kitchenRegisterSubtitle", "Create an account to list and manage your commercial kitchen")}
+                    </p>
+                  </div>
+                )}
+
+                {showSuccessMessage && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -20, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    className="mb-6 rounded-xl border border-green-200 bg-green-50 p-4"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-green-100">
+                        <Check className="h-4 w-4 text-green-600" aria-hidden />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-green-800">
+                          {successMessageType === "password-reset" ? "Password reset successful!" : "Email verified successfully!"}
+                        </p>
+                        <p className="mt-1 text-xs text-green-600">
+                          {successMessageType === "password-reset"
+                            ? "You can now sign in with your new password."
+                            : "Your kitchen manager account is verified. Please sign in to continue."}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowSuccessMessage(false)}
+                        className="flex-shrink-0 text-green-400 transition-colors hover:text-green-600"
+                        aria-label="Dismiss message"
+                      >
+                        <X className="h-4 w-4" aria-hidden />
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+
+                {showEmailVerification ? (
+                  <EmailVerificationScreen
+                    email={emailForVerification}
+                    onResend={handleResendVerification}
+                    onGoBack={() => {
+                      setShowEmailVerification(false);
+                      setActiveTab("login");
+                    }}
+                  />
+                ) : activeTab === "login" ? (
+                  <EnhancedLoginForm
+                    onSuccess={async () => {
+                      setHasAttemptedLogin(true);
+                      await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
+                      await refreshUserData();
+                    }}
+                    setHasAttemptedLogin={setHasAttemptedLogin}
+                    animateEntrance={false}
+                  />
+                ) : (
+                  <EnhancedRegisterForm
+                    accountType="manager"
+                    hideApplyingToggle
+                    onSuccess={async () => {
+                      logger.info("🎯 GOOGLE REGISTRATION SUCCESS - Invalidating cache and refreshing data");
+                      await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
+                      setHasAttemptedLogin(true);
+                      await refreshUserData();
+                      queryClient.refetchQueries({ queryKey: ["/api/user/profile", user?.uid] });
+                    }}
+                    setHasAttemptedLogin={setHasAttemptedLogin}
+                    onRegistrationStart={handleRegistrationStart}
+                    onRegistrationComplete={handleRegistrationSuccess}
+                    onRegistrationError={handleRegistrationError}
+                    onSwitchToLogin={() => setActiveTab("login")}
+                    animateEntrance={false}
+                  />
+                )}
+
+                {!showEmailVerification && activeTab === "login" && (
+                  <div className="mt-8 text-center">
+                    <p className="text-sm text-gray-500">
+                      {t("noKitchenAccount", "Don't have a kitchen account?")} {" "}
+                      <Button
+                        variant="link"
+                        className="h-auto p-0 font-semibold text-[#F51042] hover:text-[#D90E3A]"
+                        onClick={() => setActiveTab("register")}
+                      >
+                        {t("register", "Register")}
+                      </Button>
+                    </p>
+                  </div>
+                )}
+              </motion.div>
             </div>
           </motion.div>
-          
-          <motion.h2
-            className="text-4xl font-bold mb-6"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.5 }}
-          >{t("manageYourCommercialKitchen")}</motion.h2>
-          
-          <motion.p
-            className="text-white/90 mb-8 text-lg leading-relaxed"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.6 }}
-          >{t("accessYourPartnerDashboardToManageBookingsAvailabilityAndChe")}</motion.p>
-          
-          <motion.ul
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 0.7 }}
-            className="space-y-4"
-          >
-            {[
-              "Manage kitchen availability and bookings",
-              "Review and approve chef profiles",
-              "Track booking analytics and insights",
-              "Configure location settings and policies"
-            ].map((item, index) => (
-              <motion.li
-                key={index}
-                className="flex items-center"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.4, delay: 0.8 + index * 0.1 }}
-              >
-                <motion.div
-                  className="rounded-full bg-white/20 p-2 mr-4 backdrop-blur-sm"
-                  whileHover={{ scale: 1.1, backgroundColor: "rgba(255,255,255,0.3)" }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <polyline points="20,6 9,17 4,12" />
-                  </svg>
-                </motion.div>
-                <span>{item}</span>
-              </motion.li>
-            ))}
-          </motion.ul>
         </motion.div>
       </motion.div>
-    </div>
     </>
   );
 }

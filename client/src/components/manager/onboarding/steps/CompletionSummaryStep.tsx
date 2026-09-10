@@ -20,7 +20,7 @@ import {
     Shield,
     Rocket,
     Loader2
-} from "lucide-react";
+} from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useManagerOnboarding } from "../ManagerOnboardingContext";

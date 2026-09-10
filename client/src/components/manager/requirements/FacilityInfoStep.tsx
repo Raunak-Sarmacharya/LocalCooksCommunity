@@ -20,10 +20,11 @@ import {
   Wind,
   Info,
   CheckCircle2,
-} from 'lucide-react';
+} from '@/components/ui/manager-icons';
 import { useFileUpload } from '@/hooks/useFileUpload';
 import { useToast } from '@/hooks/use-toast';
 import { usePresignedDocumentUrl } from '@/hooks/use-presigned-document-url';
+import { SettingsFileUpload } from '@/components/manager/settings/SettingsFileUpload';
 import { LocationRequirements } from './types';
 
 function AuthenticatedDocumentLink({ url, className, children }: { url: string | null | undefined; className?: string; children: React.ReactNode }) {
@@ -183,41 +184,7 @@ export function FacilityInfoStep({
 
           {/* Upload Floor Plans */}
           <div className="space-y-3">
-            <div className="relative">
-              <input
-                id="floor_plans_file"
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png,.webp"
-                onChange={(e) => setFloorPlansFile(e.target.files?.[0] || null)}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-              />
-              <div className="flex items-center justify-between p-4 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50/50 dark:bg-slate-800/30 hover:border-slate-300 dark:hover:border-slate-600 transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
-                    <FolderOpen className="h-5 w-5 text-slate-500" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                      {floorPlansFile ? floorPlansFile.name : 'Choose floor plans file'}
-                    </p>
-                    <p className="text-xs text-slate-500">{mt("pDFJPGPNGOrWebPMax45MB")}</p>
-                  </div>
-                </div>
-                {floorPlansFile && (
-                  <Button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setFloorPlansFile(null);
-                    }}
-                    variant="ghost"
-                    size="sm"
-                    className="relative z-20 text-red-500 hover:text-red-700"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-            </div>
+            <SettingsFileUpload id="requirements-floor-plans" accept=".pdf,.jpg,.jpeg,.png,.webp" file={floorPlansFile} label="Choose floor plans" hint={mt("pDFJPGPNGOrWebPMax45MB")} disabled={isUploading} onChange={setFloorPlansFile} />
 
             {floorPlansFile && (
               <Button
@@ -302,41 +269,7 @@ export function FacilityInfoStep({
           {/* Upload Ventilation Document */}
           <div className="space-y-3">
             <Label className="text-sm font-medium">{mt("uploadDocumentationOptional")}</Label>
-            <div className="relative">
-              <input
-                id="ventilation_file"
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png,.webp"
-                onChange={(e) => setVentilationFile(e.target.files?.[0] || null)}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-              />
-              <div className="flex items-center justify-between p-4 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50/50 dark:bg-slate-800/30 hover:border-slate-300 dark:hover:border-slate-600 transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
-                    <FolderOpen className="h-5 w-5 text-slate-500" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                      {ventilationFile ? ventilationFile.name : 'Choose document'}
-                    </p>
-                    <p className="text-xs text-slate-500">{mt("pDFJPGPNGOrWebPMax45MB")}</p>
-                  </div>
-                </div>
-                {ventilationFile && (
-                  <Button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setVentilationFile(null);
-                    }}
-                    variant="ghost"
-                    size="sm"
-                    className="relative z-20 text-red-500 hover:text-red-700"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-            </div>
+            <SettingsFileUpload id="requirements-ventilation" accept=".pdf,.jpg,.jpeg,.png,.webp" file={ventilationFile} label="Choose ventilation document" hint={mt("pDFJPGPNGOrWebPMax45MB")} disabled={isUploading} onChange={setVentilationFile} />
 
             {ventilationFile && (
               <Button

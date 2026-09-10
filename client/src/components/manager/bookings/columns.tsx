@@ -3,7 +3,7 @@ import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
 
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowUpDown, MoreHorizontal, CheckCircle, XCircle, Clock, MapPin, User, Calendar as CalendarIcon, FileText, Package, Boxes, DollarSign, Eye, RotateCcw, ClipboardCheck, Settings2, LogIn, LogOut, Camera, FileWarning } from "lucide-react"
+import { ArrowUpDown, MoreHorizontal, CheckCircle, XCircle, Clock, MapPin, User, Calendar as CalendarIcon, FileText, Package, Boxes, DollarSign, Eye, RotateCcw, ClipboardCheck, Settings2, LogIn, LogOut, Camera, FileWarning } from "@/components/ui/manager-icons"
 
 import { Button } from "@/components/ui/button"
 import {

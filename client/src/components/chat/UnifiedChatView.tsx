@@ -1,7 +1,8 @@
 import { logger } from "@/lib/logger";
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, AlertCircle, MessageCircle } from 'lucide-react';
+import { AlertCircle, MessageCircle } from 'lucide-react';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
@@ -236,7 +237,7 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
   if (isLoading) {
     return (
       <div className="flex items-center justify-center p-12 h-[600px]">
-        <Loader2 className="h-8 w-8 animate-spin text-[#208D80]" />
+        <LoadingSpinner size="lg" className="mb-4" />
       </div>
     );
   }

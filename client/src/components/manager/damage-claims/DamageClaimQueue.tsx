@@ -84,7 +84,7 @@ import {
   Download,
   MoreHorizontal,
   ArrowUpDown,
-} from "lucide-react";
+} from "@/components/ui/manager-icons";
 import { Input } from "@/components/ui/input";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { Label } from "@/components/ui/label";

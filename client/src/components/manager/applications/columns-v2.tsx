@@ -2,7 +2,7 @@
 import { mt } from "@/i18n/manager";
 
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowUpDown, MoreHorizontal, Eye, MessageCircle, Check, X, ChefHat, Building2, FileText, Clock, Ban } from "lucide-react"
+import { ArrowUpDown, MoreHorizontal, Eye, MessageCircle, Check, X, ChefHat, Building2, FileText, Clock, Ban } from "@/components/ui/manager-icons"
 import { Button } from "@/components/ui/button"
 import {
     DropdownMenu,

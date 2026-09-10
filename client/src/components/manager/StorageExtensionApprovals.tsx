@@ -2,7 +2,7 @@ import { useState } from "react";
 import { mt } from "@/i18n/manager";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Check, X, Package, Clock, AlertCircle, CheckCircle, Calendar, ChefHat } from "lucide-react";
+import { Check, X, Package, Clock, AlertCircle, CheckCircle, Calendar, ChefHat } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";

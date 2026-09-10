@@ -341,6 +341,17 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
                           </span>
                         </a>
                       </DropdownMenuItem>
+                      <div role="separator" className="mx-2 my-2 border-t border-gray-200" />
+                      <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">{t("chefPartnerLink")}</p>
+                      <DropdownMenuItem asChild>
+                        <a href={serviceUrls.chef} className="flex items-center gap-3 rounded-md px-3 py-2" onClick={() => setIsServicesOpen(false)}>
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-700"><Store className="h-4 w-4" /></span>
+                          <span className="min-w-0">
+                            <span className="block font-medium text-[13px] text-gray-900 whitespace-nowrap">{t("chefPartnerLink")}</span>
+                            <span className="block text-[11px] text-gray-500 mt-0.5 whitespace-nowrap">{t("chefPartnerLinkDesc")}</span>
+                          </span>
+                        </a>
+                      </DropdownMenuItem>
                     </>
                   ) : (
                     <>
@@ -462,14 +473,6 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
                 </li>
               </>
             )}
-            {currentSubdomain === 'kitchen' && (
-              <li>
-                <a href={serviceUrls.chef} className="group ml-1 flex items-center gap-2 rounded-lg border-l border-gray-200 px-3 py-1.5 text-gray-700 transition-colors hover:bg-gray-50 hover:text-[#F51042]">
-                  <Store className="h-4 w-4 shrink-0" />
-                  <span><span className="block text-xs font-semibold leading-tight">{t("chefPartnerLink")}</span><span className="block text-[9px] leading-tight text-gray-500 group-hover:text-gray-600">{t("chefPartnerLinkDesc")}</span></span>
-                </a>
-              </li>
-            )}
           </ul>
         </nav>
 
@@ -528,6 +531,12 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
                         <span><span className="block text-sm font-medium text-gray-900">{t(title)}</span><span className="block text-xs text-gray-500">{t(description)}</span></span>
                       </a>
                     ))}
+                    <div role="separator" className="mx-2 my-2 border-t border-gray-200" />
+                    <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">{t("chefPartnerLink")}</p>
+                    <a href={serviceUrls.chef} className="flex items-center gap-3 rounded-lg px-2 py-3 hover:bg-primary/5" onClick={closeMenu}>
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-700"><Store className="h-5 w-5" /></span>
+                      <span><span className="block text-sm font-medium text-gray-900">{t("chefPartnerLink")}</span><span className="block text-xs text-gray-500">{t("chefPartnerLinkDesc")}</span></span>
+                    </a>
                   </>
                 ) : (
                   <>
@@ -643,14 +652,6 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
                     </Button>
                   </li>
                 </>
-              )}
-              {currentSubdomain === 'kitchen' && (
-                <li className="mt-3 border-t border-gray-200/70 pt-3">
-                  <a href={serviceUrls.chef} className="flex items-center gap-3 rounded-lg px-2 py-3 hover:bg-primary/5" onClick={closeMenu}>
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-700"><Store className="h-5 w-5" /></span>
-                    <span><span className="block text-sm font-medium text-gray-900">{t("chefPartnerLink")}</span><span className="block text-xs text-gray-500">{t("chefPartnerLinkDesc")}</span></span>
-                  </a>
-                </li>
               )}
             </ul>
           </div>

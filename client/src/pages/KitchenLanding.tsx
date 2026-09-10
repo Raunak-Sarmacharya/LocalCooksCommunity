@@ -7,15 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import FadeInSection from "@/components/ui/FadeInSection";
-import { 
-  Building2, Calendar, ArrowRight, CheckCircle2, Shield, 
-  Clock, DollarSign, Zap, TrendingUp, Lock,
-  CreditCard, Package, Wrench, HandCoins, HeartHandshake,
-  Settings, Eye, BadgeCheck, Wallet, MessageCircle, Scale, ClipboardCheck
-} from "lucide-react";
+import { addCollection, Icon } from "@iconify/react";
+import { icons as mdiIcons } from "@iconify-json/mdi";
+
+addCollection(mdiIcons);
 import { Link, useLocation } from "wouter";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useFirebaseAuth } from "@/hooks/use-auth";
+import { TruncatedText } from "@/components/common/TruncatedText";
 import { landingListKitchenPath } from "@/lib/landing-cta";
 import { motion, useScroll, useTransform, MotionValue } from "framer-motion";
 import { SmartImage } from "@/components/ui/smart-image";
@@ -35,7 +34,7 @@ import WeeklyDepositIcon from "../../../attached_assets/WeekyDeposit_K.svg";
 
 // Floating revenue icons for parallax effect
 interface FloatingIconProps {
-  Icon: React.ElementType;
+  icon: string;
   position: { x: number; y: number };
   size: number;
   depth: 1 | 2 | 3;
@@ -47,7 +46,7 @@ interface FloatingIconProps {
 }
 
 function FloatingIcon({
-  Icon,
+  icon,
   position,
   size,
   depth,
@@ -98,7 +97,7 @@ function FloatingIcon({
           transform: 'translateZ(0)',
         }}
       >
-        <Icon className="w-full h-full text-white" />
+        <Icon icon={icon} className="w-full h-full text-white" />
       </div>
     </motion.div>
   );
@@ -120,7 +119,7 @@ function ScrollLinkedRevenueIcons() {
     >
       {/* Desktop Layout */}
       <FloatingIcon
-        Icon={DollarSign}
+        icon="mdi:currency-usd"
         position={{ x: 5, y: 5 }}
         size={72}
         depth={1}
@@ -131,7 +130,7 @@ function ScrollLinkedRevenueIcons() {
         hideOn="mobile"
       />
       <FloatingIcon
-        Icon={TrendingUp}
+        icon="mdi:trending-up"
         position={{ x: 85, y: 15 }}
         size={68}
         depth={1}
@@ -142,7 +141,7 @@ function ScrollLinkedRevenueIcons() {
         hideOn="mobile"
       />
       <FloatingIcon
-        Icon={Calendar}
+        icon="mdi:calendar-blank"
         position={{ x: 12, y: 45 }}
         size={58}
         depth={2}
@@ -153,7 +152,7 @@ function ScrollLinkedRevenueIcons() {
         hideOn="mobile"
       />
       <FloatingIcon
-        Icon={Package}
+        icon="mdi:package-variant-closed"
         position={{ x: 80, y: 55 }}
         size={62}
         depth={2}
@@ -164,7 +163,7 @@ function ScrollLinkedRevenueIcons() {
         hideOn="mobile"
       />
       <FloatingIcon
-        Icon={Wrench}
+        icon="mdi:wrench-outline"
         position={{ x: 3, y: 75 }}
         size={54}
         depth={3}
@@ -175,7 +174,7 @@ function ScrollLinkedRevenueIcons() {
         hideOn="mobile"
       />
       <FloatingIcon
-        Icon={CreditCard}
+        icon="mdi:credit-card-outline"
         position={{ x: 88, y: 82 }}
         size={50}
         depth={3}
@@ -189,7 +188,7 @@ function ScrollLinkedRevenueIcons() {
       {/* Mobile Layout - lighter, edge-positioned icons to avoid overlap */}
       <div className="sm:hidden">
         <FloatingIcon
-          Icon={DollarSign}
+          icon="mdi:currency-usd"
           position={{ x: 6, y: 4 }}
           size={42}
           depth={1}
@@ -199,7 +198,7 @@ function ScrollLinkedRevenueIcons() {
           scrollYProgress={scrollYProgress}
         />
         <FloatingIcon
-          Icon={TrendingUp}
+          icon="mdi:trending-up"
           position={{ x: 86, y: 18 }}
           size={38}
           depth={1}
@@ -209,7 +208,7 @@ function ScrollLinkedRevenueIcons() {
           scrollYProgress={scrollYProgress}
         />
         <FloatingIcon
-          Icon={Calendar}
+          icon="mdi:calendar-blank"
           position={{ x: 4, y: 72 }}
           size={38}
           depth={2}
@@ -219,7 +218,7 @@ function ScrollLinkedRevenueIcons() {
           scrollYProgress={scrollYProgress}
         />
         <FloatingIcon
-          Icon={Package}
+          icon="mdi:package-variant-closed"
           position={{ x: 88, y: 64 }}
           size={34}
           depth={2}
@@ -404,7 +403,7 @@ export default function KitchenLanding() {
         ]}
       />
       <CustomerSupportButton />
-      <Header />
+      <Header hideHowItWorks />
       
       <main className="flex-grow">
         {/* ═══════════════════════════════════════════════════════════════════════
@@ -435,37 +434,13 @@ export default function KitchenLanding() {
           </div>
 
           <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-20 sm:pt-24 md:pt-28 pb-12 sm:pb-14 md:pb-16 relative z-10">
-            {/* Mobile-only Badge */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-              className="mb-6 block lg:hidden"
-            >
-              <div className="relative inline-flex items-center gap-2 bg-gradient-to-r from-[#F51042] to-rose-500 text-white px-4 py-2 rounded-full border border-[#F51042]/30">
-                <div className="absolute inset-0 rounded-full bg-gradient-to-br from-white/10 to-transparent"></div>
-                <HandCoins className="h-3.5 w-3.5 relative z-10" />
-                <span className="font-semibold text-xs tracking-wide relative z-10">{t("turnIdleHoursIntoIncome")}</span>
-              </div>
-            </motion.div>
+
 
             <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 items-center min-h-[calc(100vh-200px)]">
               
               {/* Left Content Column */}
               <div className="order-2 lg:order-1">
-                {/* Trial Badge - Desktop only */}
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.6, delay: 0.2 }}
-                  className="mb-8 hidden lg:block"
-                >
-                  <div className="relative inline-flex items-center gap-2 bg-gradient-to-r from-[#F51042] to-rose-500 text-white px-4 py-2 rounded-full shadow-xl shadow-[#F51042]/40 border border-[#F51042]/30">
-                    <div className="absolute inset-0 rounded-full bg-gradient-to-br from-white/10 to-transparent"></div>
-                    <HandCoins className="h-3.5 w-3.5 relative z-10" />
-                    <span className="font-semibold text-xs tracking-wide relative z-10">{t("turnIdleHoursIntoIncome")}</span>
-                  </div>
-                </motion.div>
+
 
                 {/* Brand Identity */}
                 <motion.div
@@ -528,17 +503,28 @@ export default function KitchenLanding() {
                   <Button
                     onClick={handleListKitchen}
                     size="lg"
-                    className="group relative bg-gradient-to-r from-[#F51042] to-rose-500 hover:from-rose-500 hover:to-[#F51042] text-white font-bold py-3 sm:py-4 md:py-7 px-4 sm:px-6 md:px-12 text-xs sm:text-sm md:text-lg rounded-full transition-all duration-300 shadow-xl hover:shadow-2xl hover:shadow-[#F51042]/40 hover:-translate-y-1 overflow-hidden flex-1 min-h-[44px] sm:min-h-[48px]"
+                    className="group relative bg-[#F51042] hover:bg-[#D90E3A] text-white font-bold py-3 md:py-4 px-3 sm:px-6 md:px-12 text-[11px] sm:text-sm md:text-lg rounded-full transition-all duration-300 shadow-xl hover:shadow-2xl hover:shadow-[#F51042]/30 hover:-translate-y-1 overflow-hidden flex-1 min-w-0 min-h-[44px] sm:min-h-[48px]"
                   >
-                    <span className="relative z-10 flex items-center justify-center">{t("getStarted")}<ArrowRight className="ml-1 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5 group-hover:translate-x-1 transition-transform" />
+                    <span className="relative z-10 flex items-center justify-center truncate">
+                      <TruncatedText className="truncate">{t("getStarted")}</TruncatedText>
+                      <Icon icon="mdi:arrow-right" className="ml-1 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5 shrink-0 group-hover:translate-x-1 transition-transform" />
                     </span>
+                    <motion.div
+                      className="absolute inset-0 bg-gradient-to-r from-[#D90E3A] to-[#F51042]"
+                      initial={{ x: "100%" }}
+                      whileHover={{ x: 0 }}
+                      transition={{ duration: 0.3 }}
+                    />
                   </Button>
                   <Button
                     variant="outline"
                     size="lg"
-                    className="border-2 border-[#2C2C2C]/20 text-[#2C2C2C] hover:border-[#F51042] hover:text-[#F51042] hover:bg-rose-50 font-semibold py-3 sm:py-4 md:py-7 px-4 sm:px-6 md:px-10 text-xs sm:text-sm md:text-lg rounded-full transition-all duration-300 flex-1 min-h-[44px] sm:min-h-[48px]"
+                    className="group inline-flex items-center justify-center border-2 border-[#2C2C2C]/20 text-[#2C2C2C] hover:border-[#F51042] hover:text-[#F51042] hover:bg-[#F51042]/5 font-semibold py-3 md:py-4 px-3 sm:px-6 md:px-10 text-[11px] sm:text-sm md:text-lg rounded-full transition-all duration-300 flex-1 min-w-0 min-h-[44px] sm:min-h-[48px]"
                     onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
-                  >{t("seeHowItWorks")}</Button>
+                  >
+                    <Icon icon="mdi:help-circle-outline" className="mr-1 sm:mr-1.5 h-3.5 w-3.5 sm:h-4 sm:w-4 md:h-5 md:w-5 shrink-0 text-[#2C2C2C] group-hover:scale-110 transition-transform" />
+                    <TruncatedText className="truncate">{t("seeHowItWorks")}</TruncatedText>
+                  </Button>
                 </motion.div>
 
                 {/* Trust Indicators */}
@@ -549,9 +535,8 @@ export default function KitchenLanding() {
                   className="flex flex-nowrap md:flex-wrap gap-x-2 md:gap-x-6 gap-y-3"
                 >
                   {[
-                    { icon: CheckCircle2, text: t("zeroPlatformFeeTrial") },
-                    { icon: Shield, text: t("verifiedRentersOnly") },
-                    { icon: HeartHandshake, text: t("fullInsuranceCoverage") }
+                    { icon: "mdi:shield-check-outline", text: t("verifiedRentersOnly") },
+                    { icon: "mdi:handshake-outline", text: t("fullInsuranceCoverage") }
                   ].map((item, i) => (
                     <motion.span 
                       key={i}
@@ -560,7 +545,7 @@ export default function KitchenLanding() {
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ duration: 0.4, delay: 1 + (i * 0.1) }}
                     >
-                      <item.icon className="h-3 w-3 md:h-4 md:w-4 text-[#F51042] flex-shrink-0" />
+                      <Icon icon={item.icon} className="h-3 w-3 md:h-4 md:w-4 text-[#F51042] flex-shrink-0" />
                       <span className="leading-tight">{item.text}</span>
                     </motion.span>
                   ))}
@@ -759,8 +744,6 @@ export default function KitchenLanding() {
           <div className="container mx-auto max-w-4xl relative z-10">
             <FadeInSection>
               <div className="text-center">
-                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-[#F51042] mb-4 px-4 py-2 bg-rose-100 rounded-full">{t("opportunityMissing")}</span>
-                
                 <motion.h2
                   initial={{ opacity: 0, y: 30 }}
                   whileInView={{ opacity: 1, y: 0 }}
@@ -845,7 +828,7 @@ export default function KitchenLanding() {
         <section
           id="revenue-streams"
           ref={revenueSectionRef}
-          className="py-24 md:py-32 px-4 bg-gradient-to-b from-white via-slate-50/50 to-white relative overflow-hidden"
+          className="py-20 md:py-28 px-4 bg-gradient-to-b from-white via-slate-50/50 to-white relative overflow-hidden"
         >
           {/* Subtle background decoration */}
           <div className="absolute inset-0 pointer-events-none">
@@ -856,26 +839,15 @@ export default function KitchenLanding() {
           <div className="container mx-auto max-w-6xl relative z-10">
             {/* Section Header */}
             <FadeInSection>
-              <div className="mb-16 md:mb-20">
+              <div className="mb-12 md:mb-16">
                 <div className="flex flex-col md:flex-row items-center md:items-start justify-between gap-8">
                   <div className="text-center md:text-left max-w-2xl">
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      viewport={{ once: true }}
-                      transition={{ duration: 0.5 }}
-                      className="inline-flex items-center gap-2 bg-rose-50 border border-rose-200/60 rounded-full px-4 py-2 mb-6"
-                    >
-                      <div className="w-2 h-2 rounded-full bg-[#F51042] animate-pulse" />
-                      <span className="font-mono text-xs uppercase tracking-[0.2em] text-[#F51042] font-medium">{t("revenueStreams")}</span>
-                    </motion.div>
-                    
                     <motion.h2
                       initial={{ opacity: 0, y: 30 }}
                       whileInView={{ opacity: 1, y: 0 }}
                       viewport={{ once: true }}
                       transition={{ duration: 0.7, delay: 0.1 }}
-                      className="text-3xl md:text-4xl lg:text-5xl font-bold text-slate-900 leading-tight mb-4"
+                      className="text-2xl md:text-3xl lg:text-4xl font-bold text-[#1A1A1A] leading-tight mb-4"
                     >{t("multipleRevenueStreams")}<br />
                       <span className="relative inline-block mt-2">
                         <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-rose-500 to-[#F51042]">{t("oneDashboard")}</span>
@@ -932,7 +904,7 @@ export default function KitchenLanding() {
                       <SmartImage
                         src={DashboardIcon}
                         alt={t("altRevenueDashboard")}
-                        className="relative w-64 lg:w-80 h-auto object-contain drop-shadow-[0_18px_40px_rgba(15,118,110,0.25)]"
+                        className="relative w-56 lg:w-72 h-auto object-contain drop-shadow-[0_14px_32px_rgba(245,16,66,0.14)]"
                       />
                     </div>
                   </motion.div>
@@ -941,24 +913,20 @@ export default function KitchenLanding() {
             </FadeInSection>
 
             {/* Premium Bento Grid - 2x2 Layout */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-6 lg:gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-6">
               
               {/* Card 1: Hourly Kitchen Rentals */}
               <FadeInSection delay={0}>
                 <motion.div
                   className="group relative h-full"
-                  whileHover={{ y: -8 }}
+                  whileHover={{ y: -6 }}
                   transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-[#F51042]/20 to-rose-400/20 rounded-3xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                  <div className="relative h-full bg-white rounded-3xl border border-slate-200/80 p-8 md:p-10 shadow-[0_4px_40px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_60px_rgba(245,16,66,0.2)] hover:border-rose-200/60 transition-all duration-500 overflow-hidden">
-                    {/* Decorative gradient orb */}
-                    <div className="absolute -top-20 -right-20 w-40 h-40 bg-gradient-to-br from-[#F51042]/20 to-rose-400/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
-                    
+                  <div className="relative h-full bg-white rounded-2xl border border-gray-100 p-6 md:p-7 lg:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 overflow-hidden">
                     {/* Icon */}
-                    <div className="relative mb-6">
-                      <div className="w-14 h-14 bg-gradient-to-br from-[#F51042] to-rose-500 rounded-2xl flex items-center justify-center shadow-lg shadow-[#F51042]/25 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
-                        <Clock className="h-7 w-7 text-white" />
+                    <div className="relative mb-4">
+                      <div className="w-10 h-10 rounded-lg bg-gray-100 text-gray-700 flex items-center justify-center transition-colors duration-300 group-hover:bg-rose-50 group-hover:text-[#F51042]">
+                        <Icon icon="mdi:clock-outline" className="h-5 w-5" />
                       </div>
                     </div>
                     
@@ -966,7 +934,7 @@ export default function KitchenLanding() {
                     <div className="relative">
                       <h3 className="text-base md:text-lg lg:text-xl font-bold text-slate-900 mb-3 group-hover:text-[#F51042] transition-colors duration-300">{t("hourlyRentals")}</h3>
                       
-                      <div className="inline-flex items-center gap-2 bg-rose-50 rounded-full px-4 py-1.5 mb-5">
+                      <div className="inline-flex items-center gap-2 bg-rose-50 rounded-full px-3 py-1.5 mb-4">
                         <span className="text-xs md:text-sm font-semibold text-[#F51042]">{t("typicalRangeHourly")}</span>
                       </div>
                       
@@ -980,18 +948,14 @@ export default function KitchenLanding() {
               <FadeInSection delay={1}>
                 <motion.div
                   className="group relative h-full"
-                  whileHover={{ y: -8 }}
+                  whileHover={{ y: -6 }}
                   transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-violet-500/20 to-purple-500/20 rounded-3xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                  <div className="relative h-full bg-white rounded-3xl border border-slate-200/80 p-8 md:p-10 shadow-[0_4px_40px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_60px_rgba(139,92,246,0.15)] hover:border-violet-200/60 transition-all duration-500 overflow-hidden">
-                    {/* Decorative gradient orb */}
-                    <div className="absolute -top-20 -right-20 w-40 h-40 bg-gradient-to-br from-violet-400/20 to-purple-400/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
-                    
+                  <div className="relative h-full bg-white rounded-2xl border border-gray-100 p-6 md:p-7 lg:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 overflow-hidden">
                     {/* Icon */}
-                    <div className="relative mb-6">
-                      <div className="w-14 h-14 bg-gradient-to-br from-violet-500 to-purple-500 rounded-2xl flex items-center justify-center shadow-lg shadow-violet-500/25 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
-                        <Package className="h-7 w-7 text-white" />
+                    <div className="relative mb-4">
+                      <div className="w-10 h-10 rounded-lg bg-gray-100 text-gray-700 flex items-center justify-center transition-colors duration-300 group-hover:bg-rose-50 group-hover:text-[#F51042]">
+                        <Icon icon="mdi:package-variant-closed" className="h-5 w-5" />
                       </div>
                     </div>
                     
@@ -999,8 +963,8 @@ export default function KitchenLanding() {
                     <div className="relative">
                       <h3 className="text-base md:text-lg lg:text-xl font-bold text-slate-900 mb-3 group-hover:text-violet-700 transition-colors duration-300">{t("storageThatPays")}</h3>
                       
-                      <div className="inline-flex items-center gap-2 bg-violet-50 rounded-full px-4 py-1.5 mb-5">
-                        <span className="text-xs md:text-sm font-semibold text-violet-700">{t("typicalRangeStorage")}</span>
+                      <div className="inline-flex items-center gap-2 bg-rose-50 rounded-full px-3 py-1.5 mb-4">
+                        <span className="text-xs md:text-sm font-semibold text-[#F51042]">{t("typicalRangeStorage")}</span>
                       </div>
                       
                       <p className="text-slate-600 leading-relaxed text-xs md:text-sm">{t("monetizeEveryShelf")}</p>
@@ -1013,18 +977,14 @@ export default function KitchenLanding() {
               <FadeInSection delay={2}>
                 <motion.div
                   className="group relative h-full"
-                  whileHover={{ y: -8 }}
+                  whileHover={{ y: -6 }}
                   transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-amber-500/20 to-orange-500/20 rounded-3xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                  <div className="relative h-full bg-white rounded-3xl border border-slate-200/80 p-8 md:p-10 shadow-[0_4px_40px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_60px_rgba(245,158,11,0.15)] hover:border-amber-200/60 transition-all duration-500 overflow-hidden">
-                    {/* Decorative gradient orb */}
-                    <div className="absolute -top-20 -right-20 w-40 h-40 bg-gradient-to-br from-amber-400/20 to-orange-400/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
-                    
+                  <div className="relative h-full bg-white rounded-2xl border border-gray-100 p-6 md:p-7 lg:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 overflow-hidden">
                     {/* Icon */}
-                    <div className="relative mb-6">
-                      <div className="w-14 h-14 bg-gradient-to-br from-amber-500 to-orange-500 rounded-2xl flex items-center justify-center shadow-lg shadow-amber-500/25 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
-                        <Wrench className="h-7 w-7 text-white" />
+                    <div className="relative mb-4">
+                      <div className="w-10 h-10 rounded-lg bg-gray-100 text-gray-700 flex items-center justify-center transition-colors duration-300 group-hover:bg-rose-50 group-hover:text-[#F51042]">
+                        <Icon icon="mdi:wrench-outline" className="h-5 w-5" />
                       </div>
                     </div>
                     
@@ -1032,8 +992,8 @@ export default function KitchenLanding() {
                     <div className="relative">
                       <h3 className="text-base md:text-lg lg:text-xl font-bold text-slate-900 mb-3 group-hover:text-amber-700 transition-colors duration-300">{t("equipmentRental")}</h3>
                       
-                      <div className="inline-flex items-center gap-2 bg-amber-50 rounded-full px-4 py-1.5 mb-5">
-                        <span className="text-xs md:text-sm font-semibold text-amber-700">{t("typicalAddonsEquip")}</span>
+                      <div className="inline-flex items-center gap-2 bg-rose-50 rounded-full px-3 py-1.5 mb-4">
+                        <span className="text-xs md:text-sm font-semibold text-[#F51042]">{t("typicalAddonsEquip")}</span>
                       </div>
                       
                       <p className="text-slate-600 leading-relaxed text-xs md:text-sm">{t("blastChillersAssets")}</p>
@@ -1046,18 +1006,14 @@ export default function KitchenLanding() {
               <FadeInSection delay={3}>
                 <motion.div
                   className="group relative h-full"
-                  whileHover={{ y: -8 }}
+                  whileHover={{ y: -6 }}
                   transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-[#F51042]/18 to-rose-400/18 rounded-3xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                  <div className="relative h-full bg-white rounded-3xl border border-slate-200/80 p-8 md:p-10 shadow-[0_4px_40px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_60px_rgba(245,16,66,0.18)] hover:border-rose-200/60 transition-all duration-500 overflow-hidden">
-                    {/* Decorative elements */}
-                    <div className="absolute -top-20 -right-20 w-40 h-40 bg-gradient-to-br from-[#F51042]/20 to-rose-400/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
-                    
+                  <div className="relative h-full bg-white rounded-2xl border border-gray-100 p-6 md:p-7 lg:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 overflow-hidden">
                     {/* Icon */}
-                    <div className="relative mb-6">
-                      <div className="w-14 h-14 bg-gradient-to-br from-rose-400 to-[#F51042] rounded-2xl flex items-center justify-center shadow-lg shadow-[#F51042]/30 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
-                        <Zap className="h-7 w-7 text-white" />
+                    <div className="relative mb-4">
+                      <div className="w-10 h-10 rounded-lg bg-gray-100 text-gray-700 flex items-center justify-center transition-colors duration-300 group-hover:bg-rose-50 group-hover:text-[#F51042]">
+                        <Icon icon="mdi:lightning-bolt-outline" className="h-5 w-5" />
                       </div>
                     </div>
                     
@@ -1065,7 +1021,7 @@ export default function KitchenLanding() {
                     <div className="relative">
                       <h3 className="text-base md:text-lg lg:text-xl font-bold text-slate-900 mb-3">{t("customPrograms")}</h3>
                       
-                      <div className="inline-flex items-center gap-2 bg-rose-50 rounded-full px-4 py-1.5 mb-5 border border-rose-100">
+                      <div className="inline-flex items-center gap-2 bg-rose-50 rounded-full px-3 py-1.5 mb-4 border border-rose-100">
                         <span className="text-xs md:text-sm font-medium text-[#F51042]">{t("monthlyMemberships")}</span>
                       </div>
                       
@@ -1109,7 +1065,6 @@ export default function KitchenLanding() {
           <div className="container mx-auto max-w-6xl relative z-10">
             <FadeInSection>
               <div className="text-center mb-12 md:mb-16">
-                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-white/80 mb-4 px-4 py-2 bg-white/10 rounded-full">{t("listKitchenToday")}</span>
                 <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold mb-4">
                   {t("idleSpaceToRevenueIn")}{" "}
                   <span className="relative inline-block">
@@ -1215,7 +1170,7 @@ export default function KitchenLanding() {
         {/* ═══════════════════════════════════════════════════════════════════════
             EVERYTHING YOU NEED SECTION - Premium Standalone Design
         ═══════════════════════════════════════════════════════════════════════ */}
-        <section id="everything-included" className="relative scroll-mt-24 py-24 md:py-32 px-4 bg-white overflow-hidden">
+        <section id="everything-included" className="relative scroll-mt-24 py-20 md:py-28 px-4 bg-white overflow-hidden">
           {/* Sophisticated background elements */}
           <div className="absolute inset-0 pointer-events-none">
             {/* Gradient mesh background */}
@@ -1229,32 +1184,10 @@ export default function KitchenLanding() {
             }} />
           </div>
 
-          <div className="container mx-auto max-w-7xl relative z-10">
+          <div className="container mx-auto max-w-6xl relative z-10">
             {/* Section Header - Premium Design */}
             <FadeInSection>
-              <div className="text-center mb-16 md:mb-20">
-                {/* Floating badge with glow effect */}
-                <motion.div
-                  initial={{ opacity: 0, y: 20, scale: 0.9 }}
-                  whileInView={{ opacity: 1, y: 0, scale: 1 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.6 }}
-                  className="inline-block mb-8"
-                >
-                  <div className="relative">
-            <div className="absolute -inset-1 bg-gradient-to-r from-[#F51042] via-rose-400 to-pink-400 rounded-full blur-sm opacity-40 animate-pulse" />
-                    <div className="relative inline-flex items-center gap-3 bg-white border border-rose-200 rounded-full px-5 py-2.5 shadow-lg shadow-rose-400/20">
-                      <div className="flex items-center gap-1.5">
-                        <span className="relative flex h-2.5 w-2.5">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#F51042]/70 opacity-75" />
-                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#F51042]" />
-                        </span>
-                      </div>
-                      <span className="font-semibold text-sm tracking-wide text-[#F51042]">{t("everythingIncluded")}</span>
-                    </div>
-                  </div>
-                </motion.div>
-                
+              <div className="text-center mb-12 md:mb-16">
                 {/* Main headline with creative typography */}
                 <motion.div
                   initial={{ opacity: 0, y: 30 }}
@@ -1263,13 +1196,13 @@ export default function KitchenLanding() {
                   transition={{ duration: 0.7, delay: 0.1 }}
                   className="relative"
                 >
-                  <h2 className="text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-bold text-slate-900 leading-[1.1] mb-6">
+                  <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-[#1A1A1A] leading-tight mb-4">
                     <span className="block">{t("everythingYouNeedTo")}</span>
                     <span className="relative inline-block mt-2">
                       <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-rose-500 to-[#F51042]">{t("hostWithConfidence")}</span>
                       {/* Animated underline */}
                       <motion.div 
-                        className="absolute -bottom-2 left-0 right-0 h-1 md:h-1.5 bg-gradient-to-r from-[#F51042] via-rose-400 to-[#F51042] rounded-full"
+                        className="absolute -bottom-1 md:-bottom-2 left-0 right-0 h-[3px] bg-[#F51042] rounded-full"
                         initial={{ scaleX: 0, originX: 0 }}
                         whileInView={{ scaleX: 1 }}
                         viewport={{ once: true }}
@@ -1284,7 +1217,7 @@ export default function KitchenLanding() {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ duration: 0.6, delay: 0.2 }}
-                  className="text-sm md:text-base lg:text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed mt-6"
+                  className="text-sm md:text-base lg:text-lg text-[#6B6B6B] max-w-2xl mx-auto leading-relaxed mt-4"
                 >{t("smartAutomation")}<br className="hidden md:block" />
                   <span className="font-medium text-slate-700">{t("businessSimplified")}</span>
                 </motion.p>
@@ -1292,7 +1225,7 @@ export default function KitchenLanding() {
             </FadeInSection>
 
             {/* Premium Two-Column Feature Layout */}
-            <div className="grid lg:grid-cols-2 gap-8 lg:gap-12">
+            <div className="grid lg:grid-cols-2 gap-5 md:gap-6">
               
               {/* Left Column: Automated Platform Features */}
               <FadeInSection delay={0}>
@@ -1304,49 +1237,39 @@ export default function KitchenLanding() {
                   className="relative group"
                 >
                   {/* Card glow effect on hover */}
-                  <div className="absolute -inset-0.5 bg-gradient-to-br from-[#F51042]/20 via-rose-400/10 to-rose-300/20 rounded-[2rem] blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+                  <div className="absolute -inset-0.5 bg-[#F51042]/10 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                   
-                  <div className="relative bg-gradient-to-br from-white via-white to-rose-50/40 rounded-[2rem] border border-slate-200/80 p-8 md:p-10 shadow-[0_8px_40px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_60px_rgba(245,16,66,0.16)] transition-all duration-500">
+                  <div className="relative h-full bg-white rounded-2xl border border-gray-100 p-6 md:p-7 lg:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300">
                     {/* Column header with icon */}
-                    <div className="flex items-center gap-4 mb-8">
-                      <div className="relative">
-                        <div className="absolute -inset-2 bg-gradient-to-br from-[#F51042]/20 to-rose-500/20 rounded-2xl blur-lg" />
-                        <div className="relative w-14 h-14 bg-gradient-to-br from-[#F51042] to-rose-500 rounded-2xl flex items-center justify-center shadow-lg shadow-[#F51042]/30">
-                          <Zap className="h-7 w-7 text-white" />
-                        </div>
-                      </div>
+                    <div className="flex items-center gap-3 mb-6">
                       <div>
-                        <h3 className="text-xl md:text-2xl font-bold text-slate-900">{t("automatedPlatform")}</h3>
-                        <p className="text-sm text-slate-500 font-medium">{t("setItOnce")}</p>
+                        <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C]">{t("automatedPlatform")}</h3>
+                        <p className="text-xs md:text-sm text-[#6B6B6B] font-medium">{t("setItOnce")}</p>
                       </div>
                     </div>
                     
                     {/* Features list with premium styling */}
-                    <div className="space-y-6">
+                    <div className="space-y-4">
                       {[
                         {
-                          icon: Calendar,
+                          icon: "mdi:calendar-blank",
                           title: t("featSmartScheduling"),
-                          description: t("featSmartSchedulingDesc"),
-                          gradient: "from-violet-500 to-purple-600"
+                          description: t("featSmartSchedulingDesc")
                         },
                         {
-                          icon: MessageCircle,
+                          icon: "mdi:message-outline",
                           title: t("featReminders"),
-                          description: t("featRemindersDesc"),
-                          gradient: "from-blue-500 to-indigo-600"
+                          description: t("featRemindersDesc")
                         },
                         {
-                          icon: CreditCard,
+                          icon: "mdi:credit-card-outline",
                           title: t("featWeeklyPayouts"),
-                          description: t("featWeeklyPayoutsDesc"),
-                          gradient: "from-[#F51042] to-rose-500"
+                          description: t("featWeeklyPayoutsDesc")
                         },
                         {
-                          icon: Settings,
+                          icon: "mdi:cog-outline",
                           title: t("featCustomSolutions"),
-                          description: t("featCustomSolutionsDesc"),
-                          gradient: "from-amber-500 to-orange-600"
+                          description: t("featCustomSolutionsDesc")
                         }
                       ].map((feature, i) => (
                         <motion.div
@@ -1357,23 +1280,23 @@ export default function KitchenLanding() {
                           transition={{ duration: 0.5, delay: 0.1 * i }}
                           className="group/item relative"
                         >
-                          <div className="flex gap-4">
+                          <div className="flex gap-3">
                             <div className="flex-shrink-0">
-                              <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${feature.gradient} flex items-center justify-center shadow-lg transform group-hover/item:scale-110 group-hover/item:rotate-3 transition-all duration-300`}>
-                                <feature.icon className="h-5 w-5 text-white" />
+                              <div className="w-9 h-9 rounded-lg bg-gray-100 text-gray-700 flex items-center justify-center transition-colors duration-300 group-hover/item:bg-rose-50 group-hover/item:text-[#F51042]">
+                                <Icon icon={feature.icon} className="h-4 w-4" />
                               </div>
                             </div>
                             <div className="flex-1 min-w-0">
-                              <h4 className="font-semibold text-slate-900 text-base md:text-lg mb-1 group-hover/item:text-[#F51042] transition-colors">
+                              <h4 className="font-semibold text-[#2C2C2C] text-sm md:text-base mb-1 group-hover/item:text-[#F51042] transition-colors">
                                 {feature.title}
                               </h4>
-                              <p className="text-sm text-slate-600 leading-relaxed">
+                              <p className="text-xs md:text-sm text-[#6B6B6B] leading-relaxed">
                                 {feature.description}
                               </p>
                             </div>
                           </div>
                           {i < 3 && (
-                            <div className="ml-[3.25rem] mt-6 h-px bg-gradient-to-r from-slate-200 via-slate-100 to-transparent" />
+                            <div className="ml-12 mt-4 h-px bg-gradient-to-r from-gray-200 via-gray-100 to-transparent" />
                           )}
                         </motion.div>
                       ))}
@@ -1392,49 +1315,39 @@ export default function KitchenLanding() {
                   className="relative group"
                 >
                   {/* Card glow effect on hover */}
-                  <div className="absolute -inset-0.5 bg-gradient-to-br from-violet-500/20 via-purple-500/10 to-pink-500/20 rounded-[2rem] blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+                  <div className="absolute -inset-0.5 bg-[#F51042]/10 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                   
-                  <div className="relative bg-gradient-to-br from-white via-white to-violet-50/30 rounded-[2rem] border border-slate-200/80 p-8 md:p-10 shadow-[0_8px_40px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_60px_rgba(139,92,246,0.12)] transition-all duration-500">
+                  <div className="relative h-full bg-white rounded-2xl border border-gray-100 p-6 md:p-7 lg:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300">
                     {/* Column header with icon */}
-                    <div className="flex items-center gap-4 mb-8">
-                      <div className="relative">
-                        <div className="absolute -inset-2 bg-gradient-to-br from-violet-500/20 to-purple-500/20 rounded-2xl blur-lg" />
-                        <div className="relative w-14 h-14 bg-gradient-to-br from-violet-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg shadow-violet-500/30">
-                          <Shield className="h-7 w-7 text-white" />
-                        </div>
-                      </div>
+                    <div className="flex items-center gap-3 mb-6">
                       <div>
-                        <h3 className="text-xl md:text-2xl font-bold text-slate-900">{t("verifiedProtected")}</h3>
-                        <p className="text-sm text-slate-500 font-medium">{t("sleepSoundly")}</p>
+                        <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C]">{t("verifiedProtected")}</h3>
+                        <p className="text-xs md:text-sm text-[#6B6B6B] font-medium">{t("sleepSoundly")}</p>
                       </div>
                     </div>
                     
                     {/* Features list with premium styling */}
-                    <div className="space-y-6">
+                    <div className="space-y-4">
                       {[
                         {
-                          icon: BadgeCheck,
+                          icon: "mdi:check-decagram-outline",
                           title: t("featPreVerified"),
-                          description: t("featPreVerifiedDesc"),
-                          gradient: "from-blue-500 to-cyan-600"
+                          description: t("featPreVerifiedDesc")
                         },
                         {
-                          icon: Eye,
+                          icon: "mdi:eye-outline",
                           title: t("featFullTransparency"),
-                          description: t("featFullTransparencyDesc"),
-                          gradient: "from-rose-500 to-[#F51042]"
+                          description: t("featFullTransparencyDesc")
                         },
                         {
-                          icon: Lock,
+                          icon: "mdi:lock-outline",
                           title: t("featCoverageConfirmed"),
-                          description: t("featCoverageConfirmedDesc"),
-                          gradient: "from-rose-500 to-pink-600"
+                          description: t("featCoverageConfirmedDesc")
                         },
                         {
-                          icon: HeartHandshake,
+                          icon: "mdi:handshake-outline",
                           title: t("featLocalSupport"),
-                          description: t("featLocalSupportDesc"),
-                          gradient: "from-violet-500 to-purple-600"
+                          description: t("featLocalSupportDesc")
                         }
                       ].map((feature, i) => (
                         <motion.div
@@ -1445,23 +1358,23 @@ export default function KitchenLanding() {
                           transition={{ duration: 0.5, delay: 0.1 * i + 0.2 }}
                           className="group/item relative"
                         >
-                          <div className="flex gap-4">
+                          <div className="flex gap-3">
                             <div className="flex-shrink-0">
-                              <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${feature.gradient} flex items-center justify-center shadow-lg transform group-hover/item:scale-110 group-hover/item:rotate-3 transition-all duration-300`}>
-                                <feature.icon className="h-5 w-5 text-white" />
+                              <div className="w-9 h-9 rounded-lg bg-gray-100 text-gray-700 flex items-center justify-center transition-colors duration-300 group-hover/item:bg-rose-50 group-hover/item:text-[#F51042]">
+                                <Icon icon={feature.icon} className="h-4 w-4" />
                               </div>
                             </div>
                             <div className="flex-1 min-w-0">
-                              <h4 className="font-semibold text-slate-900 text-base md:text-lg mb-1 group-hover/item:text-violet-700 transition-colors">
+                              <h4 className="font-semibold text-[#2C2C2C] text-sm md:text-base mb-1 group-hover/item:text-[#F51042] transition-colors">
                                 {feature.title}
                               </h4>
-                              <p className="text-sm text-slate-600 leading-relaxed">
+                              <p className="text-xs md:text-sm text-[#6B6B6B] leading-relaxed">
                                 {feature.description}
                               </p>
                             </div>
                           </div>
                           {i < 3 && (
-                            <div className="ml-[3.25rem] mt-6 h-px bg-gradient-to-r from-slate-200 via-slate-100 to-transparent" />
+                            <div className="ml-12 mt-4 h-px bg-gradient-to-r from-gray-200 via-gray-100 to-transparent" />
                           )}
                         </motion.div>
                       ))}
@@ -1478,29 +1391,31 @@ export default function KitchenLanding() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.7, delay: 0.3 }}
-                className="mt-16 md:mt-20"
+                className="mt-12 md:mt-16"
               >
                 <div className="relative">
                   {/* Glow effect */}
-                  <div className="absolute -inset-1 bg-gradient-to-r from-[#F51042] via-rose-500 to-pink-400 rounded-3xl blur-lg opacity-30" />
+                  <div className="absolute -inset-1 bg-[#F51042]/25 rounded-2xl blur-lg opacity-30" />
                   
-                  <div className="relative bg-gradient-to-r from-[#F51042] via-rose-500 to-[#F51042] rounded-3xl p-8 md:p-10 overflow-hidden">
+                  <div className="relative bg-[#F51042] rounded-2xl p-6 md:p-8 overflow-hidden">
                     {/* Decorative elements */}
                     <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
                     <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/10 rounded-full blur-2xl translate-y-1/2 -translate-x-1/2" />
                     
-                    <div className="relative flex flex-col md:flex-row items-center justify-between gap-6">
+                    <div className="relative flex flex-col md:flex-row items-center justify-between gap-5">
                       <div className="text-center md:text-left">
-                        <h3 className="text-xl md:text-2xl lg:text-3xl font-bold text-white mb-2">{t("readyToTurnIdle")}</h3>
-                        <p className="text-white/80 text-sm md:text-base">{t("joinKitchenOwners")}</p>
+                        <h3 className="text-lg md:text-xl lg:text-2xl font-bold text-white mb-2">{t("readyToTurnIdle")}</h3>
+                        <p className="text-white/80 text-xs md:text-sm">{t("joinKitchenOwners")}</p>
                       </div>
                       <Button
                         onClick={() => window.location.href = 'mailto:admin@localcook.shop?subject=Kitchen Partnership - List My Kitchen'}
                         size="lg"
-                        className="bg-white text-[#F51042] hover:bg-gray-100 font-bold py-6 px-10 text-base md:text-lg rounded-full shadow-2xl hover:shadow-white/30 hover:-translate-y-1 transition-all whitespace-nowrap"
+                        className="group bg-white text-[#F51042] hover:bg-gray-100 font-bold py-3 md:py-4 px-3 sm:px-6 md:px-12 text-[11px] sm:text-sm md:text-lg rounded-full shadow-2xl hover:shadow-white/30 hover:-translate-y-1 transition-all whitespace-nowrap min-w-0 min-h-[44px] sm:min-h-[48px]"
                       >
-                        {t("listYourKitchenWord")}
-                        <ArrowRight className="ml-2 h-5 w-5" />
+                        <span className="relative z-10 flex items-center justify-center truncate">
+                          <TruncatedText className="truncate">{t("listYourKitchenWord")}</TruncatedText>
+                          <Icon icon="mdi:arrow-right" className="ml-1 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5 shrink-0 group-hover:translate-x-1 transition-transform" />
+                        </span>
                       </Button>
                     </div>
                   </div>
@@ -1521,9 +1436,6 @@ export default function KitchenLanding() {
           <div className="container mx-auto max-w-6xl relative z-10">
             <FadeInSection>
               <div className="text-center mb-16">
-                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-[#F51042] mb-4 px-4 py-2 bg-rose-100 rounded-full">
-                  {t("knowledgeBase")}
-                </span>
                 <motion.h2
                   initial={{ opacity: 0, y: 30 }}
                   whileInView={{ opacity: 1, y: 0 }}
@@ -1564,34 +1476,34 @@ export default function KitchenLanding() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-12">
                 {[
                   {
-                    icon: Scale,
+                    icon: "mdi:scale-balance",
                     title: t("kbLegalTitle"),
                     description: t("kbLegalDesc"),
-                    color: "bg-blue-50 text-blue-600",
+                    color: "bg-gray-100 text-gray-800",
                   },
                   {
-                    icon: Shield,
+                    icon: "mdi:shield-check-outline",
                     title: t("kbInsuranceTitle"),
                     description: t("kbInsuranceDesc"),
-                    color: "bg-emerald-50 text-emerald-600",
+                    color: "bg-gray-100 text-gray-800",
                   },
                   {
-                    icon: ClipboardCheck,
+                    icon: "mdi:clipboard-check-outline",
                     title: t("kbRiskTitle"),
                     description: t("kbRiskDesc"),
-                    color: "bg-amber-50 text-amber-600",
+                    color: "bg-gray-100 text-gray-800",
                   },
                   {
-                    icon: DollarSign,
+                    icon: "mdi:currency-usd",
                     title: t("kbPricingTitle"),
                     description: t("kbPricingDesc"),
-                    color: "bg-purple-50 text-purple-600",
+                    color: "bg-gray-100 text-gray-800",
                   },
                 ].map((item, i) => (
                   <Card key={i} className="group border border-gray-100 shadow-sm hover:shadow-md hover:border-gray-200 transition-all duration-300 bg-white">
                     <CardContent className="p-6">
                       <div className={`w-10 h-10 rounded-lg ${item.color} flex items-center justify-center mb-4`}>
-                        <item.icon className="h-5 w-5" />
+                        <Icon icon={item.icon} className="h-5 w-5" />
                       </div>
                       <h3 className="font-semibold text-[#2C2C2C] text-sm mb-2">{item.title}</h3>
                       <p className="text-[#6B6B6B] text-xs leading-relaxed">{item.description}</p>
@@ -1607,16 +1519,14 @@ export default function KitchenLanding() {
                   <Link href="/resources">
                     <Button
                       size="lg"
-                      className="bg-[#F51042] hover:bg-[#D90935] text-white font-semibold py-6 px-10 text-base rounded-full shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all"
+                      className="group bg-[#F51042] hover:bg-[#D90935] text-white font-bold py-3 md:py-4 px-3 sm:px-6 md:px-12 text-[11px] sm:text-sm md:text-lg rounded-full shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all min-w-0 min-h-[44px] sm:min-h-[48px]"
                     >
-                      {t("exploreResourceGuide")}
-                      <ArrowRight className="ml-2 h-5 w-5" />
+                      <span className="relative z-10 flex items-center justify-center truncate">
+                        <TruncatedText className="truncate">{t("exploreResourceGuide")}</TruncatedText>
+                        <Icon icon="mdi:arrow-right" className="ml-1 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5 shrink-0 group-hover:translate-x-1 transition-transform" />
+                      </span>
                     </Button>
                   </Link>
-                  <span className="flex items-center gap-1.5 text-xs text-[#6B6B6B]">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                    15-minute read
-                  </span>
                 </div>
               </div>
             </FadeInSection>
@@ -1626,13 +1536,10 @@ export default function KitchenLanding() {
         {/* ═══════════════════════════════════════════════════════════════════════
             FAQ SECTION
         ═══════════════════════════════════════════════════════════════════════ */}
-        <section id="faq" className="scroll-mt-24 py-12 sm:py-16 md:py-20 lg:py-28 px-4 sm:px-6 bg-gray-50">
+        <section id="faq" className="scroll-mt-24 py-12 sm:py-16 md:py-20 lg:py-28 px-4 sm:px-6 bg-white">
           <div className="container mx-auto max-w-3xl">
             <FadeInSection>
               <div className="text-center mb-12">
-                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-[#F51042] mb-4 px-4 py-2 bg-rose-100 rounded-full">
-                  Questions
-                </span>
                 <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-[#1A1A1A]">{t("faqWord")}</h2>
               </div>
             </FadeInSection>

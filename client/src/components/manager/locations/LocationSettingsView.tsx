@@ -8,7 +8,7 @@ import {
     FileText, ImageIcon, Mail, Clock, Globe, HelpCircle,
     Upload, Loader2, Plus, Info, Save, AlertCircle, CheckCircle, Calendar,
     KeyRound
-} from "lucide-react";
+} from "@/components/ui/manager-icons";
 
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";

@@ -24,7 +24,7 @@ import {
   Settings2,
   Building2,
   AlertCircle,
-} from 'lucide-react';
+} from '@/components/ui/manager-icons';
 import { useToast } from '@/hooks/use-toast';
 import { auth } from '@/lib/firebase';
 
@@ -439,6 +439,7 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
             <StatusButton
               onClick={handleSave}
               status={saveMutation.isPending ? "loading" : "idle"}
+              disabled={!hasUnsavedChanges}
               variant={hasUnsavedChanges ? 'default' : 'outline'}
               labels={{ idle: hasUnsavedChanges ? mt("saveChanges") : tt("save"), loading: mt("savingShort"), success: mt("saved") }}
             />

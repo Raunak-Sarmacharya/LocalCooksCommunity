@@ -4,7 +4,7 @@ import {
   Building2, MapPin, ChefHat, Calendar, Clock,
   CheckCircle, AlertCircle, XCircle, Edit, Eye,
   ArrowRight, Info, Image as ImageIcon
-} from "lucide-react";
+} from "@/components/ui/manager-icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";

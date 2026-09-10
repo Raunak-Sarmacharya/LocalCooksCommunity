@@ -2,7 +2,7 @@ import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
 import React, { useState, useMemo } from "react";
-import { Info, Plus, CheckCircle, Loader2, Search, Package, Thermometer, Snowflake, Check, PlusCircle, SearchX, ChevronDown, ChevronUp, X, DollarSign, AlertTriangle } from "lucide-react";
+import { Info, Plus, CheckCircle, Loader2, Search, Package, Thermometer, Snowflake, Check, PlusCircle, SearchX, ChevronDown, ChevronUp, X, DollarSign, AlertTriangle } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { Input } from "@/components/ui/input";

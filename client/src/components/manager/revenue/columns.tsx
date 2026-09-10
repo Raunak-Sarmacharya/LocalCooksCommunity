@@ -3,7 +3,7 @@ import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
 
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowUpDown, MoreHorizontal, Download, Eye, CheckCircle, Clock, XCircle, AlertCircle, RotateCcw } from "lucide-react"
+import { ArrowUpDown, MoreHorizontal, Download, Eye, CheckCircle, Clock, XCircle, AlertCircle, RotateCcw } from "@/components/ui/manager-icons"
 
 import { Button } from "@/components/ui/button"
 import {

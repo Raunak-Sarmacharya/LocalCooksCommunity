@@ -2,7 +2,7 @@
 import { mt } from "@/i18n/manager";
 
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowUpDown, MoreHorizontal, Pencil, Settings } from "lucide-react"
+import { ArrowUpDown, MoreHorizontal, Pencil, Settings } from "@/components/ui/manager-icons"
 
 import { Button } from "@/components/ui/button"
 import {

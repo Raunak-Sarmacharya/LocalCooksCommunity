@@ -477,7 +477,7 @@ function ChaosNotificationFeed() {
                     <span className="text-[9px] text-white/40">{notif.data.time}</span>
                   </div>
                   <p className="text-[12px] font-semibold text-white truncate">{notif.data.sender}</p>
-                  <p className="text-[10px] text-white/60 truncate">{notif.data.message}</p>
+                  <p className="text-[9px] text-white/60 truncate">{notif.data.message}</p>
                 </div>
               </div>
             </div>
@@ -749,7 +749,7 @@ function LocalCooksNotificationFeed() {
                   <p className="text-[12px] font-bold text-white">
                     {notif.data.headline}{notif.data.amount ? ` ${notif.data.amount}` : ""}
                   </p>
-                  <p className="text-[10px] text-white/80">{notif.data.subtext}</p>
+                  <p className="text-[9px] text-white/80">{notif.data.subtext}</p>
                 </div>
               </div>
             </div>
@@ -1572,7 +1572,8 @@ export default function ChefLanding() {
               <div className="text-center mb-16 md:mb-20">
                 <Button
                   onClick={handleGetStarted}
-                  className="bg-[#F51042] hover:bg-[#D90E3A] text-white font-bold py-3 px-4 md:py-4 md:px-12 text-xs md:text-lg rounded-full shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
+                  size="lg"
+                  className="bg-[#F51042] hover:bg-[#D90E3A] text-white font-bold py-3 md:py-4 px-3 sm:px-6 md:px-12 text-[11px] sm:text-sm md:text-lg rounded-full shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300 min-h-[44px] sm:min-h-[48px]"
                 >
                   <span className="flex items-center justify-center">{t("startYourJourney")}<Icon icon="mdi:arrow-right" className="ml-1.5 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5" />
                   </span>
@@ -1624,10 +1625,15 @@ export default function ChefLanding() {
             {/* Explore Marketplace CTA (Moved under What You Get) */}
             <FadeInSection>
               <div className="text-center mt-12 mb-8">
-                <a href="https://localcook.shop/" target="_blank" rel="noopener noreferrer" className="relative z-20 inline-flex items-center justify-center rounded-full border border-[#F51042]/25 bg-white px-5 py-2 md:px-6 md:py-2.5 text-xs md:text-sm font-semibold text-[#F51042] shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#F51042] hover:shadow-md">
+                <Button
+                  onClick={() => window.open('https://localcook.shop/', '_blank')}
+                  variant="outline"
+                  size="lg"
+                  className="relative z-20 inline-flex items-center justify-center rounded-full border border-[#F51042]/25 bg-white py-3 md:py-4 px-3 sm:px-6 md:px-12 text-[11px] sm:text-sm md:text-lg font-bold text-[#F51042] shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 hover:border-[#F51042] min-h-[44px] sm:min-h-[48px]"
+                >
                   {t("visitMarketplace", "Explore the live marketplace")}
-                  <Icon icon="mdi:arrow-right" className="ml-1.5 h-3.5 w-3.5" />
-                </a>
+                  <Icon icon="mdi:arrow-right" className="ml-1.5 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5" />
+                </Button>
               </div>
             </FadeInSection>
           </div>

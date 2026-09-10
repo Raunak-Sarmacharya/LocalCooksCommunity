@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Manager Kitchens Consolidation",
+    "quality_profile": "showcase",
+    "viewBox": [1180, 620],
+    "repository": {
+      "url": "https://github.com/Raunak-Sarmacharya/LocalCooksCommunity.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "d6f4873960d6825d4d76fb8ba534c82367b5d0a8"
+    }
+  },
+  "components": [
+    {
+      "id": "managerSidebar",
+      "type": "frontend",
+      "label": "Manager sidebar",
+      "sublabel": "One Kitchens destination",
+      "pos": [50, 255],
+      "size": [180, 76],
+      "sources": [{ "path": "client/src/components/app-sidebar.tsx", "line": 89 }]
+    },
+    {
+      "id": "managerDashboard",
+      "type": "frontend",
+      "label": "Manager dashboard shell",
+      "sublabel": "Location context + legacy redirects",
+      "pos": [300, 255],
+      "size": [210, 76],
+      "sources": [{ "path": "client/src/pages/ManagerBookingDashboard.tsx", "line": 171 }]
+    },
+    {
+      "id": "kitchensPage",
+      "type": "frontend",
+      "label": "Kitchens page",
+      "sublabel": "Shared kitchen selector",
+      "pos": [590, 255],
+      "size": [190, 76],
+      "sources": [{ "path": "client/src/components/manager/settings/KitchensManagement.tsx", "line": 247 }]
+    },
+    {
+      "id": "detailsEditor",
+      "type": "frontend",
+      "label": "Details",
+      "sublabel": "Photos and description",
+      "pos": [890, 60],
+      "size": [210, 72],
+      "sources": [{ "path": "client/src/components/manager/settings/KitchensManagement.tsx", "line": 639 }]
+    },
+    {
+      "id": "pricingEditor",
+      "type": "frontend",
+      "label": "Pricing",
+      "sublabel": "Existing pricing editor",
+      "pos": [890, 185],
+      "size": [210, 72],
+      "sources": [{ "path": "client/src/pages/KitchenPricingManagement.tsx", "line": 52 }]
+    },
+    {
+      "id": "equipmentEditor",
+      "type": "frontend",
+      "label": "Equipment",
+      "sublabel": "Existing listing editor",
+      "pos": [890, 310],
+      "size": [210, 72],
+      "sources": [{ "path": "client/src/pages/EquipmentListingManagement.tsx", "line": 118 }]
+    },
+    {
+      "id": "storageEditor",
+      "type": "frontend",
+      "label": "Storage",
+      "sublabel": "Existing listing editor",
+      "pos": [890, 435],
+      "size": [210, 72],
+      "sources": [{ "path": "client/src/pages/StorageListingManagement.tsx", "line": 149 }]
+    }
+  ],
+  "connections": [
+    { "id": "sidebarToDashboard", "from": "managerSidebar", "to": "managerDashboard", "label": "open Kitchens", "variant": "emphasis" },
+    { "id": "dashboardToKitchens", "from": "managerDashboard", "to": "kitchensPage", "label": "selected location", "labelAt": [550, 345] },
+    { "id": "kitchensToDetails", "from": "kitchensPage", "to": "detailsEditor" },
+    { "id": "kitchensToPricing", "from": "kitchensPage", "to": "pricingEditor" },
+    { "id": "kitchensToEquipment", "from": "kitchensPage", "to": "equipmentEditor" },
+    { "id": "kitchensToStorage", "from": "kitchensPage", "to": "storageEditor" }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Single manager surface",
+      "items": ["No duplicate Pricing, Equipment, or Storage sidebar destinations", "Legacy URLs resolve to the matching Kitchens tab"]
+    },
+    {
+      "dot": "emerald",
+      "title": "Reuse",
+      "items": ["Existing listing editors remain the source of truth", "Location and kitchen selection are shared across all three tabs"]
+    }
+  ]
+}

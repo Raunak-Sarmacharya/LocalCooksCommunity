@@ -92,6 +92,8 @@ interface ManagerOnboardingContextType {
     contactEmail: string;
     contactPhone: string;
     preferredContactMethod: "email" | "phone" | "both";
+    logoUrl: string;
+    description: string;
     setName: (val: string) => void;
     setAddress: (val: string) => void;
     setNotificationEmail: (val: string) => void;
@@ -99,6 +101,8 @@ interface ManagerOnboardingContextType {
     setContactEmail: (val: string) => void;
     setContactPhone: (val: string) => void;
     setPreferredContactMethod: (val: "email" | "phone" | "both") => void;
+    setLogoUrl: (val: string) => void;
+    setDescription: (val: string) => void;
   };
 
   licenseForm: {
@@ -127,6 +131,7 @@ interface ManagerOnboardingContextType {
       currency: string;
       minimumBookingHours: string;
       imageUrl: string;
+      features: string[];
     };
     setData: (data: any) => void;
     showCreate: boolean;
@@ -188,6 +193,8 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
 
   // Location Form State
   const [locationName, setLocationName] = useState("");
+  const [locationLogoUrl, setLocationLogoUrl] = useState("");
+  const [locationDescription, setLocationDescription] = useState("");
   const [locationAddress, setLocationAddress] = useState("");
   const [notificationEmail, setNotificationEmail] = useState("");
   const [notificationPhone, setNotificationPhone] = useState("");
@@ -221,6 +228,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     currency: 'CAD',
     minimumBookingHours: '1',
     imageUrl: '',
+    features: [],
   });
 
   // Listings State
@@ -544,6 +552,8 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       setSelectedLocationId(loc.id);
       setLocationName(loc.name || "");
       setLocationAddress(loc.address || "");
+      setLocationLogoUrl(loc.logoUrl || loc.logo_url || "");
+      setLocationDescription(loc.description || "");
       setNotificationEmail(loc.notificationEmail || loc.notification_email || "");
       setNotificationPhone(loc.notificationPhone || loc.notification_phone || "");
       // Contact fields
@@ -1108,7 +1118,9 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         notificationPhone: phone,
         contactEmail,
         contactPhone: contactPhoneValidated,
-        preferredContactMethod
+        preferredContactMethod,
+        logoUrl: locationLogoUrl,
+        description: locationDescription,
       };
       
       // Include license URL (pre-uploaded or freshly uploaded)
@@ -1193,6 +1205,8 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
                 ...loc,
                 name: locationName,
                 address: locationAddress,
+                logoUrl: locationLogoUrl,
+                description: locationDescription,
                 kitchenLicenseUrl: licenseUrl || loc.kitchenLicenseUrl || loc.kitchen_license_url,
                 kitchenTermsUrl: termsUrl || loc.kitchenTermsUrl || loc.kitchen_terms_url,
                 kitchenLicenseExpiry: licenseExpiryDate || loc.kitchenLicenseExpiry,
@@ -1216,6 +1230,8 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
             if (!exists) {
               return [...oldData, {
                 ...data,
+                logoUrl: locationLogoUrl,
+                description: locationDescription,
                 kitchenLicenseUrl: licenseUrl,
                 kitchenTermsUrl: termsUrl,
                 kitchen_license_url: licenseUrl,
@@ -1275,42 +1291,20 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
           locationId: selectedLocationId,
           name: kitchenFormData.name,
           description: kitchenFormData.description,
-          imageUrl: kitchenFormData.imageUrl || undefined
+          imageUrl: kitchenFormData.imageUrl || undefined,
+          features: kitchenFormData.features,
+          hourlyRate: Math.round(parseFloat(kitchenFormData.hourlyRate) * 100),
+          currency: kitchenFormData.currency,
+          minimumBookingHours: parseInt(kitchenFormData.minimumBookingHours, 10) || 0,
         })
       });
       if (!res.ok) throw new Error(tt("failedToCreateKitchen"));
-      let newKitchen = await res.json();
-
-
-
-      // 3. Update Pricing
-      if (kitchenFormData.hourlyRate) {
-        const pricingRes = await fetch(`/api/manager/kitchens/${newKitchen.id}/pricing`, {
-          method: "PUT",
-          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            hourlyRate: Math.round(parseFloat(kitchenFormData.hourlyRate) * 100),
-            currency: kitchenFormData.currency,
-            minimumBookingHours: parseInt(kitchenFormData.minimumBookingHours, 10) || 0
-          })
-        });
-        
-        // Merge pricing data into the kitchen object
-        if (pricingRes.ok) {
-          newKitchen = {
-            ...newKitchen,
-            hourlyRate: Math.round(parseFloat(kitchenFormData.hourlyRate) * 100),
-            currency: kitchenFormData.currency,
-            minimumBookingHours: parseInt(kitchenFormData.minimumBookingHours, 10) || 0,
-            imageUrl: kitchenFormData.imageUrl || newKitchen.imageUrl
-          };
-        }
-      }
+      const newKitchen = await res.json();
 
       setKitchens([...kitchens, newKitchen]);
       setSelectedKitchenId(newKitchen.id);
       setShowCreateKitchen(false);
-      setKitchenFormData({ name: '', description: '', hourlyRate: '', currency: 'CAD', minimumBookingHours: '1', imageUrl: '' });
+      setKitchenFormData({ name: '', description: '', hourlyRate: '', currency: 'CAD', minimumBookingHours: '1', imageUrl: '', features: [] });
 
       await trackStepCompletion(currentStep?.id || 'create-kitchen');
       toast({ title: mt("success"), description: mt("kitchenCreated2") });
@@ -1493,7 +1487,9 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       notificationPhone, setNotificationPhone,
       contactEmail, setContactEmail,
       contactPhone, setContactPhone,
-      preferredContactMethod, setPreferredContactMethod
+      preferredContactMethod, setPreferredContactMethod,
+      logoUrl: locationLogoUrl, setLogoUrl: setLocationLogoUrl,
+      description: locationDescription, setDescription: setLocationDescription,
     },
     licenseForm: {
       file: licenseFile, setFile: setLicenseFile,
@@ -1642,6 +1638,8 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       setSelectedLocationId(null);
       setLocationName("");
       setLocationAddress("");
+      setLocationLogoUrl("");
+      setLocationDescription("");
       const accountEmail = firebaseUser?.email || "";
       setNotificationEmail(accountEmail);
       setNotificationPhone("");
@@ -1661,7 +1659,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       setSelectedKitchenId(null);
       setKitchensLoaded(false);
       setShowCreateKitchen(false);
-      setKitchenFormData({ name: '', description: '', hourlyRate: '', currency: 'CAD', minimumBookingHours: '1', imageUrl: '' });
+      setKitchenFormData({ name: '', description: '', hourlyRate: '', currency: 'CAD', minimumBookingHours: '1', imageUrl: '', features: [] });
       setExistingStorageListings([]);
       setExistingEquipmentListings([]);
       setHasAvailability(false);

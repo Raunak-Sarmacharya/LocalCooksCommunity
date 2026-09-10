@@ -426,6 +426,7 @@ export const kitchens = pgTable("kitchens", {
   isActive: boolean("is_active").default(true).notNull(),
   // Pricing fields (all prices stored as integers in cents to avoid floating-point precision issues)
   hourlyRate: numeric("hourly_rate"), // Base hourly rate in cents (e.g., 5000 = $50.00/hour)
+  dailyRate: numeric("daily_rate"), // Base daily rate in cents; can coexist with hourlyRate
   currency: text("currency").default("CAD").notNull(), // Currency code (ISO 4217)
   minimumBookingHours: integer("minimum_booking_hours").default(1).notNull(), // Minimum booking duration
   pricingModel: text("pricing_model").default("hourly").notNull(), // Pricing structure ('hourly', 'daily', 'weekly')
@@ -816,6 +817,7 @@ export const insertKitchenSchema = createInsertSchema(kitchens, {
   description: z.string().optional(),
   isActive: z.boolean().optional(),
   hourlyRate: z.number().int().positive("Hourly rate must be positive").optional(),
+  dailyRate: z.number().int().positive("Daily rate must be positive").optional(),
   currency: z.string().min(3).max(3).optional(),
   minimumBookingHours: z.number().int().min(0, "Minimum booking hours cannot be negative").max(24, "Minimum booking hours cannot exceed 24").optional(),
   pricingModel: z.enum(["hourly", "daily", "weekly"]).optional(),
@@ -832,6 +834,7 @@ export const updateKitchenSchema = z.object({
   description: z.string().optional(),
   isActive: z.boolean().optional(),
   hourlyRate: z.number().int().positive("Hourly rate must be positive").optional(),
+  dailyRate: z.number().int().positive("Daily rate must be positive").nullable().optional(),
   currency: z.string().min(3).max(3).optional(),
   minimumBookingHours: z.number().int().min(0, "Minimum booking hours cannot be negative").max(24, "Minimum booking hours cannot exceed 24").optional(),
   pricingModel: z.enum(["hourly", "daily", "weekly"]).optional(),

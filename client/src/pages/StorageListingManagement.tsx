@@ -4,7 +4,7 @@ import {
   Package, Plus, Check, Loader2, Pencil, Trash2, Search,
   Thermometer, Snowflake, Grid3X3, DollarSign, PlusCircle, SearchX,
   AlertTriangle
-} from "lucide-react";
+} from "@/components/ui/manager-icons";
 import { useState, useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -20,7 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp } from "@/components/ui/manager-icons";
 import { ManagerPageLayout } from "@/components/layout/ManagerPageLayout";
 import {
   Dialog,
@@ -146,7 +146,7 @@ export default function StorageListingManagement() {
   );
 }
 
-function StorageListingContent({
+export function StorageListingContent({
   selectedLocationId,
   selectedKitchenId
 }: {

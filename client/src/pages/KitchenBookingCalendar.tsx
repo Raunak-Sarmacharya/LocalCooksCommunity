@@ -1302,7 +1302,7 @@ export default function KitchenBookingCalendar() {
                             <Package className="h-4 w-4 text-primary" />
                           </div>
                           <div>
-                            <h3 className="text-base font-semibold text-foreground">Storage Spaces</h3>
+                            <h3 className="text-base font-semibold text-foreground">Storage Options</h3>
                             <p className="text-xs text-muted-foreground">Book independently with custom dates</p>
                           </div>
                         </div>

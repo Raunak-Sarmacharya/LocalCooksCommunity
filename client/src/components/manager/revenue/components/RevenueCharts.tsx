@@ -30,7 +30,7 @@ import {
     ChartLegendContent,
     type ChartConfig,
 } from "@/components/ui/chart"
-import { TrendingUp, Building2, CircleDollarSign } from "lucide-react"
+import { TrendingUp, Building2, CircleDollarSign } from "@/components/ui/manager-icons"
 import { formatChartDate, centsToDollars } from "@/lib/formatters"
 import type { RevenueByDate, RevenueByLocation, PaymentStatus } from "../types"
 

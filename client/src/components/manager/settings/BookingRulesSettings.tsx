@@ -8,7 +8,7 @@ import { tt } from "@/i18n/common-ns";
 
 import { useState, useEffect, useCallback } from 'react';
 
-import { AlertCircle, Clock, Info, Loader2, Save, FileText, Upload, ChefHat } from 'lucide-react';
+import { AlertCircle, Clock, Info, Loader2, Save, FileText, Upload, ChefHat } from '@/components/ui/manager-icons';
 import { Button } from '@/components/ui/button';
 import { StatusButton } from '@/components/ui/status-button';
 import { useStatusButton } from '@/hooks/use-status-button';
@@ -17,9 +17,11 @@ import { NumericInput } from '@/components/ui/numeric-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useToast } from '@/hooks/use-toast';
 import { auth } from '@/lib/firebase';
 import { apiGet, apiPut } from '@/lib/api';
+import { SettingsFileUpload } from './SettingsFileUpload';
 
 interface Location {
   id: number;
@@ -34,6 +36,21 @@ interface Location {
 interface BookingRulesSettingsProps {
   location: Location;
   onSave: (updates: any) => Promise<unknown>;
+}
+
+function RuleHelp({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button type="button" aria-label={label} className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <Info className="h-3.5 w-3.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-80 p-3 text-xs leading-relaxed text-muted-foreground">
+        {children}
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 export default function BookingRulesSettings({ location, onSave }: BookingRulesSettingsProps) {
@@ -58,6 +75,7 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
   const [overstayMaxPenaltyDays, setOverstayMaxPenaltyDays] = useState<number | null>(null);
   const [overstayPolicyText, setOverstayPolicyText] = useState('');
   const [isLoadingPenaltyDefaults, setIsLoadingPenaltyDefaults] = useState(true);
+  const [savedPenaltyDefaults, setSavedPenaltyDefaults] = useState('');
 
   // Terms & Conditions State
   const [termsFile, setTermsFile] = useState<File | null>(null);
@@ -68,6 +86,14 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
   const [selectedKitchenId, setSelectedKitchenId] = useState<number | null>(null);
   const [minimumBookingHours, setMinimumBookingHours] = useState<number>(0);
   const [isLoadingKitchens, setIsLoadingKitchens] = useState(false);
+  const isRulesDirty = cancellationHours !== (location.cancellationPolicyHours || 24)
+    || cancellationMessage !== (location.cancellationPolicyMessage || mt("cancellationPolicyDefaultMessage"))
+    || dailyBookingLimit !== (location.defaultDailyBookingLimit || 2)
+    || minimumBookingWindowHours !== (location.minimumBookingWindowHours ?? 1);
+  const savedMinimumBookingHours = kitchens.find((kitchen) => kitchen.id === selectedKitchenId)?.minimumBookingHours ?? 0;
+  const isDurationDirty = !!selectedKitchenId && minimumBookingHours !== savedMinimumBookingHours;
+  const penaltySnapshot = JSON.stringify([overstayGracePeriodDays, overstayPenaltyRate, overstayMaxPenaltyDays, overstayPolicyText]);
+  const isPenaltyDirty = !!savedPenaltyDefaults && penaltySnapshot !== savedPenaltyDefaults;
 
   // Update state when location changes
   useEffect(() => {
@@ -151,6 +177,12 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
       setOverstayPenaltyRate(data.locationDefaults.penaltyRate ? data.locationDefaults.penaltyRate * 100 : null);
       setOverstayMaxPenaltyDays(data.locationDefaults.maxPenaltyDays);
       setOverstayPolicyText(data.locationDefaults.policyText || '');
+      setSavedPenaltyDefaults(JSON.stringify([
+        data.locationDefaults.gracePeriodDays,
+        data.locationDefaults.penaltyRate ? data.locationDefaults.penaltyRate * 100 : null,
+        data.locationDefaults.maxPenaltyDays,
+        data.locationDefaults.policyText || '',
+      ]));
     } catch (error: any) {
       logger.error('Error fetching overstay penalty defaults:', error);
     } finally {
@@ -223,6 +255,7 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
       toast({ title: mt("success"),
         description: mt("overstayPenaltyDefaultsUpdatedSuccessfully"),
       });
+      setSavedPenaltyDefaults(penaltySnapshot);
     } catch (error: any) {
       logger.error('Error saving overstay penalty defaults:', error);
       toast({ title: mt("error"),
@@ -298,15 +331,15 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">{mt("navBookingRules")}</h2>
+        <h2 className="text-xl font-semibold tracking-tight">{mt("navBookingRules")}</h2>
         <p className="text-muted-foreground">{mt("configureCancellationPoliciesBookingLimitsAndPenaltiesForYou")}</p>
       </div>
 
       {/* Unified Booking Policies & Limits — Cancellation Policy + Daily Limit + Min Window */}
       <Card>
-        <CardHeader>
+        <CardHeader className="p-4 pb-3">
           <div className="flex items-center gap-3">
             <AlertCircle className="h-5 w-5 text-blue-600" />
             <div>
@@ -317,12 +350,15 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
         </CardHeader>
         <CardContent className="divide-y divide-border p-0">
           {/* Cancellation Policy */}
-          <div className="space-y-4 px-6 pb-6 pt-0">
+          <div className="grid gap-4 px-4 pb-4 pt-0 lg:grid-cols-[minmax(220px,0.32fr)_1fr]">
             <div>
-              <h3 className="text-sm font-semibold flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 text-blue-600" />{mt("cancellationPolicy")}</h3>
+              <div className="flex items-center gap-1">
+                <h3 className="text-sm font-semibold flex items-center gap-2"><AlertCircle className="h-4 w-4 text-blue-600" />{mt("cancellationPolicy")}</h3>
+                <RuleHelp label="Cancellation and refund information">{mt("cancellationRefundPlatformNote")}</RuleHelp>
+              </div>
               <p className="text-xs text-muted-foreground mt-1">{mt("configureWhenChefsCanCancelTheirBookings")}</p>
             </div>
+            <div className="grid gap-3 md:grid-cols-2">
             <div>
               <Label htmlFor="cancellation-hours">{mt("cancellationWindow")}</Label>
               <NumericInput
@@ -350,21 +386,19 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
                 {mt("useHoursAsPlaceholder", { hours: "{hours}" })}
               </p>
             </div>
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
-              <div className="flex items-start gap-2">
-                <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
-                <p className="text-xs text-blue-800">{mt("cancellationRefundPlatformNote")}</p>
-              </div>
             </div>
           </div>
 
           {/* Daily Booking Limit */}
-          <div className="space-y-4 px-6 py-6">
+          <div className="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(220px,0.32fr)_1fr]">
             <div>
-              <h3 className="text-sm font-semibold flex items-center gap-2">
-                <Clock className="h-4 w-4 text-green-600" />{mt("dailyBookingLimit")}</h3>
+              <div className="flex items-center gap-1">
+                <h3 className="text-sm font-semibold flex items-center gap-2"><Clock className="h-4 w-4 text-green-600" />{mt("dailyBookingLimit")}</h3>
+                <RuleHelp label="Daily booking limit information">{mt("youCanOverrideThisLimitForSpecificDatesInTheAvailabilityCale")}</RuleHelp>
+              </div>
               <p className="text-xs text-muted-foreground mt-1">{mt("maximumHoursAChefCanBookPerDay")}</p>
             </div>
+            <div>
             <div>
               <Label htmlFor="daily-limit">{mt("defaultHoursPerChefPerDay")}</Label>
               <NumericInput
@@ -376,21 +410,19 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
               />
               <p className="text-xs text-muted-foreground mt-1">{mt("maximumHoursAChefCanBookInASingleDay124Hours")}</p>
             </div>
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="flex items-start gap-2">
-                <Info className="h-4 w-4 text-blue-600 mt-0.5" />
-                <p className="text-xs text-blue-800">{mt("youCanOverrideThisLimitForSpecificDatesInTheAvailabilityCale")}</p>
-              </div>
             </div>
           </div>
 
           {/* Minimum Booking Window */}
-          <div className="space-y-4 px-6 py-6">
+          <div className="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(220px,0.32fr)_1fr]">
             <div>
-              <h3 className="text-sm font-semibold flex items-center gap-2">
-                <Clock className="h-4 w-4 text-orange-600" />{mt("minimumBookingWindow")}</h3>
+              <div className="flex items-center gap-1">
+                <h3 className="text-sm font-semibold flex items-center gap-2"><Clock className="h-4 w-4 text-orange-600" />{mt("minimumBookingWindow")}</h3>
+                <RuleHelp label="Minimum booking window example">{mt("exampleWith1HourIfItS100PMChefsCanOnlyBookTimesStartingFrom2")}</RuleHelp>
+              </div>
               <p className="text-xs text-muted-foreground mt-1">{mt("minimumAdvanceNoticeRequiredForBookings")}</p>
             </div>
+            <div>
             <div>
               <Label htmlFor="min-window">{mt("minimumHoursInAdvance")}</Label>
               <NumericInput
@@ -407,11 +439,6 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
                 {mt("chefsMustBookAtLeastHours")}
               </p>
             </div>
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="flex items-start gap-2">
-                <Info className="h-4 w-4 text-blue-600 mt-0.5" />
-                <p className="text-xs text-blue-800">{mt("exampleWith1HourIfItS100PMChefsCanOnlyBookTimesStartingFrom2")}</p>
-              </div>
             </div>
           </div>
 
@@ -421,6 +448,7 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
             <StatusButton
               status={saveRulesAction.status}
               onClick={saveRulesAction.execute}
+              disabled={!isRulesDirty}
               labels={{ idle: mt("saveBookingRules"), loading: mt("savingShort"), success: mt("saved") }}
             />
           </div>
@@ -429,7 +457,7 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
 
       {/* Minimum Booking Duration (per-kitchen) */}
       <Card>
-        <CardHeader>
+        <CardHeader className="p-4 pb-3">
           <div className="flex items-center gap-3">
             <ChefHat className="h-5 w-5 text-violet-600" />
             <div>
@@ -438,7 +466,7 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
             </div>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3 p-4 pt-0">
           {isLoadingKitchens ? (
             <div className="flex items-center gap-2 py-4">
               <Loader2 className="h-4 w-4 animate-spin text-violet-600" />
@@ -470,7 +498,10 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
               {selectedKitchenId && (
                 <>
                   <div>
-                    <Label htmlFor="min-booking-duration">{mt("minimumHoursPerBooking")}</Label>
+                    <div className="flex items-center gap-1">
+                      <Label htmlFor="min-booking-duration">{mt("minimumHoursPerBooking")}</Label>
+                      <RuleHelp label="Minimum booking duration information">{mt("thisSettingIsPerKitchenChefsWillNotBeAbleToSubmitABookingWit")}</RuleHelp>
+                    </div>
                     <NumericInput
                       id="min-booking-duration"
                       suffix="hours"
@@ -489,17 +520,14 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
                       Minimum number of hours a chef must book per session (0 = no restriction, max 24)
                     </p>
                   </div>
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                    <div className="flex items-start gap-2">
-                      <Info className="h-4 w-4 text-blue-600 mt-0.5" />
-                      <p className="text-xs text-blue-800">{mt("thisSettingIsPerKitchenChefsWillNotBeAbleToSubmitABookingWit")}</p>
-                    </div>
+                  <div className="flex justify-end pt-2">
+                    <StatusButton
+                      status={saveDurationAction.status}
+                      onClick={saveDurationAction.execute}
+                      disabled={!isDurationDirty}
+                      labels={{ idle: mt("saveDuration"), loading: mt("savingShort"), success: mt("saved") }}
+                    />
                   </div>
-                  <StatusButton
-                    status={saveDurationAction.status}
-                    onClick={saveDurationAction.execute}
-                    labels={{ idle: mt("saveDuration"), loading: mt("savingShort"), success: mt("saved") }}
-                  />
                 </>
               )}
             </>
@@ -509,7 +537,7 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
 
       {/* Terms & Conditions */}
       <Card>
-        <CardHeader>
+        <CardHeader className="p-4 pb-3">
           <div className="flex items-center gap-3">
             <FileText className="h-5 w-5 text-purple-600" />
             <div>
@@ -518,7 +546,7 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
             </div>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3 p-4 pt-0">
           {location.kitchenTermsUrl && (
             <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
               <div className="flex items-center gap-2">
@@ -534,49 +562,27 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
             </div>
           )}
 
-          <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-gray-400 transition-colors">
-            <input
-              type="file"
-              accept=".pdf"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  setTermsFile(file);
-                }
-              }}
-              className="hidden"
-              id="terms-upload"
-              disabled={isUploadingTerms}
-            />
-            <label
-              htmlFor="terms-upload"
-              className={`flex flex-col items-center justify-center cursor-pointer ${isUploadingTerms ? 'opacity-50 cursor-not-allowed' : ''}`}
-            >
-              <Upload className="h-8 w-8 text-gray-400 mb-2" />
-              <span className="text-sm font-medium text-gray-700 mb-1">
-                {termsFile ? termsFile.name : 'Click to upload terms & conditions'}
-              </span>
-              <span className="text-xs text-gray-500">{mt("pDFOnlyMax5MB")}</span>
-            </label>
-          </div>
+          <SettingsFileUpload id="terms-upload" accept=".pdf" file={termsFile} label="Choose terms and conditions" hint={mt("pDFOnlyMax5MB")} disabled={isUploadingTerms} onChange={setTermsFile} />
 
           {termsFile && (
-            <Button onClick={handleUploadTerms} disabled={isUploadingTerms}>
-              {isUploadingTerms ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />{mt("uploading")}</>
-              ) : (
-                <>
-                  <Upload className="mr-2 h-4 w-4" />{mt("uploadTerms")}</>
-              )}
-            </Button>
+            <div className="flex justify-end pt-2">
+              <Button onClick={handleUploadTerms} disabled={isUploadingTerms}>
+                {isUploadingTerms ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />{mt("uploading")}</>
+                ) : (
+                  <>
+                    <Upload className="mr-2 h-4 w-4" />{mt("uploadTerms")}</>
+                )}
+              </Button>
+            </div>
           )}
         </CardContent>
       </Card>
 
       {/* Overstay Penalty Defaults */}
       <Card>
-        <CardHeader>
+        <CardHeader className="p-4 pb-3">
           <div className="flex items-center gap-3">
             <AlertCircle className="h-5 w-5 text-red-600" />
             <div>
@@ -585,7 +591,7 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
             </div>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3 p-4 pt-0">
           {isLoadingPenaltyDefaults ? (
             <div className="flex items-center justify-center py-4">
               <Loader2 className="h-6 w-6 animate-spin text-red-600" />
@@ -654,8 +660,11 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
                 />
               </div>
 
-              <Button onClick={handleSaveOverstayPenaltyDefaults} variant="destructive">
-                <Save className="mr-2 h-4 w-4" />{mt("savePenaltyDefaults")}</Button>
+              <div className="flex justify-end pt-2">
+                <Button onClick={handleSaveOverstayPenaltyDefaults} variant="destructive" disabled={!isPenaltyDirty || isLoadingPenaltyDefaults}>
+                  <Save className="mr-2 h-4 w-4" />{mt("savePenaltyDefaults")}
+                </Button>
+              </div>
             </>
           )}
         </CardContent>

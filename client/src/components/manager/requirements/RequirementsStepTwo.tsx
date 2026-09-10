@@ -20,7 +20,7 @@ import {
   BadgeCheck,
   Info,
   AlertTriangle,
-} from 'lucide-react';
+} from '@/components/ui/manager-icons';
 import { CustomFieldBuilder } from './CustomFieldBuilder';
 import { LocationRequirements, CustomField, STEP2_BUILT_IN_FIELDS } from './types';
 
@@ -74,7 +74,7 @@ export function RequirementsStepTwo({
             <div className="flex-1">
               <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{mt("kitchenSpecificRequirements")}</h3>
               <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
-                After you approve a chef's initial application, they'll need to provide these additional 
+                After Local Cooks approves a chef's initial request application, they'll need to provide these additional 
                 documents and information before they can start using your kitchen.
               </p>
             </div>

@@ -2,7 +2,7 @@ import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
 import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Building2, Search, Filter, RefreshCw } from "lucide-react";
+import { Plus, Building2, Search, Filter, RefreshCw } from "@/components/ui/manager-icons";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -215,11 +215,14 @@ export default function ManagerLocationsPage({
           <h1 className="text-2xl font-bold text-gray-900">{mt("navMyLocations")}</h1>
           <p className="text-gray-500 mt-1">{mt("manageAllYourKitchenLocationsAndTheirApprovalStatus")}</p>
         </div>
-        <Button
-          onClick={onCreateLocation}
-          className="gap-2"
-        >
-          <Plus className="w-4 h-4" />{mt("addNewLocation")}</Button>
+        {locations.length === 0 && (
+          <Button
+            onClick={onCreateLocation}
+            className="gap-2"
+          >
+            <Plus className="w-4 h-4" />{mt("addNewLocation")}
+          </Button>
+        )}
       </div>
 
       {/* Filters */}

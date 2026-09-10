@@ -1,0 +1,54 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Kitchen Manager Guided Navigation",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    { "id": "daily", "label": "Daily work" },
+    { "id": "manage", "label": "Manage the business" },
+    { "id": "support", "label": "Communication + setup" }
+  ],
+  "phases": [
+    { "id": "glance", "label": "Glance", "fromCol": 0, "toCol": 1 },
+    { "id": "act", "label": "Act", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "configure", "label": "Configure", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": ["home", "schedule", "requests", "spaces", "money", "settings"],
+  "semanticChecks": {
+    "allowedRoots": ["home"],
+    "allowedTerminals": ["settings", "tasks"],
+    "requiredPaths": [
+      { "from": "home", "to": "settings" },
+      { "from": "home", "to": "inbox" }
+    ]
+  },
+  "nodes": [
+    { "id": "home", "lane": "daily", "col": 0, "type": "frontend", "label": "Home", "sublabel": "today + next", "width": 124 },
+    { "id": "schedule", "lane": "daily", "col": 1, "type": "frontend", "label": "Schedule", "sublabel": "bookings + availability", "width": 132 },
+    { "id": "requests", "lane": "daily", "col": 2, "type": "messagebus", "label": "Requests", "sublabel": "applications + viewings", "width": 132 },
+    { "id": "tasks", "lane": "daily", "col": 3, "type": "security", "label": "Tasks", "sublabel": "handover + issues", "width": 124 },
+    { "id": "spaces", "lane": "manage", "col": 3, "type": "backend", "label": "Spaces", "sublabel": "kitchens + inventory", "width": 132 },
+    { "id": "money", "lane": "manage", "col": 4, "type": "database", "label": "Money", "sublabel": "revenue + payouts", "width": 124 },
+    { "id": "inbox", "lane": "support", "col": 4, "type": "messagebus", "label": "Inbox", "sublabel": "messages + notices", "width": 124 },
+    { "id": "settings", "lane": "support", "col": 5, "type": "cloud", "label": "Settings", "sublabel": "guided setup", "width": 124 }
+  ],
+  "edges": [
+    { "from": "home", "to": "schedule", "label": "see today", "role": "main" },
+    { "from": "schedule", "to": "requests", "label": "review demand", "role": "main" },
+    { "from": "requests", "to": "spaces", "label": "manage offer", "role": "main" },
+    { "from": "requests", "to": "tasks", "label": "resolve exceptions", "role": "branch" },
+    { "from": "spaces", "to": "money", "label": "track earnings", "role": "main" },
+    { "from": "money", "to": "settings", "label": "configure", "role": "main" },
+    { "from": "home", "to": "inbox", "label": "respond", "role": "branch", "variant": "dashed" },
+    { "from": "inbox", "to": "settings", "label": "preferences", "role": "branch" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Navigation rule",
+      "items": ["Daily decisions first", "Configuration appears once"]
+    }
+  ]
+}

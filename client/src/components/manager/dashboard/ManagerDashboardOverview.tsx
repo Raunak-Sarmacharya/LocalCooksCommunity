@@ -14,7 +14,7 @@ import {
     Boxes,
     Package,
     Eye,
-} from "lucide-react";
+} from "@/components/ui/manager-icons";
 // We will stick to the existing calendar for now to minimize logic breakage, 
 // but encapsulate it better. 
 // Ideally we would move to Shadcn Calendar (react-day-picker) but that requires rewrite of modifiers.

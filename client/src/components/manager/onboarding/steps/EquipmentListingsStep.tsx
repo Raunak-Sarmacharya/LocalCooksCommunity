@@ -9,7 +9,7 @@ import { tt } from "@/i18n/common-ns";
  */
 
 import React, { useState, useMemo } from "react";
-import { Info, Plus, CheckCircle, Loader2, Search, Check, ChevronDown, ChevronUp, X, DollarSign, Package, Flame, ChefHat, Snowflake, UtensilsCrossed, SprayCan, PlusCircle, SearchX } from "lucide-react";
+import { Info, Plus, CheckCircle, Loader2, Search, Check, ChevronDown, ChevronUp, X, DollarSign, Package, Flame, ChefHat, Snowflake, UtensilsCrossed, SprayCan, PlusCircle, SearchX } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { Input } from "@/components/ui/input";

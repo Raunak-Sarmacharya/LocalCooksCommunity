@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Cohesive Manager Page Layout",
+    "output": "docs/architecture/manager-fixed-layout.architecture.html",
+    "quality_profile": "showcase",
+    "viewBox": [1000, 640],
+    "views": [
+      { "id": "shared-shell", "label": "Shared shell", "focus": ["dashboardLayout", "chefPrimitives", "managerPages"], "note": "Manager pages reuse the same neutral headers, cards, spacing, and status treatments as the chef dashboard." },
+      { "id": "fixed-detail", "label": "Fixed master/detail", "focus": ["managerPages", "kitchenSelector", "kitchenEditor"], "note": "Large stacked editors become one selected record with a focused detail surface." },
+      { "id": "task-completion", "label": "Task completion", "focus": ["guidanceTask", "kitchenEditor", "managerApi", "queryCache"], "note": "Guidance links to the owning field and the saved result refreshes its readiness source." }
+    ]
+  },
+  "components": [
+    { "id": "dashboardLayout", "type": "frontend", "label": "DashboardLayout", "sublabel": "fixed viewport + neutral canvas", "pos": [70, 90], "size": [180, 72] },
+    { "id": "chefPrimitives", "type": "frontend", "label": "Chef UI primitives", "sublabel": "header, cards, quiet status", "pos": [320, 90], "size": [180, 72] },
+    { "id": "managerPages", "type": "frontend", "label": "Manager subpages", "sublabel": "consistent page composition", "pos": [570, 90], "size": [180, 72] },
+    { "id": "guidanceTask", "type": "frontend", "label": "Guidance task", "sublabel": "URL-owned destination", "pos": [70, 300], "size": [180, 72] },
+    { "id": "kitchenSelector", "type": "frontend", "label": "Kitchen selector", "sublabel": "one record at a time", "pos": [320, 300], "size": [180, 72] },
+    { "id": "kitchenEditor", "type": "frontend", "label": "Focused kitchen editor", "sublabel": "profile, amenities, gallery", "pos": [570, 300], "size": [180, 72] },
+    { "id": "managerApi", "type": "backend", "label": "Manager kitchen API", "sublabel": "PUT details", "pos": [570, 500], "size": [180, 72] },
+    { "id": "queryCache", "type": "frontend", "label": "Readiness query cache", "sublabel": "managerKitchens", "pos": [820, 300], "size": [150, 72] }
+  ],
+  "connections": [
+    { "id": "shell-primitives", "from": "dashboardLayout", "to": "chefPrimitives" },
+    { "id": "primitives-pages", "from": "chefPrimitives", "to": "managerPages" },
+    { "id": "task-selector", "from": "guidanceTask", "to": "kitchenSelector", "label": "section=amenities", "variant": "emphasis", "labelDy": 60 },
+    { "id": "selector-editor", "from": "kitchenSelector", "to": "kitchenEditor", "variant": "emphasis" },
+    { "id": "editor-api", "from": "kitchenEditor", "to": "managerApi", "label": "PUT /details", "variant": "emphasis", "labelAt": [718, 386] },
+    { "id": "api-cache", "from": "managerApi", "to": "queryCache", "label": "invalidate after save" },
+    { "id": "cache-task", "from": "queryCache", "to": "guidanceTask", "label": "recomputes completion", "fromSide": "bottom", "toSide": "bottom", "via": [[895, 610], [160, 610]], "labelAt": [525, 610] }
+  ],
+  "cards": [
+    { "dot": "slate", "title": "Visual contract", "items": ["Neutral surfaces by default; revenue keeps data color", "One shared header, spacing scale, and card treatment"] },
+    { "dot": "emerald", "title": "Interaction contract", "items": ["One selected entity replaces vertically stacked editors", "Every task targets an editable field and observes the saved cache"] }
+  ]
+}

@@ -20,7 +20,7 @@ import {
   ChefHat,
   Clock,
   Info,
-} from "lucide-react";
+} from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";

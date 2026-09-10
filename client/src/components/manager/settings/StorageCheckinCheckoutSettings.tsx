@@ -14,7 +14,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { mt } from "@/i18n/manager";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, AlertTriangle, Info } from "lucide-react";
+import { Loader2, AlertTriangle, Info } from "@/components/ui/manager-icons";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
 import { Badge } from "@/components/ui/badge";

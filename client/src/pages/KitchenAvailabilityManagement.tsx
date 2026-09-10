@@ -1,6 +1,6 @@
 import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
-import { Calendar as CalendarIcon, Save, Trash2, Loader2, AlertTriangle } from "lucide-react";
+import { Calendar as CalendarIcon, Save, Trash2, Loader2, AlertTriangle } from "@/components/ui/manager-icons";
 import { forwardRef, useEffect, useState, useCallback, useImperativeHandle } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -32,10 +32,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Calendar } from "@/components/ui/calendar";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ManagerPageLayout } from "@/components/layout/ManagerPageLayout";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { tt } from "@/i18n/common-ns";
+import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
+import { ChefPageHeader } from "@/components/chef/ui";
 
 // --- Types ---
 interface DateAvailability {
@@ -116,6 +117,18 @@ const KitchenAvailabilityManagement = forwardRef<KitchenAvailabilityManagementHa
   onSaveSuccess,
   hideWeeklyScheduleSaveButton = false
 }, ref) {
+  const { kitchens, isLoadingKitchens } = useManagerDashboard();
+  const availableKitchens = kitchens.filter((kitchen) => !initialLocationId || kitchen.locationId === initialLocationId);
+  const [selectedKitchenId, setSelectedKitchenId] = useState<number | null>(initialKitchenId || null);
+
+  useEffect(() => {
+    setSelectedKitchenId((current) =>
+      availableKitchens.some((kitchen) => kitchen.id === current)
+        ? current
+        : availableKitchens[0]?.id ?? null
+    );
+  }, [initialLocationId, initialKitchenId, kitchens]);
+
   if (embedded) {
     // If embedded, we expect IDs to be passed.
     // If not, we can show a placeholder or just try to render with nulls (which Content handles).
@@ -130,31 +143,31 @@ const KitchenAvailabilityManagement = forwardRef<KitchenAvailabilityManagementHa
     );
   }
 
+  if (isLoadingKitchens) {
+    return <div className="space-y-6"><Skeleton className="h-16 w-full" /><Skeleton className="h-[500px] w-full" /></div>;
+  }
+
   return (
-    <ManagerPageLayout
-      title={mt("availabilityManagement")}
-      description={mt("manageRecurringSchedulesAndSpecificDateAvailability")}
-      showKitchenSelector={true}
-    >
-      {({ selectedLocationId, selectedKitchenId, isLoading }) => {
-        if (isLoading) {
-          return (
-            <div className="space-y-6">
-              <Skeleton className="h-[300px] w-full" />
-              <Skeleton className="h-[500px] w-full" />
-            </div>
-          );
-        }
-        return (
-          <AvailabilityContent
-            ref={ref}
-            selectedLocationId={selectedLocationId}
-            selectedKitchenId={selectedKitchenId}
-            hideWeeklyScheduleSaveButton={hideWeeklyScheduleSaveButton}
-          />
-        );
-      }}
-    </ManagerPageLayout>
+    <div className="space-y-6">
+      <ChefPageHeader title={mt("availabilityManagement")} description={mt("manageRecurringSchedulesAndSpecificDateAvailability")} />
+      {availableKitchens.length > 0 && (
+        <Tabs value={selectedKitchenId?.toString()} onValueChange={(value) => setSelectedKitchenId(Number(value))}>
+          <TabsList className="flex w-full gap-1 rounded-xl bg-muted p-1" aria-label={mt("selectKitchen")}>
+            {availableKitchens.map((kitchen) => (
+              <TabsTrigger key={kitchen.id} value={kitchen.id.toString()} className="min-w-36 flex-1 rounded-lg py-2.5 data-[state=active]:bg-background">
+                {kitchen.name}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      )}
+      <AvailabilityContent
+        ref={ref}
+        selectedLocationId={initialLocationId || null}
+        selectedKitchenId={selectedKitchenId}
+        hideWeeklyScheduleSaveButton={hideWeeklyScheduleSaveButton}
+      />
+    </div>
   );
 });
 
@@ -187,6 +200,7 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
     endTime: "17:00",
     maxSlotsPerChef: 1,
   });
+  const [savedExceptionForm, setSavedExceptionForm] = useState('');
 
   // Alert Dialog State
   const [alertConfig, setAlertConfig] = useState<{
@@ -205,6 +219,7 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
 
   // State for weekly schedule
   const [weeklySchedule, setWeeklySchedule] = useState<Record<number, WeeklyScheduleItem>>({});
+  const [savedWeeklySchedule, setSavedWeeklySchedule] = useState('');
   const [isSavingSchedule, setIsSavingSchedule] = useState(false);
 
   // Queries
@@ -268,6 +283,7 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
           });
         }
         setWeeklySchedule(scheduleMap);
+        setSavedWeeklySchedule(JSON.stringify(scheduleMap));
       }
     } catch (error) {
       logger.error("Failed to load schedule", error);
@@ -366,6 +382,7 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
       if (onSaveSuccess) {
         await onSaveSuccess();
       }
+      setSavedWeeklySchedule(JSON.stringify(weeklySchedule));
       return true;
     } catch (err: any) {
       toast({ title: mt("error"), description: err.message || "Failed to save", variant: "destructive" });
@@ -395,25 +412,29 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
 
     if (existing) {
       setSelectedException(existing);
-      setExceptionForm({
+      const nextForm = {
         isAvailable: existing.isAvailable ?? false,
         reason: existing.reason || "",
         startTime: existing.startTime || "09:00",
         endTime: existing.endTime || "17:00",
         maxSlotsPerChef: existing.maxSlotsPerChef || 1
-      });
+      };
+      setExceptionForm(nextForm);
+      setSavedExceptionForm(JSON.stringify(nextForm));
     } else {
       setSelectedException(null);
       // Initialize with weekly default for that day
       const dayOfWeek = clickedDate.getDay();
       const weekly = weeklySchedule[dayOfWeek];
-      setExceptionForm({
+      const nextForm = {
         isAvailable: weekly ? (weekly.isAvailable ?? false) : false,
         reason: "",
         startTime: weekly?.startTime || "09:00",
         endTime: weekly?.endTime || "17:00",
         maxSlotsPerChef: 1
-      });
+      };
+      setExceptionForm(nextForm);
+      setSavedExceptionForm(JSON.stringify(nextForm));
     }
     setIsExceptionDialogOpen(true);
   };
@@ -491,6 +512,7 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
   }
 
   const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const isScheduleDirty = !!savedWeeklySchedule && JSON.stringify(weeklySchedule) !== savedWeeklySchedule;
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-top-4">
@@ -508,7 +530,7 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
                 <CardDescription>{mt("defaultHoursOfOperationForThisKitchen")}</CardDescription>
               </div>
               {!hideWeeklyScheduleSaveButton && (
-                <Button onClick={handleSaveWeeklySchedule} disabled={isSavingSchedule}>
+                <Button onClick={handleSaveWeeklySchedule} disabled={isSavingSchedule || !isScheduleDirty}>
                   {isSavingSchedule ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                   {mt("saveSchedule")}
                 </Button>
@@ -769,7 +791,10 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
                 className="sm:mr-auto"
               >{mt("removeException")}</Button>
             )}
-            <Button onClick={handleSaveException}>{mt("saveChanges")}</Button>
+            <Button
+              onClick={handleSaveException}
+              disabled={JSON.stringify(exceptionForm) === savedExceptionForm || createAvailability.isPending || updateAvailability.isPending}
+            >{mt("saveChanges")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

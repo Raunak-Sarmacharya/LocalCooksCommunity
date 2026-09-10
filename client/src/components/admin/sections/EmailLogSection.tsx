@@ -108,7 +108,7 @@ const CATEGORY_OPTIONS = [
   { value: "promo", label: "Promo" },
   { value: "damage_claim", label: "Damage claim" },
   { value: "overstay", label: "Overstay" },
-  { value: "viewing", label: "Viewing" },
+  { value: "Kitchen Tour", label: "Kitchen Tour" },
   { value: "license", label: "License" },
   { value: "checkin", label: "Check-in / out" },
   { value: "access", label: "Access" },

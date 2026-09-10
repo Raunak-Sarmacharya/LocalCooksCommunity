@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Menu, Building2, UtensilsCrossed } from "lucide-react";
+import { Menu, Building2, UtensilsCrossed } from "@/components/ui/manager-icons";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -113,7 +113,7 @@ export function ManagerPageLayout({
   };
 
   return (
-    <div className="flex flex-col flex-1 h-full min-h-[500px] min-w-0 overflow-hidden bg-background rounded-xl border shadow-sm">
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border bg-background shadow-sm">
       {/* Mobile Header with Sidebar Trigger */}
       <div className="md:hidden flex items-center justify-between p-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="flex items-center gap-2">

@@ -286,7 +286,7 @@ export function ScheduleViewingWidget({
             )
           );
         }
-        throw new Error(err.error || t("failedToBookViewing", "Failed to book viewing"));
+        throw new Error(err.error || t("failedToBookViewing", "Failed to book Kitchen Tour"));
       }
       return response.json();
     },

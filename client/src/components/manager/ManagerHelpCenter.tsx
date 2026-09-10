@@ -18,7 +18,7 @@ import {
   Info,
   AlertCircle,
   Upload
-} from "lucide-react";
+} from "@/components/ui/manager-icons";
 
 interface HelpCenterProps {
   isOpen: boolean;

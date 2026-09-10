@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { mt } from "@/i18n/manager";
-import { CheckCircle, ClipboardList } from "lucide-react";
+import { CheckCircle, ClipboardList } from "@/components/ui/manager-icons";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ApplicationRequirementsWizard } from "@/components/manager/requirements";
 import type { ApplicationRequirementsWizardHandle } from "@/components/manager/requirements";

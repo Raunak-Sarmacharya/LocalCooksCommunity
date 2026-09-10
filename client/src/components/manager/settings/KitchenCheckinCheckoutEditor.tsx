@@ -27,7 +27,7 @@ import {
   LogOut,
   Upload,
   ArrowUpDown,
-} from "lucide-react";
+} from "@/components/ui/manager-icons";
 import {
   ColumnDef,
   SortingState,

@@ -87,7 +87,7 @@ import {
   ChevronDown,
   ChevronUp,
   Shield,
-} from "lucide-react";
+} from "@/components/ui/manager-icons";
 import { formatDistanceToNow, format } from "date-fns";
 import { cn } from "@/lib/utils";
 

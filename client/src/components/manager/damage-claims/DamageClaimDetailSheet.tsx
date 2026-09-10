@@ -48,7 +48,7 @@ import {
   File,
   History,
   Clock,
-} from "lucide-react";
+} from "@/components/ui/manager-icons";
 import { cn } from "@/lib/utils";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { SmartImage } from "@/components/ui/smart-image";

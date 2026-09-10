@@ -51,7 +51,7 @@ import {
   Settings,
   ExternalLink,
   MessageCircle
-} from "lucide-react";
+} from "@/components/ui/manager-icons";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Separator } from "@/components/ui/separator";
 import { useQuery } from "@tanstack/react-query";

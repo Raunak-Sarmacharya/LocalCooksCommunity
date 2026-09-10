@@ -24,7 +24,7 @@ import {
   Briefcase,
   FileText,
   Settings,
-} from "lucide-react"
+} from "@/components/ui/manager-icons"
 import { toast } from "sonner"
 import { auth } from "@/lib/firebase"
 import { Button } from "@/components/ui/button"

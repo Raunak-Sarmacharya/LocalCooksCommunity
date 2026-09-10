@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { saveSellerJourneyDraft, validateSellerJourneyPhone } from "@/lib/seller-journey";
-import { ArrowRight, Building2, Home, HelpCircle, Loader2 } from "lucide-react";
+import { Icon } from "@iconify/react";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { isDuplicateAccountError } from "@/lib/registration-error";
 import EmailVerificationScreen from "@/components/auth/EmailVerificationScreen";
@@ -76,9 +76,9 @@ export default function SellerJourneyDialog({ open, onOpenChange }: { open: bool
   };
 
   const preferences = [
-    { value: "commercial" as const, label: "Commercial kitchen", icon: Building2 },
-    { value: "home" as const, label: "My home kitchen", icon: Home },
-    { value: "notSure" as const, label: "I’m not sure yet", icon: HelpCircle },
+    { value: "commercial" as const, label: "Commercial kitchen", icon: "mdi:office-building" },
+    { value: "home" as const, label: "My home kitchen", icon: "mdi:home" },
+    { value: "notSure" as const, label: "I’m not sure yet", icon: "mdi:help-circle-outline" },
   ];
 
   return (
@@ -147,9 +147,9 @@ export default function SellerJourneyDialog({ open, onOpenChange }: { open: bool
           <fieldset className="mt-6">
             <legend className="text-sm font-semibold text-[#332d2a]">Where do you plan to prepare food?</legend>
             <div className="mt-3 grid gap-2 sm:grid-cols-3">
-              {preferences.map(({ value, label, icon: Icon }) => (
+              {preferences.map(({ value, label, icon }) => (
                 <button key={value} type="button" aria-pressed={kitchenPreference === value} onClick={() => setKitchenPreference(value)} className={`flex min-h-24 flex-col items-center justify-center gap-2 rounded-2xl border px-3 py-4 text-center text-xs font-semibold transition-all ${kitchenPreference === value ? "border-[#F51042] bg-[#F51042]/5 text-[#F51042] ring-1 ring-[#F51042]" : "border-[#ded7d1] bg-white text-[#4f4844] hover:border-[#F51042]/50"}`}>
-                  <Icon className="h-5 w-5" aria-hidden />
+                  <Icon icon={icon} className="h-5 w-5" aria-hidden="true" />
                   {label}
                 </button>
               ))}
@@ -175,7 +175,7 @@ export default function SellerJourneyDialog({ open, onOpenChange }: { open: bool
           </div>
           {error && <p role="alert" className="mt-3 text-sm font-medium text-red-600">{error}</p>}
           <Button disabled={stage === "creating"} onClick={continueToAccount} className="mt-5 h-12 w-full rounded-full bg-[#F51042] font-bold text-white hover:bg-[#d90e3a]">
-            {stage === "creating" ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creating your secure account…</> : <>Continue to secure account <ArrowRight className="ml-2 h-4 w-4" /></>}
+            {stage === "creating" ? <><Icon icon="mdi:loading" className="mr-2 h-4 w-4 animate-spin" /> Creating your secure account…</> : <>Continue to secure account <Icon icon="mdi:arrow-right" className="ml-2 h-4 w-4" /></>}
           </Button>
           </>
           )}

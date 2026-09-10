@@ -1,7 +1,7 @@
 import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
 import { useTranslation } from "react-i18next";
-import { Loader2 } from "lucide-react";
+import { Loader2 } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { Redirect, useLocation } from "wouter";

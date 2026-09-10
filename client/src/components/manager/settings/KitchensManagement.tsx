@@ -8,11 +8,11 @@ import { tt } from "@/i18n/common-ns";
 
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChefHat, Plus, Trash2, Loader2, ImagePlus, KeyRound } from 'lucide-react';
+import { Storefront, Plus, Trash2, Loader2, ImagePlus, KeyRound, Package, Wrench, Image as Images, Clock } from '@/components/ui/manager-icons';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { StatusButton } from '@/components/ui/status-button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -21,6 +21,13 @@ import { useSessionFileUpload } from '@/hooks/useSessionFileUpload';
 import { useToast } from '@/hooks/use-toast';
 import { auth } from '@/lib/firebase';
 import { cn } from '@/lib/utils';
+import { ChefPageHeader } from '@/components/chef/ui';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { EquipmentListingContent } from '@/pages/EquipmentListingManagement';
+import { StorageListingContent } from '@/pages/StorageListingManagement';
+import { KitchenPricingContent } from '@/pages/KitchenPricingManagement';
+import { kitchenSectionFromParams, type KitchenSection } from '@/lib/manager-kitchens-navigation';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -46,6 +53,10 @@ interface Kitchen {
   smartLockEnabled?: boolean;
 }
 
+function getInitialKitchenSection(): KitchenSection {
+  return kitchenSectionFromParams(new URLSearchParams(window.location.search));
+}
+
 interface Location {
   id: number;
   name: string;
@@ -53,6 +64,7 @@ interface Location {
 
 interface KitchensManagementProps {
   location: Location;
+  onNavigate: (view: 'availability') => void;
 }
 
 function KitchenGalleryImages({
@@ -239,7 +251,7 @@ function KitchenGalleryImages({
   );
 }
 
-export default function KitchensManagement({ location }: KitchensManagementProps) {
+export default function KitchensManagement({ location, onNavigate }: KitchensManagementProps) {
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -248,7 +260,12 @@ export default function KitchensManagement({ location }: KitchensManagementProps
   const [showCreateKitchen, setShowCreateKitchen] = useState(false);
   const [newKitchenName, setNewKitchenName] = useState('');
   const [newKitchenDescription, setNewKitchenDescription] = useState('');
+  const [newKitchenImageUrl, setNewKitchenImageUrl] = useState('');
+  const [newKitchenHourlyRate, setNewKitchenHourlyRate] = useState('');
+  const [newKitchenMinimumHours, setNewKitchenMinimumHours] = useState('1');
   const [isCreatingKitchen, setIsCreatingKitchen] = useState(false);
+  const [selectedKitchenId, setSelectedKitchenId] = useState<number | null>(null);
+  const [activeSection, setActiveSection] = useState<KitchenSection>(getInitialKitchenSection);
 
   const { data: kitchens = [], isLoading: isLoadingKitchens } = useQuery<Kitchen[]>({
     queryKey: ['managerKitchens', location.id],
@@ -271,6 +288,7 @@ export default function KitchensManagement({ location }: KitchensManagementProps
     },
     enabled: !!location.id,
   });
+  const activeKitchenId = selectedKitchenId ?? kitchens[0]?.id ?? null;
 
   useEffect(() => {
     if (kitchens.length > 0) {
@@ -279,8 +297,25 @@ export default function KitchensManagement({ location }: KitchensManagementProps
         descriptions[kitchen.id] = kitchen.description || '';
       });
       setKitchenDescriptions(descriptions);
+      setSelectedKitchenId((current) => kitchens.some((kitchen) => kitchen.id === current) ? current : kitchens[0].id);
     }
   }, [kitchens]);
+
+  const handleSectionChange = (section: string) => {
+    const nextSection = section as KitchenSection;
+    setActiveSection(nextSection);
+    const url = new URL(window.location.href);
+    url.searchParams.set('view', 'kitchens');
+    if (nextSection === 'photos') url.searchParams.delete('section');
+    else url.searchParams.set('section', nextSection);
+    window.history.replaceState({}, '', url);
+  };
+
+  useEffect(() => {
+    const syncSectionFromUrl = () => setActiveSection(kitchenSectionFromParams(new URLSearchParams(window.location.search)));
+    window.addEventListener('popstate', syncSectionFromUrl);
+    return () => window.removeEventListener('popstate', syncSectionFromUrl);
+  }, []);
 
   const handleKitchenDescriptionUpdate = async (kitchenId: number, description: string) => {
     setUpdatingKitchenId(kitchenId);
@@ -324,9 +359,9 @@ export default function KitchensManagement({ location }: KitchensManagementProps
   };
 
   const handleCreateKitchen = async () => {
-    if (!newKitchenName.trim()) {
+    if (!newKitchenName.trim() || !newKitchenDescription.trim() || !newKitchenImageUrl || !newKitchenHourlyRate) {
       toast({ title: mt("nameRequired"),
-        description: mt("pleaseEnterANameForTheKitchen"),
+        description: "Complete the name, description, cover photo, and price.",
         variant: "destructive",
       });
       return;
@@ -351,7 +386,11 @@ export default function KitchensManagement({ location }: KitchensManagementProps
         body: JSON.stringify({
           locationId: location.id,
           name: newKitchenName.trim(),
-          description: newKitchenDescription.trim() || undefined,
+          description: newKitchenDescription.trim(),
+          imageUrl: newKitchenImageUrl,
+          hourlyRate: Math.round(parseFloat(newKitchenHourlyRate) * 100),
+          currency: "CAD",
+          minimumBookingHours: parseInt(newKitchenMinimumHours, 10) || 1,
         }),
       });
 
@@ -370,6 +409,9 @@ export default function KitchensManagement({ location }: KitchensManagementProps
 
       setNewKitchenName('');
       setNewKitchenDescription('');
+      setNewKitchenImageUrl('');
+      setNewKitchenHourlyRate('');
+      setNewKitchenMinimumHours('1');
       setShowCreateKitchen(false);
     } catch (error: any) {
       logger.error('Kitchen creation error:', error);
@@ -444,31 +486,30 @@ export default function KitchensManagement({ location }: KitchensManagementProps
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <ChefHat className="h-5 w-5 text-primary" />
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight">{mt("navKitchens")}</h2>
-            <p className="text-sm text-muted-foreground">
-              {mt("managePhotosForLocation", { name: location.name })}
-            </p>
+      <ChefPageHeader
+        title={mt("navKitchens")}
+        description={mt("managePhotosForLocation", { name: location.name })}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => onNavigate('availability')}>
+              <Clock className="mr-1.5 h-4 w-4" />{mt("navAvailability")}
+            </Button>
+            <Button onClick={() => setShowCreateKitchen(true)} size="sm">
+              <Plus className="mr-1.5 h-4 w-4" />{mt("addKitchen")}
+            </Button>
           </div>
-        </div>
-        <Button onClick={() => setShowCreateKitchen(true)} size="sm">
-          <Plus className="mr-1.5 h-4 w-4" />{mt("addKitchen")}</Button>
-      </div>
+        }
+      />
 
-      {/* Create Kitchen Form */}
-      {showCreateKitchen && (
-        <Card className="border-primary/20 shadow-sm">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base">{mt("newKitchen")}</CardTitle>
-            <CardDescription>{mt("addANewKitchenSpaceToThisLocation")}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+      <Dialog open={showCreateKitchen} onOpenChange={setShowCreateKitchen}>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{mt("newKitchen")}</DialogTitle>
+            <DialogDescription>Add the essentials chefs need to understand and book this space.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="kitchen-name">{mt("kitchenName")}</Label>
+              <Label htmlFor="kitchen-name">{mt("kitchenName")} *</Label>
               <Input
                 id="kitchen-name"
                 value={newKitchenName}
@@ -477,7 +518,7 @@ export default function KitchensManagement({ location }: KitchensManagementProps
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="kitchen-desc">{mt("description")}<span className="text-muted-foreground font-normal">{mt("optionalLabel")}</span></Label>
+              <Label htmlFor="kitchen-desc">{mt("description")} *</Label>
               <Textarea
                 id="kitchen-desc"
                 value={newKitchenDescription}
@@ -486,17 +527,26 @@ export default function KitchensManagement({ location }: KitchensManagementProps
                 rows={3}
               />
             </div>
+            <div className="space-y-2">
+              <Label>Cover photo *</Label>
+              <ImageWithReplace imageUrl={newKitchenImageUrl || undefined} onImageChange={(url) => setNewKitchenImageUrl(url || '')} onRemove={() => setNewKitchenImageUrl('')} fieldName="new-kitchen-cover" aspectRatio="16/9" className="h-48 rounded-lg object-cover" />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2"><Label htmlFor="kitchen-rate">Hourly rate (CAD) *</Label><Input id="kitchen-rate" type="number" min="0" step="0.01" value={newKitchenHourlyRate} onChange={(event) => setNewKitchenHourlyRate(event.target.value)} placeholder="25.00" /></div>
+              <div className="space-y-2"><Label htmlFor="kitchen-minimum">Minimum booking (hours)</Label><Input id="kitchen-minimum" type="number" min="1" max="24" step="1" value={newKitchenMinimumHours} onChange={(event) => setNewKitchenMinimumHours(event.target.value)} /></div>
+            </div>
             <div className="flex gap-2 pt-1">
               <StatusButton
                 onClick={handleCreateKitchen}
                 status={isCreatingKitchen ? "loading" : "idle"}
+                disabled={!newKitchenName.trim() || !newKitchenDescription.trim() || !newKitchenImageUrl || !newKitchenHourlyRate}
                 labels={{ idle: mt("createKitchen"), loading: mt("creating"), success: mt("created") }}
               />
               <Button variant="ghost" onClick={() => setShowCreateKitchen(false)}>{mt("cancel")}</Button>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Kitchen List */}
       {isLoadingKitchens ? (
@@ -507,7 +557,7 @@ export default function KitchensManagement({ location }: KitchensManagementProps
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-16">
             <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
-              <ChefHat className="h-6 w-6 text-muted-foreground" />
+              <Storefront className="h-6 w-6 text-muted-foreground" />
             </div>
             <h3 className="text-base font-semibold mb-1">{mt("noKitchensYet")}</h3>
             <p className="text-sm text-muted-foreground text-center mb-6 max-w-sm">{mt("addYourFirstKitchenToStartManagingPhotosDescriptionsAndAccep")}</p>
@@ -517,26 +567,57 @@ export default function KitchensManagement({ location }: KitchensManagementProps
         </Card>
       ) : (
         <div className="space-y-5">
-          {kitchens.map((kitchen) => (
-            <Card key={kitchen.id} className="overflow-hidden shadow-sm">
-              {/* Hero Image Area */}
-              <div className="relative">
-                <ImageWithReplace
-                  imageUrl={kitchen.imageUrl || undefined}
-                  onImageChange={(newUrl) => {
-                    handleKitchenImageUpdate(kitchen.id, newUrl || null);
-                  }}
-                  onRemove={() => handleKitchenImageUpdate(kitchen.id, null)}
-                  alt={kitchen.name}
-                  className="w-full h-44 object-cover"
-                  containerClassName="w-full"
-                  aspectRatio="21/9"
-                  fieldName="kitchenImage"
-                  maxSize={4.5 * 1024 * 1024}
-                  allowedTypes={['image/jpeg', 'image/jpg', 'image/png', 'image/webp']}
-                />
-              </div>
+          {kitchens.length > 1 && (
+            <div className="flex gap-1 overflow-x-auto rounded-xl bg-muted p-1" aria-label={mt("navKitchens")}>
+              {kitchens.map((kitchen) => (
+                <Button key={kitchen.id} size="sm" variant="ghost" onClick={() => setSelectedKitchenId(kitchen.id)} className={cn("shrink-0 rounded-lg", activeKitchenId === kitchen.id && "bg-background text-foreground shadow-sm hover:bg-background")}>
+                  {kitchen.name}
+                </Button>
+              ))}
+            </div>
+          )}
+          <Tabs value={activeSection} onValueChange={handleSectionChange}>
+            <TabsList className="mb-6 grid h-auto w-full grid-cols-2 gap-1 rounded-xl bg-muted p-1 text-muted-foreground sm:grid-cols-4">
+              <TabsTrigger value="photos" className="rounded-lg px-4 py-2.5 data-[state=active]:bg-background">
+                <Images className="mr-2 h-4 w-4" />{mt("photos")}
+              </TabsTrigger>
+              <TabsTrigger value="details" className="rounded-lg px-4 py-2.5 data-[state=active]:bg-background">
+                <Storefront className="mr-2 h-4 w-4" />{mt("details")} &amp; {mt("navPricing")}
+              </TabsTrigger>
+              <TabsTrigger value="storage" className="rounded-lg px-4 py-2.5 data-[state=active]:bg-background">
+                <Package className="mr-2 h-4 w-4" />{mt("navStorage")}
+              </TabsTrigger>
+              <TabsTrigger value="equipment" className="rounded-lg px-4 py-2.5 data-[state=active]:bg-background">
+                <Wrench className="mr-2 h-4 w-4" />{mt("navEquipment")}
+              </TabsTrigger>
+            </TabsList>
 
+            <TabsContent value="photos" className="mt-0">
+              {kitchens.filter((kitchen) => kitchen.id === activeKitchenId).map((kitchen) => (
+                <Card key={kitchen.id}>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2"><Images className="h-5 w-5" />{mt("photos")}</CardTitle>
+                    <p className="text-sm text-muted-foreground">Choose a clear cover photo, then add more angles to the gallery.</p>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    <div className="space-y-2">
+                      <Label>Cover photo</Label>
+                      <p className="text-xs text-muted-foreground">Shown first in search results and on your kitchen page.</p>
+                      <ImageWithReplace imageUrl={kitchen.imageUrl || undefined} onImageChange={(url) => handleKitchenImageUpdate(kitchen.id, url || null)} onRemove={() => handleKitchenImageUpdate(kitchen.id, null)} alt={kitchen.name} className="h-56 object-cover" containerClassName="max-w-xl" aspectRatio="16/9" fieldName="kitchenImage" />
+                    </div>
+                    <Separator />
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between"><Label>{mt("gallery")}</Label><span className="text-xs text-muted-foreground">{(kitchen.galleryImages || []).length} photos</span></div>
+                      <KitchenGalleryImages kitchenId={kitchen.id} galleryImages={kitchen.galleryImages || []} locationId={location.id} />
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </TabsContent>
+
+            <TabsContent value="details" className="mt-0">
+              {kitchens.filter((kitchen) => kitchen.id === activeKitchenId).map((kitchen) => (
+                <Card key={kitchen.id} className="overflow-hidden">
               <CardContent className="p-0">
                 {/* Kitchen Header */}
                 <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
@@ -549,6 +630,7 @@ export default function KitchensManagement({ location }: KitchensManagementProps
                         variant="ghost"
                         size="sm"
                         className="text-muted-foreground hover:text-destructive hover:bg-destructive/5 h-8 px-2"
+                        aria-label={mt("deleteKitchen")}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
@@ -598,25 +680,6 @@ export default function KitchensManagement({ location }: KitchensManagementProps
                     <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
                       <Loader2 className="h-3 w-3 animate-spin" />{mt("savingChanges")}</p>
                   )}
-                </div>
-
-                <Separator />
-
-                {/* Gallery Section */}
-                <div className="px-5 py-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <Label className="text-xs uppercase tracking-wider text-muted-foreground font-medium">{mt("gallery")}</Label>
-                    {(kitchen.galleryImages || []).length > 0 && (
-                      <span className="text-xs text-muted-foreground">
-                        {(kitchen.galleryImages || []).length} photo{(kitchen.galleryImages || []).length !== 1 ? 's' : ''}
-                      </span>
-                    )}
-                  </div>
-                  <KitchenGalleryImages
-                    kitchenId={kitchen.id}
-                    galleryImages={kitchen.galleryImages || []}
-                    locationId={location.id}
-                  />
                 </div>
 
                 {/*
@@ -690,8 +753,22 @@ export default function KitchensManagement({ location }: KitchensManagementProps
                   </>
                 )}
               </CardContent>
-            </Card>
-          ))}
+                </Card>
+              ))}
+              <div className="mt-5">
+                <KitchenPricingContent selectedLocationId={location.id} selectedKitchenId={activeKitchenId} />
+              </div>
+            </TabsContent>
+
+            <TabsContent value="equipment" className="mt-0">
+              <EquipmentListingContent selectedLocationId={location.id} selectedKitchenId={activeKitchenId} />
+            </TabsContent>
+
+            <TabsContent value="storage" className="mt-0">
+              <StorageListingContent selectedLocationId={location.id} selectedKitchenId={activeKitchenId} />
+            </TabsContent>
+
+          </Tabs>
         </div>
       )}
     </div>

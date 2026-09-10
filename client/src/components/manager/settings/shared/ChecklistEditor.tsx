@@ -21,7 +21,7 @@ import {
   LogIn,
   LogOut,
   Upload,
-} from "lucide-react";
+} from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import {
   Card,

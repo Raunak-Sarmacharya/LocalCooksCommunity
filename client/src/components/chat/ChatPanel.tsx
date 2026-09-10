@@ -2,7 +2,8 @@ import { logger } from "@/lib/logger";
 import { normalizeChatSystemMessage } from "@/lib/chat-system-message";
 import { useTranslation } from "react-i18next";
 import { useState, useRef, useEffect } from 'react';
-import { X, Loader2, Info, FileText } from 'lucide-react';
+import { X, Info, FileText } from 'lucide-react';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import FacilityDocumentsPanel from './FacilityDocumentsPanel';
@@ -25,7 +26,7 @@ function AuthenticatedFileLink({ url, fileName, className }: { url: string | nul
     >
       <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center group-hover:bg-primary/20">
         {isLoading ? (
-          <Loader2 className="h-4 w-4 text-primary animate-spin" />
+          <LoadingSpinner size="sm" />
         ) : (
           <FileText className="h-4 w-4 text-primary" />
         )}
@@ -255,7 +256,7 @@ export default function ChatPanel({
       <div className="flex-1 overflow-hidden relative bg-muted/20">
         {isLoading ? (
           <div className="flex items-center justify-center h-full">
-            <Loader2 className="h-8 w-8 animate-spin text-primary/50" />
+            <LoadingSpinner size="lg" />
           </div>
         ) : (
           renderMessages()

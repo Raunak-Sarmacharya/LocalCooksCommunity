@@ -28,7 +28,7 @@ import {
   RefreshCcw,
   Info,
   Pencil,
-} from "lucide-react";
+} from "@/components/ui/manager-icons";
 import { cn } from "@/lib/utils";
 import { TruncatedText } from "@/components/common/TruncatedText";
 

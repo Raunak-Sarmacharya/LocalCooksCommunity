@@ -5,7 +5,7 @@ import { Redirect, useLocation } from "wouter";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
-import { Building2, Loader2, Lock, ArrowRight, Calendar, Users, Settings } from "lucide-react";
+import { Building2, Loader2, Lock, ArrowRight, Calendar, Users, Settings } from "@/components/ui/manager-icons";
 import Logo from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";

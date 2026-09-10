@@ -37,7 +37,7 @@ import {
   AlertTriangle,
   Info,
   RefreshCw
-} from "lucide-react";
+} from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -358,7 +358,17 @@ function NotificationItem({
 }
 
 // Main NotificationCenter component
-export default function NotificationCenter({ locationId }: { locationId?: number }) {
+type NotificationCenterProps = {
+  locationId?: number;
+  variant?: "popover" | "page";
+  onViewAll?: () => void;
+};
+
+export default function NotificationCenter({
+  locationId,
+  variant = "popover",
+  onViewAll,
+}: NotificationCenterProps) {
   
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
@@ -399,7 +409,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
       const data = await res.json();
       return data;
     },
-    enabled: isOpen,
+    enabled: isOpen || variant === "page",
     retry: false,
   });
 
@@ -711,6 +721,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
 
   // Keyboard shortcut to open notifications (Ctrl/Cmd + Shift + N to avoid browser conflicts)
   useEffect(() => {
+    if (variant === "page") return;
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ctrl/Cmd + Shift + N to toggle notifications
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'N') {
@@ -728,7 +739,85 @@ export default function NotificationCenter({ locationId }: { locationId?: number
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen]);
+  }, [isOpen, variant]);
+
+  if (variant === "page") {
+    return (
+      <div className="overflow-hidden rounded-[1.35rem] border bg-card shadow-sm">
+        <div className="border-b bg-[linear-gradient(135deg,hsl(var(--primary)/0.08),transparent_55%)] px-5 py-5 sm:px-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="flex size-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <Bell className="size-5" aria-hidden="true" />
+                </span>
+                <h1 className="text-2xl font-semibold tracking-tight">{mt("navNotifications")}</h1>
+                {unreadCount > 0 && <Badge variant="secondary">{unreadCount} {mt("unread").toLowerCase()}</Badge>}
+              </div>
+              <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+                {mt("notificationCenterDescription")}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading}>
+                <RefreshCw className={cn("mr-1 size-4", isLoading && "animate-spin")} aria-hidden="true" />
+                {tt("refreshNotifications")}
+              </Button>
+              {unreadCount > 0 && (
+                <Button size="sm" onClick={() => markAllReadMutation.mutate()} disabled={markAllReadMutation.isPending}>
+                  <CheckCheck className="mr-1 size-4" aria-hidden="true" />
+                  {mt("markAllRead")}
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="border-b bg-muted/50 px-4 py-2" role="navigation" aria-label={mt("notificationFilters")}>
+          <Tabs value={filter} onValueChange={(value) => setFilter(value as FilterType)}>
+            <TabsList className="w-full gap-1 sm:w-auto">
+              <TabsTrigger value="all" className="flex-1 sm:flex-none">{mt("filterAll")}</TabsTrigger>
+              <TabsTrigger value="unread" className="flex-1 sm:flex-none">{mt("unread")}</TabsTrigger>
+              <TabsTrigger value="read" className="flex-1 sm:flex-none">{mt("read")}</TabsTrigger>
+              <TabsTrigger value="archived" className="flex-1 sm:flex-none">{mt("archived")}</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+        <div className="min-h-[28rem]" role="feed" aria-label={mt("notificationsList")} aria-busy={isLoading}>
+          {isLoading ? (
+            <NotificationListSkeleton />
+          ) : notificationsError || unreadError ? (
+            <ErrorNotificationState onRetry={() => refetch()} />
+          ) : notifications.length === 0 ? (
+            <EmptyNotificationState filter={filter} />
+          ) : (
+            <AnimatePresence mode="popLayout">
+              {groupedNotifications.map((group) => (
+                <section key={group.label} aria-labelledby={`page-group-${group.label.toLowerCase().replace(/\s+/g, '-')}`}>
+                  <h2 id={`page-group-${group.label.toLowerCase().replace(/\s+/g, '-')}`} className="sticky top-0 z-10 bg-muted px-4 py-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    {group.label}
+                  </h2>
+                  <div className="flex flex-col">
+                    {group.notifications.map((notification) => (
+                      <NotificationItem
+                        key={notification.id}
+                        notification={notification}
+                        onMarkRead={handleMarkRead}
+                        onArchive={handleArchive}
+                        onUnarchive={handleUnarchive}
+                        onDelete={handleDelete}
+                        isSelected={selectedIds.has(notification.id)}
+                        _onSelect={handleSelect}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </AnimatePresence>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
@@ -852,19 +941,18 @@ export default function NotificationCenter({ locationId }: { locationId?: number
         </ScrollArea>
 
         {/* Footer */}
-        {notifications.length > 0 && notificationsData?.pagination?.hasMore && (
+        {notifications.length > 0 && (
           <div className="p-3 border-t bg-gray-50 text-center">
             <Button 
               variant="link" 
               size="sm" 
               className="text-xs text-gray-600"
               onClick={() => {
-                toast({ title: mt("allNotificationsShown"),
-                  description: mt("useTheFiltersAboveToBrowseThroughYourNotifications"),
-                });
+                setIsOpen(false);
+                onViewAll?.();
               }}
             >
-              View all notifications ({notificationsData.pagination.total} total)
+              {mt("navNotifications")}{notificationsData?.pagination?.total ? ` (${notificationsData.pagination.total})` : ""}
             </Button>
           </div>
         )}

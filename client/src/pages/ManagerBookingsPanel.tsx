@@ -4,7 +4,7 @@ import { tt } from "@/i18n/common-ns";
 import { mt } from "@/i18n/manager";
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle, XCircle, Clock, Calendar, User, MapPin, AlertTriangle, Search, X } from "lucide-react";
+import { CheckCircle, XCircle, Clock, Calendar, User, MapPin, AlertTriangle, Search, X } from "@/components/ui/manager-icons";
 import { useToast } from "@/hooks/use-toast";
 import ManagerHeader from "@/components/layout/ManagerHeader";
 import { StorageExtensionApprovals } from "@/components/manager/StorageExtensionApprovals";
@@ -906,35 +906,17 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
   };
 
   const content = (
-    <main className={embedded ? "flex-1 py-4 sm:py-6" : "flex-1 pt-20 sm:pt-24 pb-6 sm:pb-8"}>
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">{t("bookingRequests")}</h1>
-          <p className="text-gray-600 mt-2">{t("reviewAndManageChefBookingRequests")}</p>
-        </div>
-
-        {/* Location Filter (shown only when multiple locations exist) */}
-        {locations.length > 1 && (
-          <div className="flex items-center gap-3 mb-4">
-            <label className="text-sm font-medium text-gray-700">{t("location2")}</label>
-            <select
-              value={locationFilter}
-              onChange={(e) => setLocationFilter(e.target.value)}
-              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="all">{t("cmdAllLocations")}</option>
-              {locations.map((loc: any) => (
-                <option key={loc.id} value={loc.name}>
-                  {loc.name}
-                </option>
-              ))}
-            </select>
+    <main className={embedded ? "flex-1" : "flex-1 pt-20 sm:pt-24 pb-6 sm:pb-8"}>
+      <div className={embedded ? "w-full" : "container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8"}>
+        {!embedded && (
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-gray-900">{t("bookingRequests")}</h1>
+            <p className="text-gray-600 mt-2">{t("reviewAndManageChefBookingRequests")}</p>
           </div>
         )}
 
-        {/* Search Input */}
-        <div className="flex items-center gap-2 mb-4">
-          <div className="relative flex-1 max-w-sm">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative w-full sm:max-w-md">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               type="text"
@@ -954,11 +936,25 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
               </Button>
             )}
           </div>
+          {locations.length > 1 && (
+            <label className="sr-only" htmlFor="booking-location-filter">{t("location2")}</label>
+          )}
+          {locations.length > 1 && (
+            <select
+              id="booking-location-filter"
+              value={locationFilter}
+              onChange={(e) => setLocationFilter(e.target.value)}
+              className="h-10 rounded-lg border border-input bg-background px-3 text-sm sm:ml-auto sm:w-56"
+            >
+              <option value="all">{t("cmdAllLocations")}</option>
+              {locations.map((loc: any) => <option key={loc.id} value={loc.name}>{loc.name}</option>)}
+            </select>
+          )}
         </div>
 
         {/* Filter Tabs */}
-        <Tabs value={statusFilter} onValueChange={setStatusFilter} className="w-full mb-6">
-          <TabsList className="w-full gap-1">
+        <Tabs value={statusFilter} onValueChange={setStatusFilter} className="mb-6 w-full">
+          <TabsList className="grid w-full grid-cols-2 gap-1 rounded-xl bg-muted p-1 sm:grid-cols-5">
             {[
               { key: 'all', label: mt("filterAll") },
               { key: 'upcoming', label: mt("upcoming") },
@@ -982,7 +978,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
               }
 
               return (
-                <TabsTrigger key={filter.key} value={filter.key} className="flex-1 text-xs sm:text-sm px-2 py-1.5">
+                <TabsTrigger key={filter.key} value={filter.key} className="rounded-lg px-2 py-2 text-xs sm:text-sm">
                   {filter.label} <Badge variant="count" className="ml-1">{count}</Badge>
                 </TabsTrigger>
               );
@@ -1022,8 +1018,6 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                 hasApprovedLicense
               })}
               data={filteredBookings}
-              filterColumn="chefName" // filter by Chef name by default
-              filterPlaceholder={mt("filterByChef")}
               defaultSorting={[{ id: 'createdAt', desc: true }]}
               initialColumnVisibility={{ createdAt: false }}
               pageSize={15}
@@ -1357,4 +1351,3 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
     </div>
   );
 }
-

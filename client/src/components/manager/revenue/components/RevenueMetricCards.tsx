@@ -34,7 +34,7 @@ import {
     Info,
     Clock,
     Banknote,
-} from "lucide-react"
+} from "@/components/ui/manager-icons"
 import { formatCurrency, formatPercent } from "@/lib/formatters"
 import type { RevenueMetrics, Transaction } from "../types"
 import { getTransactionRevenueBreakdown, aggregateTransactionPayoutTotals } from "../revenue-calculations"

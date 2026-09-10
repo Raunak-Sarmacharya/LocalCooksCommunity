@@ -37,7 +37,7 @@ import {
   ShieldCheck,
   FileWarning,
   Timer,
-} from "lucide-react";
+} from "@/components/ui/manager-icons";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";

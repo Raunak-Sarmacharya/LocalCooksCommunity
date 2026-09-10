@@ -26,7 +26,7 @@ import {
   updatePassword 
 } from "firebase/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { KeyRound, Loader2, Shield } from "lucide-react";
+import { KeyRound, Loader2, Shield } from "@/components/ui/manager-icons";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useLocation, Redirect } from "wouter";

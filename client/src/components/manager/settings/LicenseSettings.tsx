@@ -8,7 +8,7 @@ import { tt } from "@/i18n/common-ns";
 
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { FileText, Upload, CheckCircle, Clock, XCircle, AlertCircle, ExternalLink, Loader2 } from 'lucide-react';
+import { FileText, Upload, CheckCircle, Clock, XCircle, AlertCircle, ExternalLink, Loader2, Calendar as CalendarIcon } from '@/components/ui/manager-icons';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +17,10 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { auth } from '@/lib/firebase';
 import { usePresignedDocumentUrl } from '@/hooks/use-presigned-document-url';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { format } from 'date-fns';
+import { SettingsFileUpload } from './SettingsFileUpload';
 
 interface Location {
   id: number;
@@ -356,72 +360,50 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
                 <div className="space-y-4">
                   <div>
                     <Label htmlFor="license-expiry">{mt("licenseExpirationDate")}</Label>
-                    <Input
-                      id="license-expiry"
-                      type="date"
-                      value={licenseExpiryDate}
-                      onChange={(e) => setLicenseExpiryDate(e.target.value)}
-                      min={new Date().toISOString().split('T')[0]}
-                      className="mt-1.5 max-w-xs"
-                    />
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button id="license-expiry" type="button" variant="outline" className="mt-1.5 w-full max-w-xs justify-start font-normal">
+                          <CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground" />
+                          {licenseExpiryDate ? format(new Date(`${licenseExpiryDate}T00:00:00`), 'PPP') : mt("licenseExpirationDate")}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={licenseExpiryDate ? new Date(`${licenseExpiryDate}T00:00:00`) : undefined}
+                          onSelect={(date) => setLicenseExpiryDate(date ? format(date, 'yyyy-MM-dd') : '')}
+                          disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
                   </div>
 
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-gray-400 transition-colors">
-                    <input
-                      type="file"
-                      accept=".pdf,.jpg,.jpeg,.png"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          setLicenseFile(file);
-                        }
-                      }}
-                      className="hidden"
-                      id="license-upload"
-                      disabled={isUploadingLicense}
-                    />
-                    <label
-                      htmlFor="license-upload"
-                      className={`flex flex-col items-center justify-center cursor-pointer ${isUploadingLicense ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                      <Upload className="h-8 w-8 text-gray-400 mb-2" />
-                      <span className="text-sm font-medium text-gray-700 mb-1">
-                        {licenseFile ? licenseFile.name : (
-                          location.kitchenLicenseStatus === 'pending' && location.kitchenLicenseUrl
-                            ? mt("clickToReplacePendingSubmission")
-                            : location.kitchenLicenseStatus === 'pending_update'
-                              ? mt("clickToReplaceQueuedUpdate")
-                              : location.kitchenLicenseUrl
-                                ? mt("clickToSubmitUpdatedLicense")
-                                : mt("clickToUploadLicense")
-                        )}
-                      </span>
-                      <span className="text-xs text-gray-500">{mt("pDFJPGOrPNGMax5MB")}</span>
-                    </label>
-                  </div>
+                  <SettingsFileUpload id="license-upload" accept=".pdf,.jpg,.jpeg,.png" file={licenseFile} label="Choose license document" hint={mt("pDFJPGOrPNGMax5MB")} disabled={isUploadingLicense} onChange={setLicenseFile} />
 
                   {licenseFile && (
-                    <Button
-                      onClick={() => handleLicenseUpload(licenseFile, licenseExpiryDate)}
-                      disabled={isUploadingLicense || !licenseExpiryDate}
-                      className="w-full"
-                    >
-                      {isUploadingLicense ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />{mt("uploading")}</>
-                      ) : (
-                        <>
-                          <Upload className="mr-2 h-4 w-4" />
-                          {location.kitchenLicenseStatus === 'pending' && location.kitchenLicenseUrl
-                            ? mt("replacePendingSubmission")
-                            : location.kitchenLicenseStatus === 'pending_update'
-                              ? mt("editUploadedDocument")
-                              : location.kitchenLicenseUrl
-                                ? mt("submitUpdatedLicense")
-                                : mt("uploadLicense")}
-                        </>
-                      )}
-                    </Button>
+                    <div className="flex justify-end pt-2">
+                      <Button
+                        onClick={() => handleLicenseUpload(licenseFile, licenseExpiryDate)}
+                        disabled={isUploadingLicense || !licenseExpiryDate}
+                      >
+                        {isUploadingLicense ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />{mt("uploading")}</>
+                        ) : (
+                          <>
+                            <Upload className="mr-2 h-4 w-4" />
+                            {location.kitchenLicenseStatus === 'pending' && location.kitchenLicenseUrl
+                              ? mt("replacePendingSubmission")
+                              : location.kitchenLicenseStatus === 'pending_update'
+                                ? mt("editUploadedDocument")
+                                : location.kitchenLicenseUrl
+                                  ? mt("submitUpdatedLicense")
+                                  : mt("uploadLicense")}
+                          </>
+                        )}
+                      </Button>
+                    </div>
                   )}
                 </div>
               </div>

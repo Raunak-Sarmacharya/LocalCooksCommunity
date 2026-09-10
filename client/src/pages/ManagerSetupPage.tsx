@@ -21,7 +21,7 @@ import {
     PartyPopper,
     Handshake,
     Loader2
-} from "lucide-react";
+} from "@/components/ui/manager-icons";
 import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";

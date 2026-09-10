@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { mt } from "@/i18n/manager";
-import { CheckCircle, Plus, ChefHat, Edit2, ChevronDown, ChevronUp, Image, DollarSign, Clock, Info } from "lucide-react";
+import { CheckCircle, Plus, ChefHat, Edit2, ChevronDown, ChevronUp, Image, DollarSign, Clock, Info } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,17 @@ import { cn } from "@/lib/utils";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { SmartImage } from "@/components/ui/smart-image";
 import { FormLegend } from "@/components/ui/form-legend";
+
+const COMMON_AMENITIES = [
+  "Commercial oven",
+  "Range",
+  "Prep tables",
+  "Walk-in fridge",
+  "Freezer",
+  "Dishwasher",
+  "Ventilation",
+  "Parking",
+];
 
 // Enterprise-grade Kitchen Card Component
 interface KitchenCardProps {
@@ -153,6 +164,7 @@ export default function CreateKitchenStep() {
   const [localHourlyRate, setLocalHourlyRate] = useState(ctxData.hourlyRate);
   const [localMinHours, setLocalMinHours] = useState(ctxData.minimumBookingHours);
   const [localImageUrl, setLocalImageUrl] = useState(ctxData.imageUrl);
+  const [localFeatures, setLocalFeatures] = useState<string[]>(ctxData.features || []);
 
   // Sync local state from context whenever the form is opened (showCreate flips to true)
   const prevShowCreate = useRef(showCreate);
@@ -163,6 +175,7 @@ export default function CreateKitchenStep() {
       setLocalHourlyRate(ctxData.hourlyRate);
       setLocalMinHours(ctxData.minimumBookingHours);
       setLocalImageUrl(ctxData.imageUrl);
+      setLocalFeatures(ctxData.features || []);
     }
     prevShowCreate.current = showCreate;
   }, [showCreate]);
@@ -180,6 +193,7 @@ export default function CreateKitchenStep() {
       currency: ctxData.currency,
       minimumBookingHours: localMinHours,
       imageUrl: localImageUrl,
+      features: localFeatures,
     });
   };
 
@@ -199,6 +213,7 @@ export default function CreateKitchenStep() {
     currency: ctxData.currency,
     minimumBookingHours: localMinHours,
     imageUrl: localImageUrl,
+    features: localFeatures,
   };
 
   const handleToggleExpand = (kitchenId: number) => {
@@ -282,7 +297,7 @@ export default function CreateKitchenStep() {
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <Label htmlFor="kitchen-description" className="text-sm font-medium text-slate-700 dark:text-slate-300">{mt("description")}</Label>
-                  <span className="text-xs text-slate-400">(Optional)</span>
+                  <span className="text-destructive">*</span>
                 </div>
                 <Textarea
                   id="kitchen-description"
@@ -298,7 +313,7 @@ export default function CreateKitchenStep() {
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">{mt("coverImage")}</Label>
-                  <span className="text-xs text-slate-400">(Optional)</span>
+                  <span className="text-destructive">*</span>
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -319,6 +334,30 @@ export default function CreateKitchenStep() {
                     aspectRatio="16/9"
                     fieldName="kitchen-cover"
                   />
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <Label>Available amenities <span className="text-destructive">*</span></Label>
+                <p className="text-xs text-muted-foreground">Choose what a chef can rely on. You can add detailed equipment later.</p>
+                <div className="flex flex-wrap gap-2">
+                  {COMMON_AMENITIES.map((amenity) => {
+                    const selected = data.features.includes(amenity);
+                    return (
+                      <Button
+                        key={amenity}
+                        type="button"
+                        size="sm"
+                        variant={selected ? "default" : "outline"}
+                        aria-pressed={selected}
+                        onClick={() => setLocalFeatures((current) =>
+                          selected ? current.filter((item) => item !== amenity) : [...current, amenity]
+                        )}
+                      >
+                        {amenity}
+                      </Button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -376,7 +415,7 @@ export default function CreateKitchenStep() {
               <StatusButton
                 status={isCreating ? "loading" : "idle"}
                 onClick={handleCreate}
-                disabled={!data.name || !data.hourlyRate}
+                disabled={!data.name.trim() || !data.description.trim() || !data.imageUrl || !data.hourlyRate || data.features.length === 0}
                 className="flex-1"
                 labels={{ idle: mt("createKitchen"), loading: mt("creating"), success: mt("created") }}
               />

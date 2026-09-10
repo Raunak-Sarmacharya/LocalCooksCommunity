@@ -24,7 +24,7 @@ import {
   AlertCircle,
   AlertTriangle,
   Info
-} from "lucide-react"
+} from "@/components/ui/manager-icons"
 import { toast } from "sonner"
 import { auth } from "@/lib/firebase"
 import { Button } from "@/components/ui/button"
@@ -174,6 +174,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
 
   // Weekly availability editing - map to exactly 1 per day
   const [weeklySchedule, setWeeklySchedule] = useState<Record<number, AvailabilitySlot>>({})
+  const [savedWeeklySchedule, setSavedWeeklySchedule] = useState('')
 
   // Blackout Dialog form
   const [isBlackoutDialogOpen, setIsBlackoutDialogOpen] = useState(false)
@@ -219,8 +220,19 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
       })
       
       setWeeklySchedule(scheduleMap)
+      setSavedWeeklySchedule(JSON.stringify(scheduleMap))
     }
   }, [data, locationId])
+
+  const isSettingsDirty = !!data?.settings && (
+    isActive !== data.settings.isActive
+    || duration !== data.settings.defaultDurationMinutes
+    || bufferBefore !== data.settings.bufferBeforeMinutes
+    || bufferAfter !== data.settings.bufferAfterMinutes
+    || advanceNotice !== data.settings.advanceNoticeHours
+    || maxDays !== data.settings.maxAdvanceBookingDays
+  )
+  const isScheduleDirty = !!savedWeeklySchedule && JSON.stringify(weeklySchedule) !== savedWeeklySchedule
 
   // Save settings mutation
   const saveSettingsMutation = useMutation({
@@ -272,6 +284,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
       return response.json()
     },
     onSuccess: () => {
+      setSavedWeeklySchedule(JSON.stringify(weeklySchedule))
       queryClient.invalidateQueries({ queryKey: [`/api/viewings/settings/${locationId}`] })
       toast.success(mt("weeklyAvailabilitySaved"))
     },
@@ -354,10 +367,10 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Section 1: General Settings */}
       <Card>
-        <CardHeader>
+        <CardHeader className="p-4 pb-3">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div>
               <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
@@ -379,8 +392,8 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
           </div>
         </CardHeader>
 
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <CardContent className="space-y-3 p-4 pt-0">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
             <div className="space-y-2">
               <div className="flex items-center gap-1.5">
                 <Label className="text-xs sm:text-sm">{mt("viewingDuration")}</Label>
@@ -399,7 +412,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
                 value={String(duration)}
                 onValueChange={(v) => setDuration(Number(v))}
               >
-                <SelectTrigger>
+                <SelectTrigger className="h-9">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -430,7 +443,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
                 value={String(advanceNotice)}
                 onValueChange={(v) => setAdvanceNotice(Number(v))}
               >
-                <SelectTrigger>
+                <SelectTrigger className="h-9">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -461,7 +474,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
                 value={String(bufferBefore)}
                 onValueChange={(v) => setBufferBefore(Number(v))}
               >
-                <SelectTrigger>
+                <SelectTrigger className="h-9">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -492,7 +505,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
                 value={String(bufferAfter)}
                 onValueChange={(v) => setBufferAfter(Number(v))}
               >
-                <SelectTrigger>
+                <SelectTrigger className="h-9">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -504,51 +517,48 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
                 </SelectContent>
               </Select>
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center gap-1.5">
-              <Label className="text-xs sm:text-sm">{mt("maxAdvanceBooking")}</Label>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger type="button" onClick={(e) => e.preventDefault()} className="cursor-help">
-                    <Info className="h-4 w-4 text-muted-foreground" />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{mt("howFarInAdvanceViewingsCanBeScheduled")}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+            <div className="space-y-2">
+              <div className="flex items-center gap-1.5">
+                <Label className="text-xs sm:text-sm">{mt("maxAdvanceBooking")}</Label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger type="button" onClick={(e) => e.preventDefault()} className="cursor-help">
+                      <Info className="h-4 w-4 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{mt("howFarInAdvanceViewingsCanBeScheduled")}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              <Select value={String(maxDays)} onValueChange={(v) => setMaxDays(Number(v))}>
+                <SelectTrigger className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[7, 14, 30, 60, 90].map((d) => (
+                    <SelectItem key={d} value={String(d)}>{d} days</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <Select
-              value={String(maxDays)}
-              onValueChange={(v) => setMaxDays(Number(v))}
-            >
-              <SelectTrigger className="sm:w-48">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {[7, 14, 30, 60, 90].map((d) => (
-                  <SelectItem key={d} value={String(d)}>
-                    {d} days
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
 
-          <Button
-            onClick={() => saveSettingsMutation.mutate()}
-            disabled={saveSettingsMutation.isPending}
-            className="w-full sm:w-auto"
-          >
-            {saveSettingsMutation.isPending ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Save className="h-4 w-4 mr-2" />
-            )}
-            Save Settings
-          </Button>
+          <div className="flex justify-end border-t pt-3">
+            <Button
+              onClick={() => saveSettingsMutation.mutate()}
+              disabled={saveSettingsMutation.isPending || !isSettingsDirty}
+              size="sm"
+              className="w-full sm:w-auto"
+            >
+              {saveSettingsMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4 mr-2" />
+              )}
+              Save Settings
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -559,16 +569,16 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
           <TabsTrigger value="calendar">{mt("exceptionsCalendar")}</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="weekly" className="space-y-4 mt-6">
+        <TabsContent value="weekly" className="space-y-4 mt-4">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 p-4">
               <div className="space-y-1">
                 <CardTitle className="text-lg">{mt("recurringWeeklyHours")}</CardTitle>
                 <CardDescription>{mt("defaultHoursAvailableForKitchenViewings")}</CardDescription>
               </div>
               <Button
                 onClick={() => saveAvailabilityMutation.mutate()}
-                disabled={saveAvailabilityMutation.isPending}
+                disabled={saveAvailabilityMutation.isPending || !isScheduleDirty}
               >
                 {saveAvailabilityMutation.isPending ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -578,7 +588,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
                 {mt("saveSchedule")}
               </Button>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-4 pt-0">
               <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
                 <Table>
                   <TableHeader>
@@ -656,7 +666,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
           </Card>
         </TabsContent>
 
-        <TabsContent value="calendar" className="mt-6">
+        <TabsContent value="calendar" className="mt-4">
           <div className="grid gap-6 xl:grid-cols-2">
             <Card className="overflow-hidden flex flex-col justify-between">
               <CardHeader>

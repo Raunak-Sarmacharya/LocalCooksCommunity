@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { mt } from "@/i18n/manager";
-import { Mail, Phone } from 'lucide-react';
+import { Mail, Phone } from '@/components/ui/manager-icons';
 import { StatusButton } from '@/components/ui/status-button';
 import { useStatusButton } from '@/hooks/use-status-button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,6 +28,7 @@ export default function NotificationsSettings({ location, onSave }: Notification
   
   const [notificationEmail, setNotificationEmail] = useState(location.notificationEmail || '');
   const [notificationPhone, setNotificationPhone] = useState(location.notificationPhone || '');
+  const isDirty = notificationEmail !== (location.notificationEmail || '') || notificationPhone !== (location.notificationPhone || '');
 
   useEffect(() => {
     setNotificationEmail(location.notificationEmail || '');
@@ -45,16 +46,16 @@ export default function NotificationsSettings({ location, onSave }: Notification
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">{mt("navNotifications")}</h2>
+        <h2 className="text-xl font-semibold tracking-tight">{mt("navNotifications")}</h2>
         <p className="text-muted-foreground">
           {mt("configureNotificationsForLocation", { name: location.name })}
         </p>
       </div>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="p-4 pb-3">
           <div className="flex items-center gap-3">
             <Mail className="h-5 w-5 text-purple-600" />
             <div>
@@ -63,7 +64,7 @@ export default function NotificationsSettings({ location, onSave }: Notification
             </div>
           </div>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-4 p-4 pt-0">
           <div>
             <Label htmlFor="notification-email">{mt("emailAddress")}</Label>
             <div className="flex items-center gap-2 mt-1.5">
@@ -106,11 +107,14 @@ export default function NotificationsSettings({ location, onSave }: Notification
             </ul>
           </div>
 
-          <StatusButton
-            status={saveAction.status}
-            onClick={saveAction.execute}
-            labels={{ idle: mt("saveNotificationSettings"), loading: mt("savingShort"), success: mt("saved") }}
-          />
+          <div className="flex justify-end pt-2">
+            <StatusButton
+              status={saveAction.status}
+              onClick={saveAction.execute}
+              disabled={!isDirty}
+              labels={{ idle: mt("saveNotificationSettings"), loading: mt("savingShort"), success: mt("saved") }}
+            />
+          </div>
         </CardContent>
       </Card>
     </div>

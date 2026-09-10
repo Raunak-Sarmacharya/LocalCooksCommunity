@@ -41,7 +41,7 @@ import {
   Upload,
   Cloud,
   AlertCircle,
-} from 'lucide-react';
+} from '@/components/ui/manager-icons';
 import { CustomField, CUSTOM_FIELD_TYPES } from './types';
 import { FormLegend } from '@/components/ui/form-legend';
 

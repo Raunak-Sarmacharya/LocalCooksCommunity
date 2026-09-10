@@ -1,6 +1,6 @@
 import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
-import { DollarSign, Save, Info, Loader2 } from "lucide-react";
+import { DollarSign, Save, Info, Loader2 } from "@/components/ui/manager-icons";
 import { useState, useEffect, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -17,6 +17,7 @@ import { apiGet, apiPut } from "@/lib/api";
 interface KitchenPricing {
   /** Raw input string in dollars (e.g. "15.50"). Empty string = unset. Stored as string so trailing decimals survive while typing. */
   hourlyRate: string;
+  dailyRate: string;
   currency: string;
   pricingModel: 'hourly' | 'daily' | 'weekly';
   /** Raw input string as a percentage (e.g. "13" or "13.5"). Empty string = unset. */
@@ -49,7 +50,7 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
 }
 
 // Extracted Content Component
-function KitchenPricingContent({
+export function KitchenPricingContent({
   selectedLocationId,
   selectedKitchenId
 }: {
@@ -64,6 +65,7 @@ function KitchenPricingContent({
   // Pricing form state — string-based so users can type decimals freely (e.g. "5." → "5.5" → "5.50")
   const [pricing, setPricing] = useState<KitchenPricing>({
     hourlyRate: '',
+    dailyRate: '',
     currency: 'CAD',
     pricingModel: 'hourly',
     taxRatePercent: '',
@@ -89,6 +91,9 @@ function KitchenPricingContent({
         hourlyRate: data.hourlyRate !== undefined && data.hourlyRate !== null
           ? (Number(data.hourlyRate) / 100).toFixed(2)
           : '',
+        dailyRate: data.dailyRate !== undefined && data.dailyRate !== null
+          ? (Number(data.dailyRate) / 100).toFixed(2)
+          : '',
         currency: data.currency || 'CAD',
         pricingModel: data.pricingModel || 'hourly',
         taxRatePercent: data.taxRatePercent !== undefined && data.taxRatePercent !== null
@@ -111,6 +116,7 @@ function KitchenPricingContent({
     } else {
       setPricing({
         hourlyRate: '',
+        dailyRate: '',
         taxRatePercent: '',
         currency: 'CAD',
         pricingModel: 'hourly',
@@ -130,12 +136,21 @@ function KitchenPricingContent({
 
     // Parse string inputs into numbers for validation + payload
     const hourlyRateNum = pricing.hourlyRate.trim() === '' ? null : parseFloat(pricing.hourlyRate);
+    const dailyRateNum = pricing.dailyRate.trim() === '' ? null : parseFloat(pricing.dailyRate);
     const taxRateNum = pricing.taxRatePercent.trim() === '' ? null : parseFloat(pricing.taxRatePercent);
 
     // Validate hourly rate
     if (hourlyRateNum !== null && (isNaN(hourlyRateNum) || hourlyRateNum < 0)) {
       toast({ title: mt("validationError"),
         description: mt("hourlyRateMustBeAPositiveNumberOrEmpty"),
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (dailyRateNum !== null && (isNaN(dailyRateNum) || dailyRateNum < 0)) {
+      toast({ title: mt("validationError"),
+        description: "Daily rate must be a positive number or empty",
         variant: "destructive",
       });
       return;
@@ -156,9 +171,13 @@ function KitchenPricingContent({
       const hourlyRateInCents = hourlyRateNum === null
         ? null
         : Math.round(hourlyRateNum * 100);
+      const dailyRateInCents = dailyRateNum === null
+        ? null
+        : Math.round(dailyRateNum * 100);
 
       const payload = {
         hourlyRate: hourlyRateInCents,
+        dailyRate: dailyRateInCents,
         currency: pricing.currency || 'CAD',
         pricingModel: pricing.pricingModel || 'hourly',
         taxRatePercent: taxRateNum,
@@ -174,6 +193,9 @@ function KitchenPricingContent({
       setPricing({
         hourlyRate: updated.hourlyRate !== null && updated.hourlyRate !== undefined
           ? (Number(updated.hourlyRate) / 100).toFixed(2)
+          : '',
+        dailyRate: updated.dailyRate !== null && updated.dailyRate !== undefined
+          ? (Number(updated.dailyRate) / 100).toFixed(2)
           : '',
         taxRatePercent: updated.taxRatePercent !== undefined && updated.taxRatePercent !== null
           ? String(Number(updated.taxRatePercent))
@@ -220,32 +242,10 @@ function KitchenPricingContent({
           <CardDescription>{mt("setHourlyRatesAndBookingRequirements")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Pricing Model */}
-          <div>
-            <Label htmlFor="pricingModel">{mt("pricingModel")}</Label>
-            <Select
-              value={pricing.pricingModel}
-              onValueChange={(value: 'hourly' | 'daily' | 'weekly') =>
-                setPricing({ ...pricing, pricingModel: value })
-              }
-            >
-              <SelectTrigger id="pricingModel" className="mt-2">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="hourly">{mt("hourlyRate")}</SelectItem>
-                <SelectItem value="daily">{mt("dailyRate")}</SelectItem>
-                <SelectItem value="weekly">{mt("weeklyRate")}</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground mt-1">{mt("chooseHowYouWantToChargeForKitchenBookings")}</p>
-          </div>
-
-          {/* Hourly Rate */}
-          <div>
+          <div className="grid gap-5 sm:grid-cols-2">
+            <div>
             <Label htmlFor="hourlyRate">
-              {pricing.pricingModel === 'hourly' ? mt("hourlyRate") :
-                pricing.pricingModel === 'daily' ? mt("dailyRate") : mt("weeklyRate")} ({pricing.currency})
+              {mt("hourlyRate")} ({pricing.currency})
             </Label>
             <CurrencyInput
               id="hourlyRate"
@@ -257,13 +257,20 @@ function KitchenPricingContent({
               className="mt-2"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              {pricing.pricingModel === 'hourly'
-                ? mt("amountChargedPerHour")
-                : pricing.pricingModel === 'daily'
-                  ? mt("amountChargedPerDay")
-                  : mt("amountChargedPerWeek")}
+              {mt("amountChargedPerHour")}
             </p>
-
+            </div>
+            <div>
+              <Label htmlFor="dailyRate">{mt("dailyRate")} ({pricing.currency})</Label>
+              <CurrencyInput
+                id="dailyRate"
+                value={pricing.dailyRate}
+                onValueChange={(val) => setPricing({ ...pricing, dailyRate: val })}
+                placeholder="0.00"
+                className="mt-2"
+              />
+              <p className="text-xs text-muted-foreground mt-1">{mt("amountChargedPerDay")}</p>
+            </div>
           </div>
 
           {/* Tax Rate */}

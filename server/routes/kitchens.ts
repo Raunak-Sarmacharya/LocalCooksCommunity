@@ -88,6 +88,7 @@ router.get("/chef/kitchens/:kitchenId/pricing", requireChef, async (req: Request
         // Map to pricing object expected by frontend
         const pricing = {
             hourlyRate: kitchen.hourlyRate,
+            dailyRate: kitchen.dailyRate,
             currency: kitchen.currency,
             pricingModel: kitchen.pricingModel,
             minimumBookingHours: kitchen.minimumBookingHours,

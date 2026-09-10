@@ -34,7 +34,7 @@ import {
   MapPin,
   Building2,
   Info,
-} from "lucide-react";
+} from "@/components/ui/manager-icons";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";

@@ -3,7 +3,7 @@ import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
-import { ChevronLeft, SkipForward } from "lucide-react";
+import { ChevronLeft, SkipForward } from "@/components/ui/manager-icons";
 import { cn } from "@/lib/utils";
 
 interface OnboardingNavigationFooterProps {

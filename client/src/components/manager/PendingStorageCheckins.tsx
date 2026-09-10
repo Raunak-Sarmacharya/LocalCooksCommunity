@@ -34,7 +34,7 @@ import {
   LogIn,
   SkipForward,
   ClipboardCheck,
-} from "lucide-react";
+} from "@/components/ui/manager-icons";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import {

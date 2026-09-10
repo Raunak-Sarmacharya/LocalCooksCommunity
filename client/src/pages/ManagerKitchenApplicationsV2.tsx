@@ -19,7 +19,7 @@ import {
     Users,
     FileCheck,
     ChefHat
-} from "lucide-react";
+} from "@/components/ui/manager-icons";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -743,7 +743,7 @@ function StatCard({
     title,
     value,
     icon: Icon,
-    color,
+    color, // Kept for prop compatibility
     subtitle,
     onClick,
     active
@@ -756,62 +756,30 @@ function StatCard({
     onClick?: () => void;
     active?: boolean;
 }) {
-    const colors = {
-        amber: {
-            bg: 'bg-amber-50',
-            border: 'border-amber-200',
-            text: 'text-amber-600',
-            value: 'text-amber-700',
-            activeBg: 'bg-amber-100',
-            activeBorder: 'border-amber-400'
-        },
-        blue: {
-            bg: 'bg-blue-50',
-            border: 'border-blue-200',
-            text: 'text-blue-600',
-            value: 'text-blue-700',
-            activeBg: 'bg-blue-100',
-            activeBorder: 'border-blue-400'
-        },
-        emerald: {
-            bg: 'bg-emerald-50',
-            border: 'border-emerald-200',
-            text: 'text-emerald-600',
-            value: 'text-emerald-700',
-            activeBg: 'bg-emerald-100',
-            activeBorder: 'border-emerald-400'
-        },
-        red: {
-            bg: 'bg-red-50',
-            border: 'border-red-200',
-            text: 'text-red-600',
-            value: 'text-red-700',
-            activeBg: 'bg-red-100',
-            activeBorder: 'border-red-400'
-        },
-    };
-
-    const c = colors[color];
-
     return (
         <Card
             className={cn(
-                "cursor-pointer transition-all hover:shadow-md border-2",
-                active ? `${c.activeBg} ${c.activeBorder}` : `${c.bg} ${c.border} hover:${c.activeBorder}`
+                "cursor-pointer transition-all hover:shadow-md border",
+                active 
+                    ? "bg-accent/50 border-primary shadow-sm" 
+                    : "bg-card border-border hover:border-primary/50"
             )}
             onClick={onClick}
         >
             <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                     <div>
-                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{title}</p>
-                        <p className={cn("text-3xl font-bold mt-1", c.value)}>{value}</p>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{title}</p>
+                        <p className="text-3xl font-bold mt-1 text-foreground">{value}</p>
                         {subtitle && (
-                            <p className="text-xs text-gray-500 mt-1">{subtitle}</p>
+                            <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
                         )}
                     </div>
-                    <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center", c.bg)}>
-                        <Icon className={cn("h-5 w-5", c.text)} />
+                    <div className={cn(
+                        "w-10 h-10 rounded-lg flex items-center justify-center transition-colors",
+                        active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                    )}>
+                        <Icon className="h-5 w-5" />
                     </div>
                 </div>
             </CardContent>

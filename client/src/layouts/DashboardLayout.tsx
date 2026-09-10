@@ -10,12 +10,12 @@ import {
     BreadcrumbPage,
     BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
-import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { CommandMenu } from "@/components/command-menu";
 import { Button } from "@/components/ui/button";
 import NotificationCenter from "@/components/manager/NotificationCenter";
 import { useTranslation } from "react-i18next";
+import type { ManagerBreadcrumb } from "@/lib/manager-kitchens-navigation";
 
 interface DashboardLayoutProps {
     children: React.ReactNode;
@@ -25,7 +25,7 @@ interface DashboardLayoutProps {
     selectedLocation: any;
     onLocationChange: (location: any) => void;
     onCreateLocation?: () => void;
-    breadcrumbs?: Array<{ label: string; href?: string }>;
+    breadcrumbs?: ManagerBreadcrumb[];
 }
 
 export default function DashboardLayout({
@@ -46,7 +46,7 @@ export default function DashboardLayout({
     const { logout } = useFirebaseAuth();
 
     return (
-        <SidebarProvider>
+        <SidebarProvider className="[--radius:0.75rem]">
             <AppSidebar
                 activeView={activeView}
                 onViewChange={onViewChange}
@@ -54,6 +54,7 @@ export default function DashboardLayout({
                 selectedLocation={selectedLocation}
                 onLocationChange={onLocationChange}
                 onCreateLocation={onCreateLocation}
+                breadcrumbs={displayBreadcrumbs}
             />
             <SidebarInset className="min-w-0 overflow-x-hidden">
                 <header className="flex h-16 shrink-0 items-center justify-between gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 border-b px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 min-w-0">
@@ -65,8 +66,8 @@ export default function DashboardLayout({
                                 {displayBreadcrumbs.map((crumb, index) => (
                                     <div key={index} className="flex items-center gap-2 min-w-0">
                                         <BreadcrumbItem className="hidden md:block min-w-0">
-                                            {crumb.href ? (
-                                                <BreadcrumbLink href="#" className="truncate" onClick={(e) => { e.preventDefault(); /* handle click */ }}>
+                                            {crumb.onClick ? (
+                                                <BreadcrumbLink href="#" className="truncate" onClick={(e) => { e.preventDefault(); crumb.onClick?.(); }}>
                                                     {crumb.label}
                                                 </BreadcrumbLink>
                                             ) : (
@@ -95,13 +96,15 @@ export default function DashboardLayout({
                         </Button>
                         
                         {/* Notification Center */}
-                        <NotificationCenter locationId={selectedLocation?.id} />
+                        <NotificationCenter
+                            locationId={selectedLocation?.id}
+                            onViewAll={() => onViewChange("notifications")}
+                        />
 
                     </div>
                 </header>
-                <main className="flex-1 min-w-0 p-4 md:p-6 lg:p-8 bg-muted/10 relative overflow-x-hidden overflow-y-auto">
-                    <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
-                    <div className="mx-auto max-w-7xl w-full min-w-0 animate-fade-in space-y-6 relative z-10">
+                <main className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden bg-muted/30 p-4 md:p-6 lg:p-8">
+                    <div className="mx-auto w-full max-w-7xl min-w-0 animate-fade-in space-y-6">
                         {children}
                     </div>
                 </main>

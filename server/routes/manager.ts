@@ -2661,7 +2661,16 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const user = req.neonUser!;
-      const { locationId, name, description, features, imageUrl } = req.body;
+      const {
+        locationId,
+        name,
+        description,
+        features,
+        imageUrl,
+        hourlyRate,
+        currency,
+        minimumBookingHours,
+      } = req.body;
 
       // Verify manager owns this location
       const location = await locationService.getLocationById(locationId);
@@ -2675,6 +2684,19 @@ router.post(
           .json({ error: "Access denied to this location" });
       }
 
+      if (hourlyRate !== undefined && (typeof hourlyRate !== "number" || hourlyRate <= 0)) {
+        return res.status(400).json({ error: "Hourly rate must be a positive number" });
+      }
+      if (
+        minimumBookingHours !== undefined &&
+        (typeof minimumBookingHours !== "number" ||
+          !Number.isInteger(minimumBookingHours) ||
+          minimumBookingHours < 0 ||
+          minimumBookingHours > 24)
+      ) {
+        return res.status(400).json({ error: "Minimum booking hours must be a whole number between 0 and 24" });
+      }
+
       const created = await kitchenService.createKitchen({
         locationId,
         name,
@@ -2682,8 +2704,9 @@ router.post(
         imageUrl,
         amenities: features || [],
         isActive: true, // Auto-activate
-        hourlyRate: undefined, // Manager sets pricing later
-        minimumBookingHours: 1,
+        hourlyRate,
+        currency: currency || "CAD",
+        minimumBookingHours: minimumBookingHours ?? 1,
         pricingModel: "hourly",
       });
 
@@ -3323,6 +3346,7 @@ router.get(
 
       res.json({
         hourlyRate: kitchen.hourlyRate, // In dollars if getKitchenById handled it, or cents?
+        dailyRate: kitchen.dailyRate,
         // routes.ts typically converted it?
         // Wait, updateKitchenPricing converts dollars to cents.
         // getKitchenById likely returns cents?
@@ -3377,6 +3401,7 @@ router.put(
 
       const {
         hourlyRate,
+        dailyRate,
         currency,
         minimumBookingHours,
         pricingModel,
@@ -3392,6 +3417,16 @@ router.put(
         return res
           .status(400)
           .json({ error: "Hourly rate must be a positive number or null" });
+      }
+
+      if (
+        dailyRate !== undefined &&
+        dailyRate !== null &&
+        (typeof dailyRate !== "number" || dailyRate < 0)
+      ) {
+        return res
+          .status(400)
+          .json({ error: "Daily rate must be a positive number or null" });
       }
 
       if (currency !== undefined && typeof currency !== "string") {
@@ -3439,6 +3474,9 @@ router.put(
       const pricing: any = {};
       if (hourlyRate !== undefined) {
         pricing.hourlyRate = hourlyRate === null ? null : hourlyRate;
+      }
+      if (dailyRate !== undefined) {
+        pricing.dailyRate = dailyRate === null ? null : dailyRate;
       }
       if (currency !== undefined) pricing.currency = currency;
       if (minimumBookingHours !== undefined)
@@ -5707,6 +5745,8 @@ router.put(
       }
 
       const {
+        name,
+        address,
         cancellationPolicyHours,
         cancellationPolicyMessage,
         defaultDailyBookingLimit,
@@ -5835,6 +5875,19 @@ router.put(
       const updates: Partial<typeof locations.$inferInsert> = {
         updatedAt: new Date(),
       };
+
+      if (name !== undefined) {
+        if (typeof name !== "string" || !name.trim()) {
+          return res.status(400).json({ error: "Location name is required" });
+        }
+        updates.name = name.trim();
+      }
+      if (address !== undefined) {
+        if (typeof address !== "string" || !address.trim()) {
+          return res.status(400).json({ error: "Location address is required" });
+        }
+        updates.address = address.trim();
+      }
 
       if (cancellationPolicyHours !== undefined) {
         (updates as any).cancellationPolicyHours = cancellationPolicyHours;
@@ -6305,6 +6358,9 @@ router.post(
         kitchenLicenseStatus,
         kitchenLicenseExpiry,
         kitchenTermsUrl,
+        logoUrl,
+        brandImageUrl,
+        description,
       } = req.body;
 
       logger.info(
@@ -6368,6 +6424,9 @@ router.post(
         kitchenLicenseStatus: kitchenLicenseStatus || "pending",
         kitchenLicenseExpiry: kitchenLicenseExpiry || undefined,
         kitchenTermsUrl: kitchenTermsUrl || undefined,
+        logoUrl: logoUrl || undefined,
+        brandImageUrl: brandImageUrl || undefined,
+        description: description || undefined,
       });
 
       // Map snake_case to camelCase for consistent API response
@@ -6485,11 +6544,17 @@ router.put(
         kitchenLicenseStatus,
         kitchenLicenseExpiry,
         kitchenTermsUrl,
+        logoUrl,
+        brandImageUrl,
+        description,
       } = req.body;
 
       const updates: any = {};
       if (name !== undefined) updates.name = name;
       if (address !== undefined) updates.address = address;
+      if (logoUrl !== undefined) updates.logoUrl = logoUrl || null;
+      if (brandImageUrl !== undefined) updates.brandImageUrl = brandImageUrl || null;
+      if (description !== undefined) updates.description = description || null;
       if (notificationEmail !== undefined)
         updates.notificationEmail = notificationEmail || null;
 

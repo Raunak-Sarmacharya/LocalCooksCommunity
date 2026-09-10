@@ -15,7 +15,7 @@ import {
   Wrench, Save, Loader2, Plus, X, Check, Search, Pencil, Trash2, 
   Package, Grid3X3, DollarSign, ChevronDown, ChevronUp,
   Flame, ChefHat, Snowflake, UtensilsCrossed, SprayCan, PlusCircle, SearchX
-} from "lucide-react";
+} from "@/components/ui/manager-icons";
 import { useState, useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -115,7 +115,7 @@ export default function EquipmentListingManagement() {
   );
 }
 
-function EquipmentListingContent({
+export function EquipmentListingContent({
   selectedLocationId,
   selectedKitchenId
 }: {
