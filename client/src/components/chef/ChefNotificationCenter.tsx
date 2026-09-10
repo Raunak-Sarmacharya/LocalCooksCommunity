@@ -295,11 +295,13 @@ function NotificationItem({
   onMarkRead, 
   onArchive,
   onDelete,
+  onActivate,
 }: { 
   notification: Notification;
   onMarkRead: (id: number) => Promise<void>;
   onArchive: (id: number) => void;
   onDelete: (id: number) => void;
+  onActivate?: () => void;
 }) {
   const { t } = useTranslation("chef");
   const href = resolveNotificationHref({
@@ -310,6 +312,9 @@ function NotificationItem({
   });
 
   const openNotification = async () => {
+    // Selection should dismiss the transient surface immediately. Do not make
+    // closing the popover wait for the mark-as-read network request.
+    onActivate?.();
     if (!notification.is_read) {
       await onMarkRead(notification.id);
     }
@@ -835,6 +840,7 @@ export default function ChefNotificationCenter({
                         onMarkRead={handleMarkRead}
                         onArchive={handleArchive}
                         onDelete={handleDelete}
+                        onActivate={() => setIsOpen(false)}
                       />
                     ))}
                   </div>

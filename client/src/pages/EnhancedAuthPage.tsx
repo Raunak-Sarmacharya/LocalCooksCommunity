@@ -213,7 +213,7 @@ export default function EnhancedAuthPage() {
               
               // Use setTimeout to ensure state is properly set before redirect
               setTimeout(() => {
-                setLocation(targetPath);
+                setLocation(targetPath, { replace: true });
               }, 500);
             }
             
@@ -296,7 +296,7 @@ export default function EnhancedAuthPage() {
           }
         }
         logger.info(`🚀 WELCOME COMPLETE - REDIRECTING TO: ${targetPath}`);
-        setLocation(targetPath);
+        setLocation(targetPath, { replace: true });
       } else {
         logger.error('⚠️ Welcome completion API failed:', response.status);
         const errorText = await response.text();
@@ -311,7 +311,7 @@ export default function EnhancedAuthPage() {
           targetPath = getChefPostAuthPath(userMeta);
         }
         logger.info(`🔄 REDIRECTING DESPITE ERROR TO: ${targetPath}`);
-        setLocation(targetPath);
+        setLocation(targetPath, { replace: true });
       }
     } catch (error) {
       logger.error('❌ Error completing welcome screen:', error);
@@ -325,18 +325,21 @@ export default function EnhancedAuthPage() {
         targetPath = getChefPostAuthPath(userMeta);
       }
       logger.info(`🔄 REDIRECTING DESPITE ERROR TO: ${targetPath}`);
-      setLocation(targetPath);
+      setLocation(targetPath, { replace: true });
     }
   };
 
-  // Redirect logic for authenticated users after login attempt
+  // Redirect authenticated users away from the auth page. This also handles
+  // browser Back restoring /auth after a successful sign-in: hasAttemptedLogin
+  // is component-local state and resets when /auth remounts, while the Firebase
+  // session remains valid.
   useEffect(() => {
     if (redirectTimeoutRef.current) {
       clearTimeout(redirectTimeoutRef.current);
       redirectTimeoutRef.current = null;
     }
 
-    if (!loading && !isInitialLoad && user && hasAttemptedLogin && userMeta) {
+    if (!loading && !isInitialLoad && user && userMeta) {
       // Email ownership is the first gate. In particular, an authenticated
       // Firebase session exists immediately after registration; that must not
       // be mistaken for a verified session and allowed into onboarding.
@@ -368,7 +371,7 @@ export default function EnhancedAuthPage() {
 
         logger.info('🔒 TERMS ACCEPTANCE REQUIRED - redirecting to /accept-terms');
         redirectTimeoutRef.current = setTimeout(() => {
-          setLocation(`/accept-terms?redirect=${targetPath}`);
+          setLocation(`/accept-terms?redirect=${targetPath}`, { replace: true });
         }, 300);
         return;
       }
@@ -380,11 +383,11 @@ export default function EnhancedAuthPage() {
       if (!userMeta.has_seen_welcome) {
         if (userMeta.role === 'admin') {
           logger.info('👑 Admin user - skipping welcome screen, redirecting to admin');
-          setLocation('/admin');
+          setLocation('/admin', { replace: true });
           return;
         } else if (userMeta.role === 'manager') {
           logger.info('🏢 Manager user - skipping welcome screen, redirecting to manager dashboard');
-          setLocation('/manager/dashboard');
+          setLocation('/manager/dashboard', { replace: true });
           return;
         } else {
           logger.info('🎉 WELCOME SCREEN REQUIRED - Not redirecting yet');
@@ -409,11 +412,11 @@ export default function EnhancedAuthPage() {
       
       if (location !== targetPath && targetPath !== '/auth') {
         redirectTimeoutRef.current = setTimeout(() => {
-          setLocation(targetPath);
+          setLocation(targetPath, { replace: true });
         }, 300);
       }
     }
-  }, [loading, isInitialLoad, user, hasAttemptedLogin, userMeta, location, setLocation]);
+  }, [loading, isInitialLoad, user, userMeta, location, setLocation]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -453,9 +456,9 @@ export default function EnhancedAuthPage() {
   // Only show welcome screen for chefs
   if (!loading && !userMetaLoading && user && userMeta && hasVerifiedEmail(user, userMeta) && !userMeta.has_seen_welcome) {
     if (userMeta.role === 'admin') {
-      return <Redirect to="/admin" />;
+      return <Redirect to="/admin" replace />;
     } else if (userMeta.role === 'manager') {
-      return <Redirect to="/manager/dashboard" />;
+      return <Redirect to="/manager/dashboard" replace />;
     } else {
       return <WelcomeScreen onContinue={handleWelcomeContinue} />;
     }

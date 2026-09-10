@@ -1606,7 +1606,7 @@ export default function ChefLanding() {
                       className="group"
                     >
                       <div className="h-full bg-white rounded-2xl p-4 border border-[#2C2C2C]/10 hover:shadow-md transition-all duration-300">
-                        <div className="flex flex-col items-center text-center gap-1.5 md:flex-row md:items-start md:text-left md:gap-2.5">
+                        <div className="flex flex-row items-center text-left gap-3 md:items-start md:gap-2.5">
                           <div className="flex-shrink-0">
                             <Icon icon={item.icon} className="h-4 w-4 text-[#2C2C2C]" />
                           </div>
@@ -1795,7 +1795,10 @@ export default function ChefLanding() {
                 <div className="p-4 md:p-6">
                   {/* Header Row with Kitchen Icon */}
                   <div className="flex items-start gap-4 mb-4">
-                    <Icon icon="mdi:table-chair" className="h-12 w-12 shrink-0 text-[#2C2C2C]" aria-hidden />
+                    <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" className="h-12 w-12 shrink-0 text-[#2C2C2C]" aria-hidden="true">
+                      <path d="M0 0h24v24H0z" fill="none" />
+                      <path fill="currentColor" d="M11.473 10.596h1.399v-.7H11.75l-.938-3.94a.35.35 0 0 0-.341-.27H8.967a.35.35 0 0 0-.341.27l-.939 3.94H6.561v.7ZM9.244 6.385h.949l.836 3.509H8.408Zm1.527 8.07H8.666a.35.35 0 0 0-.351.35v1.755a.35.35 0 0 0 .351.351h2.105a.35.35 0 0 0 .351-.351v-1.755a.35.35 0 0 0-.351-.35m-.35 1.754H9.017v-1.053h1.4ZM6.21 14.455h.702v1.754H6.21Zm11.227-2.457h.702v1.754h-.702Zm0-3.156h.702v1.754h-.702Zm4.211-2.457h-4.912a.35.35 0 0 0-.35.351v6.666H2.35a.35.35 0 0 0-.35.351v4.21a.35.35 0 0 0 .35.351h19.299a.35.35 0 0 0 .351-.351V6.736a.35.35 0 0 0-.352-.351m-5.263 9.122h-4.211v-1.4h4.211Zm-13.684-1.4h4.562v3.509H2.701Zm5.263 0h3.509v1.4h-.012v.7h.012v1.4H7.964Zm4.21 2.1h4.211v1.4h-4.211Zm9.123 1.4h-4.211v-5.958h4.211Zm-4.211-6.66v-3.86h4.211v3.86Z" />
+                    </svg>
                     <div>
                       <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#6B6B6B] block mb-1">{t("forKitchenOwners")}</span>
                       <h3 className="text-lg md:text-xl lg:text-2xl font-bold text-[#1A1A1A] leading-tight">

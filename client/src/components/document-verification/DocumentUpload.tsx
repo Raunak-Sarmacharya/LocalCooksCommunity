@@ -308,7 +308,7 @@ export function DocumentManagementModal({ open, onOpenChange }: DocumentManageme
           requestClose();
         }}
       >
-        <DialogHeader>
+        <DialogHeader className="flex flex-row items-center justify-between p-4 sm:p-0 space-y-0 border-b sm:border-0">
           <DialogTitle className="flex items-center gap-2">
             {t("duManageTitle")}
             <InfoHint title={t("duGoodToKnow")}>
@@ -316,6 +316,9 @@ export function DocumentManagementModal({ open, onOpenChange }: DocumentManageme
               <p>{t("duStatusResetBody")}</p>
             </InfoHint>
           </DialogTitle>
+          <Button variant="outline" size="sm" onClick={requestClose}>
+            {t("duCancel")}
+          </Button>
         </DialogHeader>
         <div className="space-y-4 p-4 sm:p-0">
           {verification && (
@@ -343,11 +346,6 @@ export function DocumentManagementModal({ open, onOpenChange }: DocumentManageme
               </dl>
             </div>
           )}
-          <div className="flex justify-end">
-            <Button variant="outline" size="sm" onClick={requestClose}>
-              {t("duCancel")}
-            </Button>
-          </div>
           <DocumentUpload forceShowForm embedded />
         </div>
       </DialogContent>

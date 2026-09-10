@@ -274,6 +274,7 @@ function NotificationItem({
   onArchive,
   onUnarchive,
   onDelete,
+  onActivate,
   isSelected,
   _onSelect
 }: { 
@@ -282,6 +283,7 @@ function NotificationItem({
   onArchive: (id: number) => void;
   onUnarchive: (id: number) => void;
   onDelete: (id: number) => void;
+  onActivate?: () => void;
   isSelected: boolean;
   _onSelect: (id: number) => void;
 }) {
@@ -293,6 +295,9 @@ function NotificationItem({
   });
 
   const openNotification = async () => {
+    // Close before the async read mutation/navigation so the old overlay never
+    // survives into the destination view.
+    onActivate?.();
     if (!notification.is_read) {
       await onMarkRead(notification.id);
     }
@@ -834,6 +839,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
                         onArchive={handleArchive}
                         onUnarchive={handleUnarchive}
                         onDelete={handleDelete}
+                        onActivate={() => setIsOpen(false)}
                         isSelected={selectedIds.has(notification.id)}
                         _onSelect={handleSelect}
                       />

@@ -53,6 +53,5 @@ export function sellerJourneyPayload(draft: SellerJourneyDraft) {
     foodEstablishmentCert: "no" as const,
     foodSafetyLicenseUrl: "",
     foodEstablishmentCertUrl: "",
-    feedback: "Started from the chef landing page guided journey. Certifications will be provided from the dashboard.",
   };
 }

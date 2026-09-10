@@ -33,6 +33,7 @@ const hasActiveApplication = (applications?: Application[]) => {
 
 export default function Header({ position = "fixed", hideHowItWorks = false }: { position?: "fixed" | "static"; hideHowItWorks?: boolean }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isServicesOpen, setIsServicesOpen] = useState(false);
   const [location, setLocation] = useLocation();
   const firebaseAuth = useFirebaseAuth();
   const { t } = useTranslation("common");
@@ -192,6 +193,8 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
 
   const scrollToSection = useCallback((sectionId: string, event?: React.MouseEvent) => {
     event?.preventDefault();
+    setIsMenuOpen(false);
+    setIsServicesOpen(false);
 
     const scrollToElement = () => {
       if (scrollToPageSection(sectionId)) {
@@ -294,7 +297,7 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
         <nav className="hidden md:block">
           <ul className="flex space-x-1 items-center">
             <li>
-              <DropdownMenu>
+              <DropdownMenu open={isServicesOpen} onOpenChange={setIsServicesOpen}>
                 <DropdownMenuTrigger asChild>
                   <button
                     className="flex items-center gap-1 text-gray-600 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-[13px] px-3 py-1.5 rounded-md hover:bg-gray-50/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]/40"
@@ -304,37 +307,37 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
                     <ChevronDown className="h-4 w-4 opacity-70" />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-72 p-1.5">
+                <DropdownMenuContent align="start" className="w-max p-1.5">
                   {currentSubdomain === 'kitchen' ? (
                     <>
                       <DropdownMenuItem asChild>
                         <a
                           href="/#how-it-works"
-                          className="flex items-start gap-2.5 py-2 px-2 cursor-pointer rounded-md"
+                          className="flex items-center gap-3 py-2 px-3 cursor-pointer rounded-md"
                           onClick={(e) => scrollToSection("how-it-works", e)}
                         >
-                          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-amber-50 text-amber-700"><Store className="h-4 w-4" /></span>
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-amber-50 text-amber-700"><Store className="h-4 w-4" /></span>
                           <span className="min-w-0">
-                            <span className="font-medium text-[13px] text-gray-900">{t("kitchenServiceListSpace")}</span>
-                            <span className="block text-[11px] text-gray-500 mt-0.5">{t("kitchenServiceListSpaceDesc")}</span>
+                            <span className="block font-medium text-[13px] text-gray-900 whitespace-nowrap">{t("kitchenServiceListSpace")}</span>
+                            <span className="block text-[11px] text-gray-500 mt-0.5 whitespace-nowrap">{t("kitchenServiceListSpaceDesc")}</span>
                           </span>
                         </a>
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild>
-                        <a href="/#how-it-works" className="flex items-start gap-2.5 py-2 px-2 cursor-pointer rounded-md" onClick={(e) => scrollToSection("how-it-works", e)}>
-                          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-blue-50 text-blue-700"><CookingPot className="h-4 w-4" /></span>
-                          <span>
-                            <span className="font-medium text-[13px] text-gray-900">{t("kitchenServiceManageBookings")}</span>
-                            <span className="block text-[11px] text-gray-500 mt-0.5">{t("kitchenServiceManageBookingsDesc")}</span>
+                        <a href="/#how-it-works" className="flex items-center gap-3 py-2 px-3 cursor-pointer rounded-md" onClick={(e) => scrollToSection("how-it-works", e)}>
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-blue-50 text-blue-700"><CookingPot className="h-4 w-4" /></span>
+                          <span className="min-w-0">
+                            <span className="block font-medium text-[13px] text-gray-900 whitespace-nowrap">{t("kitchenServiceManageBookings")}</span>
+                            <span className="block text-[11px] text-gray-500 mt-0.5 whitespace-nowrap">{t("kitchenServiceManageBookingsDesc")}</span>
                           </span>
                         </a>
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild>
-                        <a href="/#how-it-works" className="flex items-start gap-2.5 py-2 px-2 cursor-pointer rounded-md" onClick={(e) => scrollToSection("how-it-works", e)}>
-                          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-emerald-50 text-emerald-700"><CreditCard className="h-4 w-4" /></span>
-                          <span>
-                            <span className="font-medium text-[13px] text-gray-900">{t("kitchenServiceEarn")}</span>
-                            <span className="block text-[11px] text-gray-500 mt-0.5">{t("kitchenServiceEarnDesc")}</span>
+                        <a href="/#how-it-works" className="flex items-center gap-3 py-2 px-3 cursor-pointer rounded-md" onClick={(e) => scrollToSection("how-it-works", e)}>
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-emerald-50 text-emerald-700"><CreditCard className="h-4 w-4" /></span>
+                          <span className="min-w-0">
+                            <span className="block font-medium text-[13px] text-gray-900 whitespace-nowrap">{t("kitchenServiceEarn")}</span>
+                            <span className="block text-[11px] text-gray-500 mt-0.5 whitespace-nowrap">{t("kitchenServiceEarnDesc")}</span>
                           </span>
                         </a>
                       </DropdownMenuItem>
@@ -344,26 +347,45 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
                       <DropdownMenuItem asChild>
                         <a
                           href="/#how-it-works"
-                          className="flex items-start gap-2.5 py-2 px-2 cursor-pointer rounded-md"
+                          className="flex items-center gap-3 py-2 px-3 cursor-pointer rounded-md"
                           onClick={(e) => scrollToSection("how-it-works", e)}
                         >
-                          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-700">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-700">
                             <ShoppingBag className="h-4 w-4" />
                           </span>
                           <span className="min-w-0">
-                            <span className="font-medium text-[13px] text-gray-900">{t("chefServiceSell")}</span>
-                            <span className="block text-[11px] text-gray-500 mt-0.5">{t("chefServiceSellDesc")}</span>
+                            <span className="block font-medium text-[13px] text-gray-900 whitespace-nowrap">{t("chefServiceSell")}</span>
+                            <span className="block text-[11px] text-gray-500 mt-0.5 whitespace-nowrap">{t("chefServiceSellDesc")}</span>
                           </span>
                         </a>
                       </DropdownMenuItem>
-                      <DropdownMenuItem asChild><a href="/#how-it-works" className="flex items-start gap-2.5 py-2 px-2 cursor-pointer rounded-md" onClick={(e) => scrollToSection("how-it-works", e)}><span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-700"><CreditCard className="h-4 w-4" /></span><span><span className="font-medium text-[13px] text-gray-900">{t("chefServiceOperations")}</span><span className="block text-[11px] text-gray-500 mt-0.5">{t("chefServiceOperationsDesc")}</span></span></a></DropdownMenuItem>
-                      <DropdownMenuItem asChild><a href="/#kitchen-access" className="flex items-start gap-2.5 py-2 px-2 cursor-pointer rounded-md" onClick={(e) => scrollToSection("kitchen-access", e)}><span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-700"><CookingPot className="h-4 w-4" /></span><span><span className="font-medium text-[13px] text-gray-900">{t("chefServiceBookKitchen")}</span><span className="block text-[11px] text-gray-500 mt-0.5">{t("chefServiceBookKitchenDesc")}</span></span></a></DropdownMenuItem>
-                      <div role="separator" className="mx-2 my-2 border-t border-gray-200" />
-                      <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">{t("kitchenPartnerLink")}</p>
                       <DropdownMenuItem asChild>
-                        <a href={serviceUrls.kitchen} className="flex items-start gap-2.5 rounded-md px-2 py-2">
-                          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-700"><Warehouse className="h-4 w-4" /></span>
-                          <span><span className="font-medium text-[13px] text-gray-900">{t("servicesForKitchensDesc")}</span><span className="mt-0.5 block text-[11px] text-gray-500">{t("kitchenPartnerLinkDesc")}</span></span>
+                        <a href="/#how-it-works" className="flex items-center gap-3 py-2 px-3 cursor-pointer rounded-md" onClick={(e) => scrollToSection("how-it-works", e)}>
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-700"><CreditCard className="h-4 w-4" /></span>
+                          <span className="min-w-0">
+                            <span className="block font-medium text-[13px] text-gray-900 whitespace-nowrap">{t("chefServiceOperations")}</span>
+                            <span className="block text-[11px] text-gray-500 mt-0.5 whitespace-nowrap">{t("chefServiceOperationsDesc")}</span>
+                          </span>
+                        </a>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <a href="/#kitchen-access" className="flex items-center gap-3 py-2 px-3 cursor-pointer rounded-md" onClick={(e) => scrollToSection("kitchen-access", e)}>
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-700"><CookingPot className="h-4 w-4" /></span>
+                          <span className="min-w-0">
+                            <span className="block font-medium text-[13px] text-gray-900 whitespace-nowrap">{t("chefServiceBookKitchen")}</span>
+                            <span className="block text-[11px] text-gray-500 mt-0.5 whitespace-nowrap">{t("chefServiceBookKitchenDesc")}</span>
+                          </span>
+                        </a>
+                      </DropdownMenuItem>
+                      <div role="separator" className="mx-2 my-2 border-t border-gray-200" />
+                      <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">{t("kitchenPartnerLink")}</p>
+                      <DropdownMenuItem asChild>
+                        <a href={serviceUrls.kitchen} className="flex items-center gap-3 rounded-md px-3 py-2" onClick={() => setIsServicesOpen(false)}>
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-700"><Warehouse className="h-4 w-4" /></span>
+                          <span className="min-w-0">
+                            <span className="block font-medium text-[13px] text-gray-900 whitespace-nowrap">{t("servicesForKitchensDesc")}</span>
+                            <span className="block text-[11px] text-gray-500 mt-0.5 whitespace-nowrap">{t("kitchenPartnerLinkDesc")}</span>
+                          </span>
                         </a>
                       </DropdownMenuItem>
                     </>

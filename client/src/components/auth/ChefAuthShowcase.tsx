@@ -24,7 +24,7 @@ export default function ChefAuthShowcase() {
       <div className="relative mx-auto flex w-full max-w-[790px] flex-col justify-center">
         <motion.div {...reveal(0.06, -18)}>
           <h2 className="max-w-[660px] text-[clamp(2rem,3.2vw,3.5rem)] font-bold leading-[1.02] tracking-[-0.05em] text-white">
-            Everything your food business needs, in one place.
+            Everything your business needs, in one place.
           </h2>
           <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/75 xl:text-base">
             Local food starts with local cooks — like you. Open your own storefront. Cook in a professional kitchen, on your schedule.
@@ -38,7 +38,7 @@ export default function ChefAuthShowcase() {
           <motion.div
             {...reveal(0.14, 20, -10)}
             whileHover={reduceMotion ? undefined : { y: -5 }}
-            className="absolute right-[2%] top-[0%] z-10 w-[60%] rounded-[1.4rem] border border-white/45 bg-white p-4 shadow-[0_22px_55px_-24px_rgba(41,8,18,0.55)]"
+            className="absolute right-[5%] top-[2%] z-10 w-[55%] rounded-[1.4rem] border border-white/45 bg-white p-4 shadow-[0_22px_55px_-24px_rgba(41,8,18,0.55)]"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -67,31 +67,13 @@ export default function ChefAuthShowcase() {
             </div>
           </motion.div>
 
-          {/* Example 2: Customer Message (Top Right, Overlapping Revenue) */}
-          <motion.div
-            {...reveal(0.35, -20, 0)}
-            whileHover={reduceMotion ? undefined : { y: -5 }}
-            className="absolute top-[-6%] right-[5%] z-30 w-[42%] rounded-[1rem] border border-white/45 bg-white/95 backdrop-blur-md p-2.5 shadow-xl"
-          >
-            <div className="flex gap-2">
-              <div className="h-6 w-6 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 flex-shrink-0">
-                <span className="text-[10px] font-bold">JW</span>
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex justify-between items-center">
-                  <p className="text-[9px] font-bold text-slate-900">Jennifer W.</p>
-                  <span className="text-[7px] text-slate-500">2m ago</span>
-                </div>
-                <p className="text-[9px] text-slate-600 truncate">Can you do less spicy for the kids?</p>
-              </div>
-            </div>
-          </motion.div>
+
 
           {/* Example 1: 5★ Review (Top Left, Overlapping Revenue) */}
           <motion.div
             {...reveal(0.25, -20, -10)}
             whileHover={reduceMotion ? undefined : { y: -5 }}
-            className="absolute left-[8%] top-[2%] z-30 w-[35%] rounded-[1rem] border border-white/45 bg-white/95 backdrop-blur-md p-2.5 shadow-xl"
+            className="absolute right-[50%] top-[-2%] z-30 w-max pr-6 rounded-[1rem] border border-white/45 bg-white/95 backdrop-blur-md p-2.5 shadow-xl"
           >
             <div className="flex items-center gap-2">
               <div className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-100 text-amber-500 flex-shrink-0">
@@ -108,7 +90,7 @@ export default function ChefAuthShowcase() {
           <motion.div
             {...reveal(0.22, -20, 10)}
             whileHover={reduceMotion ? undefined : { y: -5 }}
-            className="absolute left-[3%] top-[22%] z-20 w-[42%] rounded-[1.25rem] border border-white/45 bg-white/95 backdrop-blur-md p-3.5 shadow-xl"
+            className="absolute right-[55%] top-[22%] z-20 w-max min-w-[160px] pr-6 rounded-[1.25rem] border border-white/45 bg-white/95 backdrop-blur-md p-3 shadow-xl"
           >
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-50 text-teal-700">
@@ -133,9 +115,9 @@ export default function ChefAuthShowcase() {
           <motion.div
             {...reveal(0.28, 20, 20)}
             whileHover={reduceMotion ? undefined : { y: -5 }}
-            className="absolute right-[0%] top-[40%] z-30 w-[34%] rounded-[1rem] border border-white/45 bg-white/95 backdrop-blur-md p-2 shadow-xl"
+            className="absolute right-[2%] top-[38%] z-30 w-max pr-6 rounded-[1rem] border border-white/45 bg-white/95 backdrop-blur-md p-2 shadow-xl"
           >
-            <div className="flex items-center justify-between gap-2 px-1">
+            <div className="flex items-center justify-between gap-4 px-1">
               <div className="flex items-center gap-2">
                 <div className="flex h-6 w-6 items-center justify-center rounded-md bg-indigo-50 text-[#635BFF]">
                   <Icon icon="mdi:currency-usd" className="h-3 w-3" />
@@ -156,7 +138,7 @@ export default function ChefAuthShowcase() {
           <motion.div
             {...reveal(0.32, -20, 20)}
             whileHover={reduceMotion ? undefined : { y: -5 }}
-            className="absolute bottom-[2%] left-[2%] z-10 flex w-[58%] flex-col overflow-hidden rounded-[1.4rem] border border-white/45 bg-white p-1.5 shadow-[0_24px_60px_-20px_rgba(41,8,18,0.55)]"
+            className="absolute bottom-[2%] left-[5%] z-10 flex w-[55%] flex-col overflow-hidden rounded-[1.4rem] border border-white/45 bg-white p-1.5 shadow-[0_24px_60px_-20px_rgba(41,8,18,0.55)]"
           >
             <div className="relative h-[110px] w-full rounded-t-xl rounded-b-sm overflow-hidden bg-slate-100 group">
               <img src={harbourKitchenImage} alt="Harbour Kitchen Hub" className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" />
@@ -179,7 +161,7 @@ export default function ChefAuthShowcase() {
           <motion.div
             {...reveal(0.38, 20, 30)}
             whileHover={reduceMotion ? undefined : { y: -5 }}
-            className="absolute bottom-[8%] right-[4%] z-20 w-[42%] rounded-[1.25rem] border border-white/45 bg-white/95 backdrop-blur-md p-3.5 shadow-2xl"
+            className="absolute bottom-[10%] left-[48%] z-20 w-[40%] rounded-[1.25rem] border border-white/45 bg-white/95 backdrop-blur-md p-3.5 shadow-2xl"
           >
             <p className="mb-2 text-xs font-bold text-slate-900">Kitchen Access</p>
             <div className="flex flex-col gap-2">
@@ -196,7 +178,7 @@ export default function ChefAuthShowcase() {
           <motion.div
             {...reveal(0.4, 30, 20)}
             whileHover={reduceMotion ? undefined : { y: -5 }}
-            className="absolute bottom-[-2%] right-[10%] z-30 w-[32%] rounded-xl border border-white/45 bg-white/95 backdrop-blur-md p-2 shadow-xl"
+            className="absolute bottom-[-2%] left-[52%] z-30 w-max pr-6 rounded-xl border border-white/45 bg-white/95 backdrop-blur-md p-2 shadow-xl"
           >
             <div className="flex items-center gap-2 px-1">
               <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-blue-600 flex-shrink-0">
@@ -213,7 +195,7 @@ export default function ChefAuthShowcase() {
           <motion.div
             {...reveal(0.42, -30, 10)}
             whileHover={reduceMotion ? undefined : { y: -5 }}
-            className="absolute bottom-[36%] left-[0%] z-30 w-[36%] rounded-xl border border-white/45 bg-white/95 backdrop-blur-md p-2 shadow-xl"
+            className="absolute bottom-[35%] left-[2%] z-30 w-max pr-6 rounded-xl border border-white/45 bg-white/95 backdrop-blur-md p-2 shadow-xl"
           >
             <div className="flex items-center gap-2 px-1">
               <div className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-50 text-amber-600 flex-shrink-0">
@@ -230,7 +212,7 @@ export default function ChefAuthShowcase() {
           <motion.div
             {...reveal(0.45, -20, 20)}
             whileHover={reduceMotion ? undefined : { y: -5 }}
-            className="absolute bottom-[24%] left-[25%] z-30 w-[34%] rounded-xl border border-white/45 bg-white/95 backdrop-blur-md p-2 shadow-xl"
+            className="absolute bottom-[34%] left-[28%] z-30 w-max pr-6 rounded-xl border border-white/45 bg-white/95 backdrop-blur-md p-2 shadow-xl"
           >
             <div className="flex items-center gap-2 px-1">
               <div className="flex h-6 w-6 items-center justify-center rounded-md bg-indigo-50 text-indigo-600 flex-shrink-0">

@@ -31,7 +31,7 @@ export function ProtectedRoute({ path, component: Component }: ProtectedRoutePro
     );
     return (
       <Route path={path}>
-        <Redirect to={`/auth?redirect=${redirect}`} />
+        <Redirect to={`/auth?redirect=${redirect}`} replace />
       </Route>
     );
   }
@@ -42,7 +42,7 @@ export function ProtectedRoute({ path, component: Component }: ProtectedRoutePro
   if (!hasVerifiedEmail(user, user)) {
     return (
       <Route path={path}>
-        <Redirect to="/auth" />
+        <Redirect to="/auth" replace />
       </Route>
     );
   }
@@ -56,7 +56,7 @@ export function ProtectedRoute({ path, component: Component }: ProtectedRoutePro
   if (needsAcceptance) {
     return (
       <Route path={path}>
-        <Redirect to={`/accept-terms?redirect=${path}`} />
+        <Redirect to={`/accept-terms?redirect=${path}`} replace />
       </Route>
     );
   }

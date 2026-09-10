@@ -40,5 +40,6 @@ describe("seller journey draft", () => {
       foodSafetyLicense: "no",
       foodEstablishmentCert: "no",
     });
+    expect(payload).not.toHaveProperty("feedback");
   });
 });

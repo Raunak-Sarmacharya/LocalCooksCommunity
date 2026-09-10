@@ -55,19 +55,9 @@ function TermsAcceptanceScreen() {
         else redirectPath = getChefPostAuthPath(user);
       }
 
-      setLocation(redirectPath);
+      setLocation(redirectPath, { replace: true });
     }
   }, [user, setLocation]);
-
-  // Prevent back navigation during terms acceptance
-  useEffect(() => {
-    const handlePopState = () => {
-      window.history.pushState(null, "", window.location.href);
-    };
-    window.history.pushState(null, "", window.location.href);
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
 
   const handleScroll = useCallback((ref: React.RefObject<HTMLDivElement>, setRead: (read: boolean) => void) => {
     const el = ref.current;
@@ -164,7 +154,7 @@ function TermsAcceptanceScreen() {
             else redirectPath = getChefPostAuthPath(user);
           }
 
-          setLocation(redirectPath);
+          setLocation(redirectPath, { replace: true });
         }, 800);
       } else {
         const text = await response.text();
@@ -180,7 +170,7 @@ function TermsAcceptanceScreen() {
   };
 
   if (!user) {
-    return <Redirect to="/auth" />;
+    return <Redirect to="/auth" replace />;
   }
 
   const allRead = termsRead && privacyRead;
@@ -522,4 +512,3 @@ function TermsAcceptanceScreen() {
 }
 
 export default TermsAcceptanceScreen;
-
