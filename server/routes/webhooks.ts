@@ -877,6 +877,7 @@ async function handleCheckoutSessionCompleted(
                 amount: amountTotal,
                 baseAmount: baseAmount,
                 serviceFee: platformFeeCents,
+                taxAmount: taxCents,
                 stripeProcessingFee: stripeFeeCents > 0 ? stripeFeeCents : undefined,
                 managerRevenue: managerRevenue,
                 currency: "CAD",
@@ -1104,6 +1105,26 @@ async function handleCheckoutSessionCompleted(
               logger.info(`[Webhook] ✅ Sent chef booking request email for booking ${booking.id} to ${chef.username}`);
             } else {
               logger.error(`[Webhook] ❌ Failed to send chef booking request email for booking ${booking.id} to ${chef.username}`);
+            }
+
+            // In-app notification for chef (email alone was leaving the bell empty)
+            try {
+              await notificationService.createForChef({
+                chefId,
+                type: "booking_confirmed",
+                priority: "high",
+                title: "Booking Request Submitted",
+                message: `Your booking request for ${kitchen.name} on ${bookingDate.toISOString().split("T")[0]} (${startTime}–${endTime}) was submitted and is awaiting manager approval.`,
+                metadata: {
+                  bookingId: booking.id,
+                  kitchenName: kitchen.name,
+                  bookingDate: bookingDate.toISOString().split("T")[0],
+                },
+                actionUrl: `/booking/${booking.id}`,
+                actionLabel: "View Booking",
+              });
+            } catch (chefNotifErr) {
+              logger.error(`[Webhook] Failed to create chef booking notification:`, chefNotifErr as any);
             }
           } else {
             logger.warn(`[Webhook] Chef or kitchen not found for booking ${booking.id} - chef: ${!!chef}, kitchen: ${!!kitchen}`);
@@ -1333,6 +1354,10 @@ async function handleStorageExtensionPaymentCompleted(
     const extensionBasePriceCents = parseInt(metadata.extension_base_price_cents || "0");
     const extensionServiceFeeCents = parseInt(metadata.extension_service_fee_cents || "0");
     const extensionTotalPriceCents = parseInt(metadata.extension_total_price_cents || "0");
+    const extensionCustomerTotalCents = parseInt(
+      metadata.extension_customer_total_cents || String(extensionTotalPriceCents + extensionServiceFeeCents),
+    );
+    const extensionTaxCents = parseInt(metadata.tax_cents || "0");
     const managerReceivesCents = parseInt(metadata.manager_receives_cents || "0");
 
     if (
@@ -1407,9 +1432,10 @@ async function handleStorageExtensionPaymentCompleted(
         bookingType: "storage",
         chefId: isNaN(chefId) ? null : chefId,
         managerId: isNaN(managerId) ? null : managerId,
-        amount: extensionTotalPriceCents,
+        amount: extensionCustomerTotalCents,
         baseAmount: extensionBasePriceCents,
         serviceFee: extensionServiceFeeCents,
+        taxAmount: extensionTaxCents,
         managerRevenue: managerReceivesCents || (extensionTotalPriceCents - extensionServiceFeeCents),
         currency: "CAD",
         paymentIntentId, // CRITICAL: Must be saved for Stripe fee syncing
@@ -1424,6 +1450,8 @@ async function handleStorageExtensionPaymentCompleted(
           new_end_date: newEndDate.toISOString(),
           // Include base price for accurate tax calculation in transaction history
           extension_base_price_cents: extensionBasePriceCents.toString(),
+          taxAmount: extensionTaxCents.toString(),
+          taxRatePercent: metadata.tax_rate_percent || "0",
         },
       }, db);
 
@@ -1654,8 +1682,10 @@ async function handlePaymentIntentSucceeded(
         const serviceFeeCents = booking.serviceFee != null ? parseInt(String(booking.serviceFee)) : 0;
         const taxRatePercent = booking.taxRatePercent != null ? Number(booking.taxRatePercent) : 0;
         const taxCents = Math.round((subtotalCents * taxRatePercent) / 100);
-        const totalAmountCents = subtotalCents + taxCents;
-        const managerRevenueCents = Math.max(0, subtotalCents - serviceFeeCents);
+        const managerGrossCents = subtotalCents + taxCents;
+        const totalAmountCents = managerGrossCents + serviceFeeCents;
+        // Provisional until transfer syncs actual Stripe fee into manager_revenue
+        const managerRevenueCents = managerGrossCents;
 
         transaction = await createPaymentTransaction({
           bookingId: booking.id,
@@ -1663,8 +1693,9 @@ async function handlePaymentIntentSucceeded(
           chefId: booking.chefId ?? null,
           managerId: booking.managerId ?? null,
           amount: totalAmountCents,
-          baseAmount: subtotalCents,
+          baseAmount: managerGrossCents,
           serviceFee: serviceFeeCents,
+          taxAmount: taxCents,
           managerRevenue: managerRevenueCents,
           currency: (booking.currency || 'CAD').toUpperCase(),
           paymentIntentId: paymentIntent.id,
@@ -1674,6 +1705,9 @@ async function handlePaymentIntentSucceeded(
             createdFrom: 'webhook_upsert',
             taxRatePercent,
             taxCents,
+            approvedSubtotal: subtotalCents,
+            approvedTax: taxCents,
+            platformCommission: serviceFeeCents,
           },
         }, db);
 
@@ -2186,12 +2220,14 @@ async function handlePaymentIntentCanceled(
       await tx
         .update(kitchenBookings)
         .set({
+          status: "cancelled",
           paymentStatus: "failed", // Map cancel to failed for backward compatibility
           updatedAt: new Date(),
         })
         .where(
           and(
             eq(kitchenBookings.paymentIntentId, paymentIntent.id),
+            eq(kitchenBookings.status, "pending"),
             notInArray(kitchenBookings.paymentStatus, excludedStatuses),
           ),
         );
@@ -2290,13 +2326,19 @@ async function handleChargeRefunded(
       db,
     );
     
-    // SIMPLE REFUND MODEL: Full refund = manager's entire balance refunded
-    // Compare to manager_revenue (what manager received), not charge.amount (what customer paid)
-    // This ensures "refunded" status when manager refunds their entire balance
+    // Full refund = customer received charge − stripe fee (includes platform service fee).
+    // Compare against that threshold, not manager_revenue alone.
     let refundStatus: "refunded" | "partially_refunded";
     if (transaction) {
       const managerRevenue = parseInt(String(transaction.manager_revenue || '0')) || 0;
-      const isFullRefund = refundAmountCents >= managerRevenue;
+      const serviceFee = parseInt(String(transaction.service_fee || '0')) || 0;
+      const stripeFee = parseInt(String(transaction.stripe_processing_fee || '0')) || 0;
+      const chargeAmount = parseInt(String(transaction.amount || '0')) || 0;
+      const fullRefundThreshold = Math.max(
+        managerRevenue + serviceFee,
+        Math.max(0, chargeAmount - stripeFee),
+      );
+      const isFullRefund = refundAmountCents >= fullRefundThreshold;
       refundStatus = isFullRefund ? "refunded" : "partially_refunded";
       
       await updatePaymentTransaction(

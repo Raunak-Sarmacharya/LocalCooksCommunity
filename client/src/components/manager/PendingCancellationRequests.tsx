@@ -1,34 +1,11 @@
 import { useState, useMemo } from "react";
+import { mt } from "@/i18n/manager";
 import { format } from "date-fns";
-import {
-  AlertTriangle,
-  CheckCircle,
-  XCircle,
-  Clock,
-  ChefHat,
-  MapPin,
-  Boxes,
-  Calendar,
-} from "lucide-react";
+import { AlertTriangle, CheckCircle, XCircle, Clock, Calendar, MapPin, Boxes } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -97,6 +74,7 @@ export function PendingCancellationRequests({
   onDeclineStorageCancellation,
   isProcessing = false,
 }: PendingCancellationRequestsProps) {
+  
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
     action: "accept" | "decline";
@@ -160,17 +138,15 @@ export function PendingCancellationRequests({
               <AlertTriangle className="h-4 w-4 text-muted-foreground" />
             </div>
             <div>
-              <CardTitle className="text-base">Cancellation Requests</CardTitle>
-              <CardDescription className="text-xs">
-                Chef-initiated cancellation requests awaiting your review
-              </CardDescription>
+              <CardTitle className="text-base">{mt("cancellationRequests")}</CardTitle>
+              <CardDescription className="text-xs">{mt("chefInitiatedCancellationRequestsAwaitingYourReview")}</CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col items-center justify-center py-6 text-center">
             <CheckCircle className="h-8 w-8 text-muted-foreground/40 mb-2" />
-            <p className="text-sm text-muted-foreground">No pending cancellation requests</p>
+            <p className="text-sm text-muted-foreground">{mt("noPendingCancellationRequests")}</p>
           </div>
         </CardContent>
       </Card>
@@ -210,12 +186,8 @@ export function PendingCancellationRequests({
                 <AlertTriangle className="h-4 w-4 text-amber-600" />
               </div>
               <div>
-                <CardTitle className="text-base">
-                  Cancellation Requests
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  Chef-initiated cancellation requests awaiting your review
-                </CardDescription>
+                <CardTitle className="text-base">{mt("cancellationRequests")}</CardTitle>
+                <CardDescription className="text-xs">{mt("chefInitiatedCancellationRequestsAwaitingYourReview")}</CardDescription>
               </div>
             </div>
             <Badge
@@ -236,7 +208,7 @@ export function PendingCancellationRequests({
                   className={`h-8 w-8 rounded-md flex items-center justify-center shrink-0 ${req.kind === "kitchen" ? "bg-blue-50" : "bg-purple-50"}`}
                 >
                   {req.kind === "kitchen" ? (
-                    <ChefHat className="h-4 w-4 text-blue-600" />
+                    <Calendar className="h-4 w-4 text-blue-600" />
                   ) : (
                     <Boxes className="h-4 w-4 text-purple-600" />
                   )}
@@ -245,7 +217,7 @@ export function PendingCancellationRequests({
                   <p className="text-sm font-medium truncate">{req.label}</p>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1">
-                      <ChefHat className="h-3 w-3" />
+                      <Calendar className="h-3 w-3" />
                       {req.chefName}
                     </span>
                     {req.locationName && (
@@ -267,8 +239,8 @@ export function PendingCancellationRequests({
                   >
                     <Clock className="h-2.5 w-2.5 mr-0.5" />
                     {req.kind === "kitchen"
-                      ? "Booking Cancellation"
-                      : "Storage Cancellation"}
+                      ? mt("bookingCancellation")
+                      : mt("storageCancellation")}
                   </Badge>
                 </div>
               </div>
@@ -281,18 +253,14 @@ export function PendingCancellationRequests({
                   onClick={() => handleAction("decline", req)}
                   disabled={isProcessing}
                 >
-                  <XCircle className="h-3.5 w-3.5 mr-1" />
-                  Decline
-                </Button>
+                  <XCircle className="h-3.5 w-3.5 mr-1" />{mt("decline")}</Button>
                 <Button
                   size="sm"
                   className="h-8"
                   onClick={() => handleAction("accept", req)}
                   disabled={isProcessing}
                 >
-                  <CheckCircle className="h-3.5 w-3.5 mr-1" />
-                  Accept
-                </Button>
+                  <CheckCircle className="h-3.5 w-3.5 mr-1" />{mt("accept")}</Button>
               </div>
             </div>
           ))}
@@ -312,14 +280,10 @@ export function PendingCancellationRequests({
             <AlertDialogTitle className="flex items-center gap-2">
               {confirmDialog.action === "accept" ? (
                 <>
-                  <CheckCircle className="h-5 w-5 text-green-600" />
-                  Accept Cancellation Request
-                </>
+                  <CheckCircle className="h-5 w-5 text-green-600" />{mt("acceptCancellationRequest")}</>
               ) : (
                 <>
-                  <XCircle className="h-5 w-5 text-red-600" />
-                  Decline Cancellation Request
-                </>
+                  <XCircle className="h-5 w-5 text-red-600" />{mt("declineCancellationRequest")}</>
               )}
             </AlertDialogTitle>
             <AlertDialogDescription className="pt-2 space-y-3">
@@ -336,31 +300,26 @@ export function PendingCancellationRequests({
               )}
               {confirmDialog.action === "accept" ? (
                 <p className="text-sm">
-                  The{" "}
-                  {confirmDialog.request?.kind === "kitchen"
-                    ? "booking"
-                    : "storage booking"}{" "}
-                  will be cancelled. You can then use{" "}
-                  <span className="font-medium">
-                    &quot;Issue Refund&quot;
-                  </span>{" "}
-                  from the booking actions menu to process the refund.
+                  {mt(
+                    confirmDialog.request?.kind === "kitchen"
+                      ? "acceptKitchenCancelDesc"
+                      : "acceptStorageCancelDesc",
+                    { issueRefund: mt("issueRefund") }
+                  )}
                 </p>
               ) : (
                 <p className="text-sm">
-                  The cancellation request will be declined and the{" "}
-                  {confirmDialog.request?.kind === "kitchen"
-                    ? "booking"
-                    : "storage booking"}{" "}
-                  will remain confirmed. The chef will be notified.
+                  {mt(
+                    confirmDialog.request?.kind === "kitchen"
+                      ? "declineKitchenCancelDesc"
+                      : "declineStorageCancelDesc"
+                  )}
                 </p>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isProcessing}>
-              Go Back
-            </AlertDialogCancel>
+            <AlertDialogCancel disabled={isProcessing}>{mt("goBack")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirm}
               disabled={isProcessing}
@@ -371,10 +330,10 @@ export function PendingCancellationRequests({
               }
             >
               {isProcessing
-                ? "Processing..."
+                ? mt("processingEllipsis")
                 : confirmDialog.action === "accept"
-                  ? "Accept & Cancel"
-                  : "Decline Request"}
+                  ? mt("acceptAndCancel")
+                  : mt("declineRequest")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

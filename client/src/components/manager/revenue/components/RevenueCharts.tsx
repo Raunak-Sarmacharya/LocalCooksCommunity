@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { mt } from "@/i18n/manager";
 /**
  * Revenue Charts Component
  * 
@@ -7,29 +8,11 @@ import { logger } from "@/lib/logger";
  */
 
 import { useMemo } from "react"
-import {
-    AreaChart,
-    Area,
-    BarChart,
-    Bar,
-    PieChart,
-    Pie,
-    Cell,
-    XAxis,
-    YAxis,
-    CartesianGrid,
-} from "recharts"
+import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid } from "recharts"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-    ChartContainer,
-    ChartTooltip,
-    ChartTooltipContent,
-    ChartLegend,
-    ChartLegendContent,
-    type ChartConfig,
-} from "@/components/ui/chart"
-import { TrendingUp, Building2, CircleDollarSign } from "lucide-react"
+import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent, type ChartConfig } from "@/components/ui/chart"
+import { TrendingUp, Building2, CircleDollarSign } from "@/components/ui/manager-icons"
 import { formatChartDate, centsToDollars } from "@/lib/formatters"
 import type { RevenueByDate, RevenueByLocation, PaymentStatus } from "../types"
 
@@ -55,22 +38,22 @@ const CHART_COLORS = {
 
 const revenueTrendConfig = {
     totalRevenue: {
-        label: "Total Revenue",
+        label: mt("totalRevenueTitleCase"),
         color: CHART_COLORS.emerald,
     },
     managerRevenue: {
-        label: "Your Earnings",
+        label: mt("yourEarnings"),
         color: CHART_COLORS.emeraldDark,
     },
 } satisfies ChartConfig
 
 const revenueByLocationConfig = {
     managerRevenue: {
-        label: "Your Earnings",
+        label: mt("yourEarnings"),
         color: CHART_COLORS.emerald,
     },
     platformFee: {
-        label: "Platform Fee",
+        label: mt("platformFee"),
         color: CHART_COLORS.violet,
     },
 } satisfies ChartConfig
@@ -103,6 +86,7 @@ interface RevenueTrendChartProps {
 }
 
 export function RevenueTrendChart({ data, isLoading }: RevenueTrendChartProps) {
+  
     const chartData = useMemo(() => {
         logger.info('[RevenueTrendChart] Raw data:', data);
         const mapped = data.map(item => ({
@@ -123,16 +107,14 @@ export function RevenueTrendChart({ data, isLoading }: RevenueTrendChartProps) {
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                        <TrendingUp className="h-5 w-5 text-muted-foreground" />
-                        Revenue Trend
-                    </CardTitle>
-                    <CardDescription>Daily revenue over time</CardDescription>
+                        <TrendingUp className="h-5 w-5 text-muted-foreground" />{mt("revenueTrend")}</CardTitle>
+                    <CardDescription>{mt("dailyRevenueOverTime")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <div className="flex flex-col items-center justify-center h-[250px] text-center">
                         <TrendingUp className="h-12 w-12 text-muted-foreground/20 mb-4" />
-                        <p className="text-sm text-muted-foreground">No revenue data available</p>
-                        <p className="text-xs text-muted-foreground/70 mt-1">Revenue will appear here once you have bookings</p>
+                        <p className="text-sm text-muted-foreground">{mt("noRevenueDataAvailable")}</p>
+                        <p className="text-xs text-muted-foreground/70 mt-1">{mt("revenueWillAppearHereOnceYouHaveBookings")}</p>
                     </div>
                 </CardContent>
             </Card>
@@ -143,10 +125,8 @@ export function RevenueTrendChart({ data, isLoading }: RevenueTrendChartProps) {
         <Card>
             <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                    <TrendingUp className="h-5 w-5 text-emerald-600" />
-                    Revenue Trend
-                </CardTitle>
-                <CardDescription>Daily revenue over time</CardDescription>
+                    <TrendingUp className="h-5 w-5 text-emerald-600" />{mt("revenueTrend")}</CardTitle>
+                <CardDescription>{mt("dailyRevenueOverTime")}</CardDescription>
             </CardHeader>
             <CardContent>
                 <ChartContainer config={revenueTrendConfig} className="h-[250px] w-full">
@@ -229,15 +209,13 @@ export function RevenueByLocationChart({ data, isLoading }: RevenueByLocationCha
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                        <Building2 className="h-5 w-5 text-muted-foreground" />
-                        Revenue by Location
-                    </CardTitle>
-                    <CardDescription>Breakdown by location</CardDescription>
+                        <Building2 className="h-5 w-5 text-muted-foreground" />{mt("revenueByLocation")}</CardTitle>
+                    <CardDescription>{mt("breakdownByLocation")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <div className="flex flex-col items-center justify-center h-[250px] text-center">
                         <Building2 className="h-12 w-12 text-muted-foreground/20 mb-4" />
-                        <p className="text-sm text-muted-foreground">No location data available</p>
+                        <p className="text-sm text-muted-foreground">{mt("noLocationDataAvailable")}</p>
                     </div>
                 </CardContent>
             </Card>
@@ -248,10 +226,8 @@ export function RevenueByLocationChart({ data, isLoading }: RevenueByLocationCha
         <Card>
             <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                    <Building2 className="h-5 w-5 text-violet-600" />
-                    Revenue by Location
-                </CardTitle>
-                <CardDescription>Breakdown by location</CardDescription>
+                    <Building2 className="h-5 w-5 text-violet-600" />{mt("revenueByLocation")}</CardTitle>
+                <CardDescription>{mt("breakdownByLocation")}</CardDescription>
             </CardHeader>
             <CardContent>
                 <ChartContainer config={revenueByLocationConfig} className="h-[250px] w-full">
@@ -304,14 +280,14 @@ const statusColors: Record<PaymentStatus, string> = {
 }
 
 const statusLabels: Record<PaymentStatus, string> = {
-    authorized: 'Payment Held',
-    paid: 'Paid',
-    pending: 'Pending',
-    processing: 'Processing',
-    failed: 'Failed',
-    refunded: 'Refunded',
-    partially_refunded: 'Partial Refund',
-    canceled: 'Canceled',
+    authorized: mt("paymentHeld"),
+    paid: mt("paid"),
+    pending: mt("pending"),
+    processing: mt("processing"),
+    failed: mt("failed"),
+    refunded: mt("refunded"),
+    partially_refunded: mt("partialRefund"),
+    canceled: mt("canceled"),
 }
 
 export function PaymentStatusChart({ data, isLoading }: PaymentStatusChartProps) {
@@ -349,15 +325,13 @@ export function PaymentStatusChart({ data, isLoading }: PaymentStatusChartProps)
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                        <CircleDollarSign className="h-5 w-5 text-muted-foreground" />
-                        Payment Status
-                    </CardTitle>
-                    <CardDescription>Distribution by status</CardDescription>
+                        <CircleDollarSign className="h-5 w-5 text-muted-foreground" />{mt("paymentStatus")}</CardTitle>
+                    <CardDescription>{mt("distributionByStatus")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <div className="flex flex-col items-center justify-center h-[250px] text-center">
                         <CircleDollarSign className="h-12 w-12 text-muted-foreground/20 mb-4" />
-                        <p className="text-sm text-muted-foreground">No payment data available</p>
+                        <p className="text-sm text-muted-foreground">{mt("noPaymentDataAvailable")}</p>
                     </div>
                 </CardContent>
             </Card>
@@ -370,10 +344,8 @@ export function PaymentStatusChart({ data, isLoading }: PaymentStatusChartProps)
         <Card>
             <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                    <CircleDollarSign className="h-5 w-5 text-amber-600" />
-                    Payment Status
-                </CardTitle>
-                <CardDescription>Distribution by status</CardDescription>
+                    <CircleDollarSign className="h-5 w-5 text-amber-600" />{mt("paymentStatus")}</CardTitle>
+                <CardDescription>{mt("distributionByStatus")}</CardDescription>
             </CardHeader>
             <CardContent>
                 <ChartContainer config={paymentStatusConfig} className="mx-auto aspect-square h-[250px]">
@@ -401,7 +373,7 @@ export function PaymentStatusChart({ data, isLoading }: PaymentStatusChartProps)
                 </ChartContainer>
                 <div className="mt-4 text-center">
                     <p className="text-2xl font-bold">${total.toFixed(2)}</p>
-                    <p className="text-xs text-muted-foreground">Total across all statuses</p>
+                    <p className="text-xs text-muted-foreground">{mt("totalAcrossAllStatuses")}</p>
                 </div>
             </CardContent>
         </Card>

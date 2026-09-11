@@ -394,9 +394,15 @@ export function useKitchenBookings() {
 
   return {
     bookings: bookingsQuery.data ?? [],
-    isLoadingBookings: bookingsQuery.isLoading,
+    isLoadingBookings: !isAuthReady || (hasAuthUser && bookingsQuery.isLoading),
     kitchens: kitchensQuery.data ?? [],
-    isLoadingKitchens: kitchensQuery.isLoading,
+    isAuthReady,
+    hasAuthUser,
+    isLoadingKitchens:
+      !isAuthReady ||
+      (hasAuthUser &&
+        (kitchensQuery.isLoading ||
+          (kitchensQuery.isFetching && kitchensQuery.data === undefined))),
     kitchensQuery, // Expose the full query object for error handling
     getAvailableSlots,
     createBooking,

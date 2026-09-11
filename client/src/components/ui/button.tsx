@@ -3,9 +3,10 @@ import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
+import { chefOutlineCtaClass, chefPrimaryCtaClass } from "@/lib/chef-cta"
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
@@ -22,10 +23,10 @@ const buttonVariants = cva(
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
-        default: "min-h-[44px] h-9 px-4 py-2 text-sm",
-        sm: "min-h-[36px] h-8 rounded-md px-3 text-xs",
-        lg: "min-h-[44px] h-10 rounded-md px-6 text-base",
-        icon: "min-h-[44px] min-w-[44px] h-9 w-9",
+        default: "h-11 px-6 py-2 text-sm",
+        sm: "h-9 px-4 text-xs",
+        lg: "h-12 px-8 text-base",
+        icon: "h-11 w-11",
       },
     },
     defaultVariants: {
@@ -44,9 +45,20 @@ export interface ButtonProps
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, ...props }, ref) => {
     const Comp = asChild ? Slot : "button"
+    
+    // Apply chef-style CTA classes globally to unify button style
+    const ctaClass =
+      size !== "icon"
+        ? variant === "outline"
+          ? chefOutlineCtaClass()
+          : variant === "default" || variant == null
+            ? chefPrimaryCtaClass()
+            : undefined
+        : undefined
+
     return (
       <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
+        className={cn(buttonVariants({ variant, size }), ctaClass, className)}
         ref={ref}
         {...props}
       />

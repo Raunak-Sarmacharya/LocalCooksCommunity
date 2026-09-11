@@ -1,9 +1,10 @@
-import { ChefHat, Truck, Utensils, PackageCheck, Timer, DollarSign, CalendarClock, Monitor } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { Calendar, Truck, Utensils, PackageCheck, Timer, DollarSign, CalendarClock, Monitor } from "lucide-react";
 import { motion } from "framer-motion";
 
 const steps = [
   {
-    icon: <ChefHat className="h-8 w-8 text-white" />,
+    icon: <Calendar className="h-8 w-8 text-white" />,
     bgColor: "bg-gradient-to-br from-orange-500 to-rose-600",
     number: "01",
     title: "Create Your Menu",
@@ -49,6 +50,7 @@ const benefits = [
 ];
 
 export default function HowItWorksSection() {
+  const { t } = useTranslation("landing");
   return (
     <section id="how-it-works" className="py-10 sm:py-12 md:py-16 px-4 sm:px-6 scroll-mt-24 bg-gradient-to-b from-white via-gray-50 to-white relative overflow-hidden">
       {/* Decorative background elements */}
@@ -65,27 +67,21 @@ export default function HowItWorksSection() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: 0.1 }}
-          >
-            Simple Process
-          </motion.span>
+          >{t("simpleProcess")}</motion.span>
           <motion.h2
             className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-display text-brand-primary mb-4 sm:mb-6 px-2"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: 0.2 }}
-          >
-            How It Works
-          </motion.h2>
+          >{t("howItWorksTitle")}</motion.h2>
           <motion.p
             className="max-w-3xl mx-auto text-base sm:text-lg md:text-xl text-brand-text font-sans leading-relaxed px-4"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: 0.3 }}
-          >
-            Join our platform in three simple steps and start sharing your culinary creations with food lovers in your area.
-          </motion.p>
+          >{t("howItWorksDesc")}</motion.p>
         </div>
 
         <div className="flex flex-col md:flex-row gap-6 sm:gap-8 md:gap-10 mb-12 sm:mb-14 md:mb-16">
@@ -112,7 +108,6 @@ export default function HowItWorksSection() {
                 <div className="bg-white/30 p-3 sm:p-4 rounded-xl sm:rounded-2xl backdrop-blur-md ring-2 ring-white/40 group-hover:scale-110 transition-transform duration-300 relative z-10">
                   {step.icon}
                 </div>
-                <span className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-white/20 tracking-tight relative z-10">{step.number}</span>
                 <div className="absolute -bottom-4 sm:-bottom-6 left-1/2 transform -translate-x-1/2 w-8 h-8 sm:w-12 sm:h-12 rotate-45 bg-white shadow-lg"></div>
               </div>
               <div className="p-6 sm:p-8 md:p-10 relative z-10">
@@ -129,10 +124,8 @@ export default function HowItWorksSection() {
 
           <div className="grid md:grid-cols-2 gap-8 sm:gap-10 md:gap-12 items-center relative z-10">
             <div>
-              <h3 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-4 sm:mb-5 text-brand-text group-hover:text-brand-primary transition-colors duration-300">Everything You Need to Succeed</h3>
-              <p className="text-base sm:text-lg md:text-xl text-brand-text mb-6 sm:mb-8 md:mb-10 leading-relaxed font-sans">
-                Our platform provides all the tools and support you need to build a successful food business without the overhead of a traditional restaurant.
-              </p>
+              <h3 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-4 sm:mb-5 text-brand-text group-hover:text-brand-primary transition-colors duration-300">{t("everythingYouNeedToSucceed")}</h3>
+              <p className="text-base sm:text-lg md:text-xl text-brand-text mb-6 sm:mb-8 md:mb-10 leading-relaxed font-sans">{t("platformProvidesAllTools")}</p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 md:gap-8">
                 {benefits.map((benefit, index) => (
@@ -176,7 +169,7 @@ export default function HowItWorksSection() {
                   <div className="mb-4 sm:mb-6 inline-block p-3 sm:p-4 bg-white/20 rounded-xl sm:rounded-2xl backdrop-blur-sm group-hover/feature:scale-110 transition-transform duration-300">
                     <Utensils className="h-16 w-16 sm:h-20 sm:w-20 text-brand-primary mx-auto" />
                   </div>
-                  <p className="text-lg sm:text-xl md:text-2xl font-bold text-brand-text font-sans leading-relaxed px-2">Focus on cooking while we handle the business side</p>
+                  <p className="text-lg sm:text-xl md:text-2xl font-bold text-brand-text font-sans leading-relaxed px-2">{t("focusOnCooking")}</p>
                 </div>
               </div>
             </motion.div>

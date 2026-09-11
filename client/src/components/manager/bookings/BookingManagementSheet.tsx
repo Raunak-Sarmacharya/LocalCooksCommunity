@@ -1,37 +1,14 @@
 import { useState, useMemo, useCallback } from "react";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { mt } from "@/i18n/manager";
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { Label } from "@/components/ui/label";
-import {
-  CheckCircle2,
-  XCircle,
-  Loader2,
-  Package,
-  Boxes,
-  Calendar,
-  Clock,
-  MapPin,
-  ChefHat,
-  DollarSign,
-  AlertTriangle,
-  Info,
-  Pencil,
-  Settings2,
-  Ban,
-  RotateCcw,
-  ShieldAlert,
-} from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, Package, Boxes, Calendar, Clock, MapPin, DollarSign, AlertTriangle, Info, Pencil, Settings2, Ban, RotateCcw, ShieldAlert } from "@/components/ui/manager-icons";
 import { cn } from "@/lib/utils";
+import { TruncatedText } from "@/components/common/TruncatedText";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -73,6 +50,8 @@ export interface BookingForManagement {
   transactionAmount?: number;
   stripeProcessingFee?: number;
   managerRevenue?: number;
+  /** Local Cooks platform fee in cents (from payment_transactions). */
+  serviceFee?: number;
   taxRatePercent?: number;
   refundableAmount?: number;
   refundAmount?: number;
@@ -154,6 +133,7 @@ export function BookingManagementSheet({
   isProcessing = false,
   onSubmit,
 }: BookingManagementSheetProps) {
+  
   const sheetKey = booking ? `mgmt-${booking.id}` : "empty";
 
   return (
@@ -169,7 +149,7 @@ export function BookingManagementSheet({
       ) : open ? (
         <SheetContent className="sm:max-w-[520px] flex flex-col items-center justify-center p-6">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          <p className="text-sm text-muted-foreground mt-3">Loading booking details…</p>
+          <p className="text-sm text-muted-foreground mt-3">{mt("loadingBookingDetails")}</p>
         </SheetContent>
       ) : null}
     </Sheet>
@@ -291,6 +271,7 @@ function BookingManagementContent({
     const transactionAmount = booking.transactionAmount || 0;
     const stripeFee = booking.stripeProcessingFee || 0;
     const managerRevenue = booking.managerRevenue || 0;
+    const serviceFee = booking.serviceFee || 0;
     const taxRatePercent = booking.taxRatePercent || 0;
     const alreadyRefunded = booking.refundAmount || 0;
 
@@ -320,18 +301,24 @@ function BookingManagementContent({
 
     const totalCancelledSubtotal = cancelledKitchenCents + cancelledStorageCents + cancelledEquipmentCents;
     const proportionalTax = Math.round((totalCancelledSubtotal * taxRatePercent) / 100);
-    const grossRefund = totalCancelledSubtotal + proportionalTax;
+    const managerGross = managerRevenue + stripeFee;
+    const proportionalServiceFee = managerGross > 0
+      ? Math.round(serviceFee * ((totalCancelledSubtotal + proportionalTax) / managerGross))
+      : 0;
+    const grossRefund = totalCancelledSubtotal + proportionalTax + proportionalServiceFee;
 
-    // Proportional Stripe fee
+    // Proportional Stripe fee (sunk)
     const proportionalStripeFee = transactionAmount > 0
       ? Math.round(stripeFee * (grossRefund / transactionAmount))
       : 0;
 
-    // Net refund = gross minus proportional Stripe fee (customer absorbs fee)
     const netRefund = Math.max(0, grossRefund - proportionalStripeFee);
 
-    // Cap at available balance
-    const availableBalance = Math.max(0, (booking.refundableAmount || managerRevenue) - alreadyRefunded);
+    // Cap includes remaining platform service fee
+    const availableBalance = Math.max(
+      0,
+      (booking.refundableAmount || managerRevenue + serviceFee) - alreadyRefunded,
+    );
     const autoRefundAmount = Math.min(netRefund, availableBalance);
 
     const hasCancellations = totalCancelledSubtotal > 0;
@@ -467,12 +454,10 @@ function BookingManagementContent({
       {/* Header */}
       <SheetHeader className="px-6 pt-6 pb-4 border-b bg-muted/30 shrink-0">
         <SheetTitle className="flex items-center gap-2 text-lg">
-          <Settings2 className="h-5 w-5 text-primary" />
-          Manage Booking
-        </SheetTitle>
+          <Settings2 className="h-5 w-5 text-primary" />{mt("manageBooking")}</SheetTitle>
         <SheetDescription className="text-sm">
-          Cancel items, process refunds, or respond to cancellation requests.
-          The customer absorbs the Stripe processing fee per platform terms.
+          {mt("manageBookingDesc")}{" "}
+          {mt("manageBookingStripeFeeNote")}
         </SheetDescription>
       </SheetHeader>
 
@@ -481,13 +466,13 @@ function BookingManagementContent({
         {/* Booking Summary */}
         <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 border">
           <div className="flex-1 min-w-0">
-            <p className="font-semibold text-sm truncate">
-              {booking.kitchenName || "Kitchen Booking"}
-            </p>
+            <TruncatedText as="p" className="font-semibold text-sm truncate">
+              {booking.kitchenName || mt("kitchenBooking")}
+            </TruncatedText>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-muted-foreground">
               {booking.chefName && (
                 <span className="flex items-center gap-1">
-                  <ChefHat className="h-3 w-3" />
+                  <Calendar className="h-3 w-3" />
                   {booking.chefName}
                 </span>
               )}
@@ -522,13 +507,11 @@ function BookingManagementContent({
           <div className="p-3 rounded-lg border border-amber-200 bg-amber-50/50 space-y-2">
             <div className="flex items-center gap-2">
               <ShieldAlert className="h-4 w-4 text-amber-600" />
-              <p className="text-sm font-semibold text-amber-800">
-                Chef Cancellation Request
-              </p>
+              <p className="text-sm font-semibold text-amber-800">{mt("chefCancellationRequest")}</p>
             </div>
             {booking.cancellationReason && (
               <p className="text-xs text-amber-700">
-                <strong>Reason:</strong> {booking.cancellationReason}
+                <strong>{mt("reason2")}</strong> {booking.cancellationReason}
               </p>
             )}
             <div className="flex gap-2 pt-1">
@@ -550,9 +533,7 @@ function BookingManagementContent({
                 disabled={isProcessing}
                 onClick={(e) => handleCancellationAction("decline", e)}
               >
-                <XCircle className="h-3.5 w-3.5 mr-1" />
-                Decline
-              </Button>
+                <XCircle className="h-3.5 w-3.5 mr-1" />{mt("decline")}</Button>
             </div>
           </div>
         )}
@@ -562,9 +543,7 @@ function BookingManagementContent({
         {/* ── Kitchen Session ── */}
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-            <ChefHat className="h-3.5 w-3.5" />
-            Kitchen Session
-          </p>
+            <Calendar className="h-3.5 w-3.5" />{mt("kitchenSession")}</p>
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); toggleKitchenDecision(); }}
@@ -583,10 +562,10 @@ function BookingManagementContent({
                 "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
                 kitchenDecision === "keep" ? "bg-green-100" : "bg-red-100",
               )}>
-                <ChefHat className={cn("h-4 w-4", kitchenDecision === "keep" ? "text-green-600" : "text-red-600")} />
+                <Calendar className={cn("h-4 w-4", kitchenDecision === "keep" ? "text-green-600" : "text-red-600")} />
               </div>
               <div>
-                <p className="text-sm font-medium">Kitchen Booking</p>
+                <p className="text-sm font-medium">{mt("kitchenBooking")}</p>
                 <p className="text-xs text-muted-foreground">
                   {formatTime(booking.startTime)} – {formatTime(booking.endTime)}
                 </p>
@@ -603,9 +582,9 @@ function BookingManagementContent({
                   : "border-destructive/30 text-destructive bg-destructive/10",
               )}>
                 {kitchenDecision === "keep" ? (
-                  <><CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />Active</>
+                  <><CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />{mt("active")}</>
                 ) : (
-                  <><Ban className="h-2.5 w-2.5 mr-0.5" />Cancel</>
+                  <><Ban className="h-2.5 w-2.5 mr-0.5" />{mt("cancel")}</>
                 )}
               </Badge>
             </div>
@@ -618,9 +597,7 @@ function BookingManagementContent({
             <Separator />
             <div className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                <Boxes className="h-3.5 w-3.5" />
-                Storage Rentals
-              </p>
+                <Boxes className="h-3.5 w-3.5" />{mt("storageRentals")}</p>
 
               {/* Active storage items — toggleable */}
               {activeStorageItems.map((item) => {
@@ -652,9 +629,7 @@ function BookingManagementContent({
                             className="h-6 px-2 text-[10px]"
                             disabled={isProcessing}
                             onClick={(e) => handleStorageCancellationAction(item.storageBookingId, "accept", e)}
-                          >
-                            Accept
-                          </Button>
+                          >{mt("accept")}</Button>
                           <Button
                             type="button"
                             size="sm"
@@ -662,9 +637,7 @@ function BookingManagementContent({
                             className="h-6 px-2 text-[10px] border-destructive/30 text-destructive"
                             disabled={isProcessing}
                             onClick={(e) => handleStorageCancellationAction(item.storageBookingId, "decline", e)}
-                          >
-                            Decline
-                          </Button>
+                          >{mt("decline")}</Button>
                         </div>
                       </div>
                     )}
@@ -707,9 +680,9 @@ function BookingManagementContent({
                             : "border-destructive/30 text-destructive bg-destructive/10",
                         )}>
                           {isKeeping ? (
-                            <><CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />Active</>
+                            <><CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />{mt("active")}</>
                           ) : (
-                            <><Ban className="h-2.5 w-2.5 mr-0.5" />Cancel</>
+                            <><Ban className="h-2.5 w-2.5 mr-0.5" />{mt("cancel")}</>
                           )}
                         </Badge>
                       </div>
@@ -736,17 +709,13 @@ function BookingManagementContent({
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="text-xs font-mono text-gray-400 line-through">{formatPrice(item.totalPrice)}</span>
                     <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                      <XCircle className="h-2.5 w-2.5 mr-0.5" />
-                      Cancelled
-                    </Badge>
+                      <XCircle className="h-2.5 w-2.5 mr-0.5" />{mt("cancelled")}</Badge>
                   </div>
                 </div>
               ))}
 
               {activeStorageItems.length > 0 && !kitchenIsCancelling && (
-                <p className="text-[11px] text-muted-foreground italic pl-1">
-                  Click each item to toggle between active and cancel
-                </p>
+                <p className="text-[11px] text-muted-foreground italic pl-1">{mt("clickEachItemToToggleBetweenActiveAndCancel")}</p>
               )}
             </div>
           </>
@@ -758,9 +727,7 @@ function BookingManagementContent({
             <Separator />
             <div className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                <Package className="h-3.5 w-3.5" />
-                Equipment Rentals
-              </p>
+                <Package className="h-3.5 w-3.5" />{mt("equipmentRentals")}</p>
 
               {activeEquipmentItems.map((item) => {
                 const decision = equipmentDecisions.get(item.equipmentBookingId) || "keep";
@@ -801,9 +768,9 @@ function BookingManagementContent({
                           : "border-destructive/30 text-destructive bg-destructive/10",
                       )}>
                         {isKeeping ? (
-                          <><CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />Active</>
+                          <><CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />{mt("active")}</>
                         ) : (
-                          <><Ban className="h-2.5 w-2.5 mr-0.5" />Cancel</>
+                          <><Ban className="h-2.5 w-2.5 mr-0.5" />{mt("cancel")}</>
                         )}
                       </Badge>
                     </div>
@@ -826,17 +793,13 @@ function BookingManagementContent({
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="text-xs font-mono text-gray-400 line-through">{formatPrice(item.totalPrice)}</span>
                     <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                      <XCircle className="h-2.5 w-2.5 mr-0.5" />
-                      Cancelled
-                    </Badge>
+                      <XCircle className="h-2.5 w-2.5 mr-0.5" />{mt("cancelled")}</Badge>
                   </div>
                 </div>
               ))}
 
               {activeEquipmentItems.length > 0 && !kitchenIsCancelling && (
-                <p className="text-[11px] text-muted-foreground italic pl-1">
-                  Click each item to toggle between active and cancel
-                </p>
+                <p className="text-[11px] text-muted-foreground italic pl-1">{mt("clickEachItemToToggleBetweenActiveAndCancel")}</p>
               )}
             </div>
           </>
@@ -849,13 +812,10 @@ function BookingManagementContent({
             <div className="p-4 rounded-lg border border-red-200 bg-red-50/50 space-y-2">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 text-red-600" />
-                <p className="text-sm font-semibold text-red-800">
-                  Entire Booking Will Be Cancelled
-                </p>
+                <p className="text-sm font-semibold text-red-800">{mt("entireBookingWillBeCancelled")}</p>
               </div>
-              <p className="text-xs text-red-700">
-                Cancelling the kitchen session cancels the <strong>entire booking</strong> including all storage and equipment add-ons.
-                A refund will be processed from your available balance.
+              <p className="text-xs text-red-700">{mt("cancellingTheKitchenSessionCancelsThe")}<strong>{mt("entireBookingStrong")}</strong> {mt("includingAllAddons")}
+                {mt("refundFromAvailableBalance")}
               </p>
             </div>
           </>
@@ -868,30 +828,28 @@ function BookingManagementContent({
             <div className="space-y-3 p-4 rounded-lg border border-amber-200 bg-amber-50/50">
               <div className="flex items-center gap-2">
                 <DollarSign className="h-4 w-4 text-amber-600" />
-                <p className="text-sm font-semibold text-amber-800">
-                  Refund Preview
-                </p>
+                <p className="text-sm font-semibold text-amber-800">{mt("refundPreview")}</p>
               </div>
 
               {/* Transaction Breakdown */}
               {refundCalc.transactionAmount > 0 && (
                 <div className="space-y-1 text-xs p-2.5 rounded-md bg-white/60 border border-amber-100">
-                  <p className="text-[10px] font-medium text-amber-700 uppercase tracking-wide mb-1">Transaction Summary</p>
+                  <p className="text-[10px] font-medium text-amber-700 uppercase tracking-wide mb-1">{mt("transactionSummary")}</p>
                   <div className="flex justify-between text-muted-foreground">
-                    <span>Total charged</span>
+                    <span>{mt("totalCharged3")}</span>
                     <span className="font-mono">{formatPrice(refundCalc.transactionAmount)}</span>
                   </div>
                   <div className="flex justify-between text-muted-foreground">
-                    <span>Stripe fee (customer absorbs)</span>
+                    <span>{mt("stripeFeeCustomerAbsorbs")}</span>
                     <span className="font-mono text-red-600">-{formatPrice(refundCalc.stripeFee)}</span>
                   </div>
                   <div className="flex justify-between font-medium text-foreground">
-                    <span>Your available balance</span>
+                    <span>{mt("yourAvailableBalance")}</span>
                     <span className="font-mono">{formatPrice(refundCalc.availableBalance)}</span>
                   </div>
                   {refundCalc.alreadyRefunded > 0 && (
                     <div className="flex justify-between text-muted-foreground">
-                      <span>Already refunded</span>
+                      <span>{mt("alreadyRefunded3")}</span>
                       <span className="font-mono text-orange-600">-{formatPrice(refundCalc.alreadyRefunded)}</span>
                     </div>
                   )}
@@ -900,38 +858,38 @@ function BookingManagementContent({
 
               {/* Cancelled Items Breakdown */}
               <div className="space-y-1.5 text-xs">
-                <p className="text-[10px] font-medium text-amber-700 uppercase tracking-wide">Cancellation Breakdown</p>
+                <p className="text-[10px] font-medium text-amber-700 uppercase tracking-wide">{mt("cancellationBreakdown")}</p>
                 {refundCalc.cancelledKitchenCents > 0 && (
                   <div className="flex justify-between text-muted-foreground">
-                    <span>Kitchen session</span>
+                    <span>{mt("kitchenSession2")}</span>
                     <span className="font-mono">{formatPrice(refundCalc.cancelledKitchenCents)}</span>
                   </div>
                 )}
                 {refundCalc.cancelledStorageCents > 0 && (
                   <div className="flex justify-between text-muted-foreground">
-                    <span>Storage ({refundCalc.cancelledStorageCount} item{refundCalc.cancelledStorageCount !== 1 ? "s" : ""})</span>
+                    <span>{mt("storageItemsCount", { count: refundCalc.cancelledStorageCount })}</span>
                     <span className="font-mono">{formatPrice(refundCalc.cancelledStorageCents)}</span>
                   </div>
                 )}
                 {refundCalc.cancelledEquipmentCents > 0 && (
                   <div className="flex justify-between text-muted-foreground">
-                    <span>Equipment ({refundCalc.cancelledEquipmentCount} item{refundCalc.cancelledEquipmentCount !== 1 ? "s" : ""})</span>
+                    <span>{mt("equipmentItemsCount", { count: refundCalc.cancelledEquipmentCount })}</span>
                     <span className="font-mono">{formatPrice(refundCalc.cancelledEquipmentCents)}</span>
                   </div>
                 )}
                 {refundCalc.proportionalTax > 0 && (
                   <div className="flex justify-between text-muted-foreground">
-                    <span>Tax ({refundCalc.taxRatePercent}%)</span>
+                    <span>{mt("taxPercentLabel", { percent: refundCalc.taxRatePercent })}</span>
                     <span className="font-mono">+{formatPrice(refundCalc.proportionalTax)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-muted-foreground">
-                  <span>Stripe fee (proportional)</span>
+                  <span>{mt("stripeFeeProportional")}</span>
                   <span className="font-mono text-red-600">-{formatPrice(refundCalc.proportionalStripeFee)}</span>
                 </div>
                 <Separator className="my-1" />
                 <div className="flex justify-between font-semibold text-sm">
-                  <span>Customer receives</span>
+                  <span>{mt("customerReceives2")}</span>
                   <span className="font-mono text-green-700">{formatPrice(effectiveRefundAmount)}</span>
                 </div>
               </div>
@@ -946,12 +904,10 @@ function BookingManagementContent({
                     onClick={(e) => { e.stopPropagation(); setIsEditingRefund(true); setCustomRefundInput((refundCalc.autoRefundAmount / 100).toFixed(2)); }}
                     className="h-7 text-xs text-muted-foreground hover:text-foreground px-2"
                   >
-                    <Pencil className="h-3 w-3 mr-1" />
-                    Modify refund amount
-                  </Button>
+                    <Pencil className="h-3 w-3 mr-1" />{mt("modifyRefundAmount")}</Button>
                 ) : (
                   <div className="space-y-1.5">
-                    <Label className="text-xs text-amber-700">Custom refund amount</Label>
+                    <Label className="text-xs text-amber-700">{mt("customRefundAmount")}</Label>
                     <div className="flex items-center gap-2">
                       <CurrencyInput
                         size="sm"
@@ -966,12 +922,10 @@ function BookingManagementContent({
                         size="sm"
                         onClick={(e) => { e.stopPropagation(); setIsEditingRefund(false); setCustomRefundInput(""); }}
                         className="h-8 text-xs px-2"
-                      >
-                        Reset
-                      </Button>
+                      >{mt("reset")}</Button>
                     </div>
                     <p className="text-[10px] text-amber-600">
-                      Max: {formatPrice(refundCalc.availableBalance)} (your available balance)
+                      {mt("maxAvailableBalance", { amount: formatPrice(refundCalc.availableBalance) })}
                     </p>
                   </div>
                 )}
@@ -979,10 +933,7 @@ function BookingManagementContent({
 
               <div className="flex items-start gap-1.5 text-[10px] text-amber-600">
                 <Info className="h-3 w-3 mt-0.5 shrink-0" />
-                <span>
-                  Stripe fee and tax are proportionally included. Refund is processed from your connected account.
-                  The customer always absorbs the Stripe processing fee per platform terms.
-                </span>
+                <span>{mt("stripeFeeTaxProportionalCancel")} <a href="/terms#refund-policy" target="_blank" rel="noreferrer" className="font-medium underline">{mt("viewRefundPolicy")}</a></span>
               </div>
             </div>
           </>
@@ -996,9 +947,7 @@ function BookingManagementContent({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <RotateCcw className="h-4 w-4 text-blue-600" />
-                  <p className="text-sm font-semibold text-blue-800">
-                    Issue Refund
-                  </p>
+                  <p className="text-sm font-semibold text-blue-800">{mt("issueRefund")}</p>
                 </div>
                 <Button
                   type="button"
@@ -1017,7 +966,7 @@ function BookingManagementContent({
                     }
                   }}
                 >
-                  {refundMode ? "Cancel Refund" : "Issue Refund"}
+                  {refundMode ? mt("cancelRefundButton") : mt("issueRefund")}
                 </Button>
               </div>
 
@@ -1025,26 +974,27 @@ function BookingManagementContent({
                 <div className="space-y-3">
                   <div className="space-y-1 text-xs p-2.5 rounded-md bg-white/60 border border-blue-100">
                     <div className="flex justify-between text-muted-foreground">
-                      <span>Available to refund</span>
+                      <span>{mt("availableToRefund2")}</span>
                       <span className="font-mono font-medium">{formatPrice(refundCalc.availableBalance)}</span>
                     </div>
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="text-xs text-blue-700">Refund amount</Label>
+                    <Label className="text-xs text-blue-700">{mt("refundAmount2")}</Label>
                     <CurrencyInput
                       value={customRefundInput}
                       onValueChange={setCustomRefundInput}
                       placeholder="0.00"
                     />
                     <p className="text-[10px] text-blue-600">
-                      Max: {formatPrice(refundCalc.availableBalance)} · Debited from your Stripe balance
+                      {mt("maxDebitedFromStripe", { amount: formatPrice(refundCalc.availableBalance) })}{" "}
+                      <a href="/terms#refund-policy" target="_blank" rel="noreferrer" className="font-medium underline">{mt("viewRefundPolicy")}</a>
                     </p>
                   </div>
 
                   {effectiveRefundAmount > 0 && (
                     <div className="flex justify-between text-xs p-2 rounded-md bg-white/60 border border-blue-100 font-medium">
-                      <span className="text-blue-700">Customer receives</span>
+                      <span className="text-blue-700">{mt("customerReceives2")}</span>
                       <span className="font-mono text-green-700">{formatPrice(effectiveRefundAmount)}</span>
                     </div>
                   )}
@@ -1052,9 +1002,7 @@ function BookingManagementContent({
               )}
 
               {!refundMode && (
-                <p className="text-xs text-blue-600">
-                  Issue a refund without cancelling any items. Useful for partial refunds, goodwill credits, or pricing adjustments.
-                </p>
+                <p className="text-xs text-blue-600">{mt("issueARefundWithoutCancellingAnyItemsUsefulForPartialRefunds")}</p>
               )}
             </div>
           </>
@@ -1068,12 +1016,10 @@ function BookingManagementContent({
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-green-600" />
                 <p className="text-sm font-medium text-green-800">
-                  All items active — no changes selected
+                  {mt("allItemsActiveNoChanges")}
                 </p>
               </div>
-              <p className="text-xs text-green-600 mt-1">
-                Toggle items above to cancel, or use the refund section to issue a refund.
-              </p>
+              <p className="text-xs text-green-600 mt-1">{mt("toggleItemsAboveToCancelOrUseTheRefundSectionToIssueARefund")}</p>
             </div>
           </>
         )}
@@ -1098,7 +1044,7 @@ function BookingManagementContent({
           {(refundCalc.hasCancellations || refundMode) && effectiveRefundAmount > 0 && (
             <Badge variant="warning" className="text-xs ml-auto">
               <DollarSign className="h-3 w-3 mr-0.5" />
-              {formatPrice(effectiveRefundAmount)} refund
+              {mt("refundBadgeAmount", { amount: formatPrice(effectiveRefundAmount) })}
             </Badge>
           )}
         </div>
@@ -1112,7 +1058,7 @@ function BookingManagementContent({
             disabled={isProcessing}
             className="flex-1"
           >
-            {refundCalc.hasCancellations || refundMode ? "Discard Changes" : "Close"}
+            {refundCalc.hasCancellations || refundMode ? mt("discardChanges") : mt("close")}
           </Button>
 
           {/* Refund Only */}
@@ -1128,7 +1074,7 @@ function BookingManagementContent({
               ) : (
                 <RotateCcw className="h-4 w-4 mr-2" />
               )}
-              {isProcessing ? "Processing…" : `Refund ${formatPrice(effectiveRefundAmount)}`}
+              {isProcessing ? mt("processingUnicode") : mt("refundAmountButton", { amount: formatPrice(effectiveRefundAmount) })}
             </Button>
           )}
 
@@ -1147,10 +1093,10 @@ function BookingManagementContent({
                 <Ban className="h-4 w-4 mr-2" />
               )}
               {isProcessing
-                ? "Processing…"
+                ? mt("processingUnicode")
                 : kitchenIsCancelling
-                ? (effectiveRefundAmount > 0 ? `Cancel & Refund ${formatPrice(effectiveRefundAmount)}` : "Cancel Booking")
-                : (effectiveRefundAmount > 0 ? `Cancel Items & Refund ${formatPrice(effectiveRefundAmount)}` : "Cancel Items")}
+                ? (effectiveRefundAmount > 0 ? mt("cancelAndRefundAmount", { amount: formatPrice(effectiveRefundAmount) }) : mt("cancelBooking"))
+                : (effectiveRefundAmount > 0 ? mt("cancelItemsAndRefundAmount", { amount: formatPrice(effectiveRefundAmount) }) : mt("cancelItems"))}
             </Button>
           )}
         </div>

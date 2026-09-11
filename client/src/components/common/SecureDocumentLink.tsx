@@ -1,8 +1,8 @@
-import { ExternalLink, Loader2, FileText, AlertCircle } from 'lucide-react';
-import { usePresignedDocumentUrl } from '@/hooks/use-presigned-document-url';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
-import { useState } from 'react';
+import { ExternalLink, Loader2, FileText, AlertCircle } from "lucide-react";
+import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { useState } from "react";
 
 interface SecureDocumentLinkProps {
     url: string | null | undefined;

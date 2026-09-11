@@ -1,19 +1,22 @@
 import { logger } from "@/lib/logger";
 /**
  * PendingOverstayPenalties Component
- * 
+ *
  * Displays pending overstay penalties for chefs and allows them to pay via Stripe.
  */
 
+import { useTranslation } from "react-i18next";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { InfoChip } from "@/components/chef/info-chip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, CreditCard, Package, Calendar, Building2 } from "lucide-react";
 import { format } from "date-fns";
 import { auth } from "@/lib/firebase";
 import { toast } from "sonner";
+import { formatCurrency as formatCad } from "@shared/i18n";
+import { ct } from "@/i18n/chef-ns";
 
 interface PendingPenalty {
   overstayId: number;
@@ -52,11 +55,9 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   };
 }
 
-const formatCurrency = (cents: number) => {
-  return `$${(cents / 100).toFixed(2)} CAD`;
-};
-
 export function PendingOverstayPenalties() {
+  const { t, i18n } = useTranslation("chef");
+
   // Fetch pending penalties
   const { data: penalties = [], isLoading, error } = useQuery<PendingPenalty[]>({
     queryKey: ['/api/chef/overstay-penalties'],
@@ -66,7 +67,7 @@ export function PendingOverstayPenalties() {
         headers,
         credentials: 'include',
       });
-      if (!response.ok) throw new Error('Failed to fetch penalties');
+      if (!response.ok) throw new Error(ct("failedToFetchPenalties"));
       return response.json();
     },
     refetchInterval: 30000, // Refresh every 30 seconds
@@ -95,7 +96,7 @@ export function PendingOverstayPenalties() {
       }
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Failed to initiate payment');
+      toast.error(error.message || t("overstayPaymentFailed", "Failed to initiate payment"));
     },
   });
 
@@ -109,7 +110,7 @@ export function PendingOverstayPenalties() {
 
   if (isLoading) {
     return (
-      <Card className="border-orange-200 bg-orange-50/50">
+      <Card className="border">
         <CardHeader className="pb-3">
           <Skeleton className="h-6 w-48" />
         </CardHeader>
@@ -126,34 +127,43 @@ export function PendingOverstayPenalties() {
 
   // Only show pending penalties - resolved ones show on storage cards
   return (
-    <Card className="border-orange-300 bg-gradient-to-r from-orange-50 to-red-50">
+    <Card className="border border-destructive/30">
       <CardHeader className="pb-3">
         <div className="flex items-center gap-2">
-          <AlertTriangle className="h-5 w-5 text-orange-600" />
-          <CardTitle className="text-lg text-orange-800">
-            Outstanding Overstay Penalties
+          <AlertTriangle className="h-5 w-5 text-destructive" />
+          <CardTitle className="text-lg">
+            {t("overstayPenaltiesTitle", "Outstanding Overstay Penalties")}
           </CardTitle>
+          <InfoChip variant="destructive">
+            {t("overstayPaymentRequired", "Payment required")}
+          </InfoChip>
         </div>
-        <CardDescription className="text-orange-700">
-          You have {pendingPenalties.length} pending penalty{pendingPenalties.length !== 1 ? 'ies' : 'y'} that require{pendingPenalties.length === 1 ? 's' : ''} payment.
+        <CardDescription>
+          {t("overstayPenaltiesDesc", {
+            count: pendingPenalties.length,
+            defaultValue:
+              pendingPenalties.length === 1
+                ? "You have 1 pending penalty that requires payment."
+                : `You have ${pendingPenalties.length} pending penalties that require payment.`,
+          })}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {pendingPenalties.map((penalty) => (
           <div
             key={penalty.overstayId}
-            className="bg-white rounded-lg border border-orange-200 p-4 space-y-3"
+            className="rounded-[1.35rem] border p-4 space-y-3"
           >
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <Package className="h-4 w-4 text-purple-600" />
                   <span className="font-medium">{penalty.storageName}</span>
-                  <Badge variant="outline" className="capitalize text-xs">
+                  <InfoChip variant="outline" className="capitalize">
                     {penalty.storageType}
-                  </Badge>
+                  </InfoChip>
                 </div>
-                
+
                 <div className="flex items-center gap-4 text-sm text-muted-foreground">
                   <div className="flex items-center gap-1">
                     <Building2 className="h-3.5 w-3.5" />
@@ -161,41 +171,56 @@ export function PendingOverstayPenalties() {
                   </div>
                   <div className="flex items-center gap-1">
                     <Calendar className="h-3.5 w-3.5" />
-                    <span>Ended {format(new Date(penalty.bookingEndDate), "MMM d, yyyy")}</span>
+                    <span>
+                      {t("overstayEndedOn", {
+                        date: format(new Date(penalty.bookingEndDate), "MMM d, yyyy"),
+                        defaultValue: `Ended ${format(new Date(penalty.bookingEndDate), "MMM d, yyyy")}`,
+                      })}
+                    </span>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <Badge variant="destructive" className="text-xs">
-                    {penalty.daysOverdue} day{penalty.daysOverdue !== 1 ? 's' : ''} overdue
-                  </Badge>
+                  <InfoChip variant="destructive">
+                    {t("overstayDaysOverdue", {
+                      count: penalty.daysOverdue,
+                      defaultValue: `${penalty.daysOverdue} day${penalty.daysOverdue !== 1 ? "s" : ""} overdue`,
+                    })}
+                  </InfoChip>
                 </div>
               </div>
 
               <div className="text-right space-y-2">
-                <div className="text-xl font-bold text-orange-700">
-                  {formatCurrency(penalty.penaltyAmountCents)}
+                <div className="text-xl font-bold">
+                  {formatCad(penalty.penaltyAmountCents, { locale: i18n.language })}
                 </div>
                 <Button
                   size="sm"
                   onClick={() => payMutation.mutate(penalty.overstayId)}
                   disabled={payMutation.isPending}
-                  className="bg-orange-600 hover:bg-orange-700"
                 >
                   <CreditCard className="h-4 w-4 mr-1" />
-                  {payMutation.isPending ? 'Processing...' : 'Pay Now'}
+                  {payMutation.isPending
+                    ? t("processing", "Processing...")
+                    : t("payNow", "Pay Now")}
                 </Button>
               </div>
             </div>
 
             <p className="text-xs text-muted-foreground border-t pt-2">
-              Approved on {format(new Date(penalty.penaltyApprovedAt), "MMM d, yyyy 'at' h:mm a")}
+              {t("overstayApprovedOn", {
+                date: format(new Date(penalty.penaltyApprovedAt), "MMM d, yyyy 'at' h:mm a"),
+                defaultValue: `Approved on ${format(new Date(penalty.penaltyApprovedAt), "MMM d, yyyy 'at' h:mm a")}`,
+              })}
             </p>
           </div>
         ))}
 
-        <p className="text-xs text-orange-700 text-center pt-2">
-          Please pay your outstanding penalties to maintain good standing and continue using storage facilities.
+        <p className="text-xs text-muted-foreground text-center pt-2">
+          {t(
+            "overstayPenaltiesFooter",
+            "Please pay your outstanding penalties to maintain good standing and continue using storage facilities."
+          )}
         </p>
       </CardContent>
     </Card>

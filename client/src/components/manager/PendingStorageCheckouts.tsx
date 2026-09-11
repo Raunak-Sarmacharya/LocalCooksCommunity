@@ -10,32 +10,11 @@
  */
 
 import { useState, useMemo } from "react";
+import { mt } from "@/i18n/manager";
+import { tt } from "@/i18n/common-ns";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
-  SortingState,
-  useReactTable,
-} from "@tanstack/react-table";
-import { 
-  CheckCircle, 
-  Clock, 
-  Package, 
-  User, 
-  Image,
-  Loader2,
-  AlertTriangle,
-  MoreHorizontal,
-  ArrowUpDown,
-  MapPin,
-  Eye,
-  RefreshCw,
-  ShieldCheck,
-  FileWarning,
-  Timer,
-} from "lucide-react";
+import { ColumnDef, flexRender, getCoreRowModel, getSortedRowModel, SortingState, useReactTable } from "@tanstack/react-table";
+import { CheckCircle, Clock, Package, User, Image, Loader2, AlertTriangle, MoreHorizontal, ArrowUpDown, MapPin, Eye, RefreshCw, ShieldCheck, FileWarning, Timer } from "@/components/ui/manager-icons";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
@@ -47,39 +26,15 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow, isPast } from "date-fns";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
+import { SmartImage } from "@/components/ui/smart-image";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -151,9 +106,7 @@ function ReviewDeadlineBadge({ deadline, isExpired }: { deadline: string | null;
   if (isExpired || isPast(deadlineDate)) {
     return (
       <Badge variant="warning" className="text-xs font-normal">
-        <Timer className="h-3 w-3 mr-1" />
-        Auto-clearing soon
-      </Badge>
+        <Timer className="h-3 w-3 mr-1" />{mt("autoClearingSoon")}</Badge>
     );
   }
 
@@ -192,7 +145,7 @@ const getCheckoutColumns = ({
 }: CheckoutColumnsProps): ColumnDef<PendingCheckout>[] => [
   {
     id: "reference",
-    header: "Ref",
+    header: mt("ref"),
     cell: ({ row }) => {
       const ref = row.original.referenceCode || row.original.id;
       return (
@@ -210,9 +163,7 @@ const getCheckoutColumns = ({
         size="sm"
         onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         className="h-8 -ml-3"
-      >
-        Storage
-        <ArrowUpDown className="ml-2 h-3 w-3" />
+      >{mt("navStorage")}<ArrowUpDown className="ml-2 h-3 w-3" />
       </Button>
     ),
     cell: ({ row }) => {
@@ -226,9 +177,7 @@ const getCheckoutColumns = ({
               {checkout.storageType}
             </Badge>
             {checkout.isOverdue && (
-              <Badge variant="destructive" className="text-xs">
-                Overdue
-              </Badge>
+              <Badge variant="destructive" className="text-xs">{mt("overdue")}</Badge>
             )}
           </div>
           <div className="flex items-center text-xs text-muted-foreground mt-0.5 ml-5">
@@ -241,13 +190,13 @@ const getCheckoutColumns = ({
   },
   {
     accessorKey: "chefEmail",
-    header: "Chef",
+    header: mt("chefHeader"),
     cell: ({ row }) => {
       const checkout = row.original;
       return (
         <div className="flex items-center gap-2 text-sm">
           <User className="h-3.5 w-3.5 text-muted-foreground" />
-          <span>{checkout.chefEmail || 'Unknown'}</span>
+          <span>{checkout.chefEmail || mt("unknown")}</span>
         </div>
       );
     },
@@ -260,9 +209,7 @@ const getCheckoutColumns = ({
         size="sm"
         onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         className="h-8 -ml-3"
-      >
-        Requested
-        <ArrowUpDown className="ml-2 h-3 w-3" />
+      >{mt("requested")}<ArrowUpDown className="ml-2 h-3 w-3" />
       </Button>
     ),
     cell: ({ row }) => {
@@ -278,7 +225,7 @@ const getCheckoutColumns = ({
   },
   {
     accessorKey: "reviewDeadline",
-    header: "Review Window",
+    header: mt("reviewWindow"),
     cell: ({ row }) => {
       const checkout = row.original;
       return (
@@ -291,7 +238,7 @@ const getCheckoutColumns = ({
   },
   {
     accessorKey: "checkoutPhotoUrls",
-    header: "Photos",
+    header: mt("photos"),
     cell: ({ row }) => {
       const checkout = row.original;
       const photos = checkout.checkoutPhotoUrls;
@@ -343,10 +290,10 @@ const getCheckoutColumns = ({
                   ) : (
                     <ShieldCheck className="h-3.5 w-3.5" />
                   )}
-                  <span className="ml-1.5 hidden lg:inline">Clear</span>
+                  <span className="ml-1.5 hidden lg:inline">{mt("clear")}</span>
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>No issues found — complete checkout</TooltipContent>
+              <TooltipContent>{mt("noIssuesCompleteCheckout")}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
 
@@ -358,9 +305,7 @@ const getCheckoutColumns = ({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => onViewPhotos(checkout, 0)}>
-                <Eye className="h-4 w-4 mr-2" />
-                View Photos
-              </DropdownMenuItem>
+                <Eye className="h-4 w-4 mr-2" />{mt("viewPhotos")}</DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={() => onClear(checkout)}
@@ -368,15 +313,13 @@ const getCheckoutColumns = ({
                 className="text-green-600 focus:text-green-600"
               >
                 <ShieldCheck className="h-4 w-4 mr-2" />
-                Clear Storage — No Issues
+                {mt("clearStorageNoIssues")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => onFileClaim(checkout)}
                 className="text-amber-600 focus:text-amber-600"
               >
-                <FileWarning className="h-4 w-4 mr-2" />
-                File Damage / Cleaning Claim
-              </DropdownMenuItem>
+                <FileWarning className="h-4 w-4 mr-2" />{mt("fileDamageCleaningClaim")}</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -390,7 +333,7 @@ const getCheckoutColumns = ({
 const getHistoryColumns = (): ColumnDef<PendingCheckout>[] => [
   {
     id: "reference",
-    header: "Ref",
+    header: mt("ref"),
     cell: ({ row }) => {
       const ref = row.original.referenceCode || row.original.id;
       return (
@@ -408,9 +351,7 @@ const getHistoryColumns = (): ColumnDef<PendingCheckout>[] => [
         size="sm"
         onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         className="h-8 -ml-3"
-      >
-        Storage
-        <ArrowUpDown className="ml-2 h-3 w-3" />
+      >{mt("navStorage")}<ArrowUpDown className="ml-2 h-3 w-3" />
       </Button>
     ),
     cell: ({ row }) => {
@@ -431,30 +372,26 @@ const getHistoryColumns = (): ColumnDef<PendingCheckout>[] => [
   },
   {
     accessorKey: "chefEmail",
-    header: "Chef",
+    header: mt("chefHeader"),
     cell: ({ row }) => (
-      <span className="text-sm">{row.getValue("chefEmail") || 'Unknown'}</span>
+      <span className="text-sm">{row.getValue("chefEmail") || mt("unknown")}</span>
     ),
   },
   {
     accessorKey: "checkoutStatus",
-    header: "Result",
+    header: mt("result"),
     cell: ({ row }) => {
       const status = row.getValue("checkoutStatus") as string;
       if (status === 'completed') {
         return (
           <Badge variant="success">
-            <ShieldCheck className="h-3 w-3 mr-1" />
-            Cleared
-          </Badge>
+            <ShieldCheck className="h-3 w-3 mr-1" />{mt("cleared")}</Badge>
         );
       }
       if (status === 'checkout_claim_filed') {
         return (
           <Badge variant="warning">
-            <FileWarning className="h-3 w-3 mr-1" />
-            Claim Filed
-          </Badge>
+            <FileWarning className="h-3 w-3 mr-1" />{mt("claimFiled")}</Badge>
         );
       }
       return (
@@ -466,7 +403,7 @@ const getHistoryColumns = (): ColumnDef<PendingCheckout>[] => [
   },
   {
     accessorKey: "checkoutApprovedAt",
-    header: "Date",
+    header: mt("date"),
     cell: ({ row }) => {
       const date = row.original.checkoutApprovedAt;
       if (!date) return <span className="text-muted-foreground text-xs">—</span>;
@@ -479,7 +416,7 @@ const getHistoryColumns = (): ColumnDef<PendingCheckout>[] => [
   },
   {
     accessorKey: "checkoutNotes",
-    header: "Notes",
+    header: mt("notesHeader"),
     cell: ({ row }) => {
       const notes = row.getValue("checkoutNotes") as string | null;
       if (!notes) return <span className="text-muted-foreground text-xs">—</span>;
@@ -504,6 +441,7 @@ const getHistoryColumns = (): ColumnDef<PendingCheckout>[] => [
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function PendingStorageCheckouts() {
+  
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedCheckout, setSelectedCheckout] = useState<PendingCheckout | null>(null);
@@ -528,7 +466,7 @@ export function PendingStorageCheckouts() {
         headers,
         credentials: 'include',
       });
-      if (!response.ok) throw new Error('Failed to fetch pending checkouts');
+      if (!response.ok) throw new Error(tt("failedToFetchPendingCheckouts"));
       return response.json();
     },
   });
@@ -544,7 +482,7 @@ export function PendingStorageCheckouts() {
         headers,
         credentials: 'include',
       });
-      if (!response.ok) throw new Error('Failed to fetch checkout history');
+      if (!response.ok) throw new Error(tt("failedToFetchCheckoutHistory"));
       return response.json();
     },
     enabled: viewType === 'history',
@@ -569,16 +507,14 @@ export function PendingStorageCheckouts() {
       return response.json();
     },
     onSuccess: () => {
-      toast({
-        title: "Storage cleared",
-        description: "No issues found. Checkout completed and chef has been notified.",
+      toast({ title: mt("storageCleared"),
+        description: mt("noIssuesFoundCheckoutCompletedAndChefHasBeenNotified"),
       });
       invalidateCheckoutQueries();
       setSelectedCheckout(null);
     },
     onError: (error: Error) => {
-      toast({
-        title: "Clear failed",
+      toast({ title: mt("clearFailed"),
         description: error.message,
         variant: "destructive",
       });
@@ -616,9 +552,8 @@ export function PendingStorageCheckouts() {
       return response.json();
     },
     onSuccess: () => {
-      toast({
-        title: "Claim filed",
-        description: "Damage/cleaning claim created. The chef will be notified and can respond.",
+      toast({ title: mt("claimFiled2"),
+        description: mt("damageCleaningClaimCreatedTheChefWillBeNotifiedAndCanRespond"),
       });
       invalidateCheckoutQueries();
       setClaimSheetOpen(false);
@@ -626,8 +561,7 @@ export function PendingStorageCheckouts() {
       setSelectedCheckout(null);
     },
     onError: (error: Error) => {
-      toast({
-        title: "Claim failed",
+      toast({ title: mt("claimFailed"),
         description: error.message,
         variant: "destructive",
       });
@@ -650,15 +584,15 @@ export function PendingStorageCheckouts() {
     if (!selectedCheckout) return;
 
     if (!claimForm.claimTitle.trim() || claimForm.claimTitle.trim().length < 5) {
-      toast({ title: "Title too short", description: "Claim title must be at least 5 characters.", variant: "destructive" });
+      toast({ title: mt("titleTooShort"), description: mt("claimTitleMustBeAtLeast5Characters"), variant: "destructive" });
       return;
     }
     if (!claimForm.claimDescription.trim() || claimForm.claimDescription.trim().length < 50) {
-      toast({ title: "Description too short", description: "Claim description must be at least 50 characters.", variant: "destructive" });
+      toast({ title: mt("descriptionTooShort"), description: mt("claimDescriptionMustBeAtLeast50Characters"), variant: "destructive" });
       return;
     }
     if (!claimForm.claimedAmountCents || Number(claimForm.claimedAmountCents) <= 0) {
-      toast({ title: "Invalid amount", description: "Please enter a valid claim amount.", variant: "destructive" });
+      toast({ title: mt("invalidAmount"), description: mt("pleaseEnterAValidClaimAmount"), variant: "destructive" });
       return;
     }
 
@@ -725,9 +659,7 @@ export function PendingStorageCheckouts() {
     return (
       <Card>
         <CardContent className="flex items-center justify-center py-8 text-destructive">
-          <AlertTriangle className="h-5 w-5 mr-2" />
-          Failed to load pending checkouts
-        </CardContent>
+          <AlertTriangle className="h-5 w-5 mr-2" />{mt("failedToLoadPendingCheckouts")}</CardContent>
       </Card>
     );
   }
@@ -739,19 +671,15 @@ export function PendingStorageCheckouts() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <CardTitle className="text-xl font-semibold flex items-center gap-2">
-                <ShieldCheck className="h-5 w-5 text-green-600" />
-                Storage Checkouts
-              </CardTitle>
+                {mt("storageCheckouts")}</CardTitle>
               <CardDescription>
-                {viewType === 'pending' 
-                  ? `${pendingCheckouts.length} pending checkout review${pendingCheckouts.length !== 1 ? 's' : ''}`
-                  : `${checkoutHistory.length} checkout${checkoutHistory.length !== 1 ? 's' : ''} in history`}
+                {viewType === 'pending'
+                  ? mt("pendingCheckoutReviews", { count: pendingCheckouts.length })
+                  : mt("checkoutsInHistory", { count: checkoutHistory.length })}
               </CardDescription>
             </div>
             <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
-              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
+              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />{mt("refresh")}</Button>
           </div>
         </CardHeader>
 
@@ -761,14 +689,14 @@ export function PendingStorageCheckouts() {
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="pending" className="gap-2">
                 <Clock className="h-4 w-4" />
-                Pending Review
+                {mt("pendingReview")}
                 {pendingCheckouts.length > 0 && (
                   <Badge variant="count" className="ml-1">{pendingCheckouts.length}</Badge>
                 )}
               </TabsTrigger>
               <TabsTrigger value="history" className="gap-2">
                 <CheckCircle className="h-4 w-4" />
-                History
+                {mt("history")}
                 {checkoutHistory.length > 0 && (
                   <Badge variant="count" className="ml-1">{checkoutHistory.length}</Badge>
                 )}
@@ -817,10 +745,8 @@ export function PendingStorageCheckouts() {
                       <TableCell colSpan={pendingColumns.length} className="h-48 text-center">
                         <div className="flex flex-col items-center justify-center gap-2">
                           <ShieldCheck className="h-8 w-8 text-muted-foreground" />
-                          <p className="text-sm font-medium">No Pending Reviews</p>
-                          <p className="text-sm text-muted-foreground">
-                            Storage checkout requests from chefs will appear here for review
-                          </p>
+                          <p className="text-sm font-medium">{mt("noPendingReviews")}</p>
+                          <p className="text-sm text-muted-foreground">{mt("storageCheckoutRequestsFromChefsWillAppearHereForReview")}</p>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -871,10 +797,8 @@ export function PendingStorageCheckouts() {
                       <TableCell colSpan={historyColumns.length} className="h-48 text-center">
                         <div className="flex flex-col items-center justify-center gap-2">
                           <Clock className="h-8 w-8 text-muted-foreground" />
-                          <p className="text-sm font-medium">No Checkout History</p>
-                          <p className="text-sm text-muted-foreground">
-                            Completed checkout reviews will appear here
-                          </p>
+                          <p className="text-sm font-medium">{mt("noCheckoutHistory")}</p>
+                          <p className="text-sm text-muted-foreground">{mt("completedCheckoutReviewsWillAppearHere")}</p>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -891,12 +815,8 @@ export function PendingStorageCheckouts() {
         <SheetContent className="w-full sm:max-w-md overflow-y-auto">
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
-              <FileWarning className="h-5 w-5 text-amber-600" />
-              File Damage / Cleaning Claim
-            </SheetTitle>
-            <SheetDescription>
-              Document the issue and file a claim. The chef will be notified and can respond or dispute.
-            </SheetDescription>
+              <FileWarning className="h-5 w-5 text-amber-600" />{mt("fileDamageCleaningClaim")}</SheetTitle>
+            <SheetDescription>{mt("documentTheIssueAndFileAClaimTheChefWillBeNotifiedAndCanResp")}</SheetDescription>
           </SheetHeader>
 
           {selectedCheckout && (
@@ -906,7 +826,7 @@ export function PendingStorageCheckouts() {
                 <div className="text-sm font-medium">{selectedCheckout.storageName}</div>
                 <div className="text-xs text-muted-foreground flex items-center gap-1">
                   <User className="h-3 w-3" />
-                  {selectedCheckout.chefEmail || 'Unknown chef'}
+                  {selectedCheckout.chefEmail || mt("unknownChef")}
                 </div>
                 <div className="text-xs text-muted-foreground flex items-center gap-1">
                   <MapPin className="h-3 w-3" />
@@ -918,23 +838,23 @@ export function PendingStorageCheckouts() {
 
               {/* Claim Title */}
               <div className="space-y-1.5">
-                <Label htmlFor="claim-title">Claim Title *</Label>
+                <Label htmlFor="claim-title">{mt("claimTitleRequired")}</Label>
                 <Input
                   id="claim-title"
-                  placeholder="e.g., Food residue left in storage unit"
+                  placeholder={mt("eGFoodResidueLeftInStorageUnit")}
                   value={claimForm.claimTitle}
                   onChange={(e) => setClaimForm(prev => ({ ...prev, claimTitle: e.target.value }))}
                   maxLength={200}
                 />
-                <p className="text-xs text-muted-foreground">Minimum 5 characters</p>
+                <p className="text-xs text-muted-foreground">{mt("minimum5Characters")}</p>
               </div>
 
               {/* Claim Description */}
               <div className="space-y-1.5">
-                <Label htmlFor="claim-desc">Description *</Label>
+                <Label htmlFor="claim-desc">{mt("descriptionRequired")}</Label>
                 <Textarea
                   id="claim-desc"
-                  placeholder="Describe the damage or cleaning issue in detail. Include what you observed, the condition of the storage unit, and any relevant context..."
+                  placeholder={tt("describeDamageDetail")}
                   value={claimForm.claimDescription}
                   onChange={(e) => setClaimForm(prev => ({ ...prev, claimDescription: e.target.value }))}
                   rows={4}
@@ -946,7 +866,7 @@ export function PendingStorageCheckouts() {
 
               {/* Claimed Amount */}
               <div className="space-y-1.5">
-                <Label htmlFor="claim-amount">Claim Amount (CAD) *</Label>
+                <Label htmlFor="claim-amount">{mt("claimAmountCadRequired")}</Label>
                 <CurrencyInput
                   id="claim-amount"
                   placeholder="0.00"
@@ -963,7 +883,7 @@ export function PendingStorageCheckouts() {
 
               {/* Damage Date */}
               <div className="space-y-1.5">
-                <Label htmlFor="damage-date">Date of Damage/Issue</Label>
+                <Label htmlFor="damage-date">{mt("dateOfDamageIssue")}</Label>
                 <Input
                   id="damage-date"
                   type="date"
@@ -974,10 +894,10 @@ export function PendingStorageCheckouts() {
 
               {/* Manager Notes */}
               <div className="space-y-1.5">
-                <Label htmlFor="manager-notes">Internal Notes (optional)</Label>
+                <Label htmlFor="manager-notes">{mt("internalNotesOptional")}</Label>
                 <Textarea
                   id="manager-notes"
-                  placeholder="Internal notes for your reference..."
+                  placeholder={mt("internalNotesForYourReference")}
                   value={claimForm.managerNotes}
                   onChange={(e) => setClaimForm(prev => ({ ...prev, managerNotes: e.target.value }))}
                   rows={2}
@@ -989,12 +909,12 @@ export function PendingStorageCheckouts() {
                 <div className="flex items-start gap-2">
                   <AlertTriangle className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
                   <div className="text-xs text-blue-700">
-                    <strong>What happens next</strong>
+                    <strong>{mt("whatHappensNext")}</strong>
                     <ul className="mt-1 space-y-0.5 list-disc list-inside">
-                      <li>The chef will be notified and has 72 hours to respond</li>
-                      <li>They can accept the claim or dispute it</li>
-                      <li>You can add photo evidence after filing</li>
-                      <li>Storage is released — the claim is tracked separately</li>
+                      <li>{mt("theChefWillBeNotifiedAndHas72HoursToRespond")}</li>
+                      <li>{mt("theyCanAcceptTheClaimOrDisputeIt")}</li>
+                      <li>{mt("youCanAddPhotoEvidenceAfterFiling")}</li>
+                      <li>{mt("storageReleasedClaimTracked")}</li>
                     </ul>
                   </div>
                 </div>
@@ -1003,13 +923,11 @@ export function PendingStorageCheckouts() {
           )}
 
           <SheetFooter className="mt-2">
-            <Button variant="outline" onClick={() => setClaimSheetOpen(false)}>
-              Cancel
-            </Button>
+            <Button variant="outline" onClick={() => setClaimSheetOpen(false)}>{mt("cancel")}</Button>
             <StatusButton
               onClick={handleClaimSubmit}
               status={startClaimMutation.isPending ? "loading" : "idle"}
-              labels={{ idle: "File Claim", loading: "Filing", success: "Filed" }}
+              labels={{ idle: mt("fileClaim"), loading: mt("filing"), success: mt("filed") }}
             />
           </SheetFooter>
         </SheetContent>
@@ -1019,12 +937,12 @@ export function PendingStorageCheckouts() {
       <Sheet open={photoViewerOpen} onOpenChange={setPhotoViewerOpen}>
         <SheetContent className="w-full sm:max-w-2xl">
           <SheetHeader>
-            <SheetTitle>Checkout Photos</SheetTitle>
+            <SheetTitle>{mt("checkoutPhotos")}</SheetTitle>
           </SheetHeader>
           {selectedCheckout && selectedCheckout.checkoutPhotoUrls.length > 0 && (
             <div className="space-y-4 mt-4">
               <div className="relative aspect-video bg-muted rounded-lg overflow-hidden">
-                <img
+                <SmartImage
                   src={getR2ProxyUrl(selectedCheckout.checkoutPhotoUrls[selectedPhotoIndex])}
                   alt={`Photo ${selectedPhotoIndex + 1}`}
                   className="w-full h-full object-contain"
@@ -1041,7 +959,7 @@ export function PendingStorageCheckouts() {
                         index === selectedPhotoIndex ? "border-primary" : "border-transparent"
                       )}
                     >
-                      <img
+                      <SmartImage
                         src={getR2ProxyUrl(url)}
                         alt={`Thumbnail ${index + 1}`}
                         className="w-full h-full object-cover"
@@ -1063,7 +981,7 @@ export function PendingStorageCheckouts() {
                     handleClear(selectedCheckout);
                   }}
                   status={clearMutation.isPending ? "loading" : "idle"}
-                  labels={{ idle: "Clear — No Issues", loading: "Clearing", success: "Cleared" }}
+                  labels={{ idle: mt("clearNoIssues"), loading: mt("clearing"), success: mt("cleared") }}
                 />
                 <Button
                   variant="outline"
@@ -1074,9 +992,7 @@ export function PendingStorageCheckouts() {
                     handleFileClaimClick(selectedCheckout);
                   }}
                 >
-                  <FileWarning className="h-4 w-4 mr-2" />
-                  File Claim
-                </Button>
+                  <FileWarning className="h-4 w-4 mr-2" />{mt("fileClaim")}</Button>
               </div>
             </div>
           )}

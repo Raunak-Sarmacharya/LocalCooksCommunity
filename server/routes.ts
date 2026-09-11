@@ -1,4 +1,10 @@
 import { logger } from "./logger";
+import { isE2eOutboundSuppressed } from "./e2e-outbound-guard";
+import {
+  isDevAuthBypassEnabled,
+  isLocalDevHost,
+  isLocalTestFixtureEmail,
+} from "./dev-auth-bypass-gates";
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import {
@@ -43,13 +49,14 @@ import { comparePasswords, hashPassword } from "./passwordUtils";
 import { verifyFirebaseToken } from "./firebase-setup";
 import { requireFirebaseAuthWithUser, requireManager, requireAdmin, optionalFirebaseAuth } from "./firebase-auth-middleware";
 import { deleteConversation } from "./chat-service";
-import { pool, db } from "./db";
+import { pool, db, getDbError } from "./db";
 import { getPresignedUrl } from "./r2-storage";
 import { requireChef } from "./routes/middleware";
 import { normalizeImageUrl } from "./routes/utils";
 
 import { UserRepository } from "./domains/users/user.repository";
 import { UserService } from "./domains/users/user.service";
+import { CURRENT_POLICY_VERSION } from "@shared/policy-config";
 
 // Note: Express Request.user type is already defined by @types/passport
 // We use type assertions where needed for isChef properties
@@ -103,6 +110,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Mount Places API Proxy (secure Google Places API access)
   app.use("/api/places", (await import("./routes/places")).default);
 
+  // Authenticated, role-scoped global search (shared by all portal command menus)
+  app.use("/api/search", (await import("./routes/search")).default);
+
   // Legacy logout endpoint alias (frontend calls /api/logout)
   app.post("/api/logout", (req, res) => {
     logger.info("🚪 Logout request received (Firebase Auth is stateless)");
@@ -135,16 +145,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   const userRepo = new UserRepository();
   const userService = new UserService(userRepo);
-
-  // Check if user exists by username (for Google+password flow)
-  app.get("/api/user-exists", async (req, res) => {
-    const username = req.query.username as string;
-    if (!username) {
-      return res.status(400).json({ error: "Username required" });
-    }
-    const exists = await userService.checkUsernameExists(username);
-    res.json({ exists });
-  });
 
   // Get current user from Firebase auth (used by manager applications page)
   app.get("/api/firebase/user/me", requireFirebaseAuthWithUser, async (req, res) => {
@@ -288,9 +288,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Send Verification Email (Firebase Backend Custom Email)
   app.post("/api/firebase/send-verification-email", async (req, res) => {
     try {
-      const { email, role } = req.body;
+      const { email, role, returnUrl } = req.body;
       if (!email) {
         return res.status(400).json({ error: "Email is required" });
+      }
+
+      if (isE2eOutboundSuppressed() || isLocalTestFixtureEmail(email)) {
+        logger.info(
+          "[e2e-outbound-guard] skipped verification link generation (harness will supply oob code)",
+          { email }
+        );
+        return res.json({
+          success: true,
+          message: "Verification email suppressed (E2E harness).",
+        });
       }
 
       // We need to use firebase-admin to generate the verification link
@@ -304,11 +315,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Lookup the user to ensure we have the correct role and name
       const existingUser = await userService.getUserByUsername(email);
-      const userRole = existingUser ? (existingUser as any).role || role || 'chef' : role || 'chef';
-      
-      const { getSubdomainUrl } = await import('./email');
+      let userRole = existingUser ? (existingUser as any).role || role || 'chef' : role || 'chef';
+
+      const isKitchenFlowReturn =
+        returnUrl &&
+        typeof returnUrl === 'string' &&
+        (returnUrl.includes('/kitchen-preview') ||
+          returnUrl.includes('/apply-kitchen') ||
+          returnUrl.includes('/book-kitchen'));
+
+      // Kitchen preview registrations must verify on chef subdomain, not admin.
+      if (isKitchenFlowReturn) {
+        userRole = 'chef';
+      }
+
+      const { getEmailLinkOrigin } = await import('./email');
       const userType = userRole === 'manager' ? 'kitchen' : userRole === 'admin' ? 'admin' : 'chef';
-      const baseUrl = getSubdomainUrl(userType);
+      const emailLinkOrigin = getEmailLinkOrigin(userType);
 
       // We don't necessarily need a redirectPath because EmailAction.tsx handles the ?mode=verifyEmail flow
       // The user is redirected to EmailAction by Firebase's default handlers if we don't set it,
@@ -325,12 +348,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ? '/admin/login?verified=true'
           : '/auth?verified=true';
 
+      const { getFirebaseContinueUrl } = await import('./email');
       const actionCodeSettings = {
-        url: `${baseUrl}${redirectPath}`,
+        url: getFirebaseContinueUrl(userType, redirectPath),
         handleCodeInApp: false,
       };
 
-      const verificationUrl = await getAuth(firebaseApp).generateEmailVerificationLink(email, actionCodeSettings);
+      // Kitchen return paths live in client localStorage (auth-intent); avoid embedding
+      // long preview URLs in Firebase continueUrl — it can fail link generation.
+
+      let verificationUrl = '';
+      const linkErrors: unknown[] = [];
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          verificationUrl = await getAuth(firebaseApp).generateEmailVerificationLink(
+            email,
+            actionCodeSettings
+          );
+          break;
+        } catch (linkError: any) {
+          linkErrors.push(linkError);
+          const retryable =
+            linkError?.code === 'auth/user-not-found' && attempt < 3;
+          if (!retryable) throw linkError;
+          await new Promise((r) => setTimeout(r, 400 * attempt));
+        }
+      }
+      if (!verificationUrl) {
+        throw linkErrors[linkErrors.length - 1] || new Error('Failed to generate verification link');
+      }
+
+      // Rewrite verification link to our /email-action page (same as magic links).
+      // Firebase's default handler can land on the wrong subdomain (e.g. admin).
+      try {
+        const generatedUrl = new URL(verificationUrl);
+        const targetUrlObj = new URL(emailLinkOrigin);
+        const query = generatedUrl.search;
+        const finalOrigin =
+          generatedUrl.origin !== targetUrlObj.origin ? emailLinkOrigin : generatedUrl.origin;
+        verificationUrl = `${finalOrigin}/email-action${query}`;
+        logger.info("🔧 Verification link rewritten to /email-action (URL omitted from logs)");
+      } catch (rewriteError) {
+        logger.error('⚠️ Failed to rewrite verification link URL:', rewriteError);
+      }
 
       const { sendEmail, generateEmailVerificationEmail } = await import('./email');
       
@@ -346,18 +406,232 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       const emailSent = await sendEmail(emailContent, {
-        trackingId: `email_verify_${existingUser?.id || email}_${Date.now()}`
+        trackingId: `email_verify_${existingUser?.id || email}_${Date.now()}`,
+        emailType: 'verification',
       });
 
       if (!emailSent) {
-        throw new Error('Failed to send verification email');
+        return res.status(503).json({
+          error: "Email could not be delivered. Try resend — we will use Firebase as a backup.",
+          code: "smtp_failed",
+        });
       }
 
       logger.info(`✅ Custom branded email verification sent to ${email} (role: ${userRole})`);
       res.json({ success: true, message: "Verification email sent." });
     } catch (error: any) {
       logger.error("Error sending verification email:", error);
+      const code = error?.code || error?.errorInfo?.code;
+      if (code === 'auth/user-not-found') {
+        return res.status(404).json({ error: "No account found for this email. Please register first." });
+      }
+      if (code === 'auth/too-many-requests' || String(error?.message || '').includes('TOO_MANY_ATTEMPTS')) {
+        return res.status(429).json({ error: "Too many attempts. Please wait a few minutes and try again." });
+      }
       res.status(500).json({ error: "Failed to send verification email" });
+    }
+  });
+
+  // Send Magic Link Email (Firebase Backend Custom Email)
+  // Custom branded passwordless sign-in email with CTA button instead of raw Firebase template
+  app.post("/api/firebase/send-magic-link-email", async (req, res) => {
+    try {
+      const email = typeof req.body?.email === 'string'
+        ? req.body.email.trim().toLowerCase()
+        : '';
+      const { returnUrl } = req.body;
+      if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+        return res.status(400).json({ error: "Email is required" });
+      }
+
+      // Initialize Firebase Admin
+      const { getAuth } = await import('firebase-admin/auth');
+      const { initializeFirebaseAdmin } = await import('./firebase-setup');
+
+      const firebaseApp = initializeFirebaseAdmin();
+      if (!firebaseApp) {
+        throw new Error('Firebase Admin not initialized');
+      }
+
+      // Passwordless sign-in is login-only. Firebase email links can create a
+      // brand-new Firebase identity, so never generate one until both identity
+      // stores agree that this is an existing linked account. The response is
+      // deliberately indistinguishable from the success response to prevent
+      // account enumeration.
+      const existingUser = await userService.getUserByUsername(email);
+      const genericResponse = { success: true, message: "If an account exists, a sign-in link has been sent." };
+      if (!existingUser?.firebaseUid) {
+        logger.warn(`Magic-link request suppressed for an unlinked or unknown account: ${email}`);
+        return res.json(genericResponse);
+      }
+
+      const firebaseUser = await getAuth(firebaseApp).getUser(existingUser.firebaseUid).catch(() => null);
+      if (!firebaseUser?.email || firebaseUser.email.trim().toLowerCase() !== email) {
+        logger.error(`Magic-link request suppressed because Firebase/Neon identity linkage is inconsistent for user ${existingUser.id}`);
+        return res.json(genericResponse);
+      }
+
+      const userRole = existingUser.role === 'manager'
+        ? 'manager'
+        : existingUser.role === 'admin'
+          ? 'admin'
+          : 'chef';
+
+      // Determine the correct subdomain for the action code URL
+      // EmailAction handles cross-subdomain routing, but we set a sensible default here
+      const { getEmailLinkOrigin } = await import('./email');
+      const userType = userRole === 'manager' ? 'kitchen' : userRole === 'admin' ? 'admin' : 'chef';
+      const emailLinkOrigin = getEmailLinkOrigin(userType);
+
+      // The post-sign-in redirect path (role-based) — EmailAction may override with
+      // cross-subdomain redirect if the user's role doesn't match the current subdomain,
+      // but this provides a good default for the continueUrl
+      const postSignInPath = userRole === 'manager'
+        ? '/manager/dashboard'
+        : userRole === 'admin'
+          ? '/admin'
+          : '/dashboard';
+
+      // When the client saved a kitchen-preview intent (tour/book), honour it
+      // so magic-link sign-in returns the user to complete their flow.
+      let redirectPath = postSignInPath;
+      if (returnUrl && typeof returnUrl === 'string' && returnUrl.startsWith('/')) {
+        const blocked = ['/email-action', '/auth', '/login'];
+        const belongsToRole = userRole === 'manager'
+          ? returnUrl.startsWith('/manager/')
+          : userRole === 'admin'
+            ? returnUrl.startsWith('/admin')
+            : !returnUrl.startsWith('/manager/') && !returnUrl.startsWith('/admin');
+        if (belongsToRole && !blocked.some((p) => returnUrl.startsWith(p))) {
+          redirectPath = returnUrl;
+        }
+      }
+
+      const { getFirebaseContinueUrl } = await import('./email');
+      const continueUrlObj = new URL(getFirebaseContinueUrl(userType, redirectPath));
+      const continueUrl = continueUrlObj.toString();
+
+      // Action code settings: handleCodeInApp=true sends mode=signIn to /email-action
+      // (instead of Firebase's default auth handler URL), which we process in EmailAction.tsx
+      const actionCodeSettings = {
+        url: continueUrl,
+        handleCodeInApp: true,
+      };
+
+      // Generate the Firebase sign-in link (magic link) using Admin SDK
+      let signInUrl = await getAuth(firebaseApp).generateSignInWithEmailLink(email, actionCodeSettings);
+
+      // -------------------------------------------------------------------
+      // MAGIC LINK URL REWRITE (Local Dev + Vercel Preview)
+      //
+      // Firebase Admin SDK uses the project-level Action URL (configured in
+      // Firebase Console) which is typically the production domain. This
+      // causes magic links to open Firebase's DEFAULT auth handler page
+      // (e.g. formauth-9e620.firebaseapp.com/__/auth/action) which does
+      // NOT support mode=signIn — it shows "unknown action: signIn".
+      //
+      // Fix strategy:
+      //   Rewrite the origin of the Firebase-generated URL so the magic
+      //   link opens OUR app's /email-action page (which handles signIn).
+      //   - Local dev:      rewrite to BASE_URL (e.g. http://localhost:5001)
+      //   - Vercel preview:  rewrite to the role-based dev subdomain
+      //                      (e.g. https://dev-chef.localcooks.ca)
+      //   - Production:     rewrite to the role-based prod subdomain
+      //                      (e.g. https://chef.localcooks.ca)
+      //
+      //   Role/subdomain correctness is then handled CLIENT-SIDE by the
+      //   EmailAction page via `redirectIfWrongSubdomain()`, which bounces
+      //   users to the correct role-based subdomain while preserving all
+      //   query params (mode, oobCode, apiKey, etc.).
+      // -------------------------------------------------------------------
+      const isLocalDev = process.env.NODE_ENV === 'development' && !process.env.VERCEL_ENV;
+      const isVercelPreview = process.env.VERCEL_ENV === 'preview';
+
+      // Always rewrite: local dev, Vercel preview (dev-*), AND production.
+      // Firebase's default handler never supports mode=signIn, so we must
+      // always redirect to our own /email-action page.
+      {
+        try {
+          const generatedUrl = new URL(signInUrl);
+
+          // Determine the target origin based on environment:
+          //   - Local dev: BASE_URL (localhost)
+          //   - Vercel preview: role-based dev subdomain (dev-chef.localcooks.ca)
+          //   - Production: role-based prod subdomain (chef.localcooks.ca)
+          let targetOrigin: string;
+          let envLabel: string;
+          if (isLocalDev) {
+            targetOrigin = emailLinkOrigin;
+            envLabel = 'LOCAL DEV (public email link)';
+          } else {
+            targetOrigin = emailLinkOrigin;
+            envLabel = isVercelPreview ? 'VERCEL PREVIEW' : 'PRODUCTION';
+          }
+
+          const targetUrlObj = new URL(targetOrigin);
+
+          logger.info(`🔧 ${envLabel} REWRITE CONTEXT:`, {
+            userRole,
+            userType,
+            firebaseGeneratedOrigin: generatedUrl.origin,
+            targetOrigin,
+            targetScheme: targetUrlObj.protocol,
+            targetHost: targetUrlObj.hostname,
+            targetPort: targetUrlObj.port || '(default)',
+            generatedPathname: generatedUrl.pathname,
+            generatedQueryPreview: generatedUrl.search.length > 80 ? generatedUrl.search.slice(0, 80) + '...' : generatedUrl.search,
+          });
+
+          // Firebase always generates path as /__/auth/action — our SPA route is /email-action.
+          // Rewrite the path unconditionally. Also rewrite origin if it doesn't match.
+          const query = generatedUrl.search; // e.g., '?apiKey=...&mode=signIn&...'
+          const finalOrigin = (generatedUrl.origin !== targetUrlObj.origin) ? targetOrigin : generatedUrl.origin;
+          const originalPath = generatedUrl.pathname;
+          const rewrittenPath = '/email-action';
+          signInUrl = `${finalOrigin}${rewrittenPath}${query}`;
+
+          if (generatedUrl.origin !== targetUrlObj.origin || originalPath !== rewrittenPath) {
+            logger.info(`🔧 ${envLabel}: Rewrote magic link — ORIGIN: ${generatedUrl.origin} → ${finalOrigin}, PATH: ${originalPath} → ${rewrittenPath}`);
+          } else {
+            logger.info(`🔧 ${envLabel}: URL already correct, no rewrite needed.`);
+          }
+        } catch (rewriteError) {
+          logger.error('⚠️ Failed to rewrite magic link URL:', rewriteError instanceof Error ? rewriteError.message : String(rewriteError));
+        }
+      }
+
+      // Import email functions
+      const { sendEmail, generateMagicLinkEmail } = await import('./email');
+
+      // Determine display name for the email greeting
+      const rawFirstName = existingUser ? ((existingUser as any).firstName || (existingUser as any).first_name) : null;
+      const rawLastName = existingUser ? ((existingUser as any).lastName || (existingUser as any).last_name) : null;
+      const fullName = rawFirstName ? `${rawFirstName} ${rawLastName || ''}`.trim() : email.split('@')[0];
+
+      // Get locale from user if available
+      const userLocale = existingUser ? (existingUser as any).locale : null;
+
+      // Build the custom branded email with the magic link hidden in a CTA button
+      const emailContent = generateMagicLinkEmail({
+        fullName,
+        email,
+        signInUrl,
+        locale: userLocale,
+      });
+
+      const emailSent = await sendEmail(emailContent, {
+        trackingId: `magic_link_${existingUser?.id || email}_${Date.now()}`
+      });
+
+      if (!emailSent) {
+        throw new Error('Failed to send magic link email');
+      }
+
+      logger.info(`✅ Custom branded magic link email sent to ${email} (role: ${userRole})`);
+      res.json(genericResponse);
+    } catch (error: any) {
+      logger.error("Error sending magic link email:", error);
+      res.status(500).json({ error: "Failed to send sign-in link" });
     }
   });
 
@@ -447,11 +721,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "Invalid token" });
       }
 
-      const { email, uid, role, ...otherData } = req.body;
+      const uid = typeof req.body?.uid === 'string' ? req.body.uid : '';
+      const tokenEmail = typeof decodedToken.email === 'string'
+        ? decodedToken.email.trim().toLowerCase()
+        : '';
+      const accountType = req.body?.accountType;
+      const termsAccepted = req.body?.termsAccepted;
+      const displayName = typeof req.body?.displayName === 'string'
+        ? req.body.displayName.trim().slice(0, 120)
+        : '';
 
       if (decodedToken.uid !== uid) {
         return res.status(403).json({ error: "Token mismatch" });
       }
+      if (!tokenEmail) {
+        return res.status(400).json({ error: "A Firebase email identity is required" });
+      }
+      if (accountType !== 'chef' && accountType !== 'manager') {
+        return res.status(403).json({
+          error: "Public registration is available only for chef and kitchen manager accounts",
+          code: "INVALID_REGISTRATION_TYPE",
+        });
+      }
+      // Standalone signup may defer consent to /accept-terms. Inline flows
+      // send true; never record acceptance merely because an account was created.
 
       // Check if user already exists by Firebase UID
       const existingByUid = await userService.getUserByFirebaseUid(uid);
@@ -462,42 +755,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // ENTERPRISE FIX: Also check if user exists by email/username
       // This handles the case where user was deleted from Firebase but not Neon, or vice versa
-      const existingByUsername = await userService.getUserByUsername(email);
+      const existingByUsername = await userService.getUserByUsername(tokenEmail);
       if (existingByUsername) {
-        // User exists in Neon but with different/no Firebase UID
-        // Link the new Firebase account to existing Neon user
-        if (!existingByUsername.firebaseUid) {
-          logger.info(`🔗 Linking Firebase UID ${uid} to existing Neon user ${existingByUsername.id}`);
-          const updatedUser = await userService.updateUser(existingByUsername.id, {
-            firebaseUid: uid,
-            isVerified: decodedToken.email_verified || existingByUsername.isVerified
-          });
-          return res.json(updatedUser || existingByUsername);
-        } else if (existingByUsername.firebaseUid !== uid) {
-          // User exists with a DIFFERENT Firebase UID - this is a conflict
-          // The old Firebase account may have been deleted and user is re-registering
-          logger.info(`⚠️ User ${email} exists with different Firebase UID. Old: ${existingByUsername.firebaseUid}, New: ${uid}`);
-          logger.info(`🔄 Updating Firebase UID to new account (user may have re-registered in Firebase)`);
-          const updatedUser = await userService.updateUser(existingByUsername.id, {
-            firebaseUid: uid,
-            isVerified: decodedToken.email_verified || false // Reset verification for new Firebase account
-          });
-          return res.json(updatedUser || existingByUsername);
-        }
-        // Same Firebase UID - just return existing user
-        return res.json(existingByUsername);
+        logger.info(`⚠️ Registration blocked because ${tokenEmail} already exists in the application database`);
+        return res.status(409).json({
+          error: "Email already registered",
+          code: "EMAIL_EXISTS",
+          message: "An account already exists for this email address. Sign in instead, or use a different email."
+        });
       }
 
       // Create new user - no existing user found
-      logger.info(`📝 Creating new user: ${email} with role: ${role || 'user'}`);
-      const finalRole = role || "user";
-      const newUser = await userService.createUser({
-        username: email,
+      const finalRole: 'chef' | 'manager' = accountType;
+      logger.info(`📝 Creating new public ${finalRole} account: ${tokenEmail}`);
+      let newUser = await userService.createUser({
+        username: tokenEmail,
         firebaseUid: uid,
         role: finalRole,
         isVerified: decodedToken.email_verified || false,
-        ...otherData
+        has_seen_welcome: finalRole === 'manager',
       });
+
+      try {
+        const roleAndConsentUpdate = await userService.updateUser(newUser.id, {
+          isChef: finalRole === 'chef',
+          isManager: finalRole === 'manager',
+          termsAccepted: termsAccepted === true,
+          termsAcceptedAt: termsAccepted === true ? new Date() : null,
+          termsVersion: termsAccepted === true ? CURRENT_POLICY_VERSION : null,
+        });
+        if (!roleAndConsentUpdate) throw new Error('Registration profile update returned no user');
+        newUser = roleAndConsentUpdate;
+      } catch (profileError) {
+        // Compensate the first insert so the client can safely roll back the
+        // Firebase identity without leaving another split-brain account.
+        await userService.deleteUser(newUser.id).catch((cleanupError) => {
+          logger.error(`Failed to remove partial Neon registration ${newUser.id}`, cleanupError);
+        });
+        throw profileError;
+      }
 
       // Send registration emails
       try {
@@ -506,14 +802,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const { users } = await import('@shared/schema');
         const { eq } = await import('drizzle-orm');
 
-        const displayName = otherData.displayName || email.split('@')[0];
+        const email = tokenEmail;
+        const recipientName = displayName || email.split('@')[0];
 
         // ENTERPRISE: Only send welcome email if the user is verified (e.g. Google Auth)
         // For email/password users, they will get this email after they verify via /api/sync-verification-status
         if (decodedToken.email_verified) {
           logger.info(`📧 Sending welcome email to VERIFIED new ${finalRole}: ${email}`);
           const welcomeEmail = generateWelcomeEmail({
-            fullName: displayName,
+            fullName: recipientName,
             email,
             role: finalRole as 'chef' | 'manager' | 'admin'
           });
@@ -541,7 +838,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (admin.username && admin.username !== email) {
             const adminEmail = generateNewUserRegistrationAdminEmail({
               adminEmail: admin.username,
-              newUserName: displayName,
+              newUserName: recipientName,
               newUserEmail: email,
               userRole: finalRole,
               registrationDate: new Date(),
@@ -564,11 +861,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       logger.error("Error registering user:", error);
 
       // Provide more specific error messages
-      if (error.message?.includes('already taken') || error.code === '23505') {
+      const dbErr = getDbError(error);
+      if (dbErr.message?.includes('already taken') || dbErr.code === '23505') {
         return res.status(409).json({
           error: "Email already registered",
           code: "EMAIL_EXISTS",
-          message: "This email is already registered. Please try signing in instead."
+          message: "An account already exists for this email address. Sign in instead, or use a different email."
         });
       }
 
@@ -820,6 +1118,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Extracted to ./routes/portal-auth.ts
   app.use("/api", (await import("./routes/portal-auth")).default);
 
+  // Dev-only auth bypass for TestSprite (404 in production / without secret)
+  app.use("/api/dev", (await import("./routes/dev-auth")).default);
+
+  // ponytail: TestSprite agents often omit /dev/ and secret; alias only on localhost dev.
+  const devE2eAuthLinkAlias = (req: Request, res: Response) => {
+    if (!isDevAuthBypassEnabled() || !isLocalDevHost(req.headers.host)) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    const qs = new URLSearchParams();
+    for (const [key, value] of Object.entries(req.query)) {
+      if (typeof value === "string") qs.set(key, value);
+    }
+    if (!qs.has("secret")) qs.set("secret", "tsb1");
+    if (!qs.has("role")) qs.set("role", "chef");
+    if (!qs.has("kind")) qs.set("kind", "signIn");
+    return res.redirect(302, `/api/dev/e2e-auth-link?${qs.toString()}`);
+  };
+  app.get("/api/e2e-auth-link", devE2eAuthLinkAlias);
+  app.get("/e2e-auth-link", devE2eAuthLinkAlias);
 
   // ===============================
   // PORTAL ROUTES

@@ -5,7 +5,7 @@ import React, { useCallback, useState } from 'react';
 import { auth } from "@/lib/firebase";
 
 // Import design components
-import { EmailDesignStudio } from './email-design-system/EmailDesignStudio';
+import { EmailDesignStudio } from "./email-design-system/EmailDesignStudio";
 
 // Interface definitions matching EmailDesignStudio
 interface EmailDesignData {
@@ -312,7 +312,7 @@ const PromoCodeSender: React.FC = () => {
       promoCodeLabel: '🎁 Special Offer Code',
       includePromoSection: true, // Toggle for promo code section
       customMessage: 'We\'re excited to share this special offer with you! Use the code below to enjoy exclusive savings on your next order.',
-      greeting: 'Hello! 👋',
+      greeting: 'Hello! ',
       email: '',
       recipientType: 'customer',
       // Add new fields for custom email mode
@@ -519,7 +519,7 @@ const PromoCodeSender: React.FC = () => {
             promoCode: '',
             includePromoSection: true,
             customMessage: '',
-            greeting: 'Hello! 👋'
+            greeting: 'Hello! '
           }
         }));
       } else {

@@ -31,8 +31,7 @@ router.get("/profile", requireFirebaseAuthWithUser, async (req: Request, res: Re
         user = updatedUser;
       }
     }
-    
-    // Drizzle maps is_verified -> isVerified, but legacy frontend code expects is_verified
+
     const responseUser = {
       ...user,
       is_verified: user.isVerified
@@ -70,6 +69,34 @@ router.post("/logout", async (req: Request, res: Response) => {
   // This endpoint exists for compatibility with frontend logout calls
   logger.info("🚪 Logout request received (Firebase Auth is stateless)");
   res.json({ success: true, message: "Logged out successfully" });
+});
+
+/**
+ * POST /api/user/preferred-locale
+ * Persist the user's preferred UI / communication locale (BCP 47).
+ */
+router.post("/preferred-locale", requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+  try {
+    const user = req.neonUser!;
+    const { locale } = req.body as { locale?: string };
+
+    const { isAppLocale } = await import("@shared/i18n");
+    if (!isAppLocale(locale)) {
+      return res.status(400).json({ code: "INVALID_LOCALE" });
+    }
+
+    const updated = await userService.updateUser(user.id, {
+      preferredLocale: locale,
+    });
+
+    res.json({
+      success: true,
+      preferredLocale: updated?.preferredLocale ?? locale,
+    });
+  } catch (error) {
+    logger.error("Error updating preferred locale:", error);
+    res.status(500).json({ code: "INTERNAL_ERROR" });
+  }
 });
 
 /**
@@ -280,7 +307,13 @@ router.post("/sync-verification-status", requireFirebaseAuthWithUser, async (req
  */
 router.post("/verify-email-complete", async (req: Request, res: Response) => {
   try {
-    const { email } = req.body;
+    const email = typeof req.body?.email === 'string'
+      ? req.body.email.trim().toLowerCase()
+      : '';
+    const genericResponse = {
+      success: true,
+      message: "If this verification belongs to an eligible account, its status has been updated.",
+    };
     
     if (!email) {
       return res.status(400).json({ error: "Email is required" });
@@ -293,7 +326,7 @@ router.post("/verify-email-complete", async (req: Request, res: Response) => {
     
     if (!firebaseUser) {
       logger.info(`❌ Firebase user not found for email: ${email}`);
-      return res.status(404).json({ error: "User not found in Firebase" });
+      return res.json(genericResponse);
     }
     
     logger.info(`   - Firebase emailVerified: ${firebaseUser.emailVerified}`);
@@ -301,18 +334,15 @@ router.post("/verify-email-complete", async (req: Request, res: Response) => {
     
     if (!firebaseUser.emailVerified) {
       logger.info(`⚠️ Firebase email NOT verified for: ${email}`);
-      return res.status(400).json({ 
-        error: "Email not verified in Firebase",
-        firebaseVerified: false 
-      });
+      return res.json(genericResponse);
     }
     
     // Find user in Neon database by email (username)
     const user = await userService.getUserByUsername(email);
     
-    if (!user) {
-      logger.info(`❌ User not found in Neon DB for email: ${email}`);
-      return res.status(404).json({ error: "User not found in database" });
+    if (!user || user.firebaseUid !== firebaseUser.uid) {
+      logger.info(`❌ No matching linked Neon identity for verified Firebase email: ${email}`);
+      return res.json(genericResponse);
     }
     
     logger.info(`   - Neon user ID: ${user.id}`);
@@ -405,24 +435,7 @@ router.post("/verify-email-complete", async (req: Request, res: Response) => {
       logger.info(`ℹ️ Welcome email already sent at ${user.welcomeEmailSentAt} - skipping`);
     }
     
-    res.json({
-      success: true,
-      userId: user.id,
-      email: email,
-      firebaseVerified: true,
-      databaseVerified: true,
-      verificationUpdated,
-      welcomeEmailSent,
-      welcomeEmailPreviouslySent: !!user.welcomeEmailSentAt && !welcomeEmailSent,
-      role: user.role,
-      // ENTERPRISE: Include email config status for debugging
-      emailConfigStatus: {
-        hasEmailUser: !!process.env.EMAIL_USER,
-        hasEmailPass: !!process.env.EMAIL_PASS,
-        hasEmailFrom: !!process.env.EMAIL_FROM,
-        environment: process.env.VERCEL_ENV || process.env.NODE_ENV || 'unknown'
-      }
-    });
+    res.json(genericResponse);
     
   } catch (error) {
     logger.error("❌ Error in verify-email-complete:", error);

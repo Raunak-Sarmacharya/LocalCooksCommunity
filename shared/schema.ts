@@ -98,6 +98,8 @@ export const users = pgTable("users", {
   stripeConnectOnboardingStatus: text("stripe_connect_onboarding_status").default("not_started").notNull(), // Status: 'not_started', 'in_progress', 'complete', 'failed'
   // Stripe Customer ID for off-session payments (penalties, recurring charges)
   stripeCustomerId: text("stripe_customer_id").unique(),
+  // Preferred UI / outbound communication locale (BCP 47: en-CA | fr-CA | uk)
+  preferredLocale: text("preferred_locale"),
   // PHP shop linkage (for chef seller revenue - cross-platform)
   phpShopId: integer("php_shop_id"),                          // MySQL shop.sid
   phpShopStripeAccountId: text("php_shop_stripe_account_id"), // shop.stripe_shop_id (Stripe Connect on PHP platform)
@@ -134,6 +136,11 @@ export const applications = pgTable("applications", {
   lat: text("lat"),
   slong: text("slong"),
 
+  // Additional Business Info
+  businessType: text("business_type"),
+  experience: text("experience"),
+  businessDescription: text("business_description"),
+
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -141,14 +148,17 @@ export const applications = pgTable("applications", {
 // Define the Zod schema for inserting an application
 export const insertApplicationSchema = createInsertSchema(applications, {
   fullName: z.string().min(2, "Name must be at least 2 characters"),
-  shopName: z.string().min(2, "Shop name must be at least 2 characters").optional(),
-  shopAddress: z.string().min(5, "Shop address must be at least 5 characters").optional(),
+  shopName: z.preprocess((val) => val === '' ? undefined : val, z.string().min(2, "Shop name must be at least 2 characters").optional()),
+  shopAddress: z.preprocess((val) => val === '' ? undefined : val, z.string().min(5, "Shop address must be at least 5 characters").optional()),
   email: z.string().email("Please enter a valid email address"),
   phone: phoneNumberSchema, // Uses shared phone validation
   foodSafetyLicense: z.enum(["yes", "no", "notSure"]),
   foodEstablishmentCert: z.enum(["yes", "no", "notSure"]),
   kitchenPreference: z.enum(["commercial", "home", "notSure"]),
-  feedback: z.string().optional(),
+  businessType: z.preprocess((val) => val === '' ? undefined : val, z.string().optional()),
+  experience: z.preprocess((val) => val === '' ? undefined : val, z.string().optional()),
+  businessDescription: z.preprocess((val) => val === '' ? undefined : val, z.string().optional()),
+  feedback: z.preprocess((val) => val === '' ? undefined : val, z.string().optional()),
   userId: z.number().optional(),
   // Document fields are optional during initial application submission
   foodSafetyLicenseUrl: z.string().optional(),
@@ -185,6 +195,7 @@ export const updateDocumentVerificationSchema = z.object({
   id: z.number(),
   foodSafetyLicenseStatus: z.enum(["pending", "approved", "rejected"]).optional(),
   foodEstablishmentCertStatus: z.enum(["pending", "approved", "rejected"]).optional(),
+  foodEstablishmentCert: z.enum(["yes", "no", "notSure"]).optional(),
   documentsAdminFeedback: z.string().optional(),
   documentsReviewedBy: z.number().optional(),
 });
@@ -415,6 +426,7 @@ export const kitchens = pgTable("kitchens", {
   isActive: boolean("is_active").default(true).notNull(),
   // Pricing fields (all prices stored as integers in cents to avoid floating-point precision issues)
   hourlyRate: numeric("hourly_rate"), // Base hourly rate in cents (e.g., 5000 = $50.00/hour)
+  dailyRate: numeric("daily_rate"), // Base daily rate in cents; can coexist with hourlyRate
   currency: text("currency").default("CAD").notNull(), // Currency code (ISO 4217)
   minimumBookingHours: integer("minimum_booking_hours").default(1).notNull(), // Minimum booking duration
   pricingModel: text("pricing_model").default("hourly").notNull(), // Pricing structure ('hourly', 'daily', 'weekly')
@@ -484,7 +496,7 @@ export const kitchenBookings = pgTable("kitchen_bookings", {
   stripePaymentMethodId: text("stripe_payment_method_id"), // Saved payment method for damage claims
   stripeCustomerId: text("stripe_customer_id"), // Denormalized for quick access
   damageDeposit: numeric("damage_deposit").default("0"), // Damage deposit amount (in cents)
-  serviceFee: numeric("service_fee").default("0"), // Platform commission (in cents)
+  serviceFee: numeric("service_fee").default("0"), // Service fee (in cents)
   currency: text("currency").default("CAD").notNull(), // Currency code
   // Chef cancellation request tracking
   cancellationRequestedAt: timestamp("cancellation_requested_at"),
@@ -805,6 +817,7 @@ export const insertKitchenSchema = createInsertSchema(kitchens, {
   description: z.string().optional(),
   isActive: z.boolean().optional(),
   hourlyRate: z.number().int().positive("Hourly rate must be positive").optional(),
+  dailyRate: z.number().int().positive("Daily rate must be positive").optional(),
   currency: z.string().min(3).max(3).optional(),
   minimumBookingHours: z.number().int().min(0, "Minimum booking hours cannot be negative").max(24, "Minimum booking hours cannot exceed 24").optional(),
   pricingModel: z.enum(["hourly", "daily", "weekly"]).optional(),
@@ -821,6 +834,7 @@ export const updateKitchenSchema = z.object({
   description: z.string().optional(),
   isActive: z.boolean().optional(),
   hourlyRate: z.number().int().positive("Hourly rate must be positive").optional(),
+  dailyRate: z.number().int().positive("Daily rate must be positive").nullable().optional(),
   currency: z.string().min(3).max(3).optional(),
   minimumBookingHours: z.number().int().min(0, "Minimum booking hours cannot be negative").max(24, "Minimum booking hours cannot exceed 24").optional(),
   pricingModel: z.enum(["hourly", "daily", "weekly"]).optional(),
@@ -1250,7 +1264,7 @@ export const storageBookings = pgTable("storage_bookings", {
   pricingModel: storagePricingModelEnum("pricing_model").notNull(), // Always 'daily' now
   paymentStatus: paymentStatusEnum("payment_status").default("pending"),
   paymentIntentId: text("payment_intent_id"), // Stripe PaymentIntent ID (shared across bundled items in same kitchen booking)
-  serviceFee: numeric("service_fee").default("0"), // Platform commission in cents
+  serviceFee: numeric("service_fee").default("0"), // Service fee in cents
   currency: text("currency").default("CAD").notNull(),
   // Stripe fields for off-session penalty charging
   stripePaymentMethodId: text("stripe_payment_method_id"), // Saved payment method for penalties
@@ -1411,7 +1425,7 @@ export const equipmentBookings = pgTable("equipment_bookings", {
   damageDeposit: numeric("damage_deposit").default("0"), // In cents (only for rental)
   paymentStatus: paymentStatusEnum("payment_status").default("pending"), // Reuse enum
   paymentIntentId: text("payment_intent_id"), // Stripe PaymentIntent ID (shared across bundled items in same kitchen booking)
-  serviceFee: numeric("service_fee").default("0"), // Platform commission in cents
+  serviceFee: numeric("service_fee").default("0"), // Service fee in cents
   currency: text("currency").default("CAD").notNull(),
   // NOTE: No delivery/pickup fields - equipment stays in kitchen
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -1628,11 +1642,12 @@ export const paymentTransactions = pgTable("payment_transactions", {
   chefId: integer("chef_id").references(() => users.id, { onDelete: "set null" }), // Chef who made the payment
   managerId: integer("manager_id").references(() => users.id, { onDelete: "set null" }), // Manager who receives the payment
   // Payment amounts (all in cents)
-  amount: numeric("amount").notNull(), // Total transaction amount (includes service fee)
-  baseAmount: numeric("base_amount").notNull(), // Base amount before service fee
-  serviceFee: numeric("service_fee").notNull().default("0"), // Platform service fee
+  amount: numeric("amount").notNull(), // Total charged to chef (subtotal + tax + service fee)
+  baseAmount: numeric("base_amount").notNull(), // Manager gross before Stripe fee (subtotal + tax)
+  serviceFee: numeric("service_fee").notNull().default("0"), // Platform service fee (kept by platform)
+  taxAmount: numeric("tax_amount").default("0"), // Tax collected (kept by manager)
   stripeProcessingFee: numeric("stripe_processing_fee").default("0"), // Actual Stripe processing fee from BalanceTransaction (in cents)
-  managerRevenue: numeric("manager_revenue").notNull(), // Manager earnings (base_amount - service_fee)
+  managerRevenue: numeric("manager_revenue").notNull(), // Connect transfer = base_amount - stripe_processing_fee
   refundAmount: numeric("refund_amount").default("0"), // Total refunded amount
   netAmount: numeric("net_amount").notNull(), // Final amount after refunds (amount - refund_amount)
   currency: text("currency").notNull().default("CAD"),
@@ -2098,10 +2113,10 @@ export const viewingStatusEnum = pgEnum('viewing_status', ['pending', 'confirmed
 // Define enum for no-show reason (structured tracking for cohort analytics)
 export const noShowReasonEnum = pgEnum('no_show_reason', ['chef_cancelled_late', 'chef_no_response', 'rescheduled_by_manager', 'weather', 'other']);
 
-// Define location viewing settings table (manager configures tour parameters per location)
-export const locationViewingSettings = pgTable("location_viewing_settings", {
+// Tour settings are configured independently for each kitchen.
+export const kitchenViewingSettings = pgTable("kitchen_viewing_settings", {
   id: serial("id").primaryKey(),
-  locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull().unique(),
+  kitchenId: integer("kitchen_id").references(() => kitchens.id, { onDelete: "cascade" }).notNull().unique(),
   isActive: boolean("is_active").default(false).notNull(), // Toggle viewing feature on/off
   defaultDurationMinutes: integer("default_duration_minutes").default(30).notNull(), // Default tour length
   bufferBeforeMinutes: integer("buffer_before_minutes").default(0).notNull(), // Buffer before a tour slot
@@ -2113,20 +2128,20 @@ export const locationViewingSettings = pgTable("location_viewing_settings", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-// Define location viewing availability table (recurring weekly schedule for tours)
-export const locationViewingAvailability = pgTable("location_viewing_availability", {
+// Recurring weekly tour schedule for a kitchen.
+export const kitchenViewingAvailability = pgTable("kitchen_viewing_availability", {
   id: serial("id").primaryKey(),
-  locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull(),
+  kitchenId: integer("kitchen_id").references(() => kitchens.id, { onDelete: "cascade" }).notNull(),
   dayOfWeek: integer("day_of_week").notNull(), // 0-6, Sunday is 0
   startTime: text("start_time").notNull(), // HH:MM format
   endTime: text("end_time").notNull(), // HH:MM format
   isAvailable: boolean("is_available").default(true).notNull(),
 });
 
-// Define location viewing blackouts table (one-off manager unavailability)
-export const locationViewingBlackouts = pgTable("location_viewing_blackouts", {
+// One-off tour unavailability for a kitchen.
+export const kitchenViewingBlackouts = pgTable("kitchen_viewing_blackouts", {
   id: serial("id").primaryKey(),
-  locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull(),
+  kitchenId: integer("kitchen_id").references(() => kitchens.id, { onDelete: "cascade" }).notNull(),
   startDate: timestamp("start_date").notNull(),
   endDate: timestamp("end_date").notNull(),
   reason: text("reason"), // e.g., "Holiday", "Sick Day", "Maintenance"
@@ -2137,7 +2152,7 @@ export const locationViewingBlackouts = pgTable("location_viewing_blackouts", {
 export const kitchenViewings = pgTable("kitchen_viewings", {
   id: serial("id").primaryKey(),
   locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull(), // Tours are location-level
-  targetedKitchenId: integer("targeted_kitchen_id").references(() => kitchens.id, { onDelete: "set null" }), // Optional: specific kitchen intent
+  targetedKitchenId: integer("targeted_kitchen_id").references(() => kitchens.id, { onDelete: "set null" }), // Required for new tours; nullable only when a historical kitchen is deleted
   chefId: integer("chef_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
   managerId: integer("manager_id").references(() => users.id, { onDelete: "set null" }), // Manager assigned to conduct the tour
   status: viewingStatusEnum("status").default("pending").notNull(),
@@ -2185,8 +2200,8 @@ export type InsertEmailLog = typeof emailLogs.$inferInsert;
 
 // ===== ZOD SCHEMAS FOR KITCHEN VIEWING SYSTEM =====
 
-export const insertLocationViewingSettingsSchema = createInsertSchema(locationViewingSettings, {
-  locationId: z.number(),
+export const insertKitchenViewingSettingsSchema = createInsertSchema(kitchenViewingSettings, {
+  kitchenId: z.number(),
   isActive: z.boolean().optional(),
   defaultDurationMinutes: z.number().int().min(10).max(120).optional(),
   bufferBeforeMinutes: z.number().int().min(0).max(60).optional(),
@@ -2200,7 +2215,7 @@ export const insertLocationViewingSettingsSchema = createInsertSchema(locationVi
   updatedAt: true,
 });
 
-export const updateLocationViewingSettingsSchema = z.object({
+export const updateKitchenViewingSettingsSchema = z.object({
   isActive: z.boolean().optional(),
   defaultDurationMinutes: z.number().int().min(10).max(120).optional(),
   bufferBeforeMinutes: z.number().int().min(0).max(60).optional(),
@@ -2209,8 +2224,8 @@ export const updateLocationViewingSettingsSchema = z.object({
   maxAdvanceBookingDays: z.number().int().min(1).max(90).optional(),
 });
 
-export const insertLocationViewingAvailabilitySchema = createInsertSchema(locationViewingAvailability, {
-  locationId: z.number(),
+export const insertKitchenViewingAvailabilitySchema = createInsertSchema(kitchenViewingAvailability, {
+  kitchenId: z.number(),
   dayOfWeek: z.number().int().min(0).max(6),
   startTime: z.string().regex(/^\d{2}:\d{2}$/, "Time must be in HH:MM format"),
   endTime: z.string().regex(/^\d{2}:\d{2}$/, "Time must be in HH:MM format"),
@@ -2219,8 +2234,8 @@ export const insertLocationViewingAvailabilitySchema = createInsertSchema(locati
   id: true,
 });
 
-export const insertLocationViewingBlackoutSchema = createInsertSchema(locationViewingBlackouts, {
-  locationId: z.number(),
+export const insertKitchenViewingBlackoutSchema = createInsertSchema(kitchenViewingBlackouts, {
+  kitchenId: z.number(),
   startDate: z.string().or(z.date()),
   endDate: z.string().or(z.date()),
   reason: z.string().max(200).optional(),
@@ -2240,7 +2255,7 @@ export const viewingIntakeDataSchema = z.object({
 
 export const insertKitchenViewingSchema = z.object({
   locationId: z.number(),
-  targetedKitchenId: z.number().optional(),
+  targetedKitchenId: z.number(),
   chefId: z.number(),
   scheduledAt: z.string().or(z.date()), // ISO date string
   durationMinutes: z.number().int().min(10).max(120).optional(),
@@ -2258,13 +2273,13 @@ export const updateKitchenViewingStatusSchema = z.object({
 });
 
 // Type exports for kitchen viewing system
-export type LocationViewingSettings = typeof locationViewingSettings.$inferSelect;
-export type InsertLocationViewingSettings = z.infer<typeof insertLocationViewingSettingsSchema>;
-export type UpdateLocationViewingSettings = z.infer<typeof updateLocationViewingSettingsSchema>;
-export type LocationViewingAvailability = typeof locationViewingAvailability.$inferSelect;
-export type InsertLocationViewingAvailability = z.infer<typeof insertLocationViewingAvailabilitySchema>;
-export type LocationViewingBlackout = typeof locationViewingBlackouts.$inferSelect;
-export type InsertLocationViewingBlackout = z.infer<typeof insertLocationViewingBlackoutSchema>;
+export type KitchenViewingSettings = typeof kitchenViewingSettings.$inferSelect;
+export type InsertKitchenViewingSettings = z.infer<typeof insertKitchenViewingSettingsSchema>;
+export type UpdateKitchenViewingSettings = z.infer<typeof updateKitchenViewingSettingsSchema>;
+export type KitchenViewingAvailability = typeof kitchenViewingAvailability.$inferSelect;
+export type InsertKitchenViewingAvailability = z.infer<typeof insertKitchenViewingAvailabilitySchema>;
+export type KitchenViewingBlackout = typeof kitchenViewingBlackouts.$inferSelect;
+export type InsertKitchenViewingBlackout = z.infer<typeof insertKitchenViewingBlackoutSchema>;
 export type KitchenViewing = typeof kitchenViewings.$inferSelect;
 export type InsertKitchenViewing = z.infer<typeof insertKitchenViewingSchema>;
 export type UpdateKitchenViewingStatus = z.infer<typeof updateKitchenViewingStatusSchema>;

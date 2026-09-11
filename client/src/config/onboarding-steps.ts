@@ -1,4 +1,4 @@
-import { OnboardingStep } from '@onboardjs/core';
+import { OnboardingStep } from "@onboardjs/core";
 
 // Extend the base type to include our custom metadata
 export interface ExtendedOnboardingStep extends Omit<OnboardingStep, 'metadata'> {

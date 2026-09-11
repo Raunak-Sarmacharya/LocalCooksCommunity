@@ -8,17 +8,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
-import {
-  Calendar,
-  Check,
-  CheckCircle,
-  Clock,
-  ExternalLink,
-  FileText,
-  RefreshCw,
-  X,
-  XCircle,
-} from "lucide-react";
+import { Calendar, Check, CheckCircle, Clock, ExternalLink, FileText, RefreshCw, X, XCircle } from "lucide-react";
 import { LicenseProgressTracker } from "@/components/admin/ApplicationProgressTracker";
 import { SecureDocumentLink } from "@/components/common/SecureDocumentLink";
 

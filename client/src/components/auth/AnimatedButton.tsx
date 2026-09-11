@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { AlertCircle, Check, Loader2 } from "lucide-react";
+import { Icon } from "@iconify/react";
 import { ReactNode } from "react";
 
 type ButtonState = 'idle' | 'loading' | 'success' | 'error';
@@ -43,21 +43,21 @@ export default function AnimatedButton({
       case 'loading':
         return (
           <>
-            <Loader2 className="w-4 h-4 animate-spin" />
+            <Icon icon="mdi:loading" className="h-4 w-4 animate-spin" aria-hidden />
             <span>{loadingText}</span>
           </>
         );
       case 'success':
         return (
           <>
-            <Check className="w-4 h-4" />
+            <Icon icon="mdi:check" className="h-4 w-4" aria-hidden />
             <span>{successText}</span>
           </>
         );
       case 'error':
         return (
           <>
-            <AlertCircle className="w-4 h-4" />
+            <Icon icon="mdi:alert-circle-outline" className="h-4 w-4" aria-hidden />
             <span>{errorText}</span>
           </>
         );
@@ -71,9 +71,10 @@ export default function AnimatedButton({
       type={type}
       variant={getVariant()}
       className={cn(
-        "w-full h-12 text-base font-semibold",
+        "w-full h-12 rounded-full text-base font-semibold transition-all duration-300",
+        variant === 'primary' && state === 'idle' && "bg-[#F51042] text-white shadow-lg hover:bg-[#D90E3A] hover:shadow-xl",
         state === 'success' && "bg-green-500 hover:bg-green-600",
-        variant === 'google' && "bg-white border border-gray-200 text-gray-900 shadow-sm hover:bg-gray-50",
+        variant === 'google' && "bg-white border border-gray-200 text-gray-900 shadow-sm hover:bg-gray-50 hover:shadow-md",
         className
       )}
       disabled={disabled || state === 'loading'}
@@ -82,4 +83,4 @@ export default function AnimatedButton({
       {renderContent()}
     </Button>
   );
-} 
+}

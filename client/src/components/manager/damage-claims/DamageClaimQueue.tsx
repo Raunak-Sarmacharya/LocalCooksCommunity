@@ -6,97 +6,32 @@
  */
 
 import { useState, useCallback, useMemo } from "react";
+import { mt } from "@/i18n/manager";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
-  getFilteredRowModel,
-  SortingState,
-  useReactTable,
-} from "@tanstack/react-table";
+import { ColumnDef, flexRender, getCoreRowModel, getSortedRowModel, getFilteredRowModel, SortingState, useReactTable } from "@tanstack/react-table";
 import { format } from "date-fns";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Alert,
-  AlertDescription,
-} from "@/components/ui/alert";
-import {
-  AlertTriangle,
-  CheckCircle,
-  Clock,
-  CreditCard,
-  FileText,
-  Plus,
-  RefreshCw,
-  Eye,
-  Send,
-  X,
-  Camera,
-  Receipt,
-  Loader2,
-  Info,
-  Save,
-  Download,
-  MoreHorizontal,
-  ArrowUpDown,
-} from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertTriangle, CheckCircle, Clock, CreditCard, FileText, Plus, RefreshCw, Eye, Send, X, Camera, Receipt, Loader2, Info, Save, Download, MoreHorizontal, ArrowUpDown } from "@/components/ui/manager-icons";
 import { Input } from "@/components/ui/input";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DamageClaimDetailSheet } from "./DamageClaimDetailSheet";
 import { cn } from "@/lib/utils";
+import { SmartImage } from "@/components/ui/smart-image";
 
 // Types
 interface DamageEvidence {
@@ -148,20 +83,20 @@ function formatCurrency(cents: number): string {
 
 function getStatusBadge(status: string) {
   const statusConfig: Record<string, { variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning"; label: string }> = {
-    draft: { variant: "outline", label: "Draft" },
-    submitted: { variant: "warning", label: "Awaiting Chef Response" },
-    chef_accepted: { variant: "secondary", label: "Chef Accepted" },
-    chef_disputed: { variant: "destructive", label: "Disputed" },
-    under_review: { variant: "warning", label: "Under Admin Review" },
-    approved: { variant: "success", label: "Approved" },
-    partially_approved: { variant: "success", label: "Partially Approved" },
-    rejected: { variant: "destructive", label: "Rejected" },
-    charge_pending: { variant: "warning", label: "Charging..." },
-    charge_succeeded: { variant: "success", label: "Paid" },
-    charge_failed: { variant: "destructive", label: "Charge Failed" },
-    escalated: { variant: "destructive", label: "Escalated — Awaiting Chef Payment" },
-    resolved: { variant: "outline", label: "Resolved" },
-    expired: { variant: "outline", label: "Expired" },
+    draft: { variant: "outline", label: mt("draftStatus") },
+    submitted: { variant: "warning", label: mt("awaitingChefResponse") },
+    chef_accepted: { variant: "secondary", label: mt("chefAccepted") },
+    chef_disputed: { variant: "destructive", label: mt("disputed") },
+    under_review: { variant: "warning", label: mt("underAdminReview") },
+    approved: { variant: "success", label: mt("approved") },
+    partially_approved: { variant: "success", label: mt("partiallyApproved") },
+    rejected: { variant: "destructive", label: mt("rejected") },
+    charge_pending: { variant: "warning", label: mt("charging") },
+    charge_succeeded: { variant: "success", label: mt("paid") },
+    charge_failed: { variant: "destructive", label: mt("chargeFailed") },
+    escalated: { variant: "destructive", label: mt("escalatedAwaitingChefPayment") },
+    resolved: { variant: "outline", label: mt("resolved") },
+    expired: { variant: "outline", label: mt("expired") },
   };
 
   const config = statusConfig[status] || { variant: "outline" as const, label: status };
@@ -208,23 +143,23 @@ function ClaimCard({
             
             <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
               <span>
-                <strong>Chef:</strong> {claim.chefName || claim.chefEmail || 'Unknown'}
+                <strong>{mt("chef2")}</strong> {claim.chefName || claim.chefEmail || mt("unknown")}
               </span>
               <span>
-                <strong>Type:</strong> {claim.bookingType === 'storage' ? 'Storage' : 'Kitchen'}
+                <strong>{mt("type2")}</strong> {claim.bookingType === 'storage' ? mt("storage") : mt("kitchen")}
               </span>
               <span>
-                <strong>Damage Date:</strong> {format(new Date(claim.damageDate), 'MMM d, yyyy')}
+                <strong>{mt("damageDate2")}</strong> {format(new Date(claim.damageDate), 'MMM d, yyyy')}
               </span>
               <span>
-                <strong>Evidence:</strong> {claim.evidence.length} items
+                <strong>{mt("evidence")}</strong> {mt("evidenceItemsCount", { count: claim.evidence.length })}
               </span>
             </div>
 
             {showChefResponse && (
               <div className="mt-2 p-2 bg-muted rounded-md">
                 <p className="text-sm">
-                  <strong>Chef Response:</strong> {claim.chefResponse}
+                  <strong>{mt("chefResponse2")}</strong> {claim.chefResponse}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
                   Responded {format(new Date(claim.chefRespondedAt!), 'MMM d, yyyy h:mm a')}
@@ -243,7 +178,7 @@ function ClaimCard({
             <p className="text-xl font-bold">{formatCurrency(claim.claimedAmountCents)}</p>
             {claim.finalAmountCents && claim.finalAmountCents !== claim.claimedAmountCents && (
               <p className="text-sm text-green-600">
-                Final: {formatCurrency(claim.finalAmountCents)}
+                {mt("finalAmountLabel", { amount: formatCurrency(claim.finalAmountCents) })}
               </p>
             )}
           </div>
@@ -251,9 +186,7 @@ function ClaimCard({
 
         <div className="flex gap-2 mt-4 pt-4 border-t">
           <Button variant="outline" size="sm" onClick={() => onView(claim.id)}>
-            <Eye className="w-4 h-4 mr-1" />
-            View Details
-          </Button>
+            <Eye className="w-4 h-4 mr-1" />{mt("viewDetails")}</Button>
 
           {canSubmit && (
             <Button 
@@ -261,9 +194,7 @@ function ClaimCard({
               onClick={() => onSubmit(claim.id)}
               disabled={isProcessing}
             >
-              <Send className="w-4 h-4 mr-1" />
-              Submit to Chef
-            </Button>
+              <Send className="w-4 h-4 mr-1" />{mt("submitToChef")}</Button>
           )}
 
           {canCharge && (
@@ -273,9 +204,7 @@ function ClaimCard({
               onClick={() => onCharge(claim.id)}
               disabled={isProcessing}
             >
-              <CreditCard className="w-4 h-4 mr-1" />
-              Charge Chef
-            </Button>
+              <CreditCard className="w-4 h-4 mr-1" />{mt("chargeChef")}</Button>
           )}
 
           {canDownloadInvoice && (
@@ -290,7 +219,7 @@ function ClaimCard({
               ) : (
                 <Download className="w-4 h-4 mr-1" />
               )}
-              Invoice
+              {mt("invoice")}
             </Button>
           )}
         </div>
@@ -325,12 +254,12 @@ interface RecentBooking {
 
 // Evidence types for the form
 const EVIDENCE_TYPE_OPTIONS = [
-  { value: 'photo_before', label: 'Before Photo', icon: Camera },
-  { value: 'photo_after', label: 'After Photo', icon: Camera },
-  { value: 'receipt', label: 'Receipt', icon: Receipt },
-  { value: 'invoice', label: 'Invoice', icon: FileText },
-  { value: 'document', label: 'Document', icon: FileText },
-  { value: 'third_party_report', label: 'Third Party Report', icon: FileText },
+  { value: 'photo_before', label: mt("beforePhoto"), icon: Camera },
+  { value: 'photo_after', label: mt("afterPhoto"), icon: Camera },
+  { value: 'receipt', label: mt("receipt"), icon: Receipt },
+  { value: 'invoice', label: mt("invoice"), icon: FileText },
+  { value: 'document', label: mt("documentLabel"), icon: FileText },
+  { value: 'third_party_report', label: mt("thirdPartyReport"), icon: FileText },
 ];
 
 // Pending evidence item (before claim is created)
@@ -438,7 +367,7 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
   // Create claim mutation — accepts submitImmediately to create+submit atomically
   const createMutation = useMutation({
     mutationFn: async ({ submitImmediately }: { submitImmediately: boolean }) => {
-      if (!selectedBooking) throw new Error("Please select a booking");
+      if (!selectedBooking) throw new Error(mt("pleaseSelectBooking"));
       
       // Build damaged items array from selected equipment
       const damagedItems = selectedBooking.type === 'kitchen' && selectedDamagedEquipment.size > 0
@@ -465,7 +394,7 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
       return response.json();
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: mt("error"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -491,7 +420,7 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
   // Handle Save as Draft
   const handleSaveAsDraft = async () => {
     if (!selectedBooking) {
-      toast({ title: "Error", description: "Please select a booking", variant: "destructive" });
+      toast({ title: mt("error"), description: mt("pleaseSelectABooking"), variant: "destructive" });
       return;
     }
 
@@ -506,9 +435,8 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
         await uploadEvidenceToClaim(claimId, evidence);
       }
 
-      toast({ 
-        title: "Draft saved", 
-        description: "Your claim has been saved as a draft. You can add more evidence and submit later." 
+      toast({ title: mt("draftSaved"), 
+        description: mt("yourClaimHasBeenSavedAsADraftYouCanAddMoreEvidenceAndSubmitL") 
       });
       
       setOpen(false);
@@ -516,7 +444,7 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
       onCreated();
       queryClient.invalidateQueries({ queryKey: ['/api/manager/damage-claims'] });
     } catch (error) {
-      toast({ title: "Error", description: (error as Error).message, variant: "destructive" });
+      toast({ title: mt("error"), description: (error as Error).message, variant: "destructive" });
     } finally {
       setIsUploading(false);
     }
@@ -525,14 +453,13 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
   // Handle Submit to Chef — atomic create+submit, no redundant draft
   const handleSubmitToChef = async () => {
     if (!selectedBooking) {
-      toast({ title: "Error", description: "Please select a booking", variant: "destructive" });
+      toast({ title: mt("error"), description: mt("pleaseSelectABooking"), variant: "destructive" });
       return;
     }
 
     if (pendingEvidence.length < 2) {
-      toast({ 
-        title: "More evidence required", 
-        description: "Please add at least 2 pieces of evidence before submitting to the chef.", 
+      toast({ title: mt("moreEvidenceRequired"), 
+        description: mt("pleaseAddAtLeast2PiecesOfEvidenceBeforeSubmittingToTheChef"), 
         variant: "destructive" 
       });
       return;
@@ -549,9 +476,8 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
         await uploadEvidenceToClaim(claimId, evidence);
       }
 
-      toast({ 
-        title: "Claim submitted to chef", 
-        description: "The chef has been notified and has 72 hours to respond. If they accept, their card will be automatically charged." 
+      toast({ title: mt("claimSubmittedToChef"), 
+        description: mt("theChefHasBeenNotifiedAndHas72HoursToRespondIfTheyAcceptThei") 
       });
       
       setOpen(false);
@@ -559,7 +485,7 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
       onCreated();
       queryClient.invalidateQueries({ queryKey: ['/api/manager/damage-claims'] });
     } catch (error) {
-      toast({ title: "Error", description: (error as Error).message, variant: "destructive" });
+      toast({ title: mt("error"), description: (error as Error).message, variant: "destructive" });
     } finally {
       setIsUploading(false);
     }
@@ -577,19 +503,17 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
     }}>
       <SheetTrigger asChild>
         <Button>
-          <Plus className="w-4 h-4 mr-2" />
-          New Damage Claim
-        </Button>
+          <Plus className="w-4 h-4 mr-2" />{mt("newDamageClaim")}</Button>
       </SheetTrigger>
       <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
         <SheetHeader>
           <SheetTitle>
-            {step === 'form' ? 'Create Damage Claim' : 'Add Evidence'}
+            {step === 'form' ? mt("createDamageClaim") : mt("addEvidence")}
           </SheetTitle>
           <SheetDescription>
             {step === 'form' 
-              ? "Fill in the claim details, then add evidence and submit to the chef."
-              : "Upload photos, receipts, or documents as evidence for your claim."
+              ? mt("fillClaimDetailsDesc")
+              : mt("uploadEvidenceDesc")
             }
           </SheetDescription>
         </SheetHeader>
@@ -597,30 +521,26 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
         {/* Step indicator */}
         <div className="flex items-center gap-2 my-4">
           <div className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm ${step === 'form' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
-            <span className="w-5 h-5 rounded-full bg-background/20 flex items-center justify-center text-xs">1</span>
-            Details
-          </div>
+            <span className="w-5 h-5 rounded-full bg-background/20 flex items-center justify-center text-xs">1</span>{mt("details")}</div>
           <div className="flex-1 h-px bg-border" />
           <div className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm ${step === 'evidence' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
-            <span className="w-5 h-5 rounded-full bg-background/20 flex items-center justify-center text-xs">2</span>
-            Evidence & Submit
-          </div>
+            <span className="w-5 h-5 rounded-full bg-background/20 flex items-center justify-center text-xs">2</span>{mt("evidenceSubmit")}</div>
         </div>
 
         {step === 'form' ? (
           <div className="space-y-4 mt-4">
             {/* Booking Selection */}
             <div className="space-y-2">
-              <Label>Select Booking</Label>
+              <Label>{mt("selectBooking")}</Label>
               <p className="text-xs text-muted-foreground mb-2">
-                Only past bookings from the last {deadlineDays} days are eligible
+                {mt("onlyPastBookingsEligible", { days: deadlineDays })}
               </p>
               {loadingBookings ? (
                 <Skeleton className="h-10 w-full" />
               ) : recentBookings.length === 0 ? (
                 <div className="p-4 border rounded-md bg-muted/50 text-center">
                   <p className="text-sm text-muted-foreground">
-                    No eligible bookings found in the last {deadlineDays} days
+                    {mt("noEligibleBookingsFound", { days: deadlineDays })}
                   </p>
                 </div>
               ) : (
@@ -634,7 +554,7 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
                   }}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a booking..." />
+                    <SelectValue placeholder={mt("selectABooking")} />
                   </SelectTrigger>
                   <SelectContent>
                     {recentBookings.map((booking) => (
@@ -657,19 +577,19 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
               <div className="p-3 border rounded-md bg-muted/30 space-y-3">
                 <div className="space-y-1">
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Type:</span>
-                    <Badge variant="outline">{selectedBooking.type === 'storage' ? 'Storage' : 'Kitchen'}</Badge>
+                    <span className="text-muted-foreground">{mt("type2")}</span>
+                    <Badge variant="outline">{selectedBooking.type === 'storage' ? mt("storage") : mt("kitchen")}</Badge>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Chef:</span>
+                    <span className="text-muted-foreground">{mt("chef2")}</span>
                     <span className="font-medium">{selectedBooking.chefName}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Location:</span>
+                    <span className="text-muted-foreground">{mt("location2")}</span>
                     <span>{selectedBooking.locationName}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">End Date:</span>
+                    <span className="text-muted-foreground">{mt("endDate2")}</span>
                     <span>{format(new Date(selectedBooking.endDate), 'MMM d, yyyy')}</span>
                   </div>
                 </div>
@@ -678,8 +598,8 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
                 {selectedBooking.type === 'kitchen' && selectedBooking.equipment.length > 0 && (
                   <div className="border-t pt-3 space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label className="text-sm font-medium">Damaged Equipment</Label>
-                      <span className="text-xs text-muted-foreground">Optional — select if applicable</span>
+                      <Label className="text-sm font-medium">{mt("damagedEquipment")}</Label>
+                      <span className="text-xs text-muted-foreground">{mt("optionalSelectIfApplicable")}</span>
                     </div>
                     <div className="space-y-1.5">
                       {selectedBooking.equipment.map((eq) => {
@@ -719,7 +639,7 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
                               {eq.brand && <span className="text-muted-foreground ml-1">({eq.brand})</span>}
                             </div>
                             <Badge variant="secondary" className="text-[10px] flex-shrink-0">
-                              {eq.availabilityType === 'included' ? 'Included' : 'Rented'}
+                              {eq.availabilityType === 'included' ? mt("included") : mt("rented")}
                             </Badge>
                           </button>
                         );
@@ -736,9 +656,9 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
             )}
 
             <div className="space-y-2">
-              <Label>Claim Title</Label>
+              <Label>{mt("claimTitle")}</Label>
               <Input
-                placeholder="Brief description of the damage"
+                placeholder={mt("briefDescriptionOfTheDamage")}
                 value={formData.claimTitle}
                 onChange={(e) => setFormData({ ...formData, claimTitle: e.target.value })}
                 minLength={5}
@@ -747,9 +667,9 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
             </div>
 
             <div className="space-y-2">
-              <Label>Detailed Description</Label>
+              <Label>{mt("detailedDescription")}</Label>
               <Textarea
-                placeholder="Describe the damage in detail (minimum 50 characters)"
+                placeholder={mt("describeTheDamageInDetailMinimum50Characters")}
                 value={formData.claimDescription}
                 onChange={(e) => setFormData({ ...formData, claimDescription: e.target.value })}
                 minLength={50}
@@ -762,7 +682,7 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Damage Date</Label>
+                <Label>{mt("damageDate")}</Label>
                 <Input
                   type="date"
                   value={formData.damageDate}
@@ -771,7 +691,7 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
               </div>
 
               <div className="space-y-2">
-                <Label>Claimed Amount</Label>
+                <Label>{mt("claimedAmount")}</Label>
                 <CurrencyInput
                   placeholder="0.00"
                   value={formData.claimedAmount}
@@ -781,16 +701,12 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
             </div>
 
             <SheetFooter className="pt-4">
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                Cancel
-              </Button>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>{mt("cancel")}</Button>
               <Button 
                 type="button"
                 onClick={() => setStep('evidence')}
                 disabled={!canProceedToEvidence}
-              >
-                Next: Add Evidence
-              </Button>
+              >{mt("nextAddEvidence")}</Button>
             </SheetFooter>
           </div>
         ) : (
@@ -799,9 +715,7 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
             <Alert>
               <Info className="h-4 w-4" />
               <AlertDescription>
-                <strong>How it works:</strong> When you submit, the chef will be notified and has 72 hours to respond.
-                If they accept, <strong>their card will be automatically charged</strong> using the payment method from their booking.
-                If they dispute, an admin will review the claim.
+                <strong>{mt("howItWorks2")}</strong> {mt("damageClaimSubmitHowItWorks")}
               </AlertDescription>
             </Alert>
 
@@ -812,13 +726,16 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
                 <span className="font-bold">${formData.claimedAmount}</span>
               </div>
               <p className="text-xs text-muted-foreground">
-                Chef: {selectedBooking?.chefName} • {selectedBooking?.type === 'storage' ? 'Storage' : 'Kitchen'} booking
+                {mt("chefBookingSummary", {
+                  chef: selectedBooking?.chefName ?? "",
+                  type: selectedBooking?.type === "storage" ? mt("storage") : mt("kitchen"),
+                })}
               </p>
             </div>
 
             {/* Evidence Upload */}
             <div className="space-y-3">
-              <Label>Upload Evidence</Label>
+              <Label>{mt("uploadEvidence")}</Label>
               
               <div className="grid grid-cols-2 gap-2">
                 <Select value={newEvidenceType} onValueChange={setNewEvidenceType}>
@@ -835,7 +752,7 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
                 </Select>
                 
                 <Input
-                  placeholder="Description (optional)"
+                  placeholder={mt("descriptionOptional2")}
                   value={newEvidenceDescription}
                   onChange={(e) => setNewEvidenceDescription(e.target.value)}
                 />
@@ -853,11 +770,11 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
               {/* Pending Evidence List */}
               {pendingEvidence.length > 0 && (
                 <div className="space-y-2 mt-3">
-                  <p className="text-sm font-medium">Evidence to upload ({pendingEvidence.length} items):</p>
+                  <p className="text-sm font-medium">{mt("evidenceToUploadCount", { count: pendingEvidence.length })}</p>
                   {pendingEvidence.map((ev) => (
                     <div key={ev.id} className="flex items-center gap-2 p-2 border rounded-md bg-muted/30">
                       {ev.preview ? (
-                        <img src={ev.preview} alt="" className="w-10 h-10 object-cover rounded" />
+                        <SmartImage src={ev.preview} alt="" className="w-10 h-10 object-cover rounded" />
                       ) : (
                         <FileText className="w-10 h-10 p-2 text-muted-foreground" />
                       )}
@@ -894,9 +811,7 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
                 variant="outline" 
                 onClick={() => setStep('form')}
                 disabled={isUploading}
-              >
-                Back
-              </Button>
+              >{mt("back")}</Button>
               <div className="flex gap-2 flex-1 justify-end">
                 <Button 
                   type="button"
@@ -905,9 +820,9 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
                   disabled={isUploading}
                 >
                   {isUploading ? (
-                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</>
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{mt("saving")}</>
                   ) : (
-                    <><Save className="w-4 h-4 mr-2" /> Save as Draft</>
+                    <><Save className="w-4 h-4 mr-2" />{mt("saveAsDraft")}</>
                   )}
                 </Button>
                 <Button 
@@ -916,9 +831,9 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
                   disabled={isUploading || pendingEvidence.length < 2}
                 >
                   {isUploading ? (
-                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Submitting...</>
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{mt("submitting")}</>
                   ) : (
-                    <><Send className="w-4 h-4 mr-2" /> Submit to Chef</>
+                    <><Send className="w-4 h-4 mr-2" />{mt("submitToChef")}</>
                   )}
                 </Button>
               </div>
@@ -932,6 +847,7 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
 
 // Main Component
 export function DamageClaimQueue() {
+  
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [showAll, setShowAll] = useState(false);
@@ -961,11 +877,11 @@ export function DamageClaimQueue() {
       return response.json();
     },
     onSuccess: () => {
-      toast({ title: "Claim submitted", description: "The chef has been notified." });
+      toast({ title: mt("claimSubmitted"), description: mt("theChefHasBeenNotified") });
       queryClient.invalidateQueries({ queryKey: ['/api/manager/damage-claims'] });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: mt("error"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -976,11 +892,11 @@ export function DamageClaimQueue() {
       return response.json();
     },
     onSuccess: () => {
-      toast({ title: "Charge successful", description: "The chef's card has been charged." });
+      toast({ title: mt("chargeSuccessful"), description: mt("toastChefCardCharged") });
       queryClient.invalidateQueries({ queryKey: ['/api/manager/damage-claims'] });
     },
     onError: (error: Error) => {
-      toast({ title: "Charge failed", description: error.message, variant: "destructive" });
+      toast({ title: mt("chargeFailed2"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -1027,7 +943,7 @@ export function DamageClaimQueue() {
     },
     {
       id: "reference",
-      header: "Ref",
+      header: mt("ref"),
       cell: ({ row }) => {
         const ref = row.original.referenceCode || row.original.kitchenBookingId || row.original.id;
         return (
@@ -1044,9 +960,7 @@ export function DamageClaimQueue() {
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
           className="h-8 px-2"
-        >
-          Claim
-          <ArrowUpDown className="ml-2 h-4 w-4" />
+        >{mt("claim")}<ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       ),
       cell: ({ row }) => {
@@ -1064,17 +978,17 @@ export function DamageClaimQueue() {
     },
     {
       accessorKey: "chefName",
-      header: "Chef",
+      header: mt("chefHeader"),
       cell: ({ row }) => {
         const claim = row.original;
         return (
-          <span className="text-sm">{claim.chefName || claim.chefEmail || 'Unknown'}</span>
+          <span className="text-sm">{claim.chefName || claim.chefEmail || mt("unknown")}</span>
         );
       },
     },
     {
       accessorKey: "bookingType",
-      header: "Type",
+      header: mt("type"),
       cell: ({ row }) => (
         <Badge variant="outline" className="capitalize">
           {row.original.bookingType}
@@ -1088,9 +1002,7 @@ export function DamageClaimQueue() {
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
           className="h-8 px-2"
-        >
-          Date
-          <ArrowUpDown className="ml-2 h-4 w-4" />
+        >{mt("date")}<ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       ),
       cell: ({ row }) => format(new Date(row.original.damageDate), 'MMM d, yyyy'),
@@ -1102,9 +1014,7 @@ export function DamageClaimQueue() {
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
           className="h-8 px-2"
-        >
-          Amount
-          <ArrowUpDown className="ml-2 h-4 w-4" />
+        >{mt("amount")}<ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       ),
       cell: ({ row }) => {
@@ -1113,7 +1023,7 @@ export function DamageClaimQueue() {
           <div className="text-right">
             <p className="font-semibold">{formatCurrency(claim.claimedAmountCents)}</p>
             {claim.finalAmountCents && claim.finalAmountCents !== claim.claimedAmountCents && (
-              <p className="text-xs text-green-600">Final: {formatCurrency(claim.finalAmountCents)}</p>
+              <p className="text-xs text-green-600">{mt("finalAmountLabel", { amount: formatCurrency(claim.finalAmountCents) })}</p>
             )}
           </div>
         );
@@ -1121,7 +1031,7 @@ export function DamageClaimQueue() {
     },
     {
       accessorKey: "status",
-      header: "Status",
+      header: mt("status"),
       cell: ({ row }) => getStatusBadge(row.original.status),
     },
     {
@@ -1143,9 +1053,7 @@ export function DamageClaimQueue() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => handleView(claim.id)}>
-                <Eye className="h-4 w-4 mr-2" />
-                View Details
-              </DropdownMenuItem>
+                <Eye className="h-4 w-4 mr-2" />{mt("viewDetails")}</DropdownMenuItem>
 
               {canSubmit && (
                 <>
@@ -1154,9 +1062,7 @@ export function DamageClaimQueue() {
                     onClick={() => submitMutation.mutate(claim.id)}
                     disabled={isProcessing}
                   >
-                    <Send className="h-4 w-4 mr-2" />
-                    Submit to Chef
-                  </DropdownMenuItem>
+                    <Send className="h-4 w-4 mr-2" />{mt("submitToChef")}</DropdownMenuItem>
                 </>
               )}
 
@@ -1167,9 +1073,7 @@ export function DamageClaimQueue() {
                     onClick={() => chargeMutation.mutate(claim.id)}
                     disabled={isProcessing}
                   >
-                    <CreditCard className="h-4 w-4 mr-2" />
-                    Charge Chef
-                  </DropdownMenuItem>
+                    <CreditCard className="h-4 w-4 mr-2" />{mt("chargeChef")}</DropdownMenuItem>
                 </>
               )}
 
@@ -1185,7 +1089,7 @@ export function DamageClaimQueue() {
                     ) : (
                       <Download className="h-4 w-4 mr-2" />
                     )}
-                    Download Invoice
+                    {mt("downloadInvoice")}
                   </DropdownMenuItem>
                 </>
               )}
@@ -1229,9 +1133,9 @@ export function DamageClaimQueue() {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
 
-      toast({ title: "Invoice downloaded", description: "Damage claim invoice has been downloaded." });
+      toast({ title: mt("invoiceDownloaded2"), description: mt("damageClaimInvoiceHasBeenDownloaded") });
     } catch (error) {
-      toast({ title: "Download failed", description: (error as Error).message, variant: "destructive" });
+      toast({ title: mt("downloadFailed2"), description: (error as Error).message, variant: "destructive" });
     } finally {
       setDownloadingInvoiceId(null);
     }
@@ -1252,9 +1156,7 @@ export function DamageClaimQueue() {
         <CardContent className="pt-6">
           <p className="text-destructive">Error loading damage claims: {(error as Error).message}</p>
           <Button onClick={() => refetch()} className="mt-4">
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Retry
-          </Button>
+            <RefreshCw className="w-4 h-4 mr-2" />{mt("retry")}</Button>
         </CardContent>
       </Card>
     );
@@ -1265,8 +1167,8 @@ export function DamageClaimQueue() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold">Damage Claims</h2>
-          <p className="text-muted-foreground">File and manage damage claims against chef bookings</p>
+          <h2 className="text-2xl font-bold">{mt("navDamageClaims")}</h2>
+          <p className="text-muted-foreground">{mt("fileAndManageDamageClaimsAgainstChefBookings")}</p>
         </div>
         <div className="flex gap-2">
           <CreateClaimSheet onCreated={() => refetch()} />
@@ -1274,38 +1176,32 @@ export function DamageClaimQueue() {
             variant={showAll ? "default" : "outline"} 
             onClick={() => setShowAll(!showAll)}
           >
-            {showAll ? "Hide" : "Show"} Resolved
+            {showAll ? mt("hideResolved") : mt("showResolved")}
           </Button>
           <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
-            <RefreshCw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin")} />
-            Refresh
-          </Button>
+            <RefreshCw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin")} />{mt("refresh")}</Button>
         </div>
       </div>
 
       {/* Search + Tabs */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
         <Input
-          placeholder="Search claims..."
+          placeholder={mt("searchClaims")}
           value={globalFilter}
           onChange={(e) => setGlobalFilter(e.target.value)}
           className="max-w-sm"
         />
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full sm:w-auto">
           <TabsList className="gap-1">
-            <TabsTrigger value="action" className="text-xs sm:text-sm px-2 sm:px-3 py-1.5">
-              Action <Badge variant="count" className="ml-1">{actionRequiredClaims.length}</Badge>
+            <TabsTrigger value="action" className="text-xs sm:text-sm px-2 sm:px-3 py-1.5">{mt("action")}<Badge variant="count" className="ml-1">{actionRequiredClaims.length}</Badge>
             </TabsTrigger>
-            <TabsTrigger value="drafts" className="text-xs sm:text-sm px-2 sm:px-3 py-1.5">
-              Drafts <Badge variant="count" className="ml-1">{draftClaims.length}</Badge>
+            <TabsTrigger value="drafts" className="text-xs sm:text-sm px-2 sm:px-3 py-1.5">{mt("drafts")}<Badge variant="count" className="ml-1">{draftClaims.length}</Badge>
             </TabsTrigger>
-            <TabsTrigger value="pending" className="text-xs sm:text-sm px-2 sm:px-3 py-1.5">
-              Pending <Badge variant="count" className="ml-1">{pendingClaims.length}</Badge>
+            <TabsTrigger value="pending" className="text-xs sm:text-sm px-2 sm:px-3 py-1.5">{mt("pending")}<Badge variant="count" className="ml-1">{pendingClaims.length}</Badge>
             </TabsTrigger>
-            <TabsTrigger value="resolved" className="text-xs sm:text-sm px-2 sm:px-3 py-1.5">
-              Resolved <Badge variant="count" className="ml-1">{resolvedClaims.length}</Badge>
+            <TabsTrigger value="resolved" className="text-xs sm:text-sm px-2 sm:px-3 py-1.5">{mt("resolved")}<Badge variant="count" className="ml-1">{resolvedClaims.length}</Badge>
             </TabsTrigger>
-            <TabsTrigger value="all" className="text-xs sm:text-sm px-2 sm:px-3 py-1.5">All</TabsTrigger>
+            <TabsTrigger value="all" className="text-xs sm:text-sm px-2 sm:px-3 py-1.5">{mt("filterAll")}</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
@@ -1315,9 +1211,9 @@ export function DamageClaimQueue() {
         <Card>
           <CardContent className="pt-6 text-center">
             <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
-            <h3 className="text-lg font-medium">No Claims in This Category</h3>
+            <h3 className="text-lg font-medium">{mt("noClaimsInThisCategory")}</h3>
             <p className="text-muted-foreground">
-              {activeTab === "all" ? "You haven't filed any damage claims yet." : `No ${activeTab} claims found.`}
+              {activeTab === "all" ? mt("noDamageClaimsYet") : mt("noTabClaimsFound", { tab: activeTab === "action" ? mt("action") : activeTab === "drafts" ? mt("drafts") : activeTab === "pending" ? mt("pending") : mt("resolved") })}
             </p>
           </CardContent>
         </Card>
@@ -1325,11 +1221,11 @@ export function DamageClaimQueue() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-lg flex items-center gap-2">
-              {activeTab === "action" && <><AlertTriangle className="w-5 h-5 text-orange-500" /> Action Required</>}
-              {activeTab === "drafts" && <><FileText className="w-5 h-5 text-gray-500" /> Drafts</>}
-              {activeTab === "pending" && <><Clock className="w-5 h-5 text-yellow-500" /> Pending Response</>}
-              {activeTab === "resolved" && <><CheckCircle className="w-5 h-5 text-green-500" /> Resolved</>}
-              {activeTab === "all" && <>All Claims</>}
+              {activeTab === "action" && <><AlertTriangle className="w-5 h-5 text-orange-500" />{mt("actionRequired")}</>}
+              {activeTab === "drafts" && <><FileText className="w-5 h-5 text-gray-500" />{mt("drafts")}</>}
+              {activeTab === "pending" && <><Clock className="w-5 h-5 text-yellow-500" />{mt("pendingResponse")}</>}
+              {activeTab === "resolved" && <><CheckCircle className="w-5 h-5 text-green-500" />{mt("resolved")}</>}
+              {activeTab === "all" && <>{mt("allClaims")}</>}
               <Badge variant="count" className="ml-2">{filteredClaims.length}</Badge>
             </CardTitle>
           </CardHeader>
@@ -1362,9 +1258,7 @@ export function DamageClaimQueue() {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={columns.length} className="h-24 text-center">
-                        No results.
-                      </TableCell>
+                      <TableCell colSpan={columns.length} className="h-24 text-center">{mt("noResults")}</TableCell>
                     </TableRow>
                   )}
                 </TableBody>

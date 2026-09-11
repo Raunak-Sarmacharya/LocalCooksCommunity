@@ -9,8 +9,10 @@ import EscalatedPenalties from "@/components/admin/EscalatedPenalties";
 import { AdminLayout } from "@/components/admin/layout/AdminLayout";
 import type { AdminSection } from "@/components/admin/layout/AdminSidebar";
 import { KitchenLicenseApprovalSection } from "@/components/admin/sections/KitchenLicenseApprovalSection";
+import { AdminKitchenApplicationsStep1Section } from "@/components/admin/sections/AdminKitchenApplicationsStep1Section";
 import { ApplicationProgressTracker } from "@/components/admin/ApplicationProgressTracker";
 import { PlatformSettingsSection } from "@/components/admin/sections/PlatformSettingsSection";
+import { PlatformRequirementsSection } from "@/components/admin/sections/PlatformRequirementsSection";
 import { ManagerRevenuesSection } from "@/components/admin/sections/ManagerRevenuesSection";
 import { PlatformOverviewSection } from "@/components/admin/sections/PlatformOverviewSection";
 import { AdminTransactionHistory } from "@/components/admin/sections/AdminTransactionHistory";
@@ -19,11 +21,7 @@ import AdminDamageClaimsHistory from "@/components/admin/sections/AdminDamageCla
 import { AccessCodeDashboard } from "@/components/admin/sections/AccessCodeDashboard";
 import { PasswordResetSection } from "@/components/admin/sections/PasswordResetSection";
 import { EmailLogSection } from "@/components/admin/sections/EmailLogSection";
-import {
-  formatApplicationStatus,
-  formatCertificationStatus,
-  formatKitchenPreference
-} from "@/lib/applicationSchema";
+import { formatApplicationStatus, formatCertificationStatus, formatKitchenPreference } from "@/lib/applicationSchema";
 import { Application } from "@shared/schema";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
@@ -66,6 +64,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import AddressAutocomplete from "@/components/ui/address-autocomplete";
+import { FormLegend } from "@/components/ui/form-legend";
 import ChangePassword from "@/components/auth/ChangePassword";
 import { useToast } from "@/hooks/use-toast";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -73,27 +72,7 @@ import { auth } from "@/lib/firebase";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { AdminOverviewSection } from "@/components/admin/sections/AdminOverviewSection";
 import { SecuritySettingsSection } from "@/components/admin/sections/SecuritySettingsSection";
-import {
-  AlertCircle,
-  AlertTriangle,
-  CalendarDays,
-  CheckCircle,
-  Clock,
-  ExternalLink,
-  RefreshCw,
-  Search,
-  Shield,
-  User as UserIcon,
-  XCircle,
-  Check,
-  Building2,
-  Loader2,
-  MailCheck,
-  Eye,
-  EyeOff,
-  KeyRound,
-  Copy,
-} from "lucide-react";
+import { AlertCircle, AlertTriangle, CalendarDays, CheckCircle, Clock, ExternalLink, RefreshCw, Search, Shield, User as UserIcon, XCircle, Check, Building2, Loader2, MailCheck, Eye, EyeOff, KeyRound, Copy } from "lucide-react";
 
 function AdminDashboard() {
   const [, navigate] = useLocation();
@@ -1148,6 +1127,9 @@ function AdminDashboard() {
           </div>
         );
 
+      case "kitchen-applications-step1":
+        return <AdminKitchenApplicationsStep1Section />;
+
       case "kitchen-licenses":
         return <KitchenLicenseApprovalSection />;
 
@@ -1214,6 +1196,9 @@ function AdminDashboard() {
 
       case "platform-settings":
         return <PlatformSettingsSection />;
+
+      case "platform-requirements":
+        return <PlatformRequirementsSection />;
 
       case "overstay-settings":
         return (
@@ -1629,7 +1614,31 @@ function AdminDashboard() {
                       </div>
                       <div className="p-3 bg-green-50 rounded-lg border border-green-200">
                         <h5 className="text-xs font-medium text-green-800">Food Establishment Cert</h5>
-                        <p className="text-sm font-semibold text-green-900">{formatCertificationStatus(selectedApplication.foodEstablishmentCert)}</p>
+                        <div className="flex flex-col gap-2 mt-1">
+                          <p className="text-sm font-semibold text-green-900">{formatCertificationStatus(selectedApplication.foodEstablishmentCert)}</p>
+                          {selectedApplication.foodEstablishmentCert !== 'yes' && (
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              className="w-full text-xs bg-white hover:bg-green-100 text-green-700 border-green-300"
+                              onClick={() => {
+                                updateDocumentStatusMutation.mutate({
+                                  id: selectedApplication.id,
+                                  field: 'foodEstablishmentCert',
+                                  status: 'yes'
+                                });
+                                // Optimistically update selected application
+                                setSelectedApplication({
+                                  ...selectedApplication,
+                                  foodEstablishmentCert: 'yes'
+                                });
+                              }}
+                              disabled={updateDocumentStatusMutation.isPending}
+                            >
+                              {updateDocumentStatusMutation.isPending ? 'Updating...' : 'Make Required'}
+                            </Button>
+                          )}
+                        </div>
                       </div>
                       <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
                         <h5 className="text-xs font-medium text-purple-800">Kitchen Preference</h5>
@@ -1737,6 +1746,7 @@ function AdminDashboard() {
                                 <CheckCircle className="h-4 w-4" />
                                 All documents verified - Ready to create shop
                               </div>
+                              <FormLegend />
                               <div className="space-y-2">
                                 <div>
                                   <label className="text-xs font-medium text-gray-600">Shop Name <span className="text-red-500">*</span></label>
@@ -2000,4 +2010,3 @@ export default function Admin() {
     </AdminProtectedRoute>
   );
 }
-

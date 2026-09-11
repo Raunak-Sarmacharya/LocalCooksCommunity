@@ -10,19 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
-import {
-  Shield,
-  Save,
-  RotateCcw,
-  Loader2,
-  Globe,
-  Lock,
-  Zap,
-  Webhook,
-  Info,
-  ShieldOff,
-  ShieldCheck,
-} from "lucide-react";
+import { Shield, Save, RotateCcw, Loader2, Globe, Lock, Zap, Webhook, Info, ShieldOff, ShieldCheck } from "lucide-react";
 
 interface RateLimitConfig {
   globalWindowMs: number;

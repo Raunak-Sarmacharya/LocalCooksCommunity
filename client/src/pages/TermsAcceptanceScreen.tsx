@@ -5,20 +5,12 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  ShieldCheck, 
-  Loader2, 
-  ArrowRight, 
-  ArrowDown,
-  ScrollText, 
-  Lock, 
-  CheckCircle2,
-  AlertCircle
-} from "lucide-react";
+import { ShieldCheck, Loader2, ArrowRight, ArrowDown, ScrollText, Lock, CheckCircle2, AlertCircle } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation, Redirect } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import TermsContent from "@/components/legal/TermsContent";
+import { getChefPostAuthPath } from "@/config/chef-onboarding-steps";
 import PrivacyContent from "@/components/legal/PrivacyContent";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -51,21 +43,12 @@ function TermsAcceptanceScreen() {
       if (redirectPath === '/dashboard') {
         if (user?.role === 'manager') redirectPath = '/manager/dashboard';
         else if (user?.role === 'admin') redirectPath = '/admin';
+        else redirectPath = getChefPostAuthPath(user);
       }
 
-      setLocation(redirectPath);
+      setLocation(redirectPath, { replace: true });
     }
   }, [user, setLocation]);
-
-  // Prevent back navigation during terms acceptance
-  useEffect(() => {
-    const handlePopState = () => {
-      window.history.pushState(null, "", window.location.href);
-    };
-    window.history.pushState(null, "", window.location.href);
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
 
   const handleScroll = useCallback((ref: React.RefObject<HTMLDivElement>, setRead: (read: boolean) => void) => {
     const el = ref.current;
@@ -159,9 +142,10 @@ function TermsAcceptanceScreen() {
           if (redirectPath === '/dashboard') {
             if (user?.role === 'manager') redirectPath = '/manager/dashboard';
             else if (user?.role === 'admin') redirectPath = '/admin';
+            else redirectPath = getChefPostAuthPath(user);
           }
 
-          setLocation(redirectPath);
+          setLocation(redirectPath, { replace: true });
         }, 800);
       } else {
         const text = await response.text();
@@ -177,7 +161,7 @@ function TermsAcceptanceScreen() {
   };
 
   if (!user) {
-    return <Redirect to="/auth" />;
+    return <Redirect to="/auth" replace />;
   }
 
   const allRead = termsRead && privacyRead;
@@ -519,4 +503,3 @@ function TermsAcceptanceScreen() {
 }
 
 export default TermsAcceptanceScreen;
-

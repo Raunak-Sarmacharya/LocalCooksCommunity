@@ -4,7 +4,7 @@ import {
     videoProgress,
     microlearningCompletions
 } from "@shared/schema";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { InsertVideoProgress, InsertMicrolearningCompletion } from "./microlearning.types";
 
 export class MicrolearningRepository {
@@ -25,30 +25,41 @@ export class MicrolearningRepository {
     }
 
     async upsertVideoProgress(data: InsertVideoProgress) {
-        // CRITICAL: Never downgrade completed from true→false.
-        // Race condition: onProgress fires with completed=false right before/after
-        // onComplete fires with completed=true — the last write wins in the DB.
-        // Use SQL GREATEST/OR to ensure completed stays true once set.
+        // DB may lack unique(user_id, video_id) — select then insert/update.
+        // Never downgrade completed from true→false.
+        const [existing] = await db
+            .select()
+            .from(videoProgress)
+            .where(and(eq(videoProgress.userId, data.userId), eq(videoProgress.videoId, data.videoId)))
+            .limit(1);
+
+        if (!existing) {
+            return db.insert(videoProgress).values(data).returning();
+        }
+
+        const nextProgress = data.completed
+            ? data.progress
+            : String(Math.max(Number(existing.progress || 0), Number(data.progress || 0)));
+        const nextWatched = String(
+            Math.max(Number(existing.watchedPercentage || 0), Number(data.watchedPercentage || 0))
+        );
+        const nextCompleted = data.completed ? true : Boolean(existing.completed);
+        const nextCompletedAt = data.completedAt
+            ? data.completedAt
+            : existing.completedAt;
+
         return db
-            .insert(videoProgress)
-            .values(data)
-            .onConflictDoUpdate({
-                target: [videoProgress.userId, videoProgress.videoId],
-                set: {
-                    progress: data.completed
-                        ? data.progress
-                        : sql`GREATEST(${videoProgress.progress}, ${data.progress})`,
-                    completed: data.completed
-                        ? sql`true`
-                        : sql`${videoProgress.completed}`,
-                    watchedPercentage: sql`GREATEST(${videoProgress.watchedPercentage}, ${data.watchedPercentage})`,
-                    isRewatching: data.isRewatching,
-                    updatedAt: new Date(),
-                    completedAt: data.completedAt
-                        ? data.completedAt
-                        : sql`${videoProgress.completedAt}`,
-                },
-            });
+            .update(videoProgress)
+            .set({
+                progress: nextProgress,
+                completed: nextCompleted,
+                watchedPercentage: nextWatched,
+                isRewatching: data.isRewatching,
+                updatedAt: new Date(),
+                completedAt: nextCompletedAt,
+            })
+            .where(eq(videoProgress.id, existing.id))
+            .returning();
     }
 
     async createCompletion(data: InsertMicrolearningCompletion) {

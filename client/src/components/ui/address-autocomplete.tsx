@@ -1,8 +1,8 @@
 import { logger } from "@/lib/logger";
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Input } from '@/components/ui/input';
-import { cn } from '@/lib/utils';
-import { MapPin, Loader2 } from 'lucide-react';
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
+import { MapPin, Loader2 } from "lucide-react";
 
 interface Prediction {
   place_id: string;

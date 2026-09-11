@@ -12,48 +12,24 @@
  */
 
 import { useState, useMemo, useCallback } from "react"
+import { mt } from "@/i18n/manager"
 import { useQueryClient } from "@tanstack/react-query"
 import { useFirebaseAuth } from "@/hooks/use-auth"
-import { Info, CreditCard, ExternalLink, AlertCircle, FileText, Download } from "lucide-react"
+import { Info, CreditCard, ExternalLink, AlertCircle, FileText, Download } from "@/components/ui/manager-icons"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ChefPageHeader } from "@/components/chef/ui"
 
 // Import from our revenue module
-import {
-  useRevenueMetrics,
-  useRevenueByLocation,
-  useRevenueChartData,
-  useTransactions,
-  useInvoices,
-  usePayouts,
-  useStripeConnectStatus,
-  downloadInvoice,
-  downloadPayoutStatement,
-  refundTransaction,
-  getDefaultDateRange,
-  type DateRange,
-  type LocationOption,
-  type PaymentStatus,
-  type Transaction,
-} from "@/components/manager/revenue"
+import { useRevenueMetrics, useRevenueByLocation, useRevenueChartData, useTransactions, useInvoices, usePayouts, useStripeConnectStatus, downloadInvoice, downloadPayoutStatement, refundTransaction, getDefaultDateRange, type DateRange, type LocationOption, type PaymentStatus, type Transaction } from "@/components/manager/revenue"
 
 import { RevenueMetricCards } from "@/components/manager/revenue/components/RevenueMetricCards"
 import { TransactionTable } from "@/components/manager/revenue/components/TransactionTable"
 import { DateRangePicker } from "@/components/manager/revenue/components/DateRangePicker"
-import {
-  RevenueTrendChart,
-  RevenueByLocationChart,
-  PaymentStatusChart,
-} from "@/components/manager/revenue/components/RevenueCharts"
+import { RevenueTrendChart, RevenueByLocationChart, PaymentStatusChart } from "@/components/manager/revenue/components/RevenueCharts"
 import { formatCurrency, formatDate, generateInvoiceNumber } from "@/lib/formatters"
 import { useToast } from "@/hooks/use-toast"
 
@@ -156,14 +132,12 @@ export default function ManagerRevenueDashboard({
   const handleDownloadInvoice = useCallback(async (bookingId: number, bookingType?: string, transactionId?: number) => {
     try {
       await downloadInvoice(bookingId, bookingType, transactionId)
-      toast({
-        title: "Invoice Downloaded",
-        description: `Invoice ${generateInvoiceNumber(bookingId)} downloaded successfully`,
+      toast({ title: mt("invoiceDownloaded"),
+        description: mt("invoiceDownloadedDesc", { number: generateInvoiceNumber(bookingId) }),
       })
     } catch (error: any) {
-      toast({
-        title: "Download Failed",
-        description: error?.message || "Failed to download invoice. Please try again.",
+      toast({ title: mt("downloadFailed"),
+        description: error?.message || mt("failedToDownloadInvoiceTryAgain"),
         variant: "destructive",
       })
     }
@@ -172,14 +146,12 @@ export default function ManagerRevenueDashboard({
   const handleDownloadPayoutStatement = useCallback(async (payoutId: string) => {
     try {
       await downloadPayoutStatement(payoutId)
-      toast({
-        title: "Statement Downloaded",
-        description: "Payout statement downloaded successfully",
+      toast({ title: mt("statementDownloaded"),
+        description: mt("payoutStatementDownloadedSuccessfully"),
       })
     } catch (error) {
-      toast({
-        title: "Download Failed",
-        description: "Failed to download statement. Please try again.",
+      toast({ title: mt("downloadFailed"),
+        description: mt("failedToDownloadStatementPleaseTryAgain"),
         variant: "destructive",
       })
     }
@@ -187,12 +159,11 @@ export default function ManagerRevenueDashboard({
 
   const handleRefundTransaction = useCallback(async (transaction: Transaction, amountCents: number, reason?: string) => {
     if (!transaction?.transactionId) {
-      toast({
-        title: "Refund Failed",
-        description: "Missing transaction ID for this booking.",
+      toast({ title: mt("refundFailed"),
+        description: mt("missingTransactionIDForThisBooking"),
         variant: "destructive",
       })
-      throw new Error("Missing transaction ID for this booking.")
+      throw new Error(mt("missingTransactionIdForBooking"))
     }
 
     try {
@@ -202,9 +173,8 @@ export default function ManagerRevenueDashboard({
         reason,
       })
 
-      toast({
-        title: "Refund Initiated",
-        description: "The refund was submitted successfully.",
+      toast({ title: mt("refundInitiated"),
+        description: mt("theRefundWasSubmittedSuccessfully"),
       })
 
       // Refresh revenue data after refund
@@ -212,9 +182,8 @@ export default function ManagerRevenueDashboard({
       queryClient.invalidateQueries({ queryKey: ['/api/manager/revenue/overview'] })
       queryClient.invalidateQueries({ queryKey: ['/api/manager/revenue/charts'] })
     } catch (error: any) {
-      toast({
-        title: "Refund Failed",
-        description: error?.message || "Unable to process refund. Please try again.",
+      toast({ title: mt("refundFailed"),
+        description: error?.message || mt("unableToProcessRefundTryAgain"),
         variant: "destructive",
       })
       throw error
@@ -234,47 +203,40 @@ export default function ManagerRevenueDashboard({
 
   return (
     <div className="space-y-6">
-      {/* Header with Filters */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-foreground">
-            Revenue Dashboard
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Track your earnings, payments, and financial performance
-          </p>
-        </div>
+      <ChefPageHeader 
+        title={mt("navRevenue")}
+        actions={
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Date Range Picker */}
+            <DateRangePicker
+              dateRange={dateRange}
+              onDateRangeChange={setDateRange}
+            />
 
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Date Range Picker */}
-          <DateRangePicker
-            dateRange={dateRange}
-            onDateRangeChange={setDateRange}
-          />
-
-          {/* Location Filter */}
-          {locations.length > 1 && (
-            <Select
-              value={selectedLocationFilter === "all" ? "all" : selectedLocationFilter.toString()}
-              onValueChange={(value) =>
-                setSelectedLocationFilter(value === "all" ? "all" : parseInt(value))
-              }
-            >
-              <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder="All Locations" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Locations</SelectItem>
-                {locations.map((loc) => (
-                  <SelectItem key={loc.id} value={loc.id.toString()}>
-                    {loc.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        </div>
-      </div>
+            {/* Location Filter */}
+            {locations.length > 1 && (
+              <Select
+                value={selectedLocationFilter === "all" ? "all" : selectedLocationFilter.toString()}
+                onValueChange={(value) =>
+                  setSelectedLocationFilter(value === "all" ? "all" : parseInt(value))
+                }
+              >
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue placeholder={mt("cmdAllLocations")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{mt("cmdAllLocations")}</SelectItem>
+                  {locations.map((loc) => (
+                    <SelectItem key={loc.id} value={loc.id.toString()}>
+                      {loc.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+        }
+      />
 
       {/* Info Banner */}
       <Card className="border-blue-200 bg-blue-50/50">
@@ -282,11 +244,10 @@ export default function ManagerRevenueDashboard({
           <div className="flex items-start gap-2">
             <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
             <div className="text-xs text-blue-800">
-              <p className="font-medium mb-1">Understanding Your Revenue</p>
+              <p className="font-medium mb-1">{mt("understandingYourRevenue")}</p>
               <p className="text-blue-700">
-                <strong>Completed Payments:</strong> Money in your Stripe account.{" "}
-                <strong>Processing:</strong> Payments being processed.
-              </p>
+                <strong>{mt("completedPayments")}</strong> Money in your Stripe account.{" "}
+                <strong>{mt("processing2")}</strong>{mt("paymentsBeingProcessed")}</p>
             </div>
           </div>
         </CardContent>
@@ -321,8 +282,8 @@ export default function ManagerRevenueDashboard({
             <div className="flex items-center gap-2">
               <FileText className="h-4 w-4 text-violet-600" />
               <div>
-                <CardTitle className="text-base">Recent Invoices</CardTitle>
-                <p className="text-xs text-muted-foreground">Latest booking invoices</p>
+                <CardTitle className="text-base">{mt("recentInvoices")}</CardTitle>
+                <p className="text-xs text-muted-foreground">{mt("latestBookingInvoices")}</p>
               </div>
             </div>
           </CardHeader>
@@ -356,9 +317,7 @@ export default function ManagerRevenueDashboard({
                     onClick={() => handleDownloadInvoice(invoice.bookingId, invoice.bookingType)}
                     className="gap-2"
                   >
-                    <Download className="h-4 w-4" />
-                    Download
-                  </Button>
+                    <Download className="h-4 w-4" />{mt("download")}</Button>
                 </div>
               ))}
             </div>
@@ -372,8 +331,8 @@ export default function ManagerRevenueDashboard({
           <div className="flex items-center gap-2">
             <CreditCard className="h-4 w-4 text-emerald-600" />
             <div>
-              <CardTitle className="text-base">Payout History</CardTitle>
-              <p className="text-xs text-muted-foreground">Your Stripe Connect payouts</p>
+              <CardTitle className="text-base">{mt("payoutHistory")}</CardTitle>
+              <p className="text-xs text-muted-foreground">{mt("yourStripeConnectPayouts")}</p>
             </div>
           </div>
         </CardHeader>
@@ -381,34 +340,34 @@ export default function ManagerRevenueDashboard({
           {/* Stripe Connect Warning */}
           {stripeStatus && (!stripeStatus.hasAccount || stripeStatus.status !== "complete") && (() => {
             const stage = stripeStatus?.verificationStage;
-            let alertTitle = "Complete Your Stripe Setup";
-            let alertDesc = "Complete onboarding to start receiving automatic payouts.";
-            let buttonLabel = "Complete Setup";
+            let alertTitle = mt("completeStripeSetup");
+            let alertDesc = mt("completeStripeSetupDesc");
+            let buttonLabel = mt("completeSetup");
             
             if (!stripeStatus.hasAccount) {
-              alertTitle = "Connect Your Stripe Account";
-              alertDesc = "Connect Stripe to receive automatic payouts to your bank.";
-              buttonLabel = "Set Up Stripe Connect";
+              alertTitle = mt("connectStripeAccount");
+              alertDesc = mt("connectStripeAccountDesc");
+              buttonLabel = mt("setUpStripeConnect");
             } else if (stage === 'pending_verification') {
-              alertTitle = "Verification In Progress";
-              alertDesc = "Stripe is reviewing your details. This usually takes a few minutes.";
-              buttonLabel = "Check Status";
+              alertTitle = mt("verificationInProgress");
+              alertDesc = mt("verificationInProgressDesc");
+              buttonLabel = mt("checkStatus");
             } else if (stage === 'requires_additional_info') {
-              alertTitle = "Additional Info Needed";
-              alertDesc = "Stripe needs more details to verify your account.";
-              buttonLabel = "Provide Information";
+              alertTitle = mt("additionalInfoNeeded");
+              alertDesc = mt("additionalInfoNeededDesc");
+              buttonLabel = mt("provideInformation");
             } else if (stage === 'past_due') {
-              alertTitle = "Action Required";
-              alertDesc = "Some required information is overdue. Update now to avoid restrictions.";
-              buttonLabel = "Update Info";
+              alertTitle = mt("stripeActionRequired");
+              alertDesc = mt("stripeActionRequiredDesc");
+              buttonLabel = mt("updateInfo");
             } else if (stage === 'details_needed') {
-              alertTitle = "Start Stripe Setup";
-              alertDesc = "Enter your business and bank details to receive payouts.";
-              buttonLabel = "Start Setup";
+              alertTitle = mt("startStripeSetup");
+              alertDesc = mt("startStripeSetupDesc");
+              buttonLabel = mt("completeSetup");
             } else if (stage === 'payouts_disabled') {
-              alertTitle = "Add Bank Account";
-              alertDesc = "Add your bank details to start receiving payouts.";
-              buttonLabel = "Add Bank Account";
+              alertTitle = mt("addBankAccount");
+              alertDesc = mt("addBankAccountDesc");
+              buttonLabel = mt("addBankAccount");
             }
 
             return (
@@ -442,10 +401,8 @@ export default function ManagerRevenueDashboard({
           ) : payouts.length === 0 ? (
             <div className="text-center py-12">
               <CreditCard className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
-              <p className="text-muted-foreground">No payouts yet</p>
-              <p className="text-sm text-muted-foreground/70 mt-1">
-                Payouts will appear here once processed
-              </p>
+              <p className="text-muted-foreground">{mt("noPayoutsYet")}</p>
+              <p className="text-sm text-muted-foreground/70 mt-1">{mt("payoutsWillAppearHereOnceProcessed")}</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -465,7 +422,7 @@ export default function ManagerRevenueDashboard({
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <span>{formatDate(payout.arrivalDate)}</span>
                         <span>•</span>
-                        <span>{payout.method || "Bank Transfer"}</span>
+                        <span>{payout.method || mt("bankTransfer")}</span>
                       </div>
                     </div>
                   </div>
@@ -475,9 +432,7 @@ export default function ManagerRevenueDashboard({
                     onClick={() => handleDownloadPayoutStatement(payout.id)}
                     className="gap-2"
                   >
-                    <Download className="h-4 w-4" />
-                    Statement
-                  </Button>
+                    <Download className="h-4 w-4" />{mt("statement")}</Button>
                 </div>
               ))}
             </div>

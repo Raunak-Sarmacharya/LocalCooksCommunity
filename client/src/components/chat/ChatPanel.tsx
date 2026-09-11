@@ -1,12 +1,15 @@
 import { logger } from "@/lib/logger";
-import { useState, useRef, useEffect } from 'react';
-import { X, Loader2, Info, FileText } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { normalizeChatSystemMessage } from "@/lib/chat-system-message";
+import { useTranslation } from "react-i18next";
+import { useState, useRef, useEffect } from "react";
+import { X, Info, FileText } from "lucide-react";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import FacilityDocumentsPanel from './FacilityDocumentsPanel';
-import { useChat } from '@/hooks/use-chat';
-import { usePresignedDocumentUrl } from '@/hooks/use-presigned-document-url';
-import { Timestamp } from 'firebase/firestore';
+import { useChat } from "@/hooks/use-chat";
+import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
+import { Timestamp } from "firebase/firestore";
 
 // Authenticated file link component for chat attachments
 function AuthenticatedFileLink({ url, fileName, className }: { url: string | null | undefined; fileName?: string; className?: string }) {
@@ -23,7 +26,7 @@ function AuthenticatedFileLink({ url, fileName, className }: { url: string | nul
     >
       <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center group-hover:bg-primary/20">
         {isLoading ? (
-          <Loader2 className="h-4 w-4 text-primary animate-spin" />
+          <LoadingSpinner size="sm" />
         ) : (
           <FileText className="h-4 w-4 text-primary" />
         )}
@@ -36,11 +39,11 @@ function AuthenticatedFileLink({ url, fileName, className }: { url: string | nul
 }
 
 // Shadcn Chat Components
-import { ChatBubble } from '@/components/ui/chat/chat-bubble';
-import { ChatInput } from '@/components/ui/chat/chat-input';
-import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
-import { ChatAvatar } from '@/components/ui/chat/chat-avatar';
-import { Separator } from '@/components/ui/separator';
+import { ChatBubble } from "@/components/ui/chat/chat-bubble";
+import { ChatInput } from "@/components/ui/chat/chat-input";
+import { ChatMessageList } from "@/components/ui/chat/chat-message-list";
+import { ChatAvatar } from "@/components/ui/chat/chat-avatar";
+import { Separator } from "@/components/ui/separator";
 
 interface ChatPanelProps {
   conversationId: string;
@@ -74,6 +77,7 @@ export default function ChatPanel({
     url: string;
   }>>([]);
 
+  const { t } = useTranslation("chef");
   const {
     messages,
     isLoading,
@@ -139,13 +143,13 @@ export default function ChatPanel({
 
   // ... helpers getPartnerName/getPartnerLabel kept same ...
   const getPartnerName = () => {
-    if (isManager) return chefName || "Chef";
-    return managerName || "Manager";
+    if (isManager) return chefName || t("chatChef");
+    return managerName || t("chatManager");
   };
 
   const getPartnerLabel = () => {
-    if (isManager) return "Chef";
-    return "Manager";
+    if (isManager) return t("chatChef");
+    return t("chatManager");
   }
 
   // ... renderHeader kept same ...
@@ -165,7 +169,7 @@ export default function ChatPanel({
         {error && (
           <div className="flex items-center text-destructive text-sm mr-2">
             <Info className="h-4 w-4 mr-1" />
-            <span>Connection error</span>
+            <span>{t("chatConnectionError")}</span>
           </div>
         )}
         {onClose && (
@@ -188,8 +192,8 @@ export default function ChatPanel({
           <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-4">
             <Info className="h-6 w-6 text-muted-foreground/50" />
           </div>
-          <p>No messages yet.</p>
-          <p className="text-xs mt-1 text-muted-foreground/70">Start the conversation by saying hello!</p>
+          <p>{t("chatNoMessages")}</p>
+          <p className="text-xs mt-1 text-muted-foreground/70">{t("chatStartConversation")}</p>
         </div>
       );
     }
@@ -201,7 +205,7 @@ export default function ChatPanel({
             return (
               <div key={message.id} className="flex justify-center my-4">
                 <span className="text-xs text-muted-foreground bg-muted/50 px-3 py-1 rounded-full border">
-                  {message.content}
+                  {normalizeChatSystemMessage(message.content)}
                 </span>
               </div>
             );
@@ -209,8 +213,8 @@ export default function ChatPanel({
 
           const isMe = message.senderId === currentUserId;
           let senderName = "User";
-          if (message.senderRole === 'chef') senderName = chefName || "Chef";
-          if (message.senderRole === 'manager') senderName = managerName || "Manager";
+          if (message.senderRole === 'chef') senderName = chefName || t("chatChef");
+          if (message.senderRole === 'manager') senderName = managerName || t("chatManager");
 
           const timestamp = message.createdAt instanceof Date
             ? message.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -252,7 +256,7 @@ export default function ChatPanel({
       <div className="flex-1 overflow-hidden relative bg-muted/20">
         {isLoading ? (
           <div className="flex items-center justify-center h-full">
-            <Loader2 className="h-8 w-8 animate-spin text-primary/50" />
+            <LoadingSpinner size="lg" />
           </div>
         ) : (
           renderMessages()
@@ -288,8 +292,9 @@ export default function ChatPanel({
         <ChatInput
           onSend={onSend}
           isLoading={isSending}
+          hasExternalAttachments={attachedFacilityDocuments.length > 0}
           className="border-0 shadow-none bg-background pb-6"
-          placeholder={`Message ${getPartnerName()}...`}
+          placeholder={t("chatMessagePlaceholder", { name: getPartnerName() })}
         />
       </div>
     </div>

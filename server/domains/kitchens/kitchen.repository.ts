@@ -24,6 +24,7 @@ export class KitchenRepository {
       ...row,
       description: row.description || undefined,
       hourlyRate: row.hourlyRate ? parseFloat(row.hourlyRate) : null,
+      dailyRate: row.dailyRate ? parseFloat(row.dailyRate) : null,
       galleryImages: (row.galleryImages as string[]) || [], // Ensure type safety for JSONB
       amenities: (row.amenities as string[]) || [],         // Ensure type safety for JSONB
       // Cast enum to specific string union type if needed, or trust strict match
@@ -144,6 +145,7 @@ export class KitchenRepository {
           amenities: dto.amenities || [],
           isActive: dto.isActive !== undefined ? dto.isActive : true,
           hourlyRate: dto.hourlyRate ? dto.hourlyRate.toString() : null, // Convert number to string for numeric column
+          dailyRate: dto.dailyRate ? dto.dailyRate.toString() : null,
           currency: dto.currency || 'CAD',
           minimumBookingHours: dto.minimumBookingHours || 1,
           pricingModel: dto.pricingModel || 'hourly',
@@ -179,6 +181,7 @@ export class KitchenRepository {
           amenities: dto.amenities,
           isActive: dto.isActive,
           hourlyRate: dto.hourlyRate ? dto.hourlyRate.toString() : undefined, // Convert number to string
+          dailyRate: dto.dailyRate ? dto.dailyRate.toString() : (dto.dailyRate === null ? null : undefined),
           currency: dto.currency,
           minimumBookingHours: dto.minimumBookingHours,
           pricingModel: dto.pricingModel,

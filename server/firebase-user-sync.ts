@@ -21,6 +21,10 @@ interface CreateUserData {
   isVerified: boolean;
   hasSeenWelcome?: boolean;
   managerProfileData: Record<string, any>;
+  termsAccepted?: boolean;
+  termsAcceptedAt?: Date;
+  termsVersion?: string;
+
 }
 
 /**
@@ -112,13 +116,38 @@ export async function syncFirebaseUserToNeon(params: {
     };
 
     logger.info(`➕ CREATING NEW USER with data:`, userData);
-    const newUser = await userService.createUser({
+    let newUser = await userService.createUser({
       ...userData,
       has_seen_welcome: hasSeenWelcome
     });
+
+    // createUser strips privileged flags (isChef/isManager). Set them after insert
+    // so newly registered chefs are actually chefs in Neon.
+    const flaggedUser = await userService.updateUser(newUser.id, {
+      isChef,
+      isManager,
+    });
+    if (flaggedUser) {
+      newUser = flaggedUser;
+    }
+
     logger.info(`✅ USER CREATED: ${newUser.id} (${newUser.username})`);
     logger.info(`   - is_verified in DB: ${(newUser as any).isVerified}`);
+    logger.info(`   - isChef in DB: ${(newUser as any).isChef}`);
     logger.info(`   - has_seen_welcome in DB: ${(newUser as any).has_seen_welcome} (admins/managers skip welcome screen)`);
+
+    // In-app welcome for new chefs (bell / notification center)
+    if (isChef) {
+      try {
+        const { notificationService } = await import("./services/notification.service");
+        await notificationService.notifyChefWelcome(
+          newUser.id,
+          displayName || email.split("@")[0] || "Chef"
+        );
+      } catch (welcomeNotifErr) {
+        logger.warn(`Failed to create chef welcome notification for ${newUser.id}:`, welcomeNotifErr);
+      }
+    }
 
     // Handle email notifications based on user type
     if (!isGoogleUser && email) {
@@ -226,4 +255,4 @@ export async function ensureNeonUserExists(userData: FirebaseUserData): Promise<
     logger.error('❌ Error ensuring Neon user exists:', error);
     return null;
   }
-} 
+}

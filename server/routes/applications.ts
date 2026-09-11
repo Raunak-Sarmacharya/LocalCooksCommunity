@@ -23,6 +23,7 @@ import {
     generateVendorCredentials,
     generateChefAllDocumentsApprovedEmail,
     generateDocumentStatusChangeEmail,
+    generateNewSellerApplicationAdminEmail,
 } from "../email";
 import { normalizePhoneForStorage, stripCountryCode } from "../phone-utils";
 import { requireFirebaseAuthWithUser } from "../firebase-auth-middleware";
@@ -125,6 +126,9 @@ router.post("/",
                 foodSafetyLicense: parsedData.data.foodSafetyLicense,
                 foodEstablishmentCert: parsedData.data.foodEstablishmentCert,
                 kitchenPreference: parsedData.data.kitchenPreference,
+                businessType: parsedData.data.businessType,
+                experience: parsedData.data.experience,
+                businessDescription: parsedData.data.businessDescription,
                 feedback: parsedData.data.feedback,
                 // Files handled below
                 foodSafetyLicenseUrl: undefined,
@@ -212,6 +216,41 @@ router.post("/",
             } catch (emailError) {
                 // Log the error but don't fail the request
                 logger.error("Error sending new application email:", emailError);
+            }
+
+            // Send admin notification email about new seller application
+            try {
+                const { users } = await import('@shared/schema');
+                const { eq: eqOp, isNotNull, ne, and: andOp } = await import('drizzle-orm');
+                const { db } = await import('../db');
+                const adminUsers = await db
+                    .select({ username: users.username })
+                    .from(users)
+                    .where(
+                        andOp(
+                            eqOp(users.role, 'admin'),
+                            isNotNull(users.username),
+                            ne(users.username, '')
+                        )
+                    );
+                const hasDocuments = !!(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl);
+                for (const admin of adminUsers) {
+                    if (admin.username) {
+                        const adminEmail = generateNewSellerApplicationAdminEmail({
+                            adminEmail: admin.username,
+                            chefName: application.fullName || 'Chef',
+                            chefEmail: application.email || '',
+                            hasDocuments,
+                            submittedAt: new Date(),
+                        });
+                        await sendEmail(adminEmail, {
+                            trackingId: `seller_app_admin_notify_${admin.username}_${application.id}_${Date.now()}`
+                        });
+                    }
+                }
+                logger.info(`✅ Sent seller application admin notification to ${adminUsers.length} admin(s)`);
+            } catch (adminEmailError) {
+                logger.error('Error sending admin notification for new seller application:', adminEmailError);
             }
 
             logger.info('=== APPLICATION SUBMISSION COMPLETE ===');
@@ -542,6 +581,7 @@ router.patch("/:id/document-verification", async (req: Request, res: Response) =
             id: applicationId,
             foodSafetyLicenseStatus: parsedData.data.foodSafetyLicenseStatus || existingApplication.foodSafetyLicenseStatus,
             foodEstablishmentCertStatus: parsedData.data.foodEstablishmentCertStatus || existingApplication.foodEstablishmentCertStatus,
+            foodEstablishmentCert: parsedData.data.foodEstablishmentCert,
             documentsAdminFeedback: parsedData.data.documentsAdminFeedback,
             documentsReviewedBy: req.neonUser.id
         };

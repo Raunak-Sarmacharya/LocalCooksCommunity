@@ -1,0 +1,11 @@
+{
+  "footer": "LocalCooks · St. John's, Terre-Neuve",
+  "welcomeSubject": "Bienvenue chez LocalCooks",
+  "welcomeBody": "Merci de vous joindre à LocalCooks. Votre compte est prêt.",
+  "bookingConfirmSubject": "Réservation confirmée",
+  "bookingConfirmBody": "Votre réservation de cuisine est confirmée.",
+  "passwordResetSubject": "Réinitialisez votre mot de passe LocalCooks",
+  "passwordResetBody": "Utilisez le lien ci-dessous pour réinitialiser votre mot de passe. Il expire bientôt.",
+  "verifyEmailSubject": "Vérifiez votre courriel LocalCooks",
+  "verifyEmailBody": "Confirmez votre adresse courriel pour terminer la configuration."
+}

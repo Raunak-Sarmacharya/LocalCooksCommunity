@@ -1,0 +1,52 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Kitchen Manager Operating Workflows",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    { "id": "foundation", "label": "Facility + Finance" },
+    { "id": "operations", "label": "Access + Daily Operations" },
+    { "id": "exceptions", "label": "Inbox + Resolution", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "prepare", "label": "Prepare", "fromCol": 0, "toCol": 1 },
+    { "id": "operate", "label": "Operate", "fromCol": 2, "toCol": 4, "variant": "emphasis" },
+    { "id": "close", "label": "Close + learn", "fromCol": 5, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": ["setup", "configure", "publish", "intake", "schedule", "session", "settle"],
+  "semanticChecks": {
+    "allowedRoots": ["setup"],
+    "allowedTerminals": ["settle", "resolve"],
+    "requiredPaths": [
+      { "from": "setup", "to": "settle" },
+      { "from": "communicate", "to": "resolve" }
+    ]
+  },
+  "nodes": [
+    { "id": "setup", "lane": "foundation", "col": 0, "width": 112, "type": "frontend", "label": "Create Location", "sublabel": "profile + licence" },
+    { "id": "configure", "lane": "foundation", "col": 1, "width": 128, "type": "backend", "label": "Configure Facility", "sublabel": "rooms + inventory + rules" },
+    { "id": "publish", "lane": "foundation", "col": 2, "type": "cloud", "label": "Publish Supply", "sublabel": "rates + hours" },
+    { "id": "intake", "lane": "operations", "col": 3, "width": 132, "type": "security", "label": "Review Chef Access", "sublabel": "requirements + applications" },
+    { "id": "schedule", "lane": "operations", "col": 4, "type": "frontend", "label": "Manage Demand", "sublabel": "viewings + bookings" },
+    { "id": "session", "lane": "operations", "col": 5, "type": "backend", "label": "Run Session", "sublabel": "check-in/out" },
+    { "id": "settle", "lane": "foundation", "col": 5, "type": "database", "label": "Settle Revenue", "sublabel": "payouts + records" },
+    { "id": "communicate", "lane": "exceptions", "col": 2, "type": "messagebus", "label": "Inbox", "sublabel": "messages + alerts" },
+    { "id": "inspect", "lane": "exceptions", "col": 4, "width": 132, "type": "security", "label": "Inspect Exceptions", "sublabel": "storage + overstays + damage" },
+    { "id": "resolve", "lane": "exceptions", "col": 5, "width": 104, "type": "external", "label": "Resolve", "sublabel": "decide + escalate" }
+  ],
+  "edges": [
+    { "from": "setup", "to": "configure", "label": "location saved", "role": "main" },
+    { "from": "configure", "to": "publish", "label": "inventory ready", "role": "main" },
+    { "from": "publish", "to": "intake", "label": "chef applies", "role": "main" },
+    { "from": "intake", "to": "schedule", "label": "access approved", "role": "main" },
+    { "from": "schedule", "to": "session", "label": "booking confirmed", "role": "main" },
+    { "from": "session", "to": "settle", "label": "session completed", "role": "main" },
+    { "from": "intake", "to": "communicate", "label": "coordination needed", "role": "branch", "variant": "dashed" },
+    { "from": "schedule", "to": "communicate", "label": "status event", "role": "async", "variant": "dashed" },
+    { "from": "session", "to": "inspect", "label": "exception detected", "role": "error", "variant": "security" },
+    { "from": "communicate", "to": "inspect", "label": "deep link to work queue", "role": "branch" },
+    { "from": "inspect", "to": "resolve", "label": "manager decision", "role": "branch", "variant": "security" }
+  ]
+}

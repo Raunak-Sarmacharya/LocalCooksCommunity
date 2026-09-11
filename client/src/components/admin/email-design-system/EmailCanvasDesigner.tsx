@@ -10,25 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useFileUpload } from "@/hooks/useFileUpload";
-import {
-    AlignCenter,
-    AlignLeft,
-    AlignRight,
-    ChevronDown,
-    Copy,
-    Edit3,
-    Eye,
-    Grid3x3,
-    Image as ImageIcon,
-    MousePointer,
-    Move,
-    Paintbrush2,
-    RotateCcw,
-    Settings,
-    Trash2,
-    Type,
-    Upload
-} from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, ChevronDown, Copy, Edit3, Eye, Grid3x3, Image as ImageIcon, MousePointer, Move, Paintbrush2, RotateCcw, Settings, Trash2, Type, Upload } from "lucide-react";
 import React, { useCallback, useState } from 'react';
 import { GradientColorPicker } from "./GradientColorPicker";
 

@@ -1,3 +1,5 @@
+import { tt } from "@/i18n/common-ns";
+import { mt } from "@/i18n/manager";
 import { logger } from "@/lib/logger";
 /**
  * Revenue Data Hooks
@@ -28,7 +30,7 @@ import { calculatePercentChange } from "@/lib/formatters"
 async function getAuthHeaders(): Promise<HeadersInit> {
     const currentFirebaseUser = auth.currentUser
     if (!currentFirebaseUser) {
-        throw new Error("Firebase user not available")
+        throw new Error(tt("firebaseUserNotAvailable"))
     }
     const token = await currentFirebaseUser.getIdToken()
     return {
@@ -98,7 +100,7 @@ export function useRevenueMetrics({ dateRange, locationId, enabled = true }: Use
                 credentials: 'include',
             })
 
-            if (!response.ok) throw new Error('Failed to fetch revenue metrics')
+            if (!response.ok) throw new Error(tt("failedToFetchRevenueMetrics"))
             return response.json() as Promise<RevenueMetrics>
         },
         enabled: enabled && !!startDate && !!endDate,
@@ -119,7 +121,7 @@ export function useRevenueMetrics({ dateRange, locationId, enabled = true }: Use
                 credentials: 'include',
             })
 
-            if (!response.ok) throw new Error('Failed to fetch previous period metrics')
+            if (!response.ok) throw new Error(mt("failedToFetchPreviousPeriodMetrics"))
             return response.json() as Promise<RevenueMetrics>
         },
         enabled: enabled && !!prevStartDate && !!prevEndDate,
@@ -170,7 +172,7 @@ export function useRevenueByLocation(dateRange: DateRange, enabled: boolean = tr
                 credentials: 'include',
             })
 
-            if (!response.ok) throw new Error('Failed to fetch revenue by location')
+            if (!response.ok) throw new Error(mt("failedToFetchRevenueByLocation"))
             return response.json() as Promise<RevenueByLocation[]>
         },
         enabled: enabled && !!startDate && !!endDate,
@@ -205,7 +207,7 @@ export function useRevenueChartData(
                 credentials: 'include',
             })
 
-            if (!response.ok) throw new Error('Failed to fetch chart data')
+            if (!response.ok) throw new Error(mt("failedToFetchChartData"))
             const result = await response.json()
             logger.info('[useRevenueChartData] Received data:', result.data)
             return result.data as RevenueByDate[]
@@ -257,7 +259,7 @@ export function useTransactions({
                 credentials: 'include',
             })
 
-            if (!response.ok) throw new Error('Failed to fetch transactions')
+            if (!response.ok) throw new Error(mt("failedToFetchTransactions"))
             const result = await response.json()
             return {
                 transactions: result.transactions as Transaction[],
@@ -297,7 +299,7 @@ export function useInvoices(
                 credentials: 'include',
             })
 
-            if (!response.ok) throw new Error('Failed to fetch invoices')
+            if (!response.ok) throw new Error(mt("failedToFetchInvoices"))
             const result = await response.json()
             return result.invoices as Invoice[]
         },
@@ -319,7 +321,7 @@ export function usePayouts(enabled: boolean = true) {
                 credentials: 'include',
             })
 
-            if (!response.ok) throw new Error('Failed to fetch payouts')
+            if (!response.ok) throw new Error(mt("failedToFetchPayouts"))
             const result = await response.json()
             return result.payouts as Payout[]
         },
@@ -341,7 +343,7 @@ export function useStripeConnectStatus(enabled: boolean = true) {
                 credentials: 'include',
             })
 
-            if (!response.ok) throw new Error('Failed to fetch Stripe Connect status')
+            if (!response.ok) throw new Error(mt("failedToFetchStripeConnectStatus"))
             return response.json() as Promise<StripeConnectStatus>
         },
         enabled,
@@ -368,7 +370,7 @@ export async function downloadInvoice(bookingId: number, bookingType?: string, t
         credentials: 'include',
     })
 
-    if (!response.ok) throw new Error('Failed to download invoice')
+    if (!response.ok) throw new Error(mt("failedToDownloadInvoice"))
 
     const blob = await response.blob()
     const url = window.URL.createObjectURL(blob)
@@ -407,13 +409,13 @@ export async function refundTransaction(params: {
 
         if (!response.ok) {
             const errorBody = await response.json().catch(() => null)
-            throw new Error(errorBody?.error || 'Failed to process refund')
+            throw new Error(errorBody?.error || mt("failedToProcessRefund"))
         }
 
         return response.json()
     } catch (error: any) {
         if (error?.name === 'AbortError') {
-            throw new Error('Refund request timed out. Please try again.')
+            throw new Error(mt("refundRequestTimedOut"))
         }
         throw error
     } finally {
@@ -432,7 +434,7 @@ export async function downloadPayoutStatement(payoutId: string): Promise<void> {
         credentials: 'include',
     })
 
-    if (!response.ok) throw new Error('Failed to download payout statement')
+    if (!response.ok) throw new Error(mt("failedToDownloadPayoutStatement"))
 
     const blob = await response.blob()
     const url = window.URL.createObjectURL(blob)

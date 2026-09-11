@@ -36,7 +36,10 @@ export async function generatePayoutStatementPDF(
     const totalPrice = (booking.totalPrice || booking.total_price || 0) / 100; // Convert cents to dollars
     const serviceFee = (booking.serviceFee || booking.service_fee || 0) / 100;
     const stripeProcessingFee = booking.stripeProcessingFee ? parseFloat(booking.stripeProcessingFee) / 100 : 0;
-    const managerRevenue = booking.managerRevenue ? parseFloat(booking.managerRevenue) / 100 : (totalPrice - serviceFee - stripeProcessingFee);
+    const taxAmount = parseFloat(String(booking.taxAmount || booking.tax_amount || 0)) / 100;
+    const managerRevenue = booking.managerRevenue
+      ? parseFloat(booking.managerRevenue) / 100
+      : (totalPrice + taxAmount - stripeProcessingFee);
 
     totalEarnings += totalPrice; // Total Revenue should be the GROSS amount
     totalPlatformFees += serviceFee;
@@ -219,7 +222,10 @@ export async function generatePayoutStatementPDF(
           const totalPrice = (booking.totalPrice || booking.total_price || 0) / 100;
           const serviceFee = (booking.serviceFee || booking.service_fee || 0) / 100;
           const stripeProcessingFee = booking.stripeProcessingFee ? parseFloat(booking.stripeProcessingFee) / 100 : 0;
-          const amount = booking.managerRevenue ? parseFloat(booking.managerRevenue) / 100 : (totalPrice - serviceFee - stripeProcessingFee);
+          const taxAmount = parseFloat(String(booking.taxAmount || booking.tax_amount || 0)) / 100;
+          const amount = booking.managerRevenue
+            ? parseFloat(booking.managerRevenue) / 100
+            : (totalPrice + taxAmount - stripeProcessingFee);
 
           doc.text(dateStr, 50, leftY);
           doc.text(kitchenName, 120, leftY, { width: 120 });

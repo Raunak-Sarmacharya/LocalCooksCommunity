@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { mt } from "@/i18n/manager";
 /**
  * Equipment Listing Management
  * 
@@ -10,11 +11,7 @@ import { logger } from "@/lib/logger";
  * - Modern, intuitive UI with shadcn components
  */
 
-import { 
-  Wrench, Save, Loader2, Plus, X, Check, Search, Pencil, Trash2, 
-  Package, Grid3X3, DollarSign, ChevronDown, ChevronUp,
-  Flame, ChefHat, Snowflake, UtensilsCrossed, SprayCan, PlusCircle, SearchX
-} from "lucide-react";
+import { Wrench, Save, Loader2, Plus, X, Check, Search, Pencil, Trash2, Package, Grid3X3, DollarSign, ChevronDown, ChevronUp, Flame, Calendar, Snowflake, UtensilsCrossed, SprayCan, PlusCircle, SearchX } from "@/components/ui/manager-icons";
 import { useState, useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -33,11 +30,7 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 import { EQUIPMENT_CATEGORIES, type EquipmentTemplate, type EquipmentCategoryId } from "@/lib/equipment-templates";
@@ -45,7 +38,7 @@ import { EQUIPMENT_CATEGORIES, type EquipmentTemplate, type EquipmentCategoryId 
 // Icon component mapping for categories (enterprise pattern - no emojis)
 const CategoryIcon = ({ iconName, className }: { iconName: string; className?: string }) => {
   const icons: Record<string, React.ComponentType<{ className?: string }>> = {
-    Flame, ChefHat, Snowflake, UtensilsCrossed, SprayCan
+    Flame, Calendar, Snowflake, UtensilsCrossed, SprayCan
   };
   const Icon = icons[iconName] || Package;
   return <Icon className={className} />;
@@ -87,10 +80,11 @@ interface SelectedEquipment {
 }
 
 export default function EquipmentListingManagement() {
+  
   return (
     <ManagerPageLayout
-      title="Equipment Management"
-      description="Manage your kitchen equipment listings"
+      title={mt("equipmentManagement")}
+      description={mt("manageYourKitchenEquipmentListings")}
       showKitchenSelector={true}
     >
       {({ selectedLocationId, selectedKitchenId, isLoading }) => {
@@ -113,7 +107,7 @@ export default function EquipmentListingManagement() {
   );
 }
 
-function EquipmentListingContent({
+export function EquipmentListingContent({
   selectedLocationId,
   selectedKitchenId
 }: {
@@ -172,7 +166,7 @@ function EquipmentListingContent({
       const data = await apiGet(`/manager/kitchens/${selectedLocationId}`);
       setKitchens(data);
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to load kitchens", variant: "destructive" });
+      toast({ title: mt("error"), description: error.message || "Failed to load kitchens", variant: "destructive" });
     }
   };
 
@@ -190,7 +184,7 @@ function EquipmentListingContent({
       })) : [];
       setListings(mappedData);
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to load equipment listings", variant: "destructive" });
+      toast({ title: mt("error"), description: error.message || "Failed to load equipment listings", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -212,7 +206,7 @@ function EquipmentListingContent({
     // Use searchQuery as fallback if customEquipment.name is empty (intuitive flow)
     const equipmentName = (customEquipment.name.trim() || searchQuery.trim());
     if (!selectedKitchenId || !equipmentName) {
-      toast({ title: "Error", description: "Please enter an equipment name", variant: "destructive" });
+      toast({ title: mt("error"), description: mt("pleaseEnterAnEquipmentName"), variant: "destructive" });
       return;
     }
     setIsSaving(true);
@@ -229,14 +223,14 @@ function EquipmentListingContent({
         currency: 'CAD',
         isActive: true,
       });
-      toast({ title: "Equipment Added", description: `Successfully added "${equipmentName}"` });
+      toast({ title: mt("equipmentAdded"), description: `Successfully added "${equipmentName}"` });
       setCustomEquipment({ name: '', category: 'cooking', condition: 'good', availabilityType: 'included', sessionRate: 0, damageDeposit: 0, brand: '' });
       setSearchQuery('');
       setActiveTab('list');
       loadListings();
       queryClient.invalidateQueries({ queryKey: [`/api/manager/equipment-listings`] });
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to add equipment", variant: "destructive" });
+      toast({ title: mt("error"), description: error.message || "Failed to add equipment", variant: "destructive" });
     } finally {
       setIsSaving(false);
     }
@@ -301,13 +295,13 @@ function EquipmentListingContent({
     }
     setIsSaving(false);
     if (successCount > 0) {
-      toast({ title: "Equipment Added", description: `Successfully added ${successCount} equipment listing${successCount > 1 ? 's' : ''}.` });
+      toast({ title: mt("equipmentAdded"), description: `Successfully added ${successCount} equipment listing${successCount > 1 ? 's' : ''}.` });
       setSelectedEquipment({});
       setActiveTab('list');
       loadListings();
       queryClient.invalidateQueries({ queryKey: [`/api/manager/equipment-listings`] });
     } else {
-      toast({ title: "Error", description: "Failed to add equipment listings.", variant: "destructive" });
+      toast({ title: mt("error"), description: mt("failedToAddEquipmentListings"), variant: "destructive" });
     }
   };
 
@@ -325,13 +319,13 @@ function EquipmentListingContent({
         sessionRate: editingListing.availabilityType === 'rental' ? Math.round((editingListing.sessionRate || 0) * 100) : 0,
         damageDeposit: editingListing.availabilityType === 'rental' ? Math.round((editingListing.damageDeposit || 0) * 100) : 0,
       });
-      toast({ title: "Success", description: "Equipment listing updated successfully" });
+      toast({ title: mt("success"), description: mt("equipmentListingUpdatedSuccessfully") });
       setEditDialogOpen(false);
       setEditingListing(null);
       loadListings();
       queryClient.invalidateQueries({ queryKey: [`/api/manager/equipment-listings`] });
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to update listing", variant: "destructive" });
+      toast({ title: mt("error"), description: error.message || "Failed to update listing", variant: "destructive" });
     } finally {
       setIsSaving(false);
     }
@@ -341,12 +335,12 @@ function EquipmentListingContent({
     if (!pendingDeleteId) return;
     try {
       await apiDelete(`/manager/equipment-listings/${pendingDeleteId}`);
-      toast({ title: "Success", description: "Equipment listing deleted successfully" });
+      toast({ title: mt("success"), description: mt("equipmentListingDeletedSuccessfully") });
       setDeleteDialogOpen(false);
       setPendingDeleteId(null);
       loadListings();
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to delete listing", variant: "destructive" });
+      toast({ title: mt("error"), description: error.message || "Failed to delete listing", variant: "destructive" });
     }
   };
 
@@ -366,11 +360,11 @@ function EquipmentListingContent({
       await apiPut(`/manager/equipment-listings/${id}`, { isActive });
       queryClient.invalidateQueries({ queryKey: [`/api/manager/equipment-listings`] });
       loadListings();
-      toast({ title: "Status Updated", description: `Equipment listing is now ${isActive ? 'active' : 'inactive'}` });
+      toast({ title: mt("statusUpdated"), description: `Equipment listing is now ${isActive ? 'active' : 'inactive'}` });
       setToggleDialogOpen(false);
       setPendingToggle(null);
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to update status", variant: "destructive" });
+      toast({ title: mt("error"), description: error.message || "Failed to update status", variant: "destructive" });
     } finally {
       setIsToggling(false);
     }
@@ -383,8 +377,8 @@ function EquipmentListingContent({
       <Card className="border-dashed h-full">
         <CardContent className="flex flex-col items-center justify-center p-12 text-center text-muted-foreground h-full">
           <Wrench className="h-12 w-12 mb-4 opacity-20" />
-          <h3 className="text-lg font-medium text-foreground mb-1">No Kitchen Selected</h3>
-          <p>Select a location and kitchen from the sidebar to manage equipment.</p>
+          <h3 className="text-lg font-medium text-foreground mb-1">{mt("noKitchenSelected")}</h3>
+          <p>{mt("selectALocationAndKitchenFromTheSidebarToManageEquipment")}</p>
         </CardContent>
       </Card>
     );
@@ -395,8 +389,8 @@ function EquipmentListingContent({
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'list' | 'add')}>
         <div className="flex items-center justify-between mb-4">
           <TabsList className="grid w-[300px] grid-cols-2">
-            <TabsTrigger value="list" className="flex items-center gap-2"><Package className="h-4 w-4" />My Equipment</TabsTrigger>
-            <TabsTrigger value="add" className="flex items-center gap-2"><Plus className="h-4 w-4" />Add Equipment</TabsTrigger>
+            <TabsTrigger value="list" className="flex items-center gap-2"><Package className="h-4 w-4" />{mt("myEquipment")}</TabsTrigger>
+            <TabsTrigger value="add" className="flex items-center gap-2"><Plus className="h-4 w-4" />{mt("addEquipment")}</TabsTrigger>
           </TabsList>
           {selectedKitchen && <Badge variant="outline" className="text-sm">{selectedKitchen.name}</Badge>}
         </div>
@@ -404,7 +398,7 @@ function EquipmentListingContent({
         <TabsContent value="list" className="mt-0">
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Equipment Inventory</CardTitle>
+              <CardTitle className="text-lg">{mt("equipmentInventory")}</CardTitle>
               <CardDescription>{listings.length} equipment listing{listings.length !== 1 ? 's' : ''} for this kitchen</CardDescription>
             </CardHeader>
             <CardContent>
@@ -413,9 +407,9 @@ function EquipmentListingContent({
               ) : listings.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
                   <Package className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                  <p className="font-medium">No equipment listed yet</p>
+                  <p className="font-medium">{mt("noEquipmentListedYet")}</p>
                   <p className="text-sm mt-1">Click "Add Equipment" to get started</p>
-                  <Button className="mt-4" onClick={() => setActiveTab('add')}><Plus className="h-4 w-4 mr-2" />Add Equipment</Button>
+                  <Button className="mt-4" onClick={() => setActiveTab('add')}><Plus className="h-4 w-4 mr-2" />{mt("addEquipment")}</Button>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -425,7 +419,7 @@ function EquipmentListingContent({
                         <div className="flex items-center gap-2 mb-1">
                           <h4 className="font-medium truncate">{listing.equipmentType}</h4>
                           {listing.brand && <span className="text-sm text-muted-foreground">({listing.brand})</span>}
-                          <Badge variant={listing.isActive !== false ? "success" : "outline"} className="text-xs">{listing.isActive !== false ? 'Active' : 'Inactive'}</Badge>
+                          <Badge variant={listing.isActive !== false ? "success" : "outline"} className="text-xs">{listing.isActive !== false ? mt("active") : mt("inactive")}</Badge>
                         </div>
                         <div className="flex items-center gap-3 text-sm text-muted-foreground">
                           <span className="capitalize">{listing.category.replace('-', ' ')}</span>
@@ -433,7 +427,7 @@ function EquipmentListingContent({
                           <span className="capitalize">{listing.condition}</span>
                           <span>•</span>
                           <span className={cn("font-medium", listing.availabilityType === 'included' ? "text-green-600" : "text-blue-600")}>
-                            {listing.availabilityType === 'included' ? 'Included' : `$${(listing.sessionRate || 0).toFixed(2)}/session`}
+                            {listing.availabilityType === 'included' ? mt("included") : `$${(listing.sessionRate || 0).toFixed(2)}${mt("perSession")}`}
                           </span>
                         </div>
                       </div>
@@ -453,15 +447,15 @@ function EquipmentListingContent({
         <TabsContent value="add" className="mt-0 space-y-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Search equipment..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
+            <Input placeholder={mt("searchEquipment")} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2"><Grid3X3 className="h-5 w-5" />Select Equipment</CardTitle>
-                  <CardDescription>Choose equipment from our pre-defined list</CardDescription>
+                  <CardTitle className="text-lg flex items-center gap-2"><Grid3X3 className="h-5 w-5" />{mt("selectEquipment")}</CardTitle>
+                  <CardDescription>{mt("chooseEquipmentFromOurPreDefinedList")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <ScrollArea className="h-[500px] pr-4">
@@ -489,7 +483,7 @@ function EquipmentListingContent({
                                       <p className="text-sm font-medium truncate">{template.name}</p>
                                       {template.suggestedSessionRate > 0 && <p className="text-xs text-muted-foreground">~${template.suggestedSessionRate}/session</p>}
                                     </div>
-                                    {isAlreadyListed && <Badge variant="secondary" className="text-xs">Listed</Badge>}
+                                    {isAlreadyListed && <Badge variant="secondary" className="text-xs">{mt("listed")}</Badge>}
                                   </button>
                                 );
                               })}
@@ -503,60 +497,60 @@ function EquipmentListingContent({
                         <Card className="border-dashed border-primary/50 bg-primary/5">
                           <CardContent className="p-6 text-center">
                             <SearchX className="h-10 w-10 mx-auto mb-3 text-muted-foreground opacity-50" />
-                            <h4 className="font-medium mb-1">No matching equipment found</h4>
+                            <h4 className="font-medium mb-1">{mt("noMatchingEquipmentFound")}</h4>
                             <p className="text-sm text-muted-foreground mb-4">
                               Can't find "{searchQuery}"? Add it as custom equipment.
                             </p>
                             <div className="space-y-3 text-left">
                               <div>
-                                <Label className="text-xs">Equipment Name</Label>
+                                <Label className="text-xs">{mt("equipmentName")}</Label>
                                 <Input 
                                   value={customEquipment.name || searchQuery} 
                                   onChange={(e) => setCustomEquipment(prev => ({ ...prev, name: e.target.value }))}
-                                  placeholder="Equipment name"
+                                  placeholder={mt("equipmentName2")}
                                   className="mt-1"
                                 />
                               </div>
                               <div className="grid grid-cols-2 gap-2">
                                 <div>
-                                  <Label className="text-xs">Category</Label>
+                                  <Label className="text-xs">{mt("category")}</Label>
                                   <Select value={customEquipment.category} onValueChange={(v: EquipmentCategoryId) => setCustomEquipment(prev => ({ ...prev, category: v }))}>
                                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                                     <SelectContent>
-                                      <SelectItem value="cooking">Cooking</SelectItem>
-                                      <SelectItem value="food-prep">Prep</SelectItem>
-                                      <SelectItem value="refrigeration">Refrigeration</SelectItem>
-                                      <SelectItem value="specialty">Specialty</SelectItem>
-                                      <SelectItem value="cleaning">Cleaning</SelectItem>
+                                      <SelectItem value="cooking">{mt("cooking")}</SelectItem>
+                                      <SelectItem value="food-prep">{mt("prep")}</SelectItem>
+                                      <SelectItem value="refrigeration">{mt("refrigeration")}</SelectItem>
+                                      <SelectItem value="specialty">{mt("specialty")}</SelectItem>
+                                      <SelectItem value="cleaning">{mt("cleaning")}</SelectItem>
                                     </SelectContent>
                                   </Select>
                                 </div>
                                 <div>
-                                  <Label className="text-xs">Condition</Label>
+                                  <Label className="text-xs">{mt("condition")}</Label>
                                   <Select value={customEquipment.condition} onValueChange={(v: 'excellent' | 'good' | 'fair') => setCustomEquipment(prev => ({ ...prev, condition: v }))}>
                                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                                     <SelectContent>
-                                      <SelectItem value="excellent">Excellent</SelectItem>
-                                      <SelectItem value="good">Good</SelectItem>
-                                      <SelectItem value="fair">Fair</SelectItem>
+                                      <SelectItem value="excellent">{mt("excellent")}</SelectItem>
+                                      <SelectItem value="good">{mt("good")}</SelectItem>
+                                      <SelectItem value="fair">{mt("fair")}</SelectItem>
                                     </SelectContent>
                                   </Select>
                                 </div>
                               </div>
                               <div className="grid grid-cols-2 gap-2">
                                 <div>
-                                  <Label className="text-xs">Availability</Label>
+                                  <Label className="text-xs">{mt("navAvailability")}</Label>
                                   <Select value={customEquipment.availabilityType} onValueChange={(v: 'included' | 'rental') => setCustomEquipment(prev => ({ ...prev, availabilityType: v, sessionRate: v === 'included' ? 0 : prev.sessionRate }))}>
                                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                                     <SelectContent>
-                                      <SelectItem value="included">Included</SelectItem>
-                                      <SelectItem value="rental">Rental</SelectItem>
+                                      <SelectItem value="included">{mt("included")}</SelectItem>
+                                      <SelectItem value="rental">{mt("rental")}</SelectItem>
                                     </SelectContent>
                                   </Select>
                                 </div>
                                 {customEquipment.availabilityType === 'rental' && (
                                   <div>
-                                    <Label className="text-xs">Rate (CAD)</Label>
+                                    <Label className="text-xs">{mt("rateCAD")}</Label>
                                     <div className="relative mt-1">
                                       <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
                                       <Input 
@@ -594,7 +588,7 @@ function EquipmentListingContent({
               <Card className="sticky top-4">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg flex items-center justify-between">
-                    <span className="flex items-center gap-2"><DollarSign className="h-5 w-5" />Configure</span>
+                    <span className="flex items-center gap-2"><DollarSign className="h-5 w-5" />{mt("configure")}</span>
                     {selectedEquipmentCount > 0 && <Badge>{selectedEquipmentCount} selected</Badge>}
                   </CardTitle>
                 </CardHeader>
@@ -602,7 +596,7 @@ function EquipmentListingContent({
                   {selectedEquipmentCount === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
                       <Package className="h-10 w-10 mx-auto mb-3 opacity-20" />
-                      <p className="text-sm">Select equipment from the list to configure pricing</p>
+                      <p className="text-sm">{mt("selectEquipmentFromTheListToConfigurePricing")}</p>
                     </div>
                   ) : (
                     <ScrollArea className="h-[400px] pr-2">
@@ -618,15 +612,15 @@ function EquipmentListingContent({
                             </div>
                             <div className="space-y-2">
                               <div className="flex items-center gap-2">
-                                <Label className="text-xs w-20">Type</Label>
+                                <Label className="text-xs w-20">{mt("type")}</Label>
                                 <Select value={equipment.availabilityType} onValueChange={(v: 'included' | 'rental') => updateSelectedEquipment(templateId, { availabilityType: v, sessionRate: v === 'included' ? 0 : equipment.sessionRate })}>
                                   <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                                  <SelectContent><SelectItem value="included">Included (Free)</SelectItem><SelectItem value="rental">Rental (Paid)</SelectItem></SelectContent>
+                                  <SelectContent><SelectItem value="included">{mt("includedFree")}</SelectItem><SelectItem value="rental">{mt("rentalPaid")}</SelectItem></SelectContent>
                                 </Select>
                               </div>
                               {equipment.availabilityType === 'rental' && (
                                 <div className="flex items-center gap-2">
-                                  <Label className="text-xs w-20">Rate</Label>
+                                  <Label className="text-xs w-20">{mt("rate")}</Label>
                                   <div className="relative flex-1">
                                     <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
                                     <Input type="number" min="0" step="0.01" value={equipment.sessionRate} onChange={(e) => updateSelectedEquipment(templateId, { sessionRate: parseFloat(e.target.value) || 0 })} className="h-8 text-xs pl-5" />
@@ -634,15 +628,15 @@ function EquipmentListingContent({
                                 </div>
                               )}
                               <div className="flex items-center gap-2">
-                                <Label className="text-xs w-20">Condition</Label>
+                                <Label className="text-xs w-20">{mt("condition")}</Label>
                                 <Select value={equipment.condition} onValueChange={(v: EquipmentListing['condition']) => updateSelectedEquipment(templateId, { condition: v })}>
                                   <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                                  <SelectContent><SelectItem value="excellent">Excellent</SelectItem><SelectItem value="good">Good</SelectItem><SelectItem value="fair">Fair</SelectItem></SelectContent>
+                                  <SelectContent><SelectItem value="excellent">{mt("excellent")}</SelectItem><SelectItem value="good">{mt("good")}</SelectItem><SelectItem value="fair">{mt("fair")}</SelectItem></SelectContent>
                                 </Select>
                               </div>
                               <div className="flex items-center gap-2">
-                                <Label className="text-xs w-20">Brand</Label>
-                                <Input value={equipment.brand} onChange={(e) => updateSelectedEquipment(templateId, { brand: e.target.value })} placeholder="Optional" className="h-8 text-xs" />
+                                <Label className="text-xs w-20">{mt("brand")}</Label>
+                                <Input value={equipment.brand} onChange={(e) => updateSelectedEquipment(templateId, { brand: e.target.value })} placeholder={mt("optional")} className="h-8 text-xs" />
                               </div>
                             </div>
                           </div>
@@ -674,8 +668,8 @@ function EquipmentListingContent({
                 <Wrench className="w-5 h-5 text-[#F51042]" />
               </div>
               <div>
-                <SheetTitle className="text-lg">Edit Equipment</SheetTitle>
-                <SheetDescription>Update the details for this equipment listing</SheetDescription>
+                <SheetTitle className="text-lg">{mt("editEquipment")}</SheetTitle>
+                <SheetDescription>{mt("updateTheDetailsForThisEquipmentListing")}</SheetDescription>
               </div>
             </div>
           </SheetHeader>
@@ -683,59 +677,59 @@ function EquipmentListingContent({
           {editingListing && (
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               <div className="space-y-2">
-                <Label className="text-sm font-medium">Equipment Name</Label>
+                <Label className="text-sm font-medium">{mt("equipmentName")}</Label>
                 <div className="relative">
                   <Wrench className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <Input 
                     value={editingListing.equipmentType} 
                     onChange={(e) => setEditingListing({ ...editingListing, equipmentType: e.target.value })}
                     className="pl-10"
-                    placeholder="Equipment name"
+                    placeholder={mt("equipmentName2")}
                   />
                 </div>
               </div>
               
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium">Brand</Label>
+                  <Label className="text-sm font-medium">{mt("brand")}</Label>
                   <div className="relative">
                     <Package className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <Input 
                       value={editingListing.brand || ''} 
                       onChange={(e) => setEditingListing({ ...editingListing, brand: e.target.value })}
                       className="pl-10"
-                      placeholder="Optional"
+                      placeholder={mt("optional")}
                     />
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium">Condition</Label>
+                  <Label className="text-sm font-medium">{mt("condition")}</Label>
                   <Select value={editingListing.condition} onValueChange={(v: EquipmentListing['condition']) => setEditingListing({ ...editingListing, condition: v })}>
                     <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="excellent">Excellent</SelectItem>
-                      <SelectItem value="good">Good</SelectItem>
-                      <SelectItem value="fair">Fair</SelectItem>
-                      <SelectItem value="needs-repair">Needs Repair</SelectItem>
+                      <SelectItem value="excellent">{mt("excellent")}</SelectItem>
+                      <SelectItem value="good">{mt("good")}</SelectItem>
+                      <SelectItem value="fair">{mt("fair")}</SelectItem>
+                      <SelectItem value="needs-repair">{mt("needsRepair")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
               
               <div className="space-y-2">
-                <Label className="text-sm font-medium">Availability Type</Label>
+                <Label className="text-sm font-medium">{mt("availabilityType")}</Label>
                 <Select value={editingListing.availabilityType} onValueChange={(v: 'included' | 'rental') => setEditingListing({ ...editingListing, availabilityType: v, sessionRate: v === 'included' ? 0 : editingListing.sessionRate })}>
                   <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="included">Included (Free with kitchen)</SelectItem>
-                    <SelectItem value="rental">Rental (Paid addon)</SelectItem>
+                    <SelectItem value="included">{mt("includedFreeWithKitchen")}</SelectItem>
+                    <SelectItem value="rental">{mt("rentalPaidAddon")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               
               {editingListing.availabilityType === 'rental' && (
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium">Session Rate (CAD)</Label>
+                  <Label className="text-sm font-medium">{mt("sessionRateCAD")}</Label>
                   <div className="relative">
                     <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <Input 
@@ -751,11 +745,11 @@ function EquipmentListingContent({
               )}
               
               <div className="space-y-2">
-                <Label className="text-sm font-medium">Description</Label>
+                <Label className="text-sm font-medium">{mt("description")}</Label>
                 <Textarea 
                   value={editingListing.description || ''} 
                   onChange={(e) => setEditingListing({ ...editingListing, description: e.target.value })}
-                  placeholder="Optional description..."
+                  placeholder={mt("optionalDescription2")}
                   rows={3}
                   className="min-h-[80px] resize-none"
                 />
@@ -764,11 +758,11 @@ function EquipmentListingContent({
           )}
           
           <SheetFooter className="p-6 pt-4 border-t gap-2">
-            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>{mt("cancel")}</Button>
             <StatusButton 
               onClick={() => { setActiveSavingAction('edit'); saveEditedListing(); }} 
               status={activeSavingAction === 'edit' && isSaving ? "loading" : "idle"}
-              labels={{ idle: "Save Changes", loading: "Saving", success: "Saved" }}
+              labels={{ idle: mt("saveChanges"), loading: mt("saving"), success: mt("saved") }}
             />
           </SheetFooter>
         </SheetContent>
@@ -776,16 +770,16 @@ function EquipmentListingContent({
 
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Delete Equipment Listing?</DialogTitle><DialogDescription>This action cannot be undone. The equipment listing will be permanently removed.</DialogDescription></DialogHeader>
-          <DialogFooter><Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button><Button variant="destructive" onClick={handleDelete}>Delete</Button></DialogFooter>
+          <DialogHeader><DialogTitle>{mt("deleteEquipmentListing")}</DialogTitle><DialogDescription>{mt("thisActionCannotBeUndoneTheEquipmentListingWillBePermanently")}</DialogDescription></DialogHeader>
+          <DialogFooter><Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>{mt("cancel")}</Button><Button variant="destructive" onClick={handleDelete}>{mt("delete")}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={toggleDialogOpen} onOpenChange={setToggleDialogOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Deactivate Equipment Listing?</DialogTitle><DialogDescription>This equipment will no longer be available for booking. You can reactivate it at any time.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{mt("deactivateEquipmentListing")}</DialogTitle><DialogDescription>{mt("thisEquipmentWillNoLongerBeAvailableForBookingYouCanReactiva")}</DialogDescription></DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setToggleDialogOpen(false); setPendingToggle(null); }} disabled={isToggling}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setToggleDialogOpen(false); setPendingToggle(null); }} disabled={isToggling}>{mt("cancel")}</Button>
             <StatusButton
               variant="destructive"
               onClick={() => pendingToggle && doToggleActive(pendingToggle.id, pendingToggle.isActive)}

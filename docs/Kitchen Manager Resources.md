@@ -167,7 +167,7 @@ When you are listed as an additional insured on a renter's policy, you are cover
 | **Damage to Premises Rented** | $300,000 | Covers accidental fire or water damage to your kitchen |
 | **Additional Insured** | Your kitchen named | Extends renter's coverage to you for their operations |
 
-**Recommended provider for renters:** FLIP Insurance — starting at approximately $25.92/month or $299/year, with free and unlimited additional insureds, no deductible on liability claims, and instant online purchasing. Website: [fliprogram.com](https://www.fliprogram.com/)
+Require renters to obtain coverage from a licensed Canadian insurance provider or broker. Confirm that each policy meets your limits and coverage requirements, and verify any fees or restrictions for naming your kitchen as an additional insured.
 
 ### 2.4 Verifying Certificates of Insurance (COI)
 
@@ -729,8 +729,6 @@ Have a lawyer review your rental agreement — it's a one-time investment of $50
 
 | Provider | Website |
 |:---------|:--------|
-| FLIP Insurance (Recommended for renters) | [fliprogram.com](https://www.fliprogram.com/) |
-| FLIP — Commercial Kitchen Insurance Details | [fliprogram.com/commercial-kitchen-insurance](https://www.fliprogram.com/commercial-kitchen-insurance) |
 | BFL Canada — Food & Beverage Insurance | [bflcanada.ca](https://www.bflcanada.ca/food-and-beverage/) |
 | Zensurance — Food & Beverage Manufacturing | [zensurance.com](https://www.zensurance.com/manufacturing-insurance/food-and-beverage) |
 | Aligned Insurance — Food Liability | [alignedinsurance.com](https://www.alignedinsurance.com/) |

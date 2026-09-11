@@ -299,6 +299,7 @@ export default function ResetPasswordForm({ oobCode, token, email, onSuccess, on
             icon={<Lock className="w-5 h-5" />}
             error={form.formState.errors.password?.message}
             showPasswordToggle={true}
+            showPasswordStrength={true}
             {...form.register('password')}
           />
         </motion.div>
@@ -311,6 +312,7 @@ export default function ResetPasswordForm({ oobCode, token, email, onSuccess, on
             icon={<Lock className="w-5 h-5" />}
             error={form.formState.errors.confirmPassword?.message}
             showPasswordToggle={true}
+            showPasswordStrength={true}
             {...form.register('confirmPassword')}
           />
         </motion.div>

@@ -143,6 +143,23 @@ export default function PaymentSuccessPage() {
             return;
           }
 
+          // ponytail: local/TestSprite dev has no Stripe webhook tunnel — process once after checkout return.
+          if (
+            response.status === 404 &&
+            import.meta.env.DEV &&
+            retryCount === 0
+          ) {
+            try {
+              await fetch("/api/webhooks/stripe/manual-process-session", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ sessionId }),
+              });
+            } catch (manualErr) {
+              logger.warn("[PaymentSuccess] manual-process-session failed:", manualErr);
+            }
+          }
+
           // If 404 or other error, booking may not be created yet - retry
           if ((response.status === 404 || response.status >= 500) && retryCount < 15) {
             logger.info(`[PaymentSuccess] Booking not found yet (status: ${response.status}), retrying (${retryCount + 1}/15)...`);

@@ -11,17 +11,12 @@ import { logger } from "@/lib/logger";
  * - Payment is immediately processed when confirmed
  * - Funds are sent directly to manager's Stripe Connect account (if set up) or held for LocalCooks payouts
  */
-import { useState, useEffect, useMemo, useRef } from 'react';
-import { loadStripe, StripeElementsOptions } from '@stripe/stripe-js';
-import {
-  Elements,
-  PaymentElement,
-  useStripe,
-  useElements
-} from '@stripe/react-stripe-js';
-import { Button } from '@/components/ui/button';
-import { AlertCircle, Loader2, CheckCircle2, CreditCard } from 'lucide-react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useState, useEffect, useMemo, useRef } from "react";
+import { loadStripe, StripeElementsOptions } from "@stripe/stripe-js";
+import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
+import { Button } from "@/components/ui/button";
+import { AlertCircle, Loader2, CheckCircle2, CreditCard } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 // Initialize Stripe
 // Support both VITE_STRIPE_PUBLISHABLE_KEY (Vite convention) and STRIPE_PUBLISHABLE_KEY (fallback)

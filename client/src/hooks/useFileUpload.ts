@@ -1,6 +1,6 @@
 import { logger } from "@/lib/logger";
-import { auth } from '@/lib/firebase';
-import { useState } from 'react';
+import { auth } from "@/lib/firebase";
+import { useState } from "react";
 
 interface UploadResponse {
   success: boolean;

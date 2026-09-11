@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { mt } from "@/i18n/manager";
 "use client"
 
 import { useManagerKitchenApplications } from "@/hooks/use-manager-kitchen-applications";
@@ -6,42 +7,14 @@ import { ManagerPageLayout } from "@/components/layout/ManagerPageLayout";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import {
-    CheckCircle,
-    XCircle,
-    Clock,
-    AlertCircle,
-    Settings,
-    ExternalLink,
-    Search,
-    Filter,
-    Users,
-    FileCheck,
-    ChefHat
-} from "lucide-react";
+import { CheckCircle, XCircle, Clock, AlertCircle, Settings, ExternalLink, Search, Filter, Users, FileCheck, Calendar } from "@/components/ui/manager-icons";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
-import {
-    Sheet,
-    SheetContent,
-    SheetTitle,
-    SheetDescription,
-} from "@/components/ui/sheet";
-import {
-    Dialog,
-    DialogContent,
-    DialogTitle,
-    DialogDescription,
-} from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
 import { getConversationForApplication, createConversation } from "@/services/chat-service";
@@ -51,6 +24,7 @@ import { getApplicationColumnsV2 } from "@/components/manager/applications/colum
 import { ApplicationDetailPanel } from "@/components/manager/applications/components/ApplicationDetailPanel";
 import { Application } from "@/components/manager/applications/types";
 import { cn } from "@/lib/utils";
+import { tt } from "@/i18n/common-ns";
 
 /**
  * Manager Kitchen Applications Page - Enterprise Edition
@@ -63,11 +37,12 @@ import { cn } from "@/lib/utils";
  * - Enterprise-grade styling inspired by Notion
  */
 export default function ManagerKitchenApplicationsV2() {
+  
     const [, setLocation] = useLocation();
     return (
         <ManagerPageLayout
-            title="Chef Applications"
-            description="Review and manage chef applications to your kitchen locations."
+            title={mt("chefApplications")}
+            description={mt("reviewAndManageChefApplicationsToYourKitchenLocations")}
             showKitchenSelector={false}
         >
             {({ selectedLocationId, isLoading: isLayoutLoading }) => (
@@ -192,13 +167,13 @@ export function ManagerKitchenApplicationsContent({
         queryFn: async () => {
             const { auth } = await import('@/lib/firebase');
             const currentUser = auth.currentUser;
-            if (!currentUser) throw new Error('Not authenticated');
+            if (!currentUser) throw new Error(tt("notAuthenticated"));
             const token = await currentUser.getIdToken();
             const response = await fetch('/api/firebase/user/me', {
                 headers: { Authorization: `Bearer ${token}` },
                 credentials: 'include',
             });
-            if (!response.ok) throw new Error('Failed to get user info');
+            if (!response.ok) throw new Error(tt("failedToGetUserInfo"));
             return response.json();
         },
         retry: 3,
@@ -337,9 +312,8 @@ export function ManagerKitchenApplicationsContent({
         }
         
         if (!currentManagerId) {
-            toast({
-                title: "Error",
-                description: "Unable to identify manager. Please refresh the page.",
+            toast({ title: mt("error"),
+                description: mt("unableToIdentifyManagerPleaseRefreshThePage"),
                 variant: "destructive",
             });
             return;
@@ -368,9 +342,8 @@ export function ManagerKitchenApplicationsContent({
                 );
             } catch (error) {
                 logger.error('Error initializing chat:', error);
-                toast({
-                    title: "Error",
-                    description: "Failed to open chat. Please try again.",
+                toast({ title: mt("error"),
+                    description: mt("failedToOpenChatPleaseTryAgain"),
                     variant: "destructive",
                 });
                 return;
@@ -389,14 +362,12 @@ export function ManagerKitchenApplicationsContent({
                 status: 'approved',
                 feedback: reviewFeedback || undefined,
             });
-            toast({
-                title: "Application Approved",
-                description: "Chef's Step 1 application has been approved. They can now submit Step 2 documents.",
+            toast({ title: mt("applicationApproved"),
+                description: mt("toastChefStep1Approved"),
             });
             closeDetailSheet();
         } catch (error: any) {
-            toast({
-                title: "Error",
+            toast({ title: mt("error"),
                 description: error.message || "Failed to approve application",
                 variant: "destructive",
             });
@@ -412,15 +383,13 @@ export function ManagerKitchenApplicationsContent({
                 currentTier: 3,
                 feedback: reviewFeedback || undefined,
             });
-            toast({
-                title: "Step 2 Approved",
-                description: "Chef is now fully approved and can book kitchens.",
+            toast({ title: mt("step2Approved"),
+                description: mt("chefIsNowFullyApprovedAndCanBookKitchens"),
             });
             closeDetailSheet();
         } catch (error: any) {
-            toast({
-                title: "Error",
-                description: error.message || "Failed to approve Step 2",
+            toast({ title: mt("error"),
+                description: error.message || "Failed to approve Kitchen Coordination",
                 variant: "destructive",
             });
         }
@@ -429,9 +398,8 @@ export function ManagerKitchenApplicationsContent({
     const handleReject = async () => {
         if (!selectedApplication) return;
         if (!reviewFeedback.trim()) {
-            toast({
-                title: "Feedback Required",
-                description: "Please provide feedback when rejecting an application.",
+            toast({ title: mt("feedbackRequired"),
+                description: mt("pleaseProvideFeedbackWhenRejectingAnApplication"),
                 variant: "destructive",
             });
             return;
@@ -443,14 +411,12 @@ export function ManagerKitchenApplicationsContent({
                 status: 'rejected',
                 feedback: reviewFeedback,
             });
-            toast({
-                title: "Application Rejected",
-                description: "Chef has been notified.",
+            toast({ title: mt("applicationRejected"),
+                description: mt("chefHasBeenNotified"),
             });
             closeDetailSheet();
         } catch (error: any) {
-            toast({
-                title: "Error",
+            toast({ title: mt("error"),
                 description: error.message || "Failed to reject application",
                 variant: "destructive",
             });
@@ -475,14 +441,12 @@ export function ManagerKitchenApplicationsContent({
                 locationId: selectedApplication.locationId,
             });
 
-            toast({
-                title: "Access Revoked",
-                description: "Chef access has been revoked successfully.",
+            toast({ title: mt("accessRevoked"),
+                description: mt("chefAccessHasBeenRevokedSuccessfully"),
             });
             closeDetailSheet();
         } catch (error: any) {
-            toast({
-                title: "Error",
+            toast({ title: mt("error"),
                 description: error.message || "Failed to revoke access",
                 variant: "destructive",
             });
@@ -525,10 +489,8 @@ export function ManagerKitchenApplicationsContent({
             {/* Header */}
             <div className="flex items-start justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Chef Applications</h1>
-                    <p className="text-gray-500 text-sm mt-1">
-                        Review and manage chef applications to your kitchen locations.
-                    </p>
+                    <h1 className="text-2xl font-bold text-gray-900">{mt("chefApplications")}</h1>
+                    <p className="text-gray-500 text-sm mt-1">{mt("reviewAndManageChefApplicationsToYourKitchenLocations")}</p>
                 </div>
                 <Button
                     variant="outline"
@@ -545,16 +507,14 @@ export function ManagerKitchenApplicationsContent({
                     }}
                     className="gap-2"
                 >
-                    <Settings className="h-4 w-4" />
-                    Configure Requirements
-                    <ExternalLink className="h-3 w-3" />
+                    <Settings className="h-4 w-4" />{mt("configureRequirements")}<ExternalLink className="h-3 w-3" />
                 </Button>
             </div>
 
             {/* Stats Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <StatCard
-                    title="Pending Review"
+                    title={mt("pendingReview")}
                     value={stats.pending}
                     icon={Clock}
                     color="amber"
@@ -562,25 +522,25 @@ export function ManagerKitchenApplicationsContent({
                     active={statusFilter === 'pending'}
                 />
                 <StatCard
-                    title="Awaiting Step 2"
+                    title={mt("awaitingStep2")}
                     value={stats.awaitingStep2}
                     icon={Users}
                     color="blue"
-                    subtitle="Chat enabled"
+                    subtitle={mt("chatEnabled")}
                     onClick={() => setStatusFilter('awaiting-step2')}
                     active={statusFilter === 'awaiting-step2'}
                 />
                 <StatCard
-                    title="Approved"
+                    title={mt("approved")}
                     value={stats.approved}
                     icon={CheckCircle}
                     color="emerald"
-                    subtitle="Can book kitchens"
+                    subtitle={mt("canBookKitchens")}
                     onClick={() => setStatusFilter('approved')}
                     active={statusFilter === 'approved'}
                 />
                 <StatCard
-                    title="Rejected"
+                    title={mt("rejected")}
                     value={stats.rejected}
                     icon={XCircle}
                     color="red"
@@ -597,7 +557,7 @@ export function ManagerKitchenApplicationsContent({
                             <div className="relative flex-1 max-w-sm">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                                 <Input
-                                    placeholder="Search applicants..."
+                                    placeholder={mt("searchApplicants")}
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     className="pl-9"
@@ -606,14 +566,14 @@ export function ManagerKitchenApplicationsContent({
                             <Select value={statusFilter} onValueChange={setStatusFilter}>
                                 <SelectTrigger className="w-[180px]">
                                     <Filter className="h-4 w-4 mr-2 text-gray-400" />
-                                    <SelectValue placeholder="Filter by status" />
+                                    <SelectValue placeholder={mt("filterByStatus")} />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="all">All Applications</SelectItem>
-                                    <SelectItem value="pending">Pending Review</SelectItem>
-                                    <SelectItem value="awaiting-step2">Awaiting Step 2</SelectItem>
-                                    <SelectItem value="approved">Approved</SelectItem>
-                                    <SelectItem value="rejected">Rejected</SelectItem>
+                                    <SelectItem value="all">{mt("allApplications")}</SelectItem>
+                                    <SelectItem value="pending">{mt("pendingReview")}</SelectItem>
+                                    <SelectItem value="awaiting-step2">{mt("awaitingStep2")}</SelectItem>
+                                    <SelectItem value="approved">{mt("approved")}</SelectItem>
+                                    <SelectItem value="rejected">{mt("rejected")}</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
@@ -628,14 +588,14 @@ export function ManagerKitchenApplicationsContent({
                             columns={columns}
                             data={filteredApplications}
                             filterColumn="fullName"
-                            filterPlaceholder="Filter by name..."
+                            filterPlaceholder={mt("filterByName")}
                         />
                     ) : (
                         <div className="flex flex-col items-center justify-center py-16 text-center">
                             <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-                                <ChefHat className="h-8 w-8 text-gray-400" />
+                                <Calendar className="h-8 w-8 text-gray-400" />
                             </div>
-                            <h3 className="text-lg font-medium text-gray-900 mb-2">No Applications Found</h3>
+                            <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("noApplicationsFound")}</h3>
                             <p className="text-sm text-gray-500 max-w-sm">
                                 {statusFilter !== 'all'
                                     ? "Try adjusting your filters to see more applications."
@@ -647,9 +607,7 @@ export function ManagerKitchenApplicationsContent({
                                     size="sm"
                                     onClick={() => setStatusFilter('all')}
                                     className="mt-4"
-                                >
-                                    Clear Filters
-                                </Button>
+                                >{mt("clearFilters")}</Button>
                             )}
                         </div>
                     )}
@@ -689,8 +647,8 @@ export function ManagerKitchenApplicationsContent({
                     }}
                 >
                     <VisuallyHidden>
-                        <SheetTitle>Application Details</SheetTitle>
-                        <SheetDescription>Review chef application</SheetDescription>
+                        <SheetTitle>{mt("applicationDetails")}</SheetTitle>
+                        <SheetDescription>{mt("reviewChefApplication2")}</SheetDescription>
                     </VisuallyHidden>
                     {selectedApplication && (
                         <ApplicationDetailPanel
@@ -736,8 +694,8 @@ export function ManagerKitchenApplicationsContent({
                     }}
                 >
                     <VisuallyHidden>
-                        <DialogTitle>Chat with Chef</DialogTitle>
-                        <DialogDescription>Communication channel</DialogDescription>
+                        <DialogTitle>{mt("chatWithChef")}</DialogTitle>
+                        <DialogDescription>{mt("communicationChannel")}</DialogDescription>
                     </VisuallyHidden>
                     {managerId && (
                         <UnifiedChatView
@@ -757,7 +715,7 @@ function StatCard({
     title,
     value,
     icon: Icon,
-    color,
+    color, // Kept for prop compatibility
     subtitle,
     onClick,
     active
@@ -770,62 +728,30 @@ function StatCard({
     onClick?: () => void;
     active?: boolean;
 }) {
-    const colors = {
-        amber: {
-            bg: 'bg-amber-50',
-            border: 'border-amber-200',
-            text: 'text-amber-600',
-            value: 'text-amber-700',
-            activeBg: 'bg-amber-100',
-            activeBorder: 'border-amber-400'
-        },
-        blue: {
-            bg: 'bg-blue-50',
-            border: 'border-blue-200',
-            text: 'text-blue-600',
-            value: 'text-blue-700',
-            activeBg: 'bg-blue-100',
-            activeBorder: 'border-blue-400'
-        },
-        emerald: {
-            bg: 'bg-emerald-50',
-            border: 'border-emerald-200',
-            text: 'text-emerald-600',
-            value: 'text-emerald-700',
-            activeBg: 'bg-emerald-100',
-            activeBorder: 'border-emerald-400'
-        },
-        red: {
-            bg: 'bg-red-50',
-            border: 'border-red-200',
-            text: 'text-red-600',
-            value: 'text-red-700',
-            activeBg: 'bg-red-100',
-            activeBorder: 'border-red-400'
-        },
-    };
-
-    const c = colors[color];
-
     return (
         <Card
             className={cn(
-                "cursor-pointer transition-all hover:shadow-md border-2",
-                active ? `${c.activeBg} ${c.activeBorder}` : `${c.bg} ${c.border} hover:${c.activeBorder}`
+                "cursor-pointer transition-all hover:shadow-md border",
+                active 
+                    ? "bg-accent/50 border-primary shadow-sm" 
+                    : "bg-card border-border hover:border-primary/50"
             )}
             onClick={onClick}
         >
             <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                     <div>
-                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{title}</p>
-                        <p className={cn("text-3xl font-bold mt-1", c.value)}>{value}</p>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{title}</p>
+                        <p className="text-3xl font-bold mt-1 text-foreground">{value}</p>
                         {subtitle && (
-                            <p className="text-xs text-gray-500 mt-1">{subtitle}</p>
+                            <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
                         )}
                     </div>
-                    <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center", c.bg)}>
-                        <Icon className={cn("h-5 w-5", c.text)} />
+                    <div className={cn(
+                        "w-10 h-10 rounded-lg flex items-center justify-center transition-colors",
+                        active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                    )}>
+                        <Icon className="h-5 w-5" />
                     </div>
                 </div>
             </CardContent>

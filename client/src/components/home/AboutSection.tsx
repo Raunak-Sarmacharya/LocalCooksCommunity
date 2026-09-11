@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import { Globe, Heart, Leaf, Quote } from "lucide-react";
 
@@ -23,6 +24,7 @@ const values = [
 ];
 
 export default function AboutSection() {
+  const { t } = useTranslation("landing");
   // Removed button functionality as requested
 
   return (
@@ -41,27 +43,21 @@ export default function AboutSection() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: 0.1 }}
-          >
-            Our Story
-          </motion.span>
+          >{t("ourStory")}</motion.span>
           <motion.h2
             className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-display text-brand-primary mb-4 sm:mb-6 px-2"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: 0.2 }}
-          >
-            Who We Are
-          </motion.h2>
+          >{t("whoWeAre")}</motion.h2>
           <motion.p
             className="max-w-3xl mx-auto text-base sm:text-lg md:text-xl text-brand-text font-sans leading-relaxed px-4"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: 0.3 }}
-          >
-            A team of food enthusiasts passionate about empowering local cooks
-          </motion.p>
+          >{t("teamOfFoodEnthusiasts")}</motion.p>
         </div>
 
         <div className="grid md:grid-cols-2 gap-6 sm:gap-8 md:gap-12 items-center mb-8 sm:mb-10 md:mb-12">
@@ -84,14 +80,10 @@ export default function AboutSection() {
                     <div className="p-2.5 sm:p-3 bg-brand-primary/10 rounded-lg sm:rounded-xl">
                       <Quote className="h-6 w-6 sm:h-8 sm:w-8 text-brand-primary" />
                     </div>
-                    <h3 className="text-xl sm:text-2xl md:text-3xl font-bold text-brand-text">Our Mission</h3>
+                    <h3 className="text-xl sm:text-2xl md:text-3xl font-bold text-brand-text">{t("ourMission")}</h3>
                   </div>
-                  <p className="text-brand-text mb-4 sm:mb-5 leading-relaxed font-sans text-sm sm:text-base md:text-lg">
-                    Your kitchen holds stories, traditions, and flavors that deserve to be shared with the world. Local Cooks bridges the gap between your culinary gifts and the food lovers eager to discover them.
-                  </p>
-                  <p className="text-brand-text leading-relaxed font-sans text-sm sm:text-base md:text-lg">
-                    We're not just a platform—we're a movement empowering passionate cooks to turn their authentic recipes into sustainable businesses, one homemade dish at a time. We're dedicated to supporting St. John's culinary community by connecting talented home cooks with hungry customers who appreciate authentic, homemade meals.
-                  </p>
+                  <p className="text-brand-text mb-4 sm:mb-5 leading-relaxed font-sans text-sm sm:text-base md:text-lg">{t("kitchenHoldsStories")}</p>
+                  <p className="text-brand-text leading-relaxed font-sans text-sm sm:text-base md:text-lg">{t("notJustPlatform")}</p>
                 </div>
               </div>
             </div>

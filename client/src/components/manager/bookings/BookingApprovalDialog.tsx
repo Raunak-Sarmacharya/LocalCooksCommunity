@@ -1,29 +1,12 @@
 import { useState } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { mt } from "@/i18n/manager";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import {
-  CheckCircle2,
-  XCircle,
-  Loader2,
-  Package,
-  Boxes,
-  Calendar,
-  Clock,
-  MapPin,
-  ChefHat,
-  DollarSign,
-  AlertTriangle,
-} from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, Package, Boxes, Calendar, Clock, MapPin, DollarSign, AlertTriangle } from "@/components/ui/manager-icons";
 import { cn } from "@/lib/utils";
+import { TruncatedText } from "@/components/common/TruncatedText";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -117,6 +100,7 @@ export function BookingApprovalDialog({
   isLoading = false,
   onSubmit,
 }: BookingApprovalDialogProps) {
+  
   // Render the inner component with a key that changes when booking/mode changes
   // This forces a remount so initial state is derived from props cleanly
   const dialogKey = booking ? `${booking.id}-${mode}` : "empty";
@@ -232,14 +216,14 @@ function BookingApprovalDialogContent({
               ) : (
                 <XCircle className="h-5 w-5 text-red-600" />
               )}
-              {isConfirmMode ? "Approve Booking" : "Reject Booking"}
+              {isConfirmMode ? mt("approveBooking") : mt("rejectBooking")}
             </DialogTitle>
             <DialogDescription className="text-sm">
               {hasStorage
-                ? "Review each item and choose what to approve or reject individually."
+                ? mt("reviewEachItemIndividually")
                 : isConfirmMode
-                ? "Confirm this kitchen booking?"
-                : "Reject this kitchen booking? The chef will be notified."}
+                ? mt("confirmThisKitchenBooking")
+                : mt("rejectKitchenBookingNotified")}
             </DialogDescription>
           </DialogHeader>
         </div>
@@ -249,13 +233,13 @@ function BookingApprovalDialogContent({
           {/* Booking summary */}
           <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 border">
             <div className="flex-1 min-w-0">
-              <p className="font-semibold text-sm truncate">
-                {booking.kitchenName || "Kitchen Booking"}
-              </p>
+              <TruncatedText as="p" className="font-semibold text-sm truncate">
+                {booking.kitchenName || mt("kitchenBooking")}
+              </TruncatedText>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-muted-foreground">
                 {booking.chefName && (
                   <span className="flex items-center gap-1">
-                    <ChefHat className="h-3 w-3" />
+                    <Calendar className="h-3 w-3" />
                     {booking.chefName}
                   </span>
                 )}
@@ -295,7 +279,7 @@ function BookingApprovalDialogContent({
                   isConfirmMode ? "bg-green-100" : "bg-red-100"
                 )}
               >
-                <ChefHat
+                <Calendar
                   className={cn(
                     "h-4 w-4",
                     isConfirmMode ? "text-green-600" : "text-red-600"
@@ -303,7 +287,7 @@ function BookingApprovalDialogContent({
                 />
               </div>
               <div>
-                <p className="text-sm font-medium">Kitchen Booking</p>
+                <p className="text-sm font-medium">{mt("kitchenBooking")}</p>
                 <p className="text-xs text-muted-foreground">
                   {formatTime(booking.startTime)} –{" "}
                   {formatTime(booking.endTime)}
@@ -320,14 +304,10 @@ function BookingApprovalDialogContent({
             >
               {isConfirmMode ? (
                 <>
-                  <CheckCircle2 className="h-3 w-3 mr-1" />
-                  Approve
-                </>
+                  <CheckCircle2 className="h-3 w-3 mr-1" />{mt("approve")}</>
               ) : (
                 <>
-                  <XCircle className="h-3 w-3 mr-1" />
-                  Reject
-                </>
+                  <XCircle className="h-3 w-3 mr-1" />{mt("reject")}</>
               )}
             </Badge>
           </div>
@@ -339,9 +319,7 @@ function BookingApprovalDialogContent({
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                    <Boxes className="h-3.5 w-3.5" />
-                    Storage Rentals
-                  </p>
+                    <Boxes className="h-3.5 w-3.5" />{mt("storageRentals")}</p>
                   {storageOverrideCount > 0 && (
                     <Badge
                       variant="outline"
@@ -426,14 +404,10 @@ function BookingApprovalDialogContent({
                         >
                           {isApproved ? (
                             <>
-                              <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
-                              Approve
-                            </>
+                              <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />{mt("approve")}</>
                           ) : (
                             <>
-                              <XCircle className="h-2.5 w-2.5 mr-0.5" />
-                              Reject
-                            </>
+                              <XCircle className="h-2.5 w-2.5 mr-0.5" />{mt("reject")}</>
                           )}
                         </Badge>
                       </div>
@@ -441,9 +415,7 @@ function BookingApprovalDialogContent({
                   );
                 })}
 
-                <p className="text-[11px] text-muted-foreground italic pl-1">
-                  Click each storage item to toggle between approve and reject
-                </p>
+                <p className="text-[11px] text-muted-foreground italic pl-1">{mt("clickEachStorageItemToToggleBetweenApproveAndReject")}</p>
               </div>
             </>
           )}
@@ -454,9 +426,7 @@ function BookingApprovalDialogContent({
               <Separator />
               <div className="space-y-2">
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                  <Package className="h-3.5 w-3.5" />
-                  Equipment Rentals
-                </p>
+                  <Package className="h-3.5 w-3.5" />{mt("equipmentRentals")}</p>
                 {booking.equipmentItems!.map((item) => (
                   <div
                     key={item.id}
@@ -492,9 +462,7 @@ function BookingApprovalDialogContent({
                     )}
                   </div>
                 ))}
-                <p className="text-[11px] text-muted-foreground italic pl-1">
-                  Equipment follows the kitchen booking decision
-                </p>
+                <p className="text-[11px] text-muted-foreground italic pl-1">{mt("equipmentFollowsTheKitchenBookingDecision")}</p>
               </div>
             </>
           )}
@@ -508,9 +476,7 @@ function BookingApprovalDialogContent({
               onClick={onCancel}
               disabled={isLoading}
               className="flex-1 sm:flex-none"
-            >
-              Cancel
-            </Button>
+            >{mt("cancel")}</Button>
             <Button
               onClick={handleSubmit}
               disabled={isLoading}
@@ -525,10 +491,10 @@ function BookingApprovalDialogContent({
                 <XCircle className="h-4 w-4 mr-2" />
               )}
               {isLoading
-                ? "Processing..."
+                ? mt("processingEllipsis")
                 : isConfirmMode
-                ? "Confirm Booking"
-                : "Reject Booking"}
+                ? mt("confirmBooking")
+                : mt("rejectBooking")}
             </Button>
           </div>
         </DialogFooter>

@@ -129,6 +129,7 @@ router.get('/public/kitchens', async (req: Request, res: Response) => {
                 kitchenId: equipmentListings.kitchenId,
                 equipmentType: equipmentListings.equipmentType,
                 category: equipmentListings.category,
+                availabilityType: equipmentListings.availabilityType,
             })
             .from(equipmentListings)
             .where(eq(equipmentListings.isActive, true));
@@ -142,13 +143,19 @@ router.get('/public/kitchens', async (req: Request, res: Response) => {
             storageByKitchen.set(storage.kitchenId, existing);
         }
 
-        // Group equipment by kitchen ID
+        // Group equipment by kitchen ID (names + included/rental counts)
         const equipmentByKitchen = new Map<number, string[]>();
+        const equipmentSummaryByKitchen = new Map<number, { included: number; rental: number }>();
         for (const equip of allEquipmentListings) {
             if (!equip.kitchenId) continue;
             const existing = equipmentByKitchen.get(equip.kitchenId) || [];
             existing.push(equip.equipmentType || 'Equipment');
             equipmentByKitchen.set(equip.kitchenId, existing);
+
+            const summary = equipmentSummaryByKitchen.get(equip.kitchenId) || { included: 0, rental: 0 };
+            if (equip.availabilityType === 'rental') summary.rental += 1;
+            else summary.included += 1;
+            equipmentSummaryByKitchen.set(equip.kitchenId, summary);
         }
 
         // Build public kitchen listings
@@ -164,6 +171,10 @@ router.get('/public/kitchens', async (req: Request, res: Response) => {
 
             // Get equipment from equipment_listings table (not the empty amenities field)
             const equipment = equipmentByKitchen.get(kitchen.id) || [];
+            const equipmentSummary = equipmentSummaryByKitchen.get(kitchen.id) || {
+                included: 0,
+                rental: 0,
+            };
 
             // Get storage listings for this kitchen
             const storageItems = storageByKitchen.get(kitchen.id) || [];
@@ -192,6 +203,7 @@ router.get('/public/kitchens', async (req: Request, res: Response) => {
                 imageUrl,
                 galleryImages,
                 equipment,
+                equipmentSummary,
                 hourlyRate: kitchen.hourlyRate ? parseFloat(String(kitchen.hourlyRate)) : null,
                 currency: kitchen.currency || 'CAD',
                 minimumBookingHours: kitchen.minimumBookingHours ? parseFloat(String(kitchen.minimumBookingHours)) : null,
@@ -312,6 +324,10 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
             kitchens: sanitizedKitchens,
             // Kitchen terms and policies for chef applications
             kitchenTermsUrl: location.kitchenTermsUrl || null,
+            cancellationPolicyHours: location.cancellationPolicyHours ?? 24,
+            cancellationPolicyMessage:
+                location.cancellationPolicyMessage ||
+                "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
             // License status for application eligibility (enterprise-grade consistency)
             kitchenLicenseStatus: location.kitchenLicenseStatus || 'pending',
             canAcceptApplications,
@@ -368,7 +384,11 @@ router.get('/manager/locations/:locationId/requirements',
             }
 
             const requirements = await locationService.getLocationRequirementsWithDefaults(locationId);
-            res.json(requirements);
+            res.json({
+                ...requirements,
+                kitchen_terms_url: location.kitchenTermsUrl,
+                kitchen_license_url: location.kitchenLicenseUrl
+            });
         } catch (error) {
             logger.error('Error getting location requirements:', error);
             res.status(500).json({ error: 'Failed to get requirements' });

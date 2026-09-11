@@ -78,6 +78,7 @@ export class ApplicationRepository {
       .set({
         foodSafetyLicenseStatus: data.foodSafetyLicenseStatus,
         foodEstablishmentCertStatus: data.foodEstablishmentCertStatus,
+        ...(data.foodEstablishmentCert ? { foodEstablishmentCert: data.foodEstablishmentCert } : {}),
         documentsAdminFeedback: data.documentsAdminFeedback,
         documentsReviewedBy: data.documentsReviewedBy,
         documentsReviewedAt: new Date(),

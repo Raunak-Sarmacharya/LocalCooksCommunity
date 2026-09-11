@@ -5,18 +5,7 @@
  * Import this instead of defining status configs inline per component.
  */
 
-import {
-  CheckCircle,
-  Clock,
-  XCircle,
-  AlertTriangle,
-  Loader2,
-  FileCheck,
-  Ban,
-  CreditCard,
-  ShieldCheck,
-  type LucideIcon,
-} from "lucide-react";
+import { CheckCircle, Clock, XCircle, AlertTriangle, Loader2, FileCheck, Ban, CreditCard, ShieldCheck, type LucideIcon } from "lucide-react";
 
 export type StatusCategory = "success" | "warning" | "danger" | "info" | "neutral" | "accent";
 

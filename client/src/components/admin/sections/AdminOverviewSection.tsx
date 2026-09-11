@@ -1,17 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  Shield,
-  FileText,
-  Building2,
-  DollarSign,
-  Users,
-  ChefHat,
-  AlertTriangle,
-  Loader2,
-  ArrowRight,
-} from "lucide-react";
+import { Shield, FileText, Building2, DollarSign, Users, Calendar, AlertTriangle, Loader2, ArrowRight } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import type { AdminSection } from "@/components/admin/layout/AdminSidebar";
 
@@ -185,7 +175,7 @@ export function AdminOverviewSection({
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-base font-semibold flex items-center gap-2">
                     <Shield className="h-4 w-4 text-primary" />
-                    Chef Applications
+                    Seller Applications
                   </CardTitle>
                   {pendingReviewCount > 0 && (
                     <span className="inline-flex items-center rounded-full bg-destructive/10 px-2.5 py-0.5 text-xs font-medium text-destructive">
@@ -251,7 +241,7 @@ export function AdminOverviewSection({
             <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => onNavigate("kitchen-management")}>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base font-semibold flex items-center gap-2">
-                  <ChefHat className="h-4 w-4 text-purple-600" />
+                  <Calendar className="h-4 w-4 text-purple-600" />
                   Kitchen Management
                 </CardTitle>
               </CardHeader>
@@ -293,7 +283,7 @@ export function AdminOverviewSection({
               </CardHeader>
               <CardContent className="pt-0">
                 <p className="text-sm text-muted-foreground mb-3">
-                  Configure fees, commissions, and platform behavior.
+                  Configure fees and platform behavior.
                 </p>
                 <Button variant="ghost" size="sm" className="px-0 text-primary">
                   Open Settings <ArrowRight className="h-3.5 w-3.5 ml-1" />

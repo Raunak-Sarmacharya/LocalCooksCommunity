@@ -11,6 +11,7 @@ export interface ChefOnboardingStatus {
   hasSellerApplication: boolean;
   hasKitchenApplications: boolean;
   hasUploadedDocuments: boolean;
+  chefOnboardingCompleted: boolean;
   
   // Computed
   isOnboardingComplete: boolean;
@@ -95,9 +96,10 @@ export function useChefOnboardingStatus(): ChefOnboardingStatus {
   const hasSellerApplication = (applications?.length || 0) > 0;
   const hasKitchenApplications = (kitchenApplications?.length || 0) > 0;
   
-  // Check if chef onboarding was completed (from database)
-  // This is the AUTHORITATIVE source - if they completed onboarding, no banner should show
-  const chefOnboardingCompleted = userData?.chefOnboardingCompleted || false;
+  // chef_onboarding_completed on the users table is the source of truth
+  const chefOnboardingCompleted = !!(
+    userData?.chefOnboardingCompleted || userData?.chef_onboarding_completed
+  );
   
   // Check if any application has uploaded documents
   const hasUploadedDocuments = applications?.some((app: any) => 
@@ -107,7 +109,7 @@ export function useChefOnboardingStatus(): ChefOnboardingStatus {
   // Calculate missing steps (only relevant if onboarding not completed)
   const missingSteps: string[] = [];
   if (!chefOnboardingCompleted) {
-    if (!hasCompletedTraining) missingSteps.push("Complete Food Safety Training");
+    missingSteps.push("Finish chef onboarding");
     if (!hasSellerApplication && !hasKitchenApplications) missingSteps.push("Submit an Application");
   }
   
@@ -122,20 +124,11 @@ export function useChefOnboardingStatus(): ChefOnboardingStatus {
     completedStepsCount++;
   }
 
-  // Onboarding is complete when:
-  // 1. User explicitly completed the onboarding flow (chefOnboardingCompleted = true), OR
-  // 2. User has training + application (legacy check for users who completed before this field existed)
-  const hasApprovedKitchenAccess = kitchenApplications?.some((app: any) => 
-    app.status === 'approved' && (app.current_tier || 0) >= 3
-  ) || false;
+  // Onboarding is complete only when the users.chef_onboarding_completed flag is true
+  const isOnboardingComplete = chefOnboardingCompleted;
   
-  const isOnboardingComplete = chefOnboardingCompleted || (hasCompletedTraining && (hasSellerApplication || hasApprovedKitchenAccess));
-  
-  // Show setup banner ONLY if:
-  // 1. User has seen welcome (started onboarding)
-  // 2. User has NOT completed onboarding flow
-  // 3. User has started an application (mid-onboarding exit scenario)
-  const showSetupBanner = hasSeenWelcome && !chefOnboardingCompleted && (hasSellerApplication || hasKitchenApplications);
+  // Banner on dashboard while the OnboardJS wizard is still unfinished
+  const showSetupBanner = !chefOnboardingCompleted;
 
   const isLoading = isLoadingUser || isLoadingApps || isLoadingKitchenApps || isLoadingTraining;
 
@@ -146,6 +139,7 @@ export function useChefOnboardingStatus(): ChefOnboardingStatus {
     hasSellerApplication,
     hasKitchenApplications,
     hasUploadedDocuments,
+    chefOnboardingCompleted,
     isOnboardingComplete,
     showSetupBanner,
     missingSteps,

@@ -26,13 +26,14 @@ export interface OnboardingStatus {
 
     // Missing steps for banner
     missingSteps: string[];
+    improvementSteps: string[];
 }
 
 export function useOnboardingStatus(locationId?: number): OnboardingStatus {
     const { user: firebaseUser } = useFirebaseAuth();
 
     // 1. Fetch User Profile (Global) - ALWAYS fetch to check manager_onboarding_completed
-    const { data: userData, isLoading: isLoadingUser } = useQuery({
+    const { data: userData, isFetching: isFetchingUser } = useQuery({
         queryKey: ["/api/user/profile", firebaseUser?.uid],
         queryFn: async () => {
             if (!firebaseUser) return null;
@@ -63,7 +64,7 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
 
     // 2. Fetch Location Details (License) - ALWAYS fetch for license status banner
     // This is a lightweight call needed even after onboarding is complete
-    const { data: locationData, isLoading: isLoadingLocation } = useQuery({
+    const { data: locationData, isFetching: isFetchingLocation } = useQuery({
         queryKey: ['locationDetails', locationId],
         queryFn: async () => {
             if (!locationId) return null;
@@ -84,7 +85,7 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
 
     // Fetch Stripe Connect status from dedicated endpoint (queries Stripe API for real status)
     // SKIP when onboarding is complete - Stripe status was already verified during onboarding
-    const { data: stripeConnectStatus, isLoading: isLoadingStripe } = useQuery({
+    const { data: stripeConnectStatus, isFetching: isFetchingStripe } = useQuery({
         queryKey: ['/api/manager/stripe-connect/status', firebaseUser?.uid],
         queryFn: async () => {
             if (!firebaseUser) return null;
@@ -102,7 +103,7 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
 
     // 3. Fetch Kitchens (Pricing & Count)
     // SKIP when onboarding is complete
-    const { data: kitchens, isLoading: isLoadingKitchens } = useQuery({
+    const { data: kitchens, isFetching: isFetchingKitchens } = useQuery({
         queryKey: ['managerKitchens', locationId],
         queryFn: async () => {
             if (!locationId) return [];
@@ -113,12 +114,12 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
             if (!res.ok) return [];
             return res.json();
         },
-        enabled: !!locationId && !shouldSkipDetailedQueries,
+        enabled: !!locationId,
     });
 
     // 4. Fetch Availability (Check if any kitchen has days set)
     // SKIP when onboarding is complete - this is the most expensive query (multiple requests)
-    const { data: availabilityData } = useQuery({
+    const { data: availabilityData, isFetching: isFetchingAvailability } = useQuery({
         queryKey: ['locationAvailabilityStatus', locationId, kitchens?.map((k: any) => k.id)],
         queryFn: async () => {
             if (!kitchens?.length) return false;
@@ -147,7 +148,7 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
 
     // 5. Fetch Requirements Status
     // SKIP when onboarding is complete
-    const { data: requirementsData } = useQuery({
+    const { data: requirementsData, isFetching: isFetchingRequirements } = useQuery({
         queryKey: ['locationRequirements', locationId],
         queryFn: async () => {
             if (!locationId) return null;
@@ -189,7 +190,7 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
         : (stripeConnectStatus?.status === 'complete' && 
            stripeConnectStatus?.chargesEnabled && stripeConnectStatus?.payoutsEnabled);
     
-    const hasKitchens = shouldSkipDetailedQueries ? true : (kitchens?.length || 0) > 0;
+    const hasKitchens = (kitchens?.length || 0) > 0;
 
     // Onboarding Complete = All steps done with license UPLOADED (not necessarily approved)
     // When DB flag is set, trust it (manager already completed all required steps)
@@ -221,6 +222,12 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
         if (!isStripeComplete) missingSteps.push("Connect Stripe");
     }
 
+    const improvementSteps: string[] = [];
+    if (!locationData?.logoUrl && !locationData?.logo_url) improvementSteps.push("Add your location logo");
+    if (!locationData?.description?.trim()) improvementSteps.push("Add a short public location description");
+    if (hasKitchens && kitchens?.some((kitchen: any) => !kitchen.imageUrl)) improvementSteps.push("Add a cover photo to every kitchen");
+    if (hasKitchens && kitchens?.some((kitchen: any) => !kitchen.description?.trim())) improvementSteps.push("Describe every kitchen");
+
     const showOnboardingModal =
         !userData?.managerOnboardingCompleted &&
         !userData?.has_seen_welcome;
@@ -234,8 +241,12 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
 
     // Simplified loading state when onboarding is complete
     const isLoading = shouldSkipDetailedQueries 
-        ? (isLoadingUser || (!!locationId && isLoadingLocation))  // Only 2 queries
-        : (isLoadingUser || isLoadingStripe || (!!locationId && (isLoadingLocation || isLoadingKitchens)));
+        ? (isFetchingUser || (!!locationId && (isFetchingLocation || isFetchingKitchens)))
+        : (isFetchingUser || isFetchingStripe || (!!locationId && (
+            isFetchingLocation ||
+            isFetchingKitchens ||
+            (!!kitchens?.length && (isFetchingAvailability || isFetchingRequirements))
+        )));
 
     // Debug logging for final values
     if (userData && !isLoading) {
@@ -265,6 +276,7 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
         showOnboardingModal,
         showSetupBanner,
         showLicenseReviewBanner,
-        missingSteps
+        missingSteps,
+        improvementSteps,
     };
 }

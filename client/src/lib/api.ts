@@ -1,5 +1,5 @@
 import { logger } from "@/lib/logger";
-import { auth } from './firebase';
+import { auth } from "./firebase";
 
 export class APIClient {
   private baseURL: string;

@@ -6,87 +6,31 @@
  */
 
 import { useState, useMemo } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import {
-  ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
-  getFilteredRowModel,
-  SortingState,
-  useReactTable,
-} from "@tanstack/react-table";
+import { ColumnDef, flexRender, getCoreRowModel, getSortedRowModel, getFilteredRowModel, SortingState, useReactTable } from "@tanstack/react-table";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { TruncatedText } from "@/components/common/TruncatedText";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { InfoChip } from "@/components/chef/info-chip";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  AlertTriangle,
-  CheckCircle,
-  Clock,
-  CreditCard,
-  FileText,
-  Image,
-  RefreshCw,
-  XCircle,
-  Eye,
-  MessageSquare,
-  ExternalLink,
-  MoreHorizontal,
-  ArrowUpDown,
-  Download,
-  MapPin,
-  DollarSign,
-  Loader2,
-} from "lucide-react";
+import { AlertTriangle, CheckCircle, Clock, CreditCard, FileText, Image, RefreshCw, XCircle, Eye, MessageSquare, ExternalLink, MoreHorizontal, ArrowUpDown, Download, MapPin, DollarSign, Loader2 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { cn } from "@/lib/utils";
+import { tt } from "@/i18n/common-ns";
 
 // Types
 interface DamageEvidence {
@@ -146,38 +90,40 @@ function formatCurrency(cents: number): string {
   }).format(cents / 100);
 }
 
-function getStatusBadge(status: string) {
-  const statusConfig: Record<string, { variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning"; label: string }> = {
-    submitted: { variant: "warning", label: "Awaiting Your Response" },
-    chef_accepted: { variant: "secondary", label: "You Accepted" },
-    chef_disputed: { variant: "destructive", label: "You Disputed" },
-    under_review: { variant: "warning", label: "Under Admin Review" },
-    approved: { variant: "success", label: "Approved" },
-    partially_approved: { variant: "success", label: "Partially Approved" },
-    rejected: { variant: "destructive", label: "Rejected" },
-    charge_pending: { variant: "warning", label: "Payment Processing" },
-    charge_succeeded: { variant: "success", label: "Charged" },
-    charge_failed: { variant: "destructive", label: "Charge Failed" },
-    escalated: { variant: "destructive", label: "Payment Required" },
-    resolved: { variant: "outline", label: "Resolved" },
-    expired: { variant: "outline", label: "Expired" },
+function getStatusBadge(status: string, t: TFunction<'chef'>) {
+  const statusConfig: Record<string, { variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning"; labelKey: string }> = {
+    submitted: { variant: "warning", labelKey: "dcStatusSubmitted" },
+    chef_accepted: { variant: "success", labelKey: "dcStatusChefAccepted" },
+    chef_disputed: { variant: "destructive", labelKey: "dcStatusChefDisputed" },
+    under_review: { variant: "warning", labelKey: "dcStatusUnderReview" },
+    approved: { variant: "success", labelKey: "dcStatusApproved" },
+    partially_approved: { variant: "success", labelKey: "dcStatusPartiallyApproved" },
+    rejected: { variant: "destructive", labelKey: "dcStatusRejected" },
+    charge_pending: { variant: "warning", labelKey: "dcStatusChargePending" },
+    charge_succeeded: { variant: "success", labelKey: "dcStatusChargeSucceeded" },
+    charge_failed: { variant: "destructive", labelKey: "dcStatusChargeFailed" },
+    escalated: { variant: "destructive", labelKey: "dcStatusEscalated" },
+    resolved: { variant: "outline", labelKey: "dcStatusResolved" },
+    expired: { variant: "outline", labelKey: "dcStatusExpired" },
   };
 
-  const config = statusConfig[status] || { variant: "outline" as const, label: status };
-  return <Badge variant={config.variant}>{config.label}</Badge>;
+  const config = statusConfig[status] || { variant: "outline" as const, labelKey: status };
+  const label = statusConfig[status] ? String(t(config.labelKey as never)) : status;
+  return <InfoChip variant={config.variant}>{label}</InfoChip>;
 }
 
-function getEvidenceTypeLabel(type: string): string {
+function getEvidenceTypeLabel(type: string, t: TFunction<'chef'>): string {
   const labels: Record<string, string> = {
-    photo_before: "Before Photo",
-    photo_after: "After Photo",
-    receipt: "Receipt",
-    invoice: "Invoice",
-    video: "Video",
-    document: "Document",
-    third_party_report: "Third Party Report",
+    photo_before: "dcEvidencePhotoBefore",
+    photo_after: "dcEvidencePhotoAfter",
+    receipt: "dcEvidenceReceipt",
+    invoice: "dcEvidenceInvoice",
+    video: "dcEvidenceVideo",
+    document: "dcEvidenceDocument",
+    third_party_report: "dcEvidenceThirdPartyReport",
   };
-  return labels[type] || type;
+  const key = labels[type];
+  return key ? String(t(key as never)) : type;
 }
 
 // Response Dialog Component
@@ -193,12 +139,13 @@ function ResponseDialog({
   onSuccess: () => void;
 }) {
   const { toast } = useToast();
+  const { t } = useTranslation("chef");
   const [action, setAction] = useState<'accept' | 'dispute' | null>(null);
   const [response, setResponse] = useState("");
 
   const respondMutation = useMutation({
     mutationFn: async () => {
-      if (!action) throw new Error("Please select an action");
+      if (!action) throw new Error(t("dcSelectAction"));
       const res = await apiRequest('POST', `/api/chef/damage-claims/${claim.id}/respond`, {
         action,
         response,
@@ -207,10 +154,10 @@ function ResponseDialog({
     },
     onSuccess: () => {
       toast({
-        title: action === 'accept' ? "Claim Accepted" : "Claim Disputed",
+        title: action === 'accept' ? t("dcClaimAcceptedTitle") : t("dcClaimDisputedTitle"),
         description: action === 'accept' 
-          ? "You have accepted the damage claim. Your card will be charged."
-          : "Your dispute has been submitted for admin review.",
+          ? t("dcClaimAcceptedBody")
+          : t("dcClaimDisputedBody"),
       });
       onOpenChange(false);
       setAction(null);
@@ -218,7 +165,7 @@ function ResponseDialog({
       onSuccess();
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: t("errorGeneric", { ns: "common" }), description: error.message, variant: "destructive" });
     },
   });
 
@@ -242,23 +189,22 @@ function ResponseDialog({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>{isResolved ? 'Damage Claim Details' : 'Respond to Damage Claim'}</SheetTitle>
+          <SheetTitle>{isResolved ? t("dcDetailsTitle") : t("dcRespondTitle")}</SheetTitle>
           <SheetDescription>
             {isResolved 
-              ? 'View the details of this resolved damage claim.'
-              : 'Review the claim details and evidence, then choose to accept or dispute.'}
+              ? t("dcDetailsResolvedDesc")
+              : t("dcRespondDesc")}
           </SheetDescription>
         </SheetHeader>
 
         {/* Escalated — Payment Required Banner */}
         {isEscalated && (
-          <Alert className="border-red-500 bg-red-50">
-            <AlertTriangle className="h-4 w-4 text-red-600" />
-            <AlertTitle className="text-red-800">Payment Required</AlertTitle>
-            <AlertDescription className="text-red-700">
+          <Alert className="border-destructive">
+            <AlertTriangle className="h-4 w-4 text-destructive" />
+            <AlertTitle>{t("dcStatusEscalated")}</AlertTitle>
+            <AlertDescription>
               <p className="mb-3">
-                We were unable to automatically charge your saved payment method for this damage claim.
-                Please pay {formatCurrency(claim.finalAmountCents || claim.claimedAmountCents)} to resolve this claim.
+                {t("dcEscalatedPayBody", { amount: formatCurrency(claim.finalAmountCents || claim.claimedAmountCents) })}
               </p>
               <Button
                 size="sm"
@@ -273,8 +219,8 @@ function ResponseDialog({
                       window.location.href = data.checkoutUrl;
                     }
                   } catch (error: unknown) {
-                    const message = error instanceof Error ? error.message : 'Failed to start payment';
-                    toast({ title: "Payment Error", description: message, variant: "destructive" });
+                    const message = error instanceof Error ? error.message : t("dcPayFailed");
+                    toast({ title: t("dcPaymentErrorTitle"), description: message, variant: "destructive" });
                     setIsPaying(false);
                   }
                 }}
@@ -292,24 +238,24 @@ function ResponseDialog({
 
         {/* Resolved Status Banner */}
         {isResolved && !isEscalated && (
-          <Alert className={claim.status === 'charge_succeeded' ? 'border-green-500 bg-green-50' : 'border-border bg-muted/50'}>
-            <CheckCircle className={`h-4 w-4 ${claim.status === 'charge_succeeded' ? 'text-green-600' : 'text-muted-foreground'}`} />
-            <AlertTitle className={claim.status === 'charge_succeeded' ? 'text-green-800' : 'text-foreground'}>
-              {claim.status === 'charge_succeeded' ? 'Payment Completed' : 
-               claim.status === 'rejected' ? 'Claim Rejected' :
-               claim.status === 'expired' ? 'Claim Expired' :
-               claim.status === 'charge_failed' ? 'Payment Failed' : 'Claim Resolved'}
+          <Alert className={claim.status === 'charge_succeeded' ? 'border-success/30' : 'border-border'}>
+            <CheckCircle className={`h-4 w-4 ${claim.status === 'charge_succeeded' ? 'text-success' : 'text-muted-foreground'}`} />
+            <AlertTitle>
+              {claim.status === 'charge_succeeded' ? t("dcPaymentCompleted") : 
+               claim.status === 'rejected' ? t("dcClaimRejectedTitle") :
+               claim.status === 'expired' ? t("dcClaimExpiredTitle") :
+               claim.status === 'charge_failed' ? t("shellStatusPaymentFailed") : t("dcClaimResolved")}
             </AlertTitle>
-            <AlertDescription className={claim.status === 'charge_succeeded' ? 'text-green-700' : 'text-muted-foreground'}>
+            <AlertDescription className="text-muted-foreground">
               {claim.status === 'charge_succeeded' 
-                ? `Your card was charged ${formatCurrency(claim.finalAmountCents || claim.claimedAmountCents)} for this damage claim.`
+                ? t("dcCardChargedBody", { amount: formatCurrency(claim.finalAmountCents || claim.claimedAmountCents) })
                 : claim.status === 'rejected'
-                ? 'This claim was rejected by the admin. No payment was required.'
+                ? t("dcRejectedByAdminBody")
                 : claim.status === 'expired'
-                ? 'This claim expired without a response.'
+                ? t("dcExpiredNoResponseBody")
                 : claim.status === 'charge_failed'
-                ? 'The payment attempt failed. Please contact support.'
-                : 'This claim has been resolved.'}
+                ? t("dcChargeFailedBody")
+                : t("dcResolvedGenericBody")}
             </AlertDescription>
           </Alert>
         )}
@@ -318,9 +264,9 @@ function ResponseDialog({
         {!isResolved && !isExpired && hoursRemaining <= 24 && (
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>Response Deadline Approaching</AlertTitle>
+            <AlertTitle>{t("dcDeadlineApproachingTitle")}</AlertTitle>
             <AlertDescription>
-              You have {hoursRemaining} hours to respond. If you don&apos;t respond, the claim may be automatically approved.
+              {t("dcDeadlineApproachingBody", { hours: hoursRemaining })}
             </AlertDescription>
           </Alert>
         )}
@@ -328,40 +274,40 @@ function ResponseDialog({
         {!isResolved && isExpired && (
           <Alert variant="destructive">
             <XCircle className="h-4 w-4" />
-            <AlertTitle>Response Deadline Passed</AlertTitle>
+            <AlertTitle>{t("dcDeadlinePassedTitle")}</AlertTitle>
             <AlertDescription>
-              The response deadline has passed. Please contact support if you believe this is an error.
+              {t("dcDeadlinePassedBody")}
             </AlertDescription>
           </Alert>
         )}
 
         {/* Claim Details */}
         <div className="space-y-4">
-          <div className="bg-muted p-4 rounded-lg space-y-2">
+          <div className="bg-muted p-4 rounded-xl space-y-2">
             <h4 className="font-semibold">{claim.claimTitle}</h4>
             <p className="text-sm text-muted-foreground">{claim.claimDescription}</p>
             <div className="flex flex-wrap gap-4 text-sm">
-              <span><strong>Amount:</strong> {formatCurrency(claim.claimedAmountCents)}</span>
-              <span><strong>Damage Date:</strong> {format(new Date(claim.damageDate), 'MMM d, yyyy')}</span>
-              <span><strong>Location:</strong> {claim.locationName || 'Unknown'}</span>
+              <span><strong>{t("dcAmountLabel")}</strong> {formatCurrency(claim.claimedAmountCents)}</span>
+              <span><strong>{t("dcDamageDateLabel")}</strong> {format(new Date(claim.damageDate), 'MMM d, yyyy')}</span>
+              <span><strong>{t("dcLocationLabel")}</strong> {claim.locationName || t("kdUnknown")}</span>
             </div>
           </div>
 
           {/* Damaged Equipment */}
           {claim.damagedItems && claim.damagedItems.length > 0 && (
             <div className="border rounded-md p-3 space-y-2">
-              <h4 className="text-sm font-semibold text-muted-foreground">Damaged Equipment ({claim.damagedItems.length})</h4>
+              <h4 className="text-sm font-semibold text-muted-foreground">{t("dcDamagedEquipmentTitle", { count: claim.damagedItems.length })}</h4>
               <div className="space-y-1">
                 {claim.damagedItems.map((item, idx) => (
-                  <div key={idx} className="flex items-center justify-between text-sm p-2 bg-amber-50 dark:bg-amber-950/20 rounded border border-amber-200 dark:border-amber-800">
+                  <div key={idx} className="flex items-center justify-between text-sm p-2 rounded border bg-muted/30">
                     <div className="flex items-center gap-2">
-                      <AlertTriangle className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
+                      <AlertTriangle className="h-3.5 w-3.5 text-warning flex-shrink-0" />
                       <span className="font-medium capitalize">{item.equipmentType}</span>
                       {item.brand && <span className="text-muted-foreground">({item.brand})</span>}
                     </div>
-                    <Badge variant="secondary" className="text-xs">
-                      {item.equipmentBookingId ? 'Rented' : 'Included'}
-                    </Badge>
+                    <InfoChip variant="outline">
+                      {item.equipmentBookingId ? t("dcRented") : t("dcIncluded")}
+                    </InfoChip>
                   </div>
                 ))}
               </div>
@@ -371,7 +317,7 @@ function ResponseDialog({
           {/* Evidence */}
           {claim.evidence.length > 0 && (
             <div>
-              <h4 className="font-semibold mb-2">Evidence ({claim.evidence.length} items)</h4>
+              <h4 className="font-semibold mb-2">{t("dcEvidenceTitle", { count: claim.evidence.length })}</h4>
               <div className="grid grid-cols-2 gap-2">
                 {claim.evidence.map((ev) => (
                   <a
@@ -379,7 +325,7 @@ function ResponseDialog({
                     href={getR2ProxyUrl(ev.fileUrl)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-2 p-2 border rounded-lg hover:bg-muted transition-colors"
+                    className="flex items-center gap-2 p-2 border rounded-xl hover:bg-muted transition-colors"
                   >
                     {ev.evidenceType.includes('photo') || ev.evidenceType === 'video' ? (
                       <Image className="w-4 h-4 text-blue-500" />
@@ -388,7 +334,7 @@ function ResponseDialog({
                     )}
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">
-                        {getEvidenceTypeLabel(ev.evidenceType)}
+                        {getEvidenceTypeLabel(ev.evidenceType, t)}
                       </p>
                       {ev.description && (
                         <p className="text-xs text-muted-foreground truncate">{ev.description}</p>
@@ -403,12 +349,11 @@ function ResponseDialog({
 
           {/* Auto-Charge Warning - only show if can respond */}
           {canRespond && (
-            <Alert className="border-amber-500 bg-amber-50 dark:bg-amber-950">
-              <CreditCard className="h-4 w-4 text-amber-600" />
-              <AlertTitle className="text-amber-800 dark:text-amber-200">Payment Method on File</AlertTitle>
-              <AlertDescription className="text-amber-700 dark:text-amber-300">
-                If you accept this claim, your card from the original booking will be <strong>automatically charged</strong> for {formatCurrency(claim.claimedAmountCents)}.
-                If you dispute and an admin approves the claim, your card will also be charged automatically.
+            <Alert className="border-warning/30">
+              <CreditCard className="h-4 w-4 text-warning" />
+              <AlertTitle>{t("dcPaymentMethodOnFile")}</AlertTitle>
+              <AlertDescription className="text-muted-foreground">
+                {t("dcAutoChargeBody", { amount: formatCurrency(claim.claimedAmountCents) })}
               </AlertDescription>
             </Alert>
           )}
@@ -416,7 +361,7 @@ function ResponseDialog({
           {/* Response Options - only show if can respond */}
           {canRespond && (
             <div className="space-y-4">
-              <Label>Your Response</Label>
+              <Label>{t("dcYourResponse")}</Label>
               <div className="grid grid-cols-2 gap-4">
                 <Button
                   type="button"
@@ -425,9 +370,9 @@ function ResponseDialog({
                   onClick={() => setAction('accept')}
                 >
                   <CheckCircle className="w-6 h-6" />
-                  <span className="font-semibold">Accept Claim</span>
+                  <span className="font-semibold">{t("dcAcceptClaim")}</span>
                   <span className="text-xs text-muted-foreground">
-                    Agree to pay {formatCurrency(claim.claimedAmountCents)}
+                    {t("dcAgreeToPay", { amount: formatCurrency(claim.claimedAmountCents) })}
                   </span>
                 </Button>
                 <Button
@@ -437,9 +382,9 @@ function ResponseDialog({
                   onClick={() => setAction('dispute')}
                 >
                   <XCircle className="w-6 h-6" />
-                  <span className="font-semibold">Dispute Claim</span>
+                  <span className="font-semibold">{t("dcDisputeClaim")}</span>
                   <span className="text-xs text-muted-foreground">
-                    Request admin review
+                    {t("dcRequestAdminReview")}
                   </span>
                 </Button>
               </div>
@@ -447,14 +392,14 @@ function ResponseDialog({
               {action && (
                 <div className="space-y-2">
                   <Label htmlFor="response">
-                    {action === 'accept' ? 'Optional Comments' : 'Reason for Dispute (Required)'}
+                    {action === 'accept' ? t("dcOptionalComments") : t("dcReasonForDisputeRequired")}
                   </Label>
                   <Textarea
                     id="response"
                     placeholder={
                       action === 'accept'
-                        ? "Any comments about the claim..."
-                        : "Explain why you are disputing this claim (minimum 50 characters)..."
+                        ? t("dcAcceptCommentsPlaceholder")
+                        : t("dcDisputeReasonPlaceholder")
                     }
                     value={response}
                     onChange={(e) => setResponse(e.target.value)}
@@ -463,7 +408,7 @@ function ResponseDialog({
                   />
                   {action === 'dispute' && response.length < 50 && (
                     <p className="text-xs text-muted-foreground">
-                      {50 - response.length} more characters required
+                      {t("dcMoreCharsRequired", { count: 50 - response.length })}
                     </p>
                   )}
                 </div>
@@ -474,7 +419,7 @@ function ResponseDialog({
 
         <SheetFooter className="mt-6">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {isResolved ? 'Close' : 'Cancel'}
+            {isResolved ? t("ciClose") : t("bkCommonCancel")}
           </Button>
           {canRespond && action && (
             <Button
@@ -486,10 +431,10 @@ function ResponseDialog({
               variant={action === 'accept' ? 'default' : 'destructive'}
             >
               {respondMutation.isPending
-                ? "Submitting..."
+                ? t("ciSubmitting")
                 : action === 'accept'
-                ? "Accept & Pay"
-                : "Submit Dispute"}
+                ? t("dcAcceptAndPay")
+                : t("dcSubmitDispute")}
             </Button>
           )}
         </SheetFooter>
@@ -507,7 +452,7 @@ interface DamageClaimColumnsProps {
   downloadingInvoiceId: number | null;
 }
 
-const getDamageClaimColumns = ({
+const getDamageClaimColumns = (t: any, {
   onRespond,
   onDownloadInvoice,
   downloadingInvoiceId,
@@ -520,7 +465,7 @@ const getDamageClaimColumns = ({
   },
   {
     id: "reference",
-    header: "Ref",
+    header: t("rcColRef", "Ref"),
     cell: ({ row }) => {
       const ref = row.original.referenceCode || row.original.kitchenBookingId || row.original.id;
       return (
@@ -539,7 +484,7 @@ const getDamageClaimColumns = ({
         onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         className="h-8 -ml-3"
       >
-        Claim
+        {t("rcColClaim", "Claim")}
         <ArrowUpDown className="ml-2 h-3 w-3" />
       </Button>
     ),
@@ -547,10 +492,10 @@ const getDamageClaimColumns = ({
       const claim = row.original;
       return (
         <div className="flex flex-col max-w-[250px]">
-          <span className="font-medium text-sm truncate">{claim.claimTitle}</span>
+          <TruncatedText className="font-medium text-sm truncate">{claim.claimTitle}</TruncatedText>
           <div className="flex items-center text-xs text-muted-foreground mt-0.5">
             <MapPin className="h-3 w-3 mr-1 flex-shrink-0" />
-            <span className="truncate">{claim.locationName || 'Unknown Location'}</span>
+            <TruncatedText className="truncate">{claim.locationName || t("dcUnknownLocation")}</TruncatedText>
           </div>
         </div>
       );
@@ -558,7 +503,7 @@ const getDamageClaimColumns = ({
   },
   {
     accessorKey: "status",
-    header: "Status",
+    header: t("rcColStatus", "Status"),
     cell: ({ row }) => {
       const status = row.getValue("status") as string;
       const claim = row.original;
@@ -571,14 +516,14 @@ const getDamageClaimColumns = ({
       
       return (
         <div className="flex flex-col gap-1">
-          {getStatusBadge(status)}
+          {getStatusBadge(status, t)}
           {status === 'submitted' && !isExpired && hoursRemaining <= 24 && (
-            <span className="text-xs text-red-600 font-medium">
+            <span className="text-xs text-destructive font-medium">
               {hoursRemaining}h left
             </span>
           )}
           {status === 'submitted' && isExpired && (
-            <span className="text-xs text-red-600">Expired</span>
+            <span className="text-xs text-destructive">Expired</span>
           )}
         </div>
       );
@@ -593,7 +538,7 @@ const getDamageClaimColumns = ({
         onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         className="h-8 justify-end w-full"
       >
-        Amount
+        {t("rcColAmount", "Amount")}
         <ArrowUpDown className="ml-2 h-3 w-3" />
       </Button>
     ),
@@ -619,13 +564,13 @@ const getDamageClaimColumns = ({
   },
   {
     accessorKey: "bookingType",
-    header: "Type",
+    header: t("rcColType", "Type"),
     cell: ({ row }) => {
       const type = row.getValue("bookingType") as string;
       return (
-        <Badge variant="outline" className="capitalize">
+        <InfoChip variant="outline" className="capitalize">
           {type === 'storage' ? 'Storage' : 'Kitchen'}
-        </Badge>
+        </InfoChip>
       );
     },
   },
@@ -638,7 +583,7 @@ const getDamageClaimColumns = ({
         onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         className="h-8 -ml-3"
       >
-        Damage Date
+        {t("rcColDamageDate", "Damage Date")}
         <ArrowUpDown className="ml-2 h-3 w-3" />
       </Button>
     ),
@@ -652,7 +597,7 @@ const getDamageClaimColumns = ({
   },
   {
     accessorKey: "evidence",
-    header: "Evidence",
+    header: t("rcColEvidence", "Evidence"),
     cell: ({ row }) => {
       const evidence = row.original.evidence;
       if (!evidence || evidence.length === 0) {
@@ -732,6 +677,7 @@ const getDamageClaimColumns = ({
 
 // Main Component
 export function PendingDamageClaims() {
+  const { t } = useTranslation("chef");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedClaim, setSelectedClaim] = useState<DamageClaim | null>(null);
@@ -759,7 +705,7 @@ export function PendingDamageClaims() {
       
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to download invoice');
+        throw new Error(errorData.error || t("revInvoiceFailed"));
       }
       
       const blob = await response.blob();
@@ -772,11 +718,11 @@ export function PendingDamageClaims() {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
       
-      toast({ title: "Invoice Downloaded", description: "Your damage claim invoice has been downloaded." });
+      toast({ title: tt("invoiceDownloaded"), description: t("dcInvoiceDownloadedDesc") });
     } catch (err) {
       toast({ 
-        title: "Download Failed", 
-        description: err instanceof Error ? err.message : 'Failed to download invoice',
+        title: tt("downloadFailed"), 
+        description: err instanceof Error ? err.message : t("revInvoiceFailed"),
         variant: "destructive" 
       });
     } finally {
@@ -806,7 +752,7 @@ export function PendingDamageClaims() {
 
   // Column definitions
   const columns = useMemo(
-    () => getDamageClaimColumns({
+    () => getDamageClaimColumns(t, {
       onRespond: setSelectedClaim,
       onDownloadInvoice: handleDownloadInvoice,
       downloadingInvoiceId,
@@ -857,7 +803,7 @@ export function PendingDamageClaims() {
       {pendingClaims.length > 0 && (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Action Required</AlertTitle>
+          <AlertTitle>{t("shellStatusActionRequired")}</AlertTitle>
           <AlertDescription>
             You have {pendingClaims.length} damage claim{pendingClaims.length > 1 ? 's' : ''} awaiting your response.
             Please review and respond before the deadline.
@@ -872,7 +818,7 @@ export function PendingDamageClaims() {
             <div>
               <CardTitle className="text-xl font-semibold flex items-center gap-2">
                 <AlertTriangle className="h-5 w-5" />
-                Damage Claims
+                {t("rcDamageClaimsTitle", "Damage Claims")}
               </CardTitle>
               <CardDescription>
                 {table.getFilteredRowModel().rows.length} of {claims.length} claim{claims.length !== 1 ? 's' : ''}
@@ -880,7 +826,7 @@ export function PendingDamageClaims() {
             </div>
             <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
               <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-              Refresh
+              {t("rcRefreshBtn", "Refresh")}
             </Button>
           </div>
         </CardHeader>
@@ -890,29 +836,29 @@ export function PendingDamageClaims() {
           <Tabs value={viewType} onValueChange={(v) => setViewType(v as ClaimViewType)} className="w-full">
             <TabsList className="w-full gap-1">
               <TabsTrigger value="all" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
-                All
+                {t("rcTabAll", "All")}
                 <Badge variant="count" className="ml-1">{claims.length}</Badge>
               </TabsTrigger>
               <TabsTrigger value="pending" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
-                <span className="hidden sm:inline">Pending</span>
-                <span className="sm:hidden">Pend</span>
+                <span className="hidden sm:inline">{t("rcTabPending", "Pending")}</span>
+                <span className="sm:hidden">{t("rcTabPendingShort", "Pend")}</span>
                 <Badge variant="count" className="ml-1">{pendingClaims.length}</Badge>
               </TabsTrigger>
               <TabsTrigger value="in_progress" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
-                <span className="hidden sm:inline">In Progress</span>
-                <span className="sm:hidden">Active</span>
+                <span className="hidden sm:inline">{t("rcTabInProgress", "In Progress")}</span>
+                <span className="sm:hidden">{t("rcTabInProgressShort", "Active")}</span>
                 <Badge variant="count" className="ml-1">{inProgressClaims.length}</Badge>
               </TabsTrigger>
               <TabsTrigger value="resolved" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
-                <span className="hidden sm:inline">Resolved</span>
-                <span className="sm:hidden">Done</span>
+                <span className="hidden sm:inline">{t("rcTabResolved", "Resolved")}</span>
+                <span className="sm:hidden">{t("rcTabResolvedShort", "Done")}</span>
                 <Badge variant="count" className="ml-1">{resolvedClaims.length}</Badge>
               </TabsTrigger>
             </TabsList>
           </Tabs>
 
           {/* Table */}
-          <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+          <div className="rounded-xl border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
             <Table>
               <TableHeader>
                 {table.getHeaderGroups().map((headerGroup) => (
@@ -935,8 +881,8 @@ export function PendingDamageClaims() {
                       data-state={row.getIsSelected() && "selected"}
                       className={cn(
                         "hover:bg-muted/50",
-                        row.original.status === "submitted" && "bg-orange-50/50",
-                        row.original.status === "charge_succeeded" && "bg-green-50/30"
+                        row.original.status === "submitted" && "bg-muted/30",
+                        row.original.status === "charge_succeeded" && "bg-muted/20"
                       )}
                     >
                       {row.getVisibleCells().map((cell) => (
@@ -950,12 +896,12 @@ export function PendingDamageClaims() {
                   <TableRow>
                     <TableCell colSpan={columns.length} className="h-48 text-center">
                       <div className="flex flex-col items-center justify-center gap-2">
-                        <CheckCircle className="h-8 w-8 text-green-500" />
-                        <p className="text-sm font-medium">No Damage Claims</p>
+                        <CheckCircle className="h-8 w-8 text-muted-foreground" />
+                        <p className="text-sm font-medium">{t("rcNoDamageClaimsTitle", "No Damage Claims")}</p>
                         <p className="text-sm text-muted-foreground">
                           {viewType === "all" 
-                            ? "You don't have any damage claims filed against you."
-                            : `No ${viewType.replace('_', ' ')} claims to display.`}
+                            ? t("rcNoDamageClaimsDesc", "You don't have any damage claims filed against you.")
+                            : t("rcNoFilteredClaimsDesc", "No {viewType} claims to display.", { viewType: viewType.replace('_', ' ') })}
                         </p>
                       </div>
                     </TableCell>

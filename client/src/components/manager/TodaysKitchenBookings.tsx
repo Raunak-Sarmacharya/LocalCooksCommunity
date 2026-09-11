@@ -8,25 +8,7 @@
 
 import { useState, useCallback } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import {
-  CheckCircle,
-  Clock,
-  User,
-  Loader2,
-  MoreHorizontal,
-  ChefHat,
-  LogIn,
-  LogOut,
-  XCircle,
-  ShieldCheck,
-  FileWarning,
-  RefreshCw,
-  Camera,
-  Upload,
-  X,
-  KeyRound,
-  Calendar,
-} from "lucide-react"
+import { CheckCircle, Clock, User, Loader2, MoreHorizontal, Calendar, LogIn, LogOut, XCircle, ShieldCheck, FileWarning, RefreshCw, Camera, Upload, X, KeyRound } from "@/components/ui/manager-icons"
 import { toast } from "sonner"
 import { auth } from "@/lib/firebase"
 import { Button } from "@/components/ui/button"
@@ -34,43 +16,20 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { CurrencyInput } from "@/components/ui/currency-input"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
 import { format } from "date-fns"
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload"
 import { getR2ProxyUrl } from "@/utils/r2-url-helper"
+import { SmartImage } from "@/components/ui/smart-image";
+import { mt } from "@/i18n/manager";
+import { tt } from "@/i18n/common-ns";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -152,44 +111,32 @@ function getCheckinBadge(checkinStatus: string | null) {
     case "checked_in":
       return (
         <Badge className="bg-green-600 hover:bg-green-700 text-white">
-          <CheckCircle className="h-3 w-3 mr-1" />
-          Checked In
-        </Badge>
+          <CheckCircle className="h-3 w-3 mr-1" />{mt("checkedIn")}</Badge>
       )
     case "checkout_requested":
       return (
         <Badge variant="info">
-          <LogOut className="h-3 w-3 mr-1" />
-          Checkout Requested
-        </Badge>
+          <LogOut className="h-3 w-3 mr-1" />{mt("checkoutRequested")}</Badge>
       )
     case "checked_out":
       return (
         <Badge className="bg-blue-600 hover:bg-blue-700 text-white">
-          <ShieldCheck className="h-3 w-3 mr-1" />
-          Checked Out
-        </Badge>
+          <ShieldCheck className="h-3 w-3 mr-1" />{mt("checkedOut")}</Badge>
       )
     case "no_show":
       return (
         <Badge variant="destructive">
-          <XCircle className="h-3 w-3 mr-1" />
-          No-Show
-        </Badge>
+          <XCircle className="h-3 w-3 mr-1" />{mt("noShow2")}</Badge>
       )
     case "checkout_claim_filed":
       return (
         <Badge variant="warning">
-          <FileWarning className="h-3 w-3 mr-1" />
-          Claim Filed
-        </Badge>
+          <FileWarning className="h-3 w-3 mr-1" />{mt("claimFiled")}</Badge>
       )
     default:
       return (
         <Badge variant="outline">
-          <Clock className="h-3 w-3 mr-1" />
-          Not Checked In
-        </Badge>
+          <Clock className="h-3 w-3 mr-1" />{mt("notCheckedIn")}</Badge>
       )
   }
 }
@@ -197,6 +144,7 @@ function getCheckinBadge(checkinStatus: string | null) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function TodaysKitchenBookings() {
+  
   const queryClient = useQueryClient()
   const [selectedBooking, setSelectedBooking] = useState<TodayBooking | null>(
     null
@@ -226,7 +174,7 @@ export function TodaysKitchenBookings() {
     const file = e.target.files?.[0]
     if (file) {
       if (evidencePhotos.length >= 10) {
-        toast.error("Maximum 10 photos allowed")
+        toast.error(tt("maximumPhotosAllowed", { count: 10 }))
         return
       }
       uploadEvidenceFile(file, "damage-claims")
@@ -252,7 +200,7 @@ export function TodaysKitchenBookings() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/manager/bookings/today"] })
-      toast.success("Access code updated")
+      toast.success(tt("accessCodeUpdated"))
     },
     onError: (error: Error) => {
       toast.error(error.message)
@@ -276,7 +224,7 @@ export function TodaysKitchenBookings() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/manager/bookings/today"] })
-      toast.success("Access code revoked")
+      toast.success(tt("accessCodeRevoked"))
     },
     onError: (error: Error) => {
       toast.error(error.message)
@@ -303,7 +251,7 @@ export function TodaysKitchenBookings() {
       if (data.accessCode) {
         toast.success(`New access code: ${data.accessCode}`)
       } else {
-        toast.success("Access code regenerated")
+        toast.success(tt("accessCodeRegenerated"))
       }
     },
     onError: (error: Error) => {
@@ -320,7 +268,7 @@ export function TodaysKitchenBookings() {
         headers,
         credentials: "include",
       })
-      if (!response.ok) throw new Error("Failed to fetch today's bookings")
+      if (!response.ok) throw new Error(mt("failedToFetchToday"))
       return response.json()
     },
     refetchInterval: 15000,
@@ -353,7 +301,7 @@ export function TodaysKitchenBookings() {
         headers,
         credentials: "include",
       })
-      if (!response.ok) throw new Error("Failed to fetch viewings")
+      if (!response.ok) throw new Error(tt("failedToFetchViewings"))
       return response.json()
     },
     refetchInterval: 30000,
@@ -413,7 +361,7 @@ export function TodaysKitchenBookings() {
       return response.json()
     },
     onSuccess: () => {
-      toast.success("Checkout cleared — no issues")
+      toast.success(tt("checkoutClearedNoIssues"))
       queryClient.invalidateQueries({
         queryKey: ["/api/manager/bookings/today"],
       })
@@ -455,7 +403,7 @@ export function TodaysKitchenBookings() {
       return response.json()
     },
     onSuccess: () => {
-      toast.success("Damage claim filed")
+      toast.success(tt("damageClaimFiled"))
       queryClient.invalidateQueries({
         queryKey: ["/api/manager/bookings/today"],
       })
@@ -513,12 +461,8 @@ export function TodaysKitchenBookings() {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="flex items-center gap-2">
-                <ChefHat className="h-5 w-5 text-orange-600" />
-                Upcoming Kitchen Bookings
-              </CardTitle>
-              <CardDescription>
-                Live check-in/checkout status and upcoming bookings.
-              </CardDescription>
+                <Calendar className="h-5 w-5 text-orange-600" />{mt("upcomingKitchenBookings")}</CardTitle>
+              <CardDescription>{mt("liveCheckInCheckoutStatusAndUpcomingBookings")}</CardDescription>
             </div>
             <Button
               variant="outline"
@@ -528,9 +472,7 @@ export function TodaysKitchenBookings() {
             >
               <RefreshCw
                 className={cn("h-4 w-4 mr-1", isLoading && "animate-spin")}
-              />
-              Refresh
-            </Button>
+              />{mt("refresh")}</Button>
           </div>
 
           {/* Stats Row */}
@@ -538,22 +480,22 @@ export function TodaysKitchenBookings() {
             <div className="flex gap-3 mt-3 flex-wrap">
               <Badge variant="outline" className="gap-1">
                 <Clock className="h-3 w-3" />
-                {notCheckedInCount} Awaiting
+                {mt("countAwaiting", { count: notCheckedInCount })}
               </Badge>
               <Badge className="bg-green-600 text-white gap-1">
                 <CheckCircle className="h-3 w-3" />
-                {checkedInCount} Active
+                {mt("countActive", { count: checkedInCount })}
               </Badge>
               {checkoutPendingCount > 0 && (
                 <Badge variant="info" className="gap-1">
                   <LogOut className="h-3 w-3" />
-                  {checkoutPendingCount} Checkout Pending
+                  {mt("countCheckoutPending", { count: checkoutPendingCount })}
                 </Badge>
               )}
               {noShowCount > 0 && (
                 <Badge variant="destructive" className="gap-1">
                   <XCircle className="h-3 w-3" />
-                  {noShowCount} No-Show
+                  {mt("countNoShow", { count: noShowCount })}
                 </Badge>
               )}
             </div>
@@ -567,17 +509,17 @@ export function TodaysKitchenBookings() {
             </div>
           ) : bookings.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              <ChefHat className="h-8 w-8 mx-auto mb-2 opacity-40" />
-              <p className="text-sm">No upcoming bookings.</p>
+              <Calendar className="h-8 w-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">{mt("noUpcomingBookings")}</p>
             </div>
           ) : (
             <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="whitespace-nowrap text-xs sm:text-sm">Time</TableHead>
-                    <TableHead className="whitespace-nowrap text-xs sm:text-sm">Kitchen</TableHead>
-                    <TableHead className="whitespace-nowrap text-xs sm:text-sm">Chef</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs sm:text-sm">{mt("time")}</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs sm:text-sm">{mt("kitchen")}</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs sm:text-sm">{mt("chef")}</TableHead>
                     <TableHead className="w-10"></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -598,9 +540,7 @@ export function TodaysKitchenBookings() {
                         </div>
                         <div className="whitespace-nowrap">
                           {booking.status === 'pending' ? (
-                            <Badge variant="outline" className="text-muted-foreground">
-                              Awaiting Approval
-                            </Badge>
+                            <Badge variant="outline" className="text-muted-foreground">{mt("awaitingApproval")}</Badge>
                           ) : (
                             getCheckinBadge(booking.checkinStatus)
                           )}
@@ -622,9 +562,7 @@ export function TodaysKitchenBookings() {
                       )}
                       {booking.hasAccessCodeHash && (
                           <div className="text-xs text-blue-600 font-mono flex items-center gap-1 mt-0.5">
-                            <KeyRound className="h-3 w-3" />
-                            Code set
-                          </div>
+                            <KeyRound className="h-3 w-3" />{mt("codeSet")}</div>
                         )}
                       </TableCell>
                       <TableCell>
@@ -648,9 +586,7 @@ export function TodaysKitchenBookings() {
                             <DropdownMenuItem
                               onClick={() => openAction(booking, "view")}
                             >
-                              <ChefHat className="h-4 w-4 mr-2" />
-                              View Details
-                            </DropdownMenuItem>
+                              <Calendar className="h-4 w-4 mr-2" />{mt("viewDetails")}</DropdownMenuItem>
 
                             {booking.checkinStatus ===
                               "checkout_requested" && (
@@ -662,7 +598,7 @@ export function TodaysKitchenBookings() {
                                   }
                                 >
                                   <ShieldCheck className="h-4 w-4 mr-2" />
-                                  Clear — No Issues
+                                  {mt("clearNoIssues")}
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() =>
@@ -670,9 +606,7 @@ export function TodaysKitchenBookings() {
                                   }
                                   className="text-amber-600 focus:text-amber-700"
                                 >
-                                  <FileWarning className="h-4 w-4 mr-2" />
-                                  File Damage Claim
-                                </DropdownMenuItem>
+                                  <FileWarning className="h-4 w-4 mr-2" />{mt("fileDamageClaim")}</DropdownMenuItem>
                               </>
                             )}
                           </DropdownMenuContent>
@@ -691,32 +625,26 @@ export function TodaysKitchenBookings() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <ChefHat className="h-5 w-5 text-purple-600" />
-            Upcoming Kitchen Viewings
-          </CardTitle>
-          <CardDescription>
-            Scheduled viewings for your kitchens
-          </CardDescription>
+            <Calendar className="h-5 w-5 text-purple-600" />{mt("upcomingKitchenViewings")}</CardTitle>
+          <CardDescription>{mt("scheduledViewingsForYourKitchens")}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
             {isLoadingViewings ? (
               <div className="py-8 text-center text-muted-foreground flex items-center justify-center">
-                <Loader2 className="w-6 h-6 animate-spin mr-2" />
-                Loading viewings...
-              </div>
+                <Loader2 className="w-6 h-6 animate-spin mr-2" />{mt("loadingViewings")}</div>
             ) : upcomingViewings.length === 0 ? (
               <div className="py-8 text-center text-muted-foreground bg-gray-50/50 rounded-lg border border-dashed">
                 <Calendar className="w-10 h-10 mx-auto text-gray-400 mb-2 opacity-50" />
-                <p className="text-sm">No upcoming viewings scheduled.</p>
+                <p className="text-sm">{mt("noUpcomingViewingsScheduled")}</p>
               </div>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Time</TableHead>
-                    <TableHead>Kitchen & Location</TableHead>
-                    <TableHead>Chef</TableHead>
+                    <TableHead>{mt("time")}</TableHead>
+                    <TableHead>{mt("kitchenLocation")}</TableHead>
+                    <TableHead>{mt("chef")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -783,9 +711,9 @@ export function TodaysKitchenBookings() {
             <>
               <SheetHeader>
                 <SheetTitle>
-                  {actionMode === "clear-checkout" && "Clear Checkout"}
-                  {actionMode === "file-claim" && "File Damage Claim"}
-                  {actionMode === "view" && "Booking Details"}
+                  {actionMode === "clear-checkout" && mt("clearCheckout")}
+                  {actionMode === "file-claim" && mt("fileDamageClaim")}
+                  {actionMode === "view" && mt("bookingDetailsTitle")}
                 </SheetTitle>
                 <SheetDescription>
                   {selectedBooking.kitchenName} ·{" "}
@@ -800,21 +728,19 @@ export function TodaysKitchenBookings() {
                 {/* Common booking info */}
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Chef</span>
+                    <span className="text-muted-foreground">{mt("chef")}</span>
                     <span>
                       {selectedBooking.chefEmail ||
                         `Chef #${selectedBooking.chefId}`}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Status</span>
+                    <span className="text-muted-foreground">{mt("status")}</span>
                     {getCheckinBadge(selectedBooking.checkinStatus)}
                   </div>
                   {selectedBooking.checkedInAt && (
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">
-                        Checked In
-                      </span>
+                      <span className="text-muted-foreground">{mt("checkedIn")}</span>
                       <span className="text-xs">
                         {format(
                           new Date(selectedBooking.checkedInAt),
@@ -827,9 +753,7 @@ export function TodaysKitchenBookings() {
                   )}
                   {selectedBooking.checkoutRequestedAt && (
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">
-                        Checkout Requested
-                      </span>
+                      <span className="text-muted-foreground">{mt("checkoutRequested")}</span>
                       <span className="text-xs">
                         {format(
                           new Date(selectedBooking.checkoutRequestedAt),
@@ -848,18 +772,14 @@ export function TodaysKitchenBookings() {
                   <>
                     <Separator />
                     <div className="space-y-3">
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                        Chef's verification
-                      </p>
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{mt("chefSVerification")}</p>
 
                       {/* Check-in section */}
                       {(selectedBooking.checkinPhotoUrls?.length ||
                         selectedBooking.checkinNotes) && (
                         <div className="rounded-lg border bg-green-50/40 border-green-200 p-3 space-y-2">
                           <div className="flex items-center gap-1.5 text-xs font-medium text-green-800">
-                            <LogIn className="h-3 w-3" />
-                            Check-in
-                          </div>
+                            <LogIn className="h-3 w-3" />{mt("checkIn2")}</div>
                           {selectedBooking.checkinNotes && (
                             <p className="text-xs text-muted-foreground whitespace-pre-wrap">
                               {selectedBooking.checkinNotes}
@@ -867,7 +787,7 @@ export function TodaysKitchenBookings() {
                           )}
                           {selectedBooking.checkinChecklistItems && selectedBooking.checkinChecklistItems.length > 0 && (
                             <div className="space-y-1 mt-1">
-                              <p className="text-[11px] text-green-700 font-medium">Checklist items confirmed:</p>
+                              <p className="text-[11px] text-green-700 font-medium">{mt("checklistItemsConfirmed")}</p>
                               {selectedBooking.checkinChecklistItems.map((item, index) => (
                                 <div key={item.id} className="flex items-center gap-1.5">
                                   <Checkbox checked={item.checked} disabled className="pointer-events-none h-3 w-3" />
@@ -890,7 +810,7 @@ export function TodaysKitchenBookings() {
                                       rel="noopener noreferrer"
                                       className="block"
                                     >
-                                      <img
+                                      <SmartImage
                                         src={proxied}
                                         alt={`Check-in photo ${i + 1}`}
                                         className="w-full h-20 object-cover rounded-md border hover:opacity-80 transition-opacity"
@@ -911,9 +831,7 @@ export function TodaysKitchenBookings() {
                         selectedBooking.checkoutNotes) && (
                         <div className="rounded-lg border bg-blue-50/40 border-blue-200 p-3 space-y-2">
                           <div className="flex items-center gap-1.5 text-xs font-medium text-blue-800">
-                            <LogOut className="h-3 w-3" />
-                            Check-out
-                          </div>
+                            <LogOut className="h-3 w-3" />{mt("checkOut2")}</div>
                           {selectedBooking.checkoutNotes && (
                             <p className="text-xs text-muted-foreground whitespace-pre-wrap">
                               {selectedBooking.checkoutNotes}
@@ -921,7 +839,7 @@ export function TodaysKitchenBookings() {
                           )}
                           {selectedBooking.checkoutChecklistItems && selectedBooking.checkoutChecklistItems.length > 0 && (
                             <div className="space-y-1 mt-1">
-                              <p className="text-[11px] text-blue-700 font-medium">Checklist items confirmed:</p>
+                              <p className="text-[11px] text-blue-700 font-medium">{mt("checklistItemsConfirmed")}</p>
                               {selectedBooking.checkoutChecklistItems.map((item, index) => (
                                 <div key={item.id} className="flex items-center gap-1.5">
                                   <Checkbox checked={item.checked} disabled className="pointer-events-none h-3 w-3" />
@@ -944,7 +862,7 @@ export function TodaysKitchenBookings() {
                                       rel="noopener noreferrer"
                                       className="block"
                                     >
-                                      <img
+                                      <SmartImage
                                         src={proxied}
                                         alt={`Check-out photo ${i + 1}`}
                                         className="w-full h-20 object-cover rounded-md border hover:opacity-80 transition-opacity"
@@ -971,9 +889,7 @@ export function TodaysKitchenBookings() {
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <KeyRound className="h-4 w-4 text-blue-600" />
-                        <span className="text-sm font-medium text-blue-800">
-                          Door Access Code
-                        </span>
+                        <span className="text-sm font-medium text-blue-800">{mt("doorAccessCode")}</span>
                         {selectedBooking.accessCodeFormat && (
                           <Badge variant="outline" className="text-[10px] h-5 border-blue-300 text-blue-600">
                             {selectedBooking.accessCodeFormat === 'alphanumeric' ? 'ABC' : '123'}
@@ -983,9 +899,7 @@ export function TodaysKitchenBookings() {
                       <div className="flex items-center gap-1.5">
                         {selectedBooking.hasAccessCodeHash && (
                           <Badge className="bg-amber-100 text-amber-700 text-xs">
-                            <Clock className="h-3 w-3 mr-1" />
-                            Active
-                          </Badge>
+                            <Clock className="h-3 w-3 mr-1" />{mt("active")}</Badge>
                         )}
                       </div>
                     </div>
@@ -1027,7 +941,7 @@ export function TodaysKitchenBookings() {
                           <Input
                             value={editAccessCode}
                             onChange={(e) => setEditAccessCode(e.target.value.replace(/[^A-Za-z0-9]/g, '').slice(0, 8).toUpperCase())}
-                            placeholder="Manual code"
+                            placeholder={mt("manualCode")}
                             className="h-8 w-32 font-mono text-sm"
                           />
                           <Button
@@ -1037,7 +951,7 @@ export function TodaysKitchenBookings() {
                               if (editAccessCode.length >= 4) {
                                 setAccessCodeMutation.mutate({ bookingId: selectedBooking.id, accessCode: editAccessCode })
                               } else if (editAccessCode.length < 4) {
-                                toast.error("Code must be 4-8 characters")
+                                toast.error(tt("codeMustBe4To8Chars"))
                               }
                             }}
                             disabled={setAccessCodeMutation.isPending || editAccessCode.length < 4}
@@ -1045,15 +959,11 @@ export function TodaysKitchenBookings() {
                             {setAccessCodeMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Set"}
                           </Button>
                         </div>
-                        <p className="text-xs text-blue-500 mt-1">
-                          Override with a code you programmed into the lock.
-                        </p>
+                        <p className="text-xs text-blue-500 mt-1">{mt("overrideWithACodeYouProgrammedIntoTheLock")}</p>
                       </>
                     ) : (
                       <div className="space-y-2">
-                        <p className="text-xs text-blue-600">
-                          No access code set. Generate one automatically or enter a code manually.
-                        </p>
+                        <p className="text-xs text-blue-600">{mt("noAccessCodeSetGenerateOneAutomaticallyOrEnterACodeManually")}</p>
                         <div className="flex flex-wrap items-center gap-2">
                           <Button
                             size="sm"
@@ -1067,7 +977,7 @@ export function TodaysKitchenBookings() {
                           <Input
                             value={editAccessCode}
                             onChange={(e) => setEditAccessCode(e.target.value.replace(/[^A-Za-z0-9]/g, '').slice(0, 8).toUpperCase())}
-                            placeholder="e.g., A7K9MX"
+                            placeholder={mt("eGA7K9MX")}
                             className="h-8 w-28 font-mono text-sm"
                           />
                           <Button
@@ -1077,7 +987,7 @@ export function TodaysKitchenBookings() {
                               if (editAccessCode.length >= 4) {
                                 setAccessCodeMutation.mutate({ bookingId: selectedBooking.id, accessCode: editAccessCode })
                               } else {
-                                toast.error("Code must be 4-8 characters")
+                                toast.error(tt("codeMustBe4To8Chars"))
                               }
                             }}
                             disabled={setAccessCodeMutation.isPending || editAccessCode.length < 4}
@@ -1098,11 +1008,11 @@ export function TodaysKitchenBookings() {
                       the booking.
                     </p>
                     <div>
-                      <Label>Manager Notes (optional)</Label>
+                      <Label>{mt("managerNotesOptional")}</Label>
                       <Textarea
                         value={notes}
                         onChange={(e) => setNotes(e.target.value)}
-                        placeholder="e.g., Kitchen inspected, all clean"
+                        placeholder={mt("eGKitchenInspectedAllClean")}
                         rows={2}
                       />
                     </div>
@@ -1117,24 +1027,24 @@ export function TodaysKitchenBookings() {
                       damages or cleaning fees.
                     </p>
                     <div>
-                      <Label>Claim Title</Label>
+                      <Label>{mt("claimTitle")}</Label>
                       <Input
                         value={claimTitle}
                         onChange={(e) => setClaimTitle(e.target.value)}
-                        placeholder="e.g., Damaged stovetop burner"
+                        placeholder={mt("eGDamagedStovetopBurner")}
                       />
                     </div>
                     <div>
-                      <Label>Description</Label>
+                      <Label>{mt("description")}</Label>
                       <Textarea
                         value={claimDescription}
                         onChange={(e) => setClaimDescription(e.target.value)}
-                        placeholder="Describe the damage or cleaning issue..."
+                        placeholder={mt("describeTheDamageOrCleaningIssue")}
                         rows={3}
                       />
                     </div>
                     <div>
-                      <Label>Claim Amount ($)</Label>
+                      <Label>{mt("claimAmountDollars")}</Label>
                       <CurrencyInput
                         value={claimAmount}
                         onValueChange={(val: string) => setClaimAmount(val)}
@@ -1146,17 +1056,15 @@ export function TodaysKitchenBookings() {
                     <div className="space-y-2">
                       <Label className="flex items-center gap-2">
                         <Camera className="h-4 w-4" />
-                        Photo Evidence *
+                        {mt("photoEvidenceRequired")}
                       </Label>
-                      <p className="text-xs text-muted-foreground">
-                        Upload photos documenting the damage or issue. At least one photo is required.
-                      </p>
+                      <p className="text-xs text-muted-foreground">{mt("uploadPhotosDocumentingTheDamageOrIssueAtLeastOnePhotoIsRequ")}</p>
 
                       {evidencePhotos.length > 0 && (
                         <div className="grid grid-cols-3 gap-2">
                           {evidencePhotos.map((url, i) => (
                             <div key={i} className="relative group">
-                              <img
+                              <SmartImage
                                 src={getR2ProxyUrl(url)}
                                 alt={`Evidence photo ${i + 1}`}
                                 className="w-full h-20 object-cover rounded-lg border"
@@ -1189,15 +1097,15 @@ export function TodaysKitchenBookings() {
                           {isUploadingEvidence ? (
                             <>
                               <Loader2 className="h-6 w-6 text-primary animate-spin mb-1" />
-                              <span className="text-xs text-muted-foreground">Uploading... {Math.round(evidenceUploadProgress)}%</span>
+                              <span className="text-xs text-muted-foreground">{mt("uploadingPercent", { percent: Math.round(evidenceUploadProgress) })}</span>
                             </>
                           ) : (
                             <>
                               <Upload className="h-6 w-6 text-muted-foreground mb-1" />
                               <span className="text-xs text-muted-foreground">
                                 {evidencePhotos.length === 0
-                                  ? "Click to upload evidence photos"
-                                  : `${evidencePhotos.length}/10 photos uploaded`}
+                                  ? mt("clickToUploadEvidencePhotos")
+                                  : mt("photosUploadedCount", { count: evidencePhotos.length })}
                               </span>
                             </>
                           )}
@@ -1206,11 +1114,11 @@ export function TodaysKitchenBookings() {
                     </div>
 
                     <div>
-                      <Label>Manager Notes (optional)</Label>
+                      <Label>{mt("managerNotesOptional")}</Label>
                       <Textarea
                         value={notes}
                         onChange={(e) => setNotes(e.target.value)}
-                        placeholder="Internal notes..."
+                        placeholder={mt("internalNotes")}
                         rows={2}
                       />
                     </div>
@@ -1220,9 +1128,7 @@ export function TodaysKitchenBookings() {
 
               {actionMode !== "view" && (
                 <SheetFooter className="gap-2 sm:gap-0">
-                  <Button variant="outline" onClick={closeSheet}>
-                    Cancel
-                  </Button>
+                  <Button variant="outline" onClick={closeSheet}>{mt("cancel")}</Button>
 
                   {actionMode === "clear-checkout" && (
                     <Button
@@ -1239,7 +1145,7 @@ export function TodaysKitchenBookings() {
                       ) : (
                         <ShieldCheck className="h-4 w-4 mr-2" />
                       )}
-                      Clear — No Issues
+                      {mt("clearNoIssues")}
                     </Button>
                   )}
 
@@ -1257,7 +1163,7 @@ export function TodaysKitchenBookings() {
                           return
                         }
                         if (evidencePhotos.length === 0) {
-                          toast.error("Please upload at least one evidence photo")
+                          toast.error(tt("uploadAtLeastOneEvidencePhoto"))
                           return
                         }
                         try {

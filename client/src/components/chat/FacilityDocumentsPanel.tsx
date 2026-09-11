@@ -1,23 +1,19 @@
 import { logger } from "@/lib/logger";
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { FileText, Paperclip, Loader2, Eye, ChevronsUpDown } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { auth } from '@/lib/firebase';
-import { useToast } from '@/hooks/use-toast';
-import { usePresignedDocumentUrl } from '@/hooks/use-presigned-document-url';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { FileText, Paperclip, Loader2, Eye, ChevronsUpDown } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { auth } from "@/lib/firebase";
+import { useToast } from "@/hooks/use-toast";
+import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Separator } from "@/components/ui/separator"
 
 interface FacilityDocument {
   id: string;
   name: string;
   url: string;
-  type: 'floor_plans' | 'ventilation_specs';
+  type: 'floor_plans' | 'ventilation_specs' | 'kitchen_terms' | 'kitchen_license';
   description?: string;
 }
 
@@ -73,8 +69,26 @@ export default function FacilityDocumentsPanel({ locationId, onAttachDocuments }
             id: 'ventilation_specs',
             name: 'Ventilation Specifications',
             url: data.ventilation_specs_url,
-            type: 'ventilation_specs',
+            type: 'ventilation_specs' as any,
             description: data.ventilation_specs || 'Ventilation system specifications and details',
+          });
+        }
+        if (data.kitchen_terms_url) {
+          documents.push({
+            id: 'kitchen_terms',
+            name: 'Kitchen Terms & Policies',
+            url: data.kitchen_terms_url,
+            type: 'kitchen_terms' as any,
+            description: 'Kitchen rules, policies, and terms of use',
+          });
+        }
+        if (data.kitchen_license_url) {
+          documents.push({
+            id: 'kitchen_license',
+            name: 'Kitchen License',
+            url: data.kitchen_license_url,
+            type: 'kitchen_license' as any,
+            description: 'Official kitchen operating license',
           });
         }
         return documents;

@@ -1,10 +1,7 @@
 import { logger } from "@/lib/logger";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { auth } from "@/lib/firebase";
-import {
-  createBookingDateTime,
-  DEFAULT_TIMEZONE,
-} from "@/utils/timezone-utils";
+import { createBookingDateTime, DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

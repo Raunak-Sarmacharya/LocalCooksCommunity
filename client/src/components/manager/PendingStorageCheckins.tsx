@@ -10,59 +10,21 @@
  */
 
 import { useState, useMemo } from "react";
+import { mt } from "@/i18n/manager";
 import { useQuery } from "@tanstack/react-query";
-import {
-  ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
-  SortingState,
-  useReactTable,
-} from "@tanstack/react-table";
-import {
-  CheckCircle,
-  Clock,
-  Package,
-  User,
-  Image as ImageIcon,
-  Loader2,
-  ArrowUpDown,
-  MapPin,
-  Eye,
-  RefreshCw,
-  LogIn,
-  SkipForward,
-  ClipboardCheck,
-} from "lucide-react";
+import { ColumnDef, flexRender, getCoreRowModel, getSortedRowModel, SortingState, useReactTable } from "@tanstack/react-table";
+import { CheckCircle, Clock, Package, User, Image as ImageIcon, Loader2, ArrowUpDown, MapPin, Eye, RefreshCw, LogIn, SkipForward, ClipboardCheck } from "@/components/ui/manager-icons";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
+import { SmartImage } from "@/components/ui/smart-image";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -114,7 +76,7 @@ const getCheckinHistoryColumns = ({
 }: HistoryColumnsProps): ColumnDef<PendingCheckin>[] => [
   {
     id: "reference",
-    header: "Ref",
+    header: mt("ref"),
     cell: ({ row }) => {
       const ref = row.original.referenceCode || row.original.id;
       return (
@@ -132,9 +94,7 @@ const getCheckinHistoryColumns = ({
         size="sm"
         onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         className="h-8 -ml-3"
-      >
-        Storage
-        <ArrowUpDown className="ml-2 h-3 w-3" />
+      >{mt("navStorage")}<ArrowUpDown className="ml-2 h-3 w-3" />
       </Button>
     ),
     cell: ({ row }) => {
@@ -155,30 +115,26 @@ const getCheckinHistoryColumns = ({
   },
   {
     accessorKey: "chefName",
-    header: "Chef",
+    header: mt("chefHeader"),
     cell: ({ row }) => (
       <span className="text-sm">{row.getValue("chefName") || "—"}</span>
     ),
   },
   {
     accessorKey: "checkinStatus",
-    header: "Result",
+    header: mt("result"),
     cell: ({ row }) => {
       const status = row.getValue("checkinStatus") as string;
       if (status === "checkin_completed") {
         return (
           <Badge variant="success">
-            <CheckCircle className="h-3 w-3 mr-1" />
-            Completed
-          </Badge>
+            <CheckCircle className="h-3 w-3 mr-1" />{mt("completed")}</Badge>
         );
       }
       if (status === "skipped") {
         return (
           <Badge variant="outline">
-            <SkipForward className="h-3 w-3 mr-1" />
-            Skipped
-          </Badge>
+            <SkipForward className="h-3 w-3 mr-1" />{mt("skipped")}</Badge>
         );
       }
       return (
@@ -190,7 +146,7 @@ const getCheckinHistoryColumns = ({
   },
   {
     accessorKey: "checkinCompletedAt",
-    header: "Date",
+    header: mt("date"),
     cell: ({ row }) => {
       const date = row.original.checkinCompletedAt;
       if (!date) return <span className="text-muted-foreground text-xs">—</span>;
@@ -203,7 +159,7 @@ const getCheckinHistoryColumns = ({
   },
   {
     accessorKey: "checkinNotes",
-    header: "Notes",
+    header: mt("notesHeader"),
     cell: ({ row }) => {
       const notes = row.getValue("checkinNotes") as string | null;
       if (!notes) return <span className="text-muted-foreground text-xs">—</span>;
@@ -216,7 +172,7 @@ const getCheckinHistoryColumns = ({
   },
   {
     id: "evidence",
-    header: "Evidence",
+    header: mt("evidenceHeader"),
     cell: ({ row }) => {
       const checkin = row.original;
       const photoCount = checkin.checkinPhotoUrls?.length || 0;
@@ -249,9 +205,7 @@ const getCheckinHistoryColumns = ({
           className="h-7 text-xs"
           onClick={() => onViewDetails(checkin)}
         >
-          <Eye className="h-3 w-3 mr-1" />
-          View
-        </Button>
+          <Eye className="h-3 w-3 mr-1" />{mt("view")}</Button>
       );
     },
   },
@@ -282,9 +236,7 @@ function CheckinDetailSheet({
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
-            <LogIn className="h-5 w-5 text-emerald-600" />
-            Move-In Inspection Details
-          </SheetTitle>
+            <LogIn className="h-5 w-5 text-emerald-600" />{mt("moveInInspectionDetails")}</SheetTitle>
           <SheetDescription>
             {checkin.storageName} · {checkin.kitchenName} ·{" "}
             {checkin.locationName}
@@ -311,21 +263,17 @@ function CheckinDetailSheet({
             )}
             {completedAt && (
               <div className="text-xs text-muted-foreground">
-                {isSkipped ? "Skipped" : "Completed"}{" "}
+                {isSkipped ? mt("skipped") : mt("completed")}{" "}
                 {format(completedAt, "MMM d, yyyy 'at' h:mm a")}
               </div>
             )}
             <div>
               {isSkipped ? (
                 <Badge variant="outline">
-                  <SkipForward className="h-3 w-3 mr-1" />
-                  Skipped
-                </Badge>
+                  <SkipForward className="h-3 w-3 mr-1" />{mt("skipped")}</Badge>
               ) : (
                 <Badge variant="success">
-                  <CheckCircle className="h-3 w-3 mr-1" />
-                  Completed
-                </Badge>
+                  <CheckCircle className="h-3 w-3 mr-1" />{mt("completed")}</Badge>
               )}
             </div>
           </div>
@@ -335,7 +283,7 @@ function CheckinDetailSheet({
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <ClipboardCheck className="h-4 w-4 text-emerald-600" />
-                <h3 className="text-sm font-semibold">Checklist</h3>
+                <h3 className="text-sm font-semibold">{mt("checklist")}</h3>
               </div>
               <div className="rounded-lg border divide-y">
                 {checkin.checkinChecklistItems.map((item, index) => (
@@ -382,7 +330,7 @@ function CheckinDetailSheet({
                     rel="noopener noreferrer"
                     className="group relative aspect-square overflow-hidden rounded-lg border bg-muted/30"
                   >
-                    <img
+                    <SmartImage
                       src={getR2ProxyUrl(url)}
                       alt={`Check-in photo ${i + 1}`}
                       className="h-full w-full object-cover transition-transform group-hover:scale-[1.02]"
@@ -394,8 +342,7 @@ function CheckinDetailSheet({
                   </a>
                 ))}
               </div>
-              <p className="text-[11px] text-muted-foreground">
-                These photos are auto-attached as <em>photo_before</em>{" "}
+              <p className="text-[11px] text-muted-foreground">{mt("thesePhotosAreAutoAttachedAs")}<em>photo_before</em>{" "}
                 evidence to any damage claim filed at checkout.
               </p>
             </div>
@@ -404,7 +351,7 @@ function CheckinDetailSheet({
           {/* Notes */}
           {checkin.checkinNotes && (
             <div className="space-y-2">
-              <h3 className="text-sm font-semibold">Chef Notes</h3>
+              <h3 className="text-sm font-semibold">{mt("chefNotes")}</h3>
               <div className="rounded-lg border p-3 text-sm whitespace-pre-line">
                 {checkin.checkinNotes}
               </div>
@@ -430,6 +377,7 @@ function CheckinDetailSheet({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function PendingStorageCheckins() {
+  
   const [historySelected, setHistorySelected] = useState<PendingCheckin | null>(null);
 
   // Fetch check-in history
@@ -441,7 +389,7 @@ export function PendingStorageCheckins() {
         headers,
         credentials: "include",
       });
-      if (!res.ok) throw new Error("Failed to fetch check-in history");
+      if (!res.ok) throw new Error(mt("failedToFetchCheckinHistory"));
       return res.json();
     },
     refetchInterval: 60_000,
@@ -467,11 +415,9 @@ export function PendingStorageCheckins() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <CardTitle className="text-xl font-semibold flex items-center gap-2">
-              <LogIn className="h-5 w-5 text-emerald-600" />
-              Storage Check-In History
-            </CardTitle>
+              {mt("storageCheckInHistory")}</CardTitle>
             <CardDescription>
-              {checkinHistory.length} completed move-in inspection{checkinHistory.length !== 1 ? "s" : ""}
+              {mt("completedMoveInInspections", { count: checkinHistory.length })}
             </CardDescription>
           </div>
           <Button
@@ -483,9 +429,7 @@ export function PendingStorageCheckins() {
           >
             <RefreshCw
               className={`h-3.5 w-3.5 mr-1.5 ${isLoading ? "animate-spin" : ""}`}
-            />
-            Refresh
-          </Button>
+            />{mt("refresh")}</Button>
         </div>
       </CardHeader>
       <CardContent>
@@ -494,7 +438,7 @@ export function PendingStorageCheckins() {
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <div className="rounded-lg border overflow-x-auto">
+          <div className="rounded-md border overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
             <Table>
               <TableHeader>
                 {historyTable.getHeaderGroups().map((headerGroup) => (
@@ -541,12 +485,8 @@ export function PendingStorageCheckins() {
                     >
                       <div className="flex flex-col items-center gap-2 py-6">
                         <Clock className="h-8 w-8 text-muted-foreground/60" />
-                        <p className="text-sm font-medium">
-                          No Check-In History
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          Completed and skipped check-ins will appear here
-                        </p>
+                        <p className="text-sm font-medium">{mt("noCheckInHistory")}</p>
+                        <p className="text-sm text-muted-foreground">{mt("completedAndSkippedCheckInsWillAppearHere")}</p>
                       </div>
                     </TableCell>
                   </TableRow>

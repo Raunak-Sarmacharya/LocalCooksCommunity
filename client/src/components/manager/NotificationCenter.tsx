@@ -1,4 +1,8 @@
 import { logger } from "@/lib/logger";
+import { mt } from "@/i18n/manager";
+import { tt } from "@/i18n/common-ns";
+import { resolveNotificationHref } from "@shared/notification-deep-links";
+import { navigateNotificationHref } from "@/lib/navigate-notification-href";
 /**
  * Enterprise-Grade Notification Center Component
  * 
@@ -18,39 +22,16 @@ import { logger } from "@/lib/logger";
 import { useState, useCallback, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  Bell, 
-  BellOff, 
-  Check, 
-  CheckCheck, 
-  Archive, 
-  Trash2, 
-  ChevronRight,
-  Calendar,
-  CreditCard,
-  FileText,
-  MessageSquare,
-  AlertTriangle,
-  Info,
-  RefreshCw
-} from "lucide-react";
+import { Bell, BellOff, Check, CheckCheck, Archive, Trash2, ChevronRight, Calendar, CreditCard, FileText, MessageSquare, AlertTriangle, Info, RefreshCw } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Alert, AlertTitle, AlertDescription, AlertAction } from "@/components/reui/alert";
+import { Frame, FramePanel } from "@/components/reui/frame";
 import { cn } from "@/lib/utils";
 import { auth } from "@/lib/firebase";
 import { toast } from "@/hooks/use-toast";
@@ -127,17 +108,17 @@ function getNotificationIcon(type: string) {
   }
 }
 
-// Get priority color
-function getPriorityColor(priority: string) {
+// Get priority variant for Alert
+function getAlertVariant(priority: string) {
   switch (priority) {
     case "urgent":
-      return "bg-red-500";
+      return "destructive";
     case "high":
-      return "bg-orange-500";
+      return "warning";
     case "normal":
-      return "bg-blue-500";
+      return "info";
     default:
-      return "bg-gray-400";
+      return "default";
   }
 }
 
@@ -192,19 +173,15 @@ function ErrorNotificationState({ onRetry }: { onRetry: () => void }) {
       <div className="text-red-300 mb-4">
         <AlertTriangle className="h-12 w-12" />
       </div>
-      <h4 className="text-sm font-medium text-gray-700">Failed to load notifications</h4>
-      <p className="text-xs text-gray-500 mt-1 max-w-[200px]">
-        There was an error loading your notifications. Please try again.
-      </p>
+      <h4 className="text-sm font-medium text-gray-700">{mt("failedToLoadNotifications")}</h4>
+      <p className="text-xs text-gray-500 mt-1 max-w-[200px]">{mt("thereWasAnErrorLoadingYourNotificationsPleaseTryAgain")}</p>
       <Button 
         variant="outline" 
         size="sm" 
         className="mt-4"
         onClick={onRetry}
       >
-        <RefreshCw className="h-4 w-4 mr-2" />
-        Try Again
-      </Button>
+        <RefreshCw className="h-4 w-4 mr-2" />{mt("tryAgain")}</Button>
     </div>
   );
 }
@@ -214,23 +191,23 @@ function EmptyNotificationState({ filter }: { filter: FilterType }) {
   const messages: Record<FilterType, { icon: React.ReactNode; title: string; description: string }> = {
     all: {
       icon: <BellOff className="h-12 w-12" />,
-      title: "No notifications yet",
-      description: "When you receive notifications, they'll appear here."
+      title: mt("noNotificationsYet"),
+      description: mt("noNotificationsYetDesc")
     },
     unread: {
       icon: <CheckCheck className="h-12 w-12" />,
-      title: "All caught up!",
-      description: "You have no unread notifications."
+      title: mt("allCaughtUp"),
+      description: mt("allCaughtUpNoUnread")
     },
     read: {
       icon: <Bell className="h-12 w-12" />,
-      title: "No read notifications",
-      description: "Notifications you've read will appear here."
+      title: mt("noReadNotifications"),
+      description: mt("noReadNotificationsDesc")
     },
     archived: {
       icon: <Archive className="h-12 w-12" />,
-      title: "No archived notifications",
-      description: "Archived notifications will appear here."
+      title: mt("noArchivedNotifications"),
+      description: mt("noArchivedNotificationsDesc")
     }
   };
 
@@ -259,8 +236,8 @@ function groupNotificationsByStatus(notifications: Notification[]) {
     }
   });
 
-  if (unread.length > 0) groups.push({ label: "Unread", notifications: unread });
-  if (earlier.length > 0) groups.push({ label: "Earlier", notifications: earlier });
+  if (unread.length > 0) groups.push({ label: mt("groupUnread"), notifications: unread });
+  if (earlier.length > 0) groups.push({ label: mt("groupEarlier"), notifications: earlier });
 
   return groups;
 }
@@ -272,6 +249,7 @@ function NotificationItem({
   onArchive,
   onUnarchive,
   onDelete,
+  onActivate,
   isSelected,
   _onSelect
 }: { 
@@ -280,153 +258,93 @@ function NotificationItem({
   onArchive: (id: number) => void;
   onUnarchive: (id: number) => void;
   onDelete: (id: number) => void;
+  onActivate?: () => void;
   isSelected: boolean;
   _onSelect: (id: number) => void;
 }) {
+  const href = resolveNotificationHref({
+    role: "manager",
+    type: notification.type,
+    actionUrl: notification.action_url,
+    metadata: notification.metadata,
+  });
+
+  const openNotification = async () => {
+    // Close before the async read mutation/navigation so the old overlay never
+    // survives into the destination view.
+    onActivate?.();
+    if (!notification.is_read) {
+      await onMarkRead(notification.id);
+    }
+    if (href) navigateNotificationHref(href);
+  };
+
   // Handle keyboard navigation
   const handleKeyDown = async (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      if (!notification.is_read) {
-        await onMarkRead(notification.id);
-      }
-      if (notification.action_url) {
-        window.location.href = notification.action_url;
-      }
+      await openNotification();
     }
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, x: -20 }}
-      role="article"
-      aria-label={`${notification.is_read ? '' : 'Unread: '}${notification.title}`}
-      aria-describedby={`notification-${notification.id}-message`}
-      tabIndex={0}
-      onKeyDown={handleKeyDown}
-      className={cn(
-        "group relative p-3 border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer",
-        "focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset",
-        !notification.is_read && "bg-blue-50/50",
-        isSelected && "bg-blue-100"
-      )}
-      onClick={async (e) => {
-        e.stopPropagation();
-        if (!notification.is_read) {
-          await onMarkRead(notification.id);
-        }
-        if (notification.action_url) {
-          window.location.href = notification.action_url;
-        }
-      }}
-    >
-      {/* Priority indicator */}
-      <div className={cn(
-        "absolute left-0 top-0 bottom-0 w-1",
-        getPriorityColor(notification.priority)
-      )} />
-
-      <div className="flex items-start gap-3 pl-2">
-        {/* Icon */}
+    <div className="overflow-hidden relative group">
+      <Alert
+        variant={getAlertVariant(notification.priority)}
+        className={cn(
+          "border-none bg-transparent shadow-none hover:bg-muted/50 transition-colors cursor-pointer relative rounded-none p-2 gap-y-0 items-center",
+          "grid-cols-[24px_1fr_24px] has-[>svg]:grid-cols-[24px_1fr_24px]",
+          !notification.is_read && "bg-muted/20",
+          isSelected && "bg-blue-50"
+        )}
+        onClick={(e) => {
+          e.stopPropagation();
+          void openNotification();
+        }}
+      >
         <div className={cn(
-          "flex-shrink-0 p-2 rounded-full",
-          notification.is_read ? "bg-gray-100 text-gray-500" : "bg-blue-100 text-blue-600"
+          "shrink-0",
+          notification.is_read ? "text-muted-foreground" : "text-foreground"
         )}>
           {getNotificationIcon(notification.type)}
         </div>
-
-        {/* Content */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <h4 className={cn(
-              "text-sm break-words",
-              notification.is_read ? "font-normal text-gray-700" : "font-semibold text-gray-900"
-            )}>
+        <div className="flex flex-col min-w-0 pr-2">
+          <AlertTitle className="flex justify-between items-center gap-2 min-w-0 h-auto">
+            <span className={cn("text-sm truncate flex-1 min-w-0", notification.is_read ? "font-normal text-foreground" : "font-semibold text-foreground")}>
               {notification.title}
-            </h4>
-            <span className="text-xs text-gray-400 flex-shrink-0">
+            </span>
+            <span className="text-[10px] text-muted-foreground whitespace-nowrap font-normal shrink-0">
               {formatNotificationTime(notification.created_at)}
             </span>
-          </div>
-          <p 
-            id={`notification-${notification.id}-message`}
-            className="text-sm text-gray-600 line-clamp-3 mt-0.5 break-words"
-          >
-            {notification.message}
-          </p>
+          </AlertTitle>
           
-          {/* Action button if present */}
-          {notification.action_label && (
-            <Button
-              variant="link"
-              size="sm"
-              className="h-auto p-0 mt-1 text-primary"
-              onClick={async (e) => {
-                e.stopPropagation();
-                // Mark as read when clicking action button
-                if (!notification.is_read) {
-                  await onMarkRead(notification.id);
-                }
-                if (notification.action_url) {
-                  window.location.href = notification.action_url;
-                }
-              }}
-            >
-              {notification.action_label}
-              <ChevronRight className="h-3 w-3 ml-1" />
-            </Button>
-          )}
+          <AlertDescription className="mt-0 min-w-0 block w-full">
+            <p className="text-xs text-foreground/80 truncate w-full">
+              {notification.message}
+            </p>
+          </AlertDescription>
         </div>
-
-        {/* Quick actions (show on hover) */}
-        <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => e.stopPropagation()}>
-                <span className="sr-only">Actions</span>
-                <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-                </svg>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40">
-              {!notification.is_read && (
-                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onMarkRead(notification.id); }}>
-                  <Check className="h-4 w-4 mr-2" />
-                  Mark as read
-                </DropdownMenuItem>
-              )}
-              {notification.is_archived ? (
-                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onUnarchive(notification.id); }}>
-                  <Archive className="h-4 w-4 mr-2" />
-                  Restore
-                </DropdownMenuItem>
-              ) : (
-                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onArchive(notification.id); }}>
-                  <Archive className="h-4 w-4 mr-2" />
-                  Archive
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem 
-                className="text-red-600"
-                onClick={(e) => { e.stopPropagation(); onDelete(notification.id); }}
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+        <div className="flex items-center justify-end opacity-0 group-hover:opacity-100 transition-all transform translate-x-1 group-hover:translate-x-0">
+          <ChevronRight className="h-4 w-4 text-muted-foreground/60" />
         </div>
-      </div>
-    </motion.div>
+      </Alert>
+    </div>
   );
 }
 
 // Main NotificationCenter component
-export default function NotificationCenter({ locationId }: { locationId?: number }) {
+type NotificationCenterProps = {
+  locationId?: number;
+  variant?: "popover" | "page";
+  onViewAll?: () => void;
+};
+
+export default function NotificationCenter({
+  locationId,
+  variant = "popover",
+  onViewAll,
+}: NotificationCenterProps) {
+  
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
   const [filter, setFilter] = useState<FilterType>("all");
@@ -466,7 +384,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
       const data = await res.json();
       return data;
     },
-    enabled: isOpen,
+    enabled: isOpen || variant === "page",
     retry: false,
   });
 
@@ -479,7 +397,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
         headers,
         body: JSON.stringify({ notificationIds: ids }),
       });
-      if (!res.ok) throw new Error("Failed to mark as read");
+      if (!res.ok) throw new Error(tt("failedToMarkAsRead"));
       return res.json();
     },
     // Optimistic update: immediately mark as read in the UI
@@ -519,7 +437,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
       if (context?.previousUnreadCount) {
         queryClient.setQueryData(["/api/manager/notifications/unread-count", locationId], context.previousUnreadCount);
       }
-      toast.error("Failed to mark notification as read");
+      toast.error(tt("failedToMarkAsRead"));
     },
     // Always refetch after error or success to ensure consistency
     onSettled: () => {
@@ -537,7 +455,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
         headers,
         body: JSON.stringify({ locationId }),
       });
-      if (!res.ok) throw new Error("Failed to mark all as read");
+      if (!res.ok) throw new Error(mt("failedToMarkAllAsRead"));
       return res.json();
     },
     // Optimistic update: immediately mark all as read
@@ -569,10 +487,10 @@ export default function NotificationCenter({ locationId }: { locationId?: number
       if (context?.previousUnreadCount) {
         queryClient.setQueryData(["/api/manager/notifications/unread-count", locationId], context.previousUnreadCount);
       }
-      toast.error("Failed to mark all as read");
+      toast.error(tt("failedToMarkAllAsRead"));
     },
     onSuccess: () => {
-      toast.success("All notifications marked as read");
+      toast.success(tt("allNotificationsMarkedAsRead"));
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/manager/notifications"] });
@@ -589,7 +507,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
         headers,
         body: JSON.stringify({ notificationIds: ids }),
       });
-      if (!res.ok) throw new Error("Failed to archive");
+      if (!res.ok) throw new Error(mt("failedToArchive"));
       return res.json();
     },
     onMutate: async (ids: number[]) => {
@@ -629,10 +547,10 @@ export default function NotificationCenter({ locationId }: { locationId?: number
       if (context?.previousUnreadCount) {
         queryClient.setQueryData(["/api/manager/notifications/unread-count", locationId], context.previousUnreadCount);
       }
-      toast.error("Failed to archive notification");
+      toast.error(tt("failedToArchiveNotification"));
     },
     onSuccess: () => {
-      toast.success("Notification archived");
+      toast.success(tt("notificationArchived"));
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/manager/notifications"] });
@@ -649,7 +567,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
         headers,
         body: JSON.stringify({ notificationIds: ids }),
       });
-      if (!res.ok) throw new Error("Failed to unarchive");
+      if (!res.ok) throw new Error(mt("failedToUnarchive"));
       return res.json();
     },
     onMutate: async (ids: number[]) => {
@@ -672,10 +590,10 @@ export default function NotificationCenter({ locationId }: { locationId?: number
       if (context?.previousNotifications) {
         queryClient.setQueryData(["/api/manager/notifications", filter, locationId], context.previousNotifications);
       }
-      toast.error("Failed to unarchive notification");
+      toast.error(tt("failedToUnarchiveNotification"));
     },
     onSuccess: () => {
-      toast.success("Notification restored");
+      toast.success(tt("notificationRestored"));
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/manager/notifications"] });
@@ -691,7 +609,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
         method: "DELETE",
         headers,
       });
-      if (!res.ok) throw new Error("Failed to delete");
+      if (!res.ok) throw new Error(mt("failedToDeleteNotification"));
       return res.json();
     },
     onMutate: async (id: number) => {
@@ -729,10 +647,10 @@ export default function NotificationCenter({ locationId }: { locationId?: number
       if (context?.previousUnreadCount) {
         queryClient.setQueryData(["/api/manager/notifications/unread-count", locationId], context.previousUnreadCount);
       }
-      toast.error("Failed to delete notification");
+      toast.error(tt("failedToDeleteNotification"));
     },
     onSuccess: () => {
-      toast.success("Notification deleted");
+      toast.success(tt("notificationDeleted"));
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/manager/notifications"] });
@@ -778,6 +696,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
 
   // Keyboard shortcut to open notifications (Ctrl/Cmd + Shift + N to avoid browser conflicts)
   useEffect(() => {
+    if (variant === "page") return;
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ctrl/Cmd + Shift + N to toggle notifications
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'N') {
@@ -795,7 +714,82 @@ export default function NotificationCenter({ locationId }: { locationId?: number
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen]);
+  }, [isOpen, variant]);
+
+  if (variant === "page") {
+    return (
+      <div className="overflow-hidden rounded-[1.35rem] border bg-card shadow-sm">
+        <div className="border-b bg-[linear-gradient(135deg,hsl(var(--primary)/0.08),transparent_55%)] px-5 py-5 sm:px-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-semibold tracking-tight">{mt("navNotifications")}</h1>
+                {unreadCount > 0 && <Badge variant="secondary">{unreadCount} {mt("unread").toLowerCase()}</Badge>}
+              </div>
+              <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+                {mt("notificationCenterDescription")}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading}>
+                <RefreshCw className={cn("mr-1 size-4", isLoading && "animate-spin")} aria-hidden="true" />
+                {tt("refreshNotifications")}
+              </Button>
+              {unreadCount > 0 && (
+                <Button size="sm" onClick={() => markAllReadMutation.mutate()} disabled={markAllReadMutation.isPending}>
+                  <CheckCheck className="mr-1 size-4" aria-hidden="true" />
+                  {mt("markAllRead")}
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="border-b bg-muted/50 px-4 py-2" role="navigation" aria-label={mt("notificationFilters")}>
+          <Tabs value={filter} onValueChange={(value) => setFilter(value as FilterType)}>
+            <TabsList className="w-full gap-1 sm:w-auto">
+              <TabsTrigger value="all" className="flex-1 sm:flex-none">{mt("filterAll")}</TabsTrigger>
+              <TabsTrigger value="unread" className="flex-1 sm:flex-none">{mt("unread")}</TabsTrigger>
+              <TabsTrigger value="read" className="flex-1 sm:flex-none">{mt("read")}</TabsTrigger>
+              <TabsTrigger value="archived" className="flex-1 sm:flex-none">{mt("archived")}</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+        <div className="min-h-[28rem]" role="feed" aria-label={mt("notificationsList")} aria-busy={isLoading}>
+          {isLoading ? (
+            <NotificationListSkeleton />
+          ) : notificationsError || unreadError ? (
+            <ErrorNotificationState onRetry={() => refetch()} />
+          ) : notifications.length === 0 ? (
+            <EmptyNotificationState filter={filter} />
+          ) : (
+            <AnimatePresence mode="popLayout">
+              {groupedNotifications.map((group) => (
+                <section key={group.label} aria-labelledby={`page-group-${group.label.toLowerCase().replace(/\s+/g, '-')}`}>
+                  <h2 id={`page-group-${group.label.toLowerCase().replace(/\s+/g, '-')}`} className="sticky top-0 z-10 bg-muted px-4 py-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    {group.label}
+                  </h2>
+                  <div className="flex flex-col">
+                    {group.notifications.map((notification) => (
+                      <NotificationItem
+                        key={notification.id}
+                        notification={notification}
+                        onMarkRead={handleMarkRead}
+                        onArchive={handleArchive}
+                        onUnarchive={handleUnarchive}
+                        onDelete={handleDelete}
+                        isSelected={selectedIds.has(notification.id)}
+                        _onSelect={handleSelect}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </AnimatePresence>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
@@ -805,7 +799,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
           size="icon"
           className="relative group"
           aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
-          title="Notifications (Ctrl+Shift+N)"
+          title={mt("notificationsCtrlShiftN")}
         >
           <Bell className={cn(
             "h-5 w-5 transition-transform",
@@ -813,7 +807,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
           )} />
           {unreadCount > 0 && (
             <Badge 
-              className="absolute -top-1 -right-1 h-5 min-w-5 flex items-center justify-center p-0 text-xs bg-red-500 hover:bg-red-500 animate-in fade-in zoom-in duration-200"
+              className="absolute -top-1 -right-1 h-5 min-w-5 flex items-center justify-center p-0 text-xs bg-red-500 hover:bg-red-500 animate-in fade-in zoom-in duration-200 rounded-full"
             >
               {unreadCount > 99 ? "99+" : unreadCount}
             </Badge>
@@ -822,31 +816,31 @@ export default function NotificationCenter({ locationId }: { locationId?: number
       </PopoverTrigger>
 
       <PopoverContent 
-        className="w-[calc(100vw-2rem)] sm:w-[400px] p-0" 
+        className="w-[calc(100vw-2rem)] sm:w-[400px] p-0 rounded-[1.35rem] overflow-hidden" 
         align="end"
         sideOffset={8}
         role="dialog"
-        aria-label="Notifications panel"
+        aria-label={mt("notificationsPanel")}
         aria-describedby="notifications-description"
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b">
+        <div className="flex items-center justify-between p-4 border-b border-border/50">
           <div>
-            <h2 id="notifications-heading" className="font-semibold text-lg">Notifications</h2>
+            <h2 id="notifications-heading" className="font-semibold text-lg">{mt("navNotifications")}</h2>
             <p id="notifications-description" className="sr-only">
               {unreadCount > 0 
-                ? `You have ${unreadCount} unread notification${unreadCount !== 1 ? 's' : ''}`
-                : 'No unread notifications'}
+                ? mt("unreadNotificationsCount", { count: unreadCount })
+                : mt("noUnreadNotifications")}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className="h-8 w-8 rounded-full"
               onClick={() => refetch()}
               disabled={isLoading}
-              aria-label={isLoading ? "Refreshing notifications" : "Refresh notifications"}
+              aria-label={isLoading ? tt("refreshingNotifications") : tt("refreshNotifications")}
             >
               <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} aria-hidden="true" />
             </Button>
@@ -854,35 +848,33 @@ export default function NotificationCenter({ locationId }: { locationId?: number
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-8 text-xs"
+                className="h-8 text-xs rounded-full"
                 onClick={() => markAllReadMutation.mutate()}
                 disabled={markAllReadMutation.isPending}
                 aria-label={`Mark all ${unreadCount} notifications as read`}
               >
-                <CheckCheck className="h-4 w-4 mr-1" aria-hidden="true" />
-                Mark all read
-              </Button>
+                <CheckCheck className="h-4 w-4 mr-1" aria-hidden="true" />{mt("markAllRead")}</Button>
             )}
           </div>
         </div>
 
         {/* Filter tabs */}
-        <div className="px-4 py-2 border-b bg-gray-50" role="navigation" aria-label="Notification filters">
+        <div className="px-4 py-2 border-b bg-gray-50" role="navigation" aria-label={mt("notificationFilters")}>
           <Tabs value={filter} onValueChange={(v) => setFilter(v as FilterType)}>
-            <TabsList className="w-full gap-1" aria-label="Filter notifications by status">
-              <TabsTrigger value="all" className="flex-1 text-xs px-2 py-1.5">All</TabsTrigger>
-              <TabsTrigger value="unread" className="flex-1 text-xs px-2 py-1.5">Unread</TabsTrigger>
-              <TabsTrigger value="read" className="flex-1 text-xs px-2 py-1.5">Read</TabsTrigger>
+            <TabsList className="w-full gap-1" aria-label={mt("filterNotificationsByStatus")}>
+              <TabsTrigger value="all" className="flex-1 text-xs px-2 py-1.5">{mt("filterAll")}</TabsTrigger>
+              <TabsTrigger value="unread" className="flex-1 text-xs px-2 py-1.5">{mt("unread")}</TabsTrigger>
+              <TabsTrigger value="read" className="flex-1 text-xs px-2 py-1.5">{mt("read")}</TabsTrigger>
               <TabsTrigger value="archived" className="flex-1 text-xs px-2 py-1.5">
-                <span className="hidden sm:inline">Archived</span>
-                <span className="sm:hidden">Arch</span>
+                <span className="hidden sm:inline">{mt("archived")}</span>
+                <span className="sm:hidden">{mt("arch")}</span>
               </TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
 
         {/* Notification list */}
-        <ScrollArea className="h-[400px]" role="feed" aria-label="Notifications list" aria-busy={isLoading}>
+        <ScrollArea className="h-[400px]" role="feed" aria-label={mt("notificationsList")} aria-busy={isLoading}>
           {isLoading ? (
             <NotificationListSkeleton />
           ) : notificationsError || unreadError ? (
@@ -895,22 +887,25 @@ export default function NotificationCenter({ locationId }: { locationId?: number
                 <section key={group.label} aria-labelledby={`group-${group.label.toLowerCase().replace(/\s+/g, '-')}`}>
                   <h3 
                     id={`group-${group.label.toLowerCase().replace(/\s+/g, '-')}`}
-                    className="sticky top-0 bg-gray-100 px-4 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    className="sticky top-0 z-10 bg-gray-100 px-4 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wider"
                   >
                     {group.label}
                   </h3>
-                  {group.notifications.map((notification) => (
-                    <NotificationItem
-                      key={notification.id}
-                      notification={notification}
-                      onMarkRead={handleMarkRead}
-                      onArchive={handleArchive}
-                      onUnarchive={handleUnarchive}
-                      onDelete={handleDelete}
-                      isSelected={selectedIds.has(notification.id)}
-                      _onSelect={handleSelect}
-                    />
-                  ))}
+                  <div className="flex flex-col">
+                    {group.notifications.map((notification) => (
+                      <NotificationItem
+                        key={notification.id}
+                        notification={notification}
+                        onMarkRead={handleMarkRead}
+                        onArchive={handleArchive}
+                        onUnarchive={handleUnarchive}
+                        onDelete={handleDelete}
+                        onActivate={() => setIsOpen(false)}
+                        isSelected={selectedIds.has(notification.id)}
+                        _onSelect={handleSelect}
+                      />
+                    ))}
+                  </div>
                 </section>
               ))}
             </AnimatePresence>
@@ -918,20 +913,18 @@ export default function NotificationCenter({ locationId }: { locationId?: number
         </ScrollArea>
 
         {/* Footer */}
-        {notifications.length > 0 && notificationsData?.pagination?.hasMore && (
+        {notifications.length > 0 && (
           <div className="p-3 border-t bg-gray-50 text-center">
             <Button 
               variant="link" 
               size="sm" 
               className="text-xs text-gray-600"
               onClick={() => {
-                toast({
-                  title: "All notifications shown",
-                  description: "Use the filters above to browse through your notifications.",
-                });
+                setIsOpen(false);
+                onViewAll?.();
               }}
             >
-              View all notifications ({notificationsData.pagination.total} total)
+              {mt("navNotifications")}{notificationsData?.pagination?.total ? ` (${notificationsData.pagination.total})` : ""}
             </Button>
           </div>
         )}

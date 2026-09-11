@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { users } from "@shared/schema";
 import { User, CreateUserDTO, UpdateUserDTO } from "./user.types";
@@ -10,7 +10,8 @@ export class UserRepository {
   }
 
   async findByUsername(username: string): Promise<User | null> {
-    const [user] = await db.select().from(users).where(eq(users.username, username));
+    const normalizedUsername = username.trim().toLowerCase();
+    const [user] = await db.select().from(users).where(sql`lower(${users.username}) = ${normalizedUsername}`);
     return user || null;
   }
 
@@ -20,7 +21,8 @@ export class UserRepository {
   }
 
   async usernameExists(username: string): Promise<boolean> {
-    const [user] = await db.select({ id: users.id }).from(users).where(eq(users.username, username)).limit(1);
+    const normalizedUsername = username.trim().toLowerCase();
+    const [user] = await db.select({ id: users.id }).from(users).where(sql`lower(${users.username}) = ${normalizedUsername}`).limit(1);
     return !!user;
   }
 

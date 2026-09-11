@@ -1,35 +1,14 @@
 import { logger } from "@/lib/logger";
-import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
+import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
-import {
-  AlignCenter,
-  AlignLeft,
-  AlignRight,
-  ArrowLeft,
-  Bold,
-  Download,
-  Edit3,
-  Eye,
-  Image,
-  Italic,
-  Mail,
-  Minus,
-  Palette,
-  Plus,
-  Send,
-  Settings,
-  Square,
-  Target,
-  Trash2,
-  Type
-} from 'lucide-react'
+import { AlignCenter, AlignLeft, AlignRight, ArrowLeft, Bold, Download, Edit3, Eye, Image, Italic, Mail, Minus, Palette, Plus, Send, Settings, Square, Target, Trash2, Type } from "lucide-react"
 import React, { useState } from 'react'
-import { SimpleUserSelector } from '../../ui/SimpleUserSelector'
+import { SimpleUserSelector } from "../../ui/SimpleUserSelector"
 
 interface User {
   id: number;
@@ -575,7 +554,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
         const newGreetingSection: EmailSection = {
           id: 'greeting-section',
           type: 'greeting',
-          text: "Hello! 👋",
+          text: "Hello! ",
           styling: {
             fontSize: '24px',
             color: '#1f2937',
@@ -853,7 +832,7 @@ export const EmailDesignStudio: React.FC<EmailDesignStudioProps> = ({
       // Get greeting from sections or direct field
       const greetingFromSections = currentDesign.content.sections?.['greeting']?.text ||
         currentDesign.content.sections?.['greeting-section']?.text || '';
-      const finalGreeting = greetingFromSections || currentDesign.content.greeting || 'Hello! 👋';
+      const finalGreeting = greetingFromSections || currentDesign.content.greeting || 'Hello! ';
 
       // Prepare order button data with proper fallbacks (prioritize sections data for consistency)
       const orderButton = {

@@ -1,9 +1,14 @@
 import { logger } from "../logger";
 import PDFDocument from 'pdfkit';
+import { tLocale } from "../i18n";
 import { db } from "../db";
 import { paymentTransactions } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { getStripePaymentAmounts } from "./stripe-service";
+import {
+  buildChefBookingReceiptBreakdown,
+  buildKitchenPayoutStatementBreakdown,
+} from "@shared/booking-pricing-breakdown";
 
 /**
  * Generate invoice PDF for a booking
@@ -17,17 +22,19 @@ export async function generateInvoicePDF(
   storageBookings: any[],
   equipmentBookings: any[],
   paymentIntentId: string | null,
-  options?: { viewer?: 'chef' | 'manager' }
+  options?: { viewer?: 'chef' | 'manager', locale?: string }
 ): Promise<Buffer> {
   const invoiceViewer = options?.viewer ?? 'chef';
+  const locale = options?.locale || 'en';
   // Get Stripe-synced amounts from payment_transactions if available
-  let stripePlatformFee = 0; // Platform fee from Stripe (in cents)
+  let stripePlatformFee = 0; // Platform service fee (in cents)
   let stripeTotalAmount = 0; // Total amount from Stripe (in cents)
-  let stripeBaseAmount = 0; // Base amount from Stripe (in cents) - for kitchen booking
-  let stripeNetAmount = 0; // Net amount after fees from Stripe (in cents)
-  // Note: Stripe processing fee is handled internally by Stripe, not tracked here
-  const stripeStorageBaseAmounts: Map<number, number> = new Map(); // Storage booking ID -> base amount
-  const stripeEquipmentBaseAmounts: Map<number, number> = new Map(); // Equipment booking ID -> base amount
+  let stripeBaseAmount = 0; // Manager gross = subtotal + tax (in cents)
+  let stripeProcessingFeeCents = 0;
+  let managerRevenueCents = 0;
+  let storedTaxAmountCents = 0;
+  let ptMetadata: Record<string, unknown> = {};
+  let transactionStatus = String(booking.paymentStatus || booking.payment_status || 'paid');
 
   if (paymentIntentId) {
     try {
@@ -38,20 +45,35 @@ export async function generateInvoicePDF(
         .limit(1);
 
       if (paymentTransaction) {
+        transactionStatus = String(paymentTransaction.status || transactionStatus);
         // Use Stripe-synced values
         stripeTotalAmount = parseInt(String(paymentTransaction.amount)) || 0;
-        stripePlatformFee = parseInt(String(paymentTransaction.serviceFee)) || 0; // Platform fee from Stripe
-        stripeBaseAmount = parseInt(String(paymentTransaction.baseAmount)) || 0; // Base amount from Stripe
-        // Note: Stripe processing fee is handled internally by Stripe, not extracted from metadata
+        stripePlatformFee = parseInt(String(paymentTransaction.serviceFee)) || 0;
+        stripeBaseAmount = parseInt(String(paymentTransaction.baseAmount)) || 0;
+        stripeProcessingFeeCents = parseInt(String(paymentTransaction.stripeProcessingFee || "0")) || 0;
+        managerRevenueCents = parseInt(String(paymentTransaction.managerRevenue || "0")) || 0;
+        storedTaxAmountCents = parseInt(String((paymentTransaction as any).taxAmount || (paymentTransaction as any).tax_amount || "0")) || 0;
+        ptMetadata = paymentTransaction.metadata
+          ? (typeof paymentTransaction.metadata === "string"
+            ? JSON.parse(paymentTransaction.metadata)
+            : (paymentTransaction.metadata as Record<string, unknown>))
+          : {};
+        if (storedTaxAmountCents <= 0 && ptMetadata.approvedTax != null) {
+          storedTaxAmountCents = parseInt(String(ptMetadata.approvedTax)) || 0;
+        }
 
-        // For bundle bookings, we need to get individual booking base amounts
-        // The base_amount in payment_transactions is the total base for the bundle
-        // We'll calculate proportions from the booking data
-        logger.info(`[Invoice] Using Stripe-synced amounts: total=${stripeTotalAmount}, base=${stripeBaseAmount}, platformFee=${stripePlatformFee}`);
+        logger.info(`[Invoice] Using Stripe-synced amounts: total=${stripeTotalAmount}, base=${stripeBaseAmount}, platformFee=${stripePlatformFee}, stripeFee=${stripeProcessingFeeCents}, managerRevenue=${managerRevenueCents}, tax=${storedTaxAmountCents}`);
       }
     } catch (error) {
       logger.warn('[Invoice] Could not fetch payment transaction, will calculate fees:', error);
     }
+  }
+  // kitchen_bookings.service_fee has always represented the booking's platform
+  // commission. Prefer it for legacy rows where payment_transactions.service_fee
+  // may contain Stripe fee + commission from the former destination-charge model.
+  const bookingPlatformFeeCents = parseInt(String(booking.serviceFee || booking.service_fee || "0")) || 0;
+  if (bookingPlatformFeeCents > 0) {
+    stripePlatformFee = bookingPlatformFeeCents;
   }
   // Calculate pricing first (async operations)
   let totalAmount = 0;
@@ -145,7 +167,7 @@ export async function generateInvoicePDF(
 
           totalAmount += kitchenAmount;
           items.push({
-            description: `Kitchen Booking (${durationHours.toFixed(1)} hour${durationHours !== 1 ? 's' : ''})`,
+            description: tLocale(locale, "kitchenBookingWithHours", { ns: "chef", defaultValue: "Kitchen Booking ({hours} hours)", hours: durationHours.toFixed(1) }),
             quantity: durationHours,
             rate: hourlyRate,
             amount: kitchenAmount,
@@ -192,19 +214,19 @@ export async function generateInvoicePDF(
                 totalAmount += amount;
                 
                 // Construct detailed description with storage name and type
-                let name = 'Storage Booking';
+                let name = tLocale(locale, "storageBooking", { ns: "chef", defaultValue: "Storage Booking" });
                 if (storage.storageName) {
                     name = storage.storageName;
                     if (storage.storageType) name += ` (${storage.storageType})`;
                 } else if (storage.storageType) {
-                    name = `Storage - ${storage.storageType}`;
+                    name = tLocale(locale, "storageWithType", { ns: "chef", defaultValue: "Storage - {type}", type: storage.storageType });
                 }
 
                 // Add note about extensions if booking period is longer than 1 day
-                const daysNote = quantity > 1 ? ` (incl. extensions)` : '';
+                const daysNote = quantity > 1 ? tLocale(locale, "inclExtensions", { ns: "chef", defaultValue: " (incl. extensions)" }) : '';
                 
                 items.push({
-                   description: `${name} - ${quantity} day${quantity !== 1 ? 's' : ''}${daysNote}`,
+                   description: tLocale(locale, "storageBookingWithDays", { ns: "chef", defaultValue: "{name} - {days} days{note}", name, days: quantity, note: daysNote }),
                    quantity: quantity || 1,
                    rate: rate || (amount / (quantity || 1)),
                    amount: amount
@@ -225,7 +247,7 @@ export async function generateInvoicePDF(
               totalAmount += amount;
               
               // Construct detailed description
-              let name = 'Equipment Rental';
+              let name = tLocale(locale, "equipmentRental", { ns: "chef", defaultValue: "Equipment Rental" });
               if (eqBooking.brand) {
                   name = eqBooking.brand;
                   if (eqBooking.equipmentType) name += ` (${eqBooking.equipmentType})`;
@@ -257,50 +279,53 @@ export async function generateInvoicePDF(
   // Note: Stripe processing fee is handled internally by Stripe and should not be shown on invoices
   // The platform fee (service fee) is what we charge, Stripe's fees are separate
 
-  // Tax calculation
+  // Tax calculation — tax is on booking subtotal (line items), not tax-inclusive reverse math
   let taxRatePercent = 0;
-  if (kitchen && (kitchen.taxRatePercent || kitchen.tax_rate_percent)) {
+  if (ptMetadata.taxRatePercent != null) {
+      taxRatePercent = parseFloat(String(ptMetadata.taxRatePercent)) || 0;
+  } else if (kitchen && (kitchen.taxRatePercent || kitchen.tax_rate_percent)) {
       taxRatePercent = parseFloat(String(kitchen.taxRatePercent || kitchen.tax_rate_percent));
   }
   
-  // Try to get tax from payment metadata first
   let taxAmount = 0;
-  let taxFromMetadata = false;
-  
-  // Try transaction metadata
-  // We need to access the `paymentTransaction` object we fetched earlier.
-  // It was fetched into local scope variables (stripeBaseAmount etc) but the object itself wasn't saved to a variable accessible here?
-  // Re-checking the original code... 
-  // Line 39: if (paymentTransaction) ... 
-  // Error: I cannot access 'paymentTransaction' here if I didn't save it outside the if block.
-  // But wait, the original code I am replacing ENDS at line 417. Use 'paymentTransaction' logic if I can.
-  // Actually, I can calculcate tax from taxRatePercent * totalAmount.
-  
-  const taxCents = Math.round((totalAmount * 100 * taxRatePercent) / 100);
-  taxAmount = taxCents / 100;
+  if (storedTaxAmountCents > 0) {
+    taxAmount = storedTaxAmountCents / 100;
+  } else {
+    const taxCents = Math.round((totalAmount * 100 * taxRatePercent) / 100);
+    taxAmount = taxCents / 100;
+  }
+  const taxCents = Math.round(taxAmount * 100);
 
   // Calculate totals
   const subtotalCents = Math.round(totalAmount * 100);
-  const subtotalWithTaxCents = subtotalCents + taxCents;
+  if (ptMetadata.taxRatePercent == null && storedTaxAmountCents > 0 && subtotalCents > 0) {
+    taxRatePercent = (storedTaxAmountCents * 100) / subtotalCents;
+  }
+  let platformFeeCents = stripePlatformFee > 0
+    ? stripePlatformFee
+    : Math.round((platformFee || 0) * 100);
+  // The captured Stripe total is authoritative. Reconcile stale legacy fee
+  // columns from: total charged = subtotal + kitchen tax + platform fee.
+  if (stripeTotalAmount >= subtotalCents + taxCents) {
+    platformFeeCents = stripeTotalAmount - subtotalCents - taxCents;
+  }
+  const platformFeeDollars = platformFeeCents / 100;
+
+  // Chef pays subtotal + tax + service fee. Manager invoice uses earnings breakdown below.
+  const chefTotalCents = subtotalCents + taxCents + platformFeeCents;
+  const grandTotal = invoiceViewer === 'manager'
+    ? (managerRevenueCents > 0
+      ? managerRevenueCents / 100
+      : (subtotalCents + taxCents - stripeProcessingFeeCents) / 100)
+    : chefTotalCents / 100;
 
   // PARTIAL CAPTURE VERIFICATION: Cross-check invoice total with actual Stripe captured amount
-  // If they differ significantly, log a warning — the invoice breakdown may be stale
-  if (stripeTotalAmount > 0) {
-    const diff = Math.abs(subtotalWithTaxCents - stripeTotalAmount);
-    if (diff > 1) { // Allow 1 cent rounding tolerance
-      logger.warn(`[Invoice] MISMATCH: Calculated total (${subtotalWithTaxCents}) differs from Stripe captured amount (${stripeTotalAmount}) by ${diff} cents. Items: ${items.length}, Subtotal: ${subtotalCents}, Tax: ${taxCents}`);
+  if (stripeTotalAmount > 0 && invoiceViewer === 'chef') {
+    const diff = Math.abs(chefTotalCents - stripeTotalAmount);
+    if (diff > 1) {
+      logger.warn(`[Invoice] MISMATCH: Calculated chef total (${chefTotalCents}) differs from Stripe captured amount (${stripeTotalAmount}) by ${diff} cents. Items: ${items.length}, Subtotal: ${subtotalCents}, Tax: ${taxCents}, ServiceFee: ${platformFeeCents}`);
     }
   }
-  
-  // Platform fees for Manager Payout View
-  const platformFeeCents = Math.round(platformFee * 100);
-  const platformFeeForInvoice = invoiceViewer === 'manager' ? platformFee : 0;
-  
-  const totalForInvoice = invoiceViewer === 'manager'
-    ? (subtotalWithTaxCents - platformFeeCents) / 100
-    : (subtotalWithTaxCents) / 100;
-
-  const grandTotal = totalForInvoice;
 
   // For manager invoices: Fetch actual Stripe fees before PDF generation
   let stripeDataForManager: {
@@ -317,7 +342,9 @@ export async function generateInvoicePDF(
         // Use actual Stripe data - all values in cents, convert to dollars
         stripeDataForManager = {
           stripeProcessingFee: stripeData.stripeProcessingFee / 100,
-          stripeNetPayout: stripeData.stripeNetAmount / 100,
+          // stripeNetAmount is the platform charge net in the separate-charge model;
+          // it still includes our commission and is not the Connect transfer.
+          stripeNetPayout: Math.max(0, subtotalCents + taxCents - stripeData.stripeProcessingFee) / 100,
           actualPlatformFee: stripeData.stripePlatformFee / 100,
           dataSource: 'stripe'
         };
@@ -328,7 +355,7 @@ export async function generateInvoicePDF(
     }
   }
 
-  // Now generate PDF
+  // Now generate PDF — layout matches Local Cooks seller invoice (brand red header)
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({
@@ -344,314 +371,240 @@ export async function generateInvoicePDF(
       });
       doc.on('error', reject);
 
-      // Header Section
-      doc.fontSize(28).font('Helvetica-Bold').text('INVOICE', 50, 50);
-      doc.fontSize(10).font('Helvetica');
+      const primaryColor = '#E51636';
+      const textColor = '#333333';
+      const grayText = '#666666';
+      const contentRight = 562;
+      const labelCol = 320;
+      const valueCol = 450;
+      const valueWidth = 100;
 
-      // Invoice details (right-aligned)
+      const invoiceNumber = booking.reference_code || booking.referenceCode || `LC-${booking.id}-${new Date().getFullYear()}`;
+      const isPayout = invoiceViewer === 'manager';
+      const docTitle = isPayout
+        ? tLocale(locale, "payoutStatementTitle", { ns: "chef", defaultValue: "PAYOUT STATEMENT" })
+        : tLocale(locale, "invoiceTitle", { ns: "chef", defaultValue: "INVOICE" });
+
       const invoiceDate = new Date().toLocaleDateString('en-US', {
         year: 'numeric',
-        month: 'long',
-        day: 'numeric'
+        month: 'short',
+        day: '2-digit',
       });
-      const invoiceNumber = booking.reference_code || booking.referenceCode || `LC-${booking.id}-${new Date().getFullYear()}`;
 
-      // Right-align invoice details in top right corner
-      const pageWidth = doc.page.width;
-      const rightMargin = pageWidth - 50; // 50px margin from right edge
-      const labelWidth = 80; // Width for labels
-      const valueStartX = rightMargin - 200; // Start position for values
+      const bookingDateStr = booking.bookingDate
+        ? new Date(booking.bookingDate).toLocaleDateString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+          })
+        : 'N/A';
 
-      let rightY = 50;
-
-      // Invoice Number
-      doc.fontSize(10).font('Helvetica-Bold');
-      doc.text('Invoice #:', valueStartX, rightY, { width: labelWidth, align: 'right' });
-      doc.font('Helvetica');
-      doc.text(invoiceNumber, valueStartX + labelWidth + 5, rightY);
-      rightY += 15;
-
-      // Date
-      doc.font('Helvetica-Bold');
-      doc.text('Date:', valueStartX, rightY, { width: labelWidth, align: 'right' });
-      doc.font('Helvetica');
-      doc.text(invoiceDate, valueStartX + labelWidth + 5, rightY);
-
-      // Company info section
-      let leftY = 120;
-      doc.fontSize(14).font('Helvetica-Bold').text('Local Cooks', 50, leftY);
-      leftY += 18;
-      doc.fontSize(10).font('Helvetica').text('support@localcook.shop', 50, leftY);
-      leftY += 30;
-
-      // Bill To section - use fullName from chef_kitchen_applications
-      doc.fontSize(12).font('Helvetica-Bold').text('Bill To:', 50, leftY);
-      leftY += 18;
-      doc.fontSize(10).font('Helvetica');
-      if (chef) {
-        // full_name comes from chef_kitchen_applications table join
-        const chefName = chef.full_name || chef.fullName || chef.username || 'Chef';
-        doc.text(chefName, 50, leftY);
-        leftY += 15;
-        if (chef.email) {
-          doc.text(chef.email, 50, leftY);
-          leftY += 15;
-        }
-      }
-      leftY += 20;
-
-      // Booking details section
-      doc.fontSize(12).font('Helvetica-Bold').text('Booking Details:', 50, leftY);
-      leftY += 18;
-      doc.fontSize(10).font('Helvetica');
-
-      const bookingDateStr = booking.bookingDate ? new Date(booking.bookingDate).toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      }) : 'N/A';
-
-      doc.text(`Kitchen: ${kitchen?.name || 'Kitchen'}`, 50, leftY);
-      leftY += 15;
-      if (location?.name) {
-        doc.text(`Location: ${location.name}`, 50, leftY);
-        leftY += 15;
-      }
-      doc.text(`Date: ${bookingDateStr}`, 50, leftY);
-      leftY += 15;
-      
-      // Format time - show discrete slots if available and non-contiguous
+      // Discrete non-contiguous slots when present
       const selectedSlots = booking.selectedSlots || booking.selected_slots;
       let timeDisplay = `${booking.startTime || booking.start_time || 'N/A'} - ${booking.endTime || booking.end_time || 'N/A'}`;
-      
       if (Array.isArray(selectedSlots) && selectedSlots.length > 0) {
-        // Check if slots are contiguous (each slot has startTime and endTime)
-        const sorted = [...selectedSlots].sort((a: any, b: any) => 
+        const sorted = [...selectedSlots].sort((a: any, b: any) =>
           (a.startTime || a).localeCompare(b.startTime || b)
         );
         let isContiguous = true;
         for (let i = 1; i < sorted.length; i++) {
-          const prevSlot = sorted[i - 1];
-          const currSlot = sorted[i];
-          // Handle both old format (string) and new format (object with startTime/endTime)
-          const prevEnd = typeof prevSlot === 'string' ? prevSlot : prevSlot.endTime;
-          const currStart = typeof currSlot === 'string' ? currSlot : currSlot.startTime;
+          const prevEnd = typeof sorted[i - 1] === 'string' ? sorted[i - 1] : sorted[i - 1].endTime;
+          const currStart = typeof sorted[i] === 'string' ? sorted[i] : sorted[i].startTime;
           if (prevEnd !== currStart) {
             isContiguous = false;
             break;
           }
         }
-        
         if (!isContiguous) {
-          // Show discrete slots
           const formatSlotTime = (time: string) => {
             const [h, m] = time.split(':').map(Number);
             const ampm = h >= 12 ? 'PM' : 'AM';
-            const displayH = h % 12 || 12;
-            return `${displayH}:${m.toString().padStart(2, '0')} ${ampm}`;
+            return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${ampm}`;
           };
-          timeDisplay = sorted.map((slot: any) => {
-            if (typeof slot === 'string') {
-              return formatSlotTime(slot);
-            }
-            return `${formatSlotTime(slot.startTime)}-${formatSlotTime(slot.endTime)}`;
-          }).join(', ');
+          timeDisplay = sorted
+            .map((slot: any) =>
+              typeof slot === 'string'
+                ? formatSlotTime(slot)
+                : `${formatSlotTime(slot.startTime)}-${formatSlotTime(slot.endTime)}`
+            )
+            .join(', ');
         }
       }
-      
-      doc.text(`Time: ${timeDisplay}`, 50, leftY);
-      leftY += 30;
 
-      // Items table - define column positions and widths for proper table layout
-      const tableTop = leftY;
-      const tableLeft = 50;
-      const tableWidth = 500;
-      const rowHeight = 25;
-      const col1Width = 280; // Description
-      const col2Width = 50;  // Qty
-      const col3Width = 70;  // Rate
-      const col4Width = 100; // Amount
-      const col1X = tableLeft;
-      const col2X = tableLeft + col1Width;
-      const col3X = col2X + col2Width;
-      const col4X = col3X + col3Width;
+      const kitchenName = kitchen?.name || tLocale(locale, "kitchenDefault", { ns: "chef", defaultValue: "Kitchen" });
+      const chefName = chef?.full_name || chef?.fullName || chef?.username || 'Chef';
+      const feePercent = subtotalCents > 0 ? Math.round((platformFeeCents / subtotalCents) * 100) : 0;
 
-      // Table Header with borders and column separators
-      doc.rect(tableLeft, tableTop, tableWidth, rowHeight).fill('#f3f4f6');
-      doc.rect(tableLeft, tableTop, tableWidth, rowHeight).stroke('#d1d5db');
-      // Vertical column separators for header
-      doc.moveTo(col2X, tableTop).lineTo(col2X, tableTop + rowHeight).stroke('#d1d5db');
-      doc.moveTo(col3X, tableTop).lineTo(col3X, tableTop + rowHeight).stroke('#d1d5db');
-      doc.moveTo(col4X, tableTop).lineTo(col4X, tableTop + rowHeight).stroke('#d1d5db');
-      
-      doc.fillColor('#000000').fontSize(9).font('Helvetica-Bold');
-      doc.text('Description', col1X + 5, tableTop + 8, { width: col1Width - 10 });
-      doc.text('Qty', col2X + 5, tableTop + 8, { width: col2Width - 10, align: 'center' });
-      doc.text('Rate', col3X + 5, tableTop + 8, { width: col3Width - 10, align: 'center' });
-      doc.text('Amount', col4X + 5, tableTop + 8, { width: col4Width - 10, align: 'right' });
+      // Header
+      doc.fontSize(28).font('Helvetica-Bold').fillColor(primaryColor).text(docTitle, 50, 50);
+      doc.fontSize(14).font('Helvetica').fillColor(grayText).text(`#${invoiceNumber}`, 50, 85);
+      doc.fontSize(20).font('Helvetica-Bold').fillColor(textColor).text('Local Cooks', 50, 50, { align: 'right' });
+      doc.fontSize(12).font('Helvetica').fillColor(grayText).text('localcook.shop', 50, 75, { align: 'right' });
 
-      let currentY = tableTop + rowHeight;
+      let yPos = 120;
+      doc.moveTo(50, yPos).lineTo(contentRight, yPos).lineWidth(2).strokeColor(primaryColor).stroke();
+      doc.lineWidth(1).strokeColor('#000000');
+      yPos += 20;
 
-      // Items rows with borders and column separators
-      items.forEach((item, index) => {
-        // Draw row border
-        doc.rect(tableLeft, currentY, tableWidth, rowHeight).stroke('#d1d5db');
-        // Vertical column separators
-        doc.moveTo(col2X, currentY).lineTo(col2X, currentY + rowHeight).stroke('#d1d5db');
-        doc.moveTo(col3X, currentY).lineTo(col3X, currentY + rowHeight).stroke('#d1d5db');
-        doc.moveTo(col4X, currentY).lineTo(col4X, currentY + rowHeight).stroke('#d1d5db');
-        
-        // Alternate row background
-        if (index % 2 === 0) {
-          doc.rect(tableLeft + 1, currentY + 1, tableWidth - 2, rowHeight - 2).fill('#fafafa');
-        }
-
-        doc.fontSize(9).font('Helvetica').fillColor('#000000');
-        doc.text(item.description, col1X + 5, currentY + 8, { width: col1Width - 10 });
-        doc.text(item.quantity.toString(), col2X + 5, currentY + 8, { width: col2Width - 10, align: 'center' });
-        doc.text(`$${item.rate.toFixed(2)}`, col3X + 5, currentY + 8, { width: col3Width - 10, align: 'center' });
-        doc.text(`$${item.amount.toFixed(2)}`, col4X + 5, currentY + 8, { width: col4Width - 10, align: 'right' });
-        currentY += rowHeight;
-      });
-
-      // Totals section
-      currentY += 15;
-
-      // Totals
-      const formatAmount = (amount: number, negative = false) => {
-        const normalized = Math.abs(amount);
-        return `${negative ? '-' : ''}$${normalized.toFixed(2)}`;
-      };
-      
-      const addTotalRow = (label: string, amount: number, negative = false, bold = false) => {
-        if (bold) {
-          doc.font('Helvetica-Bold');
-        } else {
-          doc.font('Helvetica');
-        }
-        doc.text(label, 380, currentY, { width: 110, align: 'right' });
-        doc.text(formatAmount(amount, negative), 500, currentY, { align: 'right', width: 50 });
-        currentY += 20;
-        doc.font('Helvetica');
+      // Two-column booking meta (only relevant kitchen fields)
+      const leftCol = 50;
+      const rightCol = 320;
+      const metaLine = (x: number, y: number, label: string, value: string) => {
+        doc.fontSize(11).font('Helvetica-Bold').fillColor(textColor).text(`${label}: `, x, y, { continued: true });
+        doc.font('Helvetica').fillColor(grayText).text(value);
       };
 
-      if (invoiceViewer === 'manager') {
-        // Manager Invoice: Show earnings breakdown with net revenue from Stripe
-        // ENTERPRISE STANDARD: For Stripe Connect destination charges, only application_fee_amount
-        // is deducted from the manager's payout. The actual Stripe processing fee comes from the
-        // platform's balance, NOT the manager's. Showing both as deductions is double-counting.
-        // - actualPlatformFee = application_fee_amount = what manager actually paid (single deduction)
-        // - stripeProcessingFee = informational only (what Stripe charged the platform)
-        // - stripeNetPayout = amount - application_fee_amount = what manager received in Stripe
-        const grossRevenue = totalAmount + taxAmount; // What customer paid
+      metaLine(leftCol, yPos, 'Date', invoiceDate);
+      metaLine(rightCol, yPos, 'Kitchen', kitchenName);
+      yPos += 18;
+      metaLine(leftCol, yPos, 'Booking', bookingDateStr);
+      if (location?.name) metaLine(rightCol, yPos, 'Location', location.name);
+      yPos += 18;
+      metaLine(leftCol, yPos, 'Time', timeDisplay);
+      metaLine(rightCol, yPos, isPayout ? 'Chef' : 'Customer', chefName);
+      yPos += 30;
+
+      // Items table — Item / Qty / Price (seller invoice style)
+      const tableWidth = contentRight - 50;
+      doc.roundedRect(50, yPos, tableWidth, 30, 5).fill('#F3F4F6');
+      doc.fillColor(textColor).font('Helvetica-Bold').fontSize(11);
+      doc.text('Item', 65, yPos + 10);
+      doc.text('Qty', 350, yPos + 10, { width: 50, align: 'center' });
+      doc.text('Price', valueCol, yPos + 10, { width: valueWidth, align: 'right' });
+      yPos += 40;
+
+      doc.font('Helvetica').fontSize(11);
+      for (const item of items) {
+        if (yPos > 680) {
+          doc.addPage();
+          yPos = 50;
+        }
+        doc.fillColor(textColor).text(item.description, 65, yPos, { width: 270 });
+        doc.text(String(item.quantity), 350, yPos, { width: 50, align: 'center' });
+        doc.text(`$${item.amount.toFixed(2)}`, valueCol, yPos, { width: valueWidth, align: 'right' });
+        yPos += Math.max(20, doc.heightOfString(item.description, { width: 270 }) + 6);
+      }
+
+      doc.rect(50, yPos, tableWidth, 1).fill('#E5E7EB');
+      yPos += 16;
+
+      const fmt = (amount: number, negative = false) =>
+        `${negative ? '-' : ''}$${Math.abs(amount).toFixed(2)}`;
+
+      const addRow = (label: string, amount: number, opts?: { negative?: boolean; color?: string }) => {
+        doc.fontSize(11).font('Helvetica').fillColor(grayText).text(label, labelCol, yPos);
+        doc.fillColor(opts?.color || textColor).text(fmt(amount, opts?.negative), valueCol, yPos, {
+          width: valueWidth,
+          align: 'right',
+        });
+        yPos += 18;
+      };
+
+      if (isPayout) {
+        const payout = buildKitchenPayoutStatementBreakdown({
+          kitchenBaseSubtotalCents: subtotalCents,
+          kitchenHstRatePercent: taxRatePercent,
+          platformFeeRate: subtotalCents > 0 ? platformFeeCents / subtotalCents : 0,
+          platformFeeAmountCents: platformFeeCents,
+          paymentProcessorFeeCents: stripeProcessingFeeCents,
+          kitchenNetPayoutCents: managerRevenueCents,
+          refundAmountCents: 0,
+        });
 
         let stripeProcessingFee: number;
         let stripeNetPayout: number;
-        let actualPlatformFee: number;
-        let dataSource: 'stripe' | 'calculated' | 'pending_sync';
 
-        if (stripeDataForManager) {
+        if (managerRevenueCents > 0 || stripeProcessingFeeCents > 0) {
+          stripeProcessingFee = stripeProcessingFeeCents / 100;
+          stripeNetPayout =
+            managerRevenueCents > 0 ? managerRevenueCents / 100 : payout.kitchenNetPayoutCents / 100;
+        } else if (stripeDataForManager) {
           stripeProcessingFee = stripeDataForManager.stripeProcessingFee;
-          stripeNetPayout = stripeDataForManager.stripeNetPayout;
-          actualPlatformFee = stripeDataForManager.actualPlatformFee;
-          dataSource = stripeDataForManager.dataSource;
+          stripeNetPayout =
+            managerRevenueCents > 0 ? managerRevenueCents / 100 : stripeDataForManager.stripeNetPayout;
         } else {
-          actualPlatformFee = platformFee;
           stripeProcessingFee = 0;
-          stripeNetPayout = grossRevenue - actualPlatformFee;
-          dataSource = 'pending_sync';
+          stripeNetPayout = payout.kitchenNetPayoutCents / 100;
         }
 
-        // Section header for earnings breakdown
-        doc.fontSize(11).font('Helvetica-Bold').fillColor('#1f2937');
-        doc.text('EARNINGS BREAKDOWN', 60, currentY);
-        currentY += 25;
-        doc.fontSize(10).font('Helvetica').fillColor('#000000');
+        const chefPaid = (payout.kitchenGrossCollectedCents + payout.platformFeeAmountCents) / 100;
 
-        addTotalRow('Subtotal (Services):', totalAmount);
-        if (taxAmount > 0) {
-          addTotalRow('Tax Collected:', taxAmount);
+        addRow('Subtotal', totalAmount);
+        if (payout.kitchenHstRegistered && taxAmount > 0) {
+          addRow(`HST (${payout.kitchenHstRatePercent}%)`, taxAmount);
+        }
+        if (platformFeeDollars > 0) {
+          addRow(`Service fee (${feePercent}%)`, platformFeeDollars);
         }
 
-        // Gross revenue line
-        doc.moveTo(380, currentY - 5).lineTo(550, currentY - 5).stroke('#e5e7eb');
-        currentY += 5;
-        addTotalRow('Gross Revenue:', grossRevenue, false, true);
-        currentY += 5;
+        doc.rect(labelCol, yPos, 230, 1).fill('#000000');
+        yPos += 8;
+        doc.font('Helvetica-Bold').fontSize(11).fillColor(textColor).text('Chef paid', labelCol, yPos);
+        doc.text(fmt(chefPaid), valueCol, yPos, { width: valueWidth, align: 'right' });
+        yPos += 20;
 
-        // Deductions section — single line for what Stripe actually deducted from payout
-        doc.fontSize(10).fillColor('#6b7280');
-        doc.text('Deductions:', 60, currentY);
-        currentY += 18;
-        doc.fillColor('#000000');
-
-        // Show actual Stripe processing fee (from BalanceTransaction API)
-        const stripeFeeLabel = dataSource === 'pending_sync'
-          ? 'Stripe Fee (pending sync):'
-          : 'Stripe Fee:';
-        addTotalRow(stripeFeeLabel, stripeProcessingFee, true);
-
-        // Net payout (bold, highlighted) — what was actually deposited to manager's Stripe account
-        doc.moveTo(50, currentY - 5).lineTo(550, currentY - 5).stroke();
-        currentY += 10;
-        doc.fontSize(12).font('Helvetica-Bold').fillColor('#059669');
-        doc.text('Net Payout:', 380, currentY, { align: 'right', width: 110 });
-        doc.text(`$${stripeNetPayout.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
-        doc.font('Helvetica').fontSize(10).fillColor('#000000');
-
-        // Add data source note for transparency
-        currentY += 20;
-        doc.fontSize(8).fillColor('#6b7280');
-        if (dataSource === 'stripe') {
-          doc.text('* Net Payout is the actual amount Stripe transferred to your Connect account', 60, currentY);
-          currentY += 12;
-          doc.text('* Stripe Fee = actual processing fee charged by Stripe (from Balance Transaction)', 60, currentY);
-          currentY += 12;
+        if (platformFeeDollars > 0) {
+          addRow('Service fee', platformFeeDollars, { negative: true });
         }
-        if (taxAmount > 0) {
-          doc.text('* Tax collected is your responsibility to remit to tax authorities', 60, currentY);
+        if (stripeProcessingFee > 0) {
+          addRow('Processing fee', stripeProcessingFee, { negative: true });
         }
-        doc.fillColor('#000000').fontSize(10);
+
+        doc.rect(labelCol, yPos, 230, 1).fill('#000000');
+        yPos += 10;
+        doc.font('Helvetica-Bold').fontSize(14).fillColor(textColor).text('Net payout', labelCol, yPos);
+        doc.fillColor(primaryColor).text(fmt(stripeNetPayout), valueCol, yPos, {
+          width: valueWidth,
+          align: 'right',
+        });
+        yPos += 36;
       } else {
-        // Chef Invoice: Transparent view showing base amount + tax breakdown
-        addTotalRow('Subtotal (Services):', totalAmount);
-        if (taxAmount > 0 && taxRatePercent > 0) {
-          addTotalRow(`Tax (${taxRatePercent}%):`, taxAmount);
-        } else if (taxAmount > 0) {
-          addTotalRow('Tax:', taxAmount);
+        const receipt = buildChefBookingReceiptBreakdown({
+          kitchenBaseSubtotalCents: subtotalCents,
+          kitchenHstRatePercent: taxRatePercent,
+          platformFeeRate: subtotalCents > 0 ? platformFeeCents / subtotalCents : 0,
+          platformFeeAmountCents: platformFeeCents,
+        });
+
+        addRow('Subtotal', totalAmount);
+        if (receipt.kitchenHstRegistered && receipt.kitchenHstAmountCents > 0) {
+          addRow(`HST (${receipt.kitchenHstRatePercent}%)`, taxAmount);
         }
-        
-        // Total (bold and larger)
-        doc.moveTo(380, currentY - 5).lineTo(550, currentY - 5).stroke('#e5e7eb');
-        currentY += 10;
-        doc.fontSize(12).font('Helvetica-Bold');
-        doc.text('Total Paid:', 380, currentY, { align: 'right', width: 110 });
-        doc.text(`$${grandTotal.toFixed(2)} CAD`, 500, currentY, { align: 'right', width: 50 });
-        doc.font('Helvetica').fontSize(10);
+        if (platformFeeDollars > 0) {
+          addRow(`Service fee (${feePercent}%)`, platformFeeDollars);
+        }
+
+        doc.rect(labelCol, yPos, 230, 1).fill('#000000');
+        yPos += 10;
+        doc.font('Helvetica-Bold').fontSize(14).fillColor(textColor).text('Total', labelCol, yPos);
+        doc.fillColor(primaryColor).text(fmt(grandTotal), valueCol, yPos, {
+          width: valueWidth,
+          align: 'right',
+        });
+        yPos += 36;
       }
 
-      // Payment info section
-      currentY += 40;
-      doc.rect(50, currentY, 500, 60).stroke('#e5e7eb');
-      doc.rect(50, currentY, 500, 60).fill('#f9fafb');
-      currentY += 15;
+      // Payment status (seller invoice style)
+      const isRefunded = transactionStatus === 'refunded' || transactionStatus === 'partially_refunded';
+      const statusLabel = transactionStatus === 'refunded'
+        ? 'REFUNDED'
+        : transactionStatus === 'partially_refunded'
+          ? 'PARTIALLY REFUNDED'
+          : 'PAID';
+      const statusBg = isRefunded ? '#fff7ed' : '#dcfce7';
+      const statusBorder = isRefunded ? '#fed7aa' : '#bbf7d0';
+      const statusColor = isRefunded ? '#c2410c' : '#16a34a';
+      doc.roundedRect(50, yPos, tableWidth, 40, 5).fillAndStroke(statusBg, statusBorder);
+      doc.font('Helvetica-Bold').fontSize(12).fillColor(textColor)
+        .text('Payment Status: ', 70, yPos + 14, { continued: true })
+        .fillColor(statusColor).text(statusLabel);
 
-      doc.fontSize(10).font('Helvetica-Bold').text('Payment Information', 60, currentY);
-      currentY += 18;
-      doc.font('Helvetica');
-      doc.text('Payment Method: Credit/Debit Card', 60, currentY);
-      currentY += 15;
-      doc.fontSize(9).fillColor('#6b7280').text('Note: Payment has been processed successfully.', 60, currentY);
-      doc.fillColor('#000000');
-
-      // Footer
-      const pageHeight = doc.page.height;
-      const footerY = pageHeight - 80;
-
-      doc.moveTo(50, footerY).lineTo(550, footerY).stroke('#e5e7eb');
-      doc.fontSize(9).fillColor('#6b7280').text('For questions, contact support@localcook.shop', 50, footerY + 15, { align: 'center', width: 500 });
-      doc.fillColor('#000000');
+      doc.fontSize(10).font('Helvetica').fillColor('#9CA3AF');
+      doc.text('For questions, contact support@localcook.shop', 50, doc.page.height - 60, {
+        align: 'center',
+        width: tableWidth,
+      });
 
       doc.end();
     } catch (error) {
@@ -669,9 +622,10 @@ export async function generateStorageInvoicePDF(
   storageBooking: any,
   chef: any,
   extensionDetails: any,
-  options?: { viewer?: 'chef' | 'manager' }
+  options?: { viewer?: 'chef' | 'manager', locale?: string }
 ): Promise<Buffer> {
   const invoiceViewer = options?.viewer ?? 'chef';
+  const locale = options?.locale || 'en';
 
   return new Promise((resolve, reject) => {
     try {
@@ -826,28 +780,19 @@ export async function generateStorageInvoicePDF(
 
       // MANAGER VIEW: Show earnings breakdown with tax collected and Stripe fee deduction
       if (invoiceViewer === 'manager') {
-        // ENTERPRISE STANDARD: For Stripe Connect destination charges:
-        // - serviceFee = application_fee_amount = what Stripe withheld from payout (single deduction)
-        // - managerRevenue = amount - application_fee_amount = actual amount received in Stripe account
-        // - stripeProcessingFee = informational only (actual fee Stripe charged the platform)
+        // serviceFee = platform commission (kept by platform; chef paid it)
+        // managerRevenue = Connect transfer = (subtotal+tax) − stripe fee
         const stripeProcessingFee = parseInt(String(transaction.stripeProcessingFee || transaction.stripe_processing_fee || '0')) || 0;
         const managerRevenue = parseInt(String(transaction.managerRevenue || transaction.manager_revenue || '0')) || 0;
         const serviceFee = parseInt(String(transaction.serviceFee || transaction.service_fee || '0')) || 0;
 
-        // Use serviceFee (application_fee) as the actual deduction. Fall back to amount-managerRevenue.
-        const actualDeduction = serviceFee > 0
-          ? serviceFee
-          : (managerRevenue > 0 ? Math.max(0, displayTotalAmount - managerRevenue) : stripeProcessingFee);
-
         currentY += 10;
 
-        // Section header for earnings breakdown
         doc.fontSize(11).font('Helvetica-Bold').fillColor('#1f2937');
         doc.text('EARNINGS BREAKDOWN', 60, currentY);
         currentY += 20;
         doc.fontSize(10).font('Helvetica').fillColor('#000000');
 
-        // Show base amount and tax collected
         doc.text('Base Amount:', 380, currentY);
         doc.text(`$${(displayBaseAmount / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
         currentY += 18;
@@ -858,64 +803,50 @@ export async function generateStorageInvoicePDF(
           currentY += 18;
         }
 
-        // Gross revenue line
         doc.moveTo(380, currentY - 5).lineTo(550, currentY - 5).stroke('#e5e7eb');
         currentY += 5;
         doc.font('Helvetica-Bold');
         doc.text('Gross Revenue:', 380, currentY);
-        doc.text(`$${(displayTotalAmount / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
+        const managerGrossCents = displayBaseAmount + Math.max(0, displayTaxAmount);
+        doc.text(`$${(managerGrossCents / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
         doc.font('Helvetica');
         currentY += 20;
 
-        // Deductions section — single deduction = application_fee_amount (what Stripe withheld)
         doc.fontSize(10).fillColor('#6b7280');
         doc.text('Deductions:', 60, currentY);
         currentY += 18;
         doc.fillColor('#000000');
 
         doc.text('Stripe Fee:', 380, currentY);
-        doc.fillColor('#dc2626'); // Red color for deduction
-        if (actualDeduction > 0) {
-          doc.text(`-$${(actualDeduction / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
+        doc.fillColor('#dc2626');
+        if (stripeProcessingFee > 0) {
+          doc.text(`-$${(stripeProcessingFee / 100).toFixed(2)}`, 480, currentY, { align: 'right' });
         } else {
           doc.text('(pending sync)', 480, currentY, { align: 'right' });
         }
         doc.fillColor('#000000');
         currentY += 20;
 
-        // Show actual processing fee as informational sub-line if it differs (international cards / AMEX)
-        if (
-          stripeProcessingFee > 0 &&
-          actualDeduction > 0 &&
-          Math.abs(stripeProcessingFee - actualDeduction) > 1
-        ) {
-          doc.fontSize(8).fillColor('#9ca3af').font('Helvetica-Oblique');
-          doc.text(
-            `(actual Stripe processing fee: $${(stripeProcessingFee / 100).toFixed(2)})`,
-            300,
-            currentY - 8,
-            { width: 250, align: 'right' }
-          );
-          doc.font('Helvetica').fontSize(10).fillColor('#000000');
-          currentY += 6;
-        }
-
-        // Net payout (bold, highlighted) — actual amount in manager's Stripe account
         doc.moveTo(380, currentY - 5).lineTo(550, currentY - 5).stroke('#e5e7eb');
         currentY += 5;
-        doc.fontSize(12).font('Helvetica-Bold').fillColor('#059669'); // Green for net
+        doc.fontSize(12).font('Helvetica-Bold').fillColor('#059669');
         doc.text('You Receive:', 380, currentY);
-        const netAmount = managerRevenue > 0 ? managerRevenue : (displayTotalAmount - actualDeduction);
+        const netAmount = managerRevenue > 0
+          ? managerRevenue
+          : Math.max(0, managerGrossCents - stripeProcessingFee);
         doc.text(`$${(netAmount / 100).toFixed(2)} CAD`, 480, currentY, { align: 'right' });
         doc.fillColor('#000000');
         currentY += 25;
 
-        // Add notes
         doc.fontSize(8).fillColor('#6b7280');
         doc.text('* You Receive is the actual amount Stripe transferred to your Connect account', 60, currentY);
         currentY += 12;
+        if (serviceFee > 0) {
+          doc.text(`* Platform service fee ($${(serviceFee / 100).toFixed(2)}) was paid by the chef and kept by the platform`, 60, currentY);
+          currentY += 12;
+        }
         if (taxAmount > 0 || displayTaxAmount > 0) {
-          doc.text('* Tax collected is your responsibility to remit to tax authorities', 60, currentY);
+          doc.text('* Tax collected is included in your payout — remit to tax authorities', 60, currentY);
         }
         doc.fillColor('#000000').fontSize(10);
       }
@@ -964,7 +895,7 @@ export async function generateDamageClaimInvoicePDF(
     kitchenBookingId: number | null;
     storageBookingId: number | null;
   },
-  options?: { viewer?: 'chef' | 'manager' }
+  options?: { viewer?: 'chef' | 'manager' }, locale?: string
 ): Promise<Buffer> {
   const invoiceViewer = options?.viewer ?? 'chef';
   

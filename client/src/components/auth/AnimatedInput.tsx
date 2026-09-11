@@ -2,19 +2,23 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Eye, EyeOff } from "lucide-react";
+import { Icon } from "@iconify/react";
 import { forwardRef, useState } from "react";
 
 interface AnimatedInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onDrag'> {
   label?: string;
+  /** Optional element rendered right-aligned on the same line as the label (e.g. "Forgot password?"). */
+  labelRight?: React.ReactNode;
   error?: string;
   icon?: React.ReactNode;
   showPasswordToggle?: boolean;
+  /** Strength meter is for set/reset password only — never for sign-in. */
+  showPasswordStrength?: boolean;
   validationState?: 'idle' | 'valid' | 'invalid';
 }
 
 const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
-  ({ label, error, icon, showPasswordToggle, validationState = 'idle', className, type = 'text', value, ...props }, ref) => {
+  ({ label, labelRight, error, icon, showPasswordToggle, showPasswordStrength = false, validationState = 'idle', className, type = 'text', value, ...props }, ref) => {
     const [showPassword, setShowPassword] = useState(false);
     const [internalValue, setInternalValue] = useState(value || '');
 
@@ -23,18 +27,25 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
 
     return (
       <div className="space-y-2">
-        {/* Label */}
-        {label && (
-          <Label 
-            htmlFor={props.id || props.name}
-            className={cn(
-              "text-sm font-medium",
-              validationState === 'invalid' && "text-destructive",
-              validationState === 'valid' && "text-green-600"
+        {/* Label row */}
+        {(label || labelRight) && (
+          <div className="flex items-baseline justify-between gap-2">
+            {label && (
+              <Label 
+                htmlFor={props.id || props.name}
+                className={cn(
+                  "text-sm font-medium",
+                  validationState === 'invalid' && "text-destructive"
+                )}
+              >
+                {label}
+                {props.required && (
+                  <span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
+                )}
+              </Label>
             )}
-          >
-            {label}
-          </Label>
+            {labelRight && <div className="flex-shrink-0">{labelRight}</div>}
+          </div>
         )}
 
         {/* Input Container */}
@@ -49,6 +60,7 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
           {/* Input */}
           <Input
             ref={ref}
+            id={props.id || props.name}
             type={inputType}
             value={value}
             className={cn(
@@ -56,7 +68,6 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
               icon && "pl-10",
               showPasswordToggle && "pr-10",
               validationState === 'invalid' && "border-destructive focus-visible:ring-destructive",
-              validationState === 'valid' && "border-green-500 focus-visible:ring-green-500",
               className
             )}
             onChange={(e) => {
@@ -76,7 +87,11 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
               onClick={() => setShowPassword(!showPassword)}
               tabIndex={-1}
             >
-              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              <Icon
+                icon={showPassword ? "mdi:eye-off-outline" : "mdi:eye-outline"}
+                className="h-4 w-4"
+                aria-hidden
+              />
             </Button>
           )}
         </div>
@@ -88,8 +103,8 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
           </p>
         )}
 
-        {/* Password Strength Indicator */}
-        {showPasswordToggle && hasValue && (
+        {/* Password Strength Indicator (create/reset flows only) */}
+        {showPasswordStrength && hasValue && (
           <PasswordStrengthIndicator password={String(value || internalValue)} />
         )}
       </div>
@@ -113,7 +128,7 @@ function PasswordStrengthIndicator({ password }: { password: string }) {
 
   const strength = getStrength(password);
   const strengthLabels = ['Very Weak', 'Weak', 'Fair', 'Good', 'Strong'];
-  const strengthColors = ['bg-red-500', 'bg-orange-500', 'bg-yellow-500', 'bg-blue-500', 'bg-green-500'];
+  const strengthColors = ['bg-red-500', 'bg-orange-500', 'bg-yellow-500', 'bg-blue-500', 'bg-indigo-600'];
 
   return (
     <div className="space-y-1">
@@ -134,11 +149,11 @@ function PasswordStrengthIndicator({ password }: { password: string }) {
           strength <= 1 ? "text-red-500" :
           strength <= 2 ? "text-orange-500" :
           strength <= 3 ? "text-yellow-500" :
-          strength <= 4 ? "text-blue-500" : "text-green-500"
+          strength <= 4 ? "text-blue-500" : "text-indigo-600"
         )}>{strengthLabels[strength] || strengthLabels[0]}</span>
       </p>
     </div>
   );
 }
 
-export default AnimatedInput; 
+export default AnimatedInput;

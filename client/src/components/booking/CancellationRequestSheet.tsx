@@ -1,27 +1,13 @@
 "use client"
 
 import { useState } from "react"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
+import { useTranslation } from "react-i18next"
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
+import { InfoChip } from "@/components/chef/info-chip"
 import { Separator } from "@/components/ui/separator"
-import {
-  AlertTriangle,
-  Clock,
-  Send,
-  X,
-  Calendar,
-  MapPin,
-  Info,
-} from "lucide-react"
+import { AlertTriangle, Clock, Send, X, Calendar, MapPin, Info } from "lucide-react"
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -53,6 +39,10 @@ export function CancellationRequestSheet({
   isPending = false,
   onConfirm,
 }: CancellationRequestSheetProps) {
+  const { t: tStrict } = useTranslation("chef")
+  const t = (key: string, options?: Record<string, unknown>): string =>
+    String(tStrict(key as never, options as never))
+
   const [reason, setReason] = useState("")
 
   const handleSubmit = () => {
@@ -69,25 +59,26 @@ export function CancellationRequestSheet({
   if (!target) return null
 
   const isRequest = target.tier === "request"
-  const typeLabel = target.type === "kitchen" ? "Booking" : "Storage Booking"
+  const typeLabel =
+    target.type === "kitchen" ? t("crTypeBooking") : t("crTypeStorageBooking")
 
   return (
     <Sheet open={open} onOpenChange={handleClose}>
       <SheetContent className="sm:max-w-[440px] flex flex-col p-0 gap-0">
         {/* Header */}
-        <SheetHeader className={`px-6 pt-6 pb-4 border-b ${isRequest ? "bg-gradient-to-br from-amber-50 to-orange-50" : "bg-gradient-to-br from-red-50 to-orange-50"}`}>
+        <SheetHeader className="px-6 pt-6 pb-4 border-b">
           <SheetTitle className="flex items-center gap-2 text-base">
             {isRequest ? (
-              <Send className="h-5 w-5 text-amber-600" />
+              <Send className="h-5 w-5 text-muted-foreground" />
             ) : (
-              <AlertTriangle className="h-5 w-5 text-red-600" />
+              <AlertTriangle className="h-5 w-5 text-destructive" />
             )}
-            {isRequest ? `Request ${typeLabel} Cancellation` : `Cancel ${typeLabel}`}
+            {isRequest
+              ? t("crRequestTitle", { type: typeLabel })
+              : t("crCancelTitle", { type: typeLabel })}
           </SheetTitle>
           <SheetDescription className="text-sm">
-            {isRequest
-              ? "Submit a cancellation request for the kitchen manager to review. You'll be notified once they respond."
-              : "This action will cancel your booking immediately. This cannot be undone."}
+            {isRequest ? t("crRequestDesc") : t("crImmediateDesc")}
           </SheetDescription>
         </SheetHeader>
 
@@ -112,33 +103,32 @@ export function CancellationRequestSheet({
 
           {/* Process Explanation */}
           {isRequest ? (
-            <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-4 space-y-3">
+            <div className="rounded-lg border p-4 space-y-3">
               <div className="flex items-start gap-2.5">
-                <Info className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                <Info className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
                 <div className="space-y-2">
-                  <p className="text-sm font-medium text-amber-900">How this works</p>
-                  <ol className="text-xs text-amber-800 space-y-1.5 list-decimal list-inside">
-                    <li>Your cancellation request is sent to the kitchen manager</li>
-                    <li>The manager reviews and approves or declines within the review window</li>
-                    <li>If approved, a refund will be processed to your payment method</li>
+                  <p className="text-sm font-medium">{t("crHowThisWorks")}</p>
+                  <ol className="text-xs text-muted-foreground space-y-1.5 list-decimal list-inside">
+                    <li>{t("crStep1")}</li>
+                    <li>{t("crStep2")}</li>
+                    <li>{t("crStep3")}</li>
                   </ol>
                 </div>
               </div>
               <div className="flex items-center gap-2 pt-1">
-                <Badge variant="warning" className="text-[11px]">
-                  <Clock className="h-3 w-3 mr-1" />
-                  Manager Review Required
-                </Badge>
+                <InfoChip variant="warning" icon={<Clock className="h-3 w-3" />} className="text-xs">
+                  {t("crManagerReviewRequired")}
+                </InfoChip>
               </div>
             </div>
           ) : (
-            <div className="rounded-lg border border-red-200 bg-red-50/50 p-4">
+            <div className="rounded-lg border border-destructive/30 p-4">
               <div className="flex items-start gap-2.5">
-                <AlertTriangle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
+                <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
                 <div className="space-y-1">
-                  <p className="text-sm font-medium text-red-900">Immediate cancellation</p>
-                  <p className="text-xs text-red-700">
-                    This booking will be cancelled immediately. Any payment hold will be released back to your account.
+                  <p className="text-sm font-medium">{t("crImmediateCancellation")}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t("crImmediateCancellationDesc")}
                   </p>
                 </div>
               </div>
@@ -149,12 +139,14 @@ export function CancellationRequestSheet({
           {isRequest && (
             <div className="space-y-2">
               <label htmlFor="cancellation-reason" className="text-sm font-medium">
-                Reason for cancellation
-                <span className="text-muted-foreground font-normal ml-1">(optional)</span>
+                {t("crReasonLabel")}
+                <span className="text-muted-foreground font-normal ml-1">
+                  {t("crReasonOptional")}
+                </span>
               </label>
               <Textarea
                 id="cancellation-reason"
-                placeholder="Let the manager know why you'd like to cancel..."
+                placeholder={t("crReasonPlaceholder")}
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 className="min-h-[100px] resize-none"
@@ -176,7 +168,7 @@ export function CancellationRequestSheet({
             disabled={isPending}
           >
             <X className="h-4 w-4 mr-1.5" />
-            Go Back
+            {t("crGoBack")}
           </Button>
           <Button
             variant={isRequest ? "default" : "destructive"}
@@ -187,17 +179,17 @@ export function CancellationRequestSheet({
             {isPending ? (
               <span className="flex items-center gap-2">
                 <span className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                Processing...
+                {t("crProcessing")}
               </span>
             ) : isRequest ? (
               <span className="flex items-center gap-1.5">
                 <Send className="h-4 w-4" />
-                Submit Request
+                {t("crSubmitRequest")}
               </span>
             ) : (
               <span className="flex items-center gap-1.5">
                 <AlertTriangle className="h-4 w-4" />
-                Confirm Cancellation
+                {t("crConfirmCancellation")}
               </span>
             )}
           </Button>

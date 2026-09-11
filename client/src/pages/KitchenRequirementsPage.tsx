@@ -1,33 +1,104 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, FileText, ShieldCheck, Utensils, Building2, MapPin, ArrowRight } from "lucide-react";
-import { useLocation, useRoute } from "wouter";
+import { CheckCircle2, Utensils, Building2, ArrowRight, Calendar } from "lucide-react";
+import { KitchenNextStepsDescription } from "@/components/common/KitchenNextStepsDescription";
+import { useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFirebaseAuth } from "@/hooks/use-auth";
+import { useAuthModal } from "@/components/auth/AuthModalProvider";
+import { chefDashboardHref } from "@/lib/chef-dashboard-nav";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
+import { useChefShellChrome } from "@/layouts/chef-shell-context";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { Badge } from "@/components/ui/badge";
-import { useState } from "react";
+import { ChefPageHeader } from "@/components/chef/ui";
+import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
+import { useTranslation } from "react-i18next";
 import { useChefKitchenApplicationForLocation } from "@/hooks/use-chef-kitchen-applications";
+import { hasStep2BeenSubmitted } from "@/components/chef/applications/status";
 import ScheduleViewingWidget from "@/components/chef/ScheduleViewingWidget";
+import { SmartImage } from "@/components/ui/smart-image";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { tt } from "@/i18n/common-ns";
+import { kt } from "@/i18n/kitchen-ns";
 
 export default function KitchenRequirementsPage() {
-    const [, params] = useRoute("/kitchen-requirements/:locationId");
-    const [, setLocation] = useLocation();
-    const locationId = params?.locationId;
+    const { t: tAuth } = useTranslation("auth");
+    const { t } = useTranslation("kitchen");
+    const [locationPath, setLocation] = useLocation();
+    const locationIdMatch = locationPath.match(/\/kitchen-requirements\/(\d+)/);
+    const locationId = locationIdMatch ? locationIdMatch[1] : undefined;
     const { user, loading: authLoading } = useFirebaseAuth();
+    const { openAuthModal } = useAuthModal();
     const [activeView, setActiveView] = useState("discover-kitchens");
     const [showTourModal, setShowTourModal] = useState(false);
+    const [hasBookingIntent, setHasBookingIntent] = useState(false);
+    const [intentDateRange, setIntentDateRange] = useState<{from: string, to?: string} | null>(null);
+
+    // Scroll to top on mount and check intent
+    useEffect(() => {
+        window.scrollTo(0, 0);
+        
+        let bestIntent = null;
+        let specificIntent = null;
+        try {
+            for (let i = 0; i < sessionStorage.length; i++) {
+                const key = sessionStorage.key(i);
+                if (key && key.startsWith('kitchen_dates_')) {
+                    const val = sessionStorage.getItem(key);
+                    if (val) {
+                        const parsed = JSON.parse(val);
+                        if (parsed.from) {
+                            if (key !== 'kitchen_dates_generic') {
+                                specificIntent = parsed;
+                            } else {
+                                bestIntent = parsed;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch(e) {}
+        
+        const parsedIntent = specificIntent || bestIntent;
+        if (parsedIntent) {
+            setHasBookingIntent(true);
+            setIntentDateRange(parsedIntent);
+        }
+    }, []);
+
+    const formatDateRange = () => {
+        if (!intentDateRange?.from) return '';
+        const fromDate = new Date(intentDateRange.from);
+        if (isNaN(fromDate.getTime())) return '';
+        
+        // Revert forcing UTC to fix local time offsets
+        const formatter = new Intl.DateTimeFormat('en-US', { 
+            month: 'short', 
+            day: 'numeric', 
+            year: 'numeric' 
+        });
+        
+        const fromStr = formatter.format(fromDate);
+        
+        if (intentDateRange.to && intentDateRange.to !== intentDateRange.from) {
+            const toDate = new Date(intentDateRange.to);
+            if (!isNaN(toDate.getTime())) {
+                return `${fromStr} - ${formatter.format(toDate)}`;
+            }
+        }
+        return fromStr;
+    };
 
     // Fetch location details (for name)
     const { data: locationData, isLoading: isLoadingLocation } = useQuery({
         queryKey: [`/api/public/locations/${locationId}/details`],
         queryFn: async () => {
             const response = await fetch(`/api/public/locations/${locationId}/details`);
-            if (!response.ok) throw new Error('Failed to fetch location');
+            if (!response.ok) throw new Error(kt("failedToFetchLocation"));
             return response.json();
         },
         enabled: !!locationId,
@@ -38,7 +109,7 @@ export default function KitchenRequirementsPage() {
         queryKey: [`/api/public/locations/${locationId}/requirements`],
         queryFn: async () => {
             const response = await fetch(`/api/public/locations/${locationId}/requirements`);
-            if (!response.ok) throw new Error('Failed to fetch requirements');
+            if (!response.ok) throw new Error(tt("failedToFetchRequirements"));
             return response.json();
         },
         enabled: !!locationId,
@@ -51,7 +122,7 @@ export default function KitchenRequirementsPage() {
         queryKey: [`/api/public/kitchens`],
         queryFn: async () => {
             const response = await fetch(`/api/public/kitchens`);
-            if (!response.ok) throw new Error('Failed to fetch kitchens');
+            if (!response.ok) throw new Error(tt("failedToFetchKitchens"));
             return response.json();
         },
     });
@@ -72,10 +143,12 @@ export default function KitchenRequirementsPage() {
 
     // Determine the current tier for label purposes
     const chefCurrentTier = (existingApplication as any)?.current_tier ?? 1;
-    // Step 2 is actionable when Step 1 is approved (status approved, still on tier 1 => needs step 2)
-    const isReadyForStep2 = isStep1Done &&
-        existingApplication?.status === 'approved' &&
-        chefCurrentTier < 3;
+    // Step 2 is actionable when Step 1 is approved and Step 2 docs aren't submitted yet
+    const isReadyForStep2 =
+        isStep1Done &&
+        existingApplication?.status === "approved" &&
+        chefCurrentTier < 3 &&
+        !hasStep2BeenSubmitted(existingApplication);
 
     // Loading state with proper layout
     const loadingContent = (
@@ -94,9 +167,9 @@ export default function KitchenRequirementsPage() {
             <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-4">
                 <Building2 className="h-8 w-8 text-muted-foreground" />
             </div>
-            <h2 className="text-2xl font-bold mb-2">Requirements Not Found</h2>
-            <p className="text-muted-foreground mb-6">We couldn&apos;t find the requirements for this kitchen.</p>
-            <Button onClick={() => setLocation("/dashboard?view=discover-kitchens")}>Back to Discover Kitchens</Button>
+            <h2 className="text-2xl font-bold mb-2">{t("requirementsNotFound", "Requirements Not Found")}</h2>
+            <p className="text-muted-foreground mb-6">{t("couldNotFindRequirements", "We couldn't find the requirements for this kitchen.")}</p>
+            <Button onClick={() => setLocation("/dashboard?view=discover-kitchens")}>{t("backToDiscoverKitchens", "Back to Discover Kitchens")}</Button>
         </div>
     );
 
@@ -104,10 +177,10 @@ export default function KitchenRequirementsPage() {
     const getStep1Items = () => {
         if (!requirements) return [];
         const items = [
-            "Personal Information",
-            (requirements.requireBusinessName || requirements.requireBusinessType) && "Business Information",
-            requirements.requireFoodHandlerCert && "Food Handler Certificate",
-            requirements.tier1_years_experience_required && "Professional Experience",
+            t("personalInformation", "Personal Information"),
+            (requirements.requireBusinessName || requirements.requireBusinessType) && t("businessInformation", "Business Information"),
+            // Food handler upload is collected in Step 2 after request-to-apply approval
+            requirements.tier1_years_experience_required && t("professionalExperience", "Professional Experience"),
             ...(Array.isArray(requirements.tier1_custom_fields)
                 ? requirements.tier1_custom_fields
                     .filter((f: { required?: boolean }) => f.required)
@@ -120,13 +193,17 @@ export default function KitchenRequirementsPage() {
     const getStep2Items = () => {
         if (!requirements) return [];
         const items = [
-            requirements.tier2_food_establishment_cert_required && "Food Establishment Certificate",
+            // Always required on Step 2 (request-to-apply only collects yes/no)
+            t("foodSafetyLicense", "Food Safety License"),
+            t("foodSafetyLicenseExpiry", "Food Safety License Expiry Date"),
+            requirements.tier2_food_establishment_cert_required && t("foodEstablishmentCertificate", "Food Establishment Certificate"),
+            requirements.tier2_food_establishment_expiry_required && t("foodEstablishmentExpiry", "Food Establishment License Expiry"),
             (requirements.tier2_insurance_document_required || requirements.tier2_insurance_minimum_amount > 0) &&
-            `Insurance Document${requirements.tier2_insurance_minimum_amount > 0 ? ` (min $${requirements.tier2_insurance_minimum_amount})` : ''}`,
-            requirements.tier2_kitchen_experience_required && "Kitchen Experience Description",
+            t("insuranceDocument", "Insurance Document") + (requirements.tier2_insurance_minimum_amount > 0 ? t("minAmount", { defaultValue: " (min ${amount})", amount: requirements.tier2_insurance_minimum_amount }) : ''),
+            requirements.tier2_kitchen_experience_required && t("kitchenExperienceDescription", "Kitchen Experience Description"),
             ...(Array.isArray(requirements.tier2_custom_fields)
                 ? requirements.tier2_custom_fields
-                    .filter((f: { required?: boolean }) => f.required)
+                    .filter((f: { required?: boolean }) => f.required !== false)
                     .map((f: { label: string }) => f.label)
                 : [])
         ].filter(Boolean);
@@ -140,12 +217,30 @@ export default function KitchenRequirementsPage() {
             animate={{ opacity: 1, y: 0 }}
             className="space-y-8"
         >
+            {hasBookingIntent && (
+                <div className="flex items-start sm:items-center gap-4 p-4 bg-muted/40 border border-border/50 rounded-lg">
+                    <div className="p-2 bg-background rounded-md shadow-sm border border-border/40 shrink-0">
+                        <Calendar className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <div className="flex-1 space-y-1">
+                        <p className="text-sm font-medium leading-none text-foreground">
+                            {t("bookingDatesSaved", { range: formatDateRange(), defaultValue: `Booking dates saved: ${formatDateRange()}` })}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                            {t(
+                              "completeApplicationSecureTime",
+                              "Complete your application below to secure your kitchen time."
+                            )}
+                        </p>
+                    </div>
+                </div>
+            )}
+
             {/* Header with Kitchen Info */}
             <div className="flex flex-col md:flex-row md:items-start gap-6">
-                {/* Kitchen Image */}
                 {kitchen?.imageUrl && (
-                    <div className="w-full md:w-48 h-32 md:h-32 rounded-xl overflow-hidden flex-shrink-0 shadow-lg">
-                        <img 
+                    <div className="w-full md:w-48 h-32 md:h-32 rounded-lg overflow-hidden flex-shrink-0 border">
+                        <SmartImage 
                             src={kitchen.imageUrl} 
                             alt={kitchen.name || 'Kitchen'}
                             className="w-full h-full object-cover"
@@ -153,56 +248,44 @@ export default function KitchenRequirementsPage() {
                     </div>
                 )}
                 
-                <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                        <Badge variant="secondary" className="text-xs">
-                            <Building2 className="h-3 w-3 mr-1" />
-                            Kitchen Application
-                        </Badge>
-                    </div>
-                    <h1 className="text-2xl md:text-3xl font-bold tracking-tight mb-2">
-                        {locationData?.location?.name || kitchen?.name || 'Kitchen Requirements'}
-                    </h1>
-                    {(locationData?.location?.address || kitchen?.address) && (
-                        <p className="text-muted-foreground flex items-center gap-2">
-                            <MapPin className="h-4 w-4" />
-                            {locationData?.location?.address || kitchen?.address}
-                        </p>
-                    )}
+                <div className="flex-1 space-y-3">
+                    <Badge variant="outline" className="text-xs w-fit">
+                        <Building2 className="h-3 w-3 mr-1" />
+                        {t("kitchenApplication", "Kitchen Application")}
+                    </Badge>
+                    <ChefPageHeader
+                        title={locationData?.location?.name || kitchen?.name || t('kitchenRequirements', 'Kitchen Requirements')}
+                        description={
+                            (locationData?.location?.address || kitchen?.address)
+                                ? `${locationData?.location?.address || kitchen?.address}`
+                                : undefined
+                        }
+                    />
                 </div>
             </div>
 
             {/* Requirements Cards */}
             <div className="grid gap-6 md:grid-cols-2">
                 {/* Step 1 Card — shows completed state if chef already submitted Step 1 */}
-                <Card className={`border-0 shadow-lg relative overflow-hidden transition-shadow ${
-                    isStep1Done
-                        ? 'bg-gradient-to-br from-green-50 to-green-100/40 hover:shadow-xl ring-1 ring-green-200'
-                        : 'bg-gradient-to-br from-white to-primary/5 hover:shadow-xl'
+                <Card className={`shadow-none relative overflow-hidden ${
+                    isStep1Done ? 'border-success/30' : 'border-border/50'
                 }`}>
-                    <div className="absolute top-0 right-0 p-4 opacity-5">
-                        <FileText className="h-24 w-24" />
-                    </div>
                     <CardHeader className="pb-4">
                         <div className="flex items-center gap-3 mb-2">
-                            <div className={`h-10 w-10 rounded-xl flex items-center justify-center font-bold shadow-sm ${
-                                isStep1Done
-                                    ? 'bg-green-500 text-white'
-                                    : 'bg-primary/10 text-primary'
-                            }`}>
+                            <div className="h-10 w-10 rounded-lg border flex items-center justify-center font-semibold text-sm text-muted-foreground">
                                 {isStep1Done ? <CheckCircle2 className="h-5 w-5" /> : '1'}
                             </div>
                             <div className="flex-1">
                                 <div className="flex items-center gap-2">
-                                    <CardTitle className="text-lg">Application Requirements</CardTitle>
+                                    <CardTitle className="text-lg">{t("requestToApply", "Request to apply")}</CardTitle>
                                     {isStep1Done && (
-                                        <Badge className="bg-green-100 text-green-700 border-green-200 text-xs font-medium">
-                                            ✓ Completed
+                                        <Badge variant="success" className="text-xs font-medium">
+                                            {t("completed", "Completed")}
                                         </Badge>
                                     )}
                                 </div>
                                 <CardDescription className="text-xs">
-                                    {isStep1Done ? 'Your Step 1 application was submitted' : 'Initial application documents'}
+                                    {isStep1Done ? t("step1ApplicationSubmitted", "Your request to apply was submitted") : t("initialApplicationDocuments", "Initial application documents")}
                                 </CardDescription>
                             </div>
                         </div>
@@ -212,39 +295,30 @@ export default function KitchenRequirementsPage() {
                             {getStep1Items().length > 0 ? (
                                 getStep1Items().map((item, i) => (
                                     <li key={i} className="flex items-start gap-3 text-sm">
-                                        <div className={`h-5 w-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                                            isStep1Done ? 'bg-green-200' : 'bg-green-100'
-                                        }`}>
-                                            <CheckCircle2 className={`h-3.5 w-3.5 ${
-                                                isStep1Done ? 'text-green-700' : 'text-green-600'
-                                            }`} />
-                                        </div>
+                                        <CheckCircle2 className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
                                         <span className={`leading-snug ${
                                             isStep1Done ? 'text-foreground/50 line-through' : 'text-foreground/80'
                                         }`}>{item}</span>
                                     </li>
                                 ))
                             ) : (
-                                <li className="text-sm text-muted-foreground italic">No specific documents required for Step 1.</li>
+                                <li className="text-sm text-muted-foreground italic">{t("noDocsRequiredStep1", "No specific documents required for your request to apply.")}</li>
                             )}
                         </ul>
                     </CardContent>
                 </Card>
 
                 {/* Step 2 Card */}
-                <Card className="border-0 shadow-lg bg-gradient-to-br from-white to-orange-500/5 relative overflow-hidden hover:shadow-xl transition-shadow">
-                    <div className="absolute top-0 right-0 p-4 opacity-5">
-                        <ShieldCheck className="h-24 w-24" />
-                    </div>
+                <Card className="shadow-none border-border/50 relative overflow-hidden">
                     <CardHeader className="pb-4">
                         <div className="flex items-center gap-3 mb-2">
-                            <div className="h-10 w-10 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center font-bold shadow-sm">
+                            <div className="h-10 w-10 rounded-lg border flex items-center justify-center font-semibold text-sm text-muted-foreground">
                                 2
                             </div>
                             <div>
-                                <CardTitle className="text-lg">Kitchen Coordination</CardTitle>
+                                <CardTitle className="text-lg">{t("kitchenCoordination", "Kitchen Coordination")}</CardTitle>
                                 <CardDescription className="text-xs">
-                                    Required before booking shifts
+                                    {t("requiredBeforeBookingShifts", "Required before booking shifts")}
                                 </CardDescription>
                             </div>
                         </div>
@@ -254,14 +328,12 @@ export default function KitchenRequirementsPage() {
                             {getStep2Items().length > 0 ? (
                                 getStep2Items().map((item, i) => (
                                     <li key={i} className="flex items-start gap-3 text-sm">
-                                        <div className="h-5 w-5 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                            <CheckCircle2 className="h-3.5 w-3.5 text-orange-600" />
-                                        </div>
+                                        <CheckCircle2 className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
                                         <span className="leading-snug text-foreground/80">{item}</span>
                                     </li>
                                 ))
                             ) : (
-                                <li className="text-sm text-muted-foreground italic">No specific documents required for Step 2.</li>
+                                <li className="text-sm text-muted-foreground italic">{t("noDocsRequiredStep2", "No specific documents required for Kitchen Coordination.")}</li>
                             )}
                         </ul>
                     </CardContent>
@@ -269,93 +341,83 @@ export default function KitchenRequirementsPage() {
             </div>
 
             {/* Schedule Viewing Widget as Modal */}
-            {user && !isStep1Done && (
+            {user && !isStep1Done && kitchen?.id && (
                 <ScheduleViewingWidget 
                     locationId={Number(locationId)} 
                     locationName={locationData?.location?.name || kitchen?.name}
-                    targetedKitchenId={kitchen?.id} 
+                    targetedKitchenId={kitchen.id}
                     targetedKitchenName={kitchen?.name}
-                    mode="modal"
                     open={showTourModal}
                     onClose={() => setShowTourModal(false)}
                 />
             )}
 
             {/* CTA Section */}
-            <Card className={`border-0 shadow-lg overflow-hidden ${
-                isReadyForStep2
-                    ? 'bg-gradient-to-r from-green-50 via-emerald-50/80 to-teal-50'
-                    : 'bg-gradient-to-r from-primary/5 via-primary/10 to-blue-500/5'
-            }`}>
+            <Card className="shadow-none border-border/50">
                 <CardContent className="p-8 text-center">
-                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm ${
-                        isReadyForStep2 ? 'bg-green-100' : 'bg-primary/10'
-                    }`}>
-                        {isReadyForStep2
-                            ? <ArrowRight className="h-7 w-7 text-green-600" />
-                            : <Utensils className="h-7 w-7 text-primary" />
-                        }
-                    </div>
                     {isReadyForStep2 ? (
                         <>
-                            <h3 className="text-xl font-semibold mb-2">Step 1 Complete — Time for Step 2!</h3>
+                            <h3 className="text-xl font-semibold mb-2">{t("step1CompleteTimeForStep2", "Request to apply approved — next up: kitchen documents")}</h3>
                             <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                                Your initial application was approved. Submit your Step 2 documents to unlock full kitchen access.
+                                {t("initialApplicationApprovedSubmitStep2", "Your initial application was approved. Submit your Kitchen Coordination documents to unlock full kitchen access.")}
                             </p>
                             <div className="flex gap-4 justify-center">
                                 <Button 
                                     size="lg" 
-                                    className="bg-green-600 hover:bg-green-700 shadow-lg shadow-green-500/20 hover:shadow-xl hover:shadow-green-500/30 transition-all"
+                                    data-testid="kitchen-requirements-submit-documents"
                                     onClick={() => setLocation(`/apply-kitchen/${locationId}`)}
                                 >
                                     <ArrowRight className="mr-2 h-4 w-4" />
-                                    Continue to Step 2
+                                    {t("submitKitchenDocuments", "Submit kitchen documents")}
                                 </Button>
                             </div>
                         </>
                     ) : isStep1Done ? (
                         <>
-                            <h3 className="text-xl font-semibold mb-2">Application Under Review</h3>
+                            <h3 className="text-xl font-semibold mb-2">{t("applicationUnderReview", "Application Under Review")}</h3>
                             <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                                Your Step 1 application is being reviewed by the kitchen manager. You'll be notified once a decision is made.
+                                {t("step1ApplicationUnderReview", "Your request to apply is being reviewed by Our Team. You’ll be notified once a decision is made.")}
                             </p>
                             <Button 
                                 size="lg" 
-                                onClick={() => setLocation(`/apply-kitchen/${locationId}`)}
-                                className="shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all"
+                                onClick={() => setLocation(chefDashboardHref("applications"))}
                             >
-                                View Application
+                                {t("viewApplicationBtn", "View application")}
                             </Button>
                         </>
                     ) : (
                         <>
-                            <h3 className="text-xl font-semibold mb-2">Ready to apply for {locationData?.location?.name || kitchen?.name}?</h3>
+                            <h3 className="text-xl font-semibold mb-2">{t("readyToApplyForLocation", { defaultValue: "Ready to apply for {location}?", location: locationData?.location?.name || kitchen?.name || t('kitchenWord', 'this kitchen') })}</h3>
                             <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                                Ensure you have these documents ready to speed up your verification process. The initial application takes about 5 minutes.
+                                {t("ensureDocumentsReady", "Ensure you have these documents ready to speed up your verification process. The initial application takes about 5 minutes.")}
                             </p>
-                            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                            <div className="flex flex-col sm:flex-row gap-4 justify-center items-stretch sm:items-stretch">
                                 {user && (
                                     <Button 
                                         size="lg" 
-                                        variant="outline"
-                                        className="border-primary text-primary hover:bg-primary/5 w-full sm:w-auto"
+                                        className="h-11 min-h-[44px] w-full sm:w-auto"
                                         onClick={() => setShowTourModal(true)}
                                     >
-                                        Schedule a Viewing
+                                        <Calendar />
+                                        {t("applyFlowScheduleTourButton", "Request tour")}
                                     </Button>
                                 )}
                                 <Button 
                                     size="lg" 
+                                    data-testid="kitchen-requirements-start-apply"
                                     onClick={() => {
                                         if (user) {
                                             setLocation(`/apply-kitchen/${locationId}`);
                                         } else {
-                                            setLocation(`/auth?redirect=/kitchen-requirements/${locationId}`);
+                                            openAuthModal({
+                                                title: tAuth("authModalApplyTitle", "Almost there!"),
+                                                description: <KitchenNextStepsDescription type="apply" />,
+                                            });
                                         }
                                     }}
-                                    className="shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all w-full sm:w-auto"
+                                    className="h-11 min-h-[44px] w-full sm:w-auto"
                                 >
-                                    Start Application
+                                    {t("startApplication", "Start Application")}
                                 </Button>
                             </div>
                         </>
@@ -372,35 +434,44 @@ export default function KitchenRequirementsPage() {
         return mainContent;
     };
 
-    // If user is authenticated, wrap in ChefDashboardLayout
+    const reqOnViewChange = (view: string) => {
+        setActiveView(view);
+        setLocation(chefDashboardHref(view), { replace: true });
+    };
+
+    const reqBreadcrumbs = useMemo(
+        () => [
+            {
+                label: t("shellDiscoverKitchens", "Discover Kitchens"),
+                onClick: () => setLocation("/dashboard?view=discover-kitchens"),
+                navId: "discover-kitchens" as const,
+            },
+            { label: locationData?.location?.name || t("kitchenWord", "Kitchen") },
+        ],
+        [t, setLocation, locationData?.location?.name]
+    );
+
+    const inShell = useChefShellChrome({
+        activeView,
+        onViewChange: reqOnViewChange,
+        breadcrumbs: reqBreadcrumbs,
+    });
+
+    // If user is authenticated, use persistent chef shell (or layout fallback)
     if (user) {
+        if (inShell) return getContent();
         return (
             <ChefDashboardLayout
                 activeView={activeView}
-                onViewChange={(view) => {
-                    setActiveView(view);
-                    // REPLACE so back button doesn't bounce through this requirements page.
-                    const opts = { replace: true } as const;
-                    if (view === 'overview') setLocation('/dashboard', opts);
-                    else if (view === 'discover-kitchens') setLocation('/dashboard?view=discover-kitchens', opts);
-                    else if (view === 'kitchen-applications') setLocation('/dashboard?view=kitchen-applications', opts);
-                    else if (view === 'bookings') setLocation('/dashboard?view=bookings', opts);
-                    else if (view === 'applications') setLocation('/dashboard?view=applications', opts);
-                    else if (view === 'messages') setLocation('/dashboard?view=messages', opts);
-                    else if (view === 'training') setLocation('/dashboard?view=training', opts);
-                }}
-                breadcrumbs={[
-                    { label: "Dashboard", onClick: () => setLocation('/dashboard') },
-                    { label: "Discover Kitchens", onClick: () => setLocation('/dashboard?view=discover-kitchens') },
-                    { label: locationData?.location?.name || 'Kitchen' },
-                ]}
+                onViewChange={reqOnViewChange}
+                breadcrumbs={reqBreadcrumbs}
             >
                 {getContent()}
             </ChefDashboardLayout>
         );
     }
 
-    // For unauthenticated users, use public layout
+    // For unauthenticated    // For unauthenticated users, use public layout
     return (
         <div className="min-h-screen flex flex-col bg-gray-50">
             <Header />

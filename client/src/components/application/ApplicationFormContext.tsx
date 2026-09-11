@@ -3,6 +3,13 @@ import { ApplicationFormData } from "@/lib/applicationSchema";
 
 type FormStep = 1 | 2 | 3;
 
+export function leaveSellerApplication(proceed?: () => void) {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("action");
+  window.history.replaceState({}, "", url);
+  proceed?.();
+}
+
 interface ApplicationFormContextProps {
   currentStep: FormStep;
   formData: Partial<ApplicationFormData>;
@@ -10,11 +17,24 @@ interface ApplicationFormContextProps {
   updateFormData: (data: Partial<ApplicationFormData>) => void;
   goToNextStep: () => void;
   goToPreviousStep: () => void;
+  /** Leave the whole application flow (parent should confirm). */
+  onCancel?: () => void;
+  isBusy: boolean;
+  setIsBusy: (busy: boolean) => void;
 }
 
 const ApplicationFormContext = createContext<ApplicationFormContextProps | undefined>(undefined);
 
-export const ApplicationFormProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const ApplicationFormProvider: React.FC<{
+  children: React.ReactNode;
+  onCancel?: () => void;
+  onBusyChange?: (busy: boolean) => void;
+}> = ({ children, onCancel, onBusyChange }) => {
+  const [isBusy, setBusy] = useState(false);
+  const setIsBusy = React.useCallback((busy: boolean) => {
+    setBusy(busy);
+    onBusyChange?.(busy);
+  }, [onBusyChange]);
   const [currentStep, setCurrentStep] = useState<FormStep>(1);
   const [formData, setFormData] = useState<Partial<ApplicationFormData>>({
     fullName: "",
@@ -56,6 +76,9 @@ export const ApplicationFormProvider: React.FC<{ children: React.ReactNode }> = 
         updateFormData,
         goToNextStep,
         goToPreviousStep,
+        onCancel,
+        isBusy,
+        setIsBusy,
       }}
     >
       {children}

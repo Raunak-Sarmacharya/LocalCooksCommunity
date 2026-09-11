@@ -69,9 +69,13 @@ export const StatusButton = forwardRef<HTMLButtonElement, StatusButtonProps>(
           variant={variant}
           size={size}
           className={cn(
-            "relative transition-all duration-300 disabled:opacity-100",
+            "relative transition-all duration-300",
+            // Idle + disabled (e.g. unchanged form): keep brand color, soften only.
+            disabled &&
+              !isActive &&
+              "opacity-55 cursor-not-allowed",
             isActive &&
-              "bg-muted text-muted-foreground hover:bg-muted cursor-not-allowed border-muted shadow-sm",
+              "bg-muted text-muted-foreground hover:bg-muted cursor-not-allowed border-muted shadow-sm opacity-100",
             className,
           )}
           disabled={disabled || isActive}

@@ -1,20 +1,26 @@
 import { logger } from "@/lib/logger";
+import { mt } from "@/i18n/manager";
+import { tt } from "@/i18n/common-ns";
 /**
  * License Settings Component
  * Manages kitchen license upload and status for a location
  */
 
-import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { FileText, Upload, CheckCircle, Clock, XCircle, AlertCircle, ExternalLink, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { useToast } from '@/hooks/use-toast';
-import { auth } from '@/lib/firebase';
-import { usePresignedDocumentUrl } from '@/hooks/use-presigned-document-url';
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { FileText, Upload, CheckCircle, Clock, XCircle, AlertCircle, ExternalLink, Loader2, Calendar as CalendarIcon } from "@/components/ui/manager-icons";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
+import { auth } from "@/lib/firebase";
+import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { format } from "date-fns";
+import { SettingsFileUpload } from "./SettingsFileUpload";
 
 interface Location {
   id: number;
@@ -51,6 +57,7 @@ function AuthenticatedDocumentLink({ url, className, children }: { url: string |
 }
 
 export default function LicenseSettings({ location, onRefresh }: LicenseSettingsProps) {
+  
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [licenseFile, setLicenseFile] = useState<File | null>(null);
@@ -58,7 +65,7 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
   const [isUploadingLicense, setIsUploadingLicense] = useState(false);
 
   const getDocumentFilename = (url?: string): string => {
-    if (!url) return 'No document';
+    if (!url) return mt("noDocument");
     try {
       const urlObj = new URL(url);
       const pathname = urlObj.pathname;
@@ -97,29 +104,27 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
 
   const handleLicenseUpload = async (file: File, expiryDate: string) => {
     if (!expiryDate || expiryDate.trim() === '') {
-      toast({
-        title: "Expiration Date Required",
-        description: "Please provide an expiration date for the license.",
+      toast({ title: mt("expirationDateRequired"),
+        description: mt("pleaseProvideAnExpirationDateForTheLicense"),
         variant: "destructive",
       });
-      throw new Error("Expiration date is required");
+      throw new Error(tt("expirationDateRequired"));
     }
 
     const expiry = new Date(expiryDate);
     if (isNaN(expiry.getTime())) {
-      toast({
-        title: "Invalid Date",
-        description: "Please provide a valid expiration date.",
+      toast({ title: mt("invalidDate"),
+        description: mt("pleaseProvideAValidExpirationDate"),
         variant: "destructive",
       });
-      throw new Error("Invalid expiration date");
+      throw new Error(tt("invalidExpirationDate"));
     }
 
     setIsUploadingLicense(true);
     try {
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
-        throw new Error("Firebase user not available");
+        throw new Error(tt("firebaseUserNotAvailable"));
       }
 
       const token = await currentFirebaseUser.getIdToken();
@@ -168,10 +173,9 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
       onRefresh();
 
       toast({
-        title: location.kitchenLicenseUrl ? "License Update Submitted" : "License Uploaded",
+        title: location.kitchenLicenseUrl ? mt("licenseUpdateSubmitted") : mt("licenseUploaded"),
         description: location.kitchenLicenseUrl 
-          ? "Your updated license has been submitted for admin approval. The current license remains active until the update is approved."
-          : "Your license has been submitted for admin approval.",
+          ? mt("licenseUpdatedSubmittedDesc") : mt("licenseSubmittedForApprovalDesc"),
       });
 
       setLicenseFile(null);
@@ -179,9 +183,8 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
       return licenseUrl;
     } catch (error: any) {
       logger.error('License upload error:', error);
-      toast({
-        title: "Upload Failed",
-        description: error.message || "Failed to upload license",
+      toast({ title: mt("uploadFailed"),
+        description: error.message || tt("failedToUploadLicense"),
         variant: "destructive",
       });
       throw error;
@@ -193,24 +196,24 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
   const getStatusBadge = () => {
     const status = location.kitchenLicenseStatus;
     if (!status || !location.kitchenLicenseUrl) {
-      return <Badge variant="outline" className="text-muted-foreground">Not Uploaded</Badge>;
+      return <Badge variant="outline" className="text-muted-foreground">{mt("notUploaded")}</Badge>;
     }
     
     switch (status) {
       case 'approved':
         if (isLicenseExpired) {
-          return <Badge variant="outline" className="text-destructive border-destructive/30">Expired</Badge>;
+          return <Badge variant="outline" className="text-destructive border-destructive/30">{mt("expired")}</Badge>;
         }
         if (isExpiryApproaching(location.kitchenLicenseExpiry)) {
-          return <Badge variant="warning">Expiring Soon</Badge>;
+          return <Badge variant="warning">{mt("expiringSoon")}</Badge>;
         }
-        return <Badge variant="success">Approved</Badge>;
+        return <Badge variant="success">{mt("approved")}</Badge>;
       case 'pending':
-        return <Badge variant="warning">Pending Review</Badge>;
+        return <Badge variant="warning">{mt("pendingReview")}</Badge>;
       case 'pending_update':
-        return <Badge variant="warning" className="bg-amber-100 text-amber-700 border-amber-200">Update Pending</Badge>;
+        return <Badge variant="warning" className="bg-amber-100 text-amber-700 border-amber-200">{mt("updatePending")}</Badge>;
       case 'rejected':
-        return <Badge variant="outline" className="text-destructive border-destructive/30">Rejected</Badge>;
+        return <Badge variant="outline" className="text-destructive border-destructive/30">{mt("rejected")}</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -242,10 +245,8 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">Kitchen License</h2>
-        <p className="text-muted-foreground">
-          Upload and manage your kitchen license document. A valid license is required for bookings.
-        </p>
+        <h2 className="text-2xl font-bold tracking-tight">{mt("kitchenLicense")}</h2>
+        <p className="text-muted-foreground">{mt("uploadAndManageYourKitchenLicenseDocumentAValidLicenseIsRequ")}</p>
       </div>
 
       <Card>
@@ -254,8 +255,8 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
             <div className="flex items-center gap-3">
               {getStatusIcon()}
               <div>
-                <CardTitle className="text-lg">License Status</CardTitle>
-                <CardDescription>Current status of your kitchen license</CardDescription>
+                <CardTitle className="text-lg">{mt("licenseStatus")}</CardTitle>
+                <CardDescription>{mt("currentStatusOfYourKitchenLicense")}</CardDescription>
               </div>
             </div>
             {getStatusBadge()}
@@ -273,14 +274,13 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
                 <AuthenticatedDocumentLink
                   url={location.kitchenLicenseUrl}
                   className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
-                >
-                  View Document <ExternalLink className="h-3 w-3" />
+                >{mt("viewDocument")}<ExternalLink className="h-3 w-3" />
                 </AuthenticatedDocumentLink>
               </div>
               
               {location.kitchenLicenseExpiry && (
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-600">Expiration Date:</span>
+                  <span className="text-slate-600">{mt("expirationDate")}</span>
                   <span className={isLicenseExpired ? 'text-red-600 font-medium' : isExpiryApproaching(location.kitchenLicenseExpiry) ? 'text-amber-600 font-medium' : 'text-slate-900'}>
                     {new Date(location.kitchenLicenseExpiry).toLocaleDateString()}
                     {isLicenseExpired && ' (Expired)'}
@@ -292,7 +292,7 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
               {location.kitchenLicenseFeedback && location.kitchenLicenseStatus === 'rejected' && (
                 <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
                   <p className="text-sm text-red-700">
-                    <strong>Rejection Reason:</strong> {location.kitchenLicenseFeedback}
+                    <strong>{mt("rejectionReason")}</strong> {location.kitchenLicenseFeedback}
                   </p>
                 </div>
               )}
@@ -304,13 +304,11 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
             <div className="flex items-start gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
               <Clock className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-blue-800">License Update Awaiting Admin Review</p>
-                <p className="text-xs text-blue-700 mt-0.5">
-                  A new license has been submitted. Your current license stays active until the admin approves the update.
-                </p>
+                <p className="text-sm font-semibold text-blue-800">{mt("licenseUpdateAwaitingAdminReview")}</p>
+                <p className="text-xs text-blue-700 mt-0.5">{mt("aNewLicenseHasBeenSubmittedYourCurrentLicenseStaysActiveUnti")}</p>
                 {location.kitchenLicensePendingSubmittedAt && (
                   <p className="text-xs text-blue-600 mt-1">
-                    <span className="font-medium">Submitted:</span>{' '}
+                    <span className="font-medium">{mt("submitted")}</span>{' '}
                     {new Date(location.kitchenLicensePendingSubmittedAt).toLocaleDateString()} at{' '}
                     {new Date(location.kitchenLicensePendingSubmittedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </p>
@@ -327,108 +325,86 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
                 {location.kitchenLicenseStatus === 'pending_update' && (
                   <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                     <p className="text-xs text-amber-800">
-                      <span className="font-semibold">Replacing your queued update.</span>{' '}
-                      Uploading a new document will replace the currently-pending update — the admin will review your latest submission.
+                      <span className="font-semibold">{mt("replacingYourQueuedUpdate")}</span>{' '}
+                      {mt("replacingQueuedUpdateBody")}
                     </p>
                   </div>
                 )}
                 {location.kitchenLicenseStatus === 'pending' && location.kitchenLicenseUrl && (
                   <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <p className="text-xs text-blue-800">
-                      <span className="font-semibold">Replace your pending submission.</span>{' '}
-                      Since your license hasn't been approved yet, uploading a new document replaces it directly — the admin will review your updated submission.
+                      <span className="font-semibold">{mt("replaceYourPendingSubmission")}</span>{' '}
+                      {mt("replacePendingSubmissionBody")}
                     </p>
                   </div>
                 )}
                 {location.kitchenLicenseStatus === 'approved' && !isLicenseExpired && (
                   <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                     <p className="text-xs text-amber-800">
-                      <span className="font-semibold">Submitting a new license</span> will send it for admin review. Your current approved license stays active until the update is approved.
+                      <span className="font-semibold">{mt("submittingANewLicense")}</span>{' '}
+                      {mt("submittingNewLicenseKeepsCurrentActive")}
                     </p>
                   </div>
                 )}
 
                 <h4 className="font-medium text-slate-900 mb-3">
                   {location.kitchenLicenseStatus === 'pending' && location.kitchenLicenseUrl
-                    ? 'Replace Pending Submission'
+                    ? mt("replacePendingSubmission")
                     : location.kitchenLicenseStatus === 'pending_update'
-                      ? 'Edit uploaded document'
+                      ? mt("editUploadedDocument")
                       : location.kitchenLicenseUrl
-                        ? 'Submit Updated License'
-                        : 'Upload License'}
+                        ? mt("submitUpdatedLicense")
+                        : mt("uploadLicense")}
                 </h4>
                 
                 <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="license-expiry">License Expiration Date</Label>
-                    <Input
-                      id="license-expiry"
-                      type="date"
-                      value={licenseExpiryDate}
-                      onChange={(e) => setLicenseExpiryDate(e.target.value)}
-                      min={new Date().toISOString().split('T')[0]}
-                      className="mt-1.5 max-w-xs"
-                    />
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="license-expiry">{mt("licenseExpirationDate")}</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button id="license-expiry" type="button" variant="outline" className="w-fit justify-start font-normal">
+                          <CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground" />
+                          {licenseExpiryDate ? format(new Date(`${licenseExpiryDate}T00:00:00`), 'PPP') : mt("licenseExpirationDate")}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={licenseExpiryDate ? new Date(`${licenseExpiryDate}T00:00:00`) : undefined}
+                          onSelect={(date) => setLicenseExpiryDate(date ? format(date, 'yyyy-MM-dd') : '')}
+                          disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                          initialFocus
+                          className="w-[280px] p-3"
+                        />
+                      </PopoverContent>
+                    </Popover>
                   </div>
 
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-gray-400 transition-colors">
-                    <input
-                      type="file"
-                      accept=".pdf,.jpg,.jpeg,.png"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          setLicenseFile(file);
-                        }
-                      }}
-                      className="hidden"
-                      id="license-upload"
-                      disabled={isUploadingLicense}
-                    />
-                    <label
-                      htmlFor="license-upload"
-                      className={`flex flex-col items-center justify-center cursor-pointer ${isUploadingLicense ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                      <Upload className="h-8 w-8 text-gray-400 mb-2" />
-                      <span className="text-sm font-medium text-gray-700 mb-1">
-                        {licenseFile ? licenseFile.name : (
-                          location.kitchenLicenseStatus === 'pending' && location.kitchenLicenseUrl
-                            ? 'Click to replace pending submission'
-                            : location.kitchenLicenseStatus === 'pending_update'
-                              ? 'Click to replace queued update'
-                              : location.kitchenLicenseUrl
-                                ? 'Click to submit updated license'
-                                : 'Click to upload license'
-                        )}
-                      </span>
-                      <span className="text-xs text-gray-500">PDF, JPG or PNG (max 5MB)</span>
-                    </label>
-                  </div>
+                  <SettingsFileUpload id="license-upload" accept=".pdf,.jpg,.jpeg,.png" file={licenseFile} label="Choose license document" hint={mt("pDFJPGOrPNGMax5MB")} disabled={isUploadingLicense} onChange={setLicenseFile} />
 
                   {licenseFile && (
-                    <Button
-                      onClick={() => handleLicenseUpload(licenseFile, licenseExpiryDate)}
-                      disabled={isUploadingLicense || !licenseExpiryDate}
-                      className="w-full"
-                    >
-                      {isUploadingLicense ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Uploading...
-                        </>
-                      ) : (
-                        <>
-                          <Upload className="mr-2 h-4 w-4" />
-                          {location.kitchenLicenseStatus === 'pending' && location.kitchenLicenseUrl
-                            ? 'Replace Pending Submission'
-                            : location.kitchenLicenseStatus === 'pending_update'
-                              ? 'Edit uploaded document'
-                              : location.kitchenLicenseUrl
-                                ? 'Submit Updated License'
-                                : 'Upload License'}
-                        </>
-                      )}
-                    </Button>
+                    <div className="flex justify-end pt-2">
+                      <Button
+                        onClick={() => handleLicenseUpload(licenseFile, licenseExpiryDate)}
+                        disabled={isUploadingLicense || !licenseExpiryDate}
+                      >
+                        {isUploadingLicense ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />{mt("uploading")}</>
+                        ) : (
+                          <>
+                            <Upload className="mr-2 h-4 w-4" />
+                            {location.kitchenLicenseStatus === 'pending' && location.kitchenLicenseUrl
+                              ? mt("replacePendingSubmission")
+                              : location.kitchenLicenseStatus === 'pending_update'
+                                ? mt("editUploadedDocument")
+                                : location.kitchenLicenseUrl
+                                  ? mt("submitUpdatedLicense")
+                                  : mt("uploadLicense")}
+                          </>
+                        )}
+                      </Button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -439,7 +415,7 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
           {location.kitchenLicenseStatus === 'approved' && !isLicenseExpired && !isExpiryApproaching(location.kitchenLicenseExpiry) && (
             <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
               <CheckCircle className="h-4 w-4 text-green-600" />
-              <span className="text-sm text-green-700">Your license is valid and approved. Bookings are active.</span>
+              <span className="text-sm text-green-700">{mt("yourLicenseIsValidAndApprovedBookingsAreActive")}</span>
             </div>
           )}
 
@@ -447,7 +423,7 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
           {location.kitchenLicenseStatus === 'pending' && (
             <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
               <Clock className="h-4 w-4 text-amber-600" />
-              <span className="text-sm text-amber-700">Your license is pending admin review. You'll be notified once it's approved.</span>
+              <span className="text-sm text-amber-700">{mt("yourLicenseIsPendingAdminReviewYouLlBeNotifiedOnceItSApprove")}</span>
             </div>
           )}
         </CardContent>

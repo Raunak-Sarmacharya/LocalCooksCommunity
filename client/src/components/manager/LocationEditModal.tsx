@@ -1,4 +1,6 @@
 import { logger } from "@/lib/logger";
+import { mt } from "@/i18n/manager";
+import { tt } from "@/i18n/common-ns";
 import { useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -11,28 +13,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-  FormDescription,
-} from "@/components/ui/form";
-import {
-  Building2, MapPin, Mail, Phone, Clock, Calendar,
-  Globe, Save, Loader2, CheckCircle,
-  XCircle, AlertCircle, FileText
-} from "lucide-react";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
+import { Building2, MapPin, Mail, Phone, Clock, Calendar, Globe, Save, Loader2, CheckCircle, XCircle, AlertCircle, FileText } from "@/components/ui/manager-icons";
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { auth } from "@/lib/firebase";
 import { cn } from "@/lib/utils";
@@ -58,27 +41,28 @@ function AuthenticatedDocumentLink({ url, className, children }: { url: string |
   );
 }
 
-// Zod schemas for validation
+// Zod schemas for validation — mt() at call time so locale is current
 const basicInfoSchema = z.object({
-  name: z.string().min(2, "Location name must be at least 2 characters"),
-  address: z.string().min(5, "Address must be at least 5 characters"),
-  notificationEmail: z.string().email("Please enter a valid email address").optional().or(z.literal("")),
+  name: z.string().min(2, mt("locationNameMinLength")),
+  address: z.string().min(5, mt("addressMinLength")),
+  notificationEmail: z.string().email(mt("validEmailAddress")).optional().or(z.literal("")),
   notificationPhone: z.string().optional(),
 });
 
 const settingsSchema = z.object({
   timezone: z.string(),
-  cancellationPolicyHours: z.coerce.number().min(0, "Hours cannot be negative"),
-  defaultDailyBookingLimit: z.coerce.number().min(1, "Must be at least 1 hour").max(24, "Cannot exceed 24 hours"),
-  minimumBookingWindowHours: z.coerce.number().int("Must be a whole number").min(0, "Hours cannot be negative").max(168, "Cannot exceed 1 week (168 hours)"),
+  cancellationPolicyHours: z.coerce.number().min(0, mt("hoursCannotBeNegative")),
+  defaultDailyBookingLimit: z.coerce.number().min(1, mt("mustBeAtLeastOneHour")).max(24, mt("cannotExceed24Hours")),
+  minimumBookingWindowHours: z.coerce.number().int(mt("mustBeWholeNumber")).min(0, mt("hoursCannotBeNegative")).max(168, mt("cannotExceedOneWeek")),
   cancellationPolicyMessage: z.string().optional(),
   logoUrl: z.string().optional(),
 });
 
-// Combined schema for form handling
-const locationFormSchema = basicInfoSchema.merge(settingsSchema);
+function getLocationFormSchema() {
+  return basicInfoSchema.merge(settingsSchema);
+}
 
-type LocationFormValues = z.infer<typeof locationFormSchema>;
+type LocationFormValues = z.infer<ReturnType<typeof getLocationFormSchema>>;
 
 interface LocationEditModalProps {
   location: LocationData;
@@ -120,14 +104,14 @@ function getStatusConfig(status?: string) {
   switch (status) {
     case 'approved':
       return {
-        label: 'Approved',
+        label: mt('approved'),
         icon: CheckCircle,
         bgColor: 'bg-green-100',
         textColor: 'text-green-800',
       };
     case 'rejected':
       return {
-        label: 'Rejected',
+        label: mt('rejected'),
         icon: XCircle,
         bgColor: 'bg-red-100',
         textColor: 'text-red-800',
@@ -135,7 +119,7 @@ function getStatusConfig(status?: string) {
     case 'pending':
     default:
       return {
-        label: 'Pending',
+        label: mt('pending'),
         icon: Clock,
         bgColor: 'bg-yellow-100',
         textColor: 'text-yellow-800',
@@ -150,11 +134,12 @@ export default function LocationEditModal({
   onSave,
   viewOnly = false,
 }: LocationEditModalProps) {
+  
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const form = useForm<LocationFormValues>({
-    resolver: zodResolver(locationFormSchema),
+    resolver: zodResolver(getLocationFormSchema()),
     defaultValues: {
       name: location.name,
       address: location.address,
@@ -162,7 +147,7 @@ export default function LocationEditModal({
       notificationPhone: location.notificationPhone || "",
       timezone: DEFAULT_TIMEZONE, // Locked to default
       cancellationPolicyHours: location.cancellationPolicyHours || 24,
-      cancellationPolicyMessage: location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
+      cancellationPolicyMessage: location.cancellationPolicyMessage || mt("cancellationPolicyDefaultMessage"),
       defaultDailyBookingLimit: location.defaultDailyBookingLimit || 2,
       minimumBookingWindowHours: location.minimumBookingWindowHours ?? 1,
       logoUrl: location.logoUrl || "",
@@ -179,7 +164,7 @@ export default function LocationEditModal({
         notificationPhone: location.notificationPhone || "",
         timezone: DEFAULT_TIMEZONE,
         cancellationPolicyHours: location.cancellationPolicyHours || 24,
-        cancellationPolicyMessage: location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
+        cancellationPolicyMessage: location.cancellationPolicyMessage || mt("cancellationPolicyDefaultMessage"),
         defaultDailyBookingLimit: location.defaultDailyBookingLimit || 2,
         minimumBookingWindowHours: location.minimumBookingWindowHours ?? 1,
         logoUrl: location.logoUrl || "",
@@ -201,7 +186,7 @@ export default function LocationEditModal({
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || "Failed to update location");
+        throw new Error(errorData.error || tt("failedToUpdateLocation"));
       }
 
       return response.json();
@@ -228,7 +213,7 @@ export default function LocationEditModal({
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || "Failed to update location settings");
+        throw new Error(errorData.error || tt("failedToUpdateLocationSettings"));
       }
 
       return response.json();
@@ -259,16 +244,14 @@ export default function LocationEditModal({
       queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
       queryClient.invalidateQueries({ queryKey: ["locationDetails", location.id] });
 
-      toast({
-        title: "Success",
-        description: "Location updated successfully",
+      toast({ title: mt("success"),
+        description: mt("locationUpdatedSuccessfully"),
       });
 
       onSave();
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update location",
+      toast({ title: mt("error"),
+        description: error.message || tt("failedToUpdateLocation"),
         variant: "destructive",
       });
     }
@@ -301,10 +284,10 @@ export default function LocationEditModal({
             )}
             <div>
               <SheetTitle className="text-lg">
-                {viewOnly ? "Location Details" : "Edit Location"}
+                {viewOnly ? mt("locationDetails") : mt("editLocation")}
               </SheetTitle>
               <SheetDescription>
-                {viewOnly ? "View your location information" : "Update your location details and settings"}
+                {viewOnly ? mt("viewYourLocationInformation") : mt("updateYourLocationDetails")}
               </SheetDescription>
             </div>
           </div>
@@ -315,9 +298,9 @@ export default function LocationEditModal({
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <Tabs defaultValue="basic" className="w-full">
                 <TabsList className="grid w-full grid-cols-3 mb-4">
-                  <TabsTrigger value="basic">Basic Info</TabsTrigger>
-                  <TabsTrigger value="settings">Settings</TabsTrigger>
-                  <TabsTrigger value="license">License</TabsTrigger>
+                  <TabsTrigger value="basic">{mt("basicInfo")}</TabsTrigger>
+                  <TabsTrigger value="settings">{mt("settings")}</TabsTrigger>
+                  <TabsTrigger value="license">{mt("navLicense")}</TabsTrigger>
                 </TabsList>
 
                 {/* Basic Info Tab */}
@@ -327,11 +310,11 @@ export default function LocationEditModal({
                     name="name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Location Name</FormLabel>
+                        <FormLabel>{mt("locationName")}</FormLabel>
                         <div className="relative">
                           <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                           <FormControl>
-                            <Input className="pl-10" placeholder="Enter location name" {...field} disabled={viewOnly} />
+                            <Input className="pl-10" placeholder={mt("enterLocationName")} {...field} disabled={viewOnly} />
                           </FormControl>
                         </div>
                         <FormMessage />
@@ -344,11 +327,11 @@ export default function LocationEditModal({
                     name="address"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Address</FormLabel>
+                        <FormLabel>{mt("address")}</FormLabel>
                         <div className="relative">
                           <MapPin className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
                           <FormControl>
-                            <Textarea className="pl-10 min-h-[80px]" placeholder="Enter full address" {...field} disabled={viewOnly} />
+                            <Textarea className="pl-10 min-h-[80px]" placeholder={mt("enterFullAddress")} {...field} disabled={viewOnly} />
                           </FormControl>
                         </div>
                         <FormMessage />
@@ -362,11 +345,11 @@ export default function LocationEditModal({
                       name="notificationEmail"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Notification Email</FormLabel>
+                          <FormLabel>{mt("notificationEmail")}</FormLabel>
                           <div className="relative">
                             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                             <FormControl>
-                              <Input className="pl-10" type="email" placeholder="email@example.com" {...field} disabled={viewOnly} />
+                              <Input className="pl-10" type="email" placeholder={mt("emailExampleCom")} {...field} disabled={viewOnly} />
                             </FormControl>
                           </div>
                           <FormMessage />
@@ -379,7 +362,7 @@ export default function LocationEditModal({
                       name="notificationPhone"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Notification Phone</FormLabel>
+                          <FormLabel>{mt("notificationPhone")}</FormLabel>
                           <div className="relative">
                             <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                             <FormControl>
@@ -393,7 +376,7 @@ export default function LocationEditModal({
                   </div>
 
                   <div className="space-y-2">
-                    <FormLabel>Location Logo</FormLabel>
+                    <FormLabel>{mt("locationLogo")}</FormLabel>
                     <FormField
                       control={form.control}
                       name="logoUrl"
@@ -413,7 +396,7 @@ export default function LocationEditModal({
                             />
                           </FormControl>
                           {viewOnly && !field.value && (
-                            <p className="text-sm text-gray-500">No logo uploaded</p>
+                            <p className="text-sm text-gray-500">{mt("noLogoUploaded")}</p>
                           )}
                           <FormMessage />
                         </FormItem>
@@ -429,13 +412,13 @@ export default function LocationEditModal({
                     name="timezone"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Timezone</FormLabel>
+                        <FormLabel>{mt("timezone")}</FormLabel>
                         <div className="flex items-center gap-2 border border-gray-300 rounded-lg px-3 py-2 bg-gray-50 text-gray-700">
                           <Globe className="w-4 h-4 text-gray-400" />
-                          <span className="flex-1">Newfoundland Time (GMT-3:30)</span>
-                          <Badge variant="secondary" className="text-xs">Locked</Badge>
+                          <span className="flex-1">{mt("newfoundlandTimeGMT330")}</span>
+                          <Badge variant="secondary" className="text-xs">{mt("locked")}</Badge>
                         </div>
-                        <FormDescription>The timezone is locked to Newfoundland Time for all locations.</FormDescription>
+                        <FormDescription>{mt("theTimezoneIsLockedToNewfoundlandTimeForAllLocations")}</FormDescription>
                       </FormItem>
                     )}
                   />
@@ -446,7 +429,7 @@ export default function LocationEditModal({
                       name="cancellationPolicyHours"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Cancellation Policy (hours)</FormLabel>
+                          <FormLabel>{mt("cancellationPolicyHours")}</FormLabel>
                           <div className="relative">
                             <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                             <FormControl>
@@ -463,7 +446,7 @@ export default function LocationEditModal({
                       name="defaultDailyBookingLimit"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Daily Booking Limit (hours)</FormLabel>
+                          <FormLabel>{mt("dailyBookingLimitHours")}</FormLabel>
                           <div className="relative">
                             <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                             <FormControl>
@@ -481,14 +464,14 @@ export default function LocationEditModal({
                     name="minimumBookingWindowHours"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Minimum Booking Window (hours)</FormLabel>
+                        <FormLabel>{mt("minimumBookingWindowHours")}</FormLabel>
                         <div className="relative">
                           <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                           <FormControl>
                             <Input className="pl-10" type="number" min="0" max="168" step="1" {...field} disabled={viewOnly} />
                           </FormControl>
                         </div>
-                        <FormDescription>How many hours in advance bookings must be made (0-168 hours)</FormDescription>
+                        <FormDescription>{mt("howManyHoursInAdvanceBookingsMustBeMade0168Hours")}</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -499,9 +482,9 @@ export default function LocationEditModal({
                     name="cancellationPolicyMessage"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Cancellation Policy Message</FormLabel>
+                        <FormLabel>{mt("cancellationPolicyMessage")}</FormLabel>
                         <FormControl>
-                          <Textarea className="min-h-[80px]" placeholder="Enter cancellation policy message" {...field} disabled={viewOnly} />
+                          <Textarea className="min-h-[80px]" placeholder={mt("enterCancellationPolicyMessage")} {...field} disabled={viewOnly} />
                         </FormControl>
                         <FormDescription>Use {"{hours}"} to insert the cancellation hours value</FormDescription>
                         <FormMessage />
@@ -518,7 +501,7 @@ export default function LocationEditModal({
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <FileText className="w-5 h-5 text-gray-600" />
-                        <span className="font-medium">Kitchen License</span>
+                        <span className="font-medium">{mt("kitchenLicense")}</span>
                       </div>
                       <div className={cn(
                         "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium",
@@ -544,14 +527,10 @@ export default function LocationEditModal({
                           url={location.kitchenLicenseUrl || `/api/files/kitchen-license/manager/${location.id}`}
                           className="text-sm text-[#F51042] hover:underline inline-flex items-center gap-1"
                         >
-                          <FileText className="w-4 h-4" />
-                          View uploaded license
-                        </AuthenticatedDocumentLink>
+                          <FileText className="w-4 h-4" />{mt("viewUploadedLicense")}</AuthenticatedDocumentLink>
                       </div>
                     ) : (
-                      <p className="text-sm text-gray-600">
-                        No kitchen license has been uploaded yet. Please upload your license during the location creation process.
-                      </p>
+                      <p className="text-sm text-gray-600">{mt("noKitchenLicenseHasBeenUploadedYetPleaseUploadYourLicenseDur")}</p>
                     )}
 
                     {location.kitchenLicenseStatus === 'rejected' && location.kitchenLicenseFeedback && (
@@ -559,7 +538,7 @@ export default function LocationEditModal({
                         <div className="flex items-start gap-2">
                           <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
                           <div>
-                            <p className="text-sm font-medium text-red-800">Admin Feedback</p>
+                            <p className="text-sm font-medium text-red-800">{mt("adminFeedback")}</p>
                             <p className="text-sm text-red-600 mt-1">{location.kitchenLicenseFeedback}</p>
                           </div>
                         </div>
@@ -568,7 +547,7 @@ export default function LocationEditModal({
 
                     {location.kitchenLicenseApprovedAt && (
                       <p className="text-xs text-gray-500">
-                        {location.kitchenLicenseStatus === 'approved' ? 'Approved' : 'Reviewed'} on:{" "}
+                        {location.kitchenLicenseStatus === 'approved' ? mt("approvedOn") : mt("reviewedOn")}{" "}
                         {new Date(location.kitchenLicenseApprovedAt).toLocaleDateString()}
                       </p>
                     )}
@@ -592,14 +571,10 @@ export default function LocationEditModal({
             >
               {isLoading ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Saving...
-                </>
+                  <Loader2 className="w-4 h-4 animate-spin" />{mt("saving")}</>
               ) : (
                 <>
-                  <Save className="w-4 h-4" />
-                  Save Changes
-                </>
+                  <Save className="w-4 h-4" />{mt("saveChanges")}</>
               )}
             </Button>
           )}

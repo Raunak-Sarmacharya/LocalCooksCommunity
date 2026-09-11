@@ -6,6 +6,7 @@ import { logger } from "../logger";
 import PDFDocument from 'pdfkit';
 import { format } from 'date-fns';
 import { sendChefReportEmail } from "../email";
+import { tLocale } from "../i18n";
 
 export interface SellerOrder {
   id: number;
@@ -38,10 +39,10 @@ function fmtDollars(value: number): string {
   }).format(Number(value) || 0);
 }
 
-function getDeliveryLabel(method: string, provider: string): string {
-  if (method === "pickup") return "Pickup";
-  if (provider === "uber_direct") return "Uber Direct";
-  return "In-House Delivery";
+function getDeliveryLabel(method: string, provider: string, locale?: string): string {
+  if (method === "pickup") return tLocale(locale, "pickup", { ns: "chef", defaultValue: "Pickup" });
+  if (provider === "uber_direct") return tLocale(locale, "uberDirect", { ns: "chef", defaultValue: "Uber Direct" });
+  return tLocale(locale, "inHouseDelivery", { ns: "chef", defaultValue: "In-House Delivery" });
 }
 
 function parseOrderItemsForReport(itemsStr: string | null | undefined): string {
@@ -73,7 +74,7 @@ function parseOrderItemsForReport(itemsStr: string | null | undefined): string {
 /**
  * Generate CSV string from orders
  */
-export async function generateReportCSV(phpShopId: number, startDate: string, endDate: string): Promise<string> {
+export async function generateReportCSV(phpShopId: number, startDate: string, endDate: string, locale?: string): Promise<string> {
   const data = await phpBridge.getSellerOrders(phpShopId, {
     type: 'all',
     status: 'all',
@@ -86,14 +87,24 @@ export async function generateReportCSV(phpShopId: number, startDate: string, en
   const orders: SellerOrder[] = data.orders || [];
 
   const headers = [
-    "Order ID", "Type", "Date", "Customer", "Items",
-    "Shop Charge", "Tax Collected", "Discount", "Stripe Fee", "Tip (Chef)",
-    "Your Earnings", "Payout Status", "Delivery Method",
+    tLocale(locale, "orderId", { ns: "chef", defaultValue: "Order ID" }),
+    tLocale(locale, "type", { ns: "chef", defaultValue: "Type" }),
+    tLocale(locale, "date", { ns: "chef", defaultValue: "Date" }),
+    tLocale(locale, "customer", { ns: "chef", defaultValue: "Customer" }),
+    tLocale(locale, "items", { ns: "chef", defaultValue: "Items" }),
+    tLocale(locale, "shopCharge", { ns: "chef", defaultValue: "Shop Charge" }),
+    tLocale(locale, "taxCollected", { ns: "chef", defaultValue: "Tax Collected" }),
+    tLocale(locale, "discount", { ns: "chef", defaultValue: "Discount" }),
+    tLocale(locale, "stripeFee", { ns: "chef", defaultValue: "Stripe Fee" }),
+    tLocale(locale, "tipChef", { ns: "chef", defaultValue: "Tip (Chef)" }),
+    tLocale(locale, "yourEarnings", { ns: "chef", defaultValue: "Your Earnings" }),
+    tLocale(locale, "payoutStatus", { ns: "chef", defaultValue: "Payout Status" }),
+    tLocale(locale, "deliveryMethod", { ns: "chef", defaultValue: "Delivery Method" }),
   ];
 
   const rows = orders.map((o) => [
     o.id,
-    o.type === "pre_order" ? "Pre-Order" : "Order",
+    o.type === "pre_order" ? tLocale(locale, "preOrder", { ns: "chef", defaultValue: "Pre-Order" }) : tLocale(locale, "orderLabel", { ns: "chef", defaultValue: "Order" }),
     `"${o.order_time}"`, 
     `"${(o.customer_name || '').replace(/"/g, '""')}"`,
     `"${parseOrderItemsForReport(o.items_description).replace(/"/g, '""')}"`,
@@ -104,7 +115,7 @@ export async function generateReportCSV(phpShopId: number, startDate: string, en
     fmtDollars(o.tip_chef),
     fmtDollars(o.chef_earnings),
     o.payout_status,
-    getDeliveryLabel(o.order_method, o.delivery_provider),
+    getDeliveryLabel(o.order_method, o.delivery_provider, locale),
   ]);
 
   const csv = [headers, ...rows].map((r) => r.join(",")).join("\n");
@@ -114,7 +125,7 @@ export async function generateReportCSV(phpShopId: number, startDate: string, en
 /**
  * Generate PDF Buffer from orders
  */
-export async function generateReportPDF(phpShopId: number, shopName: string, startDate: string, endDate: string, periodType: string): Promise<Buffer> {
+export async function generateReportPDF(phpShopId: number, shopName: string, startDate: string, endDate: string, periodType: string, locale?: string): Promise<Buffer> {
   const data = await phpBridge.getSellerOrders(phpShopId, {
     type: 'all',
     status: 'all',
@@ -137,8 +148,8 @@ export async function generateReportPDF(phpShopId: number, shopName: string, sta
       // Header
       doc.fontSize(20).text('Local Cooks', { align: 'center' });
       doc.moveDown(0.5);
-      doc.fontSize(16).text(`Seller Statement: ${shopName}`, { align: 'center' });
-      doc.fontSize(12).text(`Period: ${startDate} to ${endDate} (${periodType})`, { align: 'center' });
+      doc.fontSize(16).text(tLocale(locale, "sellerStatementTitle", { ns: "chef", defaultValue: "Seller Statement: {shopName}", shopName }), { align: 'center' });
+      doc.fontSize(12).text(tLocale(locale, "periodLabel", { ns: "chef", defaultValue: "Period: {startDate} to {endDate} ({periodType})", startDate, endDate, periodType }), { align: 'center' });
       doc.moveDown(2);
       
       // Summary section
@@ -191,26 +202,26 @@ export async function generateReportPDF(phpShopId: number, shopName: string, sta
         .slice(0, 5)
         .map(([name, stats]) => ({ name, ...stats }));
 
-      doc.fontSize(14).text('Executive Summary', { underline: true });
+      doc.fontSize(14).text(tLocale(locale, "executiveSummary", { ns: "chef", defaultValue: "Executive Summary" }), { underline: true });
       doc.moveDown(0.5);
-      doc.fontSize(12).text(`Total Orders Completed: ${totalOrders}`);
-      doc.text(`Total Chef Earnings: ${fmtDollars(totalEarnings)}`);
-      doc.text(`Total Chef Tips Received: ${fmtDollars(totalTips)}`);
-      doc.text(`Average Order Value (AOV): ${fmtDollars(aov)}`);
-      doc.text(`Returning Customers: ${returningPct.toFixed(1)}%`);
+      doc.fontSize(12).text(tLocale(locale, "totalOrdersCompleted", { ns: "chef", defaultValue: "Total Orders Completed: {totalOrders}", totalOrders }));
+      doc.text(tLocale(locale, "totalChefEarningsLabel", { ns: "chef", defaultValue: "Total Chef Earnings: {amount}", amount: fmtDollars(totalEarnings) }));
+      doc.text(tLocale(locale, "totalChefTipsLabel", { ns: "chef", defaultValue: "Total Chef Tips Received: {amount}", amount: fmtDollars(totalTips) }));
+      doc.text(tLocale(locale, "avgOrderValueLabel", { ns: "chef", defaultValue: "Average Order Value (AOV): {amount}", amount: fmtDollars(aov) }));
+      doc.text(tLocale(locale, "returningCustomersPctLabel", { ns: "chef", defaultValue: "Returning Customers: {pct}%", pct: returningPct.toFixed(1) }));
       
       if (topItems.length > 0) {
         doc.moveDown(1);
-        doc.font('Helvetica-Bold').text('Top Selling Items:');
+        doc.font('Helvetica-Bold').text(tLocale(locale, "topSellingItemsTitle", { ns: "chef", defaultValue: "Top Selling Items:" }));
         doc.font('Helvetica');
         topItems.forEach(item => {
-          doc.text(`  • ${item.name}: ${item.qty} sold (${fmtDollars(item.revenue)})`);
+          doc.text(`  • ${item.name}: ${tLocale(locale, "soldWithRevenue", { ns: "chef", defaultValue: "{qty} sold ({revenue})", qty: item.qty, revenue: fmtDollars(item.revenue) })}`);
         });
       }
       doc.moveDown(2);
       
       // Breakdown Table Header
-      doc.fontSize(14).text('Order Breakdown', { underline: true });
+      doc.fontSize(14).text(tLocale(locale, "orderBreakdownTitle", { ns: "chef", defaultValue: "Order Breakdown" }), { underline: true });
       doc.moveDown(0.5);
       
       let yPosition = doc.y;
@@ -225,13 +236,13 @@ export async function generateReportPDF(phpShopId: number, shopName: string, sta
       const colNet = 450;
       
       doc.font('Helvetica-Bold');
-      doc.text('Order ID', colId, yPosition);
-      doc.text('Date', colDate, yPosition);
-      doc.text('Gross', colGross, yPosition);
-      doc.text('Tax', colTax, yPosition);
-      doc.text('Fees', colFee, yPosition);
-      doc.text('Tip', colTip, yPosition);
-      doc.text('Net Earnings', colNet, yPosition);
+      doc.text(tLocale(locale, "orderIdShort", { ns: "chef", defaultValue: "Order ID" }), colId, yPosition);
+      doc.text(tLocale(locale, "dateShort", { ns: "chef", defaultValue: "Date" }), colDate, yPosition);
+      doc.text(tLocale(locale, "grossShort", { ns: "chef", defaultValue: "Gross" }), colGross, yPosition);
+      doc.text(tLocale(locale, "taxShort", { ns: "chef", defaultValue: "Tax" }), colTax, yPosition);
+      doc.text(tLocale(locale, "feesShort", { ns: "chef", defaultValue: "Fees" }), colFee, yPosition);
+      doc.text(tLocale(locale, "tipShort", { ns: "chef", defaultValue: "Tip" }), colTip, yPosition);
+      doc.text(tLocale(locale, "netEarningsShort", { ns: "chef", defaultValue: "Net Earnings" }), colNet, yPosition);
       
       doc.moveTo(50, yPosition + 15).lineTo(550, yPosition + 15).stroke();
       doc.font('Helvetica');
@@ -522,7 +533,8 @@ export async function processScheduledReports(period: 'weekly' | 'monthly'): Pro
       id: users.id,
       email: users.username,
       phpShopId: users.phpShopId,
-      username: users.username
+      username: users.username,
+      preferredLocale: users.preferredLocale
     })
     .from(users)
     .where(isNotNull(users.phpShopId));
@@ -548,8 +560,9 @@ export async function processScheduledReports(period: 'weekly' | 'monthly'): Pro
           ? app.shopName 
           : chefName + "'s Shop";
 
-      const csvContent = await generateReportCSV(chef.phpShopId, startDate, endDate);
-      const pdfBuffer = await generateReportPDF(chef.phpShopId, shopName, startDate, endDate, period);
+      const locale = chef.preferredLocale || 'en';
+      const csvContent = await generateReportCSV(chef.phpShopId, startDate, endDate, locale);
+      const pdfBuffer = await generateReportPDF(chef.phpShopId, shopName, startDate, endDate, period, locale);
       
       await sendChefReportEmail(chef.email, chefName, pdfBuffer, csvContent, period, startDate, endDate);
       successCount++;

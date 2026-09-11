@@ -1,7 +1,7 @@
 import { logger } from "@/lib/logger";
-import { useFirebaseAuth } from '@/hooks/use-auth';
-import { auth } from '@/lib/firebase';
-import { useState } from 'react';
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { auth } from "@/lib/firebase";
+import { useState } from "react";
 
 export default function VerificationDebug() {
   const { user, updateUserVerification } = useFirebaseAuth();

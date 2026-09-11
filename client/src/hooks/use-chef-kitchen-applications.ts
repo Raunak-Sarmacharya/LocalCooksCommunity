@@ -2,6 +2,7 @@ import { logger } from "@/lib/logger";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChefKitchenApplication } from "@shared/schema";
 import { useFirebaseAuth } from "./use-auth";
+import { ct } from "@/i18n/chef-ns";
 
 // Types for kitchen applications
 interface KitchenApplicationWithLocation extends ChefKitchenApplication {
@@ -70,6 +71,48 @@ function getApiErrorMessage(errorData: any, fallback: string) {
   return errorData?.error || fallback;
 }
 
+function invalidateChefKitchenApplicationQueries(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({
+    queryKey: ["/api/firebase/chef/kitchen-applications"],
+  });
+  queryClient.invalidateQueries({
+    queryKey: ["/api/firebase/chef/kitchen-applications/location"],
+  });
+  queryClient.invalidateQueries({
+    queryKey: ["/api/firebase/chef/kitchen-access-status"],
+  });
+  queryClient.invalidateQueries({
+    queryKey: ["/api/firebase/chef/approved-kitchens"],
+  });
+}
+
+function normalizeLocationApplicationResponse(data: Record<string, unknown> | null | undefined) {
+  const nested =
+    data?.application && typeof data.application === "object"
+      ? (data.application as Record<string, unknown>)
+      : null;
+  const record = nested?.id ? nested : data ?? {};
+  const status = (record.status ?? data?.status ?? null) as string | null;
+  const currentTier =
+    (record.current_tier as number | undefined) ??
+    (record.currentTier as number | undefined) ??
+    1;
+  const hasApplication = Boolean(
+    data?.hasApplication ?? nested?.id ?? record.id
+  );
+
+  return {
+    ...record,
+    status,
+    current_tier: currentTier,
+    hasApplication,
+    canBook: Boolean(
+      data?.canBook ?? (status === "approved" && currentTier >= 3)
+    ),
+    location: data?.location ?? record.location ?? null,
+  };
+}
+
 /**
  * Hook for chefs to manage their kitchen applications
  * This replaces the old "share profile" workflow
@@ -125,12 +168,7 @@ export function useChefKitchenApplications() {
       return await response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["/api/firebase/chef/kitchen-applications"],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ["/api/firebase/chef/approved-kitchens"],
-      });
+      invalidateChefKitchenApplicationQueries(queryClient);
     },
   });
 
@@ -158,9 +196,7 @@ export function useChefKitchenApplications() {
       return await response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["/api/firebase/chef/kitchen-applications"],
-      });
+      invalidateChefKitchenApplicationQueries(queryClient);
     },
   });
 
@@ -192,9 +228,7 @@ export function useChefKitchenApplications() {
       return await response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["/api/firebase/chef/kitchen-applications"],
-      });
+      invalidateChefKitchenApplicationQueries(queryClient);
     },
   });
 
@@ -206,6 +240,37 @@ export function useChefKitchenApplications() {
     cancelApplication,
     updateDocuments,
     refetch: applicationsQuery.refetch,
+  };
+}
+
+/**
+ * Hook to get the global applications for the current user (Step 1 of the application process)
+ */
+export function useGlobalMyApplications() {
+  const { user } = useFirebaseAuth();
+
+  const myApplicationsQuery = useQuery<any[], Error>({
+    queryKey: ["/api/applications/my-applications"],
+    queryFn: async () => {
+      const headers = await getAuthHeaders();
+      const response = await fetch("/api/applications/my-applications", {
+        headers,
+      });
+
+      if (!response.ok) {
+        throw new Error(ct("failedToFetchGlobalApplications"));
+      }
+
+      return await response.json();
+    },
+    enabled: !!user,
+  });
+
+  return {
+    applications: myApplicationsQuery.data ?? [],
+    isLoading: myApplicationsQuery.isLoading,
+    error: myApplicationsQuery.error,
+    refetch: myApplicationsQuery.refetch,
   };
 }
 
@@ -261,6 +326,7 @@ export function useChefKitchenAccessForLocation(locationId: number | null) {
  * Hook to get application for a specific location
  */
 export function useChefKitchenApplicationForLocation(locationId: number | null) {
+  const { user } = useFirebaseAuth();
   const applicationsQuery = useQuery<
     KitchenApplicationWithLocation & { hasApplication: boolean; canBook: boolean },
     Error
@@ -271,8 +337,7 @@ export function useChefKitchenApplicationForLocation(locationId: number | null) 
         return {
           hasApplication: false,
           canBook: false,
-          application: null,
-        } as any;
+        } as KitchenApplicationWithLocation & { hasApplication: boolean; canBook: boolean };
       }
 
       const headers = await getAuthHeaders();
@@ -284,27 +349,28 @@ export function useChefKitchenApplicationForLocation(locationId: number | null) 
         }
       );
 
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || data.message || "Failed to fetch kitchen application");
+      }
 
-
-      const data = await response.json();
-      // Ensure the response has the expected structure
-      // Enterprise 3-Tier System: canBook = Tier 3 (current_tier >= 3)
-      return {
-        ...data,
-        hasApplication: data.hasApplication ?? (!!data.id),
-        canBook: data.canBook ?? (data.status === 'approved' && (data.current_tier ?? 1) >= 3),
+      return normalizeLocationApplicationResponse(data) as KitchenApplicationWithLocation & {
+        hasApplication: boolean;
+        canBook: boolean;
       };
     },
-    enabled: !!locationId,
+    enabled: !!user && !!locationId,
     retry: 1,
     staleTime: 30000,
+    refetchOnMount: "always",
   });
 
-  // Ensure we properly extract canBook from the response
-  // Enterprise 3-Tier System: canBook = Tier 3 (current_tier >= 3)
   const responseData = applicationsQuery.data;
-  const hasApplication = responseData?.hasApplication ?? (!!responseData?.id);
-  const canBook = responseData?.canBook ?? (responseData?.status === 'approved' && ((responseData as any)?.current_tier ?? 1) >= 3);
+  const hasApplication = Boolean(responseData?.hasApplication ?? responseData?.id);
+  const canBook = Boolean(
+    responseData?.canBook ??
+      (responseData?.status === "approved" && ((responseData as { current_tier?: number })?.current_tier ?? 1) >= 3)
+  );
 
   return {
     application: hasApplication ? responseData : null,
@@ -374,7 +440,7 @@ export function useChefApprovedKitchens() {
  * Enterprise 3-Tier System:
  * - Tier 1: Application submitted, pending review (current_tier = 1)
  * - Tier 2: Step 1 approved, chef completing Step 2 (current_tier = 2)
- * - Tier 3: Fully approved - ready to book (current_tier >= 3)
+ * - Tier 3: Fully approved - Book Now (current_tier >= 3)
  */
 export function useChefKitchenApplicationsStatus() {
   const { applications, isLoading } = useChefKitchenApplications();
@@ -386,7 +452,7 @@ export function useChefKitchenApplicationsStatus() {
     a.status === "approved" && 
     ((a as any).current_tier ?? 1) >= 3
   ).length;
-  const pendingCount = applications.filter(a => a.status === "inReview").length;
+  const pendingCount = applications.filter(a => ["inreview", "pending"].includes(a.status.toLowerCase())).length;
   const rejectedCount = applications.filter(a => a.status === "rejected").length;
 
   const hasAnyApproved = approvedCount > 0;
@@ -408,4 +474,3 @@ export function useChefKitchenApplicationsStatus() {
     totalApplications: applications.length,
   };
 }
-

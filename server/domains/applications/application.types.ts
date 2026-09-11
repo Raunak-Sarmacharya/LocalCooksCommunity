@@ -16,6 +16,7 @@ export interface VerifyDocumentsDTO {
   id: number;
   foodSafetyLicenseStatus?: string;
   foodEstablishmentCertStatus?: string;
+  foodEstablishmentCert?: string;
   documentsAdminFeedback?: string | null;
   documentsReviewedBy: number;
 }

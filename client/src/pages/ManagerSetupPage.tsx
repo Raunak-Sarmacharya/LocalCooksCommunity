@@ -1,26 +1,12 @@
 import React, { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { useManagerOnboarding } from "@/components/manager/onboarding/ManagerOnboardingContext";
 import { componentRegistry } from "@/config/onboarding";
 import EnterpriseStepper from "@/components/manager/onboarding/EnterpriseStepper";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { 
-    X, 
-    ChevronRight, 
-    Home,
-    HelpCircle,
-    MapPin,
-    ChefHat,
-    ClipboardList,
-    CreditCard,
-    Clock,
-    Package,
-    CookingPot,
-    PartyPopper,
-    Handshake,
-    Loader2
-} from "lucide-react";
+import { X, ChevronRight, Home, HelpCircle, MapPin, Calendar, ClipboardList, CreditCard, Clock, Package, CookingPot, PartyPopper, Handshake, Loader2 } from "@/components/ui/manager-icons";
 import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -29,7 +15,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 const STEP_ICONS: Record<string, React.ElementType> = {
     'welcome': Handshake,
     'location': MapPin,
-    'create-kitchen': ChefHat,
+    'create-kitchen': Calendar,
     'application-requirements': ClipboardList,
     'payment-setup': CreditCard,
     'availability': Clock,
@@ -47,6 +33,7 @@ export default function ManagerSetupPage() {
 }
 
 function ManagerSetupPageContent() {
+    const { t } = useTranslation("chef");
     const {
         currentStepData,
         currentStepIndex,
@@ -102,7 +89,7 @@ function ManagerSetupPageContent() {
                         {/* Mobile Title */}
                         <div className="md:hidden flex items-center gap-2">
                             <span className="text-slate-900 dark:text-slate-100 font-semibold text-sm truncate max-w-[150px]">
-                                {currentStepData?.title || 'Setup'}
+                                {currentStepData?.title || t("managerSetupSetup")}
                             </span>
                         </div>
                         {/* Desktop Breadcrumb */}
@@ -116,13 +103,13 @@ function ManagerSetupPageContent() {
                                         <Home className="w-4 h-4" />
                                     </button>
                                 </TooltipTrigger>
-                                <TooltipContent>Dashboard</TooltipContent>
+                                <TooltipContent>{t("dashboard", { ns: "common" })}</TooltipContent>
                             </Tooltip>
                             <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600" />
-                            <span className="text-slate-600 dark:text-slate-400 font-medium">Setup Wizard</span>
+                            <span className="text-slate-600 dark:text-slate-400 font-medium">{t("managerSetupWizard")}</span>
                             <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600" />
                             <span className="text-slate-900 dark:text-slate-100 font-medium">
-                                {currentStepData?.title || 'Loading...'}
+                                {currentStepData?.title || t("loading", { ns: "common" })}
                             </span>
                         </nav>
                     </div>
@@ -138,7 +125,7 @@ function ManagerSetupPageContent() {
                                     <HelpCircle className="w-5 h-5" />
                                 </Button>
                             </TooltipTrigger>
-                            <TooltipContent>Need help?</TooltipContent>
+                            <TooltipContent>{t("managerSetupNeedHelp")}</TooltipContent>
                         </Tooltip>
                         
                         <Button 
@@ -148,7 +135,7 @@ function ManagerSetupPageContent() {
                             className="border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
                         >
                             <X className="w-4 h-4 mr-2" />
-                            Save & Exit
+                            {t("commonSaveAndExit")}
                         </Button>
                     </div>
                 </header>
@@ -177,18 +164,18 @@ function ManagerSetupPageContent() {
                                         {/* Step indicator */}
                                         <div className="flex items-center gap-2 mb-0.5">
                                             <span className="text-xs text-slate-400 dark:text-slate-500 font-medium">
-                                                {stepNumber ? `Step ${stepNumber} of ${requiredSteps.length}` : (isOptional ? 'Optional' : '')}
+                                                {stepNumber ? t("managerSetupStepProgress", { current: stepNumber, total: requiredSteps.length }) : (isOptional ? t("commonOptional") : '')}
                                             </span>
                                             {completedSteps[currentStep?.id] && (
                                                 <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-                                                    • Completed
+                                                    • {t("commonCompleted")}
                                                 </span>
                                             )}
                                         </div>
                                         {/* Title & Description inline */}
                                         <div className="flex items-baseline gap-2 flex-wrap">
                                             <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
-                                                {currentStepData?.title || 'Setup'}
+                                                {currentStepData?.title || t("managerSetupSetup")}
                                             </h1>
                                             {currentStepData?.description && (
                                                 <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -214,7 +201,7 @@ function ManagerSetupPageContent() {
                                         <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
                                             <Loader2 className="w-6 h-6 animate-spin" />
                                         </div>
-                                        <p className="text-sm font-medium">Loading step...</p>
+                                        <p className="text-sm font-medium">{t("managerSetupLoadingStep")}</p>
                                     </div>
                                 )}
                             </div>

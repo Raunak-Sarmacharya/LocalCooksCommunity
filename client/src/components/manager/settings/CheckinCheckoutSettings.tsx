@@ -6,54 +6,25 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { mt } from "@/i18n/manager";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  Loader2,
-  Lock,
-  AlertTriangle,
-  KeyRound,
-  Hash,
-  Copy,
-  Eye,
-  EyeOff,
-  ChefHat,
-  Clock,
-  Info,
-} from "lucide-react";
+import { Loader2, Lock, AlertTriangle, KeyRound, Hash, Copy, Eye, EyeOff, Calendar, Clock, Info } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiGet, apiPut } from "@/lib/api";
 import type {
   ChecklistItem,
   PhotoRequirement,
 } from "./shared/ChecklistEditor";
-import {
-  KitchenCheckinCheckoutEditor,
-  itemsToStorage,
-  unifyStorageToItems,
-  validateUnifiedItems,
-  type UnifiedChecklistItem,
-} from "./KitchenCheckinCheckoutEditor";
+import { KitchenCheckinCheckoutEditor, itemsToStorage, unifyStorageToItems, validateUnifiedItems, type UnifiedChecklistItem } from "./KitchenCheckinCheckoutEditor";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -164,11 +135,10 @@ function AccessCodesSection({ locationId }: { locationId: number }) {
         queryClient.invalidateQueries({
           queryKey: ["manager-kitchens-access", locationId],
         });
-        toast({ title: enabled ? "Smart lock enabled" : "Smart lock disabled" });
+        toast({ title: enabled ? mt("smartLockEnabledToast") : mt("smartLockDisabledToast") });
       } catch {
-        toast({
-          title: "Error",
-          description: "Failed to update smart lock",
+        toast({ title: mt("error"),
+          description: mt("failedToUpdateSmartLock"),
           variant: "destructive",
         });
       } finally {
@@ -193,11 +163,10 @@ function AccessCodesSection({ locationId }: { locationId: number }) {
         queryClient.invalidateQueries({
           queryKey: ["manager-kitchens-access", locationId],
         });
-        toast({ title: `Code format set to ${format}` });
+        toast({ title: mt("codeFormatSetTo", { format }) });
       } catch {
-        toast({
-          title: "Error",
-          description: "Failed to update code format",
+        toast({ title: mt("error"),
+          description: mt("failedToUpdateCodeFormat"),
           variant: "destructive",
         });
       } finally {
@@ -220,15 +189,14 @@ function AccessCodesSection({ locationId }: { locationId: number }) {
           queryKey: ["manager-kitchens-access", locationId],
         });
         const labels: Record<CodeVisibility, string> = {
-          on_booking: "Code shown at booking confirmation",
-          at_checkin: "Code shown at check-in time",
-          manual: "Code shared manually by you",
+          on_booking: mt("codeShownAtBookingConfirmation"),
+          at_checkin: mt("codeShownAtCheckinTime"),
+          manual: mt("codeSharedManually"),
         };
         toast({ title: labels[visibility] });
       } catch {
-        toast({
-          title: "Error",
-          description: "Failed to update visibility",
+        toast({ title: mt("error"),
+          description: mt("failedToUpdateVisibility"),
           variant: "destructive",
         });
       } finally {
@@ -242,9 +210,8 @@ function AccessCodesSection({ locationId }: { locationId: number }) {
     async (kitchen: KitchenForAccessCode) => {
       const code = codeInputs[kitchen.id]?.trim();
       if (!code) {
-        toast({
-          title: "Enter a code",
-          description: "Type the access code for this kitchen",
+        toast({ title: mt("enterACode"),
+          description: mt("typeTheAccessCodeForThisKitchen"),
           variant: "destructive",
         });
         return;
@@ -275,11 +242,10 @@ function AccessCodesSection({ locationId }: { locationId: number }) {
           n.add(kitchen.id);
           return n;
         });
-        toast({ title: "Access code saved" });
+        toast({ title: mt("accessCodeSaved") });
       } catch {
-        toast({
-          title: "Error",
-          description: "Failed to save access code",
+        toast({ title: mt("error"),
+          description: mt("failedToSaveAccessCode"),
           variant: "destructive",
         });
       } finally {
@@ -310,11 +276,10 @@ function AccessCodesSection({ locationId }: { locationId: number }) {
           n.delete(kitchen.id);
           return n;
         });
-        toast({ title: "Access code revoked" });
+        toast({ title: mt("accessCodeRevoked") });
       } catch {
-        toast({
-          title: "Error",
-          description: "Failed to revoke code",
+        toast({ title: mt("error"),
+          description: mt("failedToRevokeCode"),
           variant: "destructive",
         });
       } finally {
@@ -327,7 +292,7 @@ function AccessCodesSection({ locationId }: { locationId: number }) {
   const copyCode = useCallback(
     (code: string) => {
       navigator.clipboard.writeText(code);
-      toast({ title: "Copied to clipboard" });
+      toast({ title: mt("copiedToClipboard") });
     },
     [toast],
   );
@@ -347,10 +312,8 @@ function AccessCodesSection({ locationId }: { locationId: number }) {
             <KeyRound className="size-5 text-violet-600" />
           </div>
           <div>
-            <CardTitle className="text-lg">Smart Lock & Access Codes</CardTitle>
-            <CardDescription>
-              Manage access codes for kitchens with smart locks
-            </CardDescription>
+            <CardTitle className="text-lg">{mt("smartLockAccessCodes")}</CardTitle>
+            <CardDescription>{mt("manageAccessCodesForKitchensWithSmartLocks")}</CardDescription>
           </div>
         </div>
       </CardHeader>
@@ -358,15 +321,11 @@ function AccessCodesSection({ locationId }: { locationId: number }) {
         {isLoadingKitchens ? (
           <div className="flex items-center gap-2 py-6 justify-center">
             <Loader2 className="size-4 animate-spin text-violet-600" />
-            <span className="text-sm text-muted-foreground">
-              Loading kitchens...
-            </span>
+            <span className="text-sm text-muted-foreground">{mt("loadingKitchens")}</span>
           </div>
         ) : kitchensList.length === 0 ? (
           <div className="text-center py-6 text-sm text-muted-foreground border border-dashed rounded-lg">
-            <ChefHat className="size-8 text-muted-foreground/40 mx-auto mb-2" />
-            No kitchens found at this location.
-          </div>
+            <Calendar className="size-8 text-muted-foreground/40 mx-auto mb-2" />{mt("noKitchensFoundAtThisLocation")}</div>
         ) : (
           kitchensList.map((kitchen) => {
             const config = kitchen.smartLockConfig || {};
@@ -384,7 +343,7 @@ function AccessCodesSection({ locationId }: { locationId: number }) {
                 {/* Kitchen Header Row */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <ChefHat className="size-4 text-muted-foreground" />
+                    <Calendar className="size-4 text-muted-foreground" />
                     <span className="text-sm font-medium">{kitchen.name}</span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -392,7 +351,7 @@ function AccessCodesSection({ locationId }: { locationId: number }) {
                       htmlFor={`sl-${kitchen.id}`}
                       className="text-xs text-muted-foreground"
                     >
-                      {kitchen.smartLockEnabled ? "Enabled" : "Disabled"}
+                      {kitchen.smartLockEnabled ? mt("enabledLabel") : mt("disabledLabel")}
                     </Label>
                     <Switch
                       id={`sl-${kitchen.id}`}
@@ -410,9 +369,7 @@ function AccessCodesSection({ locationId }: { locationId: number }) {
                   <>
                     {/* Code Format Selector */}
                     <div className="flex items-center gap-3">
-                      <Label className="text-xs text-muted-foreground shrink-0">
-                        Code Type
-                      </Label>
+                      <Label className="text-xs text-muted-foreground shrink-0">{mt("codeType")}</Label>
                       <Select
                         value={codeFormat}
                         onValueChange={(val) =>
@@ -429,15 +386,11 @@ function AccessCodesSection({ locationId }: { locationId: number }) {
                         <SelectContent>
                           <SelectItem value="numeric">
                             <div className="flex items-center gap-1.5">
-                              <Hash className="size-3" />
-                              Numeric only
-                            </div>
+                              <Hash className="size-3" />{mt("numericOnly")}</div>
                           </SelectItem>
                           <SelectItem value="alphanumeric">
                             <div className="flex items-center gap-1.5">
-                              <KeyRound className="size-3" />
-                              Alphanumeric
-                            </div>
+                              <KeyRound className="size-3" />{mt("alphanumeric")}</div>
                           </SelectItem>
                         </SelectContent>
                       </Select>
@@ -497,9 +450,7 @@ function AccessCodesSection({ locationId }: { locationId: number }) {
 
                     {/* Code Visibility Policy */}
                     <div className="flex items-center gap-3">
-                      <Label className="text-xs text-muted-foreground shrink-0">
-                        Show Code
-                      </Label>
+                      <Label className="text-xs text-muted-foreground shrink-0">{mt("showCode")}</Label>
                       <Select
                         value={codeVisibility}
                         onValueChange={(val) =>
@@ -516,21 +467,15 @@ function AccessCodesSection({ locationId }: { locationId: number }) {
                         <SelectContent>
                           <SelectItem value="on_booking">
                             <div className="flex items-center gap-1.5">
-                              <Eye className="size-3" />
-                              At booking confirmation
-                            </div>
+                              <Eye className="size-3" />{mt("atBookingConfirmation")}</div>
                           </SelectItem>
                           <SelectItem value="at_checkin">
                             <div className="flex items-center gap-1.5">
-                              <Clock className="size-3" />
-                              At check-in time only
-                            </div>
+                              <Clock className="size-3" />{mt("atCheckInTimeOnly")}</div>
                           </SelectItem>
                           <SelectItem value="manual">
                             <div className="flex items-center gap-1.5">
-                              <EyeOff className="size-3" />
-                              Never (share manually)
-                            </div>
+                              <EyeOff className="size-3" />{mt("neverShareManually")}</div>
                           </SelectItem>
                         </SelectContent>
                       </Select>
@@ -541,8 +486,7 @@ function AccessCodesSection({ locationId }: { locationId: number }) {
                       <Input
                         placeholder={
                           codeFormat === "numeric"
-                            ? "Enter numeric code"
-                            : "Enter access code"
+                            ? mt("enterNumericCode") : mt("enterAccessCode")
                         }
                         value={codeInputs[kitchen.id] ?? ""}
                         onChange={(e) => {
@@ -571,7 +515,7 @@ function AccessCodesSection({ locationId }: { locationId: number }) {
                         ) : (
                           <KeyRound className="size-3 mr-1.5" />
                         )}
-                        {currentCode ? "Update" : "Set Code"}
+                        {currentCode ? mt("updateCode") : mt("setCode")}
                       </Button>
                       {currentCode && (
                         <Button
@@ -581,9 +525,7 @@ function AccessCodesSection({ locationId }: { locationId: number }) {
                           className="text-xs text-destructive hover:text-destructive shrink-0"
                           onClick={() => handleRevokeCode(kitchen)}
                           disabled={isSaving}
-                        >
-                          Revoke
-                        </Button>
+                        >{mt("revoke")}</Button>
                       )}
                     </div>
                   </>
@@ -613,6 +555,7 @@ function AccessCodesSection({ locationId }: { locationId: number }) {
 export default function CheckinCheckoutSettings({
   location,
 }: CheckinCheckoutSettingsProps) {
+  
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -764,9 +707,8 @@ export default function CheckinCheckoutSettings({
         queryKey: ["checkin-checkout-settings", location.id],
       });
 
-      toast({
-        title: "Checklists Saved",
-        description: "Kitchen check-in/check-out checklists updated successfully.",
+      toast({ title: mt("checklistsSaved"),
+        description: mt("kitchenCheckInCheckOutChecklistsUpdatedSuccessfully"),
       });
     }, [
       location.id,
@@ -798,9 +740,8 @@ export default function CheckinCheckoutSettings({
         queryKey: ["checkin-checkout-settings", location.id],
       });
 
-      toast({
-        title: "Time Windows Saved",
-        description: "Time window overrides updated successfully.",
+      toast({ title: mt("timeWindowsSaved"),
+        description: mt("timeWindowOverridesUpdatedSuccessfully"),
       });
     }, [
       location.id,
@@ -815,18 +756,12 @@ export default function CheckinCheckoutSettings({
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">
-            Kitchen Check-In / Check-Out
-          </h2>
-          <p className="text-muted-foreground">
-            Configure checklists and photo requirements for your kitchens.
-          </p>
+          <h2 className="text-2xl font-bold tracking-tight">{mt("kitchenCheckInCheckOut")}</h2>
+          <p className="text-muted-foreground">{mt("configureChecklistsAndPhotoRequirementsForYourKitchens")}</p>
         </div>
         <div className="flex items-center justify-center py-16">
           <Loader2 className="size-6 animate-spin text-muted-foreground" />
-          <span className="ml-2 text-sm text-muted-foreground">
-            Loading settings...
-          </span>
+          <span className="ml-2 text-sm text-muted-foreground">{mt("loadingSettings")}</span>
         </div>
       </div>
     );
@@ -837,9 +772,7 @@ export default function CheckinCheckoutSettings({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">
-            Kitchen Check-In / Check-Out
-          </h2>
+          <h2 className="text-2xl font-bold tracking-tight">{mt("kitchenCheckInCheckOut")}</h2>
           <p className="text-muted-foreground">
             Define checklists and photo requirements chefs must complete when
             using your kitchens.
@@ -849,9 +782,7 @@ export default function CheckinCheckoutSettings({
           <Badge
             variant="outline"
             className="text-amber-700 bg-amber-50 border-amber-200"
-          >
-            Unsaved changes
-          </Badge>
+          >{mt("unsavedChanges")}</Badge>
         )}
       </div>
 
@@ -881,7 +812,7 @@ export default function CheckinCheckoutSettings({
           disabled={
             (!isChecklistDirty && data?.id !== null) || validationErrors.length > 0
           }
-          labels={{ idle: "Save Checklists", loading: "Saving", success: "Saved" }}
+          labels={{ idle: mt("saveChecklists"), loading: mt("savingShort"), success: mt("saved") }}
         />
       </div>
 
@@ -892,22 +823,19 @@ export default function CheckinCheckoutSettings({
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <Clock className="size-5 text-amber-600" />
-            Time Window Overrides
-          </CardTitle>
+            <Clock className="size-5 text-amber-600" />{mt("timeWindowOverrides")}</CardTitle>
           <CardDescription>
-            Override platform defaults for when chefs can check in/out and grace periods.
-            Leave blank to use platform defaults.
+            {mt("timeWindowOverridesDesc")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label className="text-xs">
-                Check-in window (minutes before start)
+                {mt("checkinWindowMinutesBeforeLabel")}
                 {data?.platformDefaults && (
                   <span className="text-muted-foreground ml-1">
-                    (default: {data.platformDefaults.checkinWindowMinutesBefore})
+                    {mt("defaultValue", { value: data.platformDefaults.checkinWindowMinutesBefore })}
                   </span>
                 )}
               </Label>
@@ -925,10 +853,10 @@ export default function CheckinCheckoutSettings({
             </div>
             <div className="space-y-2">
               <Label className="text-xs">
-                No-show grace (minutes after start)
+                {mt("noShowGraceMinutesAfterLabel")}
                 {data?.platformDefaults && (
                   <span className="text-muted-foreground ml-1">
-                    (default: {data.platformDefaults.noShowGraceMinutes})
+                    {mt("defaultValue", { value: data.platformDefaults.noShowGraceMinutes })}
                   </span>
                 )}
               </Label>
@@ -945,16 +873,14 @@ export default function CheckinCheckoutSettings({
               />
             </div>
           </div>
-          <p className="text-[11px] text-muted-foreground mt-4 mb-4">
-            These values override the platform defaults for this location only. Leave a field blank to use the platform default.
-          </p>
+          <p className="text-[11px] text-muted-foreground mt-4 mb-4">{mt("theseValuesOverrideThePlatformDefaultsForThisLocationOnlyLea")}</p>
           
           <div className="flex justify-end pt-4 border-t">
             <StatusButton
               status={saveTimeWindowsAction.status}
               onClick={saveTimeWindowsAction.execute}
               disabled={!isTimeWindowDirty && data?.id !== null}
-              labels={{ idle: "Save Time Windows", loading: "Saving", success: "Saved" }}
+              labels={{ idle: mt("saveTimeWindows"), loading: mt("savingShort"), success: mt("saved") }}
             />
           </div>
         </CardContent>

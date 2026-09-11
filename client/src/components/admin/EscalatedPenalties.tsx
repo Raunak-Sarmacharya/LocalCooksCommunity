@@ -8,44 +8,17 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { auth } from "@/lib/firebase";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from "@/components/ui/alert";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
-import {
-  AlertTriangle,
-  RefreshCw,
-  DollarSign,
-  Package,
-  FileWarning,
-  CheckCircle,
-} from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AlertTriangle, RefreshCw, DollarSign, Package, FileWarning, CheckCircle } from "lucide-react";
 import { format } from "date-fns";
+import { TruncatedText } from "@/components/common/TruncatedText";
 
 // ============================================================================
 // Types
@@ -370,8 +343,8 @@ export default function EscalatedPenalties() {
                         })()}
                       </TableCell>
                       <TableCell>{getOverstayStatusBadge(o.status)}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
-                        {o.chargeFailureReason || "Unknown"}
+                      <TableCell className="text-xs text-muted-foreground max-w-[200px]">
+                        <TruncatedText className="truncate">{o.chargeFailureReason || "Unknown"}</TruncatedText>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {format(new Date(o.detectedAt), "MMM d, yyyy")}
@@ -418,8 +391,8 @@ export default function EscalatedPenalties() {
                     {claims.map((c) => (
                       <TableRow key={c.id}>
                         <TableCell className="font-mono text-xs">{c.id}</TableCell>
-                        <TableCell className="font-medium text-sm max-w-[200px] truncate">
-                          {c.claimTitle}
+                        <TableCell className="font-medium text-sm max-w-[200px]">
+                          <TruncatedText className="truncate">{c.claimTitle}</TruncatedText>
                         </TableCell>
                         <TableCell className="text-sm">{c.locationName}</TableCell>
                         <TableCell>
@@ -441,8 +414,8 @@ export default function EscalatedPenalties() {
                           {formatCurrency(c.finalAmountCents || c.claimedAmountCents)}
                         </TableCell>
                         <TableCell>{getClaimStatusBadge(c.status)}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
-                          {c.chargeFailureReason || "Unknown"}
+                        <TableCell className="text-xs text-muted-foreground max-w-[200px]">
+                          <TruncatedText className="truncate">{c.chargeFailureReason || "Unknown"}</TruncatedText>
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">
                           {format(new Date(c.createdAt), "MMM d, yyyy")}

@@ -1,153 +1,30 @@
 "use client"
 
 import * as React from "react"
-import {
-    LayoutDashboard,
-    FileText,
-    Building2,
-    Calendar,
-    BookOpen,
-    MessageCircle,
-    Search,
-    LifeBuoy,
-    AlertTriangle,
-    ChefHat,
-    CreditCard,
-    DollarSign,
-    Eye,
-} from "lucide-react"
-
-import {
-    Sidebar,
-    SidebarContent,
-    SidebarFooter,
-    SidebarGroup,
-    SidebarGroupLabel,
-    SidebarHeader,
-    SidebarMenu,
-    SidebarMenuButton,
-    SidebarMenuItem,
-    SidebarMenuBadge,
-    SidebarRail,
-    useSidebar,
-} from "@/components/ui/sidebar"
+import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuBadge, SidebarMenuSub, SidebarMenuSubItem, SidebarRail, useSidebar } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 import Logo from "@/components/ui/logo"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useFirebaseAuth } from "@/hooks/use-auth"
+import { useTranslation } from "react-i18next"
+import type { TFunction } from "i18next"
+import { LanguageMenuSection } from "@/components/i18n/LanguageSwitcher"
+import { Icon } from "@iconify/react"
+import "@/lib/kitchen-inventory-icons"
+import { chefNavSections, sidebarBranchForView, type ChefBreadcrumb, type ChefNavItem } from "@/lib/chef-nav-sections"
 
-// Type definition for navigation items
-interface NavItem {
-    id: string
-    label: string
-    icon: React.ComponentType<{ className?: string }>
-    path?: string
-    badge?: number
+function sectionHasHeader(title: string | undefined, itemCount: number) {
+    return Boolean(title) && itemCount > 1
 }
-
-interface NavGroup {
-    title: string
-    items: NavItem[]
-}
-
-// Navigation structure for chef portal - organized by purpose
-const navGroups: NavGroup[] = [
-    {
-        title: "Dashboard",
-        items: [
-            {
-                id: "overview",
-                label: "Overview",
-                icon: LayoutDashboard,
-            },
-        ],
-    },
-    {
-        title: "Sell on LocalCooks",
-        items: [
-            {
-                id: "applications",
-                label: "My Application",
-                icon: FileText,
-            },
-            {
-                id: "seller-revenue",
-                label: "My Earnings",
-                icon: DollarSign,
-            },
-            {
-                id: "training",
-                label: "Training",
-                icon: BookOpen,
-            },
-        ],
-    },
-    {
-        title: "Kitchen Access",
-        items: [
-            {
-                id: "kitchen-applications",
-                label: "My Kitchens",
-                icon: Building2,
-            },
-            {
-                id: "discover-kitchens",
-                label: "Discover Kitchens",
-                icon: Search,
-            },
-            {
-                id: "viewings",
-                label: "Kitchen Tours",
-                icon: Eye,
-            },
-            {
-                id: "bookings",
-                label: "My Bookings",
-                icon: Calendar,
-            },
-        ],
-    },
-    {
-        title: "Communication",
-        items: [
-            {
-                id: "messages",
-                label: "Messages",
-                icon: MessageCircle,
-                badge: 0,
-            },
-        ],
-    },
-    {
-        title: "Account",
-        items: [
-            {
-                id: "transactions",
-                label: "My Transactions",
-                icon: CreditCard,
-            },
-            {
-                id: "issues-refunds",
-                label: "Resolution Center",
-                icon: AlertTriangle,
-            },
-        ],
-    },
-]
-
-const navSecondary = [
-    {
-        id: "support",
-        label: "Support",
-        icon: LifeBuoy,
-    },
-]
 
 interface ChefSidebarProps extends React.ComponentProps<typeof Sidebar> {
     activeView: string
     onViewChange: (view: string) => void
     messageBadgeCount?: number
     hiddenItems?: string[]
+    /** Same trail as header breadcrumbs — nested crumbs expand under the active parent. */
+    breadcrumbs?: ChefBreadcrumb[]
 }
 
 export function ChefSidebar({
@@ -155,12 +32,19 @@ export function ChefSidebar({
     onViewChange,
     messageBadgeCount = 0,
     hiddenItems = [],
+    breadcrumbs,
     ...props
 }: ChefSidebarProps) {
-    const { user } = useFirebaseAuth()
-    const { isMobile, setOpenMobile } = useSidebar()
+    const { user, logout } = useFirebaseAuth()
+    const { t } = useTranslation("chef")
+    const tr = t as unknown as TFunction
+    const { isMobile, setOpenMobile, state } = useSidebar()
 
-    // Get user initials for avatar fallback
+    const branch = React.useMemo(
+        () => sidebarBranchForView(breadcrumbs, activeView),
+        [breadcrumbs, activeView]
+    )
+
     const getInitials = (name: string | null | undefined) => {
         if (!name) return "CH"
         const parts = name.split(" ")
@@ -175,6 +59,121 @@ export function ChefSidebar({
         if (isMobile) {
             setOpenMobile(false)
         }
+    }
+
+    const { ungroupedItems, groupedSections } = React.useMemo(() => {
+        const prepared = chefNavSections
+            .map((section) => ({
+                ...section,
+                visibleItems: section.items.filter((item) => !hiddenItems.includes(item.id)),
+            }))
+            .filter((section) => section.visibleItems.length > 0)
+
+        return {
+            ungroupedItems: prepared
+                .filter((section) => !sectionHasHeader(section.titleKey, section.visibleItems.length))
+                .flatMap((section) => section.visibleItems),
+            groupedSections: prepared.filter((section) =>
+                sectionHasHeader(section.titleKey, section.visibleItems.length)
+            ),
+        }
+    }, [hiddenItems])
+
+    const closeMobileIfNeeded = () => {
+        if (isMobile) setOpenMobile(false)
+    }
+
+    const activateCrumb = (crumb: ChefBreadcrumb) => {
+        if (!crumb.onClick) return
+        crumb.onClick()
+        closeMobileIfNeeded()
+    }
+
+    /** Children under a nav item share one row (first child starts the row; rest stay inline). */
+    const renderBranchTrail = (trail: ChefBreadcrumb[]): React.ReactNode => {
+        if (trail.length === 0) return null
+
+        return (
+            <SidebarMenuSubItem>
+                <div
+                    className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5 px-2 py-0.5 text-[12px] leading-snug"
+                    role="list"
+                >
+                    {trail.map((crumb, i) => {
+                        const isLeaf = i === trail.length - 1
+                        const canNavigate = Boolean(crumb.onClick)
+
+                        return (
+                            <React.Fragment key={`${crumb.label}-${i}`}>
+                                {i > 0 ? (
+                                    <Icon
+                                        icon="mdi:chevron-right"
+                                        className="size-3 shrink-0 text-muted-foreground/50"
+                                        aria-hidden
+                                    />
+                                ) : null}
+                                <button
+                                    type="button"
+                                    role="listitem"
+                                    className={cn(
+                                        "min-w-0 max-w-full truncate text-left",
+                                        canNavigate && "cursor-pointer hover:text-sidebar-accent-foreground",
+                                        !canNavigate && isLeaf && "cursor-default",
+                                        !isLeaf &&
+                                            "font-medium text-sidebar-foreground/80",
+                                        isLeaf &&
+                                            "font-medium text-sidebar-accent-foreground"
+                                    )}
+                                    disabled={!canNavigate && isLeaf}
+                                    onClick={() => activateCrumb(crumb)}
+                                >
+                                    {crumb.label}
+                                </button>
+                            </React.Fragment>
+                        )
+                    })}
+                </div>
+            </SidebarMenuSubItem>
+        )
+    }
+
+    const renderNavItem = (item: ChefNavItem) => {
+        const showBranch = activeView === item.id && branch.length > 0
+        const isActive = activeView === item.id
+        const badge = item.id === "messages" ? messageBadgeCount : undefined
+        const label = tr(item.labelKey as never)
+
+        return (
+            <SidebarMenuItem key={item.id}>
+                <SidebarMenuButton
+                    isActive={isActive}
+                    onClick={() => handleViewChange(item.id)}
+                    tooltip={label}
+                    className={cn(
+                        isActive && "text-sidebar-primary-foreground font-medium"
+                    )}
+                >
+                    {item.icon ? (
+                        <Icon icon={item.icon} width={16} height={16} aria-hidden />
+                    ) : null}
+                    <span>{label}</span>
+                    {badge !== undefined && badge > 0 && (
+                        <SidebarMenuBadge className="bg-destructive text-destructive-foreground">
+                            {badge}
+                        </SidebarMenuBadge>
+                    )}
+                </SidebarMenuButton>
+                {showBranch && (
+                    <SidebarMenuSub
+                        className={cn(
+                            "mx-2 mb-0 mt-0 translate-x-0 gap-0 border-l border-sidebar-border/80 px-2 py-0"
+                        )}
+                    >
+                        {renderBranchTrail(branch)}
+                    </SidebarMenuSub>
+                )}
+            </SidebarMenuItem>
+        )
     }
 
     return (
@@ -195,7 +194,7 @@ export function ChefSidebar({
                                     LocalCooks
                                 </span>
                                 <span className="truncate text-xs font-medium text-muted-foreground uppercase tracking-wider leading-none">
-                                    for chefs
+                                    {t("shellForChefs")}
                                 </span>
                             </div>
                         </SidebarMenuButton>
@@ -204,98 +203,97 @@ export function ChefSidebar({
             </SidebarHeader>
 
             {/* Main Navigation Content */}
-            <SidebarContent>
-                {navGroups.map((group) => (
-                    <SidebarGroup key={group.title}>
-                        <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
-                        <SidebarMenu>
-                            {group.items.filter((item) => !hiddenItems.includes(item.id)).map((item) => {
-                                const isActive = activeView === item.id
-                                const badge = item.id === "messages" ? messageBadgeCount : undefined
-
-                                return (
-                                    <SidebarMenuItem key={item.id}>
-                                        <SidebarMenuButton
-                                            isActive={isActive}
-                                            onClick={() => {
-                                                if (item.path) {
-                                                    // External navigation (like discover kitchens)
-                                                    if (isMobile) {
-                                                        setOpenMobile(false)
-                                                    }
-                                                    window.location.href = item.path
-                                                } else {
-                                                    handleViewChange(item.id)
-                                                }
-                                            }}
-                                            tooltip={item.label}
-                                            className={cn(
-                                                isActive && "text-sidebar-primary-foreground font-medium"
-                                            )}
-                                        >
-                                            {item.icon && <item.icon />}
-                                            <span>{item.label}</span>
-                                            {badge !== undefined && badge > 0 && (
-                                                <SidebarMenuBadge className="bg-destructive text-destructive-foreground">
-                                                    {badge}
-                                                </SidebarMenuBadge>
-                                            )}
-                                        </SidebarMenuButton>
-                                    </SidebarMenuItem>
-                                )
-                            })}
+            <SidebarContent className="gap-0">
+                {ungroupedItems.length > 0 && (
+                    <SidebarGroup className="px-2 py-1">
+                        <SidebarMenu className="gap-0.5">
+                            {ungroupedItems.map(renderNavItem)}
+                        </SidebarMenu>
+                    </SidebarGroup>
+                )}
+                {groupedSections.map((section) => (
+                    <SidebarGroup key={section.id} className="px-2 py-3">
+                        <SidebarGroupLabel className="h-7 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            {tr(section.titleKey as never)}
+                        </SidebarGroupLabel>
+                        <SidebarMenu className="gap-0.5">
+                            {section.visibleItems.map(renderNavItem)}
                         </SidebarMenu>
                     </SidebarGroup>
                 ))}
-
-                {/* Secondary Navigation */}
-                <SidebarGroup className="mt-auto">
-                    <SidebarGroupLabel>Help</SidebarGroupLabel>
-                    <SidebarMenu>
-                        {navSecondary.map((item) => (
-                            <SidebarMenuItem key={item.id}>
-                                <SidebarMenuButton
-                                    onClick={() => handleViewChange(item.id)}
-                                    tooltip={item.label}
-                                >
-                                    {item.icon && <item.icon />}
-                                    <span>{item.label}</span>
-                                </SidebarMenuButton>
-                            </SidebarMenuItem>
-                        ))}
-                    </SidebarMenu>
-                </SidebarGroup>
             </SidebarContent>
 
-            {/* Footer with User Avatar */}
+            {/* Footer with account menu */}
             <SidebarFooter>
                 <SidebarMenu>
                     <SidebarMenuItem>
-                        <SidebarMenuButton
-                            size="lg"
-                            onClick={() => handleViewChange("profile")}
-                            tooltip="Profile"
-                            className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-                        >
-                            <Avatar className="h-8 w-8 rounded-lg">
-                                <AvatarImage
-                                    src={user?.photoURL || ""}
-                                    alt={user?.displayName || "Chef"}
-                                />
-                                <AvatarFallback className="rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                                    {getInitials(user?.displayName)}
-                                </AvatarFallback>
-                            </Avatar>
-                            <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
-                                <span className="truncate font-semibold">
-                                    {user?.displayName || "Chef"}
-                                </span>
-                                <span className="truncate text-xs text-muted-foreground">
-                                    {user?.email || "chef@localcooks.ca"}
-                                </span>
-                            </div>
-                            <ChefHat className="ml-auto size-4 text-muted-foreground group-data-[collapsible=icon]:hidden" />
-                        </SidebarMenuButton>
+                        <DropdownMenu modal={false}>
+                            <DropdownMenuTrigger asChild>
+                                <SidebarMenuButton
+                                    size="lg"
+                                    tooltip={t("shellProfile")}
+                                    className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                                >
+                                    <Avatar className="h-8 w-8 rounded-lg">
+                                        <AvatarImage
+                                            src={user?.photoURL || ""}
+                                            alt={user?.displayName || "Chef"}
+                                        />
+                                        <AvatarFallback className="rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+                                            {getInitials(user?.displayName)}
+                                        </AvatarFallback>
+                                    </Avatar>
+                                    <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
+                                        <span className="truncate font-semibold">
+                                            {user?.displayName || "Chef"}
+                                        </span>
+                                        <span className="truncate text-xs text-muted-foreground">
+                                            {user?.email || "chef@localcooks.ca"}
+                                        </span>
+                                    </div>
+                                    <Icon icon="mdi:unfold-more-horizontal" className="ml-auto size-4 text-muted-foreground group-data-[collapsible=icon]:hidden" aria-hidden />
+                                </SidebarMenuButton>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                                className="w-64 p-2 rounded-lg"
+                                align="end"
+                                side={isMobile ? "bottom" : state === "collapsed" ? "right" : "top"}
+                                sideOffset={4}
+                            >
+                                <div className="px-3 py-2.5 mb-1">
+                                    <p className="text-sm font-medium text-foreground leading-tight">
+                                        {user?.displayName || "Chef"}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground leading-tight">
+                                        {user?.email}
+                                    </p>
+                                </div>
+
+                                <DropdownMenuSeparator />
+
+                                <DropdownMenuItem
+                                    onClick={() => handleViewChange("profile")}
+                                    className="cursor-pointer"
+                                >
+                                    <Icon icon="mdi:account-outline" className="mr-2 h-4 w-4" aria-hidden />
+                                    {t("shellProfile")}
+                                </DropdownMenuItem>
+
+                                <DropdownMenuSeparator />
+
+                                <LanguageMenuSection />
+
+                                <DropdownMenuSeparator />
+
+                                <DropdownMenuItem
+                                    onClick={() => logout()}
+                                    className="cursor-pointer text-destructive focus:text-destructive"
+                                >
+                                    <Icon icon="mdi:logout" className="mr-2 h-4 w-4" aria-hidden />
+                                    {t("shellSignOut")}
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     </SidebarMenuItem>
                 </SidebarMenu>
             </SidebarFooter>

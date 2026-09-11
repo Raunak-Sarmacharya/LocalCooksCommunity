@@ -1,13 +1,29 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { auth } from "@/lib/firebase";
 import { logger } from "@/lib/logger";
+import { tt } from "@/i18n/common-ns";
+import { ct } from "@/i18n/chef-ns";
+
+// ─── Shop URLs ──────────────────────────────────────────────────────────────
+
+export function getChefShopHomeUrl(): string {
+  const isProd =
+    typeof window !== "undefined" && window.location.hostname === "chef.localcooks.ca";
+  return isProd
+    ? "https://shop.localcook.shop/app/shop/home.php"
+    : "https://stagingwebapp.localcook.shop/app/shop/home.php";
+}
+
+export function openChefShopHome(): void {
+  window.open(getChefShopHomeUrl(), "_blank", "noopener,noreferrer");
+}
 
 // ─── Auth Helper ────────────────────────────────────────────────────────────
 
 async function getAuthHeaders(): Promise<HeadersInit> {
   const currentFirebaseUser = auth.currentUser;
   if (!currentFirebaseUser) {
-    throw new Error("Firebase user not available");
+    throw new Error(tt("firebaseUserNotAvailable"));
   }
   const token = await currentFirebaseUser.getIdToken();
   return {
@@ -122,7 +138,7 @@ export function useShopStatus(enabled = true) {
     queryFn: async () => {
       const headers = await getAuthHeaders();
       const res = await fetch("/api/chef/seller/shop-status", { headers });
-      if (!res.ok) throw new Error("Failed to fetch shop status");
+      if (!res.ok) throw new Error(ct("failedToFetchShopStatus"));
       return res.json();
     },
     enabled,

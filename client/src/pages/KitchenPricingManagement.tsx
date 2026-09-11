@@ -1,5 +1,6 @@
 import { logger } from "@/lib/logger";
-import { DollarSign, Save, Info, Loader2 } from "lucide-react";
+import { mt } from "@/i18n/manager";
+import { DollarSign, Save, Info, Loader2 } from "@/components/ui/manager-icons";
 import { useState, useEffect, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -16,6 +17,7 @@ import { apiGet, apiPut } from "@/lib/api";
 interface KitchenPricing {
   /** Raw input string in dollars (e.g. "15.50"). Empty string = unset. Stored as string so trailing decimals survive while typing. */
   hourlyRate: string;
+  dailyRate: string;
   currency: string;
   pricingModel: 'hourly' | 'daily' | 'weekly';
   /** Raw input string as a percentage (e.g. "13" or "13.5"). Empty string = unset. */
@@ -28,12 +30,13 @@ interface KitchenPricingManagementProps {
 
 
 export default function KitchenPricingManagement({ embedded = false }: KitchenPricingManagementProps = {}) {
+  
   const { toast } = useToast();
 
   return (
     <ManagerPageLayout
-      title="Kitchen Pricing"
-      description="Manage rates and booking requirements"
+      title={mt("kitchenPricing")}
+      description={mt("manageRatesAndBookingRequirements")}
       showKitchenSelector={true}
     >
       {({ selectedLocationId, selectedKitchenId, isLoading }) => (
@@ -47,7 +50,7 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
 }
 
 // Extracted Content Component
-function KitchenPricingContent({
+export function KitchenPricingContent({
   selectedLocationId,
   selectedKitchenId
 }: {
@@ -62,6 +65,7 @@ function KitchenPricingContent({
   // Pricing form state — string-based so users can type decimals freely (e.g. "5." → "5.5" → "5.50")
   const [pricing, setPricing] = useState<KitchenPricing>({
     hourlyRate: '',
+    dailyRate: '',
     currency: 'CAD',
     pricingModel: 'hourly',
     taxRatePercent: '',
@@ -87,6 +91,9 @@ function KitchenPricingContent({
         hourlyRate: data.hourlyRate !== undefined && data.hourlyRate !== null
           ? (Number(data.hourlyRate) / 100).toFixed(2)
           : '',
+        dailyRate: data.dailyRate !== undefined && data.dailyRate !== null
+          ? (Number(data.dailyRate) / 100).toFixed(2)
+          : '',
         currency: data.currency || 'CAD',
         pricingModel: data.pricingModel || 'hourly',
         taxRatePercent: data.taxRatePercent !== undefined && data.taxRatePercent !== null
@@ -95,8 +102,7 @@ function KitchenPricingContent({
       });
     } catch (error) {
       logger.error('Error loading pricing:', error);
-      toast({
-        title: "Error",
+      toast({ title: mt("error"),
         description: (error as Error).message || "Failed to load pricing",
         variant: "destructive",
       });
@@ -110,6 +116,7 @@ function KitchenPricingContent({
     } else {
       setPricing({
         hourlyRate: '',
+        dailyRate: '',
         taxRatePercent: '',
         currency: 'CAD',
         pricingModel: 'hourly',
@@ -120,9 +127,8 @@ function KitchenPricingContent({
 
   const savePricing = async () => {
     if (!selectedKitchenId) {
-      toast({
-        title: "Error",
-        description: "Please select a kitchen first",
+      toast({ title: mt("error"),
+        description: mt("pleaseSelectAKitchenFirst"),
         variant: "destructive",
       });
       return;
@@ -130,13 +136,21 @@ function KitchenPricingContent({
 
     // Parse string inputs into numbers for validation + payload
     const hourlyRateNum = pricing.hourlyRate.trim() === '' ? null : parseFloat(pricing.hourlyRate);
+    const dailyRateNum = pricing.dailyRate.trim() === '' ? null : parseFloat(pricing.dailyRate);
     const taxRateNum = pricing.taxRatePercent.trim() === '' ? null : parseFloat(pricing.taxRatePercent);
 
     // Validate hourly rate
     if (hourlyRateNum !== null && (isNaN(hourlyRateNum) || hourlyRateNum < 0)) {
-      toast({
-        title: "Validation Error",
-        description: "Hourly rate must be a positive number or empty",
+      toast({ title: mt("validationError"),
+        description: mt("hourlyRateMustBeAPositiveNumberOrEmpty"),
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (dailyRateNum !== null && (isNaN(dailyRateNum) || dailyRateNum < 0)) {
+      toast({ title: mt("validationError"),
+        description: "Daily rate must be a positive number or empty",
         variant: "destructive",
       });
       return;
@@ -144,9 +158,8 @@ function KitchenPricingContent({
 
     // Validate tax rate
     if (taxRateNum !== null && (isNaN(taxRateNum) || taxRateNum < 0)) {
-      toast({
-        title: "Validation Error",
-        description: "Tax rate must be a positive number or empty",
+      toast({ title: mt("validationError"),
+        description: mt("taxRateMustBeAPositiveNumberOrEmpty"),
         variant: "destructive",
       });
       return;
@@ -158,9 +171,13 @@ function KitchenPricingContent({
       const hourlyRateInCents = hourlyRateNum === null
         ? null
         : Math.round(hourlyRateNum * 100);
+      const dailyRateInCents = dailyRateNum === null
+        ? null
+        : Math.round(dailyRateNum * 100);
 
       const payload = {
         hourlyRate: hourlyRateInCents,
+        dailyRate: dailyRateInCents,
         currency: pricing.currency || 'CAD',
         pricingModel: pricing.pricingModel || 'hourly',
         taxRatePercent: taxRateNum,
@@ -177,6 +194,9 @@ function KitchenPricingContent({
         hourlyRate: updated.hourlyRate !== null && updated.hourlyRate !== undefined
           ? (Number(updated.hourlyRate) / 100).toFixed(2)
           : '',
+        dailyRate: updated.dailyRate !== null && updated.dailyRate !== undefined
+          ? (Number(updated.dailyRate) / 100).toFixed(2)
+          : '',
         taxRatePercent: updated.taxRatePercent !== undefined && updated.taxRatePercent !== null
           ? String(Number(updated.taxRatePercent))
           : '',
@@ -184,17 +204,15 @@ function KitchenPricingContent({
         pricingModel: updated.pricingModel || 'hourly',
       });
 
-      toast({
-        title: "Success",
-        description: "Kitchen pricing updated successfully",
+      toast({ title: mt("success"),
+        description: mt("kitchenPricingUpdatedSuccessfully"),
       });
 
       // Invalidate queries to refresh data
       queryClient.invalidateQueries({ queryKey: [`/api/manager/kitchens/${selectedKitchenId}/pricing`] });
     } catch (error) {
       logger.error('Error saving pricing:', error);
-      toast({
-        title: "Error",
+      toast({ title: mt("error"),
         description: (error as Error).message || "Failed to save pricing",
         variant: "destructive",
       });
@@ -209,8 +227,8 @@ function KitchenPricingContent({
       <Card className="border-dashed h-full">
         <CardContent className="flex flex-col items-center justify-center p-12 text-center text-muted-foreground h-full">
           <DollarSign className="h-12 w-12 mb-4 opacity-20" />
-          <h3 className="text-lg font-medium text-foreground mb-1">No Kitchen Selected</h3>
-          <p>Select a location and kitchen from the sidebar to manage pricing.</p>
+          <h3 className="text-lg font-medium text-foreground mb-1">{mt("noKitchenSelected")}</h3>
+          <p>{mt("selectALocationAndKitchenFromTheSidebarToManagePricing")}</p>
         </CardContent>
       </Card>
     );
@@ -220,42 +238,14 @@ function KitchenPricingContent({
     <div className="space-y-6 animate-in fade-in slide-in-from-top-4">
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            Pricing Configuration
-          </CardTitle>
-          <CardDescription>
-            Set hourly rates and booking requirements
-          </CardDescription>
+          <CardTitle className="flex items-center gap-2">{mt("pricingConfiguration")}</CardTitle>
+          <CardDescription>{mt("setHourlyRatesAndBookingRequirements")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Pricing Model */}
-          <div>
-            <Label htmlFor="pricingModel">Pricing Model</Label>
-            <Select
-              value={pricing.pricingModel}
-              onValueChange={(value: 'hourly' | 'daily' | 'weekly') =>
-                setPricing({ ...pricing, pricingModel: value })
-              }
-            >
-              <SelectTrigger id="pricingModel" className="mt-2">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="hourly">Hourly Rate</SelectItem>
-                <SelectItem value="daily">Daily Rate</SelectItem>
-                <SelectItem value="weekly">Weekly Rate</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground mt-1">
-              Choose how you want to charge for kitchen bookings
-            </p>
-          </div>
-
-          {/* Hourly Rate */}
-          <div>
+          <div className="grid gap-5 sm:grid-cols-2">
+            <div>
             <Label htmlFor="hourlyRate">
-              {pricing.pricingModel === 'hourly' ? 'Hourly Rate' :
-                pricing.pricingModel === 'daily' ? 'Daily Rate' : 'Weekly Rate'} ({pricing.currency})
+              {mt("hourlyRate")} ({pricing.currency})
             </Label>
             <CurrencyInput
               id="hourlyRate"
@@ -267,18 +257,25 @@ function KitchenPricingContent({
               className="mt-2"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              {pricing.pricingModel === 'hourly'
-                ? 'Amount charged per hour'
-                : pricing.pricingModel === 'daily'
-                  ? 'Amount charged per day'
-                  : 'Amount charged per week'}
+              {mt("amountChargedPerHour")}
             </p>
-
+            </div>
+            <div>
+              <Label htmlFor="dailyRate">{mt("dailyRate")} ({pricing.currency})</Label>
+              <CurrencyInput
+                id="dailyRate"
+                value={pricing.dailyRate}
+                onValueChange={(val) => setPricing({ ...pricing, dailyRate: val })}
+                placeholder="0.00"
+                className="mt-2"
+              />
+              <p className="text-xs text-muted-foreground mt-1">{mt("amountChargedPerDay")}</p>
+            </div>
           </div>
 
           {/* Tax Rate */}
           <div>
-            <Label htmlFor="taxRatePercent">Tax Rate (%)</Label>
+            <Label htmlFor="taxRatePercent">{mt("taxRate2")}</Label>
             <NumericInput
               id="taxRatePercent"
               allowDecimals
@@ -287,17 +284,15 @@ function KitchenPricingContent({
               onValueChange={(val) => {
                 setPricing({ ...pricing, taxRatePercent: val });
               }}
-              placeholder="e.g. 13"
+              placeholder={mt("eG13")}
               className="mt-2"
             />
-             <p className="text-xs text-muted-foreground mt-1">
-               Percentage tax to apply to bookings (e.g., GST/HST)
-             </p>
+             <p className="text-xs text-muted-foreground mt-1">{mt("percentageTaxToApplyToBookingsEGGSTHST")}</p>
           </div>
 
           {/* Currency */}
           <div>
-            <Label htmlFor="currency">Currency</Label>
+            <Label htmlFor="currency">{mt("currency")}</Label>
             <Select
               value={pricing.currency}
               onValueChange={(value) => setPricing({ ...pricing, currency: value })}
@@ -306,9 +301,9 @@ function KitchenPricingContent({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="CAD">CAD (Canadian Dollar)</SelectItem>
-                <SelectItem value="USD">USD (US Dollar)</SelectItem>
-                <SelectItem value="EUR">EUR (Euro)</SelectItem>
+                <SelectItem value="CAD">{mt("cADCanadianDollar")}</SelectItem>
+                <SelectItem value="USD">{mt("uSDUSDollar")}</SelectItem>
+                <SelectItem value="EUR">{mt("eUREuro")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -316,11 +311,11 @@ function KitchenPricingContent({
           {/* Info Alert */}
           <Alert>
             <Info className="h-4 w-4" />
-            <AlertTitle>Pricing Information</AlertTitle>
+            <AlertTitle>{mt("pricingInformation")}</AlertTitle>
             <AlertDescription>
               <ul className="text-xs space-y-1 mt-2 list-disc list-inside">
-                <li>Chefs will see the calculated total price before booking</li>
-                <li>Updates apply to new bookings only</li>
+                <li>{mt("chefsWillSeeTheCalculatedTotalPriceBeforeBooking")}</li>
+                <li>{mt("updatesApplyToNewBookingsOnly")}</li>
               </ul>
             </AlertDescription>
           </Alert>
@@ -334,14 +329,10 @@ function KitchenPricingContent({
             >
               {isSaving ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Saving...
-                </>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />{mt("saving")}</>
               ) : (
                 <>
-                  <Save className="h-4 w-4 mr-2" />
-                  Save Changes
-                </>
+                  <Save className="h-4 w-4 mr-2" />{mt("saveChanges")}</>
               )}
             </Button>
           </div>

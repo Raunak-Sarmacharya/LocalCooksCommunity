@@ -593,7 +593,7 @@ router.get("/invoices/overstay/:overstayRecordId", requireChef, async (req: Requ
             },
             chef,
             overstayDetails,
-            { viewer: 'chef' }
+            { viewer: 'chef', locale: (chef as any)?.preferredLocale || (chef as any)?.preferred_locale || 'en' }
         );
 
         res.setHeader('Content-Type', 'application/pdf');
@@ -1319,13 +1319,15 @@ router.get("/seller/reports/export", requireChef, requireApprovedSeller, async (
             ? app.shopName 
             : chefName + "'s Shop";
 
+        const locale = (req.query.lng as string) || (req.headers['accept-language']?.split(',')[0].split('-')[0]) || 'en';
+
         if (formatType === 'csv') {
-            const csv = await generateReportCSV(chef.phpShopId, startDate, endDate);
+            const csv = await generateReportCSV(chef.phpShopId, startDate, endDate, locale);
             res.setHeader('Content-Type', 'text/csv');
             res.setHeader('Content-Disposition', `attachment; filename="LocalCooks_${period}_Data_${startDate}.csv"`);
             return res.send(csv);
         } else {
-            const pdfBuffer = await generateReportPDF(chef.phpShopId, shopName, startDate, endDate, period);
+            const pdfBuffer = await generateReportPDF(chef.phpShopId, shopName, startDate, endDate, period, locale);
             res.setHeader('Content-Type', 'application/pdf');
             res.setHeader('Content-Disposition', `attachment; filename="LocalCooks_${period}_Report_${startDate}.pdf"`);
             return res.send(pdfBuffer);

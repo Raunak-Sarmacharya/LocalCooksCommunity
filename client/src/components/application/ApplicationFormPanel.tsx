@@ -1,76 +1,116 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { ApplicationFormProvider, useApplicationForm } from "./ApplicationFormContext";
 import CertificationsForm from "./CertificationsForm";
 import KitchenPreferenceForm from "./KitchenPreferenceForm";
 import PersonalInfoForm from "./PersonalInfoForm";
 import ProgressIndicator from "./ProgressIndicator";
+import { Icon } from "@iconify/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ChefPageHeader, InfoHint } from "@/components/chef/ui";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, FileText } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useTranslation } from "react-i18next";
+import { FormLegend } from "@/components/ui/form-legend";
 
 interface ApplicationFormPanelProps {
   onBack?: () => void;
   className?: string;
+  onBusyChange?: (busy: boolean) => void;
 }
 
-// Internal form step component
-function FormStepContent({ onBack }: { onBack?: () => void }) {
-  const { currentStep, goToPreviousStep } = useApplicationForm();
+function FormStepContent() {
+  const { currentStep, onCancel, isBusy } = useApplicationForm();
   const containerRef = useRef<HTMLDivElement>(null);
+  const { t } = useTranslation("chef");
 
-  // Scroll to top of container when step changes
+  const STEP_COPY = [
+    {
+      title: t("sellerApp_step1_title"),
+      description: t("sellerApp_step1_desc"),
+      tips: [
+        { title: t("sellerApp_step1_whyFirstTitle"), body: t("sellerApp_step1_whyFirstBody") },
+        { title: t("sellerApp_step1_nextTitle"), body: t("sellerApp_step1_nextBody") },
+      ],
+    },
+    {
+      title: t("sellerApp_step2_title"),
+      description: t("sellerApp_step2_desc"),
+      tips: [
+        { title: t("sellerApp_step2_noWrongAnswerTitle"), body: t("sellerApp_step2_noWrongAnswerBody") },
+        { title: t("sellerApp_step2_nextTitle"), body: t("sellerApp_step2_nextBody") },
+      ],
+    },
+    {
+      title: t("sellerApp_step3_title"),
+      description: t("sellerApp_step3_desc"),
+      tips: [
+        { title: t("sellerApp_step3_optionalStartTitle"), body: t("sellerApp_step3_optionalStartBody") },
+        { title: t("sellerApp_step3_afterSubmitTitle"), body: t("sellerApp_step3_afterSubmitBody") },
+        { title: t("sellerApp_certHelpTitle"), body: t("sellerApp_certHelpBody") },
+      ],
+    },
+  ] as const;
+
+  const copy = STEP_COPY[currentStep - 1];
+
   useEffect(() => {
-    // Scroll the container into view smoothly
     if (containerRef.current) {
-      containerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      containerRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-    // Also reset any internal scroll
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }, [currentStep]);
 
   return (
-    <div ref={containerRef} className="space-y-6">
-      {/* Header with back button */}
-      <div className="flex items-center gap-4">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => {
-            if (currentStep === 1 && onBack) {
-              onBack();
-            } else {
-              goToPreviousStep();
-            }
-          }}
-          className="h-10 w-10 rounded-xl border border-border/50 hover:bg-muted/50"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Chef Application</h2>
-          <p className="text-sm text-muted-foreground">Step {currentStep} of 3</p>
-        </div>
-      </div>
+    <div ref={containerRef} className="mx-auto max-w-3xl space-y-4 relative">
+      <ChefPageHeader
+        title={copy.title}
+        description={t("sellerApp_stepOf3", { step: currentStep, desc: copy.description })}
+        titleAccessory={
+          <InfoHint title={t("sellerApp_goodToKnow")}>
+            {currentStep === 3 ? (
+              <>
+                <p>{t("sellerApp_step3_optionalStartBody")} {t("sellerApp_step3_afterSubmitBody")}</p>
+                <a href="https://www.gov.nl.ca/dgsnl/licences/env-health/food/" target="_blank" rel="noopener noreferrer" className="inline-flex rounded-md text-primary hover:underline">Visit Gov.nl.ca Food Safety</a>
+              </>
+            ) : copy.tips.map((tip) => (
+              <div key={tip.title}>
+                <p className="font-medium text-foreground">{tip.title}</p>
+                <p>{tip.body}</p>
+              </div>
+            ))}
+          </InfoHint>
+        }
+        actions={
+          onCancel ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-xl font-medium"
+              size="sm"
+              disabled={isBusy}
+              onClick={onCancel}
+              data-testid="seller-application-cancel"
+            >
+              <Icon icon="mdi:close" className="mr-1.5 size-4" aria-hidden />
+              {t("apCancelBtn")}
+            </Button>
+          ) : undefined
+        }
+      />
 
-      {/* Progress Indicator */}
-      <div className="bg-muted/30 rounded-xl p-4 border border-border/50">
-        <ProgressIndicator step={currentStep} />
-      </div>
+      <FormLegend />
+      <ProgressIndicator step={currentStep} />
 
-      {/* Form Card - No duplicate header, forms have their own */}
-      <Card className="border-border/50 shadow-sm overflow-hidden">
-        <div className="h-1 w-full bg-gradient-to-r from-primary via-primary/80 to-primary/60" />
-        <CardContent className="p-6 md:p-8">
-          {/* Form Content with smooth transitions */}
+      <Card className="shadow-none rounded-xl">
+        <CardContent className="p-4 sm:p-5">
           <AnimatePresence mode="wait">
             <motion.div
               key={currentStep}
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.25, ease: "easeOut" }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
             >
               {currentStep === 1 && <PersonalInfoForm />}
               {currentStep === 2 && <KitchenPreferenceForm />}
@@ -79,104 +119,16 @@ function FormStepContent({ onBack }: { onBack?: () => void }) {
           </AnimatePresence>
         </CardContent>
       </Card>
-
-      {/* Step indicators at bottom */}
-      <div className="flex items-center justify-center gap-2">
-        {[1, 2, 3].map((step) => (
-          <div
-            key={step}
-            className={cn(
-              "h-2 rounded-full transition-all duration-300",
-              step === currentStep
-                ? "w-8 bg-primary"
-                : step < currentStep
-                ? "w-2 bg-primary/60"
-                : "w-2 bg-muted"
-            )}
-          />
-        ))}
-      </div>
     </div>
   );
 }
 
-// Main exported component
-export default function ApplicationFormPanel({ onBack, className }: ApplicationFormPanelProps) {
+export default function ApplicationFormPanel({ onBack, className, onBusyChange }: ApplicationFormPanelProps) {
   return (
-    <ApplicationFormProvider>
+    <ApplicationFormProvider onCancel={onBack} onBusyChange={onBusyChange}>
       <div className={cn("w-full", className)}>
-        <FormStepContent onBack={onBack} />
+        <FormStepContent />
       </div>
     </ApplicationFormProvider>
-  );
-}
-
-// Export a wrapper component for use in the dashboard that handles view mode
-interface ApplicationsTabContentProps {
-  applications: any[];
-  hasActiveApplication: boolean;
-  onStartApplication: () => void;
-  onCancelApplication: (type: string, id: number) => void;
-  isSellerApplicationFullyApproved: boolean;
-  renderApplicationCard: (app: any) => React.ReactNode;
-  renderEmptyState: () => React.ReactNode;
-  renderStripeConnect?: () => React.ReactNode;
-}
-
-export function ApplicationsTabWithForm({
-  applications,
-  hasActiveApplication,
-  onStartApplication,
-  onCancelApplication,
-  isSellerApplicationFullyApproved,
-  renderApplicationCard,
-  renderEmptyState,
-  renderStripeConnect,
-}: ApplicationsTabContentProps) {
-  const [viewMode, setViewMode] = useState<'list' | 'form'>('list');
-
-  // If showing the form
-  if (viewMode === 'form') {
-    return (
-      <ApplicationFormPanel onBack={() => setViewMode('list')} />
-    );
-  }
-
-  // Show the list view
-  return (
-    <div className="space-y-8">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20 shadow-sm">
-            <FileText className="h-6 w-6 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-3xl font-bold tracking-tight text-foreground">Sell on LocalCooks</h2>
-            <p className="text-muted-foreground mt-1">Your seller application and verification status</p>
-          </div>
-        </div>
-        {!hasActiveApplication && (
-          <Button 
-            size="lg" 
-            onClick={() => setViewMode('form')}
-            className="rounded-xl shadow-lg shadow-primary/10"
-          >
-            Start New Application
-          </Button>
-        )}
-      </div>
-
-      {/* Stripe Connect - only when fully approved */}
-      {isSellerApplicationFullyApproved && renderStripeConnect && renderStripeConnect()}
-
-      {/* Applications list or empty state */}
-      {applications && applications.length > 0 ? (
-        <div className="grid gap-6">
-          {applications.map((app) => renderApplicationCard(app))}
-        </div>
-      ) : (
-        renderEmptyState()
-      )}
-    </div>
   );
 }

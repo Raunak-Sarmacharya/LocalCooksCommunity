@@ -1,7 +1,7 @@
 import { logger } from "../logger";
 
 import { Router, Request, Response } from "express";
-import { db } from "../db";
+import { db, getDbError } from "../db";
 import { userService } from "../domains/users/user.service";
 // Imports updated to remove legacy storage
 import { requireFirebaseAuthWithUser, requireAdmin, requireManager } from "../firebase-auth-middleware";
@@ -494,7 +494,8 @@ router.get("/chef-location-access", async (req: Request, res: Response) => {
             logger.info(`[Admin Chef Access] Found ${allAccess.length} location access records`);
         } catch (error: any) {
             logger.error(`[Admin Chef Access] Error querying chef_location_access table:`, error.message);
-            if (error.message?.includes('does not exist') || error.message?.includes('relation') || error.code === '42P01') {
+            const dbErr = getDbError(error);
+            if (dbErr.message?.includes('does not exist') || dbErr.message?.includes('relation') || dbErr.code === '42P01') {
                 logger.info(`[Admin Chef Access] Table doesn't exist yet, returning empty access`);
                 allAccess = [];
             } else {
@@ -1394,7 +1395,7 @@ router.post("/kitchens", async (req: Request, res: Response) => {
         res.status(201).json(kitchen);
     } catch (error: any) {
         logger.error("Error creating kitchen:", error);
-        if (error.code === '23503') { // Foreign key constraint violation
+        if (getDbError(error).code === '23503') { // Foreign key constraint violation
             return res.status(400).json({ error: 'The selected location does not exist or is invalid.' });
         }
         res.status(500).json({ error: error.message || "Failed to create kitchen" });
@@ -1863,7 +1864,7 @@ router.post('/test-email', requireFirebaseAuthWithUser, requireAdmin, async (req
             promoCode: 'TEST123',
             promoCodeLabel: '🎁 Test Promo Code',
             customMessage: 'This is a test email to verify the email system is working correctly.',
-            greeting: 'Hello! 👋',
+            greeting: 'Hello! ',
             subject: subject || 'Test Email from Local Cooks',
             previewText: previewText || 'Test email preview',
             designSystem: customDesign?.designSystem,
@@ -2052,7 +2053,7 @@ router.post('/send-promo-email', requireFirebaseAuthWithUser, requireAdmin, asyn
                     promoCode,
                     promoCodeLabel: promoCodeLabel || '🎁 Special Offer Code For You',
                     customMessage: messageContent,
-                    greeting: greeting || 'Hi there! 👋',
+                    greeting: greeting || 'Hi there! ',
                     subject: subject || 'Special Offer from Local Cooks',
                     previewText: previewText || 'Don\'t miss out on this exclusive offer',
                     designSystem,
@@ -2171,8 +2172,8 @@ router.get("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req
             documentation: {
                 stripePercentageFee: "Stripe's processing fee percentage for display estimates (e.g., 0.029 for 2.9%). Actual fee deducted from transfer is read from Stripe at capture time.",
                 stripeFlatFeeCents: "Stripe's flat fee per transaction in cents for display estimates (e.g., 30 for $0.30).",
-                platformCommissionRate: "Platform's commission rate (e.g., 0.05 for 5%). Deducted from manager's transfer along with the actual Stripe fee.",
-                minimumApplicationFeeCents: "Minimum platform commission floor in cents to ensure profitability.",
+                platformCommissionRate: "Service fee rate (e.g., 0.05 for 5%). Charged to the chef on the pre-tax subtotal and retained by the platform.",
+                minimumApplicationFeeCents: "Minimum service fee floor in cents to ensure profitability.",
             },
         });
     } catch (error) {
@@ -2238,7 +2239,7 @@ router.put("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req
             updates.push({
                 key: 'platform_commission_rate',
                 value: rate.toString(),
-                description: 'Platform commission rate as decimal (e.g., 0.05 for 5%)',
+                description: 'Service fee rate as decimal (e.g., 0.05 for 5%)',
             });
         }
 
@@ -3330,7 +3331,10 @@ router.get("/transactions", requireFirebaseAuthWithUser, requireAdmin, async (re
             const kbTotal = parseFloat(tx.kb_total_price || '0');
             const kbCommission = parseFloat(tx.kb_service_fee || '0');
             const chargedAmount = resolveChefChargedAmountCents(storedAmount, kbTotal || storedAmount, kbCommission);
-            const platformCommission = resolvePlatformCommissionCents(storedServiceFee, kbTotal || storedAmount, kbCommission);
+            const baseAmountWithTax = parseFloat(tx.base_amount || '0');
+            const platformCommission = baseAmountWithTax > 0 && chargedAmount >= baseAmountWithTax
+                ? chargedAmount - baseAmountWithTax
+                : resolvePlatformCommissionCents(storedServiceFee, kbTotal || storedAmount, kbCommission);
             return {
             id: tx.id,
             bookingId: tx.booking_id,
@@ -4157,4 +4161,44 @@ router.post("/email-logs/:id/retry", requireFirebaseAuthWithUser, requireAdmin, 
     }
 });
 
+// temporary file to hold the patch
+
+router.get("/settings/:key", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const { key } = req.params;
+        const [setting] = await db.select().from(platformSettings).where(eq(platformSettings.key, key));
+        
+        if (!setting) {
+            return res.json({});
+        }
+
+        return res.json(JSON.parse(setting.value));
+    } catch (error) {
+        logger.error(`Error fetching platform setting ${req.params.key}:`, error);
+        res.status(500).json({ error: "Failed to fetch setting" });
+    }
+});
+
+router.patch("/settings/:key", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const { key } = req.params;
+        const value = JSON.stringify(req.body);
+
+        const [setting] = await db.select().from(platformSettings).where(eq(platformSettings.key, key));
+
+        if (setting) {
+            await db.update(platformSettings)
+                .set({ value, updatedBy: req.neonUser!.id, updatedAt: new Date() })
+                .where(eq(platformSettings.key, key));
+        } else {
+            await db.insert(platformSettings)
+                .values({ key, value, updatedBy: req.neonUser!.id });
+        }
+
+        return res.json({ success: true });
+    } catch (error) {
+        logger.error(`Error updating platform setting ${req.params.key}:`, error);
+        res.status(500).json({ error: "Failed to update setting" });
+    }
+});
 export default router;

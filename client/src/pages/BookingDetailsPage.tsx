@@ -1,59 +1,30 @@
 import { logger } from "@/lib/logger";
 import { useState, useEffect, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { useLocation, useRoute } from "wouter";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
+import { useChefShellChrome } from "@/layouts/chef-shell-context";
 import ManagerBookingLayout from "@/layouts/ManagerBookingLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { InfoChip } from "@/components/chef/info-chip";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-  ArrowLeft,
-  MapPin,
-  User,
-  ChefHat,
-  Package,
-  Wrench,
-  FileText,
-  Download,
-  Loader2,
-  CheckCircle2,
-  XCircle,
-  AlertCircle,
-  CreditCard,
-  Phone,
-  Mail,
-  Receipt,
-  Hash,
-  Info,
-  LogIn,
-  LogOut,
-  Camera,
-  FileWarning,
-  Clock,
-} from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { ArrowLeft, MapPin, User, Calendar, Package, Wrench, FileText, Download, Loader2, CheckCircle2, XCircle, AlertCircle, CreditCard, Phone, Mail, Receipt, Hash, Info, LogIn, LogOut, Camera, FileWarning, Clock } from "lucide-react";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 import { useQueryClient } from "@tanstack/react-query";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
-import {
-  BookingActionSheet,
-  type BookingForAction,
-} from "@/components/manager/bookings/BookingActionSheet";
-import {
-  BookingManagementSheet,
-  type BookingForManagement,
-  type ManagementSubmitParams,
-} from "@/components/manager/bookings/BookingManagementSheet";
+import { BookingActionSheet, type BookingForAction } from "@/components/manager/bookings/BookingActionSheet";
+import { BookingManagementSheet, type BookingForManagement, type ManagementSubmitParams } from "@/components/manager/bookings/BookingManagementSheet";
 import { KitchenCheckinTracker } from "@/components/booking/KitchenCheckinTracker";
+import { StripeProcessingFeeRefundInfo } from "@/components/booking/StripeProcessingFeeRefundInfo";
+import { SmartImage } from "@/components/ui/smart-image";
+import { tt } from "@/i18n/common-ns";
+import { mt } from "@/i18n/manager";
+import { ChefBookingReceiptBreakdown, KitchenPayoutStatementBreakdown } from "@/components/booking/BookingPricingBreakdown";
 
 interface BookingDetails {
   id: number;
@@ -70,7 +41,10 @@ interface BookingDetails {
   totalPrice?: number;
   hourlyRate?: number;
   durationHours?: number;
-  serviceFee?: number;
+    serviceFee?: number;
+    taxAmount?: number;
+  /** Admin-configured service fee rate (fraction, e.g. 0.07) */
+  platformCommissionRate?: number;
   currency?: string;
   createdAt: string;
   updatedAt?: string;
@@ -122,8 +96,10 @@ interface BookingDetails {
     };
   }>;
   paymentTransaction?: {
+    id?: number;
     amount: number;
     serviceFee: number;
+    taxAmount?: number;
     managerRevenue: number;
     status: string;
     stripeProcessingFee?: number;
@@ -175,6 +151,8 @@ export default function BookingDetailsPage() {
   const [, managerParams] = useRoute("/manager/booking/:id");
   const bookingId = params?.id || managerParams?.id;
   const isManagerView = !!managerParams?.id;
+  const { t: tStrict, i18n } = useTranslation("chef");
+  const t = tStrict as unknown as (key: string, options?: Record<string, unknown>) => string;
 
   const { loading: authLoading } = useFirebaseAuth();
   const { toast } = useToast();
@@ -229,22 +207,22 @@ export default function BookingDetailsPage() {
 
         if (!response.ok) {
           if (response.status === 401) {
-            throw new Error("Session expired. Please refresh the page.");
+            throw new Error(t("bdErrSessionExpired"));
           }
           if (response.status === 404) {
-            throw new Error("Booking not found");
+            throw new Error(t("bdErrNotFound"));
           }
           if (response.status === 403) {
-            throw new Error("You don't have permission to view this booking");
+            throw new Error(t("bdErrForbidden"));
           }
-          throw new Error("Failed to fetch booking details");
+          throw new Error(t("bdErrFetch"));
         }
 
         const data = await response.json();
         setBooking(data);
       } catch (err) {
         logger.error("Error fetching booking details:", err);
-        setError(err instanceof Error ? err.message : "Failed to load booking details");
+        setError(err instanceof Error ? err.message : t("bdErrLoad"));
       } finally {
         setIsLoading(false);
       }
@@ -270,7 +248,7 @@ export default function BookingDetailsPage() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to generate invoice");
+        throw new Error(tt("failedToGenerateInvoice"));
       }
 
       const blob = await response.blob();
@@ -282,21 +260,23 @@ export default function BookingDetailsPage() {
       const bookingDate = booking.bookingDate
         ? new Date(booking.bookingDate).toISOString().split("T")[0]
         : "unknown";
-      a.download = `LocalCooks-Invoice-${booking.id}-${bookingDate}.pdf`;
+      a.download = isManagerView
+        ? `LocalCooks-Payout-Statement-${booking.id}-${bookingDate}.pdf`
+        : `LocalCooks-Booking-Receipt-${booking.id}-${bookingDate}.pdf`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
 
       toast({
-        title: "Invoice Downloaded",
-        description: "Your invoice has been downloaded successfully!",
+        title: t("bdInvoiceDownloadedTitle"),
+        description: t("bdInvoiceDownloadedDesc"),
       });
     } catch (err) {
       logger.error("Error downloading invoice:", err);
       toast({
-        title: "Download Failed",
-        description: err instanceof Error ? err.message : "Failed to download invoice. Please try again.",
+        title: t("bdDownloadFailedTitle"),
+        description: err instanceof Error ? err.message : t("bdDownloadFailedDesc"),
         variant: "destructive",
       });
     } finally {
@@ -306,17 +286,19 @@ export default function BookingDetailsPage() {
 
   const formatTime = (timeStr: string) => {
     if (!timeStr) return "";
-    const [hours, minutes] = timeStr.split(":");
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? "PM" : "AM";
-    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-    return `${displayHour}:${minutes} ${ampm}`;
+    const [hours, minutes] = timeStr.split(":").map(Number);
+    const date = new Date();
+    date.setHours(hours, minutes || 0, 0, 0);
+    return new Intl.DateTimeFormat(i18n.language, {
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(date);
   };
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return "";
     const date = new Date(dateStr);
-    return date.toLocaleDateString("en-US", {
+    return date.toLocaleDateString(i18n.language, {
       weekday: "long",
       year: "numeric",
       month: "long",
@@ -327,7 +309,7 @@ export default function BookingDetailsPage() {
   const formatShortDate = (dateStr: string) => {
     if (!dateStr) return "";
     const date = new Date(dateStr);
-    return date.toLocaleDateString("en-US", {
+    return date.toLocaleDateString(i18n.language, {
       month: "short",
       day: "numeric",
       year: "numeric",
@@ -372,83 +354,74 @@ export default function BookingDetailsPage() {
     switch (status) {
       case "confirmed":
         return (
-          <Badge variant="success" className="font-medium">
-            <CheckCircle2 className="h-3 w-3 mr-1" />
-            Confirmed
-          </Badge>
+          <InfoChip variant="success" icon={<CheckCircle2 className="h-3 w-3" />}>
+            {t("bdStatusConfirmed")}
+          </InfoChip>
         );
       case "pending":
         return (
-          <Badge variant="warning" className="font-medium">
-            <AlertCircle className="h-3 w-3 mr-1" />
-            Pending
-          </Badge>
+          <InfoChip variant="warning" icon={<AlertCircle className="h-3 w-3" />}>
+            {t("bdStatusPending")}
+          </InfoChip>
         );
       case "cancelled": {
         // Industry standard: distinguish by cause
         const isExpired = booking?.paymentStatus === 'failed';
         const isRefunded = booking?.paymentStatus === 'refunded';
-        const cancelledLabel = isExpired ? 'Expired' : isRefunded ? 'Refunded' : 'Cancelled';
-        const cancelledIcon = isExpired ? <AlertCircle className="h-3 w-3 mr-1" /> : <XCircle className="h-3 w-3 mr-1" />;
+        const cancelledLabel = isExpired ? t("bdStatusExpired") : isRefunded ? t("bdStatusRefunded") : t("bdStatusCancelled");
+        const cancelledIcon = isExpired ? <AlertCircle className="h-3 w-3" /> : <XCircle className="h-3 w-3" />;
         return (
-          <Badge variant="outline" className="text-muted-foreground border-border font-medium">
-            {cancelledIcon}
+          <InfoChip variant="outline" icon={cancelledIcon}>
             {cancelledLabel}
-          </Badge>
+          </InfoChip>
         );
       }
       default:
-        return <Badge variant="outline" className="font-medium">{status}</Badge>;
+        return <InfoChip variant="outline">{status}</InfoChip>;
     }
   };
 
   const getCheckinStatusBadge = (checkinStatus: string | null | undefined) => {
     if (!checkinStatus || checkinStatus === 'not_checked_in') {
       return (
-        <Badge variant="outline" className="font-medium text-muted-foreground border-border">
-          <Clock className="h-3 w-3 mr-1" />
-          Not Checked In
-        </Badge>
+        <InfoChip variant="outline" icon={<Clock className="h-3 w-3" />}>
+          {t("bdCiNotCheckedIn")}
+        </InfoChip>
       );
     }
     if (checkinStatus === 'checked_in') {
       return (
-        <Badge variant="success" className="font-medium">
-          <LogIn className="h-3 w-3 mr-1" />
-          Checked In
-        </Badge>
+        <InfoChip variant="success" icon={<LogIn className="h-3 w-3" />}>
+          {t("bdCiCheckedIn")}
+        </InfoChip>
       );
     }
     if (checkinStatus === 'checkout_requested') {
       return (
-        <Badge variant="info" className="font-medium">
-          <Camera className="h-3 w-3 mr-1" />
-          Checkout Pending
-        </Badge>
+        <InfoChip variant="info" icon={<Camera className="h-3 w-3" />}>
+          {t("bdCiCheckoutPending")}
+        </InfoChip>
       );
     }
     if (checkinStatus === 'checked_out') {
       return (
-        <Badge variant="success" className="font-medium">
-          <LogOut className="h-3 w-3 mr-1" />
-          Checked Out
-        </Badge>
+        <InfoChip variant="success" icon={<LogOut className="h-3 w-3" />}>
+          {t("bdCiCheckedOut")}
+        </InfoChip>
       );
     }
     if (checkinStatus === 'no_show') {
       return (
-        <Badge variant="destructive" className="font-medium">
-          <XCircle className="h-3 w-3 mr-1" />
-          No-Show
-        </Badge>
+        <InfoChip variant="destructive" icon={<XCircle className="h-3 w-3" />}>
+          {t("bdCiNoShow")}
+        </InfoChip>
       );
     }
     if (checkinStatus === 'checkout_claim_filed') {
       return (
-        <Badge variant="warning" className="font-medium">
-          <FileWarning className="h-3 w-3 mr-1" />
-          Claim Filed
-        </Badge>
+        <InfoChip variant="warning" icon={<FileWarning className="h-3 w-3" />}>
+          {t("bdCiClaimFiled")}
+        </InfoChip>
       );
     }
     return null;
@@ -458,68 +431,59 @@ export default function BookingDetailsPage() {
     switch (status) {
       case "authorized":
         return (
-          <Badge variant="outline" className="text-muted-foreground border-border font-medium">
-            <CreditCard className="h-3 w-3 mr-1" />
-            Held
-          </Badge>
+          <InfoChip variant="outline" icon={<CreditCard className="h-3 w-3" />}>
+            {t("bdPayHeld")}
+          </InfoChip>
         );
       case "paid":
         return (
-          <Badge variant="success" className="font-medium">
-            <CreditCard className="h-3 w-3 mr-1" />
-            Paid
-          </Badge>
+          <InfoChip variant="success" icon={<CreditCard className="h-3 w-3" />}>
+            {t("bdPayPaid")}
+          </InfoChip>
         );
       case "processing":
         return (
-          <Badge variant="outline" className="text-muted-foreground border-border font-medium">
-            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-            Processing
-          </Badge>
+          <InfoChip variant="outline" icon={<Loader2 className="h-3 w-3 animate-spin" />}>
+            {t("bdPayProcessing")}
+          </InfoChip>
         );
       case "pending":
         return (
-          <Badge variant="warning" className="font-medium">
-            <AlertCircle className="h-3 w-3 mr-1" />
-            Pending
-          </Badge>
+          <InfoChip variant="warning" icon={<AlertCircle className="h-3 w-3" />}>
+            {t("bdPayPending")}
+          </InfoChip>
         );
       case "refunded":
         return (
-          <Badge variant="outline" className="text-muted-foreground border-border font-medium">
-            <Receipt className="h-3 w-3 mr-1" />
-            Refunded
-          </Badge>
+          <InfoChip variant="outline" icon={<Receipt className="h-3 w-3" />}>
+            {t("bdPayRefunded")}
+          </InfoChip>
         );
       case "partially_refunded":
         return (
-          <Badge variant="warning" className="font-medium">
-            <Receipt className="h-3 w-3 mr-1" />
-            Partial Refund
-          </Badge>
+          <InfoChip variant="warning" icon={<Receipt className="h-3 w-3" />}>
+            {t("bdPayPartialRefund")}
+          </InfoChip>
         );
       case "failed":
         // Distinguish voided authorization (cancelled booking with 'failed' payment) from actual failures
         if (booking?.status === 'cancelled') {
           return (
-            <Badge variant="outline" className="text-muted-foreground border-border font-medium">
-              <CreditCard className="h-3 w-3 mr-1" />
-              Auth Voided
-            </Badge>
+            <InfoChip variant="outline" icon={<CreditCard className="h-3 w-3" />}>
+              {t("bdPayAuthVoided")}
+            </InfoChip>
           );
         }
         return (
-          <Badge variant="outline" className="text-destructive border-destructive/30 font-medium">
-            <XCircle className="h-3 w-3 mr-1" />
+          <InfoChip variant="destructive" icon={<XCircle className="h-3 w-3" />}>
             Failed
-          </Badge>
+          </InfoChip>
         );
       case "canceled":
         return (
-          <Badge variant="outline" className="text-muted-foreground border-border font-medium">
-            <XCircle className="h-3 w-3 mr-1" />
-            Canceled
-          </Badge>
+          <InfoChip variant="outline" icon={<XCircle className="h-3 w-3" />}>
+            {t("bdPayCanceled")}
+          </InfoChip>
         );
       default:
         return null;
@@ -583,6 +547,35 @@ export default function BookingDetailsPage() {
     };
   }, [booking]);
 
+  const pricingBreakdownInput = useMemo(() => {
+    if (!booking) return null;
+    const subtotal = totals.subtotal || 0;
+    const serviceFee = totals.serviceFee || booking.paymentTransaction?.serviceFee || 0;
+    // Label the fee with the admin-configured rate. Deriving it from the stored
+    // amount over the displayed subtotal rounds wrong whenever an add-on was
+    // voided after checkout (the fee was charged on the original subtotal).
+    const platformFeeRate =
+      booking.platformCommissionRate != null
+        ? Number(booking.platformCommissionRate)
+        : subtotal > 0 && serviceFee > 0
+          ? serviceFee / subtotal
+          : 0;
+
+    return {
+      kitchenBaseSubtotalCents: subtotal,
+      kitchenHstRatePercent: Number(booking.kitchen?.taxRatePercent) || 0,
+      kitchenHstAmountCents: booking.paymentTransaction?.taxAmount,
+      platformFeeRate,
+      platformFeeAmountCents: serviceFee,
+      paymentProcessorFeeCents: booking.paymentTransaction?.stripeProcessingFee || 0,
+      kitchenNetPayoutCents: booking.paymentTransaction?.managerRevenue,
+      refundAmountCents: booking.paymentTransaction?.refundAmount || 0,
+      hourlyRateCents: booking.hourlyRate,
+      bookedHours: booking.durationHours,
+      showPaymentProcessorFee: (booking.paymentTransaction?.stripeProcessingFee || 0) > 0,
+    };
+  }, [booking, totals]);
+
   // Show ALL storage/equipment bookings including rejected ones for full audit trail
   const allStorageBookings = booking?.storageBookings || [];
   const allEquipmentBookings = booking?.equipmentBookings || [];
@@ -612,6 +605,7 @@ export default function BookingDetailsPage() {
     endTime: booking.endTime,
     totalPrice: booking.totalPrice,
     transactionAmount: booking.paymentTransaction?.amount,
+    serviceFee: totals.serviceFee || booking.paymentTransaction?.serviceFee || 0,
     stripeProcessingFee: booking.paymentTransaction?.stripeProcessingFee,
     managerRevenue: booking.paymentTransaction?.managerRevenue,
     taxRatePercent: booking.kitchen?.taxRatePercent ? Number(booking.kitchen.taxRatePercent) : undefined,
@@ -689,8 +683,8 @@ export default function BookingDetailsPage() {
       if (hadRefund) {
         queryClient.invalidateQueries({ queryKey: ['managerBookings'] });
         toast({
-          title: "Booking Rejected & Refunded",
-          description: `Refund of $${(responseData.refund.amount / 100).toFixed(2)} processed.`,
+          title: t("bdBookingRejectedRefundedTitle"),
+          description: t("bdRefundProcessedDesc", { amount: `$${(responseData.refund.amount / 100).toFixed(2)}` }),
         });
         window.location.reload();
         return;
@@ -725,18 +719,18 @@ export default function BookingDetailsPage() {
       // Show contextual toast based on server response
       if (responseData.authorizationVoided) {
         toast({
-          title: "Booking Rejected",
-          description: "Payment hold released — no charge was made to the chef.",
+          title: t("bdBookingRejectedToast"),
+          description: t("bdHoldReleasedDesc"),
         });
       } else if (responseData.requiresManualRefund) {
         toast({
-          title: "Booking Cancelled",
-          description: "Use 'Issue Refund' from the revenue dashboard to process the refund.",
+          title: t("bdBookingCancelledToast"),
+          description: t("bdIssueRefundRevenueDesc"),
         });
       } else {
         toast({
-          title: "Success",
-          description: params.status === 'confirmed' ? "Booking confirmed!" : "Booking rejected.",
+          title: t("bdSuccessTitle"),
+          description: params.status === 'confirmed' ? t("bdBookingConfirmedDesc") : t("bdBookingRejectedDesc"),
         });
       }
     } catch (err) {
@@ -764,12 +758,16 @@ export default function BookingDetailsPage() {
     totalPrice: booking.totalPrice,
     status: booking.status,
     paymentStatus: booking.paymentStatus,
+    transactionId: booking.paymentTransaction?.id,
     transactionAmount: booking.paymentTransaction?.amount,
     stripeProcessingFee: booking.paymentTransaction?.stripeProcessingFee,
     managerRevenue: booking.paymentTransaction?.managerRevenue,
+    serviceFee: booking.paymentTransaction?.serviceFee || booking.serviceFee || 0,
     taxRatePercent: booking.kitchen?.taxRatePercent ? Number(booking.kitchen.taxRatePercent) : undefined,
-    // refundableAmount uses managerRevenue — the ManagementSheet subtracts alreadyRefunded (refundAmount) itself
-    refundableAmount: booking.paymentTransaction?.managerRevenue,
+    // Gross pool (manager + service fee); sheet subtracts alreadyRefunded.
+    refundableAmount:
+      (booking.paymentTransaction?.managerRevenue || 0) +
+      (booking.paymentTransaction?.serviceFee || booking.serviceFee || 0),
     refundAmount: booking.paymentTransaction?.refundAmount || 0,
     cancellationRequested: booking.status === 'cancellation_requested',
     storageItems: booking.storageBookings?.map((s) => ({
@@ -812,7 +810,7 @@ export default function BookingDetailsPage() {
           });
           if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to cancel'); }
           const data = await res.json().catch(() => ({}));
-          toast({ title: "Booking Cancelled", description: data?.refund ? `Refund of $${(data.refund.amount / 100).toFixed(2)} processed.` : "Booking cancelled." });
+          toast({ title: t("bdBookingCancelledToast"), description: data?.refund ? t("bdRefundProcessedDesc", { amount: `$${(data.refund.amount / 100).toFixed(2)}` }) : t("bdBookingCancelledDesc") });
           // Reload to get fresh payment status, refund amounts, and item statuses from server
           window.location.reload();
           break;
@@ -824,13 +822,63 @@ export default function BookingDetailsPage() {
             body: JSON.stringify({ status: 'confirmed', storageActions: params.storageActions, equipmentActions: params.equipmentActions }),
           });
           if (!statusRes.ok) { const d = await statusRes.json().catch(() => ({})); throw new Error(d.error || 'Failed to update'); }
-          toast({ title: "Items Cancelled", description: "Selected items have been cancelled." });
-          // Refresh booking data
+
+          if (
+            params.action === "partial-cancel-refund" &&
+            params.refundAmountCents &&
+            params.refundAmountCents > 0 &&
+            bookingForManagement?.transactionId
+          ) {
+            const refundRes = await fetch(
+              `/api/manager/revenue/transactions/${bookingForManagement.transactionId}/refund`,
+              {
+                method: 'POST', headers, credentials: "include",
+                body: JSON.stringify({
+                  amount: params.refundAmountCents,
+                  reason: 'Partial cancellation refund',
+                }),
+              },
+            );
+            if (!refundRes.ok) {
+              const d = await refundRes.json().catch(() => ({}));
+              throw new Error(d.error || 'Items cancelled but refund failed');
+            }
+            toast({
+              title: t("bdItemsCancelledToast"),
+              description: t("bdRefundProcessedDesc", {
+                amount: `$${(params.refundAmountCents / 100).toFixed(2)}`,
+              }),
+            });
+          } else {
+            toast({ title: t("bdItemsCancelledToast"), description: t("bdItemsCancelledDesc") });
+          }
           window.location.reload();
           break;
         }
         case "refund-only": {
-          toast({ title: "Info", description: "Use the Bookings panel to issue refunds (requires transaction ID)." });
+          if (!bookingForManagement?.transactionId || !params.refundAmountCents) {
+            throw new Error(t("bdRefundPanelInfo"));
+          }
+          const refundRes = await fetch(
+            `/api/manager/revenue/transactions/${bookingForManagement.transactionId}/refund`,
+            {
+              method: 'POST', headers, credentials: "include",
+              body: JSON.stringify({
+                amount: params.refundAmountCents,
+                reason: 'Refund issued by manager',
+              }),
+            },
+          );
+          if (!refundRes.ok) {
+            const d = await refundRes.json().catch(() => ({}));
+            throw new Error(d.error || 'Failed to process refund');
+          }
+          toast({
+            title: t("bdRefundProcessedDesc", {
+              amount: `$${(params.refundAmountCents / 100).toFixed(2)}`,
+            }),
+          });
+          window.location.reload();
           break;
         }
         case "accept-cancellation": {
@@ -840,7 +888,7 @@ export default function BookingDetailsPage() {
           });
           if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed'); }
           setBooking({ ...booking, status: 'cancelled' });
-          toast({ title: "Cancellation Accepted" });
+          toast({ title: mt("cancellationAccepted") });
           break;
         }
         case "decline-cancellation": {
@@ -850,28 +898,28 @@ export default function BookingDetailsPage() {
           });
           if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed'); }
           setBooking({ ...booking, status: 'confirmed' });
-          toast({ title: "Cancellation Declined" });
+          toast({ title: mt("cancellationDeclined") });
           break;
         }
         case "accept-storage-cancel": {
-          if (!params.storageCancellationId) throw new Error("No storage booking ID");
+          if (!params.storageCancellationId) throw new Error(tt("noStorageBookingId"));
           const res = await fetch(`/api/manager/storage-bookings/${params.storageCancellationId}/cancellation-request`, {
             method: 'PUT', headers, credentials: "include",
             body: JSON.stringify({ action: 'accept' }),
           });
           if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed'); }
-          toast({ title: "Storage Cancellation Accepted" });
+          toast({ title: mt("storageCancellationAccepted") });
           window.location.reload();
           break;
         }
         case "decline-storage-cancel": {
-          if (!params.storageCancellationId) throw new Error("No storage booking ID");
+          if (!params.storageCancellationId) throw new Error(tt("noStorageBookingId"));
           const res = await fetch(`/api/manager/storage-bookings/${params.storageCancellationId}/cancellation-request`, {
             method: 'PUT', headers, credentials: "include",
             body: JSON.stringify({ action: 'decline' }),
           });
           if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed'); }
-          toast({ title: "Storage Cancellation Declined" });
+          toast({ title: mt("storageCancellationDeclined") });
           break;
         }
       }
@@ -879,7 +927,7 @@ export default function BookingDetailsPage() {
       queryClient.invalidateQueries({ queryKey: ['managerBookings'] });
       setManagementSheetOpen(false);
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Something went wrong.", variant: "destructive" });
+      toast({ title: t("bdErrorTitle"), description: error.message || t("bdSomethingWrong"), variant: "destructive" });
     } finally {
       setIsManagementProcessing(false);
     }
@@ -903,7 +951,7 @@ export default function BookingDetailsPage() {
     <div className="flex items-center justify-center py-20">
       <div className="text-center">
         <Loader2 className="h-5 w-5 animate-spin text-muted-foreground mx-auto mb-3" />
-        <p className="text-sm text-muted-foreground">Loading booking details…</p>
+        <p className="text-sm text-muted-foreground">{t("bdLoading")}</p>
       </div>
     </div>
   );
@@ -915,11 +963,11 @@ export default function BookingDetailsPage() {
         <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
           <FileText className="h-5 w-5 text-muted-foreground" />
         </div>
-        <h1 className="text-lg font-semibold mb-2">Booking Not Found</h1>
-        <p className="text-sm text-muted-foreground mb-6">{error || "Unable to load booking details"}</p>
+        <h1 className="text-lg font-semibold mb-2">{t("bdNotFoundTitle")}</h1>
+        <p className="text-sm text-muted-foreground mb-6">{error || t("bdNotFoundBody")}</p>
         <Button onClick={handleBack} variant="outline" size="sm">
           <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-          Go Back
+          {t("bdGoBack")}
         </Button>
       </div>
     </div>
@@ -945,7 +993,7 @@ export default function BookingDetailsPage() {
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
           <div className="space-y-1.5">
             <h1 className="text-2xl font-semibold tracking-tight">
-              {booking.kitchen?.name || "Kitchen Booking"}
+              {booking.kitchen?.name || t("bdKitchenBookingFallback")}
             </h1>
             {booking.location && (
               <p className="text-sm text-muted-foreground flex items-center gap-1.5">
@@ -973,7 +1021,7 @@ export default function BookingDetailsPage() {
                 ) : (
                   <>
                     <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
-                    Take Action
+                    {t("bdTakeAction")}
                   </>
                 )}
               </Button>
@@ -989,7 +1037,7 @@ export default function BookingDetailsPage() {
                 {isManagementProcessing ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
-                  <>Manage Booking</>
+                  <>{t("bdManageBooking")}</>
                 )}
               </Button>
             )}
@@ -1003,19 +1051,19 @@ export default function BookingDetailsPage() {
         <div className="lg:col-span-2 space-y-8">
           {/* ── Schedule ── */}
           <section>
-            <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4">Schedule</h2>
+            <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4">{t("bdSchedule")}</h2>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <p className="text-xs text-muted-foreground mb-1">Date</p>
+                <p className="text-xs text-muted-foreground mb-1">{t("bdDate")}</p>
                 <p className="text-sm font-medium">{formatDate(booking.bookingDate)}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground mb-1">Time</p>
+                <p className="text-xs text-muted-foreground mb-1">{t("bdTime")}</p>
                 <p className="text-sm font-medium">{formatBookingTimeSlots()}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground mb-1">Duration</p>
-                <p className="text-sm font-medium">{calculateDuration()} hr{calculateDuration() !== 1 ? "s" : ""}</p>
+                <p className="text-xs text-muted-foreground mb-1">{t("bdDuration")}</p>
+                <p className="text-sm font-medium">{t("bdHours", { count: calculateDuration() })}</p>
               </div>
             </div>
           </section>
@@ -1023,28 +1071,28 @@ export default function BookingDetailsPage() {
           {/* ── Check-In / Check-Out CTA (Chef View — confirmed bookings) ── */}
           {!isManagerView && booking.status === 'confirmed' && (
             (!booking.checkinStatus || booking.checkinStatus === 'not_checked_in' || booking.checkinStatus === 'checked_in') && (
-            <section className="rounded-lg border-2 border-blue-200 bg-blue-50/50 p-4">
+            <section className="rounded-lg border p-4">
               <div className="flex items-start gap-3">
-                <LogIn className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
+                <LogIn className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <h3 className="text-sm font-semibold text-blue-900">
+                  <h3 className="text-sm font-semibold">
                     {!booking.checkinStatus || booking.checkinStatus === 'not_checked_in'
-                      ? "Check In Required"
-                      : "Ready to Check Out"}
+                      ? t("bdCheckInRequired")
+                      : t("bdReadyToCheckOut")}
                   </h3>
-                  <p className="text-xs text-blue-700 mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     {!booking.checkinStatus || booking.checkinStatus === 'not_checked_in'
-                      ? "You must check in when you arrive at the kitchen. Complete the checklist and snap photos to document the condition — this protects you if any issues arise."
-                      : "Submit your check-out photos when you're done. The manager will review and clear your session."}
+                      ? t("bdCheckInBody")
+                      : t("bdCheckOutBody")}
                   </p>
                   <Button
                     size="sm"
-                    className="mt-3 bg-blue-600 hover:bg-blue-700 text-white"
+                    className="mt-3"
                     onClick={() => setCheckinTrackerOpen(true)}
                   >
                     {!booking.checkinStatus || booking.checkinStatus === 'not_checked_in'
-                      ? (<><LogIn className="h-3.5 w-3.5 mr-1.5" />Check In Now</>)
-                      : (<><LogOut className="h-3.5 w-3.5 mr-1.5" />Check Out Now</>)}
+                      ? (<><LogIn className="h-3.5 w-3.5 mr-1.5" />{t("bdCheckInNow")}</>)
+                      : (<><LogOut className="h-3.5 w-3.5 mr-1.5" />{t("bdCheckOutNow")}</>)}
                   </Button>
                 </div>
               </div>
@@ -1058,30 +1106,30 @@ export default function BookingDetailsPage() {
             <section>
               <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-1.5">
                 <LogIn className="h-3.5 w-3.5" />
-                Check-In / Check-Out
+                {t("bdCiCoSection")}
               </h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-lg border">
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1">Current Status</p>
+                  <p className="text-xs text-muted-foreground mb-1">{t("bdCurrentStatus")}</p>
                   <div>{getCheckinStatusBadge(booking.checkinStatus)}</div>
                 </div>
                 {booking.checkedInAt && (
                   <div>
-                    <p className="text-xs text-muted-foreground mb-1">Checked In</p>
+                    <p className="text-xs text-muted-foreground mb-1">{t("bdCheckedInAt")}</p>
                     <p className="text-sm font-medium">
                       {formatShortDate(booking.checkedInAt)}
                       {booking.actualStartTime && ` · ${booking.actualStartTime}`}
                     </p>
                     {booking.checkedInMethod && (
                       <p className="text-[11px] text-muted-foreground mt-0.5">
-                        via {booking.checkedInMethod === 'self' ? 'self check-in' : booking.checkedInMethod}
+                        {booking.checkedInMethod === 'self' ? t("bdViaSelf") : t("bdVia", { method: booking.checkedInMethod })}
                       </p>
                     )}
                   </div>
                 )}
                 {booking.checkoutRequestedAt && (
                   <div>
-                    <p className="text-xs text-muted-foreground mb-1">Checkout Requested</p>
+                    <p className="text-xs text-muted-foreground mb-1">{t("bdCheckoutRequested")}</p>
                     <p className="text-sm font-medium">
                       {formatShortDate(booking.checkoutRequestedAt)}
                       {booking.actualEndTime && ` · ${booking.actualEndTime}`}
@@ -1090,14 +1138,14 @@ export default function BookingDetailsPage() {
                 )}
                 {booking.checkoutApprovedAt && (
                   <div>
-                    <p className="text-xs text-muted-foreground mb-1">Checked Out / Cleared</p>
+                    <p className="text-xs text-muted-foreground mb-1">{t("bdCheckedOutCleared")}</p>
                     <p className="text-sm font-medium">{formatShortDate(booking.checkoutApprovedAt)}</p>
                   </div>
                 )}
                 {booking.noShowDetectedAt && (
                   <div>
-                    <p className="text-xs text-muted-foreground mb-1">No-Show Detected</p>
-                    <p className="text-sm font-medium text-red-700">{formatShortDate(booking.noShowDetectedAt)}</p>
+                    <p className="text-xs text-muted-foreground mb-1">{t("bdNoShowDetected")}</p>
+                    <p className="text-sm font-medium text-destructive">{formatShortDate(booking.noShowDetectedAt)}</p>
                   </div>
                 )}
               </div>
@@ -1106,13 +1154,13 @@ export default function BookingDetailsPage() {
                 <div className="mt-3 space-y-2">
                   {booking.checkinNotes && (
                     <div className="p-3 rounded-lg border border-border bg-muted/30">
-                      <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-1">Check-in notes</p>
+                      <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-1">{t("bdCheckinNotes")}</p>
                       <p className="text-sm whitespace-pre-wrap">{booking.checkinNotes}</p>
                     </div>
                   )}
                   {booking.checkoutNotes && (
                     <div className="p-3 rounded-lg border border-border bg-muted/30">
-                      <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-1">Check-out notes</p>
+                      <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-1">{t("bdCheckoutNotes")}</p>
                       <p className="text-sm whitespace-pre-wrap">{booking.checkoutNotes}</p>
                     </div>
                   )}
@@ -1128,14 +1176,14 @@ export default function BookingDetailsPage() {
                   {booking.checkinChecklistItems && booking.checkinChecklistItems.length > 0 && (
                     <div>
                       <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-2 flex items-center gap-1">
-                        <CheckCircle2 className="h-3 w-3" /> Check-in checklist
+                        <CheckCircle2 className="h-3 w-3" /> {t("bdCheckinChecklist")}
                       </p>
                       <div className="space-y-1">
                         {booking.checkinChecklistItems.map((item, index) => (
                           <div key={item.id} className="flex items-center gap-1.5">
                             <Checkbox checked={item.checked} disabled className="pointer-events-none h-3 w-3" />
                             <span className="tabular-nums text-[11px] font-medium text-muted-foreground">{index + 1}.</span>
-                            <span className={`text-[11px] ${item.checked ? "text-green-700" : "text-red-600 line-through"}`}>{item.label}</span>
+                            <span className={`text-[11px] ${item.checked ? "text-success" : "text-destructive line-through"}`}>{item.label}</span>
                           </div>
                         ))}
                       </div>
@@ -1144,7 +1192,7 @@ export default function BookingDetailsPage() {
                   {booking.checkinPhotoUrls && booking.checkinPhotoUrls.length > 0 && (
                     <div>
                       <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-2 flex items-center gap-1">
-                        <Camera className="h-3 w-3" /> Check-in photos ({booking.checkinPhotoUrls.length})
+                        <Camera className="h-3 w-3" /> {t("bdCheckinPhotos", { count: booking.checkinPhotoUrls.length })}
                       </p>
                       <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                         {booking.checkinPhotoUrls.map((url, i) => {
@@ -1157,9 +1205,9 @@ export default function BookingDetailsPage() {
                               rel="noopener noreferrer"
                               className="block"
                             >
-                              <img
+                              <SmartImage
                                 src={proxied}
-                                alt={`Check-in photo ${i + 1}`}
+                                alt={t("bdCheckinPhotoAlt", { n: i + 1 })}
                                 className="w-full h-20 object-cover rounded-md border hover:opacity-80 transition-opacity"
                                 onError={(e) => { (e.currentTarget as HTMLImageElement).style.opacity = '0.3'; }}
                               />
@@ -1172,7 +1220,7 @@ export default function BookingDetailsPage() {
                   {booking.checkoutPhotoUrls && booking.checkoutPhotoUrls.length > 0 && (
                     <div>
                       <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-2 flex items-center gap-1">
-                        <Camera className="h-3 w-3" /> Check-out photos ({booking.checkoutPhotoUrls.length})
+                        <Camera className="h-3 w-3" /> {t("bdCheckoutPhotos", { count: booking.checkoutPhotoUrls.length })}
                       </p>
                       <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                         {booking.checkoutPhotoUrls.map((url, i) => {
@@ -1185,9 +1233,9 @@ export default function BookingDetailsPage() {
                               rel="noopener noreferrer"
                               className="block"
                             >
-                              <img
+                              <SmartImage
                                 src={proxied}
-                                alt={`Check-out photo ${i + 1}`}
+                                alt={t("bdCheckoutPhotoAlt", { n: i + 1 })}
                                 className="w-full h-20 object-cover rounded-md border hover:opacity-80 transition-opacity"
                                 onError={(e) => { (e.currentTarget as HTMLImageElement).style.opacity = '0.3'; }}
                               />
@@ -1201,14 +1249,14 @@ export default function BookingDetailsPage() {
                   {booking.checkoutChecklistItems && booking.checkoutChecklistItems.length > 0 && (
                     <div>
                       <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-2 flex items-center gap-1">
-                        <CheckCircle2 className="h-3 w-3" /> Check-out checklist
+                        <CheckCircle2 className="h-3 w-3" /> {t("bdCheckoutChecklist")}
                       </p>
                       <div className="space-y-1">
                         {booking.checkoutChecklistItems.map((item, index) => (
                           <div key={item.id} className="flex items-center gap-1.5">
                             <Checkbox checked={item.checked} disabled className="pointer-events-none h-3 w-3" />
                             <span className="tabular-nums text-[11px] font-medium text-muted-foreground">{index + 1}.</span>
-                            <span className={`text-[11px] ${item.checked ? "text-blue-700" : "text-red-600 line-through"}`}>{item.label}</span>
+                            <span className={`text-[11px] ${item.checked ? "text-success" : "text-destructive line-through"}`}>{item.label}</span>
                           </div>
                         ))}
                       </div>
@@ -1224,7 +1272,7 @@ export default function BookingDetailsPage() {
             <section>
               <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-1.5">
                 <Package className="h-3.5 w-3.5" />
-                Storage
+                {t("bdStorageSection")}
               </h2>
               <div className="space-y-2">
                 {allStorageBookings.map((storage) => {
@@ -1252,29 +1300,31 @@ export default function BookingDetailsPage() {
                           {formatCurrency(storage.totalPrice)}
                         </span>
                         {storage.status === "completed" ? (
-                          <Badge variant="outline" className="text-[10px] text-success border-success/30">
-                            <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />cleared
-                          </Badge>
+                          <InfoChip variant="success" icon={<CheckCircle2 className="h-2.5 w-2.5" />}>
+                            {t("bdStatusCleared")}
+                          </InfoChip>
                         ) : refunded ? (
-                          <Badge variant="outline" className="text-[10px] text-warning border-warning/30">
-                            <Receipt className="h-2.5 w-2.5 mr-0.5" />refunded
-                          </Badge>
+                          <InfoChip variant="warning" icon={<Receipt className="h-2.5 w-2.5" />}>
+                            {t("bdStatusRefunded")?.toLowerCase()}
+                          </InfoChip>
                         ) : voided ? (
-                          <Badge variant="outline" className="text-[10px] text-muted-foreground border-border">
-                            <XCircle className="h-2.5 w-2.5 mr-0.5" />not charged
-                          </Badge>
+                          <InfoChip variant="outline" icon={<XCircle className="h-2.5 w-2.5" />}>
+                            {t("bdStatusNotCharged")}
+                          </InfoChip>
                         ) : storage.status === "cancelled" ? (
-                          <Badge variant="outline" className="text-[10px] text-muted-foreground border-border">
-                            <XCircle className="h-2.5 w-2.5 mr-0.5" />cancelled
-                          </Badge>
+                          <InfoChip variant="outline" icon={<XCircle className="h-2.5 w-2.5" />}>
+                            {t("bdStatusCancelled")?.toLowerCase()}
+                          </InfoChip>
                         ) : storage.status === "confirmed" || storage.status === "active" ? (
-                          <Badge variant="outline" className="text-[10px] text-success border-success/30">
-                            <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />confirmed
-                          </Badge>
+                          <InfoChip variant="success" icon={<CheckCircle2 className="h-2.5 w-2.5" />}>
+                            {t("bdStatusConfirmed")?.toLowerCase()}
+                          </InfoChip>
                         ) : (
-                          <Badge variant="outline" className="text-[10px] text-warning border-warning/30">
-                            <AlertCircle className="h-2.5 w-2.5 mr-0.5" />{storage.status}
-                          </Badge>
+                          <InfoChip variant="warning" icon={<AlertCircle className="h-2.5 w-2.5" />}>
+                            {storage.status === 'pending' ? t("bdStatusPending")?.toLowerCase() : 
+                             storage.status === 'expired' ? t("bdStatusExpired")?.toLowerCase() : 
+                             storage.status}
+                          </InfoChip>
                         )}
                       </div>
                     </div>
@@ -1289,7 +1339,7 @@ export default function BookingDetailsPage() {
             <section>
               <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-1.5">
                 <Wrench className="h-3.5 w-3.5" />
-                Equipment
+                {t("bdEquipmentSection")}
               </h2>
               <div className="space-y-2">
                 {allEquipmentBookings.map((equipment) => {
@@ -1316,25 +1366,27 @@ export default function BookingDetailsPage() {
                           {formatCurrency(equipment.totalPrice)}
                         </span>
                         {refunded ? (
-                          <Badge variant="outline" className="text-[10px] text-warning border-warning/30">
-                            <Receipt className="h-2.5 w-2.5 mr-0.5" />refunded
-                          </Badge>
+                          <InfoChip variant="warning" icon={<Receipt className="h-2.5 w-2.5" />}>
+                            {t("bdStatusRefunded")?.toLowerCase()}
+                          </InfoChip>
                         ) : voided ? (
-                          <Badge variant="outline" className="text-[10px] text-muted-foreground border-border">
-                            <XCircle className="h-2.5 w-2.5 mr-0.5" />not charged
-                          </Badge>
+                          <InfoChip variant="outline" icon={<XCircle className="h-2.5 w-2.5" />}>
+                            {t("bdStatusNotCharged")}
+                          </InfoChip>
                         ) : equipment.status === "cancelled" ? (
-                          <Badge variant="outline" className="text-[10px] text-muted-foreground border-border">
-                            <XCircle className="h-2.5 w-2.5 mr-0.5" />cancelled
-                          </Badge>
+                          <InfoChip variant="outline" icon={<XCircle className="h-2.5 w-2.5" />}>
+                            {t("bdStatusCancelled")?.toLowerCase()}
+                          </InfoChip>
                         ) : equipment.status === "confirmed" || equipment.status === "active" ? (
-                          <Badge variant="outline" className="text-[10px] text-success border-success/30">
-                            <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />confirmed
-                          </Badge>
+                          <InfoChip variant="success" icon={<CheckCircle2 className="h-2.5 w-2.5" />}>
+                            {t("bdStatusConfirmed")?.toLowerCase()}
+                          </InfoChip>
                         ) : (
-                          <Badge variant="outline" className="text-[10px] text-warning border-warning/30">
-                            <AlertCircle className="h-2.5 w-2.5 mr-0.5" />{equipment.status}
-                          </Badge>
+                          <InfoChip variant="warning" icon={<AlertCircle className="h-2.5 w-2.5" />}>
+                            {equipment.status === 'pending' ? t("bdStatusPending")?.toLowerCase() : 
+                             equipment.status === 'expired' ? t("bdStatusExpired")?.toLowerCase() : 
+                             equipment.status}
+                          </InfoChip>
                         )}
                       </div>
                     </div>
@@ -1349,7 +1401,7 @@ export default function BookingDetailsPage() {
             <section>
               <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
                 <FileText className="h-3.5 w-3.5" />
-                Notes
+                {t("bdNotesSection")}
               </h2>
               <p className="text-sm leading-relaxed whitespace-pre-wrap">{booking.specialNotes}</p>
             </section>
@@ -1360,11 +1412,11 @@ export default function BookingDetailsPage() {
             <section>
               <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-1.5">
                 <User className="h-3.5 w-3.5" />
-                Chef
+                {t("bdChefSection")}
               </h2>
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center shrink-0">
-                  <ChefHat className="h-4 w-4 text-muted-foreground" />
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
                 </div>
                 <div>
                   <p className="text-sm font-medium">
@@ -1392,12 +1444,12 @@ export default function BookingDetailsPage() {
         <div className="space-y-6">
           <Card className="sticky top-24 border-border shadow-none">
             <CardContent className="p-5">
-              <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4">Payment</h3>
+              <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4">{t("bdPaymentSection")}</h3>
 
               <div className="space-y-2.5">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">
-                    Kitchen · {calculateDuration()} hr{calculateDuration() !== 1 ? "s" : ""}
+                    {t("bdKitchenLine", { duration: t("bdHours", { count: calculateDuration() }) })}
                   </span>
                   <span className="font-mono">
                     {formatCurrency(totals.kitchen > 0 ? totals.kitchen : booking.totalPrice)}
@@ -1406,7 +1458,7 @@ export default function BookingDetailsPage() {
 
                 {allStorageTotal > 0 && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Storage</span>
+                    <span className="text-muted-foreground">{t("bdStorageLine")}</span>
                     <div className="text-right">
                       {rejectedStorageTotal > 0 && rejectedStorageTotal < allStorageTotal && (
                         <span className="font-mono text-muted-foreground line-through mr-2 text-xs">{formatCurrency(allStorageTotal)}</span>
@@ -1420,7 +1472,7 @@ export default function BookingDetailsPage() {
 
                 {allEquipmentTotal > 0 && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Equipment</span>
+                    <span className="text-muted-foreground">{t("bdEquipmentLine")}</span>
                     <div className="text-right">
                       {rejectedEquipmentTotal > 0 && rejectedEquipmentTotal < allEquipmentTotal && (
                         <span className="font-mono text-muted-foreground line-through mr-2 text-xs">{formatCurrency(allEquipmentTotal)}</span>
@@ -1432,27 +1484,64 @@ export default function BookingDetailsPage() {
                   </div>
                 )}
 
-                <Separator className="my-3" />
-
-                <div className="flex justify-between items-baseline">
-                  <span className="text-sm font-medium">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">
                     {booking.paymentStatus === 'failed' && booking.status === 'cancelled'
-                      ? 'Original Quote'
-                      : isRefunded
-                        ? 'Amount Charged'
-                        : isPartiallyRefunded
-                          ? 'Amount Charged'
-                          : 'Subtotal'}
+                      ? t("bdOriginalQuote")
+                      : isRefunded || isPartiallyRefunded
+                        ? t("bdAmountCharged")
+                        : t("bdSubtotal")}
                   </span>
-                  <span className={`text-lg font-semibold font-mono ${
+                  <span className={`font-mono tabular-nums ${
                     (booking.paymentStatus === 'failed' && booking.status === 'cancelled') || isRefunded
                       ? 'text-muted-foreground line-through'
                       : ''
                   }`}>
                     {formatCurrency(totals.subtotal)}
-                    <span className="text-xs font-normal text-muted-foreground ml-1">{booking.currency || "CAD"}</span>
                   </span>
                 </div>
+
+                {/* Taxes, fees and total continue the same list — no second header */}
+                {/* VOIDED AUTH: skip entirely — no money was captured */}
+                {booking.paymentTransaction && pricingBreakdownInput && !(booking.paymentStatus === 'failed' && booking.status === 'cancelled') && (
+                  isManagerView ? (
+                    <KitchenPayoutStatementBreakdown
+                      {...pricingBreakdownInput}
+                      currency={booking.currency || "CAD"}
+                      title={
+                        booking.paymentStatus === 'authorized'
+                          ? t("bdEstimatedPayout", { defaultValue: "Estimated payout" })
+                          : t("bdYourPayout", { defaultValue: "Your payout" })
+                      }
+                      showProcessorFee={pricingBreakdownInput.showPaymentProcessorFee}
+                      processingFeeLabel={t("bdProcessingFee")}
+                      refundLabel={t("bdRefund")}
+                      hstLabel={t("bdHstPercent", {
+                        percent: pricingBreakdownInput.kitchenHstRatePercent ?? 0,
+                      })}
+                    />
+                  ) : (
+                    <ChefBookingReceiptBreakdown
+                      {...pricingBreakdownInput}
+                      currency={booking.currency || "CAD"}
+                      totalLabel={booking.paymentStatus === 'authorized' ? t("bdAmountAuthorized") : t("bdAmountCharged")}
+                      platformFeeLabel={t("bdLocalCooksServiceFee", {
+                        percent: Math.round((pricingBreakdownInput.platformFeeRate || 0) * 100),
+                        defaultValue: "Service fee ({percent}%)",
+                      })}
+                    />
+                  )
+                )}
+
+                {!isManagerView && refundAmount > 0 && (
+                  <div className="flex justify-between text-sm items-center gap-2">
+                    <span className="text-warning inline-flex items-center gap-1">
+                      {t("bdRefundedLine")}
+                      <StripeProcessingFeeRefundInfo iconClassName="h-3 w-3" />
+                    </span>
+                    <span className="font-mono tabular-nums text-warning">−{formatCurrency(refundAmount)}</span>
+                  </div>
+                )}
               </div>
 
               {/* VOIDED AUTH: Show when booking was cancelled before capture — no money moved */}
@@ -1461,11 +1550,11 @@ export default function BookingDetailsPage() {
                   <div className="flex items-start gap-2">
                     <Info className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
                     <div className="text-xs text-muted-foreground">
-                      <p className="font-medium mb-0.5">Authorization Voided — No Charge</p>
+                      <p className="font-medium mb-0.5">{t("bdAuthVoidedTitle")}</p>
                       <p>
                         {isManagerView
-                          ? "The payment hold was released when this booking was rejected. No charge was made to the chef and no Stripe fees apply."
-                          : "The payment hold on your card has been released. You were not charged for this booking."}
+                          ? t("bdAuthVoidedManager")
+                          : t("bdAuthVoidedChef")}
                       </p>
                     </div>
                   </div>
@@ -1478,11 +1567,11 @@ export default function BookingDetailsPage() {
                   <div className="flex items-start gap-2">
                     <CreditCard className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
                     <div className="text-xs text-muted-foreground">
-                      <p className="font-medium mb-0.5">Payment Held</p>
+                      <p className="font-medium mb-0.5">{t("bdPaymentHeldTitle")}</p>
                       <p>
                         {isManagerView 
-                          ? "This payment is authorized but not yet captured. Approve or reject from the action sheet to capture or release the hold."
-                          : "Your card has been authorized. The charge will be finalized once the kitchen manager approves your booking."}
+                          ? t("bdPaymentHeldManager")
+                          : t("bdPaymentHeldChef")}
                       </p>
                     </div>
                   </div>
@@ -1491,21 +1580,22 @@ export default function BookingDetailsPage() {
 
               {/* REFUND INFO: Show when a refund has been processed (full or partial) */}
               {hasRefund && refundAmount > 0 && (
-                <div className="mt-4 p-3 bg-amber-50/50 border border-amber-200 rounded-lg">
+                <div className="mt-4 p-3 rounded-lg border">
                   <div className="flex items-start gap-2">
-                    <Receipt className="h-3.5 w-3.5 text-amber-600 mt-0.5 flex-shrink-0" />
-                    <div className="text-xs text-amber-800">
-                      <p className="font-medium mb-0.5">
-                        {isRefunded ? 'Fully Refunded' : 'Partial Refund Issued'}
+                    <Receipt className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                    <div className="text-xs text-muted-foreground min-w-0">
+                      <p className="font-medium text-foreground mb-0.5 inline-flex items-center gap-1.5">
+                        {isRefunded ? t("bdFullyRefunded") : t("bdPartialRefundIssued")}
+                        {!isManagerView && <StripeProcessingFeeRefundInfo />}
                       </p>
-                      <p className="text-amber-700">
+                      <p>
                         {isManagerView
-                          ? `${formatCurrency(refundAmount)} was refunded to the chef.${booking.paymentTransaction?.refundReason ? ` Reason: ${booking.paymentTransaction.refundReason}` : ''}`
-                          : `You received a refund of ${formatCurrency(refundAmount)}.`}
+                          ? `${t("bdRefundedToChef", { amount: formatCurrency(refundAmount) })}${booking.paymentTransaction?.refundReason ? ` ${t("bdRefundReason", { reason: booking.paymentTransaction.refundReason })}` : ''}`
+                          : t("bdRefundedYou", { amount: formatCurrency(refundAmount) })}
                       </p>
                       {booking.paymentTransaction?.refundedAt && (
-                        <p className="text-amber-600 mt-0.5">
-                          Refunded on {formatShortDate(booking.paymentTransaction.refundedAt)}
+                        <p className="mt-0.5">
+                          {t("bdRefundedOn", { date: formatShortDate(booking.paymentTransaction.refundedAt) })}
                         </p>
                       )}
                     </div>
@@ -1519,169 +1609,15 @@ export default function BookingDetailsPage() {
                   <div className="flex items-start gap-2">
                     <Info className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
                     <div className="text-xs text-muted-foreground">
-                      <p className="font-medium mb-0.5">Booking Cancelled</p>
+                      <p className="font-medium mb-0.5">{t("bdBookingCancelledTitle")}</p>
                       <p>
                         {isManagerView
-                          ? "This booking was cancelled. Use 'Issue Refund' from the bookings panel to process a refund if needed."
-                          : "This booking has been cancelled. Contact the kitchen manager regarding any refund."}
+                          ? t("bdBookingCancelledManager")
+                          : t("bdBookingCancelledChef")}
                       </p>
                     </div>
                   </div>
                 </div>
-              )}
-
-              {/* Chef View - Payment Breakdown (without Stripe fee) */}
-              {/* VOIDED AUTH: Skip breakdown entirely — no money was captured */}
-              {!isManagerView && booking.paymentTransaction && !(booking.paymentStatus === 'failed' && booking.status === 'cancelled') && (
-                <>
-                  <Separator className="my-4" />
-                  <div className="space-y-2">
-                    <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Breakdown</h3>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Subtotal</span>
-                      <span className="font-mono">{formatCurrency(totals.subtotal)}</span>
-                    </div>
-                    {(() => {
-                      const taxRatePercent = booking.kitchen?.taxRatePercent || 0;
-                      const subtotal = totals.subtotal || 0;
-                      const taxAmount = Math.round((subtotal * taxRatePercent) / 100);
-                      
-                      return taxRatePercent > 0 ? (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Tax ({taxRatePercent}%)</span>
-                          <span className="font-mono">{formatCurrency(taxAmount)}</span>
-                        </div>
-                      ) : null;
-                    })()}
-                    {(() => {
-                      const platformCommission = totals.serviceFee || 0;
-                      
-                      return platformCommission > 0 ? (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Platform Commission</span>
-                          <span className="font-mono">{formatCurrency(platformCommission)}</span>
-                        </div>
-                      ) : null;
-                    })()}
-                    <Separator className="my-2" />
-                    <div className="flex justify-between text-sm font-medium">
-                      <span>
-                        {booking.paymentStatus === 'authorized' ? 'Amount Authorized' : 'Amount Charged'}
-                      </span>
-                      <span className="font-mono">
-                    {(() => {
-                      const platformCommission = totals.serviceFee || 0;
-                      const ptAmount = booking.paymentTransaction.amount || 0;
-                      const expectedCharged = (totals.subtotal || 0) + platformCommission;
-                      const amountCharged = ptAmount >= expectedCharged - 1
-                        ? ptAmount
-                        : ptAmount + platformCommission;
-                      return formatCurrency(amountCharged);
-                    })()}
-                      </span>
-                    </div>
-                    {refundAmount > 0 && (
-                      <>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-amber-600">Refunded</span>
-                          <span className="font-mono text-amber-600">−{formatCurrency(refundAmount)}</span>
-                        </div>
-                        <Separator className="my-2" />
-                        <div className="flex justify-between text-sm font-medium">
-                          <span>Net Charged</span>
-                          <span className="font-mono">
-                            {(() => {
-                              const platformCommission = totals.serviceFee || 0;
-                              const ptAmount = booking.paymentTransaction.amount || 0;
-                              const expectedCharged = (totals.subtotal || 0) + platformCommission;
-                              const amountCharged = ptAmount >= expectedCharged - 1
-                                ? ptAmount
-                                : ptAmount + platformCommission;
-                              return formatCurrency(amountCharged - refundAmount);
-                            })()}
-                          </span>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </>
-              )}
-
-              {/* Manager View - Revenue Breakdown (with Stripe fee) */}
-              {/* VOIDED AUTH: Skip breakdown entirely — no money was captured */}
-              {isManagerView && booking.paymentTransaction && !(booking.paymentStatus === 'failed' && booking.status === 'cancelled') && (
-                <>
-                  <Separator className="my-4" />
-                  <div className="space-y-2">
-                    <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
-                      {booking.paymentStatus === 'authorized' ? 'Authorization' : 'Revenue'}
-                    </h3>
-                    {booking.paymentStatus !== 'authorized' && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Gross</span>
-                        <span className="font-mono">{formatCurrency(totals.subtotal)}</span>
-                      </div>
-                    )}
-                    {(() => {
-                      const amount = booking.paymentTransaction.amount || 0;
-                      // ENTERPRISE STANDARD: Use actual values from payment_transactions table
-                      // - serviceFee = application_fee_amount = what platform retained (live Stripe fee after reconciliation)
-                      // - managerRevenue = amount - serviceFee = what Stripe actually paid the manager's Connect account
-                      // - stripeProcessingFee = informational only (Stripe's actual processing fee deducted from platform balance)
-                      const platformFee = booking.paymentTransaction.serviceFee || 0;
-                      const managerRevenue = booking.paymentTransaction.managerRevenue || 0;
-                      const stripeProcessingFee = booking.paymentTransaction.stripeProcessingFee || 0;
-                      const taxRatePercent = booking.kitchen?.taxRatePercent || 0;
-                      const subtotal = totals.subtotal || 0;
-                      const taxAmount = Math.round((subtotal * taxRatePercent) / 100);
-                      // Net keepable revenue = what manager received from Stripe minus tax they remit
-                      const netRevenue = managerRevenue - taxAmount;
-                      const isAuthorized = booking.paymentStatus === 'authorized';
-                      const ptRefundAmount = booking.paymentTransaction.refundAmount || 0;
-
-                      return (
-                        <>
-                          {taxRatePercent > 0 && (
-                            <div className="flex justify-between text-sm">
-                              <span className="text-muted-foreground">
-                                Tax ({taxRatePercent}%)
-                              </span>
-                              <span className="font-mono text-muted-foreground">
-                                {isAuthorized ? `+${formatCurrency(taxAmount)}` : `−${formatCurrency(taxAmount)}`}
-                              </span>
-                            </div>
-                          )}
-                          {!isAuthorized && stripeProcessingFee > 0 && (
-                            <div className="flex justify-between text-sm">
-                              <span className="text-muted-foreground">Stripe Fee</span>
-                              <span className="font-mono text-muted-foreground">−{formatCurrency(stripeProcessingFee)}</span>
-                            </div>
-                          )}
-                          {!isAuthorized && ptRefundAmount > 0 && (
-                            <div className="flex justify-between text-sm">
-                              <span className="text-amber-600">Refunded</span>
-                              <span className="font-mono text-amber-600">−{formatCurrency(ptRefundAmount)}</span>
-                            </div>
-                          )}
-                          <Separator className="my-2" />
-                          <div className="flex justify-between text-sm font-medium">
-                            <span>
-                              {isAuthorized ? 'Total Payment' : 'Net Revenue'}
-                            </span>
-                            <span className="font-mono">
-                              {formatCurrency(isAuthorized ? (totals.subtotal || amount) : netRevenue - ptRefundAmount)}
-                            </span>
-                          </div>
-                          {!isAuthorized && managerRevenue > 0 && (
-                            <p className="text-[10px] text-muted-foreground italic mt-1">
-                              You received {formatCurrency(managerRevenue)} in your Stripe account ({formatCurrency(taxAmount)} tax + {formatCurrency(netRevenue - ptRefundAmount)} net{ptRefundAmount > 0 ? ` − ${formatCurrency(ptRefundAmount)} refund` : ''}).
-                            </p>
-                          )}
-                        </>
-                      );
-                    })()}
-                  </div>
-                </>
               )}
 
               {(booking.paymentStatus === "paid" || booking.paymentStatus === "partially_refunded" || booking.paymentStatus === "refunded") && (
@@ -1695,12 +1631,14 @@ export default function BookingDetailsPage() {
                   {isDownloading ? (
                     <>
                       <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                      Generating…
+                      {t("bdGenerating")}
                     </>
                   ) : (
                     <>
                       <Download className="mr-1.5 h-3.5 w-3.5" />
-                      Download Invoice
+                      {isManagerView
+                        ? t("bdDownloadPayoutStatement", { defaultValue: "Download payout statement" })
+                        : t("bdDownloadReceipt", { defaultValue: "Download booking receipt" })}
                     </>
                   )}
                 </Button>
@@ -1711,12 +1649,12 @@ export default function BookingDetailsPage() {
           {/* ── Meta ── */}
           <div className="text-xs text-muted-foreground space-y-1.5 px-1">
             <div className="flex justify-between">
-              <span>Created</span>
+              <span>{t("bdCreated")}</span>
               <span>{formatShortDate(booking.createdAt)}</span>
             </div>
             {booking.updatedAt && (
               <div className="flex justify-between">
-                <span>Updated</span>
+                <span>{t("bdUpdated")}</span>
                 <span>{formatShortDate(booking.updatedAt)}</span>
               </div>
             )}
@@ -1727,14 +1665,32 @@ export default function BookingDetailsPage() {
     </TooltipProvider>
   );
 
+  const bookingBreadcrumbs = useMemo(
+    () => [
+      {
+        label: t("shellMyBookings"),
+        onClick: () => navigate("/dashboard?view=bookings"),
+        navId: "bookings" as const,
+      },
+      { label: booking ? t("bdBookingRef", { id: booking.id }) : t("bdBookingDetails") },
+    ],
+    [t, navigate, booking]
+  );
+
+  const inShell = useChefShellChrome({
+    activeView: "bookings",
+    onViewChange: handleViewChange,
+    breadcrumbs: bookingBreadcrumbs,
+  });
+
   // Render with appropriate layout
   if (isManagerView) {
     return (
       <ManagerBookingLayout
+        bookingLocationId={booking?.location?.id ?? booking?.kitchen?.locationId ?? null}
         breadcrumbs={[
-          { label: "Dashboard", onClick: () => navigate("/manager/dashboard") },
-          { label: "Bookings", onClick: () => window.history.back() },
-          { label: booking ? `Booking #${booking.id}` : "Booking Details" },
+          { label: t("bkMyBookings"), onClick: () => window.history.back() },
+          { label: booking ? t("bdBookingRef", { id: booking.id }) : t("bdBookingDetails") }
         ]}
       >
         {isLoading ? loadingContent : (error || !booking) ? errorContent : bookingContent}
@@ -1758,17 +1714,8 @@ export default function BookingDetailsPage() {
     );
   }
 
-  // Chef view with ChefDashboardLayout
-  return (
-    <ChefDashboardLayout
-      activeView="bookings"
-      onViewChange={handleViewChange}
-      breadcrumbs={[
-        { label: "Dashboard", onClick: () => navigate("/dashboard") },
-        { label: "My Bookings", onClick: () => window.history.back() },
-        { label: booking ? `Booking #${booking.id}` : "Booking Details" },
-      ]}
-    >
+  const chefBody = (
+    <>
       {isLoading ? loadingContent : (error || !booking) ? errorContent : bookingContent}
       {booking && (
         <KitchenCheckinTracker
@@ -1784,6 +1731,19 @@ export default function BookingDetailsPage() {
           endTime={booking.endTime}
         />
       )}
+    </>
+  );
+
+  if (inShell) return chefBody;
+
+  return (
+    <ChefDashboardLayout
+      activeView="bookings"
+      onViewChange={handleViewChange}
+      breadcrumbs={bookingBreadcrumbs}
+    >
+      {chefBody}
     </ChefDashboardLayout>
   );
 }
+

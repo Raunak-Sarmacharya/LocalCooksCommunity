@@ -1,16 +1,7 @@
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { AlertTriangle, CheckCircle, Info, XCircle } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { AlertTriangle, CheckCircle, Info, XCircle } from "lucide-react";
 import React, { createContext, ReactNode, useContext, useState } from 'react';
 
 type AlertType = 'info' | 'success' | 'warning' | 'error';
@@ -241,19 +232,3 @@ export const CustomAlertsProvider: React.FC<{ children: ReactNode }> = ({ childr
     </CustomAlertsContext.Provider>
   );
 };
-
-export const showEmailPrompt = (): Promise<string | null> => {
-  return new Promise((resolve) => {
-    const handleConfirm = (value: string) => {
-      resolve(value || null);
-    };
-    
-    const handleCancel = () => {
-      resolve(null);
-    };
-
-    // This is a temporary fallback - in a real app, you'd want to integrate this with the provider
-    const email = window.prompt('Please provide your email for confirmation') || '';
-    resolve(email);
-  });
-}; 

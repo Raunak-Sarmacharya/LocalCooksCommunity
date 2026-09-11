@@ -7,71 +7,24 @@
  */
 
 import { useState } from "react"
+import { mt } from "@/i18n/manager"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import {
-  Eye,
-  Clock,
-  User,
-  Loader2,
-  MoreHorizontal,
-  CheckCircle,
-  XCircle,
-  AlertTriangle,
-  Calendar,
-  MapPin,
-  RefreshCw,
-  Briefcase,
-  FileText,
-  Settings,
-} from "lucide-react"
+import { Eye, Clock, User, Loader2, MoreHorizontal, CheckCircle, XCircle, AlertTriangle, Calendar, MapPin, RefreshCw, Briefcase, FileText } from "@/components/ui/manager-icons"
 import { toast } from "sonner"
 import { auth } from "@/lib/firebase"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetFooter,
-} from "@/components/ui/sheet"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetFooter } from "@/components/ui/sheet"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import { format, isPast, isFuture } from "date-fns"
-import ViewingSettingsPanel from "./ViewingSettingsPanel"
 
 // ─── Auth Helper ──────────────────────────────────────────────────────────────
 
@@ -123,38 +76,28 @@ function getStatusBadge(status: string) {
   switch (status) {
     case "confirmed":
       return (
-        <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
-          <CheckCircle className="h-3 w-3 mr-1" />
-          Confirmed
-        </Badge>
+        <Badge variant="success">
+          <CheckCircle className="h-3 w-3 mr-1" />{mt("confirmed")}</Badge>
       )
     case "pending":
       return (
-        <Badge variant="outline">
-          <Clock className="h-3 w-3 mr-1" />
-          Pending
-        </Badge>
+        <Badge variant="warning">
+          <Clock className="h-3 w-3 mr-1" />{mt("pending")}</Badge>
       )
     case "cancelled":
       return (
         <Badge variant="secondary">
-          <XCircle className="h-3 w-3 mr-1" />
-          Cancelled
-        </Badge>
+          <XCircle className="h-3 w-3 mr-1" />{mt("cancelled")}</Badge>
       )
     case "completed":
       return (
         <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">
-          <CheckCircle className="h-3 w-3 mr-1" />
-          Completed
-        </Badge>
+          <CheckCircle className="h-3 w-3 mr-1" />{mt("completed")}</Badge>
       )
     case "no_show":
       return (
         <Badge variant="destructive">
-          <AlertTriangle className="h-3 w-3 mr-1" />
-          No Show
-        </Badge>
+          <AlertTriangle className="h-3 w-3 mr-1" />{mt("noShow")}</Badge>
       )
     default:
       return <Badge variant="outline">{status}</Badge>
@@ -163,11 +106,11 @@ function getStatusBadge(status: string) {
 
 function getIntakeLabel(key: string): string {
   const labels: Record<string, string> = {
-    intendedUse: "Intended Use",
-    estimatedWeeklyHours: "Weekly Hours",
-    hasLicense: "Has License",
-    targetStartDate: "Target Start",
-    additionalInfo: "Notes",
+    intendedUse: mt("viewingIntakeIntendedUse"),
+    estimatedWeeklyHours: mt("viewingIntakeWeeklyHours"),
+    hasLicense: mt("viewingIntakeHasLicense"),
+    targetStartDate: mt("viewingIntakeTargetStart"),
+    additionalInfo: mt("viewingIntakeNotes"),
   }
   return labels[key] || key
 }
@@ -179,6 +122,7 @@ interface ViewingsDashboardProps {
 }
 
 export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
+  
   const queryClient = useQueryClient()
   const [selectedViewing, setSelectedViewing] = useState<ViewingRecord | null>(null)
   const [statusAction, setStatusAction] = useState<string>("")
@@ -186,7 +130,6 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
   const [noShowReason, setNoShowReason] = useState("")
   const [cancellationReason, setCancellationReason] = useState("")
   const [activeTab, setActiveTab] = useState("upcoming")
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
   // Fetch viewings
   const queryUrl = locationId
@@ -229,14 +172,14 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
       })
       if (!response.ok) {
         const err = await response.json().catch(() => ({}))
-        throw new Error(err.error || "Failed to update status")
+        throw new Error(err.error || mt("viewingStatusUpdateFailed"))
       }
       return response.json()
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [queryUrl] })
       closeSheet()
-      toast.success("Viewing status updated!")
+      toast.success(mt("viewingStatusUpdated"))
     },
     onError: (error: Error) => toast.error(error.message),
   })
@@ -294,7 +237,7 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
           </div>
           <div className="text-xs text-muted-foreground">
             {format(new Date(viewing.scheduledAt), "h:mm a")} ·{" "}
-            {viewing.durationMinutes}min
+            {mt("minutesShort", { count: viewing.durationMinutes })}
           </div>
         </TableCell>
         <TableCell>
@@ -305,7 +248,7 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
           {hasIntake && (
             <div className="flex items-center gap-1 mt-0.5">
               <FileText className="h-3 w-3 text-blue-500" />
-              <span className="text-[10px] text-blue-600">Has intake data</span>
+              <span className="text-[10px] text-blue-600">{mt("hasIntakeData")}</span>
             </div>
           )}
         </TableCell>
@@ -329,9 +272,7 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => handleStatusAction(record, "view")}>
-                <Eye className="h-4 w-4 mr-2" />
-                View Details
-              </DropdownMenuItem>
+                <Eye className="h-4 w-4 mr-2" />{mt("viewDetails")}</DropdownMenuItem>
               {viewing.status === "pending" && (
                 <>
                   <DropdownMenuSeparator />
@@ -339,16 +280,12 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
                     onClick={() => handleStatusAction(record, "confirm")}
                     className="text-green-600"
                   >
-                    <CheckCircle className="h-4 w-4 mr-2" />
-                    Confirm Viewing
-                  </DropdownMenuItem>
+                    <CheckCircle className="h-4 w-4 mr-2" />{mt("confirmViewing")}</DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => handleStatusAction(record, "cancel")}
                     className="text-destructive"
                   >
-                    <XCircle className="h-4 w-4 mr-2" />
-                    Decline Request
-                  </DropdownMenuItem>
+                    <XCircle className="h-4 w-4 mr-2" />{mt("declineRequest")}</DropdownMenuItem>
                 </>
               )}
               {viewing.status === "confirmed" && (
@@ -357,23 +294,17 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
                   <DropdownMenuItem
                     onClick={() => handleStatusAction(record, "complete")}
                   >
-                    <CheckCircle className="h-4 w-4 mr-2" />
-                    Mark Completed
-                  </DropdownMenuItem>
+                    <CheckCircle className="h-4 w-4 mr-2" />{mt("markCompleted")}</DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => handleStatusAction(record, "no_show")}
                     className="text-amber-600"
                   >
-                    <AlertTriangle className="h-4 w-4 mr-2" />
-                    Mark No-Show
-                  </DropdownMenuItem>
+                    <AlertTriangle className="h-4 w-4 mr-2" />{mt("markNoShow")}</DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => handleStatusAction(record, "cancel")}
                     className="text-destructive"
                   >
-                    <XCircle className="h-4 w-4 mr-2" />
-                    Cancel Viewing
-                  </DropdownMenuItem>
+                    <XCircle className="h-4 w-4 mr-2" />{mt("cancelViewing")}</DropdownMenuItem>
                 </>
               )}
             </DropdownMenuContent>
@@ -398,10 +329,10 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="text-xs sm:text-sm">Date & Time</TableHead>
-              <TableHead className="text-xs sm:text-sm">Chef</TableHead>
-              <TableHead className="text-xs sm:text-sm hidden sm:table-cell">Location</TableHead>
-              <TableHead className="text-xs sm:text-sm">Status</TableHead>
+              <TableHead className="text-xs sm:text-sm">{mt("dateTime")}</TableHead>
+              <TableHead className="text-xs sm:text-sm">{mt("chef")}</TableHead>
+              <TableHead className="text-xs sm:text-sm hidden sm:table-cell">{mt("navLocation")}</TableHead>
+              <TableHead className="text-xs sm:text-sm">{mt("status")}</TableHead>
               <TableHead className="w-10"></TableHead>
             </TableRow>
           </TableHeader>
@@ -418,12 +349,8 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div>
               <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-                <Eye className="h-5 w-5 text-primary" />
-                Kitchen Viewings
-              </CardTitle>
-              <CardDescription className="text-xs sm:text-sm">
-                Manage viewing bookings and track chef visits.
-              </CardDescription>
+                <Eye className="h-5 w-5 text-primary" />{mt("navViewings")}</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">{mt("manageViewingBookingsAndTrackChefVisits")}</CardDescription>
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -432,19 +359,7 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
                 onClick={() => refetch()}
                 disabled={isLoading}
               >
-                <RefreshCw className={cn("h-4 w-4 mr-1", isLoading && "animate-spin")} />
-                Refresh
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="shrink-0"
-                onClick={() => setIsSettingsOpen(true)}
-                title="Viewing Settings"
-              >
-                <Settings className="h-4 w-4 mr-2" />
-                Settings
-              </Button>
+                <RefreshCw className={cn("h-4 w-4 mr-1", isLoading && "animate-spin")} />{mt("refresh")}</Button>
             </div>
           </div>
 
@@ -452,12 +367,12 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
           {viewings && viewings.length > 0 && (
             <div className="flex gap-2 mt-2 flex-wrap">
               <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
-                {confirmedCount} Upcoming
+                {mt("viewingStatsUpcoming", { count: confirmedCount })}
               </Badge>
               {pendingCount > 0 && (
-                <Badge variant="outline">{pendingCount} Pending</Badge>
+                <Badge variant="outline">{mt("viewingStatsPending", { count: pendingCount })}</Badge>
               )}
-              <Badge variant="secondary">{past.length} Past</Badge>
+              <Badge variant="secondary">{mt("viewingStatsPast", { count: past.length })}</Badge>
             </div>
           )}
         </CardHeader>
@@ -471,19 +386,19 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="upcoming" className="text-xs sm:text-sm">
-                  Upcoming ({upcoming.length})
+                  {mt("tabUpcomingCount", { count: upcoming.length })}
                 </TabsTrigger>
                 <TabsTrigger value="past" className="text-xs sm:text-sm">
-                  Past ({past.length})
+                  {mt("tabPastCount", { count: past.length })}
                 </TabsTrigger>
               </TabsList>
 
               <TabsContent value="upcoming" className="mt-4">
-                {renderTable(upcoming, "No upcoming viewings.")}
+                {renderTable(upcoming, mt("noUpcomingViewings"))}
               </TabsContent>
 
               <TabsContent value="past" className="mt-4">
-                {renderTable(past, "No past viewings.")}
+                {renderTable(past, mt("noPastViewings"))}
               </TabsContent>
             </Tabs>
           )}
@@ -497,11 +412,11 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
             <>
               <SheetHeader>
                 <SheetTitle>
-                  {statusAction === "view" && "Viewing Details"}
-                  {statusAction === "confirm" && "Confirm Viewing Request"}
-                  {statusAction === "complete" && "Mark as Completed"}
-                  {statusAction === "no_show" && "Mark as No-Show"}
-                  {statusAction === "cancel" && "Cancel Viewing"}
+                  {statusAction === "view" && mt("sheetViewingDetails")}
+                  {statusAction === "confirm" && mt("sheetConfirmViewingRequest")}
+                  {statusAction === "complete" && mt("sheetMarkAsCompleted")}
+                  {statusAction === "no_show" && mt("sheetMarkAsNoShow")}
+                  {statusAction === "cancel" && mt("sheetCancelViewing")}
                 </SheetTitle>
                 <SheetDescription>
                   {format(
@@ -515,28 +430,28 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
                 {/* Viewing Info */}
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Chef</span>
+                    <span className="text-muted-foreground">{mt("chef")}</span>
                     <span>
                       {selectedViewing.chefName || selectedViewing.chefUsername?.split("@")[0] ||
                         `Chef #${selectedViewing.viewing.chefId}`}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Location</span>
+                    <span className="text-muted-foreground">{mt("navLocation")}</span>
                     <span>{selectedViewing.locationName || "—"}</span>
                   </div>
                   {selectedViewing.kitchenName && (
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Kitchen Interest</span>
+                      <span className="text-muted-foreground">{mt("kitchenInterest")}</span>
                       <span>{selectedViewing.kitchenName}</span>
                     </div>
                   )}
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Duration</span>
-                    <span>{selectedViewing.viewing.durationMinutes} minutes</span>
+                    <span className="text-muted-foreground">{mt("duration")}</span>
+                    <span>{mt("minutesLong", { count: selectedViewing.viewing.durationMinutes })}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Status</span>
+                    <span className="text-muted-foreground">{mt("status")}</span>
                     {getStatusBadge(selectedViewing.viewing.status)}
                   </div>
                 </div>
@@ -546,9 +461,7 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
                   <>
                     <Separator />
                     <div>
-                      <p className="text-xs font-medium text-muted-foreground mb-1">
-                        Chef's Notes
-                      </p>
+                      <p className="text-xs font-medium text-muted-foreground mb-1">{mt("chefSNotes")}</p>
                       <p className="text-sm bg-muted/50 p-2 rounded">
                         {selectedViewing.viewing.chefNotes}
                       </p>
@@ -562,9 +475,7 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
                     <>
                       <Separator />
                       <div>
-                        <p className="text-xs font-medium text-muted-foreground mb-2">
-                          Pre-Viewing Screening
-                        </p>
+                        <p className="text-xs font-medium text-muted-foreground mb-2">{mt("preViewingScreening")}</p>
                         <div className="space-y-1.5 bg-blue-50/50 p-3 rounded-md border border-blue-100">
                           {Object.entries(selectedViewing.viewing.intakeData)
                             .filter(([_, v]) => v !== undefined && v !== "")
@@ -579,8 +490,8 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
                                 <span className="font-medium">
                                   {typeof value === "boolean"
                                     ? value
-                                      ? "Yes"
-                                      : "No"
+                                      ? mt("yes")
+                                      : mt("no")
                                     : String(value).replace(/_/g, " ")}
                                 </span>
                               </div>
@@ -597,26 +508,20 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
 
                     {statusAction === "no_show" && (
                       <div className="space-y-2">
-                        <Label className="text-sm">No-Show Reason</Label>
+                        <Label className="text-sm">{mt("noShowReason")}</Label>
                         <Select
                           value={noShowReason}
                           onValueChange={setNoShowReason}
                         >
                           <SelectTrigger>
-                            <SelectValue placeholder="Select reason" />
+                            <SelectValue placeholder={mt("selectReason")} />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="chef_cancelled_late">
-                              Chef cancelled late
-                            </SelectItem>
-                            <SelectItem value="chef_no_response">
-                              Chef didn't respond
-                            </SelectItem>
-                            <SelectItem value="rescheduled_by_manager">
-                              Rescheduled by manager
-                            </SelectItem>
-                            <SelectItem value="weather">Weather</SelectItem>
-                            <SelectItem value="other">Other</SelectItem>
+                            <SelectItem value="chef_cancelled_late">{mt("chefCancelledLate")}</SelectItem>
+                            <SelectItem value="chef_no_response">{mt("chefDidnTRespond")}</SelectItem>
+                            <SelectItem value="rescheduled_by_manager">{mt("rescheduledByManager")}</SelectItem>
+                            <SelectItem value="weather">{mt("weather")}</SelectItem>
+                            <SelectItem value="other">{mt("other")}</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -624,22 +529,22 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
 
                     {statusAction === "cancel" && (
                       <div className="space-y-2">
-                        <Label className="text-sm">Cancellation Reason</Label>
+                        <Label className="text-sm">{mt("cancellationReason")}</Label>
                         <Textarea
                           value={cancellationReason}
                           onChange={(e) => setCancellationReason(e.target.value)}
-                          placeholder="Reason for cancellation..."
+                          placeholder={mt("reasonForCancellation")}
                           rows={2}
                         />
                       </div>
                     )}
 
                     <div className="space-y-2">
-                      <Label className="text-sm">Manager Notes (optional)</Label>
+                      <Label className="text-sm">{mt("managerNotesOptional")}</Label>
                       <Textarea
                         value={managerNotes}
                         onChange={(e) => setManagerNotes(e.target.value)}
-                        placeholder="Internal notes..."
+                        placeholder={mt("internalNotes")}
                         rows={2}
                       />
                     </div>
@@ -653,9 +558,7 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
                     variant="outline"
                     onClick={closeSheet}
                     className="w-full sm:w-auto"
-                  >
-                    Cancel
-                  </Button>
+                  >{mt("cancel")}</Button>
                   <Button
                     onClick={() =>
                       updateStatusMutation.mutate({
@@ -686,10 +589,10 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
                     {updateStatusMutation.isPending ? (
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     ) : null}
-                    {statusAction === "confirm" && "Confirm Viewing"}
-                    {statusAction === "complete" && "Mark Completed"}
-                    {statusAction === "no_show" && "Confirm No-Show"}
-                    {statusAction === "cancel" && "Cancel Viewing"}
+                    {statusAction === "confirm" && mt("confirmViewing")}
+                    {statusAction === "complete" && mt("markCompleted")}
+                    {statusAction === "no_show" && mt("confirmNoShow")}
+                    {statusAction === "cancel" && mt("cancelViewing")}
                   </Button>
                 </SheetFooter>
               )}
@@ -700,15 +603,11 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
                     variant="outline"
                     className="w-full sm:w-auto text-destructive hover:text-destructive hover:bg-destructive/10"
                     onClick={() => setStatusAction("cancel")}
-                  >
-                    Decline Request
-                  </Button>
+                  >{mt("declineRequest")}</Button>
                   <Button
                     className="w-full sm:w-auto bg-green-600 hover:bg-green-700"
                     onClick={() => setStatusAction("confirm")}
-                  >
-                    Accept Viewing
-                  </Button>
+                  >{mt("acceptViewing")}</Button>
                 </SheetFooter>
               )}
             </>
@@ -716,28 +615,6 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
         </SheetContent>
       </Sheet>
 
-      {/* Settings Sheet */}
-      <Sheet open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-        <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
-          <SheetHeader className="mb-6">
-            <SheetTitle>Viewing Settings</SheetTitle>
-            <SheetDescription>
-              Configure how chefs can book viewings at this location.
-            </SheetDescription>
-          </SheetHeader>
-          <div className="py-2">
-            {locationId ? (
-              <ViewingSettingsPanel locationId={locationId} />
-            ) : (
-              <div className="text-center py-12 text-muted-foreground border rounded-lg bg-gray-50/50">
-                <Settings className="h-8 w-8 mx-auto mb-3 opacity-40" />
-                <p className="text-sm font-medium">Select a location to manage settings</p>
-                <p className="text-xs mt-1">Viewing settings are configured per-location.</p>
-              </div>
-            )}
-          </div>
-        </SheetContent>
-      </Sheet>
     </>
   )
 }

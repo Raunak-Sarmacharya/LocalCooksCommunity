@@ -17,6 +17,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, asc, lt, not, inArray, gte, lte, or, sql, ne } from "drizzle-orm";
 import { KitchenBooking, StorageBooking, EquipmentBooking, InsertKitchenBooking } from "./booking.types";
+import { calculateRefundBreakdown } from "../../services/stripe-service";
 
 export class BookingRepository {
 
@@ -172,6 +173,8 @@ export class BookingRepository {
                 transactionId: paymentTransactions.id,
                 transactionAmount: paymentTransactions.amount,
                 transactionServiceFee: paymentTransactions.serviceFee,
+                transactionTaxAmount: paymentTransactions.taxAmount,
+                transactionMetadata: paymentTransactions.metadata,
                 transactionManagerRevenue: paymentTransactions.managerRevenue,
                 transactionStatus: paymentTransactions.status,
                 transactionRefundAmount: paymentTransactions.refundAmount,
@@ -227,9 +230,15 @@ export class BookingRepository {
                 ? parseFloat(row.transactionAmount as string) 
                 : null;
             const transactionAmount = isVoidedAuthorization ? 0 : rawTransactionAmount;
-            const serviceFee = isVoidedAuthorization ? 0 : (row.transactionServiceFee 
-                ? parseFloat(row.transactionServiceFee as string) 
-                : 0);
+            // kitchen_bookings.service_fee is the captured platform commission. Older
+            // payment_transactions rows sometimes used service_fee for commission +
+            // estimated Stripe fees, so only use that field as a legacy fallback.
+            const bookingServiceFee = Number(mappedBooking.serviceFee || 0);
+            const serviceFee = isVoidedAuthorization ? 0 : (bookingServiceFee > 0
+                ? bookingServiceFee
+                : row.transactionServiceFee
+                    ? parseFloat(row.transactionServiceFee as string)
+                    : 0);
             const managerRevenue = isVoidedAuthorization ? 0 : (row.transactionManagerRevenue
                 ? parseFloat(row.transactionManagerRevenue as string)
                 : null);
@@ -245,26 +254,47 @@ export class BookingRepository {
             // kb.total_price is the SUBTOTAL (before tax) - e.g., $100
             // pt.amount is the TOTAL (after tax) - e.g., $110
             const kbTotalPrice = mappedBooking.totalPrice || 0; // Subtotal before tax from kitchen_bookings
-            const taxRatePercent = row.taxRatePercent ? parseFloat(String(row.taxRatePercent)) : 0;
-            const taxAmount = isVoidedAuthorization ? 0 : Math.round((kbTotalPrice * taxRatePercent) / 100);
+            const transactionMetadata = (row.transactionMetadata || {}) as Record<string, unknown>;
+            const storedTaxAmount = Number(
+                row.transactionTaxAmount
+                ?? transactionMetadata.approvedTax
+                ?? transactionMetadata.approved_tax
+                ?? transactionMetadata.tax_cents
+                ?? 0
+            );
+            const currentTaxRatePercent = row.taxRatePercent ? parseFloat(String(row.taxRatePercent)) : 0;
+            const taxAmount = isVoidedAuthorization ? 0 : (storedTaxAmount > 0
+                ? storedTaxAmount
+                : Math.round((kbTotalPrice * currentTaxRatePercent) / 100));
+            const taxRatePercent = Number(transactionMetadata.taxRatePercent ?? transactionMetadata.tax_rate_percent ?? (
+                kbTotalPrice > 0 && taxAmount > 0
+                    ? (taxAmount * 100) / kbTotalPrice
+                    : currentTaxRatePercent
+            ));
             
             // Net revenue = total charged - tax - stripe fee (same as transaction history)
             // For voided authorizations: all values are 0, so netRevenue = 0
-            const totalCharged = transactionAmount ?? kbTotalPrice;
-            const netRevenue = isVoidedAuthorization ? 0 : (totalCharged - taxAmount - stripeProcessingFee);
+            // Kitchen owns subtotal + its tax. The platform service fee is paid on
+            // top and is never part of manager revenue.
+            const netRevenue = isVoidedAuthorization ? 0 : (managerRevenue != null
+                ? managerRevenue
+                : kbTotalPrice + taxAmount - stripeProcessingFee);
             
-            // SIMPLE REFUND MODEL: Manager's balance is the cap
-            // Stripe fee is a sunk cost — it's gone from day 1 and not refundable
-            // Manager enters $20 → Customer gets $20, Manager debited $20
-            // For voided authorizations: no money was captured, so nothing to refund
-            
-            // Manager's remaining balance = what they received minus what's already been refunded
-            const managerRemainingBalance = isVoidedAuthorization ? 0 : (managerRevenue 
-                ? Math.max(0, managerRevenue - refundAmount)
-                : 0);
-            
-            // Max refundable = manager's remaining balance (simple!)
-            const refundableAmount = managerRemainingBalance;
+            // Max refundable includes platform service fee (returned on refund).
+            // Stripe fee is sunk. For voided authorizations: nothing to refund.
+            const refundBreakdown = calculateRefundBreakdown(
+                transactionAmount ?? 0,
+                managerRevenue ?? 0,
+                refundAmount,
+                stripeProcessingFee,
+                serviceFee,
+            );
+            const managerRemainingBalance = isVoidedAuthorization
+                ? 0
+                : refundBreakdown.remainingManagerBalance;
+            const refundableAmount = isVoidedAuthorization
+                ? 0
+                : refundBreakdown.maxRefundableToCustomer;
 
             // For authorized holds, preserve the original amount for display context
             // (the client shows "Payment held: $XX" differently from "Total charged: $XX")
@@ -302,9 +332,9 @@ export class BookingRepository {
                 managerRevenue,    // What manager receives (0 for voided auths)
                 netRevenue,        // Net = transactionAmount - taxAmount - stripeFee (0 for voided auths)
                 refundAmount,      // Amount already refunded (0 for voided auths)
-                refundableAmount,  // SIMPLE: Max refundable = manager's remaining balance (0 for voided auths)
+                refundableAmount,  // manager remaining + service fee remaining (0 for voided auths)
                 stripeProcessingFee,   // Total Stripe processing fee (0 for voided auths)
-                managerRemainingBalance, // Manager's remaining balance from this transaction (0 for voided auths)
+                managerRemainingBalance, // Manager's remaining Connect balance (0 for voided auths)
                 // ── Voided Authorization Context ────────────────────────────────────
                 // These fields let the client distinguish between "never charged" vs "$0 booking"
                 isVoidedAuthorization,  // true when PT was canceled before capture — no money moved

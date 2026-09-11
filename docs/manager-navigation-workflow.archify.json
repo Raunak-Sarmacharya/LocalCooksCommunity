@@ -1,0 +1,66 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Manager Kitchen Parent and Child Pages",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    { "id": "sidebar", "label": "Sidebar" },
+    { "id": "pages", "label": "Pages" },
+    { "id": "shell", "label": "Shared Shell" }
+  ],
+  "mainPath": ["manager", "sidebarParent", "parentPage", "availabilityPage"],
+  "nodes": [
+    { "id": "manager", "lane": "sidebar", "col": 0, "type": "external", "label": "Manager", "sublabel": "opens workspace", "width": 132 },
+    { "id": "sidebarParent", "lane": "sidebar", "col": 1, "type": "frontend", "label": "My Kitchens", "sublabel": "clickable parent button", "width": 150 },
+    { "id": "activeChild", "lane": "sidebar", "col": 2, "type": "frontend", "label": "Child Links", "sublabel": "always visible under parent", "width": 158 },
+    { "id": "sectionHeadings", "lane": "sidebar", "col": 5, "type": "frontend", "label": "Section Headings", "sublabel": "labels, never collapsible", "width": 164 },
+    { "id": "parentPage", "lane": "pages", "col": 2, "type": "frontend", "label": "My Kitchens Page", "sublabel": "photos, details, storage, equipment", "width": 178 },
+    { "id": "availabilityPage", "lane": "pages", "col": 3, "type": "frontend", "label": "Availability Page", "sublabel": "distinct page view", "width": 150 },
+    { "id": "checkinPage", "lane": "pages", "col": 4, "type": "frontend", "label": "Check-In / Out Page", "sublabel": "distinct page view", "width": 160 },
+    { "id": "damagePage", "lane": "pages", "col": 5, "type": "frontend", "label": "Damage Claims Page", "sublabel": "distinct page view", "width": 158 },
+    { "id": "routeState", "lane": "shell", "col": 3, "type": "backend", "label": "View State", "sublabel": "child keeps own URL", "width": 142 },
+    { "id": "breadcrumbs", "lane": "shell", "col": 5, "type": "frontend", "label": "Breadcrumbs", "sublabel": "My Kitchens › child", "width": 150 }
+  ],
+  "edges": [
+    { "id": "openSidebar", "from": "manager", "to": "sidebarParent", "label": "open" },
+    { "id": "openParent", "from": "sidebarParent", "to": "parentPage", "label": "click parent" },
+    { "id": "nestChild", "from": "sidebarParent", "to": "activeChild", "label": "show children" },
+    { "id": "openAvailability", "from": "parentPage", "to": "availabilityPage", "label": "availability button" },
+    { "id": "openCheckin", "from": "activeChild", "to": "checkinPage", "label": "check-in link" },
+    { "id": "openDamage", "from": "activeChild", "to": "damagePage", "label": "claims link" },
+    { "id": "groupLabels", "from": "activeChild", "to": "sectionHeadings", "label": "continue navigation" },
+    { "id": "availabilityState", "from": "availabilityPage", "to": "routeState" },
+    { "id": "checkinState", "from": "checkinPage", "to": "routeState" },
+    { "id": "damageState", "from": "damagePage", "to": "routeState" },
+    { "id": "renderBreadcrumbs", "from": "routeState", "to": "breadcrumbs", "label": "derive trail" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Chef-Side Pattern",
+      "items": [
+        "The parent remains a real destination",
+        "A child keeps its own content and URL while highlighting the parent"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "No Embedded Child Pages",
+      "items": [
+        "Availability, Check-In / Out, and Damage Claims navigate to separate views",
+        "The parent tab strip contains only Photos, Details & Pricing, Storage, and Equipment",
+        "The old Availability Schedules menu item is removed"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Navigation Semantics",
+      "items": [
+        "My Kitchens is the clickable parent page with always-visible child links",
+        "Kitchen Operations, Money, and Inbox are section headings rather than collapsible controls"
+      ]
+    }
+  ]
+}

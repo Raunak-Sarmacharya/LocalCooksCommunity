@@ -1,38 +1,73 @@
 import { logger } from "@/lib/logger";
+import { useTranslation } from "react-i18next";
 import EnhancedLoginForm from "@/components/auth/EnhancedLoginForm";
 import EnhancedRegisterForm from "@/components/auth/EnhancedRegisterForm";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import Logo from "@/components/ui/logo";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import WelcomeScreen from "@/pages/welcome-screen";
-import { motion } from "framer-motion";
-import { LogIn, UserPlus } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { motion, useReducedMotion } from "framer-motion";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, Redirect } from "wouter";
 import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
-import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
-import FadeInSection from "@/components/ui/FadeInSection";
 import SEOHead from "@/components/SEO/SEOHead";
+import { getChefPostAuthPath } from "@/config/chef-onboarding-steps";
+import { hasVerifiedEmail } from "@/lib/auth-verification";
+import LoadingOverlay from "@/components/auth/LoadingOverlay";
+import ChefAuthShowcase from "@/components/auth/ChefAuthShowcase";
+import { getSellerJourneyDraft } from "@/lib/seller-journey";
+import { addCollection, Icon } from "@iconify/react";
+import { icons as mdiIcons } from "@iconify-json/mdi";
+
+addCollection(mdiIcons);
 
 export default function EnhancedAuthPage() {
+  const { t } = useTranslation("auth");
   const [location, setLocation] = useLocation();
-  const { user, loading, logout, refreshUserData } = useFirebaseAuth();
-  const [activeTab, setActiveTab] = useState<"login" | "register">("login");
+  const { user, loading, logout, refreshUserData, handleEmailLinkSignIn } = useFirebaseAuth();
+  const [activeTab, setActiveTab] = useState<"login" | "register">(() =>
+    new URLSearchParams(window.location.search).get("tab") === "register" ? "register" : "login"
+  );
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [userMeta, setUserMeta] = useState<any>(null);
   const [userMetaLoading, setUserMetaLoading] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [successMessageType, setSuccessMessageType] = useState<'password-reset' | 'email-verified'>('password-reset');
+  const [isCompletingVerification, setIsCompletingVerification] = useState(() =>
+    typeof window !== 'undefined' &&
+    sessionStorage.getItem('localcooks:completing-verification') === 'true'
+  );
 
   const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasCheckedUser = useRef(false);
   const hasUserMetaRef = useRef(false); // Track if userMeta was successfully fetched (avoids stale closure)
+  const authCardRef = useRef<HTMLDivElement>(null);
+  const authContentRef = useRef<HTMLDivElement>(null);
+  const [cardHeight, setCardHeight] = useState<number>();
+  const reduceMotion = useReducedMotion();
+
+  useLayoutEffect(() => {
+    const content = authContentRef.current;
+    if (!content) return;
+    const measure = () => setCardHeight(content.offsetHeight + 2);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [isCompletingVerification, loading, userMetaLoading, user, userMeta]);
 
   const [retryCount, setRetryCount] = useState(0);
+  const sellerJourneyDraft =
+    new URLSearchParams(window.location.search).get("journey") === "seller"
+      ? getSellerJourneyDraft()
+      : null;
+
+  useLayoutEffect(() => {
+    authCardRef.current?.scrollTo({ top: 0, behavior: "instant" });
+  }, [activeTab]);
 
   // Check for success messages from URL parameters
   useEffect(() => {
@@ -79,6 +114,17 @@ export default function EnhancedAuthPage() {
     }
   };
 
+  // Handle email link sign-in on mount
+  useEffect(() => {
+    const handleEmailSignIn = async () => {
+      try {
+        await handleEmailLinkSignIn();
+      } catch (error) {
+        logger.error('Failed to handle email link sign-in:', error);
+      }
+    };
+    handleEmailSignIn();
+  }, [handleEmailLinkSignIn]);
 
 
   // Handle initial load detection
@@ -88,6 +134,23 @@ export default function EnhancedAuthPage() {
       return () => clearTimeout(timer);
     }
   }, [loading]);
+
+  // A hard refresh is needed to rebuild auth/profile state after Firebase email
+  // verification. Keep the transition covered until the verified profile is
+  // ready, so the login form never flashes between verification and welcome.
+  useEffect(() => {
+    if (
+      isCompletingVerification &&
+      !loading &&
+      !userMetaLoading &&
+      user &&
+      userMeta &&
+      hasVerifiedEmail(user, userMeta)
+    ) {
+      sessionStorage.removeItem('localcooks:completing-verification');
+      setIsCompletingVerification(false);
+    }
+  }, [isCompletingVerification, loading, userMetaLoading, user, userMeta]);
 
 
 
@@ -127,16 +190,17 @@ export default function EnhancedAuthPage() {
             
             setUserMeta(userData);
             hasUserMetaRef.current = true; // Mark that we successfully fetched userMeta
+
             
             // **CRITICAL WELCOME SCREEN LOGIC**
             // Show welcome screen if user is verified but hasn't seen welcome
-            if (userData.is_verified && !userData.has_seen_welcome) {
+            if (hasVerifiedEmail(user, userData) && !userData.has_seen_welcome) {
               logger.info('🎉 WELCOME SCREEN REQUIRED - User needs onboarding');
               return; // Don't proceed with redirect, let the render logic handle welcome screen
             }
             
             // Check if user needs email verification (for email/password users)
-            if (!userData.is_verified) {
+            if (!hasVerifiedEmail(user, userData)) {
               logger.info('📧 EMAIL VERIFICATION REQUIRED');
               return; // MUST RETURN HERE so it doesn't execute the redirect logic below which bounces unverified users back to login
             }
@@ -149,7 +213,7 @@ export default function EnhancedAuthPage() {
               
               // Use setTimeout to ensure state is properly set before redirect
               setTimeout(() => {
-                setLocation(targetPath);
+                setLocation(targetPath, { replace: true });
               }, 500);
             }
             
@@ -217,7 +281,7 @@ export default function EnhancedAuthPage() {
         
         // Redirect based on role:
         // - Admins go to admin dashboard
-        // - Chefs go to chef-setup for onboarding wizard
+        // - Chefs go to chef-setup for the existing OnboardJS wizard
         // - Others go to dashboard
         const redirectPath = getRedirectPath();
         let targetPath = redirectPath !== '/' ? redirectPath : '/dashboard';
@@ -225,50 +289,65 @@ export default function EnhancedAuthPage() {
         if (redirectPath === '/' || redirectPath === '/dashboard') {
           if (userMeta?.role === 'admin') {
             targetPath = '/admin';
-          } else if (userMeta?.role === 'chef') {
-            targetPath = '/chef-setup';
+          } else if (userMeta?.role === 'manager') {
+            targetPath = '/manager/dashboard';
+          } else {
+            targetPath = getChefPostAuthPath(userMeta);
           }
         }
         logger.info(`🚀 WELCOME COMPLETE - REDIRECTING TO: ${targetPath}`);
-        setLocation(targetPath);
+        setLocation(targetPath, { replace: true });
       } else {
         logger.error('⚠️ Welcome completion API failed:', response.status);
         const errorText = await response.text();
         logger.error('⚠️ Error details:', errorText);
         
-        // Still redirect on API failure - chefs go to chef-setup
         let targetPath = '/dashboard';
         if (userMeta?.role === 'admin') {
           targetPath = '/admin';
-        } else if (userMeta?.role === 'chef') {
-          targetPath = '/chef-setup';
+        } else if (userMeta?.role === 'manager') {
+          targetPath = '/manager/dashboard';
+        } else {
+          targetPath = getChefPostAuthPath(userMeta);
         }
         logger.info(`🔄 REDIRECTING DESPITE ERROR TO: ${targetPath}`);
-        setLocation(targetPath);
+        setLocation(targetPath, { replace: true });
       }
     } catch (error) {
       logger.error('❌ Error completing welcome screen:', error);
       
-      // Still redirect on error - chefs go to chef-setup
       let targetPath = '/dashboard';
       if (userMeta?.role === 'admin') {
         targetPath = '/admin';
-      } else if (userMeta?.role === 'chef') {
-        targetPath = '/chef-setup';
+      } else if (userMeta?.role === 'manager') {
+        targetPath = '/manager/dashboard';
+      } else {
+        targetPath = getChefPostAuthPath(userMeta);
       }
       logger.info(`🔄 REDIRECTING DESPITE ERROR TO: ${targetPath}`);
-      setLocation(targetPath);
+      setLocation(targetPath, { replace: true });
     }
   };
 
-  // Redirect logic for authenticated users after login attempt
+  // Redirect authenticated users away from the auth page. This also handles
+  // browser Back restoring /auth after a successful sign-in: hasAttemptedLogin
+  // is component-local state and resets when /auth remounts, while the Firebase
+  // session remains valid.
   useEffect(() => {
     if (redirectTimeoutRef.current) {
       clearTimeout(redirectTimeoutRef.current);
       redirectTimeoutRef.current = null;
     }
 
-    if (!loading && !isInitialLoad && user && hasAttemptedLogin && userMeta) {
+    if (!loading && !isInitialLoad && user && userMeta) {
+      // Email ownership is the first gate. In particular, an authenticated
+      // Firebase session exists immediately after registration; that must not
+      // be mistaken for a verified session and allowed into onboarding.
+      if (!hasVerifiedEmail(user, userMeta)) {
+        logger.info('📧 EMAIL VERIFICATION REQUIRED - holding on auth page');
+        return;
+      }
+
       // Terms acceptance gate
       const needsTermsAcceptance =
         !userMeta.termsAccepted ||
@@ -285,12 +364,14 @@ export default function EnhancedAuthPage() {
             targetPath = '/admin';
           } else if (userMeta?.role === 'manager') {
             targetPath = '/manager/dashboard';
+          } else {
+            targetPath = getChefPostAuthPath(userMeta);
           }
         }
 
         logger.info('🔒 TERMS ACCEPTANCE REQUIRED - redirecting to /accept-terms');
         redirectTimeoutRef.current = setTimeout(() => {
-          setLocation(`/accept-terms?redirect=${targetPath}`);
+          setLocation(`/accept-terms?redirect=${targetPath}`, { replace: true });
         }, 300);
         return;
       }
@@ -299,14 +380,14 @@ export default function EnhancedAuthPage() {
       // Admins: Go straight to admin dashboard
       // Managers: Go to dashboard where ManagerOnboardingWizard will show
       // Other users: Show welcome screen if needed
-      if (userMeta.is_verified && !userMeta.has_seen_welcome) {
+      if (!userMeta.has_seen_welcome) {
         if (userMeta.role === 'admin') {
           logger.info('👑 Admin user - skipping welcome screen, redirecting to admin');
-          setLocation('/admin');
+          setLocation('/admin', { replace: true });
           return;
         } else if (userMeta.role === 'manager') {
           logger.info('🏢 Manager user - skipping welcome screen, redirecting to manager dashboard');
-          setLocation('/manager/dashboard');
+          setLocation('/manager/dashboard', { replace: true });
           return;
         } else {
           logger.info('🎉 WELCOME SCREEN REQUIRED - Not redirecting yet');
@@ -325,18 +406,17 @@ export default function EnhancedAuthPage() {
         } else if (userMeta.role === 'manager') {
           targetPath = '/manager/dashboard';
         } else {
-          // Chef or default to dashboard
-          targetPath = '/dashboard';
+          targetPath = getChefPostAuthPath(userMeta);
         }
       }
       
       if (location !== targetPath && targetPath !== '/auth') {
         redirectTimeoutRef.current = setTimeout(() => {
-          setLocation(targetPath);
+          setLocation(targetPath, { replace: true });
         }, 300);
       }
     }
-  }, [loading, isInitialLoad, user, hasAttemptedLogin, userMeta, location, setLocation]);
+  }, [loading, isInitialLoad, user, userMeta, location, setLocation]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -357,27 +437,28 @@ export default function EnhancedAuthPage() {
       setRetryCount(c => c + 1); // Force a re-render to trigger fetchUserMeta again
     }
     setHasAttemptedLogin(true);
-
-    // Fallback: If we're still stuck on the auth page after 3 seconds, force a hard reload.
-    // This catches edge cases where state updates fail to trigger the redirect.
-    setTimeout(() => {
-      const currentPath = window.location.pathname;
-      if (currentPath === '/auth' || currentPath.includes('login') || currentPath.includes('register')) {
-        logger.warn('⚠️ STUCK ON AUTH PAGE DETECTED! Forcing hard page reload to complete login.');
-        window.location.reload();
-      }
-    }, 3000);
   };
+
+  if (isCompletingVerification) {
+    return (
+      <LoadingOverlay
+        isVisible
+        message={t("overlayFinishingAccount", "Finishing your account setup...")}
+        submessage={t("overlayPreparingWelcome", "Your email is verified. We're preparing your welcome experience.")}
+        type="loading"
+      />
+    );
+  }
 
   // Skip welcome screen for admins and managers
   // Admins: Go straight to admin dashboard
   // Managers: Go to dashboard where ManagerOnboardingWizard will show
   // Only show welcome screen for chefs
-  if (!loading && !userMetaLoading && user && userMeta && userMeta.is_verified && !userMeta.has_seen_welcome) {
+  if (!loading && !userMetaLoading && user && userMeta && hasVerifiedEmail(user, userMeta) && !userMeta.has_seen_welcome) {
     if (userMeta.role === 'admin') {
-      return <Redirect to="/admin" />;
+      return <Redirect to="/admin" replace />;
     } else if (userMeta.role === 'manager') {
-      return <Redirect to="/manager/dashboard" />;
+      return <Redirect to="/manager/dashboard" replace />;
     } else {
       return <WelcomeScreen onContinue={handleWelcomeContinue} />;
     }
@@ -387,8 +468,8 @@ export default function EnhancedAuthPage() {
   return (
     <>
       <SEOHead
-        title="Sign In or Register — Join LocalCooks"
-        description="Create your LocalCooks account or sign in to access commercial kitchen booking, manage your food business, and connect with the local food community in St. John's, Newfoundland."
+        title={t("seoAuthTitle", "Sign In or Register — Join LocalCooks")}
+        description={t("seoAuthDesc", "Create your LocalCooks account or sign in to access commercial kitchen booking, manage your food business, and connect with the local food community in St. John's, Newfoundland.")}
         canonicalUrl="/auth"
         breadcrumbs={[
           { name: "LocalCooks", url: "https://chef.localcooks.ca/" },
@@ -399,47 +480,59 @@ export default function EnhancedAuthPage() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        transition={{ duration: 0.5 }}
-        className="min-h-screen flex flex-col md:flex-row bg-gray-50 relative"
+        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+        className="relative flex min-h-screen bg-gradient-to-br from-[#F51042] via-[#df123e] to-[#a90c31] lg:h-screen lg:min-h-0 lg:overflow-hidden"
       >
-        <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
+        <ChefAuthShowcase />
         {/* Form Section */}
         <motion.div
-          initial={{ opacity: 0, x: -50 }}
+          initial={{ opacity: 0, x: 36 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.6, delay: 0.1 }}
-          className="w-full md:w-1/2 p-8 flex flex-col justify-center bg-white relative z-10"
+          transition={{ duration: 0.7, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+          className="relative z-10 flex min-h-screen w-full items-center justify-center px-3 py-3 sm:px-6 sm:py-6 lg:h-screen lg:min-h-0 lg:w-[42%] lg:px-5 xl:px-8"
         >
-          <div className="max-w-md mx-auto w-full">
+          <motion.div
+            initial={false}
+            animate={{ height: cardHeight ?? "auto" }}
+            transition={{ duration: reduceMotion ? 0 : 0.3, ease: [0.22, 1, 0.36, 1] }}
+            style={{ scrollbarGutter: "stable", overflowAnchor: "none" }}
+            ref={authCardRef}
+            className="relative z-10 max-h-[calc(100vh-1.5rem)] w-full max-w-[510px] overflow-y-auto rounded-[1.75rem] border border-white/70 bg-[#FFFDFC] shadow-[0_24px_80px_-30px_rgba(69,10,27,0.58)] sm:max-h-[calc(100vh-3rem)] lg:max-h-[calc(100vh-2.5rem)]"
+          >
+            <div ref={authContentRef} className="px-6 py-7 sm:px-9 sm:py-9 xl:px-11">
             {/* Header */}
             <motion.div
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.2 }}
-              className="mb-8"
+              transition={{ duration: 0.6, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              className="mb-7"
             >
-              <Logo className="h-12 mb-6" />
-              <motion.h1
-                className="text-3xl font-bold tracking-tight text-gray-900"
-                key={activeTab} // Re-animate on tab change
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4 }}
-              >
-                {activeTab === "login" ? "Welcome back" : "Create your account"}
-              </motion.h1>
-              <motion.p
-                className="text-gray-600 mt-2 leading-relaxed"
-                key={`${activeTab}-subtitle`}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.4, delay: 0.1 }}
-              >
-                {activeTab === "login"
-                  ? "Sign in to access your Local Cooks account and track your application status"
-                  : "Join Local Cooks and start your culinary journey with us"}
-              </motion.p>
+              <a href="/" className="inline-flex items-center gap-2.5 transition-transform duration-300 hover:scale-[1.02]">
+                <Logo variant="brand" className="h-9 w-auto flex-shrink-0" />
+                <span className="flex flex-col justify-center">
+                  <span className="font-logo text-xl font-normal leading-none tracking-tight text-[#F51042]">LocalCooks</span>
+                  <span className="mt-0.5 text-[9px] font-medium uppercase leading-none tracking-wider text-gray-500/70">For chefs</span>
+                </span>
+              </a>
             </motion.div>
+
+            <motion.div
+              key={activeTab}
+              initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: reduceMotion ? 0 : 0.2, ease: "easeOut" }}
+              className="w-full"
+            >
+              <div className="mb-6">
+              <h1 className="text-3xl font-bold tracking-[-0.03em] text-gray-950">
+                {activeTab === "login" ? t("welcomeBack", "Welcome back") : t("createYourAccount", "Create your account")}
+              </h1>
+              <p className="mt-2.5 max-w-sm text-sm leading-relaxed text-gray-600">
+                {activeTab === "login"
+                  ? t("loginSubtitle", "Sign in to manage your storefront and kitchen bookings")
+                  : t("registerSubtitle", "Create an account to sell on our marketplace or book kitchen")}
+              </p>
+              </div>
 
             {/* Success Message for Password Reset */}
             {showSuccessMessage && (
@@ -451,20 +544,18 @@ export default function EnhancedAuthPage() {
               >
                 <div className="flex items-center gap-3">
                   <div className="flex-shrink-0 w-6 h-6 bg-green-100 rounded-full flex items-center justify-center">
-                    <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
+                    <Icon icon="mdi:check" className="h-4 w-4 text-green-600" aria-hidden />
                   </div>
                   <div className="flex-1">
                     {successMessageType === 'password-reset' ? (
                       <>
-                        <p className="text-sm font-medium text-green-800">Password reset successful!</p>
-                        <p className="text-xs text-green-600 mt-1">You can now sign in with your new password.</p>
+                        <p className="text-sm font-medium text-green-800">{t("passwordResetSuccessTitle", "Password reset successful!")}</p>
+                        <p className="text-xs text-green-600 mt-1">{t("passwordResetSuccessBody", "You can now sign in with your new password.")}</p>
                       </>
                     ) : (
                       <>
-                        <p className="text-sm font-medium text-green-800">Email verified successfully!</p>
-                        <p className="text-xs text-green-600 mt-1">Your account is now verified. Please sign in with your credentials to continue.</p>
+                        <p className="text-sm font-medium text-green-800">{t("emailVerifiedSuccessTitle", "Email verified successfully!")}</p>
+                        <p className="text-xs text-green-600 mt-1">{t("emailVerifiedSuccessBody", "Your account is now verified. Please sign in with your credentials to continue.")}</p>
                       </>
                     )}
                   </div>
@@ -472,151 +563,50 @@ export default function EnhancedAuthPage() {
                     onClick={() => setShowSuccessMessage(false)}
                     className="flex-shrink-0 text-green-400 hover:text-green-600 transition-colors"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
+                    <Icon icon="mdi:close" className="h-4 w-4" aria-hidden />
                   </button>
                 </div>
               </motion.div>
             )}
 
-            {/* Tabs */}
-            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "login" | "register")} className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-6">
-                <TabsTrigger value="login" className="flex items-center gap-2">
-                  <LogIn className="w-4 h-4" />
-                  Login
-                </TabsTrigger>
-                <TabsTrigger value="register" className="flex items-center gap-2">
-                  <UserPlus className="w-4 h-4" />
-                  Register
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="login">
+            {activeTab === "login" ? (
                 <EnhancedLoginForm
                   onSuccess={handleSuccess}
                   setHasAttemptedLogin={setHasAttemptedLogin}
+                  animateEntrance={false}
                 />
-              </TabsContent>
-
-              <TabsContent value="register">
+              ) : (
                 <EnhancedRegisterForm
                   onSuccess={handleSuccess}
                   setHasAttemptedLogin={setHasAttemptedLogin}
+                  hideApplyingToggle
+                  initialTermsAccepted={sellerJourneyDraft?.termsAccepted === true}
+                  onSwitchToLogin={() => setActiveTab("login")}
+                  animateEntrance={false}
                 />
-              </TabsContent>
-            </Tabs>
+              )}
 
             {/* Footer Links */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.5, delay: 0.6 }}
-              className="mt-8 text-center"
-            >
+            {activeTab === "login" && <div className="mt-8 text-center">
               <p className="text-sm text-gray-500">
-                {activeTab === "login" ? "Don't have an account?" : "Already have an account?"}{" "}
+                {t("noAccount", "Don't have an account?")}{" "}
                 <Button
                   variant="link"
-                  className="text-blue-600 hover:text-blue-700 font-semibold p-0 h-auto"
-                  onClick={() => setActiveTab(activeTab === "login" ? "register" : "login")}
+                  className="h-auto p-0 font-semibold text-[#F51042] hover:text-[#D90E3A]"
+                  onClick={() => setActiveTab("register")}
                 >
-                  {activeTab === "login" ? "Register" : "Login"}
+                  {t("registerTab", "Register")}
                 </Button>
               </p>
+            </div>}
             </motion.div>
-          </div>
-        </motion.div>
-
-        {/* Hero Section */}
-        <motion.div
-          initial={{ opacity: 0, x: 50 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-          className="w-full md:w-1/2 bg-gradient-to-br from-primary to-primary/80 p-8 flex items-center hidden md:flex relative overflow-hidden"
-        >
-          {/* Background Pattern */}
-          <motion.div
-            className="absolute inset-0 opacity-10"
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 0.1 }}
-            transition={{ duration: 1, delay: 0.5 }}
-          >
-            <div className="absolute top-10 left-10 w-20 h-20 bg-white rounded-full" />
-            <div className="absolute top-32 right-20 w-16 h-16 bg-white rounded-full" />
-            <div className="absolute bottom-20 left-20 w-12 h-12 bg-white rounded-full" />
-            <div className="absolute bottom-40 right-10 w-24 h-24 bg-white rounded-full" />
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.4 }}
-            className="max-w-md mx-auto text-white relative z-10"
-          >
-            <motion.h2
-              className="text-4xl font-bold mb-6"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.5 }}
-            >
-              Join <span className="font-logo">Local Cooks</span>
-            </motion.h2>
-            <motion.p
-              className="text-white/90 mb-8 text-lg leading-relaxed"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.6 }}
-            >
-              Apply to become a verified cook and start your culinary journey with us. Track your application status and get updates on your approval process.
-            </motion.p>
-            <motion.ul
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.5, delay: 0.7 }}
-              className="space-y-4"
-            >
-              {[
-                "Monitor your application progress",
-                "Receive updates on your status",
-                "Access exclusive cooking resources"
-              ].map((item, index) => (
-                <motion.li
-                  key={index}
-                  className="flex items-center"
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.4, delay: 0.8 + index * 0.1 }}
-                >
-                  <motion.div
-                    className="rounded-full bg-white/20 p-2 mr-4"
-                    whileHover={{ scale: 1.1, backgroundColor: "rgba(255,255,255,0.3)" }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <polyline points="20,6 9,17 4,12" />
-                    </svg>
-                  </motion.div>
-                  <span>{item}</span>
-                </motion.li>
-              ))}
-            </motion.ul>
+            </div>
           </motion.div>
         </motion.div>
+
       </motion.div>
 
 
     </>
   );
-} 
+}

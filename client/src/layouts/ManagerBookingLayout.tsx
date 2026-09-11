@@ -1,54 +1,45 @@
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import * as React from "react"
 import { Separator } from "@/components/ui/separator"
-import {
-    Breadcrumb,
-    BreadcrumbItem,
-    BreadcrumbLink,
-    BreadcrumbList,
-    BreadcrumbPage,
-    BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb"
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
 import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { useFirebaseAuth } from "@/hooks/use-auth"
-import { LogOut, User as UserIcon, ChevronDown } from "lucide-react"
 import { useLocation } from "wouter"
 import { AppSidebar } from "@/components/app-sidebar"
+import { useTranslation } from "react-i18next"
+import { useManagerDashboard } from "@/hooks/use-manager-dashboard"
 
 interface ManagerBookingLayoutProps {
     children: React.ReactNode
     breadcrumbs?: Array<{ label: string; href?: string; onClick?: () => void }>
+    /** Location of the booking currently being viewed — preselects sidebar location */
+    bookingLocationId?: number | null
 }
 
 export default function ManagerBookingLayout({
     children,
-    breadcrumbs = [{ label: "Dashboard" }],
+    breadcrumbs,
+    bookingLocationId = null,
 }: ManagerBookingLayoutProps) {
-    const { user, logout } = useFirebaseAuth()
+    const { t } = useTranslation("manager")
     const [, navigate] = useLocation()
+    const displayBreadcrumbs = breadcrumbs ?? []
+    const { locations } = useManagerDashboard()
 
-    const getInitials = (name: string | null | undefined) => {
-        if (!name) return "MG"
-        const parts = name.split(" ")
-        if (parts.length >= 2) {
-            return `${parts[0][0]}${parts[1][0]}`.toUpperCase()
-        }
-        return name.slice(0, 2).toUpperCase()
-    }
+    const selectedLocation = React.useMemo(() => {
+        if (bookingLocationId == null || locations.length === 0) return null
+        return locations.find((loc) => Number(loc.id) === Number(bookingLocationId)) ?? null
+    }, [bookingLocationId, locations])
 
-    // Handle view change - navigate to dashboard with correct view.
-    // We REPLACE the current sub-page entry so the back button skips this
-    // booking-detail page and returns to wherever the manager came from.
     const handleViewChange = (view: string) => {
         navigate(`/manager/dashboard?view=${view}`, { replace: true })
+    }
+
+    const handleLocationChange = (loc: { id: number; name: string } | null) => {
+        if (!loc) {
+            navigate("/manager/dashboard")
+            return
+        }
+        navigate(`/manager/dashboard?view=bookings&locationId=${loc.id}`)
     }
 
     return (
@@ -56,23 +47,24 @@ export default function ManagerBookingLayout({
             <AppSidebar
                 activeView="bookings"
                 onViewChange={handleViewChange}
-                locations={[]}
-                selectedLocation={null}
-                onLocationChange={() => navigate("/manager/dashboard")}
+                locations={locations}
+                selectedLocation={selectedLocation}
+                onLocationChange={handleLocationChange}
             />
-            <SidebarInset>
-                <header className="flex h-16 shrink-0 items-center justify-between gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 border-b px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
-                    <div className="flex items-center gap-2">
-                        <SidebarTrigger className="-ml-1" />
-                        <Separator orientation="vertical" className="mr-2 h-4" />
-                        <Breadcrumb>
-                            <BreadcrumbList>
-                                {breadcrumbs.map((crumb, index) => (
+            <SidebarInset className="min-w-0 overflow-x-hidden">
+                <header className="flex h-16 shrink-0 items-center justify-between gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 border-b px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                        <SidebarTrigger className="-ml-1 shrink-0" />
+                        <Separator orientation="vertical" className="mr-2 h-4 shrink-0" />
+                        <Breadcrumb className="min-w-0">
+                            <BreadcrumbList className="flex-wrap">
+                                {displayBreadcrumbs.map((crumb, index) => (
                                     <React.Fragment key={index}>
-                                        <BreadcrumbItem className="hidden md:block">
+                                        <BreadcrumbItem className="hidden md:block min-w-0">
                                             {crumb.href || crumb.onClick ? (
                                                 <BreadcrumbLink
                                                     href="#"
+                                                    className="truncate"
                                                     onClick={(e: React.MouseEvent) => {
                                                         e.preventDefault()
                                                         if (crumb.onClick) {
@@ -85,10 +77,10 @@ export default function ManagerBookingLayout({
                                                     {crumb.label}
                                                 </BreadcrumbLink>
                                             ) : (
-                                                <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
+                                                <BreadcrumbPage className="truncate">{crumb.label}</BreadcrumbPage>
                                             )}
                                         </BreadcrumbItem>
-                                        {index < breadcrumbs.length - 1 && (
+                                        {index < displayBreadcrumbs.length - 1 && (
                                             <BreadcrumbSeparator className="hidden md:block" />
                                         )}
                                     </React.Fragment>
@@ -96,66 +88,10 @@ export default function ManagerBookingLayout({
                             </BreadcrumbList>
                         </Breadcrumb>
                     </div>
-
-                    <div className="flex items-center gap-4">
-                        <DropdownMenu modal={false}>
-                            <DropdownMenuTrigger asChild>
-                                <div className="flex items-center gap-2 cursor-pointer hover:bg-accent/50 p-1.5 rounded-lg transition-colors group">
-                                    <Avatar className="h-8 w-8 rounded-lg border">
-                                        <AvatarImage
-                                            src={user?.photoURL || ""}
-                                            alt={user?.displayName || "Manager"}
-                                        />
-                                        <AvatarFallback className="rounded-lg">
-                                            {getInitials(user?.displayName)}
-                                        </AvatarFallback>
-                                    </Avatar>
-                                    <ChevronDown className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-                                </div>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent
-                                align="end"
-                                sideOffset={4}
-                                forceMount
-                                className="w-64 p-2 bg-background/95 backdrop-blur-sm border border-border/60 rounded-lg shadow-xl shadow-foreground/5"
-                            >
-                                <div className="px-3 py-2.5 mb-1">
-                                    <p className="text-sm font-medium text-foreground tracking-tight leading-tight">
-                                        {user?.displayName || "Manager"}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground tracking-tight leading-tight">
-                                        {user?.email}
-                                    </p>
-                                </div>
-
-                                <DropdownMenuSeparator className="my-2 bg-gradient-to-r from-transparent via-border to-transparent" />
-
-                                <div className="space-y-1">
-                                    <DropdownMenuItem
-                                        onClick={() => navigate("/manager/dashboard")}
-                                        className="flex items-center p-3 rounded-md transition-all duration-200 cursor-pointer group hover:shadow-sm border border-transparent hover:border-border/50"
-                                    >
-                                        <UserIcon className="mr-2 h-4 w-4" />
-                                        <span className="text-sm font-medium tracking-tight">Dashboard</span>
-                                    </DropdownMenuItem>
-                                </div>
-
-                                <DropdownMenuSeparator className="my-2 bg-gradient-to-r from-transparent via-border to-transparent" />
-
-                                <DropdownMenuItem
-                                    onClick={() => logout()}
-                                    className="flex items-center gap-3 p-3 rounded-md duration-200 bg-destructive/10 hover:bg-destructive/20 cursor-pointer border border-transparent hover:border-destructive/30 hover:shadow-sm transition-all group"
-                                >
-                                    <LogOut className="h-4 w-4 text-destructive group-hover:text-destructive" />
-                                    <span className="text-sm font-medium text-destructive">Sign Out</span>
-                                </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-                    </div>
                 </header>
-                <main className="flex-1 p-4 md:p-6 lg:p-8 bg-muted/10 relative overflow-hidden">
+                <main className="flex-1 min-w-0 p-4 md:p-6 lg:p-8 bg-muted/10 relative overflow-x-hidden overflow-y-auto">
                     <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
-                    <div className="mx-auto max-w-7xl animate-fade-in space-y-6 relative z-10">
+                    <div className="mx-auto max-w-7xl w-full min-w-0 animate-fade-in space-y-6 relative z-10">
                         {children}
                     </div>
                 </main>

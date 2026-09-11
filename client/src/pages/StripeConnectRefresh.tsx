@@ -11,12 +11,12 @@ import { logger } from "@/lib/logger";
  * Industry standard: Automatically generate a new Account Link and redirect back to Stripe.
  */
 
-import { useEffect, useState } from 'react';
-import { Loader2, AlertCircle, RefreshCw } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { auth } from '@/lib/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
+import { useEffect, useState } from "react";
+import { Loader2, AlertCircle, RefreshCw } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { auth } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
 
 type RefreshStatus = 'loading' | 'redirecting' | 'error';
 
@@ -108,7 +108,7 @@ export default function StripeConnectRefresh() {
     } else if (fromSetup) {
       window.location.href = '/manager/setup';
     } else {
-      window.location.href = '/manager/dashboard?view=payments';
+      window.location.href = '/manager/dashboard?view=profile&tab=payments';
     }
   };
 

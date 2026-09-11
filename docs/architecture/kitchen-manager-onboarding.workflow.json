@@ -1,0 +1,48 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Kitchen Manager Glance-First Onboarding",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    { "id": "location", "label": "Location Brand + Trust" },
+    { "id": "kitchen", "label": "Rentable Kitchen" },
+    { "id": "launch", "label": "Launch + Daily Guidance" }
+  ],
+  "phases": [
+    { "id": "identity", "label": "Identity", "fromCol": 0, "toCol": 1 },
+    { "id": "offer", "label": "Offer", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "operate", "label": "Ready + operate", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": ["identity", "trust", "space", "offer", "readiness", "dashboard"],
+  "semanticChecks": {
+    "allowedRoots": ["identity"],
+    "allowedTerminals": ["dashboard"],
+    "requiredPaths": [
+      { "from": "identity", "to": "dashboard" },
+      { "from": "rules", "to": "dashboard" }
+    ]
+  },
+  "nodes": [
+    { "id": "identity", "lane": "location", "col": 0, "type": "frontend", "label": "Business Identity", "sublabel": "name + address + contact", "width": 132 },
+    { "id": "trust", "lane": "location", "col": 1, "type": "security", "label": "Brand + Trust", "sublabel": "logo + licence", "width": 140 },
+    { "id": "space", "lane": "kitchen", "col": 2, "type": "frontend", "label": "Kitchen Space", "sublabel": "name + cover + gallery", "width": 132 },
+    { "id": "offer", "lane": "kitchen", "col": 3, "type": "backend", "label": "Bookable Offer", "sublabel": "rate + hours + amenities", "width": 132 },
+    { "id": "availability", "lane": "kitchen", "col": 4, "type": "cloud", "label": "Availability", "sublabel": "weekly hours", "width": 112 },
+    { "id": "rules", "lane": "location", "col": 4, "type": "security", "label": "Safe Defaults", "sublabel": "timezone + booking rules", "width": 132 },
+    { "id": "readiness", "lane": "launch", "col": 4, "type": "database", "label": "Readiness Check", "sublabel": "must-do vs improve later", "width": 132 },
+    { "id": "dashboard", "lane": "launch", "col": 5, "type": "messagebus", "label": "Manager Home", "sublabel": "today + action queue", "width": 124 }
+  ],
+  "edges": [
+    { "from": "identity", "to": "trust", "label": "profile saved", "role": "main" },
+    { "from": "trust", "to": "space", "label": "location created", "role": "main" },
+    { "from": "space", "to": "offer", "label": "space described", "role": "main" },
+    { "from": "offer", "to": "readiness", "label": "offer complete", "role": "main" },
+    { "from": "offer", "to": "availability", "label": "set open hours", "role": "branch" },
+    { "from": "availability", "to": "readiness", "label": "schedule ready", "role": "branch" },
+    { "from": "trust", "to": "rules", "label": "apply safe defaults", "role": "branch", "variant": "dashed" },
+    { "from": "rules", "to": "readiness", "label": "rules confirmed", "role": "branch" },
+    { "from": "readiness", "to": "dashboard", "label": "launch or show next task", "role": "main", "variant": "emphasis" }
+  ]
+}

@@ -7,7 +7,7 @@
  *   - Provides the same API as the server-side Pino logger
  * 
  * Usage:
- *   import { logger } from '@/lib/logger';
+ *   import { logger } from "@/lib/logger";
  *   logger.info('Page loaded', { route: '/dashboard' });
  *   logger.error('Failed to fetch', error);
  */

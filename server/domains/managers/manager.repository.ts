@@ -50,7 +50,7 @@ export class ManagerRepository implements IManagerRepository {
                 COALESCE(pt.amount, kb.total_price) as total_price,
                 kb.hourly_rate,
                 kb.duration_hours,
-                COALESCE(pt.service_fee, kb.service_fee) as service_fee,
+                COALESCE(NULLIF(kb.service_fee, 0), pt.service_fee, 0) as service_fee,
                 kb.payment_status,
                 kb.payment_intent_id,
                 kb.currency,

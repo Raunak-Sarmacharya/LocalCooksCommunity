@@ -1,6 +1,7 @@
 import { logger } from "@/lib/logger";
-import { Calendar as CalendarIcon, Save, Trash2, Loader2, AlertTriangle } from "lucide-react";
-import { forwardRef, useEffect, useState, useCallback, useImperativeHandle } from "react";
+import { mt } from "@/i18n/manager";
+import { Calendar as CalendarIcon, Save, Trash2, Loader2, AlertTriangle, Eye } from "@/components/ui/manager-icons";
+import { forwardRef, useEffect, useState, useCallback, useImperativeHandle, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -9,31 +10,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ManagerPageLayout } from "@/components/layout/ManagerPageLayout";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { tt } from "@/i18n/common-ns";
+import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
+import { ChefPageHeader } from "@/components/chef/ui";
+import ViewingSettingsPanel, { type ViewingSettingsPanelHandle } from "@/components/manager/ViewingSettingsPanel";
 
 // --- Types ---
 interface DateAvailability {
@@ -77,8 +66,12 @@ interface WeeklyScheduleItem {
   end_time?: string;
 }
 
-export interface KitchenAvailabilityManagementHandle {
+interface AvailabilityContentHandle {
   saveWeeklySchedule: () => Promise<boolean>;
+}
+
+export interface KitchenAvailabilityManagementHandle extends AvailabilityContentHandle {
+  saveAllChanges: () => Promise<boolean>;
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -103,23 +96,119 @@ interface KitchenAvailabilityManagementProps {
   embedded?: boolean;
   initialLocationId?: number;
   initialKitchenId?: number;
+  initialAvailabilityTab?: "bookings" | "tours";
+  onDirtyChange?: (dirty: boolean) => void;
   onSaveSuccess?: () => void | Promise<void>; // [NEW] Callback when availability is saved
   hideWeeklyScheduleSaveButton?: boolean;
 }
+
+type PendingAvailabilityChange =
+  | { type: "kitchen"; kitchenId: number }
+  | { type: "tab"; tab: "bookings" | "tours" };
 
 const KitchenAvailabilityManagement = forwardRef<KitchenAvailabilityManagementHandle, KitchenAvailabilityManagementProps>(function KitchenAvailabilityManagement({
   embedded = false,
   initialLocationId,
   initialKitchenId,
+  initialAvailabilityTab = "bookings",
+  onDirtyChange,
   onSaveSuccess,
   hideWeeklyScheduleSaveButton = false
 }, ref) {
+  const { kitchens, isLoadingKitchens } = useManagerDashboard();
+  const availableKitchens = kitchens.filter((kitchen) => !initialLocationId || kitchen.locationId === initialLocationId);
+  const [selectedKitchenId, setSelectedKitchenId] = useState<number | null>(initialKitchenId || null);
+  const [activeAvailabilityTab, setActiveAvailabilityTab] = useState<"bookings" | "tours">(initialAvailabilityTab);
+  const [bookingDirty, setBookingDirty] = useState(false);
+  const [tourDirty, setTourDirty] = useState(false);
+  const [pendingChange, setPendingChange] = useState<PendingAvailabilityChange | null>(null);
+  const [isSavingBeforeSwitch, setIsSavingBeforeSwitch] = useState(false);
+  const [contentVersion, setContentVersion] = useState(0);
+  const bookingRef = useRef<AvailabilityContentHandle>(null);
+  const tourRef = useRef<ViewingSettingsPanelHandle>(null);
+  const selectedKitchen = availableKitchens.find((kitchen) => kitchen.id === selectedKitchenId);
+  const selectedLocationId = initialLocationId ?? selectedKitchen?.locationId ?? null;
+
+  useEffect(() => {
+    setSelectedKitchenId((current) =>
+      availableKitchens.some((kitchen) => kitchen.id === current)
+        ? current
+        : availableKitchens[0]?.id ?? null
+    );
+  }, [initialLocationId, initialKitchenId, kitchens]);
+
+  useEffect(() => {
+    setActiveAvailabilityTab(initialAvailabilityTab);
+  }, [initialAvailabilityTab]);
+
+  const hasUnsavedChanges = bookingDirty || tourDirty;
+
+  useEffect(() => {
+    onDirtyChange?.(hasUnsavedChanges);
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!hasUnsavedChanges) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [hasUnsavedChanges, onDirtyChange]);
+
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
+
+  const saveAllChanges = useCallback(async () => {
+    const bookingSaved = !bookingDirty || await (bookingRef.current?.saveWeeklySchedule() ?? Promise.resolve(false));
+    if (!bookingSaved) return false;
+    return !tourDirty || await (tourRef.current?.saveChanges() ?? Promise.resolve(false));
+  }, [bookingDirty, tourDirty]);
+
+  useImperativeHandle(ref, () => ({
+    saveWeeklySchedule: () => bookingRef.current?.saveWeeklySchedule() ?? Promise.resolve(true),
+    saveAllChanges,
+  }), [saveAllChanges]);
+
+  const applyPendingChange = useCallback((change: PendingAvailabilityChange) => {
+    if (change.type === "kitchen") setSelectedKitchenId(change.kitchenId);
+    else setActiveAvailabilityTab(change.tab);
+    setPendingChange(null);
+  }, []);
+
+  const requestKitchenChange = (kitchenId: number) => {
+    if (kitchenId === selectedKitchenId) return;
+    if (hasUnsavedChanges) setPendingChange({ type: "kitchen", kitchenId });
+    else setSelectedKitchenId(kitchenId);
+  };
+
+  const requestTabChange = (tab: "bookings" | "tours") => {
+    if (tab === activeAvailabilityTab) return;
+    if (hasUnsavedChanges) setPendingChange({ type: "tab", tab });
+    else setActiveAvailabilityTab(tab);
+  };
+
+  const saveAndApplyPendingChange = async () => {
+    if (!pendingChange) return;
+    setIsSavingBeforeSwitch(true);
+    const saved = await saveAllChanges();
+    setIsSavingBeforeSwitch(false);
+    if (saved) applyPendingChange(pendingChange);
+  };
+
+  const discardAndApplyPendingChange = () => {
+    if (!pendingChange) return;
+    setBookingDirty(false);
+    setTourDirty(false);
+    setContentVersion((version) => version + 1);
+    applyPendingChange(pendingChange);
+  };
+
   if (embedded) {
     // If embedded, we expect IDs to be passed.
     // If not, we can show a placeholder or just try to render with nulls (which Content handles).
     return (
       <AvailabilityContent
-        ref={ref}
+        ref={bookingRef}
         selectedLocationId={initialLocationId || null}
         selectedKitchenId={initialKitchenId || null}
         onSaveSuccess={onSaveSuccess}
@@ -128,46 +217,105 @@ const KitchenAvailabilityManagement = forwardRef<KitchenAvailabilityManagementHa
     );
   }
 
+  if (isLoadingKitchens) {
+    return <div className="space-y-6"><Skeleton className="h-16 w-full" /><Skeleton className="h-[500px] w-full" /></div>;
+  }
+
   return (
-    <ManagerPageLayout
-      title="Availability Management"
-      description="Manage recurring schedules and specific date availability"
-      showKitchenSelector={true}
-    >
-      {({ selectedLocationId, selectedKitchenId, isLoading }) => {
-        if (isLoading) {
-          return (
-            <div className="space-y-6">
-              <Skeleton className="h-[300px] w-full" />
-              <Skeleton className="h-[500px] w-full" />
-            </div>
-          );
-        }
-        return (
+    <div className="space-y-6">
+      <ChefPageHeader title={mt("availabilityManagement")} description={mt("availabilityHubDescription")} />
+      {availableKitchens.length > 0 && (
+        <div className="max-w-sm space-y-2">
+          <Label htmlFor="availability-kitchen">{mt("kitchen")}</Label>
+          <Select value={selectedKitchenId?.toString() || ""} onValueChange={(value) => requestKitchenChange(Number(value))}>
+            <SelectTrigger id="availability-kitchen" className="w-full">
+              <SelectValue placeholder={mt("selectKitchen")} />
+            </SelectTrigger>
+            <SelectContent>
+              {availableKitchens.map((kitchen) => (
+                <SelectItem key={kitchen.id} value={kitchen.id.toString()}>{kitchen.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+      <Tabs value={activeAvailabilityTab} onValueChange={(value) => requestTabChange(value as "bookings" | "tours")}>
+        <TabsList className="grid w-full grid-cols-2 rounded-xl bg-muted p-1">
+          <TabsTrigger value="bookings" className="gap-2 rounded-lg py-2.5 data-[state=active]:bg-background">
+            <CalendarIcon className="h-4 w-4" />{mt("kitchenBookingAvailability")}
+          </TabsTrigger>
+          <TabsTrigger value="tours" className="gap-2 rounded-lg py-2.5 data-[state=active]:bg-background">
+            <Eye className="h-4 w-4" />{mt("kitchenTours")}
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="bookings" className="mt-6">
           <AvailabilityContent
-            ref={ref}
+            key={`bookings-${selectedKitchenId}-${contentVersion}`}
+            ref={bookingRef}
             selectedLocationId={selectedLocationId}
             selectedKitchenId={selectedKitchenId}
             hideWeeklyScheduleSaveButton={hideWeeklyScheduleSaveButton}
+            onDirtyChange={setBookingDirty}
           />
-        );
-      }}
-    </ManagerPageLayout>
+        </TabsContent>
+        <TabsContent value="tours" className="mt-6">
+          {selectedKitchenId ? (
+            <ViewingSettingsPanel
+              key={`tours-${selectedKitchenId}-${contentVersion}`}
+              ref={tourRef}
+              kitchenId={selectedKitchenId}
+              kitchenName={selectedKitchen?.name}
+              onDirtyChange={setTourDirty}
+            />
+          ) : (
+            <Card className="border-dashed">
+              <CardContent className="p-12 text-center text-muted-foreground">{mt("selectAKitchenToManageAvailability")}</CardContent>
+            </Card>
+          )}
+        </TabsContent>
+      </Tabs>
+      <AlertDialog open={pendingChange !== null} onOpenChange={(open) => !open && setPendingChange(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{mt("unsavedChanges")}</AlertDialogTitle>
+            <AlertDialogDescription>{mt("availabilityUnsavedChangesDescription")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSavingBeforeSwitch}>{mt("cancel")}</AlertDialogCancel>
+            <Button variant="outline" disabled={isSavingBeforeSwitch} onClick={discardAndApplyPendingChange}>
+              {mt("discardChanges")}
+            </Button>
+            <AlertDialogAction
+              disabled={isSavingBeforeSwitch}
+              onClick={(event) => {
+                event.preventDefault();
+                void saveAndApplyPendingChange();
+              }}
+            >
+              {isSavingBeforeSwitch && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {mt("saveChanges")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   );
 });
 
 export default KitchenAvailabilityManagement;
 
-const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
+const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
   selectedLocationId: number | null,
   selectedKitchenId: number | null,
   onSaveSuccess?: () => void | Promise<void>,
-  hideWeeklyScheduleSaveButton?: boolean
+  hideWeeklyScheduleSaveButton?: boolean,
+  onDirtyChange?: (dirty: boolean) => void
 }>(function AvailabilityContent({
   selectedLocationId,
   selectedKitchenId,
   onSaveSuccess,
-  hideWeeklyScheduleSaveButton = false
+  hideWeeklyScheduleSaveButton = false,
+  onDirtyChange
 }, ref) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -185,6 +333,7 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
     endTime: "17:00",
     maxSlotsPerChef: 1,
   });
+  const [savedExceptionForm, setSavedExceptionForm] = useState('');
 
   // Alert Dialog State
   const [alertConfig, setAlertConfig] = useState<{
@@ -203,6 +352,7 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
 
   // State for weekly schedule
   const [weeklySchedule, setWeeklySchedule] = useState<Record<number, WeeklyScheduleItem>>({});
+  const [savedWeeklySchedule, setSavedWeeklySchedule] = useState('');
   const [isSavingSchedule, setIsSavingSchedule] = useState(false);
 
   // Queries
@@ -212,7 +362,7 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
       if (!selectedKitchenId) return [];
       const headers = await getAuthHeaders();
       const res = await fetch(`/api/manager/kitchens/${selectedKitchenId}/date-overrides`, { headers });
-      if (!res.ok) throw new Error('Failed to fetch exceptions');
+      if (!res.ok) throw new Error(tt("failedToFetchExceptions"));
       const data = await res.json();
 
       // Sort exceptions by date ascending
@@ -231,7 +381,7 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
       if (!selectedKitchenId) return [];
       const headers = await getAuthHeaders();
       const res = await fetch(`/api/manager/bookings?kitchenId=${selectedKitchenId}`, { headers });
-      if (!res.ok) throw new Error('Failed to fetch bookings');
+      if (!res.ok) throw new Error(tt("failedToFetchBookings"));
       return res.json();
     },
     enabled: !!selectedKitchenId
@@ -266,6 +416,7 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
           });
         }
         setWeeklySchedule(scheduleMap);
+        setSavedWeeklySchedule(JSON.stringify(scheduleMap));
       }
     } catch (error) {
       logger.error("Failed to load schedule", error);
@@ -291,10 +442,10 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/manager/kitchens/date-overrides', selectedKitchenId] });
       setIsExceptionDialogOpen(false);
-      toast({ title: "Success", description: "Exception saved successfully" });
+      toast({ title: mt("success"), description: mt("exceptionSavedSuccessfully") });
     },
     onError: (err: any) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      toast({ title: mt("error"), description: err.message, variant: "destructive" });
     }
   });
 
@@ -310,10 +461,10 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/manager/kitchens/date-overrides', selectedKitchenId] });
       setIsExceptionDialogOpen(false);
-      toast({ title: "Success", description: "Exception updated successfully" });
+      toast({ title: mt("success"), description: mt("exceptionUpdatedSuccessfully") });
     },
     onError: (err: any) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      toast({ title: mt("error"), description: err.message, variant: "destructive" });
     }
   });
 
@@ -327,10 +478,10 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/manager/kitchens/date-overrides', selectedKitchenId] });
       setIsExceptionDialogOpen(false);
-      toast({ title: "Success", description: "Exception removed successfully" });
+      toast({ title: mt("success"), description: mt("exceptionRemovedSuccessfully") });
     },
     onError: (err: any) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      toast({ title: mt("error"), description: err.message, variant: "destructive" });
     }
   });
 
@@ -358,15 +509,16 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
           throw new Error(await response.text() || "Failed to save weekly schedule");
         }
       }
-      toast({ title: "Success", description: "Weekly schedule saved" });
+      toast({ title: mt("success"), description: mt("weeklyScheduleSaved") });
       queryClient.invalidateQueries({ queryKey: ['/api/manager/availability', selectedKitchenId] });
       // [NEW] Notify parent that save was successful
       if (onSaveSuccess) {
         await onSaveSuccess();
       }
+      setSavedWeeklySchedule(JSON.stringify(weeklySchedule));
       return true;
     } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Failed to save", variant: "destructive" });
+      toast({ title: mt("error"), description: err.message || "Failed to save", variant: "destructive" });
       return false;
     } finally {
       setIsSavingSchedule(false);
@@ -393,25 +545,29 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
 
     if (existing) {
       setSelectedException(existing);
-      setExceptionForm({
+      const nextForm = {
         isAvailable: existing.isAvailable ?? false,
         reason: existing.reason || "",
         startTime: existing.startTime || "09:00",
         endTime: existing.endTime || "17:00",
         maxSlotsPerChef: existing.maxSlotsPerChef || 1
-      });
+      };
+      setExceptionForm(nextForm);
+      setSavedExceptionForm(JSON.stringify(nextForm));
     } else {
       setSelectedException(null);
       // Initialize with weekly default for that day
       const dayOfWeek = clickedDate.getDay();
       const weekly = weeklySchedule[dayOfWeek];
-      setExceptionForm({
+      const nextForm = {
         isAvailable: weekly ? (weekly.isAvailable ?? false) : false,
         reason: "",
         startTime: weekly?.startTime || "09:00",
         endTime: weekly?.endTime || "17:00",
         maxSlotsPerChef: 1
-      });
+      };
+      setExceptionForm(nextForm);
+      setSavedExceptionForm(JSON.stringify(nextForm));
     }
     setIsExceptionDialogOpen(true);
   };
@@ -422,7 +578,7 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
 
     // Validation
     if (exceptionForm.isAvailable && (!exceptionForm.startTime || !exceptionForm.endTime)) {
-      toast({ title: "Error", description: "Start and End times are required when available", variant: 'destructive' });
+      toast({ title: mt("error"), description: mt("startAndEndTimesAreRequiredWhenAvailable"), variant: 'destructive' });
       return;
     }
 
@@ -441,8 +597,8 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
       if (hasBookings) {
         setAlertConfig({
           open: true,
-          title: "Conflict Warning",
-          description: "This date has existing bookings. Closing it will affect chefs. Continue?",
+          title: mt("conflictWarning"),
+          description: mt("conflictWarningClosingDate"),
           actionType: 'save',
           onConfirm: () => {
             if (selectedException) updateAvailability.mutate({ id: selectedException.id, data: payload });
@@ -465,8 +621,8 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
     if (!selectedException) return;
     setAlertConfig({
       open: true,
-      title: "Confirm Deletion",
-      description: "Are you sure you want to remove this exception? The schedule will revert to weekly defaults.",
+      title: mt("confirmDeletion"),
+      description: mt("removeExceptionConfirmDesc"),
       actionType: 'delete',
       onConfirm: () => {
         deleteAvailability.mutate(selectedException.id);
@@ -476,13 +632,21 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
   };
 
 
+  const isScheduleDirty = !!savedWeeklySchedule && JSON.stringify(weeklySchedule) !== savedWeeklySchedule;
+
+  useEffect(() => {
+    onDirtyChange?.(isScheduleDirty);
+  }, [isScheduleDirty, onDirtyChange]);
+
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
+
   if (!selectedKitchenId) {
     return (
       <Card className="border-dashed h-full">
         <CardContent className="flex flex-col items-center justify-center p-12 text-center text-muted-foreground h-full">
           <CalendarIcon className="h-12 w-12 mb-4 opacity-20" />
-          <h3 className="text-lg font-medium text-foreground mb-1">No Kitchen Selected</h3>
-          <p>Select a location and kitchen from the sidebar to manage availability.</p>
+          <h3 className="text-lg font-medium text-foreground mb-1">{mt("noKitchenSelected")}</h3>
+          <p>{mt("selectALocationAndKitchenFromTheSidebarToManageAvailability")}</p>
         </CardContent>
       </Card>
     );
@@ -494,21 +658,21 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
     <div className="space-y-6 animate-in fade-in slide-in-from-top-4">
       <Tabs defaultValue="weekly" value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full max-w-md grid-cols-2">
-          <TabsTrigger value="weekly">Weekly Schedule</TabsTrigger>
-          <TabsTrigger value="calendar">Exceptions & Calendar</TabsTrigger>
+          <TabsTrigger value="weekly">{mt("weeklySchedule")}</TabsTrigger>
+          <TabsTrigger value="calendar">{mt("exceptionsCalendar")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="weekly" className="space-y-4 mt-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
               <div className="space-y-1">
-                <CardTitle>Recurring Weekly Hours</CardTitle>
-                <CardDescription>Default hours of operation for this kitchen.</CardDescription>
+                <CardTitle>{mt("recurringWeeklyHours")}</CardTitle>
+                <CardDescription>{mt("defaultHoursOfOperationForThisKitchen")}</CardDescription>
               </div>
               {!hideWeeklyScheduleSaveButton && (
-                <Button onClick={handleSaveWeeklySchedule} disabled={isSavingSchedule}>
+                <Button onClick={handleSaveWeeklySchedule} disabled={isSavingSchedule || !isScheduleDirty}>
                   {isSavingSchedule ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                  Save Schedule
+                  {mt("saveSchedule")}
                 </Button>
               )}
             </CardHeader>
@@ -517,9 +681,9 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[100px]">Day</TableHead>
-                      <TableHead className="w-[100px]">Status</TableHead>
-                      <TableHead>Hours</TableHead>
+                      <TableHead className="w-[100px]">{mt("day")}</TableHead>
+                      <TableHead className="w-[100px]">{mt("status")}</TableHead>
+                      <TableHead>{mt("hours")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -540,7 +704,7 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
                                 }}
                               />
                               <Badge variant={schedule.isAvailable ? "outline" : "secondary"} className={cn("w-16 justify-center", !schedule.isAvailable && "opacity-50")}>
-                                {schedule.isAvailable ? "Open" : "Closed"}
+                                {schedule.isAvailable ? mt("open") : mt("closed")}
                               </Badge>
                             </div>
                           </TableCell>
@@ -573,7 +737,7 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
                               </div>
                             ) : (
                               <div className="h-8 flex items-center">
-                                <span className="text-sm text-muted-foreground italic">Unavailable</span>
+                                <span className="text-sm text-muted-foreground italic">{mt("unavailable")}</span>
                               </div>
                             )}
                           </TableCell>
@@ -592,8 +756,8 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
           <div className="grid gap-6 xl:grid-cols-2">
             <Card className="overflow-hidden flex flex-col justify-between">
               <CardHeader>
-                <CardTitle>Calendar Overview</CardTitle>
-                <CardDescription>Click a date to manage availability exceptions.</CardDescription>
+                <CardTitle>{mt("calendarOverview")}</CardTitle>
+                <CardDescription>{mt("clickADateToManageAvailabilityExceptions")}</CardDescription>
               </CardHeader>
               <CardContent className="p-4 flex justify-center items-center">
                 <Calendar
@@ -622,11 +786,11 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
                 <div className="flex items-center gap-4 text-xs text-muted-foreground">
                   <div className="flex items-center gap-2">
                     <Badge variant="outline" className="h-2 w-2 p-0 rounded-full border-primary bg-primary/20" />
-                    <span>Has overrides</span>
+                    <span>{mt("hasOverrides")}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant="destructive" className="h-2 w-2 p-0 rounded-full" />
-                    <span>Has bookings</span>
+                    <span>{mt("hasBookings")}</span>
                   </div>
                 </div>
               </div>
@@ -634,8 +798,8 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
 
             <Card className="flex flex-col h-full">
               <CardHeader>
-                <CardTitle>Upcoming Exceptions</CardTitle>
-                <CardDescription>Deviations from standard weekly hours</CardDescription>
+                <CardTitle>{mt("upcomingExceptions")}</CardTitle>
+                <CardDescription>{mt("deviationsFromStandardWeeklyHours")}</CardDescription>
               </CardHeader>
               <CardContent className="flex-1 overflow-auto p-0">
                 {isLoadingExceptions ? (
@@ -647,15 +811,15 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
                 ) : availabilityExceptions.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                     <CalendarIcon className="h-10 w-10 mb-2 opacity-20" />
-                    <p>No exceptions found.</p>
+                    <p>{mt("noExceptionsFound")}</p>
                   </div>
                 ) : (
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
+                        <TableHead>{mt("date")}</TableHead>
+                        <TableHead>{mt("status")}</TableHead>
+                        <TableHead className="text-right">{mt("actions")}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -674,9 +838,7 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
                                   {ex.startTime?.slice(0, 5)} - {ex.endTime?.slice(0, 5)}
                                 </Badge>
                               ) : (
-                                <Badge variant="destructive" className="w-fit">
-                                  Closed
-                                </Badge>
+                                <Badge variant="destructive" className="w-fit">{mt("closed")}</Badge>
                               )}
                             </div>
                           </TableCell>
@@ -688,8 +850,8 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
                                 setSelectedException(ex);
                                 setAlertConfig({
                                   open: true,
-                                  title: "Confirm Deletion",
-                                  description: "Remove this exception?",
+                                  title: mt("confirmDeletion"),
+                                  description: mt("removeThisException"),
                                   actionType: 'delete',
                                   onConfirm: () => {
                                     deleteAvailability.mutate(ex.id);
@@ -718,11 +880,11 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{format(date || new Date(), 'MMMM d, yyyy')}</DialogTitle>
-            <DialogDescription>Modify availability for this specific date.</DialogDescription>
+            <DialogDescription>{mt("modifyAvailabilityForThisSpecificDate")}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="flex items-center justify-between p-3 border rounded-md bg-muted/20">
-              <Label htmlFor="date-available" className="cursor-pointer">Kitchen Available?</Label>
+              <Label htmlFor="date-available" className="cursor-pointer">{mt("kitchenAvailable")}</Label>
               <Switch
                 checked={exceptionForm.isAvailable}
                 onCheckedChange={(checked) => setExceptionForm({ ...exceptionForm, isAvailable: checked })}
@@ -733,7 +895,7 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
             {exceptionForm.isAvailable && (
               <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-top-2 fade-in">
                 <div className="space-y-2">
-                  <Label>Open Time</Label>
+                  <Label>{mt("openTime")}</Label>
                   <Input
                     type="time"
                     value={exceptionForm.startTime}
@@ -741,7 +903,7 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Close Time</Label>
+                  <Label>{mt("closeTime")}</Label>
                   <Input
                     type="time"
                     value={exceptionForm.endTime}
@@ -752,7 +914,7 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
             )}
 
             <div className="space-y-2">
-              <Label>Reason / Note</Label>
+              <Label>{mt("reasonNote")}</Label>
               <Input
                 value={exceptionForm.reason}
                 onChange={(e) => setExceptionForm({ ...exceptionForm, reason: e.target.value })}
@@ -767,13 +929,12 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
                 type="button"
                 onClick={handleDeleteException}
                 className="sm:mr-auto"
-              >
-                Remove Exception
-              </Button>
+              >{mt("removeException")}</Button>
             )}
-            <Button onClick={handleSaveException}>
-              Save Changes
-            </Button>
+            <Button
+              onClick={handleSaveException}
+              disabled={JSON.stringify(exceptionForm) === savedExceptionForm || createAvailability.isPending || updateAvailability.isPending}
+            >{mt("saveChanges")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -791,13 +952,11 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{mt("cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={alertConfig.onConfirm}
               className={alertConfig.actionType === 'delete' ? "bg-destructive hover:bg-destructive/90" : ""}
-            >
-              Confirm
-            </AlertDialogAction>
+            >{mt("confirm")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

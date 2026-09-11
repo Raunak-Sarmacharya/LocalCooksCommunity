@@ -6,13 +6,24 @@ service cloud.firestore {
       return request.auth != null;
     }
     
-    // Users can read/write their own profile
+    // User documents are non-authoritative profile metadata. Application roles
+    // live in Neon and are enforced by the API, never by client-writable fields.
     match /users/{userId} {
-      allow read, write: if isAuthenticated() && request.auth.uid == userId;
-      
-      // Admins can read all users
-      allow read: if isAuthenticated() && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      allow create: if isAuthenticated()
+        && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly([
+          'email', 'displayName', 'createdAt', 'lastLoginAt', 'updatedAt'
+        ])
+        && request.resource.data.keys().hasAll(['email'])
+        && request.resource.data.email == request.auth.token.email;
+      allow update: if isAuthenticated()
+        && request.auth.uid == userId
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName', 'lastLoginAt', 'updatedAt'
+        ]);
+      allow delete: if false;
     }
     
     // ============================================
@@ -28,7 +39,9 @@ service cloud.firestore {
       
       // Only participants can read their own conversations
       allow read: if isAuthenticated() && isParticipant();
-      // Allow create if authenticated (participants set during creation)
+      // Conversation creation still uses legacy numeric participant IDs.
+      // Migrating it to server-issued Firebase UIDs is tracked separately;
+      // changing this rule alone would break chat creation.
       allow create: if isAuthenticated();
       // Only participants can update
       allow update: if isAuthenticated() && isParticipant();

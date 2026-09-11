@@ -132,26 +132,9 @@ Insurance protects your business, your personal assets, and the kitchen you oper
 | **Damage to Premises Rented** | $300,000 | Covers accidental damage to the kitchen (fire, water, etc.) |
 | **Additional Insured** | Kitchen named on your policy | Extends your coverage to the kitchen for claims arising from your activities |
 
-### Recommended: FLIP Insurance
+### Choosing an Insurance Provider
 
-FLIP (Food Liability Insurance Program) specializes in affordable coverage for food businesses renting commercial kitchen space. It is the most widely used option for shared kitchen renters across Canada.
-
-| | |
-|:--|:--|
-| **Cost** | Starting at approximately $25.92/month or $299/year |
-| **Additional Insureds** | Free and unlimited — add kitchens at no extra cost |
-| **Deductible** | None on liability claims |
-| **Purchasing** | Instant online — certificate available immediately |
-| **Add-ons** | Equipment coverage (+$8.25/mo), cyber liability (+$8.25/mo), excess liability (from $41.67/mo) |
-| **Website** | [fliprogram.com](https://www.fliprogram.com/) |
-
-**How to purchase:**
-
-1. Visit [fliprogram.com](https://www.fliprogram.com/) and select "Commercial Kitchen Renters"
-2. Complete the online application (5–10 minutes)
-3. Get an instant quote and purchase
-4. Download your Certificate of Insurance (COI) immediately
-5. Add your kitchen as an Additional Insured — free through the FLIP dashboard
+Ask a licensed Canadian insurance provider or broker for a policy designed for food businesses and commercial kitchen renters. Before purchasing, confirm the required limits, product liability coverage, damage-to-rented-premises coverage, fees for adding kitchens, deductibles, exclusions, and certificate turnaround time.
 
 ### Understanding "Additional Insured"
 
@@ -159,7 +142,7 @@ When you add a kitchen as an Additional Insured on your policy, the kitchen is c
 
 **Example:** You prepare food in a rented kitchen. A customer experiences a severe allergic reaction and sues both you and the kitchen facility. Because the kitchen is named as an Additional Insured on your policy, your insurer provides the kitchen's legal defence for claims related to your operations — protecting the kitchen owner's own policy and keeping their premiums stable.
 
-### Alternative Providers
+### Provider Examples
 
 | Provider | Specialty | Website |
 |:---------|:----------|:--------|
@@ -293,7 +276,7 @@ Once fully approved:
 | **Equipment** | Must meet commercial standards personally | Commercial-grade equipment provided |
 | **Scalability** | Limited by space and regulations | Flexible — book more hours as your business grows |
 | **Licensing** | Home inspected and licensed separately | Kitchen already licensed and inspected |
-| **Insurance** | May be more expensive; fewer provider options | Standard commercial rates; FLIP and others specialize in this |
+| **Insurance** | May be more expensive; fewer provider options | More providers offer policies for commercial kitchen renters |
 | **Networking** | Isolated | Work alongside other food entrepreneurs |
 | **Best for** | Baked goods, jams, dry mixes sold at local markets | Any food business wanting flexibility, professional equipment, and the ability to prepare regulated products |
 
@@ -383,7 +366,7 @@ Inspectors assess food handling practices, facility cleanliness, equipment condi
 Yes, but you need proper licensing for each location. Keep detailed records of where each product is prepared.
 
 **How do I add a kitchen as an Additional Insured?**
-Through your insurance provider's online portal. With FLIP, this is instant and free — enter the kitchen's legal business name and address, then generate an updated Certificate of Insurance.
+Contact your insurance provider or use its online portal. Provide the kitchen's exact legal business name and address, confirm any fee, and request an updated Certificate of Insurance.
 
 ---
 
@@ -399,7 +382,7 @@ Through your insurance provider's online portal. With FLIP, this is instant and 
 
 ### Weeks 3–4: Insurance and Registration
 
-- [ ] Get a liability insurance quote from FLIP or an alternative provider
+- [ ] Get a liability insurance quote from a licensed Canadian provider or broker
 - [ ] Purchase minimum $2M liability insurance
 - [ ] Download your Certificate of Insurance
 - [ ] Register your home-based food business (if applicable)
@@ -466,8 +449,6 @@ Through your insurance provider's online portal. With FLIP, this is instant and 
 
 | Provider | Website |
 |:---------|:--------|
-| FLIP Insurance (Recommended for kitchen renters) | [fliprogram.com](https://www.fliprogram.com/) |
-| FLIP — Commercial Kitchen Insurance Details | [fliprogram.com/commercial-kitchen-insurance](https://www.fliprogram.com/commercial-kitchen-insurance) |
 | Zensurance | [zensurance.com](https://www.zensurance.com) |
 | BFL Canada | [bflcanada.ca](https://www.bflcanada.ca) |
 

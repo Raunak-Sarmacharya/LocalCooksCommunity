@@ -1,5 +1,7 @@
 import { logger } from "@/lib/logger";
-import { Loader2 } from "lucide-react";
+import { mt } from "@/i18n/manager";
+import { useTranslation } from "react-i18next";
+import { Loader2 } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { Redirect, useLocation } from "wouter";
@@ -13,6 +15,9 @@ interface ManagerProtectedRouteProps {
 }
 
 export default function ManagerProtectedRoute({ children }: ManagerProtectedRouteProps) {
+  // Subscribe so loader re-renders once manager NS finishes lazy-loading
+  // (mt() alone returns raw keys before the backend resource is ready).
+  const { t } = useTranslation("manager");
   const [location] = useLocation();
   const { user: firebaseUser, loading: firebaseLoading, authPhase } = useFirebaseAuth();
   
@@ -114,8 +119,8 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
       <div className="flex min-h-screen items-center justify-center">
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-2" />
-          <p className="text-sm text-gray-600">Checking manager session...</p>
-          <p className="text-xs text-gray-400 mt-2">Verifying credentials...</p>
+          <p className="text-sm text-gray-600">{t("checkingManagerSession")}</p>
+          <p className="text-xs text-gray-400 mt-2">{t("verifyingCredentials")}</p>
         </div>
       </div>
     );
@@ -129,9 +134,7 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
           <p className="text-red-600 mb-4">Authentication Error: {String(error)}</p>
           <Button 
             onClick={() => window.location.reload()}
-          >
-            Retry
-          </Button>
+          >{mt("retry")}</Button>
         </div>
       </div>
     );

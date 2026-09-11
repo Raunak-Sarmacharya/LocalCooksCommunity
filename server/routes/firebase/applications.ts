@@ -21,11 +21,16 @@ import { applicationService } from '../../domains/applications/application.servi
 import { CreateApplicationDTO } from '../../domains/applications/application.types';
 import { DomainError } from '../../shared/errors/domain-error';
 import { normalizePhoneForStorage } from '../../phone-utils';
+import { db } from '../../db';
+import { locations } from '@shared/schema';
+import { eq } from 'drizzle-orm';
+import { notificationService } from '../../services/notification.service';
 import {
     sendEmail,
     generateApplicationWithDocumentsEmail,
     generateApplicationWithoutDocumentsEmail,
     generateStatusChangeEmail,
+    generateNewSellerApplicationAdminEmail,
 } from '../../email';
 
 const router = Router();
@@ -45,6 +50,14 @@ router.post('/firebase/applications',
         try {
             const userId = req.neonUser!.id;
             logger.info(`📝 POST /api/firebase/applications - User ${userId} submitting application`);
+
+            if (req.firebaseUser?.email_verified !== true) {
+                cleanupUploadedFiles(req);
+                return res.status(403).json({
+                    error: "Please verify your email before submitting an application.",
+                    code: "EMAIL_NOT_VERIFIED",
+                });
+            }
 
             // Strip userId from request body - we use the authenticated user's ID
             // This prevents spoofing and fixes type coercion issues from form data
@@ -136,7 +149,64 @@ router.post('/firebase/applications',
             // Send email notification
             await sendApplicationEmail(application);
 
-            res.status(201).json(application);
+            if (req.body.intendedLocationId) {
+                try {
+                    const locationId = parseInt(req.body.intendedLocationId, 10);
+                    const location = await db.query.locations.findFirst({
+                        where: eq(locations.id, locationId)
+                    });
+                    
+                    if (location && location.managerId) {
+                        await notificationService.notifySystemAnnouncement(
+                            location.managerId,
+                            {
+                                title: "New Incoming Application",
+                                message: `Chef ${application.fullName} has submitted their Global Platform Application and intends to apply to ${location.name} once approved by the Admin.`
+                            }
+                        );
+                        logger.info(`✅ Sent intended application notification to manager of location ${locationId}`);
+                    }
+            } catch (notifyErr) {
+                logger.error('❌ Failed to send intended application notification:', notifyErr);
+            }
+        }
+
+        // Send admin notification email about new seller application
+        try {
+            const { users } = await import('@shared/schema');
+            const { eq: eqOp, isNotNull, ne, and: andOp } = await import('drizzle-orm');
+            const { db } = await import('../../db');
+            const adminUsers = await db
+                .select({ username: users.username })
+                .from(users)
+                .where(
+                    andOp(
+                        eqOp(users.role, 'admin'),
+                        isNotNull(users.username),
+                        ne(users.username, '')
+                    )
+                );
+            const hasDocuments = !!(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl);
+            for (const admin of adminUsers) {
+                if (admin.username) {
+                    const adminEmail = generateNewSellerApplicationAdminEmail({
+                        adminEmail: admin.username,
+                        chefName: application.fullName || 'Chef',
+                        chefEmail: application.email || '',
+                        hasDocuments,
+                        submittedAt: new Date(),
+                    });
+                    await sendEmail(adminEmail, {
+                        trackingId: `seller_app_admin_notify_fb_${admin.username}_${application.id}_${Date.now()}`
+                    });
+                }
+            }
+            logger.info(`✅ Sent seller application admin notification to ${adminUsers.length} admin(s)`);
+        } catch (adminEmailError) {
+            logger.error('Error sending admin notification for new seller application:', adminEmailError);
+        }
+
+        res.status(201).json(application);
 
         } catch (error) {
             logger.error('❌ Error creating application:', error);

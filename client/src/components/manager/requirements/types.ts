@@ -56,7 +56,7 @@ export interface LocationRequirements {
   materials_description?: string;
 }
 
-export type WizardStep = 'step1' | 'step2';
+export type WizardStep = 'step2';
 
 export interface StepConfig {
   id: WizardStep;
@@ -68,18 +68,11 @@ export interface StepConfig {
 
 export const WIZARD_STEPS: StepConfig[] = [
   {
-    id: 'step1',
-    title: 'Step 1: Initial Application',
-    description: 'Configure what chefs need to submit when they first apply',
-    icon: 'clipboard-list',
-    explanation: `**What is Step 1?**\n\nThis is the initial application form chefs see when they apply to use your kitchen. Configure the required information to screen applicants before you invest time reviewing them.\n\n**Best Practices:**\n- Keep required fields minimal to encourage applications\n- Food handler certification is often legally required\n- Business information helps you understand their needs`
-  },
-  {
     id: 'step2',
-    title: 'Step 2: Kitchen Coordination',
-    description: 'Requirements for operational planning after initial approval',
+    title: 'Kitchen Specific Requirements',
+    description: 'Kitchen-specific requirements for chefs to operate in your facility',
     icon: 'settings-2',
-    explanation: `**What is Step 2?**\n\nAfter you approve a chef's initial application, they enter the coordination phase. This is where you collect detailed documentation for compliance and operational planning.\n\n**Best Practices:**\n- Request food establishment license if legally required in your jurisdiction\n- Insurance documentation protects both parties\n- Use custom fields for location-specific requirements`
+    explanation: `**What is this?**\n\nConfigure the documents and information required specifically for this location.\n\n**Best Practices:**\n- Request food establishment license if legally required in your jurisdiction\n- Insurance documentation protects both parties\n- Use custom fields for location-specific requirements`
   }
 ];
 

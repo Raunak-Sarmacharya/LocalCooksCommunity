@@ -1,10 +1,11 @@
-import { formatDistanceToNow } from 'date-fns';
-import { cn } from '@/lib/utils';
-import { Badge } from '@/components/ui/badge';
-import { ChatAvatar } from '@/components/ui/chat/chat-avatar';
-import { Conversation } from '@/services/chat-service';
-import { Timestamp } from 'firebase/firestore';
-import { CheckCircle, Clock, MessageCircle } from 'lucide-react';
+import { formatDistanceToNow } from "date-fns";
+import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { ChatAvatar } from "@/components/ui/chat/chat-avatar";
+import { Conversation } from "@/services/chat-service";
+import { Timestamp } from "firebase/firestore";
+import { CheckCircle, Clock, MessageCircle } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 export type ApplicationStatus = 'inReview' | 'step1_approved' | 'step2_review' | 'fully_approved' | 'rejected' | 'unknown';
 
@@ -27,6 +28,7 @@ export function ConversationItem({
   applicationStatus = 'unknown',
   viewerRole
 }: ConversationItemProps) {
+  const { t } = useTranslation('chef');
   const lastMessageDate = conversation.lastMessageAt instanceof Date
     ? conversation.lastMessageAt
     : conversation.lastMessageAt instanceof Timestamp
@@ -47,25 +49,25 @@ export function ConversationItem({
     switch (applicationStatus) {
       case 'step1_approved':
         return {
-          label: 'Step 1 Approved',
+          label: t('chatStep1Approved'),
           icon: CheckCircle,
           className: 'bg-blue-50 text-blue-700 border-blue-200'
         };
       case 'step2_review':
         return {
-          label: 'Step 2 Review',
+          label: t('chatStep2Review'),
           icon: Clock,
           className: 'bg-orange-50 text-orange-700 border-orange-200'
         };
       case 'fully_approved':
         return {
-          label: 'Approved',
+          label: t('chatApproved'),
           icon: CheckCircle,
           className: 'bg-green-50 text-green-700 border-green-200'
         };
       case 'inReview':
         return {
-          label: 'Pending',
+          label: t('chatPending'),
           icon: Clock,
           className: 'bg-yellow-50 text-yellow-700 border-yellow-200'
         };
@@ -96,8 +98,15 @@ export function ConversationItem({
             <span className="font-medium truncate text-sm">
               {partnerName}
             </span>
-            <span className="text-xs text-muted-foreground truncate">
-              {partnerLocation || "Cooks Community"}
+            <span
+              className={cn(
+                "text-xs truncate",
+                unreadCount > 0 ? "font-medium text-foreground" : "text-muted-foreground"
+              )}
+            >
+              {conversation.lastMessageText?.trim() ||
+                partnerLocation ||
+                t("chatCooksCommunity")}
             </span>
           </div>
           
@@ -130,7 +139,7 @@ export function ConversationItem({
           {applicationStatus === 'step1_approved' && (
             <span className="text-xs text-muted-foreground flex items-center gap-1">
               <MessageCircle className="h-3 w-3" />
-              Chat enabled
+              {t("chatEnabled")}
             </span>
           )}
         </div>

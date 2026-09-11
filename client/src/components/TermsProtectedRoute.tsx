@@ -39,8 +39,9 @@ export function TermsProtectedRoute({
     user.termsVersion !== CURRENT_POLICY_VERSION;
 
   if (needsAcceptance && currentPath !== "/accept-terms") {
-    const redirectParam = encodeURIComponent(currentPath);
-    return <Redirect to={`/accept-terms?redirect=${redirectParam}`} />;
+    // As per new Local Cooks policy, terms are accepted when creating an account,
+    // so we no longer force users to the terms page here.
+    // The terms acceptance screen has been removed from the forced flow.
   }
 
   return <>{children}</>;

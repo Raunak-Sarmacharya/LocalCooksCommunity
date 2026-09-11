@@ -1,15 +1,17 @@
 import { logger } from "@/lib/logger";
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Loader2, AlertCircle, MessageCircle } from 'lucide-react';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { auth } from '@/lib/firebase';
-import { getAllConversations, type Conversation } from '@/services/chat-service';
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { AlertCircle, MessageCircle } from "lucide-react";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { auth } from "@/lib/firebase";
+import { getAllConversations, type Conversation } from "@/services/chat-service";
 import ChatPanel from './ChatPanel';
-import { ConversationList } from './ConversationList';
-import { ApplicationStatus } from './ConversationItem';
-import { cn } from '@/lib/utils';
+import { ConversationList } from "./ConversationList";
+import { ApplicationStatus } from "./ConversationItem";
+import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 interface ApplicationDetails {
   id: number;
@@ -36,6 +38,7 @@ interface UnifiedChatViewProps {
 }
 
 export default function UnifiedChatView({ userId, role, initialConversationId }: UnifiedChatViewProps) {
+  const { t } = useTranslation('chef');
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [applicationDetails, setApplicationDetails] = useState<Record<number, ApplicationDetails>>({});
   const [locationNames, setLocationNames] = useState<Record<number, string>>({});
@@ -122,7 +125,7 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
                   }
                 } else {
                   // Partner is manager - usually just "Manager" since we don't have manager names easily here
-                  partners[conv.managerId] = "Manager";
+                  partners[conv.managerId] = t("chatManager");
                 }
               }
             }
@@ -196,7 +199,7 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
       }
       return `Chef #${c.chefId}`;
     }
-    return partnerNames[c.managerId] || "Manager";
+    return partnerNames[c.managerId] || t("chatManager");
   };
 
   const getPartnerLocation = (c: Conversation) =>
@@ -214,15 +217,15 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
     if (status === 'inReview') return 'inReview';
 
     if (status === 'approved') {
-      // Step 2 needs review: tier=2 and tier2_completed_at is set
+      // Kitchen coordination submitted, awaiting manager review
       if (tier === 2 && app.tier2_completed_at) {
         return 'step2_review';
       }
-      // Step 1 approved, awaiting Step 2: tier=1
-      if (tier === 1) {
+      // Request to apply approved; kitchen coordination docs still needed (chat open)
+      if (tier === 1 || (tier === 2 && !app.tier2_completed_at)) {
         return 'step1_approved';
       }
-      // Fully approved: tier >= 3
+      // Manager approved kitchen coordination — ready to book
       if (tier >= 3) {
         return 'fully_approved';
       }
@@ -234,7 +237,7 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
   if (isLoading) {
     return (
       <div className="flex items-center justify-center p-12 h-[600px]">
-        <Loader2 className="h-8 w-8 animate-spin text-[#208D80]" />
+        <LoadingSpinner size="lg" className="mb-4" />
       </div>
     );
   }
@@ -243,8 +246,8 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
     return (
       <div className="p-8 text-center">
         <AlertCircle className="h-10 w-10 text-red-500 mx-auto mb-2" />
-        <p className="text-muted-foreground">Failed to load conversations.</p>
-        <Button onClick={() => refetch()} variant="link">Retry</Button>
+        <p className="text-muted-foreground">{t("chatFailedToLoad")}</p>
+        <Button onClick={() => refetch()} variant="link">{t("chatRetry")}</Button>
       </div>
     );
   }
@@ -285,8 +288,8 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
             managerId={selectedConversation.managerId}
             locationId={selectedConversation.locationId}
             locationName={getPartnerLocation(selectedConversation)}
-            chefName={role === 'chef' ? (auth.currentUser?.displayName || "Me") : getPartnerNameLabel(selectedConversation)}
-            managerName={role === 'manager' ? (auth.currentUser?.displayName || "Me") : getPartnerNameLabel(selectedConversation)}
+            chefName={role === 'chef' ? (auth.currentUser?.displayName || t("chatMe")) : getPartnerNameLabel(selectedConversation)}
+            managerName={role === 'manager' ? (auth.currentUser?.displayName || t("chatMe")) : getPartnerNameLabel(selectedConversation)}
             onUnreadCountUpdate={handleUnreadCountUpdate}
             embedded={true}
           />
@@ -295,8 +298,8 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
             <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4">
               <MessageCircle className="h-8 w-8 text-muted-foreground/50" />
             </div>
-            <h3 className="font-semibold text-lg">No chat selected</h3>
-            <p className="text-sm">Select a conversation from the sidebar to start chatting.</p>
+            <h3 className="font-semibold text-lg">{t("chatNoChatSelected")}</h3>
+            <p className="text-sm">{t("chatSelectConversation")}</p>
           </div>
         )}
       </div>

@@ -9,7 +9,7 @@ import { logger } from "@/lib/logger";
  * This hook runs a periodic check and also listens for route changes to
  * ensure pointer-events is always restored when no Radix overlay is open.
  */
-import { useEffect } from 'react';
+import { useEffect } from "react";
 
 function cleanupBodyPointerEvents() {
   // Only clean up if no Radix overlay is currently open

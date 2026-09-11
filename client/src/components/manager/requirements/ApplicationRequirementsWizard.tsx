@@ -1,34 +1,26 @@
 import { logger } from "@/lib/logger";
+import { mt } from "@/i18n/manager";
+import { tt } from "@/i18n/common-ns";
 /**
  * Application Requirements Wizard
  * Enterprise-grade step-by-step configuration for chef application requirements
  * Reusable component for both manager settings and onboarding flow
  */
 
-import { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Button } from '@/components/ui/button';
-import { StatusButton } from '@/components/ui/status-button';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { cn } from '@/lib/utils';
-import {
-  Save,
-  Loader2,
-  ChevronRight,
-  ChevronLeft,
-  CheckCircle2,
-  ClipboardList,
-  Settings2,
-  Building2,
-  AlertCircle,
-} from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
-import { auth } from '@/lib/firebase';
+import { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { StatusButton } from "@/components/ui/status-button";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
+import { Save, Loader2, ChevronRight, ChevronLeft, CheckCircle2, ClipboardList, Settings2, Building2, AlertCircle } from "@/components/ui/manager-icons";
+import { useToast } from "@/hooks/use-toast";
+import { auth } from "@/lib/firebase";
 
-import { RequirementsStepOne } from './RequirementsStepOne';
-import { RequirementsStepTwo } from './RequirementsStepTwo';
-import { LocationRequirements, WizardStep, WIZARD_STEPS } from './types';
+
+import { RequirementsStepTwo } from "./RequirementsStepTwo";
+import { LocationRequirements, WizardStep, WIZARD_STEPS } from "./types";
 
 export interface ApplicationRequirementsWizardHandle {
   /** Trigger a save of the current requirements state. Returns a promise that resolves when save completes. */
@@ -58,14 +50,13 @@ interface ApplicationRequirementsWizardProps {
 }
 
 const STEP_ICONS: Record<WizardStep, React.ReactNode> = {
-  step1: <ClipboardList className="h-5 w-5" />,
   step2: <Settings2 className="h-5 w-5" />,
 };
 
 async function getAuthHeaders(): Promise<HeadersInit> {
   const currentFirebaseUser = auth.currentUser;
   if (!currentFirebaseUser) {
-    throw new Error('Firebase user not available');
+    throw new Error(tt('firebaseUserNotAvailable'));
   }
   const token = await currentFirebaseUser.getIdToken();
   return {
@@ -80,7 +71,7 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
   onSaveSuccess,
   compact = false,
   hideNavigation = false,
-  initialStep = 'step1',
+  initialStep = 'step2',
   onStepChange,
   activeStepOverride,
   autoSaveOnStepChange = false,
@@ -124,7 +115,7 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
         credentials: 'include',
         headers,
       });
-      if (!response.ok) throw new Error('Failed to fetch requirements');
+      if (!response.ok) throw new Error(tt('failedToFetchRequirements'));
       return response.json();
     },
     enabled: !!locationId,
@@ -138,7 +129,6 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
       // Mark steps as completed if they have been configured
       const completed = new Set<WizardStep>();
       if (data.id && data.id > 0) {
-        completed.add('step1');
         completed.add('step2');
       }
       setCompletedSteps(completed);
@@ -180,16 +170,14 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
         return newSet;
       });
       
-      toast({
-        title: 'Requirements Saved',
-        description: 'Your application requirements have been updated successfully.',
+      toast({ title: mt("requirementsSaved"),
+        description: mt("yourApplicationRequirementsHaveBeenUpdatedSuccessfully"),
       });
       
       onSaveSuccess?.();
     },
     onError: (error: Error) => {
-      toast({
-        title: 'Save Failed',
+      toast({ title: mt("saveFailed"),
         description: error.message,
         variant: 'destructive',
       });
@@ -268,7 +256,7 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
       <div className="flex items-center justify-center py-16">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="h-8 w-8 animate-spin text-teal-600" />
-          <p className="text-sm text-slate-500">Loading requirements...</p>
+          <p className="text-sm text-slate-500">{mt("loadingRequirements")}</p>
         </div>
       </div>
     );
@@ -281,7 +269,7 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
           <div className="h-12 w-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
             <AlertCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
           </div>
-          <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Failed to load requirements</p>
+          <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{mt("failedToLoadRequirements")}</p>
           <p className="text-xs text-slate-500 max-w-sm">{(error as Error).message}</p>
         </div>
       </div>
@@ -294,30 +282,26 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
       {!compact && locationName && (
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
-              Application Requirements
-            </h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-              Configure requirements for <span className="font-medium">{locationName}</span>
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">{mt("navApplicationRequirements")}</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{mt("configureRequirementsFor")}<span className="font-medium">{locationName}</span>
             </p>
           </div>
           {hasUnsavedChanges && (
             <Badge variant="warning">
-              <div className="w-1.5 h-1.5 rounded-full bg-warning mr-1.5 animate-pulse" />
-              Unsaved changes
-            </Badge>
+              <div className="w-1.5 h-1.5 rounded-full bg-warning mr-1.5 animate-pulse" />{mt("unsavedChanges")}</Badge>
           )}
         </div>
       )}
 
       {/* Step Navigation - Notion-style Tabs */}
       <Tabs value={activeStep} onValueChange={(value) => goToStep(value as WizardStep)} className="w-full">
-        <TabsList className="w-full p-1 bg-slate-100/60 dark:bg-slate-800/40 rounded-lg border border-slate-200/50 dark:border-slate-700/50 gap-1">
-          {WIZARD_STEPS.map((step, index) => {
+        {WIZARD_STEPS.length > 1 && (
+          <TabsList className="w-full p-1 bg-slate-100/60 dark:bg-slate-800/40 rounded-lg border border-slate-200/50 dark:border-slate-700/50 gap-1">
+            {WIZARD_STEPS.map((step, index) => {
             const isActive = step.id === activeStep;
             const isCompleted = completedSteps.has(step.id);
             const stepNumber = index + 1;
-            const showStepNumber = step.id === 'step1' || step.id === 'step2';
+            const showStepNumber = false;
             
             return (
               <TabsTrigger
@@ -369,7 +353,7 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
                         isActive ? 'text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-400'
                       )}
                     >
-                      {step.id === 'step1' ? 'Initial Application' : 'Kitchen Coordination'}
+                      {step.title}
                     </span>
                   </div>
                   <span
@@ -378,8 +362,7 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
                       isActive ? 'text-slate-500 dark:text-slate-400' : 'text-slate-400 dark:text-slate-500'
                     )}
                   >
-                    {step.id === 'step1' && 'What chefs submit first'}
-                    {step.id === 'step2' && 'After initial approval'}
+                    {step.description}
                   </span>
                 </div>
 
@@ -390,7 +373,8 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
               </TabsTrigger>
             );
           })}
-        </TabsList>
+          </TabsList>
+        )}
       </Tabs>
 
       {/* Unsaved Changes Banner */}
@@ -401,12 +385,8 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
               <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
             </div>
             <div>
-              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-                You have unsaved changes
-              </p>
-              <p className="text-xs text-amber-700 dark:text-amber-300">
-                Save your changes to make them visible to applicants
-              </p>
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">{mt("youHaveUnsavedChanges")}</p>
+              <p className="text-xs text-amber-700 dark:text-amber-300">{mt("saveYourChangesToMakeThemVisibleToApplicants")}</p>
             </div>
           </div>
           {!hideUnsavedChangesAction && (
@@ -414,7 +394,7 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
               onClick={handleSave}
               status={saveMutation.isPending ? "loading" : "idle"}
               size="sm"
-              labels={{ idle: "Save Now", loading: "Saving", success: "Saved" }}
+              labels={{ idle: tt("saveNow"), loading: mt("savingShort"), success: mt("saved") }}
             />
           )}
         </div>
@@ -422,13 +402,7 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
 
       {/* Step Content */}
       <div className="min-h-[400px]">
-        {activeStep === 'step1' && (
-          <RequirementsStepOne
-            requirements={requirements}
-            onRequirementsChange={handleRequirementsChange}
-            onUnsavedChange={handleUnsavedChange}
-          />
-        )}
+
         {activeStep === 'step2' && (
           <RequirementsStepTwo
             requirements={requirements}
@@ -440,32 +414,31 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
 
       {/* Navigation Footer */}
       {!hideNavigation && (
-        <div className="flex items-center justify-between pt-6 border-t border-slate-200 dark:border-slate-700">
-          <Button
-            onClick={goToPrevStep}
-            disabled={isFirstStep}
-            variant="outline"
-            className="gap-2"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            Previous
-          </Button>
+        <div className={cn("flex items-center pt-6 border-t border-slate-200 dark:border-slate-700", WIZARD_STEPS.length > 1 ? "justify-between" : "justify-end")}>
+          {WIZARD_STEPS.length > 1 && (
+            <Button
+              onClick={goToPrevStep}
+              disabled={isFirstStep}
+              variant="outline"
+              className="gap-2"
+            >
+              <ChevronLeft className="h-4 w-4" />{mt("previous")}</Button>
+          )}
 
           <div className="flex items-center gap-3">
             <StatusButton
               onClick={handleSave}
               status={saveMutation.isPending ? "loading" : "idle"}
+              disabled={!hasUnsavedChanges}
               variant={hasUnsavedChanges ? 'default' : 'outline'}
-              labels={{ idle: hasUnsavedChanges ? "Save Changes" : "Save", loading: "Saving", success: "Saved" }}
+              labels={{ idle: hasUnsavedChanges ? mt("saveChanges") : tt("save"), loading: mt("savingShort"), success: mt("saved") }}
             />
 
             {!isLastStep && (
               <Button
                 onClick={goToNextStep}
                 className="gap-2"
-              >
-                Next Step
-                <ChevronRight className="h-4 w-4" />
+              >{mt("nextStep")}<ChevronRight className="h-4 w-4" />
               </Button>
             )}
           </div>

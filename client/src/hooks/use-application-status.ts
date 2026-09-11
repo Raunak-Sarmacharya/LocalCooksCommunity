@@ -2,12 +2,14 @@ import { logger } from "@/lib/logger";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { Application } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 
 /**
  * Custom hook to determine user application status and CTA button logic
  * Returns helper functions and loading state for homepage CTA buttons
  */
 export function useApplicationStatus() {
+  const { t } = useTranslation("common");
   const firebaseAuth = useFirebaseAuth();
   
   // Use Firebase auth for all users (session auth removed)
@@ -159,13 +161,14 @@ export function useApplicationStatus() {
   /**
    * Returns the appropriate button text based on user status and applications
    */
-  const getButtonText = (defaultText: string = "Start Your Application") => {
+  const getButtonText = (defaultText?: string) => {
+    const fallbackDefault = defaultText ?? t("startYourApplication", "Start Your Application");
     if (!user) {
-      return defaultText;
+      return fallbackDefault;
     } else if (user.role === "admin") {
-      return "Go to Admin Dashboard";
+      return t("goToAdminDashboard", "Go to Admin Dashboard");
     } else if (user.role === "manager") {
-      return "Go to Manager Dashboard";
+      return t("goToManagerDashboard", "Go to Manager Dashboard");
     } else if (shouldShowStartApplication()) {
       const isChef = (user as any)?.isChef;
       const isManager = (user as any)?.isManager;
@@ -174,16 +177,16 @@ export function useApplicationStatus() {
       
       // Manager role check - managers go to their own dashboard
       if (isManager || user.role === "manager") {
-        return "Go to Manager Dashboard";
+        return t("goToManagerDashboard", "Go to Manager Dashboard");
       } else if (isChef) {
-        return defaultText.includes("Start") ? defaultText : "Start Chef Application";
+        return defaultText ?? t("startChefApplication", "Start Chef Application");
       } else {
         // Fallback: If roles are not detected but user is logged in, default to generic text
         logger.warn('⚠️ No roles detected for logged in user, using fallback text');
-        return defaultText;
+        return fallbackDefault;
       }
     } else {
-      return "Go To Dashboard";
+      return t("goToDashboard", "Go To Dashboard");
     }
   };
 

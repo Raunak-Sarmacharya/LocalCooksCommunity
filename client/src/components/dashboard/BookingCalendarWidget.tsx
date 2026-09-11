@@ -1,37 +1,12 @@
+import { useTranslation } from "react-i18next";
+import { mt } from "@/i18n/manager";
 import { useMemo, useState } from "react";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Calendar as CalendarIcon,
-  Clock,
-  ChefHat,
-  CheckCircle2,
-  AlertCircle,
-  XCircle,
-  LayoutGrid,
-  List,
-  CalendarDays,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar , Clock, CalendarIcon, CheckCircle2, AlertCircle, XCircle, LayoutGrid, List, CalendarDays } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  format,
-  startOfMonth,
-  endOfMonth,
-  startOfWeek,
-  endOfWeek,
-  addDays,
-  addMonths,
-  subMonths,
-  addWeeks,
-  subWeeks,
-  isSameMonth,
-  isSameDay,
-  isSameWeek,
-  isToday,
-  getHours,
-  getMinutes,
-} from "date-fns";
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, addMonths, subMonths, addWeeks, subWeeks, isSameMonth, isSameDay, isSameWeek, isToday, getHours, getMinutes } from "date-fns";
+import { enCA, frCA, uk as ukLocale } from "date-fns/locale";
+import { formatTime as formatTimeLocale } from "@/lib/formatters";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // BOOKING CALENDAR WIDGET - Premium Design
@@ -65,6 +40,12 @@ export default function BookingCalendarWidget({
   isLoading,
   onNavigateToBookings,
 }: BookingCalendarWidgetProps) {
+  const { i18n } = useTranslation();
+  const dateLocale = i18n.language.startsWith("fr")
+    ? frCA
+    : i18n.language.startsWith("uk")
+      ? ukLocale
+      : enCA;
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
   const [view, setView] = useState<CalendarView>('month');
@@ -157,20 +138,13 @@ export default function BookingCalendarWidget({
   }, []);
 
   // Format time helper
-  const formatTime = (time: string) => {
-    if (!time) return '';
-    const [hours, minutes] = time.split(':');
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour % 12 || 12;
-    return `${displayHour}:${minutes} ${ampm}`;
-  };
+  const formatTime = (time: string) => formatTimeLocale(time, i18n.language);
 
   // Format hour for time slots
   const formatHour = (hour: number) => {
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour % 12 || 12;
-    return `${displayHour} ${ampm}`;
+    const d = new Date();
+    d.setHours(hour, 0, 0, 0);
+    return new Intl.DateTimeFormat(i18n.language, { hour: "numeric" }).format(d);
   };
 
   // Get booking position and height for week view
@@ -198,7 +172,7 @@ export default function BookingCalendarWidget({
       borderColor: 'border-emerald-200',
       hoverBg: 'hover:bg-emerald-100',
       icon: CheckCircle2,
-      label: 'Confirmed',
+      label: mt("confirmed"),
     },
     pending: {
       color: 'bg-amber-500',
@@ -207,7 +181,7 @@ export default function BookingCalendarWidget({
       borderColor: 'border-amber-200',
       hoverBg: 'hover:bg-amber-100',
       icon: AlertCircle,
-      label: 'Pending',
+      label: mt("pending"),
     },
     cancelled: {
       color: 'bg-gray-400',
@@ -216,7 +190,7 @@ export default function BookingCalendarWidget({
       borderColor: 'border-gray-200',
       hoverBg: 'hover:bg-gray-100',
       icon: XCircle,
-      label: 'Cancelled',
+      label: mt("cancelled"),
     },
     completed: {
       color: 'bg-emerald-400',
@@ -225,20 +199,22 @@ export default function BookingCalendarWidget({
       borderColor: 'border-emerald-200',
       hoverBg: 'hover:bg-emerald-100',
       icon: CheckCircle2,
-      label: 'Completed',
+      label: mt("completed"),
     },
   };
 
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const dayNames = Array.from({ length: 7 }, (_, i) =>
+    new Intl.DateTimeFormat(i18n.language, { weekday: "short" }).format(new Date(2024, 0, 7 + i))
+  );
 
   // Get date range text
   const getDateRangeText = () => {
     if (view === 'month') {
-      return `${format(startOfMonth(currentDate), 'MMM d')} – ${format(endOfMonth(currentDate), 'MMM d, yyyy')}`;
+      return `${format(startOfMonth(currentDate), 'MMM d', { locale: dateLocale })} – ${format(endOfMonth(currentDate), 'MMM d, yyyy', { locale: dateLocale })}`;
     } else {
       const weekStart = startOfWeek(currentDate, { weekStartsOn: 0 });
       const weekEnd = endOfWeek(currentDate, { weekStartsOn: 0 });
-      return `${format(weekStart, 'MMM d')} – ${format(weekEnd, 'MMM d, yyyy')}`;
+      return `${format(weekStart, 'MMM d', { locale: dateLocale })} – ${format(weekEnd, 'MMM d, yyyy', { locale: dateLocale })}`;
     }
   };
 
@@ -252,7 +228,7 @@ export default function BookingCalendarWidget({
             {/* Date Badge */}
             <div className="flex flex-col items-center justify-center w-14 h-14 bg-gradient-to-br from-rose-500 to-pink-600 rounded-xl text-white shadow-lg shadow-rose-500/20">
               <span className="text-[10px] font-semibold uppercase tracking-wider opacity-90">
-                {format(new Date(), 'MMM')}
+                {format(new Date(), 'MMM', { locale: dateLocale })}
               </span>
               <span className="text-xl font-bold leading-none">
                 {format(new Date(), 'd')}
@@ -260,7 +236,7 @@ export default function BookingCalendarWidget({
             </div>
             <div>
               <h3 className="text-lg font-semibold text-gray-900">
-                {format(currentDate, 'MMMM yyyy')}
+                {format(currentDate, 'MMMM yyyy', { locale: dateLocale })}
               </h3>
               <p className="text-xs text-gray-500">{getDateRangeText()}</p>
             </div>
@@ -275,7 +251,7 @@ export default function BookingCalendarWidget({
               onClick={goToToday}
               className="text-xs h-8 px-3 border-gray-200 hover:bg-gray-50"
             >
-              Today
+              {mt("today")}
             </Button>
 
             {/* View Toggle */}
@@ -291,7 +267,7 @@ export default function BookingCalendarWidget({
                 }`}
               >
                 <LayoutGrid className="h-3.5 w-3.5 mr-1" />
-                Month
+                {mt("monthView")}
               </Button>
               <Button
                 variant="ghost"
@@ -304,7 +280,7 @@ export default function BookingCalendarWidget({
                 }`}
               >
                 <List className="h-3.5 w-3.5 mr-1" />
-                Week
+                {mt("weekView")}
               </Button>
             </div>
 
@@ -409,12 +385,12 @@ export default function BookingCalendarWidget({
                               `}
                             >
                               <span className="opacity-70">{formatTime(booking.startTime)}</span>
-                              <span className="ml-1">{booking.chefName || booking.portalUserName || 'Chef'}</span>
+                              <span className="ml-1">{booking.chefName || booking.portalUserName || mt("chef")}</span>
                             </div>
                           ))}
                           {dayBookings.length > 2 && (
                             <div className="text-[10px] text-gray-500 font-medium px-1.5">
-                              +{dayBookings.length - 2} more
+                              {mt("plusMoreCount", { count: dayBookings.length - 2 })}
                             </div>
                           )}
                         </div>
@@ -428,15 +404,15 @@ export default function BookingCalendarWidget({
               <div className="flex items-center gap-4 mt-4 pt-3 border-t border-gray-100">
                 <div className="flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                  <span className="text-xs text-gray-600">Confirmed</span>
+                  <span className="text-xs text-gray-600">{mt("confirmed")}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-amber-500" />
-                  <span className="text-xs text-gray-600">Pending</span>
+                  <span className="text-xs text-gray-600">{mt("pending")}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-gray-400" />
-                  <span className="text-xs text-gray-600">Cancelled</span>
+                  <span className="text-xs text-gray-600">{mt("cancelled")}</span>
                 </div>
               </div>
             </div>
@@ -537,7 +513,7 @@ export default function BookingCalendarWidget({
                                 }}
                               >
                                 <p className={`text-[10px] font-semibold ${config.textColor} truncate`}>
-                                  {booking.chefName || booking.portalUserName || 'Chef'}
+                                  {booking.chefName || booking.portalUserName || mt("chef")}
                                 </p>
                                 <p className={`text-[9px] ${config.textColor} opacity-70`}>
                                   {formatTime(booking.startTime)}
@@ -574,8 +550,8 @@ export default function BookingCalendarWidget({
             <div className="flex items-center justify-between mb-4">
               <h4 className="font-semibold text-gray-900 text-sm">
                 {selectedDate
-                  ? format(selectedDate, 'EEEE, MMMM d, yyyy')
-                  : 'Select a date'}
+                  ? format(selectedDate, 'EEEE, MMMM d, yyyy', { locale: dateLocale })
+                  : mt("selectADate")}
               </h4>
             </div>
 
@@ -586,9 +562,9 @@ export default function BookingCalendarWidget({
             ) : selectedDateBookings.length === 0 ? (
               <div className="text-center py-8">
                 <CalendarIcon className="h-10 w-10 text-gray-300 mx-auto mb-2" />
-                <p className="text-sm text-gray-500">No bookings</p>
+                <p className="text-sm text-gray-500">{mt("noBookingsShort")}</p>
                 <p className="text-xs text-gray-400 mt-1">
-                  This day is available for booking
+                  {mt("thisDayAvailableForBooking")}
                 </p>
               </div>
             ) : (
@@ -622,13 +598,13 @@ export default function BookingCalendarWidget({
 
                           {/* Chef Name */}
                           <p className="font-medium text-gray-900 text-sm truncate mb-1">
-                            {booking.chefName || booking.portalUserName || 'Guest Chef'}
+                            {booking.chefName || booking.portalUserName || mt("guestChef")}
                           </p>
 
                           {/* Kitchen */}
                           {booking.kitchenName && (
                             <div className="flex items-center gap-1 text-xs text-gray-500">
-                              <ChefHat className="h-3 w-3" />
+                              <CalendarIcon className="h-3 w-3" />
                               <span className="truncate">{booking.kitchenName}</span>
                             </div>
                           )}
@@ -653,7 +629,7 @@ export default function BookingCalendarWidget({
                   onClick={onNavigateToBookings}
                   className="w-full text-rose-600 hover:text-rose-700 hover:bg-rose-50 mt-2"
                 >
-                  View all bookings
+                  {mt("viewAllBookings")}
                   <ChevronRight className="h-4 w-4 ml-1" />
                 </Button>
               </div>

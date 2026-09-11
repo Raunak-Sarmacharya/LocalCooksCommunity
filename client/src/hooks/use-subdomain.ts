@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
 import type { SubdomainType } from '@shared/subdomain-utils';
-import { getSubdomainFromHostname, getSubdomainUrlForEnvironment } from '@shared/subdomain-utils';
+import { getSubdomainFromHostname, getSubdomainUrlForEnvironment } from "@shared/subdomain-utils";
 
 /**
  * Hook to detect the current subdomain
@@ -35,6 +35,11 @@ export function useSubdomainUrl(): string {
   const baseDomain = 'localcooks.ca';
   const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
 
-  return getSubdomainUrlForEnvironment(subdomain, hostname, baseDomain);
+  return getSubdomainUrlForEnvironment(
+    subdomain,
+    hostname,
+    baseDomain,
+    import.meta.env.VITE_VERCEL_ENV
+  );
 }
 

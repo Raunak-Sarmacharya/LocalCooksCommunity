@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { mt } from "@/i18n/manager";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -9,19 +10,35 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { 
-  Loader2, Mail, Phone, User, KeyRound, Shield, 
-  Camera, CheckCircle2, Building2, Edit3, Lock, MapPin, CreditCard, Clock
-} from "lucide-react";
+import { Loader2, Mail, Phone, KeyRound, Shield, Camera, CheckCircle2, Building2, Edit3, Lock, MapPin } from "@/components/ui/manager-icons";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
 import ChangePassword from "@/components/auth/ChangePassword";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { cn } from "@/lib/utils";
+import { tt } from "@/i18n/common-ns";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Users } from "lucide-react";
+import StripeConnectSetup from "@/components/manager/StripeConnectSetup";
+import NotificationsSettings from "@/components/manager/settings/NotificationsSettings";
+import { InfoChip } from "@/components/chef/info-chip";
 
-export default function ManagerProfileSettings() {
+interface ManagerProfileSettingsProps {
+    notificationLocation?: {
+        id: number;
+        name: string;
+        notificationEmail?: string;
+        notificationPhone?: string;
+    } | null;
+    onSaveNotificationSettings?: (updates: any) => Promise<unknown>;
+}
+
+export default function ManagerProfileSettings({
+    notificationLocation,
+    onSaveNotificationSettings,
+}: ManagerProfileSettingsProps = {}) {
+  
     const { toast } = useToast();
     const queryClient = useQueryClient();
     const { user: firebaseUser } = useFirebaseAuth();
@@ -33,6 +50,16 @@ export default function ManagerProfileSettings() {
     const [displayName, setDisplayName] = useState("");
     const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
     const [isEditingProfile, setIsEditingProfile] = useState(false);
+    const [activeTab, setActiveTab] = useState(() => {
+        const params = new URLSearchParams(window.location.search);
+        const legacyView = params.get("view");
+        const tab = legacyView === "payments"
+            ? "payments"
+            : legacyView === "notification-settings"
+                ? "notifications"
+                : params.get("tab");
+        return tab === "password" || tab === "payments" || tab === "notifications" ? tab : "account";
+    });
     
     // Location contact fields state
     const [locationContactEdits, setLocationContactEdits] = useState<Record<number, {
@@ -52,8 +79,7 @@ export default function ManagerProfileSettings() {
             updateProfileMutation.mutate({ avatarUrl: response.url });
         },
         onError: (error) => {
-            toast({
-                title: 'Upload failed',
+            toast({ title: mt("uploadFailed2"),
                 description: error,
                 variant: 'destructive',
             });
@@ -161,20 +187,6 @@ export default function ManagerProfileSettings() {
         }
     }, [user, managerProfile, firebaseUser]);
 
-    // Get Stripe Connect status display
-    const getStripeStatusDisplay = (status: string) => {
-        switch (status) {
-            case 'complete':
-                return { label: 'Connected', color: 'bg-green-50 text-green-700 border-green-200' };
-            case 'in_progress':
-                return { label: 'In Progress', color: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
-            case 'failed':
-                return { label: 'Failed', color: 'bg-red-50 text-red-700 border-red-200' };
-            default:
-                return { label: 'Not Started', color: 'bg-slate-50 text-slate-600 border-slate-200' };
-        }
-    };
-
     // Update profile mutation
     const updateProfileMutation = useMutation({
         mutationFn: async (profileData: {
@@ -184,7 +196,7 @@ export default function ManagerProfileSettings() {
             avatarUrl?: string;
         }) => {
             const currentFirebaseUser = auth.currentUser;
-            if (!currentFirebaseUser) throw new Error("Not authenticated");
+            if (!currentFirebaseUser) throw new Error(tt("notAuthenticated"));
 
             // IMPORTANT: Update Firebase Auth displayName if it changed
             if (profileData.displayName) {
@@ -210,21 +222,19 @@ export default function ManagerProfileSettings() {
                 body: JSON.stringify(profileData),
             });
 
-            if (!response.ok) throw new Error('Failed to update profile');
+            if (!response.ok) throw new Error(tt("failedToUpdateProfile"));
             return response.json();
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["/api/manager/profile"] });
             queryClient.invalidateQueries({ queryKey: ["/api/user/profile", firebaseUser?.uid] });
             setIsEditingProfile(false);
-            toast({
-                title: "Profile updated",
-                description: "Your changes have been saved successfully.",
+            toast({ title: mt("profileUpdated"),
+                description: mt("yourChangesHaveBeenSavedSuccessfully"),
             });
         },
         onError: (error: any) => {
-            toast({
-                title: "Update failed",
+            toast({ title: mt("updateFailed2"),
                 description: error.message || "Failed to update profile",
                 variant: "destructive",
             });
@@ -250,7 +260,7 @@ export default function ManagerProfileSettings() {
             preferredContactMethod: 'email' | 'phone' | 'both';
         }) => {
             const currentFirebaseUser = auth.currentUser;
-            if (!currentFirebaseUser) throw new Error("Not authenticated");
+            if (!currentFirebaseUser) throw new Error(tt("notAuthenticated"));
 
             const token = await currentFirebaseUser.getIdToken();
             const response = await fetch(`/api/manager/locations/${locationId}`, {
@@ -283,14 +293,12 @@ export default function ManagerProfileSettings() {
                     isEditing: false,
                 },
             }));
-            toast({
-                title: "Contact info updated",
-                description: "Your business contact information has been saved.",
+            toast({ title: mt("contactInfoUpdated"),
+                description: mt("yourBusinessContactInformationHasBeenSaved"),
             });
         },
         onError: (error: any) => {
-            toast({
-                title: "Update failed",
+            toast({ title: mt("updateFailed2"),
                 description: error.message || "Failed to update contact info",
                 variant: "destructive",
             });
@@ -340,6 +348,14 @@ export default function ManagerProfileSettings() {
         }
     };
 
+    const handleTabChange = (tab: string) => {
+        setActiveTab(tab);
+        const url = new URL(window.location.href);
+        if (tab === "account") url.searchParams.delete("tab");
+        else url.searchParams.set("tab", tab);
+        window.history.replaceState({}, "", url);
+    };
+
     // Get initials for avatar fallback
     const getInitials = () => {
         if (displayName) {
@@ -356,43 +372,48 @@ export default function ManagerProfileSettings() {
             <div className="flex items-center justify-center min-h-[400px]">
                 <div className="flex flex-col items-center gap-3">
                     <Loader2 className="h-8 w-8 animate-spin text-teal-600" />
-                    <p className="text-sm text-muted-foreground">Loading your profile...</p>
+                    <p className="text-sm text-muted-foreground">{mt("loadingYourProfile")}</p>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="space-y-8 max-w-4xl mx-auto pb-12">
+        <div className="relative mx-auto max-w-4xl space-y-8 pb-10">
             {/* Page Header */}
-            <div>
-                <h1 className="text-2xl font-bold tracking-tight text-slate-900">Profile Settings</h1>
-                <p className="text-muted-foreground mt-1">
-                    Manage your account details and security preferences
-                </p>
+            <div className="flex items-start sm:items-center justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold tracking-tight text-slate-900">{mt("cmdProfileSettings")}</h1>
+                    <p className="text-muted-foreground mt-1">{mt("manageYourAccountDetailsAndSecurityPreferences")}</p>
+                </div>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsEditingProfile(!isEditingProfile)}
+                    className="shrink-0 bg-white"
+                >
+                    <Edit3 className="h-4 w-4 mr-2" />
+                    {isEditingProfile ? mt("cancel") : mt("editProfile")}
+                </Button>
             </div>
 
             {/* Profile Hero Card */}
-            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-500 via-emerald-500 to-teal-600 p-8 text-white shadow-xl">
-                {/* Background Pattern */}
-                <div className="absolute inset-0 opacity-10">
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-white rounded-full -translate-y-1/2 translate-x-1/2" />
-                    <div className="absolute bottom-0 left-0 w-48 h-48 bg-white rounded-full translate-y-1/2 -translate-x-1/2" />
-                </div>
+            <div className="relative overflow-hidden rounded-[1.35rem] border bg-card">
+                <div className="absolute inset-x-0 top-0 h-20 bg-[linear-gradient(180deg,hsl(173_63%_34%_/_0.1),transparent)]" />
 
-                <div className="relative flex flex-col sm:flex-row items-center sm:items-start gap-6">
+                <div className="relative flex flex-col items-center gap-3 p-4 sm:flex-row">
                     {/* Avatar */}
-                    <div className="relative group">
-                        <Avatar className="h-28 w-28 border-4 border-white/30 shadow-2xl">
+                    <div className="relative group shrink-0">
+                        <Avatar className="h-[4.5rem] w-[4.5rem] border-2 border-background shadow-sm ring-2 ring-primary/20">
                             <AvatarImage src={avatarUrl || undefined} alt={displayName} />
-                            <AvatarFallback className="bg-white/20 text-white text-2xl font-semibold">
+                            <AvatarFallback className="bg-primary/10 text-primary text-2xl font-semibold">
                                 {getInitials()}
                             </AvatarFallback>
                         </Avatar>
                         <button
                             onClick={handleAvatarClick}
                             disabled={isUploading}
-                            className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                            className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 text-white opacity-0 transition-opacity group-hover:opacity-100 cursor-pointer"
                         >
                             {isUploading ? (
                                 <Loader2 className="h-6 w-6 animate-spin" />
@@ -408,67 +429,67 @@ export default function ManagerProfileSettings() {
                             className="hidden"
                         />
                         {/* Online indicator */}
-                        <div className="absolute bottom-1 right-1 h-5 w-5 rounded-full bg-green-400 border-2 border-white" />
+                        <div className="absolute bottom-0 right-0 h-4 w-4 rounded-full bg-emerald-500 border-2 border-background" />
                     </div>
 
                     {/* Profile Info */}
-                    <div className="flex-1 text-center sm:text-left">
-                        <h2 className="text-2xl font-bold">{displayName || 'Your Name'}</h2>
-                        <p className="text-white/80 mt-1">{email}</p>
-                        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-3">
-                            <Badge className="bg-white/20 text-white border-0 hover:bg-white/30">
-                                <Building2 className="h-3 w-3 mr-1" />
-                                Kitchen Manager
-                            </Badge>
-                            <Badge className="bg-white/20 text-white border-0 hover:bg-white/30">
-                                <Shield className="h-3 w-3 mr-1" />
-                                Verified
-                            </Badge>
+                    <div className="min-w-0 flex-1 text-center sm:text-left">
+                        <p className="text-sm font-medium leading-none text-primary">Local Cooks</p>
+                        <h2 className="mt-1 truncate text-xl font-semibold tracking-tight text-foreground">{displayName || mt("yourName")}</h2>
+                        <div className="mt-1.5 flex flex-wrap items-center justify-center gap-2 text-sm sm:justify-start">
+                            <span className="truncate text-muted-foreground">{email}</span>
+                            <InfoChip tone="neutral" icon={<Building2 />}>
+                                {mt("kitchenManager")}
+                            </InfoChip>
+                            <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
+                                <Shield className="h-3 w-3 mr-1" />{mt("verified")}</Badge>
                         </div>
                     </div>
-
-                    {/* Edit Button */}
-                    <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => setIsEditingProfile(!isEditingProfile)}
-                        className="bg-white/20 hover:bg-white/30 text-white border-0 backdrop-blur-sm"
-                    >
-                        <Edit3 className="h-4 w-4 mr-2" />
-                        {isEditingProfile ? 'Cancel' : 'Edit Profile'}
-                    </Button>
                 </div>
             </div>
 
-            {/* Main Content Grid */}
-            <div className="grid gap-6 lg:grid-cols-3">
-                {/* Personal Information - Takes 2 columns */}
-                <div className="lg:col-span-2 space-y-6">
+            <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+                <TabsList className="h-auto w-full justify-start gap-0 rounded-none border-b bg-transparent p-0">
+                    {[
+                        ["account", mt("personalInformation")],
+                        ["password", mt("security")],
+                        ["payments", mt("paymentsPayouts")],
+                        ["notifications", mt("notificationSettings")],
+                        ["teams", mt("navTeams")],
+                    ].map(([value, label]) => (
+                        <TabsTrigger
+                            key={value}
+                            value={value}
+                            className="rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                        >
+                            {label}
+                        </TabsTrigger>
+                    ))}
+                </TabsList>
+
+                <TabsContent value="account" className="mt-6 focus-visible:ring-0">
+            <div className="space-y-6">
+                <div className="space-y-6">
                     {/* Personal Details Card */}
-                    <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+                    <div className="overflow-hidden rounded-[1.35rem] border bg-card">
+                        <div className="border-b px-5 py-4">
                             <div className="flex items-center gap-3">
-                                <div className="h-10 w-10 rounded-lg bg-teal-100 flex items-center justify-center">
-                                    <User className="h-5 w-5 text-teal-600" />
-                                </div>
                                 <div>
-                                    <h3 className="font-semibold text-slate-900">Personal Information</h3>
-                                    <p className="text-sm text-slate-500">Your public profile details</p>
+                                    <h3 className="font-semibold text-foreground">{mt("personalInformation")}</h3>
+                                    <p className="text-sm text-muted-foreground">{mt("yourPublicProfileDetails")}</p>
                                 </div>
                             </div>
                         </div>
                         
-                        <div className="p-6 space-y-5">
+                        <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2">
                             {/* Username */}
                             <div className="space-y-2">
-                                <Label htmlFor="username" className="text-sm font-medium text-slate-700">
-                                    Username
-                                </Label>
+                                <Label htmlFor="username" className="text-sm font-medium text-slate-700">{mt("username")}</Label>
                                 <Input
                                     id="username"
                                     value={username}
                                     onChange={(e) => setUsername(e.target.value)}
-                                    placeholder="johndoe"
+                                    placeholder={mt("johndoe")}
                                     disabled={!isEditingProfile}
                                     className={cn(
                                         "h-11 transition-colors",
@@ -479,14 +500,12 @@ export default function ManagerProfileSettings() {
 
                             {/* Display Name */}
                             <div className="space-y-2">
-                                <Label htmlFor="displayName" className="text-sm font-medium text-slate-700">
-                                    Display Name
-                                </Label>
+                                <Label htmlFor="displayName" className="text-sm font-medium text-slate-700">{mt("displayName")}</Label>
                                 <Input
                                     id="displayName"
                                     value={displayName}
                                     onChange={(e) => setDisplayName(e.target.value)}
-                                    placeholder="John Doe"
+                                    placeholder={mt("johnDoe")}
                                     disabled={!isEditingProfile}
                                     className={cn(
                                         "h-11 transition-colors",
@@ -497,9 +516,7 @@ export default function ManagerProfileSettings() {
 
                             {/* Email - Read only */}
                             <div className="space-y-2">
-                                <Label htmlFor="email" className="text-sm font-medium text-slate-700">
-                                    Email Address
-                                </Label>
+                                <Label htmlFor="email" className="text-sm font-medium text-slate-700">{mt("emailAddress")}</Label>
                                 <div className="relative">
                                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                                     <Input
@@ -512,16 +529,12 @@ export default function ManagerProfileSettings() {
                                     <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300" />
                                 </div>
                                 <p className="text-xs text-slate-500 flex items-center gap-1">
-                                    <Shield className="h-3 w-3" />
-                                    Email is linked to your authentication and cannot be changed here
-                                </p>
+                                    <Shield className="h-3 w-3" />{mt("emailIsLinkedToYourAuthenticationAndCannotBeChangedHere")}</p>
                             </div>
 
                             {/* Phone */}
                             <div className="space-y-2">
-                                <Label htmlFor="phone" className="text-sm font-medium text-slate-700">
-                                    Phone Number
-                                </Label>
+                                <Label htmlFor="phone" className="text-sm font-medium text-slate-700">{mt("phoneNumber")}</Label>
                                 <div className="relative">
                                     <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                                     <Input
@@ -541,77 +554,27 @@ export default function ManagerProfileSettings() {
 
                             {/* Save Button */}
                             {isEditingProfile && (
-                                <div className="flex justify-end pt-4 border-t border-slate-100">
+                                <div className="flex justify-end border-t pt-4 sm:col-span-2">
                                     <StatusButton
                                         status={saveProfileAction.status}
                                         onClick={saveProfileAction.execute}
-                                        labels={{ idle: "Save Changes", loading: "Saving", success: "Saved" }}
+                                        labels={{ idle: mt("saveChanges"), loading: mt("saving"), success: mt("saved") }}
                                     />
                                 </div>
                             )}
                         </div>
                     </div>
 
-                    {/* Security Card */}
-                    <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-                            <div className="flex items-center gap-3">
-                                <div className="h-10 w-10 rounded-lg bg-amber-100 flex items-center justify-center">
-                                    <KeyRound className="h-5 w-5 text-amber-600" />
-                                </div>
-                                <div>
-                                    <h3 className="font-semibold text-slate-900">Security</h3>
-                                    <p className="text-sm text-slate-500">Manage your password and account security</p>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div className="p-6">
-                            <ChangePassword role="manager" />
-                        </div>
-                    </div>
                 </div>
 
-                {/* Sidebar - Account Summary */}
                 <div className="space-y-6">
-                    {/* Account Status Card */}
-                    <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                        <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/50">
-                            <h3 className="font-semibold text-slate-900">Account Status</h3>
-                        </div>
-                        <div className="p-5 space-y-4">
-                            <div className="flex items-center justify-between">
-                                <span className="text-sm text-slate-600">Account Type</span>
-                                <Badge variant="info">
-                                    Manager
-                                </Badge>
-                            </div>
-                            <Separator />
-                            <div className="flex items-center justify-between">
-                                <span className="text-sm text-slate-600">Email Verified</span>
-                                <div className="flex items-center gap-1 text-green-600">
-                                    <CheckCircle2 className="h-4 w-4" />
-                                    <span className="text-sm font-medium">Yes</span>
-                                </div>
-                            </div>
-                            <Separator />
-                            <div className="flex items-center justify-between">
-                                <span className="text-sm text-slate-600">Stripe Payments</span>
-                                <Badge variant="outline" className={getStripeStatusDisplay(managerProfile?.stripeConnectStatus || 'not_started').color}>
-                                    <CreditCard className="h-3 w-3 mr-1" />
-                                    {getStripeStatusDisplay(managerProfile?.stripeConnectStatus || 'not_started').label}
-                                </Badge>
-                            </div>
-                        </div>
-                    </div>
-
                     {/* Location Info Card */}
                     {managerProfile?.locations && managerProfile.locations.length > 0 && (
-                        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                            <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/50">
+                        <div className="overflow-hidden rounded-[1.35rem] border bg-card">
+                            <div className="border-b px-5 py-4">
                                 <div className="flex items-center gap-2">
                                     <Building2 className="h-4 w-4 text-slate-500" />
-                                    <h3 className="font-semibold text-slate-900">Your Locations</h3>
+                                    <h3 className="font-semibold text-slate-900">{mt("yourLocations")}</h3>
                                 </div>
                             </div>
                             <div className="p-5 space-y-4">
@@ -626,17 +589,12 @@ export default function ManagerProfileSettings() {
                                                 <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0 text-slate-400" />
                                                 <span>{location.address}</span>
                                             </div>
-                                            <div className="flex items-center gap-2 text-sm text-slate-500">
-                                                <Clock className="h-4 w-4 text-slate-400" />
-                                                <span>{location.timezone}</span>
-                                            </div>
                                             
+
                                             {/* Editable Contact Info */}
                                             <div className="pt-2 mt-2 border-t border-slate-100 space-y-2">
                                                 <div className="flex items-center justify-between">
-                                                    <div className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                                                        Business Contact
-                                                    </div>
+                                                    <div className="text-xs font-medium text-slate-500 uppercase tracking-wide">{mt("businessContact")}</div>
                                                     <Button
                                                         variant="ghost"
                                                         size="sm"
@@ -644,24 +602,24 @@ export default function ManagerProfileSettings() {
                                                         className="h-6 px-2 text-xs"
                                                     >
                                                         <Edit3 className="h-3 w-3 mr-1" />
-                                                        {isEditingContact ? 'Cancel' : 'Edit'}
+                                                        {isEditingContact ? mt("cancel") : mt("edit")}
                                                     </Button>
                                                 </div>
                                                 
                                                 {isEditingContact ? (
                                                     <div className="space-y-2">
                                                         <div className="space-y-1">
-                                                            <Label className="text-xs text-slate-500">Contact Email</Label>
+                                                            <Label className="text-xs text-slate-500">{mt("contactEmail")}</Label>
                                                             <Input
                                                                 type="email"
                                                                 value={edit?.contactEmail || ''}
                                                                 onChange={(e) => handleLocationContactEdit(location.id, 'contactEmail', e.target.value)}
-                                                                placeholder="contact@business.com"
+                                                                placeholder={mt("contactBusinessCom")}
                                                                 className="h-8 text-sm"
                                                             />
                                                         </div>
                                                         <div className="space-y-1">
-                                                            <Label className="text-xs text-slate-500">Contact Phone</Label>
+                                                            <Label className="text-xs text-slate-500">{mt("contactPhone")}</Label>
                                                             <Input
                                                                 type="tel"
                                                                 value={edit?.contactPhone || ''}
@@ -671,15 +629,15 @@ export default function ManagerProfileSettings() {
                                                             />
                                                         </div>
                                                         <div className="space-y-1">
-                                                            <Label className="text-xs text-slate-500">Preferred Method</Label>
+                                                            <Label className="text-xs text-slate-500">{mt("preferredMethod")}</Label>
                                                             <select
                                                                 value={edit?.preferredContactMethod || 'email'}
                                                                 onChange={(e) => handleLocationContactEdit(location.id, 'preferredContactMethod', e.target.value)}
                                                                 className="w-full h-8 px-2 text-sm border border-slate-200 rounded-md bg-white"
                                                             >
-                                                                <option value="email">Email</option>
-                                                                <option value="phone">Phone</option>
-                                                                <option value="both">Both</option>
+                                                                <option value="email">{mt("email")}</option>
+                                                                <option value="phone">{mt("phone")}</option>
+                                                                <option value="both">{mt("both")}</option>
                                                             </select>
                                                         </div>
                                                         <Button
@@ -706,7 +664,7 @@ export default function ManagerProfileSettings() {
                                                         ) : (
                                                             <div className="flex items-center gap-2 text-sm text-slate-400 italic">
                                                                 <Mail className="h-3.5 w-3.5" />
-                                                                <span>No email set</span>
+                                                                <span>{mt("noEmailSet")}</span>
                                                             </div>
                                                         )}
                                                         {(edit?.contactPhone || location.contactPhone) ? (
@@ -717,7 +675,7 @@ export default function ManagerProfileSettings() {
                                                         ) : (
                                                             <div className="flex items-center gap-2 text-sm text-slate-400 italic">
                                                                 <Phone className="h-3.5 w-3.5" />
-                                                                <span>No phone set</span>
+                                                                <span>{mt("noPhoneSet")}</span>
                                                             </div>
                                                         )}
                                                         <div className="text-xs text-slate-400">
@@ -733,33 +691,57 @@ export default function ManagerProfileSettings() {
                         </div>
                     )}
 
-                    {/* Quick Tips Card */}
-                    <div className="rounded-xl border border-teal-200 bg-gradient-to-br from-teal-50 to-emerald-50 overflow-hidden">
-                        <div className="p-5">
-                            <div className="flex items-center gap-2 mb-3">
-                                <div className="h-8 w-8 rounded-lg bg-teal-100 flex items-center justify-center">
-                                    <Shield className="h-4 w-4 text-teal-600" />
-                                </div>
-                                <h3 className="font-semibold text-teal-900">Security Tips</h3>
-                            </div>
-                            <ul className="space-y-2 text-sm text-teal-800">
-                                <li className="flex items-start gap-2">
-                                    <CheckCircle2 className="h-4 w-4 mt-0.5 text-teal-600 flex-shrink-0" />
-                                    <span>Use a strong, unique password</span>
-                                </li>
-                                <li className="flex items-start gap-2">
-                                    <CheckCircle2 className="h-4 w-4 mt-0.5 text-teal-600 flex-shrink-0" />
-                                    <span>Keep your email address up to date</span>
-                                </li>
-                                <li className="flex items-start gap-2">
-                                    <CheckCircle2 className="h-4 w-4 mt-0.5 text-teal-600 flex-shrink-0" />
-                                    <span>Review account activity regularly</span>
-                                </li>
-                            </ul>
-                        </div>
-                    </div>
                 </div>
             </div>
+                </TabsContent>
+
+                <TabsContent value="password" className="mt-6 focus-visible:ring-0">
+                    <div className="rounded-xl border bg-card p-6">
+                        <div className="mb-5 flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100">
+                                <KeyRound className="h-5 w-5 text-amber-600" />
+                            </div>
+                            <div>
+                                <h3 className="font-semibold text-foreground">{mt("security")}</h3>
+                                <p className="text-sm text-muted-foreground">{mt("manageYourPasswordAndAccountSecurity")}</p>
+                            </div>
+                        </div>
+                        <ChangePassword role="manager" />
+                    </div>
+                </TabsContent>
+
+                <TabsContent value="payments" className="mt-6 focus-visible:ring-0">
+                    <StripeConnectSetup />
+                </TabsContent>
+
+                <TabsContent value="notifications" className="mt-6 focus-visible:ring-0">
+                    {notificationLocation && onSaveNotificationSettings ? (
+                        <NotificationsSettings
+                            location={notificationLocation}
+                            onSave={onSaveNotificationSettings}
+                        />
+                    ) : (
+                        <div className="rounded-[1.35rem] border border-dashed bg-card p-10 text-center">
+                            <h3 className="font-semibold text-foreground">{mt("selectALocation")}</h3>
+                            <p className="mt-1 text-sm text-muted-foreground">{mt("chooseALocationToManageNotificationSettings")}</p>
+                        </div>
+                    )}
+                </TabsContent>
+
+                <TabsContent value="teams" className="mt-6 focus-visible:ring-0">
+                    <div className="rounded-[1.35rem] border border-dashed border-primary/20 bg-primary/5 p-10 text-center space-y-4">
+                        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+                            <Users className="h-7 w-7 text-primary" />
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-semibold text-foreground">{mt("teamsComingSoon")}</h3>
+                            <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">
+                                {mt("teamsComingSoonDesc")}
+                            </p>
+                        </div>
+                    </div>
+                </TabsContent>
+            </Tabs>
         </div>
     );
 }

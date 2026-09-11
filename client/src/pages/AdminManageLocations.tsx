@@ -1,5 +1,5 @@
 import { logger } from "@/lib/logger";
-import { Plus, Users, Edit, Trash2, Loader2, MapPin, ChefHat, Building2, Mail, MoreHorizontal, Eye, Wrench, Package, KeyRound } from "lucide-react";
+import { Plus, Users, Edit, Trash2, Loader2, MapPin, Calendar, Building2, Mail, MoreHorizontal, Eye, Wrench, Package, KeyRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "@/hooks/use-toast";
@@ -769,7 +769,7 @@ export default function AdminManageLocations() {
                 <p className="text-2xl font-bold mt-1">{kitchens.length}</p>
               </div>
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100">
-                <ChefHat className="h-5 w-5 text-amber-600" />
+                <Calendar className="h-5 w-5 text-amber-600" />
               </div>
             </div>
           </CardContent>
@@ -797,7 +797,7 @@ export default function AdminManageLocations() {
             Locations ({locations.length})
           </TabsTrigger>
           <TabsTrigger value="kitchens">
-            <ChefHat className="h-4 w-4 mr-1.5" />
+            <Calendar className="h-4 w-4 mr-1.5" />
             Kitchens
           </TabsTrigger>
           <TabsTrigger value="managers">
@@ -974,7 +974,7 @@ export default function AdminManageLocations() {
                 </div>
               ) : kitchens.length === 0 ? (
                 <div className="text-center py-12">
-                  <ChefHat className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
+                  <Calendar className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
                   <p className="text-muted-foreground font-medium">No kitchens found</p>
                   <p className="text-sm text-muted-foreground mt-1">Add a kitchen to this location</p>
                 </div>
@@ -1003,7 +1003,7 @@ export default function AdminManageLocations() {
                             <TableCell>
                               <div className="flex items-center gap-2">
                                 <div className="flex h-8 w-8 items-center justify-center rounded-md bg-amber-100 flex-shrink-0">
-                                  <ChefHat className="h-4 w-4 text-amber-600" />
+                                  <Calendar className="h-4 w-4 text-amber-600" />
                                 </div>
                                 <span className="font-medium text-sm">{kitchen.name}</span>
                               </div>

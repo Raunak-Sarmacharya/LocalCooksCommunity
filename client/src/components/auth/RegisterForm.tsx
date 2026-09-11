@@ -1,13 +1,7 @@
 import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
-import {
-    Form,
-    FormControl,
-    FormField,
-    FormItem,
-    FormLabel,
-    FormMessage,
-} from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { FormLegend } from "@/components/ui/form-legend";
 import { Input } from "@/components/ui/input";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -16,6 +10,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import EmailVerificationScreen from "./EmailVerificationScreen";
+import { isDuplicateAccountError } from "@/lib/registration-error";
 
 const registerSchema = z.object({
   email: z.string().email("Valid email required"),
@@ -48,15 +43,13 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin, onRegist
 
   const onSubmit = async (data: RegisterFormData) => {
     // Note: do NOT call setHasAttemptedLogin(true) here at the start.
-    // The signup flow signs the user out at the end, which causes auth-page.tsx
-    // to unmount RegisterForm via a loading spinner, losing local state.
-    // We set it only on error (or not at all for registration).
+    // The signup flow signs the user out at the end, which can remount auth UI
+    // via a loading spinner and wipe local state. Set it only on error.
     setFormError(null);
 
     // Signal parent that registration is starting so it can block userMeta navigation.
-    // signup() creates the Firebase user (which triggers onAuthStateChanged in auth-page.tsx)
-    // BEFORE it signs the user out. Without this guard, auth-page.tsx would navigate to
-    // /accept-terms because the new user has no terms accepted yet.
+    // signup() creates the Firebase user (onAuthStateChanged) BEFORE it signs them out;
+    // without this guard the parent would navigate to /accept-terms too early.
     onRegistrationStart?.();
 
     try {
@@ -74,8 +67,8 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin, onRegist
       // Reset the registration guard so the parent's useEffect works normally again
       onRegistrationError?.();
       // Handle different Firebase error types with user-friendly messages
-      if (e.message.includes('email-already-in-use') || e.message.includes('EMAIL_EXISTS')) {
-        setFormError("This email is already registered. Please try signing in instead.");
+      if (isDuplicateAccountError(e)) {
+        setFormError("An account already exists for this email address. Sign in instead, or use a different email.");
       } else if (e.message.includes('weak-password')) {
         setFormError("Password is too weak. Please choose a stronger password with at least 8 characters.");
       } else if (e.message.includes('invalid-email')) {
@@ -129,7 +122,9 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin, onRegist
             logger.info('❌ GOOGLE REGISTER ERROR:', e.message);
             
             // Handle Google registration errors with user-friendly messages
-            if (e.message.includes('popup-closed-by-user')) {
+            if (isDuplicateAccountError(e)) {
+              setFormError("An account already exists for this email address. Sign in instead, or use a different email.");
+            } else if (e.message.includes('popup-closed-by-user')) {
               setFormError("Registration was cancelled. Please try again.");
             } else if (e.message.includes('popup-blocked')) {
               setFormError("Pop-up blocked. Please allow pop-ups for this site and try again.");
@@ -182,13 +177,16 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin, onRegist
             name="displayName"
             render={({ field }) => (
               <FormItem className="space-y-2">
-                <FormLabel className="text-sm font-semibold text-gray-900">Full name</FormLabel>
+                <FormLabel className="text-sm font-semibold text-gray-900">
+                  Full name <span className="text-red-500" aria-hidden="true">*</span>
+                </FormLabel>
                 <FormControl>
                   <div className="relative group">
                     <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-blue-500 transition-colors pointer-events-none" />
                     <Input 
                       className="pl-11 h-12 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all duration-200 text-sm placeholder:text-gray-400" 
                       placeholder="John Doe" 
+                      required
                       {...field}
                       onChange={(e) => {
                         field.onChange(e);
@@ -210,7 +208,9 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin, onRegist
             name="email"
             render={({ field }) => (
               <FormItem className="space-y-2">
-                <FormLabel className="text-sm font-semibold text-gray-900">Email address</FormLabel>
+                <FormLabel className="text-sm font-semibold text-gray-900">
+                  Email address <span className="text-red-500" aria-hidden="true">*</span>
+                </FormLabel>
                 <FormControl>
                   <div className="relative group">
                     <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-blue-500 transition-colors pointer-events-none" />
@@ -218,6 +218,7 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin, onRegist
                       className="pl-11 h-12 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all duration-200 text-sm placeholder:text-gray-400" 
                       placeholder="you@company.com" 
                       autoComplete="email"
+                      required
                       {...field}
                       onChange={(e) => {
                         field.onChange(e);
@@ -239,7 +240,9 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin, onRegist
             name="password"
             render={({ field }) => (
               <FormItem className="space-y-2">
-                <FormLabel className="text-sm font-semibold text-gray-900">Password</FormLabel>
+                <FormLabel className="text-sm font-semibold text-gray-900">
+                  Password <span className="text-red-500" aria-hidden="true">*</span>
+                </FormLabel>
                 <FormControl>
                   <div className="relative group">
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-blue-500 transition-colors pointer-events-none" />
@@ -248,6 +251,7 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin, onRegist
                       className="pl-11 h-12 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all duration-200 text-sm placeholder:text-gray-400" 
                       placeholder="Create a secure password" 
                       autoComplete="new-password"
+                      required
                       {...field}
                       onChange={(e) => {
                         field.onChange(e);
@@ -263,6 +267,8 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin, onRegist
               </FormItem>
             )}
           />
+
+          <FormLegend className="mt-4 mb-2 justify-center" />
 
           <Button 
             type="submit" 

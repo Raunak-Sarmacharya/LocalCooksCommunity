@@ -1,31 +1,15 @@
 import { logger } from "@/lib/logger";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { useQueryClient } from "@tanstack/react-query";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
-import { 
-  EmailAuthProvider, 
-  reauthenticateWithCredential, 
-  updatePassword 
-} from "firebase/auth";
+import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from "firebase/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { KeyRound, Loader2, Shield } from "lucide-react";
+import { KeyRound, Loader2, Shield } from "@/components/ui/manager-icons";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useLocation, Redirect } from "wouter";
@@ -45,6 +29,8 @@ const changePasswordSchema = z.object({
 type ChangePasswordFormData = z.infer<typeof changePasswordSchema>;
 
 export default function ManagerChangePassword() {
+  const { t } = useTranslation("manager");
+
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -163,9 +149,8 @@ export default function ManagerChangePassword() {
         // Non-blocking - continue with success flow
       }
       
-      toast({ 
-        title: "Success", 
-        description: "Password changed successfully" 
+      toast({ title: t("success"), 
+        description: t("passwordChangedSuccessfully") 
       });
       
       // Clear cache and redirect to manager dashboard
@@ -184,8 +169,7 @@ export default function ManagerChangePassword() {
         errorMessage = "For security reasons, please sign out and sign back in before changing your password.";
       }
       
-      toast({ 
-        title: "Error", 
+      toast({ title: t("error"), 
         description: errorMessage,
         variant: "destructive"
       });
@@ -247,10 +231,8 @@ export default function ManagerChangePassword() {
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-500">
             <Shield className="h-6 w-6 text-white" />
           </div>
-          <CardTitle className="text-2xl font-bold">Change Password Required</CardTitle>
-          <CardDescription>
-            For security reasons, you must change your password before accessing the manager dashboard
-          </CardDescription>
+          <CardTitle className="text-2xl font-bold">{t("changePasswordRequired")}</CardTitle>
+          <CardDescription>{t("forSecurityReasonsYouMustChangeYourPasswordBeforeAccessingTh")}</CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
@@ -264,11 +246,11 @@ export default function ManagerChangePassword() {
                 name="currentPassword"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Current Password</FormLabel>
+                    <FormLabel>{t("currentPassword")}</FormLabel>
                     <FormControl>
                       <Input
                         type="password"
-                        placeholder="Enter your current password"
+                        placeholder={t("enterYourCurrentPassword")}
                         {...field}
                         disabled={isSubmitting}
                       />
@@ -282,11 +264,11 @@ export default function ManagerChangePassword() {
                 name="newPassword"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>New Password</FormLabel>
+                    <FormLabel>{t("newPassword")}</FormLabel>
                     <FormControl>
                       <Input
                         type="password"
-                        placeholder="Enter your new password (min 8 characters)"
+                        placeholder={t("enterYourNewPasswordMin8Characters")}
                         {...field}
                         disabled={isSubmitting}
                       />
@@ -300,11 +282,11 @@ export default function ManagerChangePassword() {
                 name="confirmPassword"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Confirm New Password</FormLabel>
+                    <FormLabel>{t("confirmNewPassword")}</FormLabel>
                     <FormControl>
                       <Input
                         type="password"
-                        placeholder="Confirm your new password"
+                        placeholder={t("confirmYourNewPassword")}
                         {...field}
                         disabled={isSubmitting}
                       />
@@ -320,14 +302,10 @@ export default function ManagerChangePassword() {
               >
                 {isSubmitting ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Changing Password...
-                  </>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />{t("changingPassword")}</>
                 ) : (
                   <>
-                    <KeyRound className="mr-2 h-4 w-4" />
-                    Change Password
-                  </>
+                    <KeyRound className="mr-2 h-4 w-4" />{t("changePassword")}</>
                 )}
               </Button>
             </form>

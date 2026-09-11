@@ -1,20 +1,23 @@
+import { useTranslation } from "react-i18next";
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
 import SEOHead from "@/components/SEO/SEOHead";
-import TidioController from "@/components/chat/TidioController";
+import CustomerSupportButton from "@/components/CustomerSupportButton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import FadeInSection from "@/components/ui/FadeInSection";
-import { 
-  Building2, Calendar, ArrowRight, CheckCircle2, Shield, 
-  Clock, DollarSign, Zap, TrendingUp, Lock,
-  CreditCard, Package, Wrench, HandCoins, HeartHandshake,
-  Settings, Eye, BadgeCheck, Wallet, MessageCircle, Scale, ClipboardCheck
-} from "lucide-react";
+import { addCollection, Icon } from "@iconify/react";
+import { icons as mdiIcons } from "@iconify-json/mdi";
+
+addCollection(mdiIcons);
 import { Link, useLocation } from "wouter";
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { TruncatedText } from "@/components/common/TruncatedText";
+import { landingListKitchenPath } from "@/lib/landing-cta";
 import { motion, useScroll, useTransform, MotionValue } from "framer-motion";
+import { SmartImage } from "@/components/ui/smart-image";
 import emptyKitchenImage from "@assets/emptykitchen.png";
 import DashboardIcon from "../../../attached_assets/Dashboard.svg";
 import BookingIcon from "../../../attached_assets/Booking_k.svg";
@@ -31,7 +34,7 @@ import WeeklyDepositIcon from "../../../attached_assets/WeekyDeposit_K.svg";
 
 // Floating revenue icons for parallax effect
 interface FloatingIconProps {
-  Icon: React.ElementType;
+  icon: string;
   position: { x: number; y: number };
   size: number;
   depth: 1 | 2 | 3;
@@ -43,7 +46,7 @@ interface FloatingIconProps {
 }
 
 function FloatingIcon({
-  Icon,
+  icon,
   position,
   size,
   depth,
@@ -94,7 +97,7 @@ function FloatingIcon({
           transform: 'translateZ(0)',
         }}
       >
-        <Icon className="w-full h-full text-white" />
+        <Icon icon={icon} className="w-full h-full text-white" />
       </div>
     </motion.div>
   );
@@ -116,7 +119,7 @@ function ScrollLinkedRevenueIcons() {
     >
       {/* Desktop Layout */}
       <FloatingIcon
-        Icon={DollarSign}
+        icon="mdi:currency-usd"
         position={{ x: 5, y: 5 }}
         size={72}
         depth={1}
@@ -127,7 +130,7 @@ function ScrollLinkedRevenueIcons() {
         hideOn="mobile"
       />
       <FloatingIcon
-        Icon={TrendingUp}
+        icon="mdi:trending-up"
         position={{ x: 85, y: 15 }}
         size={68}
         depth={1}
@@ -138,7 +141,7 @@ function ScrollLinkedRevenueIcons() {
         hideOn="mobile"
       />
       <FloatingIcon
-        Icon={Calendar}
+        icon="mdi:calendar-blank"
         position={{ x: 12, y: 45 }}
         size={58}
         depth={2}
@@ -149,7 +152,7 @@ function ScrollLinkedRevenueIcons() {
         hideOn="mobile"
       />
       <FloatingIcon
-        Icon={Package}
+        icon="mdi:package-variant-closed"
         position={{ x: 80, y: 55 }}
         size={62}
         depth={2}
@@ -160,7 +163,7 @@ function ScrollLinkedRevenueIcons() {
         hideOn="mobile"
       />
       <FloatingIcon
-        Icon={Wrench}
+        icon="mdi:wrench-outline"
         position={{ x: 3, y: 75 }}
         size={54}
         depth={3}
@@ -171,7 +174,7 @@ function ScrollLinkedRevenueIcons() {
         hideOn="mobile"
       />
       <FloatingIcon
-        Icon={CreditCard}
+        icon="mdi:credit-card-outline"
         position={{ x: 88, y: 82 }}
         size={50}
         depth={3}
@@ -185,7 +188,7 @@ function ScrollLinkedRevenueIcons() {
       {/* Mobile Layout - lighter, edge-positioned icons to avoid overlap */}
       <div className="sm:hidden">
         <FloatingIcon
-          Icon={DollarSign}
+          icon="mdi:currency-usd"
           position={{ x: 6, y: 4 }}
           size={42}
           depth={1}
@@ -195,7 +198,7 @@ function ScrollLinkedRevenueIcons() {
           scrollYProgress={scrollYProgress}
         />
         <FloatingIcon
-          Icon={TrendingUp}
+          icon="mdi:trending-up"
           position={{ x: 86, y: 18 }}
           size={38}
           depth={1}
@@ -205,7 +208,7 @@ function ScrollLinkedRevenueIcons() {
           scrollYProgress={scrollYProgress}
         />
         <FloatingIcon
-          Icon={Calendar}
+          icon="mdi:calendar-blank"
           position={{ x: 4, y: 72 }}
           size={38}
           depth={2}
@@ -215,7 +218,7 @@ function ScrollLinkedRevenueIcons() {
           scrollYProgress={scrollYProgress}
         />
         <FloatingIcon
-          Icon={Package}
+          icon="mdi:package-variant-closed"
           position={{ x: 88, y: 64 }}
           size={34}
           depth={2}
@@ -230,6 +233,7 @@ function ScrollLinkedRevenueIcons() {
 }
 // Typewriter component for kitchen types
 function KitchenTypewriter() {
+  const { t } = useTranslation("kitchen");
   const words = ["Revenue", "Freedom", "Impact"];
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
   const [currentText, setCurrentText] = useState("");
@@ -303,9 +307,7 @@ function KitchenTypewriter() {
         {longestWord}
       </span>
       
-      <span className="font-logo text-white whitespace-nowrap" style={{ fontFamily: "'Lobster', cursive" }}>
-        Real
-      </span>
+      <span className="font-logo text-white whitespace-nowrap" style={{ fontFamily: "'Lobster', cursive" }}>{t("real")}</span>
       <span 
         className="relative ml-3 md:ml-4 inline-block whitespace-nowrap"
         style={{ 
@@ -336,6 +338,8 @@ function KitchenTypewriter() {
 }
 
 export default function KitchenLanding() {
+  const { t } = useTranslation("kitchen");
+  const { user } = useFirebaseAuth();
   const [, setLocation] = useLocation();
 
   const revenueSectionRef = useRef<HTMLDivElement | null>(null);
@@ -363,14 +367,14 @@ export default function KitchenLanding() {
   }, []);
 
   const handleListKitchen = () => {
-    window.location.href = 'mailto:admin@localcook.shop?subject=Kitchen Partnership - List My Kitchen';
+    setLocation(landingListKitchenPath(user));
   };
 
   return (
     <div className="min-h-screen flex flex-col overflow-x-hidden">
       <SEOHead
-        title="For Kitchen Owners — Turn Idle Hours Into Revenue"
-        description="List your commercial kitchen on LocalCooks and earn revenue from idle hours. Automated booking, Stripe payouts, compliance management, and damage protection. Serving St. John's, Newfoundland."
+        title={t("seoKitchenTitle")}
+        description={t("listYourCommercialKitchenSeo")}
         canonicalUrl="/"
         keywords={[
           "list commercial kitchen", "kitchen rental income", "rent out kitchen St Johns",
@@ -381,25 +385,25 @@ export default function KitchenLanding() {
         showLocalBusiness
         breadcrumbs={[
           { name: "LocalCooks", url: "https://www.localcooks.ca/" },
-          { name: "For Kitchen Owners", url: "https://kitchen.localcooks.ca/" },
+          { name: t("breadcrumbKitchenOwners"), url: "https://kitchen.localcooks.ca/" },
         ]}
         faq={[
-          { question: "What types of kitchens can I list on LocalCooks?", answer: "We welcome any inspected, commercial-grade kitchen space — restaurants with downtime, church kitchens, commissary spaces, or dedicated facilities. If your kitchen has a valid operating permit and commercial-grade equipment, it's a perfect fit." },
-          { question: "How much can I earn by listing my kitchen?", answer: "Earnings vary based on your kitchen's size, equipment, and availability. You set your own hourly or daily rates. Many partners generate significant monthly revenue from their idle hours. Weekly payouts via Stripe." },
-          { question: "Do I control who uses my kitchen?", answer: "Absolutely. You review every chef's profile, proposed concept, and rental history before accepting any booking. You always have final say over who cooks in your space." },
-          { question: "How does scheduling work?", answer: "Your business always comes first. Block out the days and hours you need, and list only your available time slots. Our booking system prevents conflicts automatically." },
+          { question: t("kitchenFaqQ1"), answer: t("kitchenFaqA1") },
+          { question: t("kitchenFaqQ2"), answer: t("kitchenFaqA2") },
+          { question: t("kitchenFaqQ3"), answer: t("kitchenFaqA3") },
+          { question: t("kitchenFaqQ4"), answer: t("kitchenFaqA4") },
         ]}
         siteNavigation={[
-          { name: "List Your Kitchen", description: "Turn idle commercial kitchen hours into revenue with automated booking", url: "https://kitchen.localcooks.ca/" },
-          { name: "For Chefs", description: "Launch your food business with commercial kitchen access and compliance support", url: "https://chef.localcooks.ca/" },
-          { name: "Book a Kitchen", description: "Browse and book commercial kitchens in St. John's, Newfoundland", url: "https://chef.localcooks.ca/book-kitchen" },
-          { name: "Order Food", description: "Order authentic homemade meals from local chefs in St. John's", url: "https://localcook.shop/" },
-          { name: "Blog", description: "Stories about local chefs, food trends, and community updates", url: "https://www.localcooks.ca/blog" },
-          { name: "Contact", description: "Get in touch with LocalCooks for questions or partnerships", url: "https://www.localcooks.ca/contact" },
+          { name: t("kitchenNavList"), description: t("kitchenNavListDesc"), url: "https://kitchen.localcooks.ca/" },
+          { name: t("kitchenNavChefs"), description: t("kitchenNavChefsDesc"), url: "https://chef.localcooks.ca/" },
+          { name: t("kitchenNavBook"), description: t("kitchenNavBookDesc"), url: "https://chef.localcooks.ca/book-kitchen" },
+          { name: t("kitchenNavOrder"), description: t("kitchenNavOrderDesc"), url: "https://localcook.shop/" },
+          { name: t("kitchenNavBlog"), description: t("kitchenNavBlogDesc"), url: "https://www.localcooks.ca/blog" },
+          { name: t("kitchenNavContact"), description: t("kitchenNavContactDesc"), url: "https://www.localcooks.ca/contact" },
         ]}
       />
-      <TidioController forceShow={true} />
-      <Header />
+      <CustomerSupportButton />
+      <Header hideHowItWorks />
       
       <main className="flex-grow">
         {/* ═══════════════════════════════════════════════════════════════════════
@@ -430,37 +434,13 @@ export default function KitchenLanding() {
           </div>
 
           <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-20 sm:pt-24 md:pt-28 pb-12 sm:pb-14 md:pb-16 relative z-10">
-            {/* Mobile-only Badge */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-              className="mb-6 block lg:hidden"
-            >
-              <div className="relative inline-flex items-center gap-2 bg-gradient-to-r from-[#F51042] to-rose-500 text-white px-4 py-2 rounded-full border border-[#F51042]/30">
-                <div className="absolute inset-0 rounded-full bg-gradient-to-br from-white/10 to-transparent"></div>
-                <HandCoins className="h-3.5 w-3.5 relative z-10" />
-                <span className="font-semibold text-xs tracking-wide relative z-10">Turn Idle Hours Into Income</span>
-              </div>
-            </motion.div>
+
 
             <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 items-center min-h-[calc(100vh-200px)]">
               
               {/* Left Content Column */}
               <div className="order-2 lg:order-1">
-                {/* Trial Badge - Desktop only */}
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.6, delay: 0.2 }}
-                  className="mb-8 hidden lg:block"
-                >
-                  <div className="relative inline-flex items-center gap-2 bg-gradient-to-r from-[#F51042] to-rose-500 text-white px-4 py-2 rounded-full shadow-xl shadow-[#F51042]/40 border border-[#F51042]/30">
-                    <div className="absolute inset-0 rounded-full bg-gradient-to-br from-white/10 to-transparent"></div>
-                    <HandCoins className="h-3.5 w-3.5 relative z-10" />
-                    <span className="font-semibold text-xs tracking-wide relative z-10">Turn Idle Hours Into Income</span>
-                  </div>
-                </motion.div>
+
 
                 {/* Brand Identity */}
                 <motion.div
@@ -471,9 +451,7 @@ export default function KitchenLanding() {
                   <h1 className="font-logo text-[3.5rem] md:text-[5rem] lg:text-[6rem] text-[#F51042] leading-none mb-4 md:mb-5 tracking-tight">
                     LocalCooks
                   </h1>
-                  <p className="font-mono text-[10px] md:text-[11px] text-[#4A6A5F] uppercase tracking-[0.4em] mb-8">
-                    For Kitchen Owners Who Dream Bigger
-                  </p>
+                  <p className="font-mono text-[10px] md:text-[11px] text-[#4A6A5F] uppercase tracking-[0.4em] mb-8">{t("forKitchenOwnersDreamBigger")}</p>
                 </motion.div>
 
                 {/* Main Headline with Loss Aversion Psychology */}
@@ -483,13 +461,9 @@ export default function KitchenLanding() {
                   transition={{ duration: 0.7, delay: 0.5 }}
                   className="mb-8"
                 >
-                  <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-[#2C2C2C] leading-[1.15] mb-6">
-                    Stop Leaving Money
-                    <br />
+                  <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-[#2C2C2C] leading-[1.15] mb-6">{t("stopLeavingMoney")}<br />
                     <span className="relative inline-block">
-                      <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-rose-500 to-[#F51042]">
-                        On the Table.
-                      </span>
+                      <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-rose-500 to-[#F51042]">{t("onTheTable")}</span>
                       <motion.svg 
                         className="absolute -bottom-2 left-0 w-full" 
                         viewBox="0 0 250 12" 
@@ -511,9 +485,7 @@ export default function KitchenLanding() {
                     </span>
                   </h2>
                   <p className="text-sm md:text-base lg:text-lg text-[#6B6B6B] leading-relaxed max-w-lg">
-                    <span className="block mb-3 font-semibold text-[#2C2C2C]">
-                      Your kitchen has untapped earning potential.
-                    </span>
+                    <span className="block mb-3 font-semibold text-[#2C2C2C]">{t("untappedEarningPotential")}</span>
                     <span className="block">
                       Rent your underutilized hours, storage, and equipment to verified local chefs. 
                       Generate $500+ /month passively while supporting the growing local food community.
@@ -531,20 +503,27 @@ export default function KitchenLanding() {
                   <Button
                     onClick={handleListKitchen}
                     size="lg"
-                    className="group relative bg-gradient-to-r from-[#F51042] to-rose-500 hover:from-rose-500 hover:to-[#F51042] text-white font-bold py-3 sm:py-4 md:py-7 px-4 sm:px-6 md:px-12 text-xs sm:text-sm md:text-lg rounded-full transition-all duration-300 shadow-xl hover:shadow-2xl hover:shadow-[#F51042]/40 hover:-translate-y-1 overflow-hidden flex-1 min-h-[44px] sm:min-h-[48px]"
+                    className="group relative bg-[#F51042] hover:bg-[#D90E3A] text-white font-bold py-3 md:py-4 px-3 sm:px-6 md:px-12 text-[11px] sm:text-sm md:text-lg rounded-full transition-all duration-300 shadow-xl hover:shadow-2xl hover:shadow-[#F51042]/30 hover:-translate-y-1 overflow-hidden flex-1 min-w-0 min-h-[44px] sm:min-h-[48px]"
                   >
-                    <span className="relative z-10 flex items-center justify-center">
-                      List Your Kitchen Now
-                      <ArrowRight className="ml-1 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5 group-hover:translate-x-1 transition-transform" />
+                    <span className="relative z-10 flex items-center justify-center truncate">
+                      <TruncatedText className="truncate">{t("getStarted")}</TruncatedText>
+                      <Icon icon="mdi:arrow-right" className="ml-1 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5 shrink-0 group-hover:translate-x-1 transition-transform" />
                     </span>
+                    <motion.div
+                      className="absolute inset-0 bg-gradient-to-r from-[#D90E3A] to-[#F51042]"
+                      initial={{ x: "100%" }}
+                      whileHover={{ x: 0 }}
+                      transition={{ duration: 0.3 }}
+                    />
                   </Button>
                   <Button
                     variant="outline"
                     size="lg"
-                    className="border-2 border-[#2C2C2C]/20 text-[#2C2C2C] hover:border-[#F51042] hover:text-[#F51042] hover:bg-rose-50 font-semibold py-3 sm:py-4 md:py-7 px-4 sm:px-6 md:px-10 text-xs sm:text-sm md:text-lg rounded-full transition-all duration-300 flex-1 min-h-[44px] sm:min-h-[48px]"
+                    className="group inline-flex items-center justify-center border-2 border-[#2C2C2C]/20 text-[#2C2C2C] hover:border-[#F51042] hover:text-[#F51042] hover:bg-[#F51042]/5 font-semibold py-3 md:py-4 px-3 sm:px-6 md:px-10 text-[11px] sm:text-sm md:text-lg rounded-full transition-all duration-300 flex-1 min-w-0 min-h-[44px] sm:min-h-[48px]"
                     onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
                   >
-                    See How It Works
+                    <Icon icon="mdi:help-circle-outline" className="mr-1 sm:mr-1.5 h-3.5 w-3.5 sm:h-4 sm:w-4 md:h-5 md:w-5 shrink-0 text-[#2C2C2C] group-hover:scale-110 transition-transform" />
+                    <TruncatedText className="truncate">{t("seeHowItWorks")}</TruncatedText>
                   </Button>
                 </motion.div>
 
@@ -556,9 +535,8 @@ export default function KitchenLanding() {
                   className="flex flex-nowrap md:flex-wrap gap-x-2 md:gap-x-6 gap-y-3"
                 >
                   {[
-                    { icon: CheckCircle2, text: "0% Platform Fee During Trial" },
-                    { icon: Shield, text: "Verified Renters Only" },
-                    { icon: HeartHandshake, text: "Full Insurance Coverage" }
+                    { icon: "mdi:shield-check-outline", text: t("verifiedRentersOnly") },
+                    { icon: "mdi:handshake-outline", text: t("fullInsuranceCoverage") }
                   ].map((item, i) => (
                     <motion.span 
                       key={i}
@@ -567,7 +545,7 @@ export default function KitchenLanding() {
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ duration: 0.4, delay: 1 + (i * 0.1) }}
                     >
-                      <item.icon className="h-3 w-3 md:h-4 md:w-4 text-[#F51042] flex-shrink-0" />
+                      <Icon icon={item.icon} className="h-3 w-3 md:h-4 md:w-4 text-[#F51042] flex-shrink-0" />
                       <span className="leading-tight">{item.text}</span>
                     </motion.span>
                   ))}
@@ -589,10 +567,12 @@ export default function KitchenLanding() {
                   {/* Main Image Container */}
                   <div className="relative rounded-[2rem] overflow-visible shadow-2xl shadow-rose-400/20 w-full">
                     <div className="relative rounded-[2rem] overflow-hidden w-full">
-                      <img 
+                      <SmartImage 
                         src={emptyKitchenImage} 
-                        alt="Professional commercial kitchen ready for rental" 
+                        alt={t("altKitchenRental")} 
                         className="w-full h-auto object-cover aspect-[4/3]"
+                        loading="eager"
+                        fetchPriority="high"
                       />
                       
                       {/* Gradient Overlay */}
@@ -608,21 +588,21 @@ export default function KitchenLanding() {
                     >
                       <div className="flex items-center justify-between gap-2 lg:gap-4">
                         <div className="flex-1 min-w-0">
-                          <p className="text-[8px] lg:text-[9px] font-semibold text-slate-500 uppercase tracking-[0.15em] leading-none mb-0.5 lg:mb-1">During Trial</p>
-                          <p className="text-sm lg:text-base font-bold text-slate-950 leading-tight mb-1 lg:mb-1.5">0% Platform Fee</p>
+                          <p className="text-[8px] lg:text-[9px] font-semibold text-slate-500 uppercase tracking-[0.15em] leading-none mb-0.5 lg:mb-1">{t("duringTrial")}</p>
+                          <p className="text-sm lg:text-base font-bold text-slate-950 leading-tight mb-1 lg:mb-1.5">{t("zeroPlatformFee")}</p>
                           <div className="flex items-center gap-2 lg:gap-4">
                             <div className="flex items-center gap-0.5 lg:gap-1">
                               <div className="w-0.5 h-0.5 lg:w-1 lg:h-1 rounded-full bg-[#F51042]"></div>
-                              <span className="text-[9px] lg:text-[10px] font-semibold text-slate-700">100% yours</span>
+                              <span className="text-[9px] lg:text-[10px] font-semibold text-slate-700">{t("hundredYours")}</span>
                             </div>
                             <div className="flex items-center gap-0.5 lg:gap-1">
                               <div className="w-0.5 h-0.5 lg:w-1 lg:h-1 rounded-full bg-[#F51042]"></div>
-                              <span className="text-[9px] lg:text-[10px] font-semibold text-slate-700">Zero risk</span>
+                              <span className="text-[9px] lg:text-[10px] font-semibold text-slate-700">{t("zeroRisk")}</span>
                             </div>
                           </div>
                         </div>
                         <div className="flex-shrink-0 text-right pl-2 lg:pl-4 border-l border-slate-200">
-                          <p className="text-[8px] lg:text-[9px] font-semibold text-slate-500 uppercase tracking-[0.15em] leading-none mb-0.5 lg:mb-1">You Keep</p>
+                          <p className="text-[8px] lg:text-[9px] font-semibold text-slate-500 uppercase tracking-[0.15em] leading-none mb-0.5 lg:mb-1">{t("youKeep")}</p>
                           <p className="text-lg lg:text-xl font-bold text-[#F51042] leading-tight">100%</p>
                         </div>
                       </div>
@@ -643,13 +623,13 @@ export default function KitchenLanding() {
                       <div className="w-8 h-8 lg:w-11 lg:h-11 bg-gradient-to-br from-[#F51042] to-rose-500 rounded-lg lg:rounded-xl flex items-center justify-center shadow-lg shadow-[#F51042]/30 flex-shrink-0">
                         <img
                           src={EarnIcon}
-                          alt="Earn while you're away"
+                          alt={t("altEarnAway")}
                           className="h-6 w-6 lg:h-8 lg:w-8 object-contain"
                         />
                       </div>
                       <div>
-                        <p className="text-[8px] lg:text-[10px] font-medium text-slate-600 uppercase tracking-wide leading-tight">Earn While You're Away</p>
-                        <p className="text-[10px] lg:text-xs font-bold text-slate-900 leading-tight">$500+ per month</p>
+                        <p className="text-[8px] lg:text-[10px] font-medium text-slate-600 uppercase tracking-wide leading-tight">{t("earnWhileAway")}</p>
+                        <p className="text-[10px] lg:text-xs font-bold text-slate-900 leading-tight">{t("fiveHundredPlusPerMonth")}</p>
                       </div>
                     </div>
                   </motion.div>
@@ -666,11 +646,11 @@ export default function KitchenLanding() {
                       <div className="w-5 h-5 lg:w-7 lg:h-7 bg-gradient-to-br from-violet-500 to-purple-600 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
                         <img
                           src={BookingIcon}
-                          alt="Automated booking system"
+                          alt={t("altAutoBooking")}
                           className="h-4 w-4 lg:h-5 lg:w-5 object-contain"
                         />
                       </div>
-                      <span className="text-[10px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">Automated booking system</span>
+                      <span className="text-[10px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">{t("automatedBooking")}</span>
                     </div>
                   </motion.div>
 
@@ -685,11 +665,11 @@ export default function KitchenLanding() {
                       <div className="w-5 h-5 lg:w-7 lg:h-7 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
                         <img
                           src={VerifiedIcon}
-                          alt="Verified chefs"
+                          alt={t("altVerifiedChefs")}
                           className="h-4 w-4 lg:h-5 lg:w-5 object-contain"
                         />
                       </div>
-                      <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">Every renter verified & insured</span>
+                      <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">{t("everyRenterVerified")}</span>
                     </div>
                   </motion.div>
 
@@ -704,11 +684,11 @@ export default function KitchenLanding() {
                       <div className="w-6 h-6 lg:w-8 lg:h-8 bg-gradient-to-br from-amber-500 to-orange-600 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
                         <img
                           src={WeeklyDepositIcon}
-                          alt="Weekly direct deposits"
+                          alt={t("altWeeklyDeposits")}
                           className="h-5 w-5 lg:h-6 lg:w-6 object-contain"
                         />
                       </div>
-                      <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">Weekly direct deposits</span>
+                      <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">{t("weeklyDeposits")}</span>
                     </div>
                   </motion.div>
 
@@ -723,11 +703,11 @@ export default function KitchenLanding() {
                       <div className="w-5 h-5 lg:w-7 lg:h-7 bg-gradient-to-br from-rose-500 to-pink-600 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
                         <img
                           src={RulesIcon}
-                          alt="Your rules and schedule"
+                          alt={t("altRulesSchedule")}
                           className="h-4 w-4 lg:h-5 lg:w-5 object-contain"
                         />
                       </div>
-                      <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">Your rules, your rates, your schedule</span>
+                      <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">{t("yourRulesRates")}</span>
                     </div>
                   </motion.div>
 
@@ -742,11 +722,11 @@ export default function KitchenLanding() {
                       <div className="w-6 h-6 lg:w-8 lg:h-8 bg-gradient-to-br from-teal-500 to-cyan-600 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
                         <img
                           src={HoursEquipmentIcon}
-                          alt="Hours, storage, and equipment"
+                          alt={t("altHoursStorage")}
                           className="h-5 w-5 lg:h-6 lg:w-6 object-contain"
                         />
                       </div>
-                      <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">Hours + Storage + Equipment</span>
+                      <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">{t("hoursStorageEquip")}</span>
                     </div>
                   </motion.div>
                 </motion.div>
@@ -758,16 +738,12 @@ export default function KitchenLanding() {
         {/* ═══════════════════════════════════════════════════════════════════════
             THE PROBLEM - Lost Revenue Section with Floating Icons
         ═══════════════════════════════════════════════════════════════════════ */}
-        <section id="lost-revenue" className="relative py-20 md:py-28 px-4 bg-gradient-to-b from-rose-50/40 via-white to-white overflow-hidden">
+        <section id="lost-revenue" className="relative scroll-mt-24 py-20 md:py-28 px-4 bg-gradient-to-b from-rose-50/40 via-white to-white overflow-hidden">
           <ScrollLinkedRevenueIcons />
           
           <div className="container mx-auto max-w-4xl relative z-10">
             <FadeInSection>
               <div className="text-center">
-                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-[#F51042] mb-4 px-4 py-2 bg-rose-100 rounded-full">
-                  The Opportunity You're Missing
-                </span>
-                
                 <motion.h2
                   initial={{ opacity: 0, y: 30 }}
                   whileInView={{ opacity: 1, y: 0 }}
@@ -775,11 +751,9 @@ export default function KitchenLanding() {
                   transition={{ duration: 0.7, delay: 0.1 }}
                   className="text-2xl md:text-3xl lg:text-4xl font-bold text-[#1A1A1A] leading-tight mb-6"
                 >
-                  Every empty hour is{" "}
+                  {t("everyEmptyHourIs")}{" "}
                   <span className="relative inline-block">
-                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-500 via-red-500 to-rose-600">
-                      money walking out the door.
-                    </span>
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-500 via-red-500 to-rose-600">{t("moneyWalkingOut")}</span>
                     <motion.svg 
                       className="absolute -bottom-1 md:-bottom-2 left-0 w-full" 
                       viewBox="0 0 400 12" 
@@ -811,28 +785,22 @@ export default function KitchenLanding() {
                   className="max-w-2xl mx-auto"
                 >
                   <p className="text-sm md:text-base lg:text-lg text-[#6B6B6B] leading-relaxed mb-8">
-                    That cold storage sitting quiet overnight?{" "}
-                    <span className="font-semibold text-[#2C2C2C] block sm:inline whitespace-nowrap">
-                      Lost revenue.
-                    </span>
+                    {t("coldStorageQuestion")}{" "}
+                    <span className="font-semibold text-[#2C2C2C] block sm:inline whitespace-nowrap">{t("lostRevenue")}</span>
                     <br />
-                    Equipment collecting dust?{" "}
-                    <span className="font-semibold text-[#2C2C2C] block sm:inline whitespace-nowrap">
-                      Depreciating assets.
-                    </span>
+                    {t("equipmentDustQuestion")}{" "}
+                    <span className="font-semibold text-[#2C2C2C] block sm:inline whitespace-nowrap">{t("depreciatingAssets")}</span>
                     <br />
-                    Empty afternoon shifts?{" "}
-                    <span className="font-semibold text-[#2C2C2C] block sm:inline whitespace-nowrap">
-                      Missed income.
-                    </span>
+                    {t("emptyAfternoonQuestion")}{" "}
+                    <span className="font-semibold text-[#2C2C2C] block sm:inline whitespace-nowrap">{t("missedIncome")}</span>
                   </p>
                   
                   {/* Stats Grid */}
                   <div className="grid grid-cols-3 gap-4 md:gap-8 mt-12">
                     {[
-                      { stat: "40%", label: "Average Kitchen Utilization", subtext: "(Before LocalCooks)" },
-                      { stat: "$500+", label: "Monthly Lost Revenue", subtext: "From idle hours alone" },
-                      { stat: "85%", label: "Avg. Utilization After", subtext: "(With LocalCooks)" },
+                      { stat: "40%", label: t("avgUtilization"), subtext: t("beforeLocalCooks") },
+                      { stat: "$500+", label: t("monthlyLostRevenue"), subtext: t("fromIdleHoursAlone") },
+                      { stat: "85%", label: t("avgUtilizationAfter"), subtext: t("withLocalCooks") },
                     ].map((item, i) => (
                       <motion.div
                         key={i}
@@ -860,7 +828,7 @@ export default function KitchenLanding() {
         <section
           id="revenue-streams"
           ref={revenueSectionRef}
-          className="py-24 md:py-32 px-4 bg-gradient-to-b from-white via-slate-50/50 to-white relative overflow-hidden"
+          className="py-20 md:py-28 px-4 bg-gradient-to-b from-white via-slate-50/50 to-white relative overflow-hidden"
         >
           {/* Subtle background decoration */}
           <div className="absolute inset-0 pointer-events-none">
@@ -871,35 +839,18 @@ export default function KitchenLanding() {
           <div className="container mx-auto max-w-6xl relative z-10">
             {/* Section Header */}
             <FadeInSection>
-              <div className="mb-16 md:mb-20">
+              <div className="mb-12 md:mb-16">
                 <div className="flex flex-col md:flex-row items-center md:items-start justify-between gap-8">
                   <div className="text-center md:text-left max-w-2xl">
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      viewport={{ once: true }}
-                      transition={{ duration: 0.5 }}
-                      className="inline-flex items-center gap-2 bg-rose-50 border border-rose-200/60 rounded-full px-4 py-2 mb-6"
-                    >
-                      <div className="w-2 h-2 rounded-full bg-[#F51042] animate-pulse" />
-                      <span className="font-mono text-xs uppercase tracking-[0.2em] text-[#F51042] font-medium">
-                        Revenue Streams
-                      </span>
-                    </motion.div>
-                    
                     <motion.h2
                       initial={{ opacity: 0, y: 30 }}
                       whileInView={{ opacity: 1, y: 0 }}
                       viewport={{ once: true }}
                       transition={{ duration: 0.7, delay: 0.1 }}
-                      className="text-3xl md:text-4xl lg:text-5xl font-bold text-slate-900 leading-tight mb-4"
-                    >
-                      Multiple Revenue Streams.
-                      <br />
+                      className="text-2xl md:text-3xl lg:text-4xl font-bold text-[#1A1A1A] leading-tight mb-4"
+                    >{t("multipleRevenueStreams")}<br />
                       <span className="relative inline-block mt-2">
-                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-rose-500 to-[#F51042]">
-                          One Dashboard.
-                        </span>
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-rose-500 to-[#F51042]">{t("oneDashboard")}</span>
                         <motion.svg 
                           className="absolute -bottom-2 left-0 w-full" 
                           viewBox="0 0 280 12" 
@@ -936,9 +887,7 @@ export default function KitchenLanding() {
                       viewport={{ once: true }}
                       transition={{ duration: 0.6, delay: 0.2 }}
                       className="text-sm md:text-base lg:text-lg text-slate-600 leading-relaxed"
-                    >
-                      Maximize every dollar of kitchen potential with diverse, flexible earning opportunities.
-                    </motion.p>
+                    >{t("maximizeEveryDollar")}</motion.p>
                   </div>
 
                   {/* Dashboard Illustration */}
@@ -952,10 +901,10 @@ export default function KitchenLanding() {
                   >
                     <div className="relative">
                     <div className="absolute -inset-10 bg-gradient-to-br from-[#F51042]/20 via-rose-400/15 to-rose-300/20 rounded-full blur-3xl" />
-                      <img
+                      <SmartImage
                         src={DashboardIcon}
-                        alt="LocalCooks revenue dashboard"
-                        className="relative w-64 lg:w-80 h-auto object-contain drop-shadow-[0_18px_40px_rgba(15,118,110,0.25)]"
+                        alt={t("altRevenueDashboard")}
+                        className="relative w-56 lg:w-72 h-auto object-contain drop-shadow-[0_14px_32px_rgba(245,16,66,0.14)]"
                       />
                     </div>
                   </motion.div>
@@ -964,42 +913,32 @@ export default function KitchenLanding() {
             </FadeInSection>
 
             {/* Premium Bento Grid - 2x2 Layout */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-6 lg:gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-6">
               
               {/* Card 1: Hourly Kitchen Rentals */}
               <FadeInSection delay={0}>
                 <motion.div
                   className="group relative h-full"
-                  whileHover={{ y: -8 }}
+                  whileHover={{ y: -6 }}
                   transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-[#F51042]/20 to-rose-400/20 rounded-3xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                  <div className="relative h-full bg-white rounded-3xl border border-slate-200/80 p-8 md:p-10 shadow-[0_4px_40px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_60px_rgba(245,16,66,0.2)] hover:border-rose-200/60 transition-all duration-500 overflow-hidden">
-                    {/* Decorative gradient orb */}
-                    <div className="absolute -top-20 -right-20 w-40 h-40 bg-gradient-to-br from-[#F51042]/20 to-rose-400/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
-                    
+                  <div className="relative h-full bg-white rounded-2xl border border-gray-100 p-6 md:p-7 lg:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 overflow-hidden">
                     {/* Icon */}
-                    <div className="relative mb-6">
-                      <div className="w-14 h-14 bg-gradient-to-br from-[#F51042] to-rose-500 rounded-2xl flex items-center justify-center shadow-lg shadow-[#F51042]/25 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
-                        <Clock className="h-7 w-7 text-white" />
+                    <div className="relative mb-4">
+                      <div className="w-10 h-10 rounded-lg bg-gray-100 text-gray-700 flex items-center justify-center transition-colors duration-300 group-hover:bg-rose-50 group-hover:text-[#F51042]">
+                        <Icon icon="mdi:clock-outline" className="h-5 w-5" />
                       </div>
                     </div>
                     
                     {/* Content */}
                     <div className="relative">
-                      <h3 className="text-base md:text-lg lg:text-xl font-bold text-slate-900 mb-3 group-hover:text-[#F51042] transition-colors duration-300">
-                        Hourly Kitchen Rentals
-                      </h3>
+                      <h3 className="text-base md:text-lg lg:text-xl font-bold text-slate-900 mb-3 group-hover:text-[#F51042] transition-colors duration-300">{t("hourlyRentals")}</h3>
                       
-                      <div className="inline-flex items-center gap-2 bg-rose-50 rounded-full px-4 py-1.5 mb-5">
-                        <span className="text-xs md:text-sm font-semibold text-[#F51042]">
-                          Typical range: $30–$80/hour
-                        </span>
+                      <div className="inline-flex items-center gap-2 bg-rose-50 rounded-full px-3 py-1.5 mb-4">
+                        <span className="text-xs md:text-sm font-semibold text-[#F51042]">{t("typicalRangeHourly")}</span>
                       </div>
                       
-                      <p className="text-slate-600 leading-relaxed text-xs md:text-sm">
-                        Fill your calendar with chefs, bakers, and caterers who book flexible blocks of time. Hourly rentals are the fastest, easiest way to turn quiet hours into predictable income—without changing how you already operate.
-                      </p>
+                      <p className="text-slate-600 leading-relaxed text-xs md:text-sm">{t("fillYourCalendar")}</p>
                     </div>
                   </div>
                 </motion.div>
@@ -1009,36 +948,26 @@ export default function KitchenLanding() {
               <FadeInSection delay={1}>
                 <motion.div
                   className="group relative h-full"
-                  whileHover={{ y: -8 }}
+                  whileHover={{ y: -6 }}
                   transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-violet-500/20 to-purple-500/20 rounded-3xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                  <div className="relative h-full bg-white rounded-3xl border border-slate-200/80 p-8 md:p-10 shadow-[0_4px_40px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_60px_rgba(139,92,246,0.15)] hover:border-violet-200/60 transition-all duration-500 overflow-hidden">
-                    {/* Decorative gradient orb */}
-                    <div className="absolute -top-20 -right-20 w-40 h-40 bg-gradient-to-br from-violet-400/20 to-purple-400/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
-                    
+                  <div className="relative h-full bg-white rounded-2xl border border-gray-100 p-6 md:p-7 lg:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 overflow-hidden">
                     {/* Icon */}
-                    <div className="relative mb-6">
-                      <div className="w-14 h-14 bg-gradient-to-br from-violet-500 to-purple-500 rounded-2xl flex items-center justify-center shadow-lg shadow-violet-500/25 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
-                        <Package className="h-7 w-7 text-white" />
+                    <div className="relative mb-4">
+                      <div className="w-10 h-10 rounded-lg bg-gray-100 text-gray-700 flex items-center justify-center transition-colors duration-300 group-hover:bg-rose-50 group-hover:text-[#F51042]">
+                        <Icon icon="mdi:package-variant-closed" className="h-5 w-5" />
                       </div>
                     </div>
                     
                     {/* Content */}
                     <div className="relative">
-                      <h3 className="text-base md:text-lg lg:text-xl font-bold text-slate-900 mb-3 group-hover:text-violet-700 transition-colors duration-300">
-                        Storage That Pays
-                      </h3>
+                      <h3 className="text-base md:text-lg lg:text-xl font-bold text-slate-900 mb-3 group-hover:text-violet-700 transition-colors duration-300">{t("storageThatPays")}</h3>
                       
-                      <div className="inline-flex items-center gap-2 bg-violet-50 rounded-full px-4 py-1.5 mb-5">
-                        <span className="text-xs md:text-sm font-semibold text-violet-700">
-                          Typical range: $100–$300/month
-                        </span>
+                      <div className="inline-flex items-center gap-2 bg-rose-50 rounded-full px-3 py-1.5 mb-4">
+                        <span className="text-xs md:text-sm font-semibold text-[#F51042]">{t("typicalRangeStorage")}</span>
                       </div>
                       
-                      <p className="text-slate-600 leading-relaxed text-xs md:text-sm">
-                        Monetize every shelf, fridge, and freezer door. Offer dry, cold, or freezer storage as add-ons or standalone plans so food businesses can scale production, while your underused storage becomes a steady monthly revenue line.
-                      </p>
+                      <p className="text-slate-600 leading-relaxed text-xs md:text-sm">{t("monetizeEveryShelf")}</p>
                     </div>
                   </div>
                 </motion.div>
@@ -1048,36 +977,26 @@ export default function KitchenLanding() {
               <FadeInSection delay={2}>
                 <motion.div
                   className="group relative h-full"
-                  whileHover={{ y: -8 }}
+                  whileHover={{ y: -6 }}
                   transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-amber-500/20 to-orange-500/20 rounded-3xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                  <div className="relative h-full bg-white rounded-3xl border border-slate-200/80 p-8 md:p-10 shadow-[0_4px_40px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_60px_rgba(245,158,11,0.15)] hover:border-amber-200/60 transition-all duration-500 overflow-hidden">
-                    {/* Decorative gradient orb */}
-                    <div className="absolute -top-20 -right-20 w-40 h-40 bg-gradient-to-br from-amber-400/20 to-orange-400/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
-                    
+                  <div className="relative h-full bg-white rounded-2xl border border-gray-100 p-6 md:p-7 lg:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 overflow-hidden">
                     {/* Icon */}
-                    <div className="relative mb-6">
-                      <div className="w-14 h-14 bg-gradient-to-br from-amber-500 to-orange-500 rounded-2xl flex items-center justify-center shadow-lg shadow-amber-500/25 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
-                        <Wrench className="h-7 w-7 text-white" />
+                    <div className="relative mb-4">
+                      <div className="w-10 h-10 rounded-lg bg-gray-100 text-gray-700 flex items-center justify-center transition-colors duration-300 group-hover:bg-rose-50 group-hover:text-[#F51042]">
+                        <Icon icon="mdi:wrench-outline" className="h-5 w-5" />
                       </div>
                     </div>
                     
                     {/* Content */}
                     <div className="relative">
-                      <h3 className="text-base md:text-lg lg:text-xl font-bold text-slate-900 mb-3 group-hover:text-amber-700 transition-colors duration-300">
-                        Equipment Rental
-                      </h3>
+                      <h3 className="text-base md:text-lg lg:text-xl font-bold text-slate-900 mb-3 group-hover:text-amber-700 transition-colors duration-300">{t("equipmentRental")}</h3>
                       
-                      <div className="inline-flex items-center gap-2 bg-amber-50 rounded-full px-4 py-1.5 mb-5">
-                        <span className="text-xs md:text-sm font-semibold text-amber-700">
-                          Typical add-ons: $5–$15/booking
-                        </span>
+                      <div className="inline-flex items-center gap-2 bg-rose-50 rounded-full px-3 py-1.5 mb-4">
+                        <span className="text-xs md:text-sm font-semibold text-[#F51042]">{t("typicalAddonsEquip")}</span>
                       </div>
                       
-                      <p className="text-slate-600 leading-relaxed text-xs md:text-sm">
-                        Your blast chillers, commercial mixers, and specialty tools are assets—not just overhead. Bundle them into kitchen bookings or charge per use so every piece of gear helps pay for itself faster.
-                      </p>
+                      <p className="text-slate-600 leading-relaxed text-xs md:text-sm">{t("blastChillersAssets")}</p>
                     </div>
                   </div>
                 </motion.div>
@@ -1087,36 +1006,26 @@ export default function KitchenLanding() {
               <FadeInSection delay={3}>
                 <motion.div
                   className="group relative h-full"
-                  whileHover={{ y: -8 }}
+                  whileHover={{ y: -6 }}
                   transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-[#F51042]/18 to-rose-400/18 rounded-3xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                  <div className="relative h-full bg-white rounded-3xl border border-slate-200/80 p-8 md:p-10 shadow-[0_4px_40px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_60px_rgba(245,16,66,0.18)] hover:border-rose-200/60 transition-all duration-500 overflow-hidden">
-                    {/* Decorative elements */}
-                    <div className="absolute -top-20 -right-20 w-40 h-40 bg-gradient-to-br from-[#F51042]/20 to-rose-400/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
-                    
+                  <div className="relative h-full bg-white rounded-2xl border border-gray-100 p-6 md:p-7 lg:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 overflow-hidden">
                     {/* Icon */}
-                    <div className="relative mb-6">
-                      <div className="w-14 h-14 bg-gradient-to-br from-rose-400 to-[#F51042] rounded-2xl flex items-center justify-center shadow-lg shadow-[#F51042]/30 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
-                        <Zap className="h-7 w-7 text-white" />
+                    <div className="relative mb-4">
+                      <div className="w-10 h-10 rounded-lg bg-gray-100 text-gray-700 flex items-center justify-center transition-colors duration-300 group-hover:bg-rose-50 group-hover:text-[#F51042]">
+                        <Icon icon="mdi:lightning-bolt-outline" className="h-5 w-5" />
                       </div>
                     </div>
                     
                     {/* Content */}
                     <div className="relative">
-                      <h3 className="text-base md:text-lg lg:text-xl font-bold text-slate-900 mb-3">
-                        Custom Programs & Premium Uses
-                      </h3>
+                      <h3 className="text-base md:text-lg lg:text-xl font-bold text-slate-900 mb-3">{t("customPrograms")}</h3>
                       
-                      <div className="inline-flex items-center gap-2 bg-rose-50 rounded-full px-4 py-1.5 mb-5 border border-rose-100">
-                        <span className="text-xs md:text-sm font-medium text-[#F51042]">
-                          From monthly memberships to events and pop-ups – fully tailored
-                        </span>
+                      <div className="inline-flex items-center gap-2 bg-rose-50 rounded-full px-3 py-1.5 mb-4 border border-rose-100">
+                        <span className="text-xs md:text-sm font-medium text-[#F51042]">{t("monthlyMemberships")}</span>
                       </div>
                       
-                      <p className="text-slate-600 leading-relaxed text-xs md:text-sm">
-                        When your space has more potential than a simple hourly rate, we help you tap into it. Offer fixed monthly memberships for serious food businesses, premium-priced workshops and events, or bespoke packages for pop-ups and catering teams. If you can imagine the use case, we can help you price it, structure it, and get it booked.
-                      </p>
+                      <p className="text-slate-600 leading-relaxed text-xs md:text-sm">{t("whenYourSpaceHasMore")}</p>
                     </div>
                   </div>
                 </motion.div>
@@ -1146,7 +1055,7 @@ export default function KitchenLanding() {
         {/* ═══════════════════════════════════════════════════════════════════════
             HOW IT WORKS - From Idle Space to Active Revenue
         ═══════════════════════════════════════════════════════════════════════ */}
-        <section id="how-it-works" className="py-20 md:py-28 px-4 bg-[#F51042] text-white relative overflow-hidden">
+        <section id="how-it-works" className="scroll-mt-24 py-20 md:py-28 px-4 bg-[#F51042] text-white relative overflow-hidden">
           {/* Background decorations */}
           <div className="absolute inset-0 opacity-10">
             <div className="absolute top-20 left-20 w-96 h-96 bg-white rounded-full blur-3xl" />
@@ -1156,13 +1065,10 @@ export default function KitchenLanding() {
           <div className="container mx-auto max-w-6xl relative z-10">
             <FadeInSection>
               <div className="text-center mb-12 md:mb-16">
-                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-white/80 mb-4 px-4 py-2 bg-white/10 rounded-full">
-                  List Your Kitchen Today
-                </span>
                 <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold mb-4">
-                  From Idle Space to Active Revenue in{" "}
+                  {t("idleSpaceToRevenueIn")}{" "}
                   <span className="relative inline-block">
-                    <span className="text-white">3 Steps.</span>
+                    <span className="text-white">{t("threeSteps")}</span>
                     <motion.svg 
                       className="absolute -bottom-2 left-0 w-full" 
                       viewBox="0 0 400 12" 
@@ -1185,9 +1091,7 @@ export default function KitchenLanding() {
                     </motion.svg>
                   </span>
                 </h2>
-                <p className="text-sm md:text-base lg:text-lg text-white/80 max-w-3xl mx-auto leading-relaxed">
-                  We've stripped away the complexity of commercial leasing. No contracts to chase, no insurance headaches, no admin burden—just a simple platform that works for you.
-                </p>
+                <p className="text-sm md:text-base lg:text-lg text-white/80 max-w-3xl mx-auto leading-relaxed">{t("strippedAwayComplexity")}</p>
               </div>
             </FadeInSection>
 
@@ -1203,10 +1107,8 @@ export default function KitchenLanding() {
                   <div className="flex items-center gap-3 mb-4">
                     <span className="text-4xl font-black text-white/40">01</span>
                   </div>
-                  <h3 className="text-base md:text-lg lg:text-xl font-bold mb-3">List in 15 Minutes.<br/ > Get Your Kitchen Live in 24 hrs.</h3>
-                  <p className="text-white/80 leading-relaxed text-xs md:text-sm">
-                    Upload photos, set your rules, and block out your hours. Our team reviews everything — kitchen details, documents, compliance — to ensure you’re ready for chefs. Once approved, your listing goes live fast so you can start accepting bookings confidently.
-                  </p>
+                  <h3 className="text-base md:text-lg lg:text-xl font-bold mb-3">{t("listIn15Mins")}<br/ >{t("getLiveIn24h")}</h3>
+                  <p className="text-white/80 leading-relaxed text-xs md:text-sm">{t("uploadPhotosRules")}</p>
                 </motion.div>
               </FadeInSection>
 
@@ -1220,14 +1122,10 @@ export default function KitchenLanding() {
                   <div className="flex items-center gap-3 mb-4">
                     <span className="text-4xl font-black text-white/40">02</span>
                   </div>
-                  <h3 className="text-base md:text-lg lg:text-xl font-bold mb-3">Approve Verified Chefs.<br /> Platform Does the Rest.</h3>
+                  <h3 className="text-base md:text-lg lg:text-xl font-bold mb-3">{t("approveVerifiedChefs")}<br />{t("platformDoesTheRest")}</h3>
                   <div className="space-y-3 text-white/80 leading-relaxed">
-                    <p className="text-xs md:text-sm">
-                      Qualified chefs request to book your kitchen. Every renter is pre-screened with certification, registration, and insurance.
-                    </p>
-                    <p className="text-xs md:text-sm">
-                      Browse their profiles, approve the ones that fit your schedule, and you’re set.
-                    </p>
+                    <p className="text-xs md:text-sm">{t("qualifiedChefsRequest")}</p>
+                    <p className="text-xs md:text-sm">{t("browseProfilesApprove")}</p>
                   </div>
                 </motion.div>
               </FadeInSection>
@@ -1242,11 +1140,8 @@ export default function KitchenLanding() {
                   <div className="flex items-center gap-3 mb-4">
                     <span className="text-4xl font-black text-white/40">03</span>
                   </div>
-                  <h3 className="text-base md:text-lg lg:text-xl font-bold mb-3">  Earn on Autopilot.<br />
-                  Weekly Payouts, Zero Admin.</h3>
-                  <p className="text-white/80 leading-relaxed text-xs md:text-sm">
-                  Chefs book, arrive verified, and cook — while the platform manages confirmations, reminders, and payments. Your revenue lands in your account weekly with a clear dashboard tracking every booking. No spreadsheets, no chasing, no hassle.
-                  </p>
+                  <h3 className="text-base md:text-lg lg:text-xl font-bold mb-3">{t("earnOnAutopilot")}<br />{t("weeklyPayoutsZeroAdmin")}</h3>
+                  <p className="text-white/80 leading-relaxed text-xs md:text-sm">{t("chefsBookArrive")}</p>
                 </motion.div>
               </FadeInSection>
             </div>
@@ -1275,7 +1170,7 @@ export default function KitchenLanding() {
         {/* ═══════════════════════════════════════════════════════════════════════
             EVERYTHING YOU NEED SECTION - Premium Standalone Design
         ═══════════════════════════════════════════════════════════════════════ */}
-        <section id="everything-included" className="relative py-24 md:py-32 px-4 bg-white overflow-hidden">
+        <section id="everything-included" className="relative scroll-mt-24 py-20 md:py-28 px-4 bg-white overflow-hidden">
           {/* Sophisticated background elements */}
           <div className="absolute inset-0 pointer-events-none">
             {/* Gradient mesh background */}
@@ -1289,34 +1184,10 @@ export default function KitchenLanding() {
             }} />
           </div>
 
-          <div className="container mx-auto max-w-7xl relative z-10">
+          <div className="container mx-auto max-w-6xl relative z-10">
             {/* Section Header - Premium Design */}
             <FadeInSection>
-              <div className="text-center mb-16 md:mb-20">
-                {/* Floating badge with glow effect */}
-                <motion.div
-                  initial={{ opacity: 0, y: 20, scale: 0.9 }}
-                  whileInView={{ opacity: 1, y: 0, scale: 1 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.6 }}
-                  className="inline-block mb-8"
-                >
-                  <div className="relative">
-            <div className="absolute -inset-1 bg-gradient-to-r from-[#F51042] via-rose-400 to-pink-400 rounded-full blur-sm opacity-40 animate-pulse" />
-                    <div className="relative inline-flex items-center gap-3 bg-white border border-rose-200 rounded-full px-5 py-2.5 shadow-lg shadow-rose-400/20">
-                      <div className="flex items-center gap-1.5">
-                        <span className="relative flex h-2.5 w-2.5">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#F51042]/70 opacity-75" />
-                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#F51042]" />
-                        </span>
-                      </div>
-                      <span className="font-semibold text-sm tracking-wide text-[#F51042]">
-                        Everything Included in Your Partnership
-                      </span>
-                    </div>
-                  </div>
-                </motion.div>
-                
+              <div className="text-center mb-12 md:mb-16">
                 {/* Main headline with creative typography */}
                 <motion.div
                   initial={{ opacity: 0, y: 30 }}
@@ -1325,15 +1196,13 @@ export default function KitchenLanding() {
                   transition={{ duration: 0.7, delay: 0.1 }}
                   className="relative"
                 >
-                  <h2 className="text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-bold text-slate-900 leading-[1.1] mb-6">
-                    <span className="block">Everything You Need to</span>
+                  <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-[#1A1A1A] leading-tight mb-4">
+                    <span className="block">{t("everythingYouNeedTo")}</span>
                     <span className="relative inline-block mt-2">
-                      <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-rose-500 to-[#F51042]">
-                        Host with Confidence
-                      </span>
+                      <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-rose-500 to-[#F51042]">{t("hostWithConfidence")}</span>
                       {/* Animated underline */}
                       <motion.div 
-                        className="absolute -bottom-2 left-0 right-0 h-1 md:h-1.5 bg-gradient-to-r from-[#F51042] via-rose-400 to-[#F51042] rounded-full"
+                        className="absolute -bottom-1 md:-bottom-2 left-0 right-0 h-[3px] bg-[#F51042] rounded-full"
                         initial={{ scaleX: 0, originX: 0 }}
                         whileInView={{ scaleX: 1 }}
                         viewport={{ once: true }}
@@ -1348,17 +1217,15 @@ export default function KitchenLanding() {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ duration: 0.6, delay: 0.2 }}
-                  className="text-sm md:text-base lg:text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed mt-6"
-                >
-                  Smart automation. Pre-verified professionals. Ironclad protection.
-                  <br className="hidden md:block" />
-                  <span className="font-medium text-slate-700">Your business, simplified.</span>
+                  className="text-sm md:text-base lg:text-lg text-[#6B6B6B] max-w-2xl mx-auto leading-relaxed mt-4"
+                >{t("smartAutomation")}<br className="hidden md:block" />
+                  <span className="font-medium text-slate-700">{t("businessSimplified")}</span>
                 </motion.p>
               </div>
             </FadeInSection>
 
             {/* Premium Two-Column Feature Layout */}
-            <div className="grid lg:grid-cols-2 gap-8 lg:gap-12">
+            <div className="grid lg:grid-cols-2 gap-5 md:gap-6">
               
               {/* Left Column: Automated Platform Features */}
               <FadeInSection delay={0}>
@@ -1370,49 +1237,39 @@ export default function KitchenLanding() {
                   className="relative group"
                 >
                   {/* Card glow effect on hover */}
-                  <div className="absolute -inset-0.5 bg-gradient-to-br from-[#F51042]/20 via-rose-400/10 to-rose-300/20 rounded-[2rem] blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+                  <div className="absolute -inset-0.5 bg-[#F51042]/10 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                   
-                  <div className="relative bg-gradient-to-br from-white via-white to-rose-50/40 rounded-[2rem] border border-slate-200/80 p-8 md:p-10 shadow-[0_8px_40px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_60px_rgba(245,16,66,0.16)] transition-all duration-500">
+                  <div className="relative h-full bg-white rounded-2xl border border-gray-100 p-6 md:p-7 lg:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300">
                     {/* Column header with icon */}
-                    <div className="flex items-center gap-4 mb-8">
-                      <div className="relative">
-                        <div className="absolute -inset-2 bg-gradient-to-br from-[#F51042]/20 to-rose-500/20 rounded-2xl blur-lg" />
-                        <div className="relative w-14 h-14 bg-gradient-to-br from-[#F51042] to-rose-500 rounded-2xl flex items-center justify-center shadow-lg shadow-[#F51042]/30">
-                          <Zap className="h-7 w-7 text-white" />
-                        </div>
-                      </div>
+                    <div className="flex items-center gap-3 mb-6">
                       <div>
-                        <h3 className="text-xl md:text-2xl font-bold text-slate-900">Automated Platform</h3>
-                        <p className="text-sm text-slate-500 font-medium">Set it once, earn forever</p>
+                        <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C]">{t("automatedPlatform")}</h3>
+                        <p className="text-xs md:text-sm text-[#6B6B6B] font-medium">{t("setItOnce")}</p>
                       </div>
                     </div>
                     
                     {/* Features list with premium styling */}
-                    <div className="space-y-6">
+                    <div className="space-y-4">
                       {[
                         {
-                          icon: Calendar,
-                          title: "Smart Scheduling & Calendar Sync",
-                          description: "Your available hours sync automatically. Chefs book in real-time. No double bookings. No manual updates.",
-                          gradient: "from-violet-500 to-purple-600"
+                          icon: "mdi:calendar-blank",
+                          title: t("featSmartScheduling"),
+                          description: t("featSmartSchedulingDesc")
                         },
                         {
-                          icon: MessageCircle,
-                          title: "Automated Reminders & Communications",
-                          description: "Booking confirmations, 48 & 24-hour reminders, direct messaging—all handled. You stay informed without chasing anyone.",
-                          gradient: "from-blue-500 to-indigo-600"
+                          icon: "mdi:message-outline",
+                          title: t("featReminders"),
+                          description: t("featRemindersDesc")
                         },
                         {
-                          icon: CreditCard,
-                          title: "Weekly Payouts, Zero Chasing",
-                          description: "Revenue deposits directly to your bank weekly. Transparent dashboard shows every dollar earned. No invoices to send.",
-                          gradient: "from-[#F51042] to-rose-500"
+                          icon: "mdi:credit-card-outline",
+                          title: t("featWeeklyPayouts"),
+                          description: t("featWeeklyPayoutsDesc")
                         },
                         {
-                          icon: Settings,
-                          title: "Custom Solutions for Custom Needs",
-                          description: "Monthly memberships, equipment add-ons, workshops, events—we customize the platform to fit exactly how you monetize.",
-                          gradient: "from-amber-500 to-orange-600"
+                          icon: "mdi:cog-outline",
+                          title: t("featCustomSolutions"),
+                          description: t("featCustomSolutionsDesc")
                         }
                       ].map((feature, i) => (
                         <motion.div
@@ -1423,23 +1280,23 @@ export default function KitchenLanding() {
                           transition={{ duration: 0.5, delay: 0.1 * i }}
                           className="group/item relative"
                         >
-                          <div className="flex gap-4">
+                          <div className="flex gap-3">
                             <div className="flex-shrink-0">
-                              <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${feature.gradient} flex items-center justify-center shadow-lg transform group-hover/item:scale-110 group-hover/item:rotate-3 transition-all duration-300`}>
-                                <feature.icon className="h-5 w-5 text-white" />
+                              <div className="w-9 h-9 rounded-lg bg-gray-100 text-gray-700 flex items-center justify-center transition-colors duration-300 group-hover/item:bg-rose-50 group-hover/item:text-[#F51042]">
+                                <Icon icon={feature.icon} className="h-4 w-4" />
                               </div>
                             </div>
                             <div className="flex-1 min-w-0">
-                              <h4 className="font-semibold text-slate-900 text-base md:text-lg mb-1 group-hover/item:text-[#F51042] transition-colors">
+                              <h4 className="font-semibold text-[#2C2C2C] text-sm md:text-base mb-1 group-hover/item:text-[#F51042] transition-colors">
                                 {feature.title}
                               </h4>
-                              <p className="text-sm text-slate-600 leading-relaxed">
+                              <p className="text-xs md:text-sm text-[#6B6B6B] leading-relaxed">
                                 {feature.description}
                               </p>
                             </div>
                           </div>
                           {i < 3 && (
-                            <div className="ml-[3.25rem] mt-6 h-px bg-gradient-to-r from-slate-200 via-slate-100 to-transparent" />
+                            <div className="ml-12 mt-4 h-px bg-gradient-to-r from-gray-200 via-gray-100 to-transparent" />
                           )}
                         </motion.div>
                       ))}
@@ -1458,49 +1315,39 @@ export default function KitchenLanding() {
                   className="relative group"
                 >
                   {/* Card glow effect on hover */}
-                  <div className="absolute -inset-0.5 bg-gradient-to-br from-violet-500/20 via-purple-500/10 to-pink-500/20 rounded-[2rem] blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+                  <div className="absolute -inset-0.5 bg-[#F51042]/10 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                   
-                  <div className="relative bg-gradient-to-br from-white via-white to-violet-50/30 rounded-[2rem] border border-slate-200/80 p-8 md:p-10 shadow-[0_8px_40px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_60px_rgba(139,92,246,0.12)] transition-all duration-500">
+                  <div className="relative h-full bg-white rounded-2xl border border-gray-100 p-6 md:p-7 lg:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300">
                     {/* Column header with icon */}
-                    <div className="flex items-center gap-4 mb-8">
-                      <div className="relative">
-                        <div className="absolute -inset-2 bg-gradient-to-br from-violet-500/20 to-purple-500/20 rounded-2xl blur-lg" />
-                        <div className="relative w-14 h-14 bg-gradient-to-br from-violet-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg shadow-violet-500/30">
-                          <Shield className="h-7 w-7 text-white" />
-                        </div>
-                      </div>
+                    <div className="flex items-center gap-3 mb-6">
                       <div>
-                        <h3 className="text-xl md:text-2xl font-bold text-slate-900">Verified & Protected</h3>
-                        <p className="text-sm text-slate-500 font-medium">Sleep soundly, every rental</p>
+                        <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C]">{t("verifiedProtected")}</h3>
+                        <p className="text-xs md:text-sm text-[#6B6B6B] font-medium">{t("sleepSoundly")}</p>
                       </div>
                     </div>
                     
                     {/* Features list with premium styling */}
-                    <div className="space-y-6">
+                    <div className="space-y-4">
                       {[
                         {
-                          icon: BadgeCheck,
-                          title: "Pre-Verified Professionals",
-                          description: "Every renter arrives with food handler certification, business registration, and liability coverage already confirmed.",
-                          gradient: "from-blue-500 to-cyan-600"
+                          icon: "mdi:check-decagram-outline",
+                          title: t("featPreVerified"),
+                          description: t("featPreVerifiedDesc")
                         },
                         {
-                          icon: Eye,
-                          title: "Full Transparency Before Every Booking",
-                          description: "See all credentials before you approve—certs, licenses, coverage. Approve or decline in seconds. You're in complete control.",
-                          gradient: "from-rose-500 to-[#F51042]"
+                          icon: "mdi:eye-outline",
+                          title: t("featFullTransparency"),
+                          description: t("featFullTransparencyDesc")
                         },
                         {
-                          icon: Lock,
-                          title: "Coverage Confirmed, Risk Managed",
-                          description: "Appropriate coverage is verified and documented upfront. You're never wondering if protection is in place.",
-                          gradient: "from-rose-500 to-pink-600"
+                          icon: "mdi:lock-outline",
+                          title: t("featCoverageConfirmed"),
+                          description: t("featCoverageConfirmedDesc")
                         },
                         {
-                          icon: HeartHandshake,
-                          title: "24/7 Local Support",
-                          description: "Real humans handle questions, disputes, or emergencies. We've got your back so you never manage issues alone.",
-                          gradient: "from-violet-500 to-purple-600"
+                          icon: "mdi:handshake-outline",
+                          title: t("featLocalSupport"),
+                          description: t("featLocalSupportDesc")
                         }
                       ].map((feature, i) => (
                         <motion.div
@@ -1511,23 +1358,23 @@ export default function KitchenLanding() {
                           transition={{ duration: 0.5, delay: 0.1 * i + 0.2 }}
                           className="group/item relative"
                         >
-                          <div className="flex gap-4">
+                          <div className="flex gap-3">
                             <div className="flex-shrink-0">
-                              <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${feature.gradient} flex items-center justify-center shadow-lg transform group-hover/item:scale-110 group-hover/item:rotate-3 transition-all duration-300`}>
-                                <feature.icon className="h-5 w-5 text-white" />
+                              <div className="w-9 h-9 rounded-lg bg-gray-100 text-gray-700 flex items-center justify-center transition-colors duration-300 group-hover/item:bg-rose-50 group-hover/item:text-[#F51042]">
+                                <Icon icon={feature.icon} className="h-4 w-4" />
                               </div>
                             </div>
                             <div className="flex-1 min-w-0">
-                              <h4 className="font-semibold text-slate-900 text-base md:text-lg mb-1 group-hover/item:text-violet-700 transition-colors">
+                              <h4 className="font-semibold text-[#2C2C2C] text-sm md:text-base mb-1 group-hover/item:text-[#F51042] transition-colors">
                                 {feature.title}
                               </h4>
-                              <p className="text-sm text-slate-600 leading-relaxed">
+                              <p className="text-xs md:text-sm text-[#6B6B6B] leading-relaxed">
                                 {feature.description}
                               </p>
                             </div>
                           </div>
                           {i < 3 && (
-                            <div className="ml-[3.25rem] mt-6 h-px bg-gradient-to-r from-slate-200 via-slate-100 to-transparent" />
+                            <div className="ml-12 mt-4 h-px bg-gradient-to-r from-gray-200 via-gray-100 to-transparent" />
                           )}
                         </motion.div>
                       ))}
@@ -1544,33 +1391,31 @@ export default function KitchenLanding() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.7, delay: 0.3 }}
-                className="mt-16 md:mt-20"
+                className="mt-12 md:mt-16"
               >
                 <div className="relative">
                   {/* Glow effect */}
-                  <div className="absolute -inset-1 bg-gradient-to-r from-[#F51042] via-rose-500 to-pink-400 rounded-3xl blur-lg opacity-30" />
+                  <div className="absolute -inset-1 bg-[#F51042]/25 rounded-2xl blur-lg opacity-30" />
                   
-                  <div className="relative bg-gradient-to-r from-[#F51042] via-rose-500 to-[#F51042] rounded-3xl p-8 md:p-10 overflow-hidden">
+                  <div className="relative bg-[#F51042] rounded-2xl p-6 md:p-8 overflow-hidden">
                     {/* Decorative elements */}
                     <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
                     <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/10 rounded-full blur-2xl translate-y-1/2 -translate-x-1/2" />
                     
-                    <div className="relative flex flex-col md:flex-row items-center justify-between gap-6">
+                    <div className="relative flex flex-col md:flex-row items-center justify-between gap-5">
                       <div className="text-center md:text-left">
-                        <h3 className="text-xl md:text-2xl lg:text-3xl font-bold text-white mb-2">
-                          Ready to turn idle hours into income?
-                        </h3>
-                        <p className="text-white/80 text-sm md:text-base">
-                          Join kitchen owners earning $500+ /month • 0% platform fee during trial
-                        </p>
+                        <h3 className="text-lg md:text-xl lg:text-2xl font-bold text-white mb-2">{t("readyToTurnIdle")}</h3>
+                        <p className="text-white/80 text-xs md:text-sm">{t("joinKitchenOwners")}</p>
                       </div>
                       <Button
                         onClick={() => window.location.href = 'mailto:admin@localcook.shop?subject=Kitchen Partnership - List My Kitchen'}
                         size="lg"
-                        className="bg-white text-[#F51042] hover:bg-gray-100 font-bold py-6 px-10 text-base md:text-lg rounded-full shadow-2xl hover:shadow-white/30 hover:-translate-y-1 transition-all whitespace-nowrap"
+                        className="group bg-white text-[#F51042] hover:bg-gray-100 font-bold py-3 md:py-4 px-3 sm:px-6 md:px-12 text-[11px] sm:text-sm md:text-lg rounded-full shadow-2xl hover:shadow-white/30 hover:-translate-y-1 transition-all whitespace-nowrap min-w-0 min-h-[44px] sm:min-h-[48px]"
                       >
-                        List Your Kitchen
-                        <ArrowRight className="ml-2 h-5 w-5" />
+                        <span className="relative z-10 flex items-center justify-center truncate">
+                          <TruncatedText className="truncate">{t("listYourKitchenWord")}</TruncatedText>
+                          <Icon icon="mdi:arrow-right" className="ml-1 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5 shrink-0 group-hover:translate-x-1 transition-transform" />
+                        </span>
                       </Button>
                     </div>
                   </div>
@@ -1591,9 +1436,6 @@ export default function KitchenLanding() {
           <div className="container mx-auto max-w-6xl relative z-10">
             <FadeInSection>
               <div className="text-center mb-16">
-                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-[#F51042] mb-4 px-4 py-2 bg-rose-100 rounded-full">
-                  Knowledge Base
-                </span>
                 <motion.h2
                   initial={{ opacity: 0, y: 30 }}
                   whileInView={{ opacity: 1, y: 0 }}
@@ -1601,11 +1443,9 @@ export default function KitchenLanding() {
                   transition={{ duration: 0.7, delay: 0.1 }}
                   className="text-2xl md:text-3xl lg:text-4xl font-bold text-[#1A1A1A] leading-tight mb-4"
                 >
-                  Run Your Kitchen{" "}
+                  {t("runYourKitchen")}{" "}
                   <span className="relative inline-block">
-                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-500 via-red-500 to-rose-600">
-                      With Confidence
-                    </span>
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-500 via-red-500 to-rose-600">{t("withConfidence")}</span>
                     <motion.svg
                       className="absolute -bottom-1 md:-bottom-2 left-0 w-full"
                       viewBox="0 0 350 12"
@@ -1628,9 +1468,7 @@ export default function KitchenLanding() {
                     </motion.svg>
                   </span>
                 </motion.h2>
-                <p className="text-[#6B6B6B] text-base md:text-lg max-w-2xl mx-auto leading-relaxed">
-                  From licensing and insurance to risk assessment and pricing — our comprehensive guide covers everything you need to operate a shared commercial kitchen.
-                </p>
+                <p className="text-[#6B6B6B] text-base md:text-lg max-w-2xl mx-auto leading-relaxed">{t("fromLicensingToRisk")}</p>
               </div>
             </FadeInSection>
 
@@ -1638,34 +1476,34 @@ export default function KitchenLanding() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-12">
                 {[
                   {
-                    icon: Scale,
-                    title: "Legal Foundation",
-                    description: "Food establishment licences, municipal permits, and compliance requirements for your facility.",
-                    color: "bg-blue-50 text-blue-600",
+                    icon: "mdi:scale-balance",
+                    title: t("kbLegalTitle"),
+                    description: t("kbLegalDesc"),
+                    color: "bg-gray-100 text-gray-800",
                   },
                   {
-                    icon: Shield,
-                    title: "Insurance & Liability",
-                    description: "CGL coverage, tenant insurance requirements, and risk transfer strategies for shared spaces.",
-                    color: "bg-emerald-50 text-emerald-600",
+                    icon: "mdi:shield-check-outline",
+                    title: t("kbInsuranceTitle"),
+                    description: t("kbInsuranceDesc"),
+                    color: "bg-gray-100 text-gray-800",
                   },
                   {
-                    icon: ClipboardCheck,
-                    title: "Risk Assessment",
-                    description: "HACCP-based safety plans, sanitation protocols, and operational checklists for your kitchen.",
-                    color: "bg-amber-50 text-amber-600",
+                    icon: "mdi:clipboard-check-outline",
+                    title: t("kbRiskTitle"),
+                    description: t("kbRiskDesc"),
+                    color: "bg-gray-100 text-gray-800",
                   },
                   {
-                    icon: DollarSign,
-                    title: "Pricing & Operations",
-                    description: "Set competitive rates, manage bookings, and optimize occupancy to maximize your revenue.",
-                    color: "bg-purple-50 text-purple-600",
+                    icon: "mdi:currency-usd",
+                    title: t("kbPricingTitle"),
+                    description: t("kbPricingDesc"),
+                    color: "bg-gray-100 text-gray-800",
                   },
                 ].map((item, i) => (
                   <Card key={i} className="group border border-gray-100 shadow-sm hover:shadow-md hover:border-gray-200 transition-all duration-300 bg-white">
                     <CardContent className="p-6">
                       <div className={`w-10 h-10 rounded-lg ${item.color} flex items-center justify-center mb-4`}>
-                        <item.icon className="h-5 w-5" />
+                        <Icon icon={item.icon} className="h-5 w-5" />
                       </div>
                       <h3 className="font-semibold text-[#2C2C2C] text-sm mb-2">{item.title}</h3>
                       <p className="text-[#6B6B6B] text-xs leading-relaxed">{item.description}</p>
@@ -1681,16 +1519,14 @@ export default function KitchenLanding() {
                   <Link href="/resources">
                     <Button
                       size="lg"
-                      className="bg-[#F51042] hover:bg-[#D90935] text-white font-semibold py-6 px-10 text-base rounded-full shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all"
+                      className="group bg-[#F51042] hover:bg-[#D90935] text-white font-bold py-3 md:py-4 px-3 sm:px-6 md:px-12 text-[11px] sm:text-sm md:text-lg rounded-full shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all min-w-0 min-h-[44px] sm:min-h-[48px]"
                     >
-                      Explore Full Resource Guide
-                      <ArrowRight className="ml-2 h-5 w-5" />
+                      <span className="relative z-10 flex items-center justify-center truncate">
+                        <TruncatedText className="truncate">{t("exploreResourceGuide")}</TruncatedText>
+                        <Icon icon="mdi:arrow-right" className="ml-1 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5 shrink-0 group-hover:translate-x-1 transition-transform" />
+                      </span>
                     </Button>
                   </Link>
-                  <span className="flex items-center gap-1.5 text-xs text-[#6B6B6B]">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                    15-minute read
-                  </span>
                 </div>
               </div>
             </FadeInSection>
@@ -1700,52 +1536,25 @@ export default function KitchenLanding() {
         {/* ═══════════════════════════════════════════════════════════════════════
             FAQ SECTION
         ═══════════════════════════════════════════════════════════════════════ */}
-        <section id="faq" className="py-12 sm:py-16 md:py-20 lg:py-28 px-4 sm:px-6 bg-gray-50">
+        <section id="faq" className="scroll-mt-24 py-12 sm:py-16 md:py-20 lg:py-28 px-4 sm:px-6 bg-white">
           <div className="container mx-auto max-w-3xl">
             <FadeInSection>
               <div className="text-center mb-12">
-                <span className="inline-block font-mono text-xs uppercase tracking-[0.3em] text-[#F51042] mb-4 px-4 py-2 bg-rose-100 rounded-full">
-                  Questions
-                </span>
-                <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-[#1A1A1A]">FAQ</h2>
+                <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-[#1A1A1A]">{t("faqWord")}</h2>
               </div>
             </FadeInSection>
 
             <FadeInSection delay={1}>
               <Accordion type="single" collapsible className="space-y-3">
                 {[
-                  { 
-                    q: "What types of kitchens are you looking for?", 
-                    a: "We welcome a wide variety of inspected, commercial-grade kitchen spaces. Whether you run a bustling restaurant with downtime in the mornings, a church with a certified community kitchen, or a dedicated commissary space, your facility is likely a perfect fit. If your kitchen has a valid operating permit and commercial-grade equipment, local chefs are looking for a space just like yours." 
-                  },
-                  { 
-                    q: "How much can I earn by listing my kitchen?", 
-                    a: "Earnings vary based on your kitchen’s size, equipment, and availability, but many of our partners generate significant monthly revenue simply by monetizing their \"dark hours.\" You set your own hourly or daily rates. To help you stay competitive, we can recommend pricing based on similar kitchens in your local area. You keep the majority of the listing fee, turning your overhead costs into a new income stream." 
-                  },
-                  { 
-                    q: "Do I have control over who uses my space?", 
-                    a: "Absolutely. You always have final say over who cooks in your kitchen. When a chef requests to book your space, you can review their profile, their proposed concept, and their rental history before accepting. We believe in building partnerships, not just transactions, so we ensure you only host professionals you feel comfortable with." 
-                  },
-                  { 
-                    q: "How does scheduling work with my existing business?", 
-                    a: "Your business always comes first. Our platform allows you to block out the exact days and hours you need for your own operations. You simply list the \"white space\"—the early mornings, late nights, or closed days when your kitchen sits empty. Our booking system prevents conflicts, ensuring your team never walks in to find a surprise guest." 
-                  },
-                  { 
-                    q: "What happens if equipment is damaged?", 
-                    a: "We take the safety of your assets seriously. All chefs on the Local Cooks platform are required to carry valid liability insurance and provide a security deposit before their first booking. We also verify their identity and business registration. In the rare event of an accident, our support team is here to help facilitate a resolution and ensure you are fairly compensated." 
-                  },
-                  { 
-                    q: "Will my kitchen be left clean?", 
-                    a: "Yes. We enforce a strict \"leave it better than you found it\" policy. Every chef is required to complete a cleaning checklist—verified by photos—at the end of their shift. If a chef fails to meet these standards, they are subject to cleaning fees and removal from the platform. We know that arriving to a clean kitchen is non-negotiable for your business." 
-                  },
-                  { 
-                    q: "What about health inspections and compliance?", 
-                    a: "We operate with full transparency regarding local health regulations. Since your kitchen is already a permitted facility, \"guest chefs\" generally operate under your existing framework or apply for their own temporary permits depending on the scope of their work. We help ensure all paperwork is in order before a chef ever lights a burner, keeping your facility compliant and your mind at ease." 
-                  },
-                  { 
-                    q: "How and when do I get paid?", 
-                    a: "We handle all the billing so you don’t have to chase invoices. Chefs pay upfront through our secure platform when they book your space. We transfer your earnings directly to your bank account on a consistent schedule (typically weekly or bi-weekly), providing you with a simple dashboard to track your revenue and bookings in real time." 
-                  },
+                  { q: t("kFaqQ1"), a: t("kFaqA1") },
+                  { q: t("kFaqQ2"), a: t("kFaqA2") },
+                  { q: t("kFaqQ3"), a: t("kFaqA3") },
+                  { q: t("kFaqQ4"), a: t("kFaqA4") },
+                  { q: t("kFaqQ5"), a: t("kFaqA5") },
+                  { q: t("kFaqQ6"), a: t("kFaqA6") },
+                  { q: t("kFaqQ7"), a: t("kFaqA7") },
+                  { q: t("kFaqQ8"), a: t("kFaqA8") },
                 ].map((item, i) => (
                   <AccordionItem key={i} value={`item-${i}`} className="border border-gray-200 rounded-xl bg-white px-6 shadow-sm">
                     <AccordionTrigger className="text-left text-lg font-semibold text-[#2C2C2C] py-5 hover:no-underline hover:text-[#F51042]">

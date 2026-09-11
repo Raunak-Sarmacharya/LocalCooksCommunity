@@ -2,28 +2,13 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 import * as React from "react";
 import { AppSidebar } from "@/components/app-sidebar"
 import { Separator } from "@/components/ui/separator"
-import {
-    Breadcrumb,
-    BreadcrumbItem,
-    BreadcrumbLink,
-    BreadcrumbList,
-    BreadcrumbPage,
-    BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb"
-import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
 import { useFirebaseAuth } from "@/hooks/use-auth";
-import { LogOut, User as UserIcon, ChevronDown, Command } from "lucide-react";
 import { CommandMenu } from "@/components/command-menu";
 import { Button } from "@/components/ui/button";
 import NotificationCenter from "@/components/manager/NotificationCenter";
+import { useTranslation } from "react-i18next";
+import type { ManagerBreadcrumb } from "@/lib/manager-kitchens-navigation";
 
 interface DashboardLayoutProps {
     children: React.ReactNode;
@@ -33,7 +18,7 @@ interface DashboardLayoutProps {
     selectedLocation: any;
     onLocationChange: (location: any) => void;
     onCreateLocation?: () => void;
-    breadcrumbs?: Array<{ label: string; href?: string }>;
+    breadcrumbs?: ManagerBreadcrumb[];
 }
 
 export default function DashboardLayout({
@@ -44,20 +29,17 @@ export default function DashboardLayout({
     selectedLocation,
     onLocationChange,
     onCreateLocation,
-    breadcrumbs = [{ label: "Dashboard" }]
+    breadcrumbs
 }: DashboardLayoutProps) {
-    // Generate breadcrumbs based on active view if not provided
-    const displayBreadcrumbs = breadcrumbs.length > 0 ? breadcrumbs : [
-        { label: "Dashboard", href: "#" },
-        { label: activeView.charAt(0).toUpperCase() + activeView.slice(1).replace("-", " ") }
-    ];
+    const { t } = useTranslation("manager");
+    const displayBreadcrumbs = breadcrumbs ?? [];
 
     const [isCommandOpen, setIsCommandOpen] = React.useState(false);
 
-    const { user, logout } = useFirebaseAuth();
+    const { logout } = useFirebaseAuth();
 
     return (
-        <SidebarProvider>
+        <SidebarProvider className="[--radius:0.75rem]">
             <AppSidebar
                 activeView={activeView}
                 onViewChange={onViewChange}
@@ -65,23 +47,24 @@ export default function DashboardLayout({
                 selectedLocation={selectedLocation}
                 onLocationChange={onLocationChange}
                 onCreateLocation={onCreateLocation}
+                breadcrumbs={displayBreadcrumbs}
             />
-            <SidebarInset>
-                <header className="flex h-16 shrink-0 items-center justify-between gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 border-b px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
-                    <div className="flex items-center gap-2">
-                        <SidebarTrigger className="-ml-1" />
-                        <Separator orientation="vertical" className="mr-2 h-4" />
-                        <Breadcrumb>
-                            <BreadcrumbList>
+            <SidebarInset className="min-w-0 overflow-x-hidden">
+                <header className="flex h-16 shrink-0 items-center justify-between gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 border-b px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                        <SidebarTrigger className="-ml-1 shrink-0" />
+                        <Separator orientation="vertical" className="mr-2 h-4 shrink-0" />
+                        <Breadcrumb className="min-w-0">
+                            <BreadcrumbList className="flex-wrap">
                                 {displayBreadcrumbs.map((crumb, index) => (
-                                    <div key={index} className="flex items-center gap-2">
-                                        <BreadcrumbItem className="hidden md:block">
-                                            {crumb.href ? (
-                                                <BreadcrumbLink href="#" onClick={(e) => { e.preventDefault(); /* handle click */ }}>
+                                    <div key={index} className="flex items-center gap-2 min-w-0">
+                                        <BreadcrumbItem className="hidden md:block min-w-0">
+                                            {crumb.onClick ? (
+                                                <BreadcrumbLink href="#" className="truncate" onClick={(e) => { e.preventDefault(); crumb.onClick?.(); }}>
                                                     {crumb.label}
                                                 </BreadcrumbLink>
                                             ) : (
-                                                <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
+                                                <BreadcrumbPage className="truncate">{crumb.label}</BreadcrumbPage>
                                             )}
                                         </BreadcrumbItem>
                                         {index < displayBreadcrumbs.length - 1 && (
@@ -93,75 +76,28 @@ export default function DashboardLayout({
                         </Breadcrumb>
                     </div>
 
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-4 shrink-0">
                         <Button
                             variant="outline"
-                            className="hidden md:flex relative h-9 w-full justify-start rounded-[0.5rem] bg-background text-sm font-normal text-muted-foreground shadow-none sm:pr-12 md:w-40 lg:w-64"
+                            className="hidden md:flex relative h-9 justify-start rounded-[0.5rem] bg-background text-sm font-normal text-muted-foreground shadow-none sm:pr-12 md:w-40 lg:w-64 max-w-full"
                             onClick={() => setIsCommandOpen(true)}
                         >
-                            <span className="hidden lg:inline-flex">Search...</span>
-                            <span className="inline-flex lg:hidden">Search...</span>
+                            <span className="truncate">{t("shellSearch")}</span>
                             <kbd className="pointer-events-none absolute right-[0.3rem] top-[0.3rem] hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
                                 <span className="text-xs">⌘</span>K
                             </kbd>
                         </Button>
                         
                         {/* Notification Center */}
-                        <NotificationCenter locationId={selectedLocation?.id} />
-                        
-                        <DropdownMenu modal={false}>
-                            <DropdownMenuTrigger asChild>
-                                <div className="flex items-center gap-2 cursor-pointer hover:bg-accent/50 p-1.5 rounded-lg transition-colors group">
-                                    <Avatar className="h-8 w-8 rounded-lg border">
-                                        <AvatarImage src={user?.photoURL || ""} alt={user?.displayName || ""} />
-                                        <AvatarFallback className="rounded-lg">CN</AvatarFallback>
-                                    </Avatar>
-                                    <ChevronDown className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-                                </div>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent
-                                align="end"
-                                sideOffset={4}
-                                forceMount
-                                className="w-64 p-2 bg-background/95 backdrop-blur-sm border border-border/60 rounded-lg shadow-xl shadow-foreground/5"
-                            >
-                                <div className="px-3 py-2.5 mb-1">
-                                    <p className="text-sm font-medium text-foreground tracking-tight leading-tight">
-                                        {user?.displayName || "Manager"}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground tracking-tight leading-tight">
-                                        {user?.email}
-                                    </p>
-                                </div>
+                        <NotificationCenter
+                            locationId={selectedLocation?.id}
+                            onViewAll={() => onViewChange("notifications")}
+                        />
 
-                                <DropdownMenuSeparator className="my-2 bg-gradient-to-r from-transparent via-border to-transparent" />
-
-                                <div className="space-y-1">
-                                    <DropdownMenuItem
-                                        onClick={() => onViewChange("profile")}
-                                        className="flex items-center p-3 rounded-md transition-all duration-200 cursor-pointer group hover:shadow-sm border border-transparent hover:border-border/50"
-                                    >
-                                        <UserIcon className="mr-2 h-4 w-4" />
-                                        <span className="text-sm font-medium tracking-tight">Profile</span>
-                                    </DropdownMenuItem>
-                                </div>
-
-                                <DropdownMenuSeparator className="my-2 bg-gradient-to-r from-transparent via-border to-transparent" />
-
-                                <DropdownMenuItem
-                                    onClick={() => logout()}
-                                    className="flex items-center gap-3 p-3 rounded-md duration-200 bg-destructive/10 hover:bg-destructive/20 cursor-pointer border border-transparent hover:border-destructive/30 hover:shadow-sm transition-all group"
-                                >
-                                    <LogOut className="h-4 w-4 text-destructive group-hover:text-destructive" />
-                                    <span className="text-sm font-medium text-destructive">Sign Out</span>
-                                </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
                     </div>
                 </header>
-                <main className="flex-1 p-4 md:p-6 lg:p-8 bg-muted/10 relative overflow-hidden">
-                    <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
-                    <div className="mx-auto max-w-7xl animate-fade-in space-y-6 relative z-10">
+                <main className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden bg-muted/30 p-4 md:p-6 lg:p-8">
+                    <div className="mx-auto w-full max-w-7xl min-w-0 animate-fade-in space-y-6">
                         {children}
                     </div>
                 </main>

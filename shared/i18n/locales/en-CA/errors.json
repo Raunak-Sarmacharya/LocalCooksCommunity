@@ -1,0 +1,20 @@
+{
+  "UNAUTHORIZED": "Please sign in to continue.",
+  "FORBIDDEN": "You do not have permission to do that.",
+  "NOT_FOUND": "We could not find what you were looking for.",
+  "VALIDATION_FAILED": "Please check your input and try again.",
+  "CONFLICT": "That action conflicts with the current state.",
+  "RATE_LIMITED": "Too many requests. Please wait and try again.",
+  "INTERNAL_ERROR": "Something went wrong on our side. Please try again.",
+  "BOOKING_NOT_FOUND": "Booking not found.",
+  "KITCHEN_NOT_FOUND": "Kitchen not found.",
+  "LOCATION_NOT_FOUND": "Location not found.",
+  "USER_NOT_FOUND": "User not found.",
+  "USERNAME_TAKEN": "That username is already taken.",
+  "PAYMENT_REQUIRED": "Payment is required to continue.",
+  "PAYMENT_FAILED": "Payment failed. Please try another method.",
+  "EMAIL_NOT_VERIFIED": "Please verify your email before continuing.",
+  "TERMS_NOT_ACCEPTED": "Please accept the terms to continue.",
+  "ACCOUNT_NOT_REGISTERED": "This account is not registered with LocalCooks.",
+  "INVALID_LOCALE": "That language is not supported."
+}

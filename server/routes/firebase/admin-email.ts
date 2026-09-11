@@ -102,7 +102,7 @@ router.post('/admin/send-company-email', requireFirebaseAuthWithUser, requireAdm
                     promoCode,
                     promoCodeLabel: promoCodeLabel || '🎁 Special Offer Code For You',
                     customMessage: messageContent,
-                    greeting: greeting || 'Hello! 👋',
+                    greeting: greeting || 'Hello! ',
                     subject: subject || `🎁 Special Offer: ${promoCode}`,
                     previewText,
                     header: header || {

@@ -9,84 +9,19 @@
 
 import { useState, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
-import {
-  ColumnDef,
-  ColumnFiltersState,
-  SortingState,
-  VisibilityState,
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
-} from "@tanstack/react-table";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { ColumnDef, ColumnFiltersState, SortingState, VisibilityState, flexRender, getCoreRowModel, getFilteredRowModel, getPaginationRowModel, getSortedRowModel, useReactTable } from "@tanstack/react-table";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-  Search,
-  Download,
-  ChevronDown,
-  RefreshCw,
-  CreditCard,
-  Receipt,
-  CheckCircle,
-  DollarSign,
-  ArrowUpDown,
-  Calendar,
-  Building2,
-  Package,
-  ChefHat,
-  Copy,
-  ExternalLink,
-  AlertTriangle,
-  Eye,
-  Hash,
-} from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Search, Download, ChevronDown, RefreshCw, CreditCard, Receipt, CheckCircle, DollarSign, ArrowUpDown, Calendar, Building2, Package, Copy, ExternalLink, AlertTriangle, Eye, Hash } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDate as sharedFormatDate, formatTime as sharedFormatTime, formatCurrency as sharedFormatCurrency, formatPrice, downloadCSV as sharedDownloadCSV } from "@/lib/formatters";
 
@@ -286,7 +221,7 @@ const timelineColorMap: Record<TimelineEvent["color"], string> = {
 function getBookingTypeIcon(type: string) {
   switch (type) {
     case "kitchen":
-      return <ChefHat className="h-4 w-4 text-orange-600" />;
+      return <Calendar className="h-4 w-4 text-orange-600" />;
     case "storage":
       return <Package className="h-4 w-4 text-purple-600" />;
     case "equipment":
@@ -423,7 +358,7 @@ function TransactionDetailSheet({
             <div className="bg-muted/50 rounded-lg p-3 space-y-1.5 text-sm">
               <div className="flex justify-between"><span className="text-muted-foreground">Amount Charged</span><span className="font-medium">{formatCurrency(tx.amount)}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Booking Subtotal</span><span>{formatCurrency(tx.baseAmount)}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Platform Commission</span><span>{formatCurrency(tx.serviceFee)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Service Fee</span><span>{formatCurrency(tx.serviceFee)}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Stripe Fee</span><span>{formatCurrency(tx.stripeProcessingFee)}</span></div>
               <div className="flex justify-between border-t pt-1.5"><span className="text-muted-foreground">Manager Payout</span><span className="font-medium text-green-700">{formatCurrency(tx.managerRevenue)}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Platform Kept</span><span className="font-medium text-blue-700">{formatCurrency(tx.serviceFee)}</span></div>
@@ -583,7 +518,7 @@ function TransactionDetailSheet({
                         <Copy className="h-3 w-3 text-muted-foreground cursor-pointer" onClick={() => copyToClipboard(field.value!)} />
                         {field.link && (
                           <a href={field.link} target="_blank" rel="noopener noreferrer">
-                            <ExternalLink className="h-3 w-3 text-muted-foreground hover:text-blue-600" />
+                            <ExternalLink className="h-3 w-3 text-stripe hover:text-stripe/80" />
                           </a>
                         )}
                       </>
@@ -822,7 +757,7 @@ function transactionsToCSV(transactions: AdminTransaction[]): string {
     "TX ID", "Reference Code", "Booking ID", "Booking Type", "Status", "Stripe Status",
     "Chef Name", "Chef Email", "Chef ID", "Manager Email", "Manager ID",
     "Location", "Location ID", "Kitchen", "Kitchen ID",
-    "Amount Charged (CAD)", "Booking Subtotal", "Platform Commission", "Stripe Fee", "Manager Payout", "Refund Amount", "Net Charged",
+    "Amount Charged (CAD)", "Booking Subtotal", "Service Fee", "Stripe Fee", "Manager Payout", "Refund Amount", "Net Charged",
     "Payment Intent ID", "Charge ID", "Refund ID", "Payment Method ID", "Stripe Customer ID", "Webhook Event ID",
     "Booking Status", "Booking Payment Status",
     "Refund Reason", "Failure Reason",

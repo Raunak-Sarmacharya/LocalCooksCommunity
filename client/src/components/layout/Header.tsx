@@ -5,10 +5,15 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { Application } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
-import { Building2, GraduationCap, LogOut, Menu, User, X } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Building2, Check, ChevronDown, CookingPot, CreditCard, GraduationCap, LogOut, Menu, ShoppingBag, Store, Truck, User, Warehouse, X } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { getSubdomainFromHostname } from "@shared/subdomain-utils";
+import { getSubdomainFromHostname, getSubdomainOriginForEnvironment } from "@shared/subdomain-utils";
+import { parseLocationLocale } from "@/i18n/routing";
+import { useTranslation } from "react-i18next";
+import { cn } from "@/lib/utils";
+import { scrollToPageSection } from "@/lib/scroll-to-page-section";
 
 // Helper to check if an application is active (not cancelled, rejected)
 const isApplicationActive = (app: Application) => {
@@ -21,10 +26,12 @@ const hasActiveApplication = (applications?: Application[]) => {
   return applications.some(isApplicationActive);
 };
 
-export default function Header() {
+export default function Header({ position = "fixed", hideHowItWorks = false }: { position?: "fixed" | "static"; hideHowItWorks?: boolean }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isServicesOpen, setIsServicesOpen] = useState(false);
   const [location, setLocation] = useLocation();
   const firebaseAuth = useFirebaseAuth();
+  const { t } = useTranslation("common");
 
   // Get current subdomain
   const currentSubdomain = useMemo(() => {
@@ -38,6 +45,22 @@ export default function Header() {
   const showPartnerLogin = useMemo(() => {
     return currentSubdomain === 'kitchen';
   }, [currentSubdomain]);
+
+  // Services: cross-subdomain audience links (full URLs — subdomain hops are hard navigations)
+  // Preview → https://dev-chef.localcooks.ca ; production → https://chef.localcooks.ca
+  const serviceUrls = useMemo(() => {
+    const hostname =
+      typeof window !== "undefined" ? window.location.hostname : "localcooks.ca";
+    const opts = {
+      port: typeof window !== "undefined" ? window.location.port : "",
+      protocol: typeof window !== "undefined" ? window.location.protocol : "https:",
+      vercelEnv: import.meta.env.VITE_VERCEL_ENV as string | undefined,
+    };
+    return {
+      chef: getSubdomainOriginForEnvironment("chef", hostname, opts),
+      kitchen: getSubdomainOriginForEnvironment("kitchen", hostname, opts),
+    };
+  }, []);
 
   // Use Firebase auth (session auth removed)
   const { user: firebaseUser } = useFirebaseAuth();
@@ -165,42 +188,44 @@ export default function Header() {
 
   const scrollToSection = useCallback((sectionId: string, event?: React.MouseEvent) => {
     event?.preventDefault();
+    setIsMenuOpen(false);
+    setIsServicesOpen(false);
 
-    // If not on the homepage, navigate to homepage first with the hash
-    if (location !== "/") {
-      // Navigate to homepage with hash - Home component will handle scrolling
-      setLocation(`/#${sectionId}`);
-      // Also update the URL hash directly to ensure it's set
-      window.location.hash = sectionId;
-      return;
-    }
-
-    // If already on homepage, scroll to the section smoothly
     const scrollToElement = () => {
-      const element = document.getElementById(sectionId) || document.querySelector(`#${sectionId}`);
-      if (element) {
-        // Use scrollIntoView - sections have scroll-mt-24 class for header offset
-        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (scrollToPageSection(sectionId)) {
         closeMenu();
         return true;
       }
       return false;
     };
 
-    // Update URL hash
-    window.location.hash = sectionId;
+    // Landing pages (main, chef, kitchen) render these sections inline.
+    // Strip any locale prefix (/en-CA, /fr-CA, /uk) before deciding we're "home",
+    // otherwise the locale-prefixed URL makes us navigate instead of scroll.
+    const { pathWithoutLocale } = parseLocationLocale(location);
+    if (pathWithoutLocale === "/") {
+      // Try immediately
+      if (scrollToElement()) return;
 
-    // Try immediately
-    if (scrollToElement()) return;
+      // If not found, try with delays (for dynamic content)
+      const delays = [100, 300, 500, 1000, 2000, 3500];
+      delays.forEach((delay) => {
+        setTimeout(scrollToElement, delay);
+      });
+      return;
+    }
 
-    // If not found, try with delays (for dynamic content)
-    const delays = [100, 300, 500, 1000, 2000, 3500];
-    delays.forEach((delay) => {
-      setTimeout(() => {
-        scrollToElement();
-      }, delay);
-    });
-  }, [location, setLocation]);
+    // Chef navigation uses a one-time session target so refreshing the landing
+    // page always starts at the top instead of replaying an old URL hash.
+    if (currentSubdomain === "chef") {
+      window.sessionStorage.setItem("chef-landing-scroll-target", sectionId);
+      setLocation("/");
+      return;
+    }
+
+    // Other landing pages retain their existing deep-link behavior.
+    setLocation(`/#${sectionId}`);
+  }, [currentSubdomain, location, setLocation]);
 
   // Helper function to get dashboard link and text
   const getDashboardInfo = () => {
@@ -208,17 +233,17 @@ export default function Header() {
     if (user?.role === "admin") {
       return {
         href: "/admin",
-        text: `${displayName}'s Admin Dashboard`
+        text: t("adminDashboardNamed", { name: displayName })
       };
     } else if (user?.role === "manager") {
       return {
         href: "/manager/dashboard",
-        text: "Manager Dashboard"
+        text: t("managerDashboard")
       };
     } else {
       return {
         href: "/dashboard",
-        text: `${displayName}'s Dashboard`
+        text: t("chefDashboardNamed", { name: displayName })
       };
     }
   };
@@ -242,23 +267,24 @@ export default function Header() {
   };
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 mobile-safe-area transition-all duration-300 shadow-md border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex justify-between items-center">
-        <Link href="/" className="flex items-center gap-2 sm:gap-3 md:gap-4 transition-all duration-300 hover:scale-[1.02] group">
-          <Logo variant="brand" className="h-8 sm:h-10 md:h-12 lg:h-14 w-auto transition-transform duration-300 group-hover:scale-110 flex-shrink-0" />
+    <header
+      className={cn(
+        "z-50 mobile-safe-area transition-all duration-300 shadow-md border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60",
+        position === "fixed" ? "fixed top-0 left-0 right-0" : "relative"
+      )}
+    >
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 h-[var(--header-height)] flex justify-between items-center">
+        <Link href="/" className="flex items-center gap-2 sm:gap-2.5 transition-all duration-300 hover:scale-[1.02] group">
+          <Logo variant="brand" className="h-7 sm:h-8 md:h-9 w-auto transition-transform duration-300 group-hover:scale-105 flex-shrink-0" />
           <div className="flex flex-col justify-center min-w-0">
-            <span className="font-logo text-lg sm:text-xl md:text-2xl lg:text-3xl leading-none text-[#F51042] tracking-tight font-normal truncate">
+            <span className="font-logo text-base sm:text-lg md:text-xl leading-none text-[#F51042] tracking-tight font-normal truncate">
               LocalCooks
             </span>
             {currentSubdomain === 'chef' && (
-              <span className="text-[9px] sm:text-[10px] md:text-xs font-sans font-medium text-gray-500/80 uppercase tracking-wider mt-0.5 leading-none">
-                for chefs
-              </span>
+              <span className="text-[8px] sm:text-[9px] md:text-[10px] font-sans font-medium text-gray-500/70 uppercase tracking-wider mt-0.5 leading-none">{t("forChefs")}</span>
             )}
             {currentSubdomain === 'kitchen' && (
-              <span className="text-[9px] sm:text-[10px] md:text-xs font-sans font-medium text-gray-500/80 uppercase tracking-wider mt-0.5 leading-none">
-                for kitchens
-              </span>
+              <span className="text-[8px] sm:text-[9px] md:text-[10px] font-sans font-medium text-gray-500/70 uppercase tracking-wider mt-0.5 leading-none">{t("forKitchens")}</span>
             )}
           </div>
         </Link>
@@ -266,59 +292,141 @@ export default function Header() {
         <nav className="hidden md:block">
           <ul className="flex space-x-1 items-center">
             <li>
-              <a
-                href="#revenue-streams"
-                className="text-gray-700 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-sm px-4 py-2 rounded-lg hover:bg-gray-50/80"
-                onClick={(e) => scrollToSection("revenue-streams", e)}
-              >
-                Revenue Streams
-              </a>
+              <DropdownMenu open={isServicesOpen} onOpenChange={setIsServicesOpen}>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className="flex items-center gap-1 text-gray-600 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-[13px] px-3 py-1.5 rounded-md hover:bg-gray-50/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]/40"
+                    aria-haspopup="menu"
+                  >
+                    {t("services")}
+                    <ChevronDown className="h-4 w-4 opacity-70" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-max p-1.5">
+                  {currentSubdomain === 'kitchen' ? (
+                    <>
+                      <DropdownMenuItem asChild>
+                        <a
+                          href="/#how-it-works"
+                          className="flex items-center gap-3 py-2 px-3 cursor-pointer rounded-md"
+                          onClick={(e) => scrollToSection("how-it-works", e)}
+                        >
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-amber-50 text-amber-700"><Store className="h-4 w-4" /></span>
+                          <span className="min-w-0">
+                            <span className="block font-medium text-[13px] text-gray-900 whitespace-nowrap">{t("kitchenServiceListSpace")}</span>
+                            <span className="block text-[11px] text-gray-500 mt-0.5 whitespace-nowrap">{t("kitchenServiceListSpaceDesc")}</span>
+                          </span>
+                        </a>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <a href="/#how-it-works" className="flex items-center gap-3 py-2 px-3 cursor-pointer rounded-md" onClick={(e) => scrollToSection("how-it-works", e)}>
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-blue-50 text-blue-700"><CookingPot className="h-4 w-4" /></span>
+                          <span className="min-w-0">
+                            <span className="block font-medium text-[13px] text-gray-900 whitespace-nowrap">{t("kitchenServiceManageBookings")}</span>
+                            <span className="block text-[11px] text-gray-500 mt-0.5 whitespace-nowrap">{t("kitchenServiceManageBookingsDesc")}</span>
+                          </span>
+                        </a>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <a href="/#how-it-works" className="flex items-center gap-3 py-2 px-3 cursor-pointer rounded-md" onClick={(e) => scrollToSection("how-it-works", e)}>
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-emerald-50 text-emerald-700"><CreditCard className="h-4 w-4" /></span>
+                          <span className="min-w-0">
+                            <span className="block font-medium text-[13px] text-gray-900 whitespace-nowrap">{t("kitchenServiceEarn")}</span>
+                            <span className="block text-[11px] text-gray-500 mt-0.5 whitespace-nowrap">{t("kitchenServiceEarnDesc")}</span>
+                          </span>
+                        </a>
+                      </DropdownMenuItem>
+                      <div role="separator" className="mx-2 my-2 border-t border-gray-200" />
+                      <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">{t("chefPartnerLink")}</p>
+                      <DropdownMenuItem asChild>
+                        <a href={serviceUrls.chef} className="flex items-center gap-3 rounded-md px-3 py-2" onClick={() => setIsServicesOpen(false)}>
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-700"><Store className="h-4 w-4" /></span>
+                          <span className="min-w-0">
+                            <span className="block font-medium text-[13px] text-gray-900 whitespace-nowrap">{t("chefPartnerLink")}</span>
+                            <span className="block text-[11px] text-gray-500 mt-0.5 whitespace-nowrap">{t("chefPartnerLinkDesc")}</span>
+                          </span>
+                        </a>
+                      </DropdownMenuItem>
+                    </>
+                  ) : (
+                    <>
+                      <DropdownMenuItem asChild>
+                        <a
+                          href="/#how-it-works"
+                          className="flex items-center gap-3 py-2 px-3 cursor-pointer rounded-md"
+                          onClick={(e) => scrollToSection("how-it-works", e)}
+                        >
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-700">
+                            <ShoppingBag className="h-4 w-4" />
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block font-medium text-[13px] text-gray-900 whitespace-nowrap">{t("chefServiceSell")}</span>
+                            <span className="block text-[11px] text-gray-500 mt-0.5 whitespace-nowrap">{t("chefServiceSellDesc")}</span>
+                          </span>
+                        </a>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <a href="/#how-it-works" className="flex items-center gap-3 py-2 px-3 cursor-pointer rounded-md" onClick={(e) => scrollToSection("how-it-works", e)}>
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-700"><CreditCard className="h-4 w-4" /></span>
+                          <span className="min-w-0">
+                            <span className="block font-medium text-[13px] text-gray-900 whitespace-nowrap">{t("chefServiceOperations")}</span>
+                            <span className="block text-[11px] text-gray-500 mt-0.5 whitespace-nowrap">{t("chefServiceOperationsDesc")}</span>
+                          </span>
+                        </a>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <a href="/#kitchen-access" className="flex items-center gap-3 py-2 px-3 cursor-pointer rounded-md" onClick={(e) => scrollToSection("kitchen-access", e)}>
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-700"><CookingPot className="h-4 w-4" /></span>
+                          <span className="min-w-0">
+                            <span className="block font-medium text-[13px] text-gray-900 whitespace-nowrap">{t("chefServiceBookKitchen")}</span>
+                            <span className="block text-[11px] text-gray-500 mt-0.5 whitespace-nowrap">{t("chefServiceBookKitchenDesc")}</span>
+                          </span>
+                        </a>
+                      </DropdownMenuItem>
+                      <div role="separator" className="mx-2 my-2 border-t border-gray-200" />
+                      <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">{t("kitchenPartnerLink")}</p>
+                      <DropdownMenuItem asChild>
+                        <a href={serviceUrls.kitchen} className="flex items-center gap-3 rounded-md px-3 py-2" onClick={() => setIsServicesOpen(false)}>
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-700"><Warehouse className="h-4 w-4" /></span>
+                          <span className="min-w-0">
+                            <span className="block font-medium text-[13px] text-gray-900 whitespace-nowrap">{t("servicesForKitchensDesc")}</span>
+                            <span className="block text-[11px] text-gray-500 mt-0.5 whitespace-nowrap">{t("kitchenPartnerLinkDesc")}</span>
+                          </span>
+                        </a>
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </li>
-            <li>
+            {!hideHowItWorks && <li>
               <a
                 href="#how-it-works"
-                className="text-gray-700 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-sm px-4 py-2 rounded-lg hover:bg-gray-50/80"
+                className="text-gray-600 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-[13px] px-3 py-1.5 rounded-md hover:bg-gray-50/80"
                 onClick={(e) => scrollToSection("how-it-works", e)}
-              >
-                How It Works
-              </a>
-            </li>
-            <li>
-              <a
-                href="#everything-included"
-                className="text-gray-700 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-sm px-4 py-2 rounded-lg hover:bg-gray-50/80"
-                onClick={(e) => scrollToSection("everything-included", e)}
-              >
-                Everything Included
-              </a>
-            </li>
+              >{t("howItWorks")}</a>
+            </li>}
             <li>
               <a
                 href="#resources"
-                className="text-gray-700 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-sm px-4 py-2 rounded-lg hover:bg-gray-50/80"
+                className="text-gray-600 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-[13px] px-3 py-1.5 rounded-md hover:bg-gray-50/80"
                 onClick={(e) => scrollToSection("resources", e)}
-              >
-                Resources
-              </a>
+              >{t("resources")}</a>
             </li>
             <li>
               <a
                 href="#faq"
-                className="text-gray-700 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-sm px-4 py-2 rounded-lg hover:bg-gray-50/80"
+                className="text-gray-600 hover:text-[#F51042] transition-all duration-200 cursor-pointer font-medium text-[13px] px-3 py-1.5 rounded-md hover:bg-gray-50/80"
                 onClick={(e) => scrollToSection("faq", e)}
-              >
-                FAQ
-              </a>
+              >{t("faq")}</a>
             </li>
             {user && user.role !== 'admin' && (user as any).isChef && (
               <li>
                 <Link
                   href="/microlearning/overview"
-                  className="flex items-center gap-2 hover:text-primary hover-text cursor-pointer px-4 py-2 rounded-lg transition-all duration-200 text-sm font-medium hover:bg-gray-50/80"
+                  className="flex items-center gap-1.5 hover:text-primary hover-text cursor-pointer px-3 py-1.5 rounded-md transition-all duration-200 text-[13px] font-medium hover:bg-gray-50/80"
                 >
-                  <GraduationCap className="h-4 w-4" />
-                  Food Safety Training
-                </Link>
+                  <GraduationCap className="h-4 w-4" />{t("foodSafetyTraining")}</Link>
               </li>
             )}
             {!user && (
@@ -327,10 +435,11 @@ export default function Header() {
                   <Button
                     asChild
                     variant="outline"
-                    className="border-[#F51042] text-[#F51042] hover:bg-[#F51042] hover:text-white transition-all duration-300 rounded-lg font-medium shadow-sm hover:shadow-md ml-2"
+                    size="sm"
+                    className="border-[#F51042]/80 text-[#F51042] hover:bg-[#F51042] hover:text-white transition-all duration-300 rounded-full font-medium text-[13px] ml-2"
                   >
                     <Link href={showPartnerLogin ? "/manager/login" : "/auth"}>
-                      {showPartnerLogin ? "Partner Login / Register" : "Login / Register"}
+                      {showPartnerLogin ? t("partnerLoginRegister") : t("loginRegister")}
                     </Link>
                   </Button>
                 </li>
@@ -342,7 +451,7 @@ export default function Header() {
                 <li>
                   <Link
                     href={getDashboardInfo().href}
-                    className="flex items-center gap-2 hover:text-primary hover-text cursor-pointer px-4 py-2 rounded-lg transition-all duration-200 text-sm font-medium hover:bg-gray-50/80"
+                    className="flex items-center gap-1.5 hover:text-primary hover-text cursor-pointer px-3 py-1.5 rounded-md transition-all duration-200 text-[13px] font-medium hover:bg-gray-50/80"
                   >
                     <User className="h-4 w-4" />
                     {getDashboardInfo().text}
@@ -353,11 +462,9 @@ export default function Header() {
                     variant="outline"
                     size="sm"
                     onClick={handleLogout}
-                    className="gap-2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300 rounded-lg font-medium shadow-sm hover:shadow-md transition-all duration-200 ml-2"
+                    className="gap-1.5 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300 rounded-md font-medium text-[13px] transition-all duration-200 ml-2"
                   >
-                    <LogOut className="h-4 w-4" />
-                    Logout
-                  </Button>
+                    <LogOut className="h-3.5 w-3.5" />{t("logout")}</Button>
                 </li>
               </>
             )}
@@ -406,18 +513,61 @@ export default function Header() {
           <div className="container mx-auto px-4 sm:px-6 py-5">
             <ul className="space-y-3">
               <li>
-                <a
-                  href="#revenue-streams"
-                  className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
-                  onClick={(e) => {
-                    scrollToSection("revenue-streams", e);
-                    closeMenu();
-                  }}
-                >
-                  Revenue Streams
-                </a>
+                <p className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-gray-400">{t("services")}</p>
+                {currentSubdomain === 'kitchen' ? (
+                  <>
+                    {([
+                      [Store, "kitchenServiceListSpace", "kitchenServiceListSpaceDesc"],
+                      [CookingPot, "kitchenServiceManageBookings", "kitchenServiceManageBookingsDesc"],
+                      [CreditCard, "kitchenServiceEarn", "kitchenServiceEarnDesc"],
+                    ] as const).map(([Icon, title, description]) => (
+                      <a key={title} href="/#how-it-works" className="flex items-center gap-3 px-2 py-3 rounded-lg hover:bg-primary/5" onClick={(e) => scrollToSection("how-it-works", e)}>
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-700"><Icon className="h-5 w-5" /></span>
+                        <span><span className="block text-sm font-medium text-gray-900">{t(title)}</span><span className="block text-xs text-gray-500">{t(description)}</span></span>
+                      </a>
+                    ))}
+                    <div role="separator" className="mx-2 my-2 border-t border-gray-200" />
+                    <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">{t("chefPartnerLink")}</p>
+                    <a href={serviceUrls.chef} className="flex items-center gap-3 rounded-lg px-2 py-3 hover:bg-primary/5" onClick={closeMenu}>
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-700"><Store className="h-5 w-5" /></span>
+                      <span><span className="block text-sm font-medium text-gray-900">{t("chefPartnerLink")}</span><span className="block text-xs text-gray-500">{t("chefPartnerLinkDesc")}</span></span>
+                    </a>
+                  </>
+                ) : (
+                  <>
+                    <a
+                      href="/#how-it-works"
+                      className="flex items-center gap-3 py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
+                      onClick={(e) => scrollToSection("how-it-works", e)}
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-700">
+                        <ShoppingBag className="h-5 w-5" />
+                      </span>
+                      <span>
+                        <span className="block text-sm font-medium text-gray-900">{t("chefServiceSell")}</span>
+                        <span className="block text-xs text-gray-500">{t("chefServiceSellDesc")}</span>
+                      </span>
+                    </a>
+                    {([
+                      [CreditCard, "chefServiceOperations", "chefServiceOperationsDesc"],
+                      [CookingPot, "chefServiceBookKitchen", "chefServiceBookKitchenDesc"],
+                    ] as const).map(([Icon, title, description]) => (
+                      <a key={title} href={title === "chefServiceBookKitchen" ? "/#kitchen-access" : "/#how-it-works"} className="flex items-center gap-3 px-2 py-3 rounded-lg hover:bg-primary/5" onClick={(e) => scrollToSection(title === "chefServiceBookKitchen" ? "kitchen-access" : "how-it-works", e)}>
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-700"><Icon className="h-5 w-5" /></span>
+                        <span><span className="block text-sm font-medium text-gray-900">{t(title)}</span><span className="block text-xs text-gray-500">{t(description)}</span></span>
+                      </a>
+                    ))}
+                    <div role="separator" className="mx-2 my-2 border-t border-gray-200" />
+                    <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">{t("kitchenPartnerLink")}</p>
+                    <a href={serviceUrls.kitchen} className="flex items-center gap-3 rounded-lg px-2 py-3 hover:bg-primary/5" onClick={closeMenu}>
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-700"><Warehouse className="h-5 w-5" /></span>
+                      <span><span className="block text-sm font-medium text-gray-900">{t("servicesForKitchensDesc")}</span><span className="block text-xs text-gray-500">{t("kitchenPartnerLinkDesc")}</span></span>
+                    </a>
+                  </>
+                )}
               </li>
-              <li>
+              <li role="separator" className="border-t border-gray-200/70 my-1" />
+              {!hideHowItWorks && <li>
                 <a
                   href="#how-it-works"
                   className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
@@ -425,22 +575,8 @@ export default function Header() {
                     scrollToSection("how-it-works", e);
                     closeMenu();
                   }}
-                >
-                  How It Works
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#everything-included"
-                  className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
-                  onClick={(e) => {
-                    scrollToSection("everything-included", e);
-                    closeMenu();
-                  }}
-                >
-                  Everything Included
-                </a>
-              </li>
+                >{t("howItWorks")}</a>
+              </li>}
               <li>
                 <a
                   href="#resources"
@@ -449,9 +585,7 @@ export default function Header() {
                     scrollToSection("resources", e);
                     closeMenu();
                   }}
-                >
-                  Resources
-                </a>
+                >{t("resources")}</a>
               </li>
               <li>
                 <a
@@ -461,10 +595,9 @@ export default function Header() {
                     scrollToSection("faq", e);
                     closeMenu();
                   }}
-                >
-                  FAQ
-                </a>
+                >{t("faq")}</a>
               </li>
+
               {user && (
                 <>
                   {user.role !== 'admin' && (user as any).isChef && (
@@ -474,9 +607,7 @@ export default function Header() {
                         className="flex items-center gap-2 py-2 hover:text-primary hover-text cursor-pointer"
                         onClick={closeMenu}
                       >
-                        <GraduationCap className="h-4 w-4" />
-                        Food Safety Training
-                      </Link>
+                        <GraduationCap className="h-4 w-4" />{t("foodSafetyTraining")}</Link>
                     </li>
                   )}
                   <li>
@@ -499,9 +630,7 @@ export default function Header() {
                       }}
                       className="w-full gap-2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
                     >
-                      <LogOut className="h-4 w-4" />
-                      Logout
-                    </Button>
+                      <LogOut className="h-4 w-4" />{t("logout")}</Button>
                   </li>
                 </>
               )}
@@ -510,10 +639,10 @@ export default function Header() {
                   <li className="pt-2">
                     <Button
                       asChild
-                      className="w-full bg-primary hover:bg-opacity-90 hover-standard text-white"
+                      className="w-full rounded-full bg-primary hover:bg-opacity-90 hover-standard text-white"
                     >
                       <Link href={showPartnerLogin ? "/manager/login" : "/auth"} onClick={closeMenu}>
-                        {showPartnerLogin ? "Partner Login / Register" : "Login / Register"}
+                        {showPartnerLogin ? t("partnerLoginRegister") : t("loginRegister")}
                       </Link>
                     </Button>
                   </li>

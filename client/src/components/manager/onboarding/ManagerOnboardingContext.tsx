@@ -1,4 +1,6 @@
 import { logger } from "@/lib/logger";
+import { mt } from "@/i18n/manager";
+import { tt } from "@/i18n/common-ns";
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef, ReactNode } from 'react';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -7,7 +9,7 @@ import { auth } from "@/lib/firebase";
 import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
 import { Location, Kitchen, StorageListing, EquipmentListing } from "./types";
 import { optionalPhoneNumberSchema } from "@shared/phone-validation";
-import { useOnboarding } from '@onboardjs/react';
+import { useOnboarding } from "@onboardjs/react";
 import { steps } from "@/config/onboarding-steps";
 import { Link, useLocation } from "wouter";
 
@@ -90,6 +92,8 @@ interface ManagerOnboardingContextType {
     contactEmail: string;
     contactPhone: string;
     preferredContactMethod: "email" | "phone" | "both";
+    logoUrl: string;
+    description: string;
     setName: (val: string) => void;
     setAddress: (val: string) => void;
     setNotificationEmail: (val: string) => void;
@@ -97,6 +101,8 @@ interface ManagerOnboardingContextType {
     setContactEmail: (val: string) => void;
     setContactPhone: (val: string) => void;
     setPreferredContactMethod: (val: "email" | "phone" | "both") => void;
+    setLogoUrl: (val: string) => void;
+    setDescription: (val: string) => void;
   };
 
   licenseForm: {
@@ -125,6 +131,7 @@ interface ManagerOnboardingContextType {
       currency: string;
       minimumBookingHours: string;
       imageUrl: string;
+      features: string[];
     };
     setData: (data: any) => void;
     showCreate: boolean;
@@ -186,6 +193,8 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
 
   // Location Form State
   const [locationName, setLocationName] = useState("");
+  const [locationLogoUrl, setLocationLogoUrl] = useState("");
+  const [locationDescription, setLocationDescription] = useState("");
   const [locationAddress, setLocationAddress] = useState("");
   const [notificationEmail, setNotificationEmail] = useState("");
   const [notificationPhone, setNotificationPhone] = useState("");
@@ -219,6 +228,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     currency: 'CAD',
     minimumBookingHours: '1',
     imageUrl: '',
+    features: [],
   });
 
   // Listings State
@@ -542,6 +552,8 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       setSelectedLocationId(loc.id);
       setLocationName(loc.name || "");
       setLocationAddress(loc.address || "");
+      setLocationLogoUrl(loc.logoUrl || loc.logo_url || "");
+      setLocationDescription(loc.description || "");
       setNotificationEmail(loc.notificationEmail || loc.notification_email || "");
       setNotificationPhone(loc.notificationPhone || loc.notification_phone || "");
       // Contact fields
@@ -905,7 +917,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         headers: { 'Authorization': `Bearer ${token}` },
         body: formData,
       });
-      if (!res.ok) throw new Error("Upload failed");
+      if (!res.ok) throw new Error(tt("uploadFailed"));
       const data = await res.json();
       setLicenseUploadedUrl(data.url);
       return data.url;
@@ -926,7 +938,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         headers: { 'Authorization': `Bearer ${token}` },
         body: formData,
       });
-      if (!res.ok) throw new Error("Upload failed");
+      if (!res.ok) throw new Error(tt("uploadFailed"));
       const data = await res.json();
       setLicenseUploadedUrl(data.url);
       licenseUploadedUrlRef.current = data.url; // Also set ref
@@ -959,7 +971,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       if (!res.ok) {
         const errorText = await res.text();
         logger.error('[Onboarding] Terms upload failed:', res.status, errorText);
-        throw new Error("Upload failed");
+        throw new Error(tt("uploadFailed"));
       }
       const data = await res.json();
       logger.info('[Onboarding] ✅ Terms file uploaded successfully:', {
@@ -989,7 +1001,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   // - Proper async state handling before navigation
   const updateLocation = async () => {
     if (!locationName || !locationAddress) {
-      toast({ title: "Error", description: "Missing location details", variant: "destructive" });
+      toast({ title: mt("error"), description: mt("missingLocationDetails"), variant: "destructive" });
       return;
     }
 
@@ -1028,7 +1040,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       if (!licenseUrl && licenseFile) {
         // Only upload if not already uploaded
         if (!licenseExpiryDate) {
-          toast({ title: "Error", description: "Missing license expiry", variant: "destructive" });
+          toast({ title: mt("error"), description: mt("missingLicenseExpiry"), variant: "destructive" });
           setIsSubmitting(false);
           return;
         }
@@ -1067,7 +1079,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
           headers: { 'Authorization': `Bearer ${token}` },
           body: formData
         });
-        if (!uploadRes.ok) throw new Error("Failed to upload terms file");
+        if (!uploadRes.ok) throw new Error(tt("failedToUploadTerms"));
         const uploadResult = await uploadRes.json();
         termsUrl = uploadResult.url;
         setTermsUploadedUrl(termsUrl);
@@ -1088,14 +1100,14 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       let phone = notificationPhone;
       if (phone) {
         const p = optionalPhoneNumberSchema.safeParse(phone);
-        if (!p.success) throw new Error("Invalid phone");
+        if (!p.success) throw new Error(tt("invalidPhone"));
         phone = p.data || "";
       }
 
       let contactPhoneValidated = contactPhone;
       if (contactPhoneValidated) {
         const cp = optionalPhoneNumberSchema.safeParse(contactPhoneValidated);
-        if (!cp.success) throw new Error("Invalid contact phone");
+        if (!cp.success) throw new Error(tt("invalidContactPhone"));
         contactPhoneValidated = cp.data || "";
       }
 
@@ -1106,7 +1118,9 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         notificationPhone: phone,
         contactEmail,
         contactPhone: contactPhoneValidated,
-        preferredContactMethod
+        preferredContactMethod,
+        logoUrl: locationLogoUrl,
+        description: locationDescription,
       };
       
       // Include license URL (pre-uploaded or freshly uploaded)
@@ -1167,7 +1181,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       const data = await res.json();
       logger.info('[Onboarding] Response:', res.status, data);
 
-      if (!res.ok) throw new Error(data.error || "Failed to save location");
+      if (!res.ok) throw new Error(data.error || tt("failedToSaveLocation"));
 
       // [FIX 4] Track the created/updated location ID immediately via ref (sync)
       const savedLocationId = data.id || effectiveLocationId;
@@ -1191,6 +1205,8 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
                 ...loc,
                 name: locationName,
                 address: locationAddress,
+                logoUrl: locationLogoUrl,
+                description: locationDescription,
                 kitchenLicenseUrl: licenseUrl || loc.kitchenLicenseUrl || loc.kitchen_license_url,
                 kitchenTermsUrl: termsUrl || loc.kitchenTermsUrl || loc.kitchen_terms_url,
                 kitchenLicenseExpiry: licenseExpiryDate || loc.kitchenLicenseExpiry,
@@ -1214,6 +1230,8 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
             if (!exists) {
               return [...oldData, {
                 ...data,
+                logoUrl: locationLogoUrl,
+                description: locationDescription,
                 kitchenLicenseUrl: licenseUrl,
                 kitchenTermsUrl: termsUrl,
                 kitchen_license_url: licenseUrl,
@@ -1243,7 +1261,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         return;
       }
 
-      toast({ title: "Success", description: "Location saved" });
+      toast({ title: mt("success"), description: mt("locationSaved") });
       
       // Clear file state after successful save (files are now persisted to location)
       setLicenseFile(null);
@@ -1253,7 +1271,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
 
     } catch (e: any) {
       logger.error('[Onboarding] Error in updateLocation:', e);
-      toast({ title: "Error", description: e.message, variant: "destructive" });
+      toast({ title: mt("error"), description: e.message, variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -1273,48 +1291,26 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
           locationId: selectedLocationId,
           name: kitchenFormData.name,
           description: kitchenFormData.description,
-          imageUrl: kitchenFormData.imageUrl || undefined
+          imageUrl: kitchenFormData.imageUrl || undefined,
+          features: kitchenFormData.features,
+          hourlyRate: Math.round(parseFloat(kitchenFormData.hourlyRate) * 100),
+          currency: kitchenFormData.currency,
+          minimumBookingHours: parseInt(kitchenFormData.minimumBookingHours, 10) || 0,
         })
       });
-      if (!res.ok) throw new Error("Failed to create kitchen");
-      let newKitchen = await res.json();
-
-
-
-      // 3. Update Pricing
-      if (kitchenFormData.hourlyRate) {
-        const pricingRes = await fetch(`/api/manager/kitchens/${newKitchen.id}/pricing`, {
-          method: "PUT",
-          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            hourlyRate: Math.round(parseFloat(kitchenFormData.hourlyRate) * 100),
-            currency: kitchenFormData.currency,
-            minimumBookingHours: parseInt(kitchenFormData.minimumBookingHours, 10) || 0
-          })
-        });
-        
-        // Merge pricing data into the kitchen object
-        if (pricingRes.ok) {
-          newKitchen = {
-            ...newKitchen,
-            hourlyRate: Math.round(parseFloat(kitchenFormData.hourlyRate) * 100),
-            currency: kitchenFormData.currency,
-            minimumBookingHours: parseInt(kitchenFormData.minimumBookingHours, 10) || 0,
-            imageUrl: kitchenFormData.imageUrl || newKitchen.imageUrl
-          };
-        }
-      }
+      if (!res.ok) throw new Error(tt("failedToCreateKitchen"));
+      const newKitchen = await res.json();
 
       setKitchens([...kitchens, newKitchen]);
       setSelectedKitchenId(newKitchen.id);
       setShowCreateKitchen(false);
-      setKitchenFormData({ name: '', description: '', hourlyRate: '', currency: 'CAD', minimumBookingHours: '1', imageUrl: '' });
+      setKitchenFormData({ name: '', description: '', hourlyRate: '', currency: 'CAD', minimumBookingHours: '1', imageUrl: '', features: [] });
 
       await trackStepCompletion(currentStep?.id || 'create-kitchen');
-      toast({ title: "Success", description: "Kitchen created" });
+      toast({ title: mt("success"), description: mt("kitchenCreated2") });
       // next(); // [FIX] Do not auto-advance. Let user click Next to avoid race conditions with checks.
     } catch (e: any) {
-      toast({ title: "Error", description: e.message, variant: "destructive" });
+      toast({ title: mt("error"), description: e.message, variant: "destructive" });
     } finally {
       setCreatingKitchen(false);
     }
@@ -1386,7 +1382,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       setIsOpen(false);
       setIsAddingLocation(false); // [MULTI-LOCATION FIX] Reset flag so auto-select works again
       onboardSkip();
-      toast({ title: "Flow Completed", description: "All set!" });
+      toast({ title: mt("flowCompleted"), description: mt("allSet") });
     } catch (e) {
       logger.error("Onboarding flow error", e);
     }
@@ -1491,7 +1487,9 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       notificationPhone, setNotificationPhone,
       contactEmail, setContactEmail,
       contactPhone, setContactPhone,
-      preferredContactMethod, setPreferredContactMethod
+      preferredContactMethod, setPreferredContactMethod,
+      logoUrl: locationLogoUrl, setLogoUrl: setLocationLogoUrl,
+      description: locationDescription, setDescription: setLocationDescription,
     },
     licenseForm: {
       file: licenseFile, setFile: setLicenseFile,
@@ -1616,9 +1614,8 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         queryClient.refetchQueries({ queryKey: ["/api/user/profile"] });
         queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
 
-        toast({ 
-          title: "Progress Saved", 
-          description: "You can continue setup anytime from where you left off." 
+        toast({ title: mt("progressSaved"), 
+          description: mt("youCanContinueSetupAnytimeFromWhereYouLeftOff") 
         });
 
         // 4. Reset multi-location flag and navigate to dashboard with locationId
@@ -1641,6 +1638,8 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       setSelectedLocationId(null);
       setLocationName("");
       setLocationAddress("");
+      setLocationLogoUrl("");
+      setLocationDescription("");
       const accountEmail = firebaseUser?.email || "";
       setNotificationEmail(accountEmail);
       setNotificationPhone("");
@@ -1660,7 +1659,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       setSelectedKitchenId(null);
       setKitchensLoaded(false);
       setShowCreateKitchen(false);
-      setKitchenFormData({ name: '', description: '', hourlyRate: '', currency: 'CAD', minimumBookingHours: '1', imageUrl: '' });
+      setKitchenFormData({ name: '', description: '', hourlyRate: '', currency: 'CAD', minimumBookingHours: '1', imageUrl: '', features: [] });
       setExistingStorageListings([]);
       setExistingEquipmentListings([]);
       setHasAvailability(false);
@@ -1710,6 +1709,6 @@ export { ManagerOnboardingLogic }; // Export Logic for the Provider to use
 
 export const useManagerOnboarding = () => {
   const context = useContext(ManagerOnboardingContext);
-  if (!context) throw new Error("useManagerOnboarding must be used within Provider");
+  if (!context) throw new Error(mt("useManagerOnboardingWithinProvider"));
   return context;
 };

@@ -1,11 +1,8 @@
 import { logger } from "@/lib/logger";
-import { useState, useEffect, useCallback } from "react";
+import { mt } from "@/i18n/manager";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  Calendar, Clock, ChefHat, Settings,
-  Check, Save, AlertCircle, FileText,
-  ChevronRight, Info, Mail, Upload, Image as ImageIcon, Globe, CheckCircle, Plus, Loader2, HelpCircle, Trash2
-} from "lucide-react";
+import { Calendar, Clock, Settings, Check, Save, AlertCircle, FileText, ChevronRight, Info, Mail, Upload, Image as ImageIcon, Globe, CheckCircle, Plus, Loader2, HelpCircle, Trash2, Eye, Package } from "@/components/ui/manager-icons";
 import { ImageWithReplace } from "@/components/ui/image-with-replace";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
 import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
@@ -19,15 +16,12 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import KitchenAvailabilityManagement from "./KitchenAvailabilityManagement";
+import KitchenAvailabilityManagement, { type KitchenAvailabilityManagementHandle } from "./KitchenAvailabilityManagement";
 import ManagerBookingsPanel from "./ManagerBookingsPanel";
+import ManagerStorageBookingsPage from "./ManagerStorageBookingsPage";
 import ViewingsDashboard from "@/components/manager/ViewingsDashboard";
 import { ManagerKitchenApplicationsContent } from "./ManagerKitchenApplications";
-import KitchenPricingManagement from "./KitchenPricingManagement";
-import StorageListingManagement from "./StorageListingManagement";
-import EquipmentListingManagement from "./EquipmentListingManagement";
 import KitchenDashboardOverview from "@/components/dashboard/KitchenDashboardOverview";
-import StripeConnectSetup from "@/components/manager/StripeConnectSetup";
 import { OverstayPenaltyQueue } from "@/components/manager/overstays/OverstayPenaltyQueue";
 import { DamageClaimQueue } from "@/components/manager/damage-claims/DamageClaimQueue";
 import { PendingStorageCheckouts } from "@/components/manager/PendingStorageCheckouts";
@@ -36,36 +30,24 @@ import ManagerLocationsPage from "@/components/manager/ManagerLocationsPage";
 import ManagerRevenueDashboard from "./ManagerRevenueDashboard";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
 import LocationRequirementsSettings from "@/components/manager/LocationRequirementsSettings";
-import {
-  LicenseSettings,
-  BookingRulesSettings,
-  LocationSettings,
-  KitchensManagement,
-  NotificationsSettings,
-  FacilityDocsSettings,
-  CheckinCheckoutSettings,
-  StorageCheckinCheckoutSettings,
-} from "@/components/manager/settings";
+import { LicenseSettings, BookingRulesSettings, LocationSettings, KitchensManagement, FacilityDocsSettings, CheckinCheckoutSettings, StorageCheckinCheckoutSettings } from "@/components/manager/settings";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import DashboardLayout from "@/layouts/DashboardLayout";
 import { Input } from "@/components/ui/input";
 import { NumericInput } from "@/components/ui/numeric-input";
 import { Label } from "@/components/ui/label";
+import { FormLegend } from "@/components/ui/form-legend";
 import ManagerProfileSettings from "@/components/manager/ManagerProfileSettings";
 import { useManagerOnboarding } from "@/components/manager/onboarding/ManagerOnboardingContext";
 import { OnboardingStatusBanner } from "@/components/manager/OnboardingStatusBanner";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { getManagerImprovementDestination } from "@/lib/manager-guidance";
+import NotificationCenter from "@/components/manager/NotificationCenter";
+import { legacyKitchenSection, type ManagerBreadcrumb } from "@/lib/manager-kitchens-navigation";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { ChefPageHeader } from "@/components/chef/ui";
+import { Tab, TabGroup, TabList, TabPanel, TabPanels } from "@tremor/react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 // Helper component for authenticated document links
 function AuthenticatedDocumentLink({ url, className, children }: { url: string | null | undefined; className?: string; children: React.ReactNode }) {
@@ -164,10 +146,11 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 }
 
 
-type ViewType = 'my-locations' | 'overview' | 'bookings' | 'viewings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'revenue' | 'messages' | 'profile' | 'kitchens' | 'settings-license' | 'settings-booking-rules' | 'settings-facility-docs' | 'settings-location' | 'settings-checkin-checkout' | 'settings-storage-checkin-checkout' | 'application-requirements' | 'notifications' | 'overstays' | 'damage-claims' | 'storage-checkouts';
+type ViewType = 'my-locations' | 'overview' | 'bookings' | 'storage-bookings' | 'viewings' | 'availability' | 'tour-availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'revenue' | 'messages' | 'profile' | 'kitchens' | 'settings-license' | 'settings-booking-rules' | 'settings-facility-docs' | 'settings-location' | 'settings-checkin-checkout' | 'settings-storage-checkin-checkout' | 'application-requirements' | 'notifications' | 'notification-settings' | 'overstays' | 'damage-claims' | 'storage-checkouts';
 
 
 export default function ManagerBookingDashboard() {
+  
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation(); // [NEW] Used for setup navigation
   const { locations, isLoadingLocations } = useManagerDashboard();
@@ -178,16 +161,24 @@ export default function ManagerBookingDashboard() {
   const [activeView, setActiveView] = useState<ViewType>(() => {
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
-    const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'overstays', 'damage-claims', 'storage-checkouts'];
+    const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'storage-bookings', 'viewings', 'availability', 'tour-availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'notification-settings', 'overstays', 'damage-claims', 'storage-checkouts'];
     // Back-compat: redirect legacy 'settings-storage-checkout' URLs to the new combined page.
     if (view === 'settings-storage-checkout') {
       return 'settings-storage-checkin-checkout';
+    }
+    if (legacyKitchenSection(view)) {
+      return 'kitchens';
     }
     if (view && validViews.includes(view as ViewType)) {
       return view as ViewType;
     }
     return 'overview';
   });
+  const availabilityRef = useRef<KitchenAvailabilityManagementHandle>(null);
+  const bypassAvailabilityGuard = useRef(false);
+  const [availabilityDirty, setAvailabilityDirty] = useState(false);
+  const [pendingAvailabilityView, setPendingAvailabilityView] = useState<ViewType | null>(null);
+  const [isSavingBeforeLeave, setIsSavingBeforeLeave] = useState(false);
 
   // Handle locationId from URL for direct navigation (e.g., returning from setup, notification links)
   useEffect(() => {
@@ -239,22 +230,37 @@ export default function ManagerBookingDashboard() {
 
   // [REF] Use new hook for consolidated status
   const {
+    isLoading: isLoadingOnboardingStatus,
     showSetupBanner,
     showLicenseReviewBanner,
     isReadyForBookings,
-    missingSteps
+    missingSteps,
+    improvementSteps,
   } = useOnboardingStatus(selectedLocation?.id);
 
   // Sync activeView with URL parameters. Listens to popstate so back/forward
   // through the pushed tab history correctly updates the active view.
+  const [deepLinkConversationId, setDeepLinkConversationId] = useState<string | null>(() =>
+    new URLSearchParams(window.location.search).get("conversation")
+  );
+
   useEffect(() => {
     const handleLocationChange = () => {
       const params = new URLSearchParams(window.location.search);
       const view = params.get('view');
-      const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'viewings', 'availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'overstays', 'damage-claims', 'storage-checkouts'];
+      setDeepLinkConversationId(params.get("conversation"));
+      const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'storage-bookings', 'viewings', 'availability', 'tour-availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'notification-settings', 'overstays', 'damage-claims', 'storage-checkouts'];
       // Back-compat: redirect legacy URL to the new combined page.
       if (view === 'settings-storage-checkout') {
         setActiveView('settings-storage-checkin-checkout');
+        return;
+      }
+      const legacySection = legacyKitchenSection(view);
+      if (legacySection) {
+        params.set('view', 'kitchens');
+        params.set('section', legacySection);
+        window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+        setActiveView('kitchens');
         return;
       }
       if (view && validViews.includes(view as ViewType)) {
@@ -276,18 +282,80 @@ export default function ManagerBookingDashboard() {
   // so the back button walks through the user's tab journey instead of always
   // returning to whatever tab was last viewed before opening a sub-page.
   const handleViewChange = (view: ViewType) => {
-    setActiveView(view);
+    const legacySection = legacyKitchenSection(view);
+    const profileTab = view === 'payments' ? 'payments' : view === 'notification-settings' ? 'notifications' : null;
+    const availabilityTab = view === 'tour-availability' ? 'tours' : null;
+    const nextView = availabilityTab ? 'availability' : profileTab ? 'profile' : legacySection ? 'kitchens' : view;
+    const isSameDestination = nextView === activeView && !availabilityTab && !profileTab && !legacySection;
+    if (isSameDestination) return;
+    if (activeView === 'availability' && availabilityDirty && !bypassAvailabilityGuard.current) {
+      setPendingAvailabilityView(view);
+      return;
+    }
+    setActiveView(nextView);
     const url = new URL(window.location.href);
-    if (view === 'overview') {
+    if (legacySection) {
+      url.searchParams.set('view', 'kitchens');
+      url.searchParams.set('section', legacySection);
+    } else if (nextView === 'overview') {
       url.searchParams.delete('view');
     } else {
-      url.searchParams.set('view', view);
+      url.searchParams.set('view', nextView);
+      if (profileTab) url.searchParams.set('tab', profileTab);
+      else if (availabilityTab) url.searchParams.set('tab', availabilityTab);
+      else if (nextView !== 'profile') url.searchParams.delete('tab');
+      if (nextView !== 'kitchens') url.searchParams.delete('section');
     }
     const nextUrl = url.toString();
     if (nextUrl !== window.location.href) {
       window.history.pushState({}, '', nextUrl);
     }
   };
+
+  const continueFromAvailability = (view: ViewType) => {
+    bypassAvailabilityGuard.current = true;
+    setAvailabilityDirty(false);
+    setPendingAvailabilityView(null);
+    handleViewChange(view);
+    bypassAvailabilityGuard.current = false;
+  };
+
+  const saveAndLeaveAvailability = async () => {
+    if (!pendingAvailabilityView) return;
+    setIsSavingBeforeLeave(true);
+    const saved = await availabilityRef.current?.saveAllChanges();
+    setIsSavingBeforeLeave(false);
+    if (saved) continueFromAvailability(pendingAvailabilityView);
+  };
+
+  const kitchenChildLabel: Partial<Record<ViewType, string>> = {
+    availability: mt("navAvailability"),
+    "settings-checkin-checkout": mt("navCheckinCheckout"),
+    "damage-claims": mt("navDamageClaims"),
+  };
+  const storageChildLabel: Partial<Record<ViewType, string>> = {
+    "settings-storage-checkin-checkout": mt("navStorageCheckinCheckout"),
+    overstays: mt("navOverstayPenalties"),
+    "storage-checkouts": mt("navStorageInspections"),
+  };
+  const isKitchenChild = Boolean(kitchenChildLabel[activeView]);
+  const isStorageChild = Boolean(storageChildLabel[activeView]);
+  const shellActiveView = isKitchenChild ? 'kitchens' : isStorageChild ? 'storage-bookings' : activeView;
+  const breadcrumbs: ManagerBreadcrumb[] = activeView === 'kitchens'
+    ? [{ label: mt("navSpaces"), navId: "kitchens" }]
+    : isKitchenChild
+      ? [
+          { label: mt("navSpaces"), navId: "kitchens", onClick: () => handleViewChange('kitchens') },
+          { label: kitchenChildLabel[activeView]!, navId: activeView },
+        ]
+      : activeView === 'storage-bookings'
+        ? [{ label: mt("navStorageBookings"), navId: "storage-bookings" }]
+        : isStorageChild
+          ? [
+              { label: mt("navStorageBookings"), navId: "storage-bookings", onClick: () => handleViewChange('storage-bookings') },
+              { label: storageChildLabel[activeView]!, navId: activeView },
+            ]
+          : [];
 
   // Handle Stripe Connect Return
   useEffect(() => {
@@ -318,13 +386,12 @@ export default function ManagerBookingDashboard() {
               logger.info("Stripe status synced successfully via return handler");
             } else {
               logger.error("No token available for sync");
-              throw new Error("Authentication missing");
+              throw new Error(tt("authMissing"));
             }
           } catch (e) {
             logger.error("Failed to sync stripe status:", e);
-            toast({
-              title: "Sync Warning",
-              description: "We couldn't automatically confirm your status. Please click 'Refresh Status' if needed.",
+            toast({ title: mt("syncWarning"),
+              description: mt("toastStripeSyncWarningDesc"),
               variant: "destructive"
             });
             // Don't return early - still allow navigation, but maybe don't broadcast success if we aren't sure?
@@ -333,9 +400,8 @@ export default function ManagerBookingDashboard() {
           }
 
           // Show success message
-          toast({
-            title: "Stripe Connected Successfully",
-            description: "Your account is now ready to receive payments.",
+          toast({ title: mt("stripeConnectedSuccessfully"),
+            description: mt("yourAccountIsNowReadyToReceivePayments"),
             variant: "default",
           });
 
@@ -343,11 +409,11 @@ export default function ManagerBookingDashboard() {
           await queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
           await queryClient.invalidateQueries({ queryKey: ['/api/manager/stripe-connect/status'] });
 
-          // Switch to payments view
-          setActiveView('payments');
+          // Return to the Payments tab inside the profile page.
+          setActiveView('profile');
 
           // Clean up URL
-          window.history.replaceState({}, '', '/manager/dashboard?view=payments');
+          window.history.replaceState({}, '', '/manager/dashboard?view=profile&tab=payments');
 
           // [NEW] Broadcast success to other tabs
           const channel = new BroadcastChannel('stripe_onboarding_channel');
@@ -378,7 +444,7 @@ export default function ManagerBookingDashboard() {
         credentials: "include",
       });
       if (!response.ok) {
-        let errorMessage = 'Failed to fetch locations';
+        let errorMessage = tt("failedToFetchLocations");
         try {
           const errorData = await response.json();
           errorMessage = errorData.error || errorData.message || errorMessage;
@@ -420,8 +486,10 @@ export default function ManagerBookingDashboard() {
 
   // Update location settings mutation
   const updateLocationSettings = useMutation({
-    mutationFn: async ({ locationId, cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, notificationPhone, logoUrl, timezone }: {
+    mutationFn: async ({ locationId, name, address, cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, notificationPhone, logoUrl, description, customOnboardingLink, timezone }: {
       locationId: number;
+      name?: string;
+      address?: string;
       cancellationPolicyHours?: number;
       cancellationPolicyMessage?: string;
       defaultDailyBookingLimit?: number;
@@ -429,9 +497,11 @@ export default function ManagerBookingDashboard() {
       notificationEmail?: string;
       notificationPhone?: string;
       logoUrl?: string;
+      description?: string;
+      customOnboardingLink?: string;
       timezone?: string;
     }) => {
-      const payload = { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, notificationPhone, logoUrl, timezone };
+      const payload = { name, address, cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, notificationPhone, logoUrl, description, customOnboardingLink, timezone };
       logger.info('📡 Sending PUT request to:', `/api/manager/locations/${locationId}/cancellation-policy`);
       logger.info('📡 Request body:', payload);
       logger.info('📡 LogoUrl in payload:', logoUrl, 'type:', typeof logoUrl);
@@ -507,6 +577,9 @@ export default function ManagerBookingDashboard() {
       if (payload.logoUrl !== undefined && payload.logoUrl !== (currentLocation?.logoUrl || '')) {
         changedFields.push('logo');
       }
+      if (payload.description !== undefined && payload.description !== (currentLocation?.description || '')) {
+        changedFields.push('publicProfile');
+      }
 
       // Remove duplicates
       const uniqueChangedFields = Array.from(new Set(changedFields));
@@ -530,6 +603,9 @@ export default function ManagerBookingDashboard() {
             break;
           case 'logo':
             successMessage = "Logo updated successfully";
+            break;
+          case 'publicProfile':
+            successMessage = "Public profile updated successfully";
             break;
         }
       } else if (uniqueChangedFields.length > 1) {
@@ -560,14 +636,12 @@ export default function ManagerBookingDashboard() {
       queryClient.invalidateQueries({ queryKey: ['locationDetails', selectedLocation?.id] });
       queryClient.invalidateQueries({ queryKey: ['/api/manager/locations'] });
 
-      toast({
-        title: "Success",
+      toast({ title: mt("success"),
         description: successMessage,
       });
     },
     onError: (error: Error) => {
-      toast({
-        title: "Error",
+      toast({ title: mt("error"),
         description: error.message,
         variant: "destructive",
       });
@@ -582,26 +656,51 @@ export default function ManagerBookingDashboard() {
     setLocation(locId ? `/manager/setup?locationId=${locId}` : '/manager/setup');
   };
 
+  const handleImprovementTask = (task: string) => {
+    const destination = getManagerImprovementDestination(task);
+    const view: ViewType = destination.view;
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", view);
+    if (view === "settings") {
+      url.searchParams.set("tab", "location");
+      url.searchParams.delete("section");
+    } else {
+      url.searchParams.delete("tab");
+      url.searchParams.delete("section");
+    }
+    window.history.pushState({}, "", url);
+    setActiveView(view);
+    // Settings may already be mounted, so notify its URL-backed tab state too.
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
+
   return (
     <DashboardLayout
-      activeView={activeView}
+      activeView={shellActiveView}
       onViewChange={(view) => handleViewChange(view as ViewType)}
       locations={locations}
       selectedLocation={selectedLocation}
       onLocationChange={(loc) => setSelectedLocation(loc as Location)}
       onCreateLocation={startNewLocation}
+      breadcrumbs={breadcrumbs}
     >
       {/* Onboarding Status Banners */}
       <OnboardingStatusBanner
+        isLoading={isLoadingOnboardingStatus}
         showSetupBanner={showSetupBanner}
         showLicenseReviewBanner={showLicenseReviewBanner}
         isReadyForBookings={isReadyForBookings}
         missingSteps={missingSteps}
+        improvementSteps={improvementSteps}
         onContinueSetup={handleContinueSetup}
+        onImproveListing={handleImprovementTask}
       />
 
       {activeView === 'profile' && (
-        <ManagerProfileSettings />
+        <ManagerProfileSettings
+          notificationLocation={locationDetails || selectedLocation}
+          onSaveNotificationSettings={(updates) => updateLocationSettings.mutateAsync(updates)}
+        />
       )}
 
       {activeView === 'overview' && (
@@ -615,19 +714,56 @@ export default function ManagerBookingDashboard() {
         </div>
       )}
 
-      {activeView === 'bookings' && (
-        <ManagerBookingsPanel embedded={true} />
+      {(activeView === 'bookings' || activeView === 'viewings') && (
+        <div className="space-y-6 animate-fade-in">
+          <ChefPageHeader
+            title={activeView === 'bookings' ? mt("bookingRequests") : mt("kitchenTours")}
+            description={activeView === 'bookings' ? mt("reviewAndManageChefBookingRequests") : mt("manageUpcomingAndPastKitchenTours")}
+            actions={activeView === 'bookings' ? (
+              <Button variant="outline" size="sm" onClick={() => handleViewChange('storage-bookings')}>
+                <Package className="mr-2 h-4 w-4" />{mt("navStorageBookings")}
+              </Button>
+            ) : undefined}
+          />
+          <Tabs value={activeView} onValueChange={(view) => handleViewChange(view as ViewType)}>
+            <TabsList className="mb-6 grid w-full grid-cols-2 rounded-xl bg-muted p-1">
+              <TabsTrigger value="bookings" className="gap-2 rounded-lg py-2.5 data-[state=active]:bg-background"><Calendar className="h-4 w-4" />{mt("navBookings")}</TabsTrigger>
+              <TabsTrigger value="viewings" className="gap-2 rounded-lg py-2.5 data-[state=active]:bg-background"><Eye className="h-4 w-4" />{mt("kitchenTours")}</TabsTrigger>
+            </TabsList>
+            <TabsContent value="bookings" className="mt-0">
+              <ManagerBookingsPanel embedded={true} />
+            </TabsContent>
+            <TabsContent value="viewings" className="mt-0">
+              <ViewingsDashboard locationId={selectedLocation?.id} />
+            </TabsContent>
+          </Tabs>
+        </div>
       )}
 
-      {activeView === 'viewings' && (
-        <ViewingsDashboard locationId={selectedLocation?.id} />
+      {activeView === 'storage-bookings' && (
+        <div className="space-y-6 animate-fade-in">
+          <ChefPageHeader
+            title={mt("navStorageBookings")}
+            description={mt("manageStorageBookingsDescription")}
+          />
+          <ManagerStorageBookingsPage />
+        </div>
       )}
 
       {activeView === 'availability' && (
-        <div className="h-[calc(100vh-100px)] -m-4 md:-m-8">
+        <div className="min-h-[calc(100vh-10rem)]">
           <KitchenAvailabilityManagement
+            ref={availabilityRef}
             initialLocationId={selectedLocation?.id}
+            initialAvailabilityTab={new URLSearchParams(window.location.search).get('tab') === 'tours' ? 'tours' : 'bookings'}
+            onDirtyChange={setAvailabilityDirty}
           />
+        </div>
+      )}
+
+      {activeView === 'tour-availability' && (
+        <div className="min-h-[calc(100vh-10rem)]">
+          <KitchenAvailabilityManagement initialLocationId={selectedLocation?.id} initialAvailabilityTab="tours" />
         </div>
       )}
 
@@ -641,7 +777,7 @@ export default function ManagerBookingDashboard() {
       )}
 
       {activeView === 'settings' && selectedLocation && (
-        <SettingsView
+        <CompactSettingsView
           location={(locationDetails || selectedLocation) as Location}
           onUpdateSettings={updateLocationSettings}
           isUpdating={updateLocationSettings.isPending}
@@ -651,21 +787,9 @@ export default function ManagerBookingDashboard() {
       {activeView === 'settings' && !selectedLocation && (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
           <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
-          <p className="text-gray-500">Choose a location to manage settings</p>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("selectALocation")}</h3>
+          <p className="text-gray-500">{mt("chooseALocationToManageSettings")}</p>
         </div>
-      )}
-
-      {activeView === 'pricing' && (
-        <KitchenPricingManagement embedded={true} />
-      )}
-
-      {activeView === 'storage-listings' && (
-        <StorageListingManagement />
-      )}
-
-      {activeView === 'equipment-listings' && (
-        <EquipmentListingManagement />
       )}
 
       {activeView === 'revenue' && (
@@ -679,39 +803,48 @@ export default function ManagerBookingDashboard() {
       {activeView === 'messages' && (
         managerId ? (
           <div className="h-[calc(100vh-8rem)]">
-            <UnifiedChatView userId={managerId} role="manager" />
+            <UnifiedChatView userId={managerId} role="manager" initialConversationId={deepLinkConversationId} />
           </div>
         ) : (
           <Card>
-            <CardContent className="p-12 text-center">
-              <Loader2 className="h-8 w-8 animate-spin text-[#208D80] mx-auto mb-4" />
-              <p className="text-gray-600">Loading your profile...</p>
+            <CardContent className="p-12 text-center flex flex-col items-center justify-center">
+              <LoadingSpinner size="lg" className="mb-4 text-[#208D80]" />
+              <p className="text-gray-600">{mt("loadingYourProfile")}</p>
             </CardContent>
           </Card>
         )
       )}
 
       {activeView === 'payments' && (
-        <div className="space-y-6">
-          <h2 className="text-2xl font-bold tracking-tight">Payments & Payouts</h2>
-          <StripeConnectSetup />
-        </div>
+        <ManagerProfileSettings
+          notificationLocation={locationDetails || selectedLocation}
+          onSaveNotificationSettings={(updates) => updateLocationSettings.mutateAsync(updates)}
+        />
       )}
 
       {activeView === 'overstays' && (
-        <div className="space-y-6">
-          <OverstayPenaltyQueue />
+        <div className="space-y-6 animate-fade-in">
+          <ChefPageHeader
+            title={mt("navOverstayPenalties")}
+          />
+          <OverstayPenaltyQueue locationId={selectedLocation?.id} />
         </div>
       )}
 
       {activeView === 'damage-claims' && (
-        <div className="space-y-6">
+        <div className="space-y-6 animate-fade-in">
+          <ChefPageHeader
+            title={mt("navDamageClaims")}
+          />
           <DamageClaimQueue />
         </div>
       )}
 
       {activeView === 'storage-checkouts' && (
-        <div className="space-y-6">
+        <div className="space-y-6 animate-fade-in">
+          <ChefPageHeader
+            title={mt("navStorageInspections")}
+          />
           <PendingStorageCheckins />
           <PendingStorageCheckouts />
         </div>
@@ -733,14 +866,23 @@ export default function ManagerBookingDashboard() {
       {activeView === 'kitchens' && selectedLocation && (
         <KitchensManagement
           location={locationDetails || selectedLocation}
+          onNavigate={handleViewChange}
+          onConfigureRequirements={() => {
+            handleViewChange('settings');
+            const url = new URL(window.location.href);
+            url.searchParams.set('view', 'settings');
+            url.searchParams.set('tab', 'requirements');
+            window.history.replaceState({}, '', url);
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          }}
         />
       )}
 
       {activeView === 'kitchens' && !selectedLocation && (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
-          <ChefHat className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
-          <p className="text-gray-500">Choose a location to manage kitchens</p>
+          <Calendar className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("selectALocation")}</h3>
+          <p className="text-gray-500">{mt("chooseALocationToManageKitchens")}</p>
         </div>
       )}
 
@@ -757,8 +899,8 @@ export default function ManagerBookingDashboard() {
       {activeView === 'settings-license' && !selectedLocation && (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
           <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
-          <p className="text-gray-500">Choose a location to manage license settings</p>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("selectALocation")}</h3>
+          <p className="text-gray-500">{mt("chooseALocationToManageLicenseSettings")}</p>
         </div>
       )}
 
@@ -772,8 +914,8 @@ export default function ManagerBookingDashboard() {
       {activeView === 'settings-booking-rules' && !selectedLocation && (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
           <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
-          <p className="text-gray-500">Choose a location to manage booking rules</p>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("selectALocation")}</h3>
+          <p className="text-gray-500">{mt("chooseALocationToManageBookingRules")}</p>
         </div>
       )}
 
@@ -786,8 +928,8 @@ export default function ManagerBookingDashboard() {
       {activeView === 'settings-facility-docs' && !selectedLocation && (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
           <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
-          <p className="text-gray-500">Choose a location to manage facility documents</p>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("selectALocation")}</h3>
+          <p className="text-gray-500">{mt("chooseALocationToManageFacilityDocuments")}</p>
         </div>
       )}
 
@@ -801,18 +943,16 @@ export default function ManagerBookingDashboard() {
       {activeView === 'settings-location' && !selectedLocation && (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
           <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
-          <p className="text-gray-500">Choose a location to manage location settings</p>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("selectALocation")}</h3>
+          <p className="text-gray-500">{mt("chooseALocationToManageLocationSettings")}</p>
         </div>
       )}
 
       {activeView === 'application-requirements' && selectedLocation && (
         <div className="space-y-6">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight">Application Requirements</h2>
-            <p className="text-muted-foreground">
-              Configure what information chefs need to provide when applying to your location.
-            </p>
+            <h2 className="text-2xl font-bold tracking-tight">{mt("navApplicationRequirements")}</h2>
+            <p className="text-muted-foreground">{mt("configureWhatInformationChefsNeedToProvideWhenApplyingToYour")}</p>
           </div>
           <LocationRequirementsSettings
             locationId={selectedLocation.id}
@@ -823,37 +963,31 @@ export default function ManagerBookingDashboard() {
       {activeView === 'application-requirements' && !selectedLocation && (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
           <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
-          <p className="text-gray-500">Choose a location to manage application requirements</p>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("selectALocation")}</h3>
+          <p className="text-gray-500">{mt("chooseALocationToManageApplicationRequirements")}</p>
         </div>
       )}
 
-      {activeView === 'notifications' && selectedLocation && (
-        <NotificationsSettings
-          location={locationDetails || selectedLocation}
-          onSave={(updates) => updateLocationSettings.mutateAsync(updates)}
+      {activeView === 'notifications' && (
+        <NotificationCenter locationId={selectedLocation?.id} variant="page" />
+      )}
+
+      {activeView === 'notification-settings' && (
+        <ManagerProfileSettings
+          notificationLocation={locationDetails || selectedLocation}
+          onSaveNotificationSettings={(updates) => updateLocationSettings.mutateAsync(updates)}
         />
-      )}
-
-      {activeView === 'notifications' && !selectedLocation && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
-          <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
-          <p className="text-gray-500">Choose a location to manage notification settings</p>
-        </div>
       )}
 
       {activeView === 'settings-checkin-checkout' && selectedLocation && (
-        <CheckinCheckoutSettings
-          location={locationDetails || selectedLocation}
-        />
+        <CheckinCheckoutSettings location={locationDetails || selectedLocation} />
       )}
 
       {activeView === 'settings-checkin-checkout' && !selectedLocation && (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
           <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
-          <p className="text-gray-500">Choose a location to manage check-in/check-out settings</p>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("selectALocation")}</h3>
+          <p className="text-gray-500">{mt("chooseALocationToManageCheckInCheckOutSettings")}</p>
         </div>
       )}
 
@@ -866,10 +1000,33 @@ export default function ManagerBookingDashboard() {
       {activeView === 'settings-storage-checkin-checkout' && !selectedLocation && (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
           <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
-          <p className="text-gray-500">Choose a location to manage storage check-in / check-out settings</p>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("selectALocation")}</h3>
+          <p className="text-gray-500">{mt("chooseALocationToManageStorageCheckInCheckOutSettings")}</p>
         </div>
       )}
+
+      <AlertDialog open={pendingAvailabilityView !== null} onOpenChange={(open) => !open && setPendingAvailabilityView(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{mt("unsavedChanges")}</AlertDialogTitle>
+            <AlertDialogDescription>{mt("availabilityUnsavedChangesDescription")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSavingBeforeLeave}>{mt("cancel")}</AlertDialogCancel>
+            <Button
+              variant="outline"
+              disabled={isSavingBeforeLeave}
+              onClick={() => pendingAvailabilityView && continueFromAvailability(pendingAvailabilityView)}
+            >
+              {mt("discardChanges")}
+            </Button>
+            <AlertDialogAction disabled={isSavingBeforeLeave} onClick={(event) => { event.preventDefault(); void saveAndLeaveAvailability(); }}>
+              {isSavingBeforeLeave && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {mt("saveChanges")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
     </DashboardLayout>
   );
@@ -881,16 +1038,9 @@ export default function ManagerBookingDashboard() {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createLocationSchema, type CreateLocationFormValues } from "@/schemas/locationSchema";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-  FormDescription
-} from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { tt } from "@/i18n/common-ns";
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function CreateLocationSheet({ open, onOpenChange, onSuccess }: { open: boolean; onOpenChange: (open: boolean) => void; onSuccess: () => void }) {
@@ -948,7 +1098,7 @@ function CreateLocationSheet({ open, onOpenChange, onSuccess }: { open: boolean;
           }
         }
 
-        toast({ title: "Location created successfully" });
+        toast({ title: mt("locationCreatedSuccessfully") });
         onSuccess();
         onOpenChange(false);
         form.reset();
@@ -958,8 +1108,7 @@ function CreateLocationSheet({ open, onOpenChange, onSuccess }: { open: boolean;
         throw new Error(errorData.message || "Failed to create location");
       }
     } catch (error: any) {
-      toast({
-        title: "Error creating location",
+      toast({ title: mt("errorCreatingLocation"),
         description: error.message,
         variant: "destructive"
       });
@@ -971,8 +1120,8 @@ function CreateLocationSheet({ open, onOpenChange, onSuccess }: { open: boolean;
       <SheetContent className="sm:max-w-xl w-full p-0">
         <ScrollArea className="h-full">
           <div className="p-6">
-            <h2 className="text-lg font-semibold mb-1">Add New Location</h2>
-            <p className="text-sm text-muted-foreground mb-6">Enter the details for your new kitchen location.</p>
+            <h2 className="text-lg font-semibold mb-1">{mt("addNewLocation")}</h2>
+            <p className="text-sm text-muted-foreground mb-6">{mt("enterTheDetailsForYourNewKitchenLocation")}</p>
 
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -981,9 +1130,9 @@ function CreateLocationSheet({ open, onOpenChange, onSuccess }: { open: boolean;
                   name="name"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Location Name</FormLabel>
+                      <FormLabel>{mt("locationName")}</FormLabel>
                       <FormControl>
-                        <Input placeholder="e.g. Downtown Kitchen" {...field} />
+                        <Input placeholder={mt("eGDowntownKitchen")} {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -995,9 +1144,9 @@ function CreateLocationSheet({ open, onOpenChange, onSuccess }: { open: boolean;
                   name="address"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Address</FormLabel>
+                      <FormLabel>{mt("address")}</FormLabel>
                       <FormControl>
-                        <Input placeholder="Full address" {...field} />
+                        <Input placeholder={mt("fullAddress")} {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -1010,9 +1159,9 @@ function CreateLocationSheet({ open, onOpenChange, onSuccess }: { open: boolean;
                     name="notificationEmail"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Notification Email</FormLabel>
+                        <FormLabel>{mt("notificationEmail")}</FormLabel>
                         <FormControl>
-                          <Input placeholder="bookings@example.com" {...field} />
+                          <Input placeholder={mt("bookingsExampleCom")} {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -1023,7 +1172,7 @@ function CreateLocationSheet({ open, onOpenChange, onSuccess }: { open: boolean;
                     name="notificationPhone"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Notification Phone</FormLabel>
+                        <FormLabel>{mt("notificationPhone")}</FormLabel>
                         <FormControl>
                           <Input placeholder="+1 (555) 000-0000" {...field} />
                         </FormControl>
@@ -1034,7 +1183,7 @@ function CreateLocationSheet({ open, onOpenChange, onSuccess }: { open: boolean;
                 </div>
 
                 <div className="pt-4 border-t">
-                  <FormLabel className="mb-2 block">Kitchen License</FormLabel>
+                  <FormLabel className="mb-2 block">{mt("kitchenLicense")}</FormLabel>
                   <div className="border-2 border-dashed border-border rounded-lg p-6 bg-muted/30 hover:bg-muted/50 transition-colors text-center cursor-pointer relative group">
                     <input
                       type="file"
@@ -1045,8 +1194,7 @@ function CreateLocationSheet({ open, onOpenChange, onSuccess }: { open: boolean;
                         const file = e.target.files?.[0];
                         if (file) {
                           setLicenseFile(file);
-                          toast({
-                            title: "File attached",
+                          toast({ title: mt("fileAttached"),
                             description: file.name
                           });
                         }
@@ -1058,10 +1206,10 @@ function CreateLocationSheet({ open, onOpenChange, onSuccess }: { open: boolean;
                           <Upload className="h-6 w-6 text-muted-foreground" />
                         </div>
                         <div className="text-sm">
-                          <span className="font-semibold text-primary">Click to upload</span>
+                          <span className="font-semibold text-primary">{mt("clickToUpload")}</span>
                           <span className="text-muted-foreground"> or drag and drop</span>
                         </div>
-                        <p className="text-xs text-muted-foreground">PDF, JPG or PNG (max. 5MB)</p>
+                        <p className="text-xs text-muted-foreground">{mt("pDFJPGOrPNGMax5MB2")}</p>
                         {licenseFile && (
                           <div className="mt-2 flex items-center gap-2 text-sm text-green-600 font-medium bg-green-50 px-3 py-1.5 rounded-full mx-auto w-fit">
                             <Check className="h-4 w-4" />
@@ -1071,9 +1219,7 @@ function CreateLocationSheet({ open, onOpenChange, onSuccess }: { open: boolean;
                       </div>
                     </label>
                   </div>
-                  <FormDescription className="mt-2">
-                    Upload your business license or food safety certificate.
-                  </FormDescription>
+                  <FormDescription className="mt-2">{mt("uploadYourBusinessLicenseOrFoodSafetyCertificate")}</FormDescription>
                 </div>
 
                 <Button
@@ -1082,7 +1228,7 @@ function CreateLocationSheet({ open, onOpenChange, onSuccess }: { open: boolean;
                   disabled={form.formState.isSubmitting}
                 >
                   {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Create Location
+                  {mt("createLocation")}
                 </Button>
               </form>
             </Form>
@@ -1103,6 +1249,65 @@ interface SettingsViewProps {
   location: Location;
   onUpdateSettings: any;
   isUpdating: boolean;
+}
+
+function CompactSettingsView({ location, onUpdateSettings }: SettingsViewProps) {
+  const queryClient = useQueryClient();
+  const initialTab = new URLSearchParams(window.location.search).get("tab");
+  const [tab, setTab] = useState(
+    ["location", "booking", "documents", "requirements"].includes(initialTab || "")
+      ? initialTab!
+      : "location",
+  );
+
+  const changeTab = (value: string) => {
+    setTab(value);
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", value);
+    window.history.replaceState({}, "", url);
+  };
+
+  const save = (updates: any) => onUpdateSettings.mutateAsync(updates);
+  const tabs = ["location", "booking", "documents", "requirements"];
+  const activeIndex = Math.max(0, tabs.indexOf(tab));
+
+  return (
+    <div className="space-y-4">
+      <ChefPageHeader
+        title={mt("settings")}
+        description={`Manage ${location.name} from one place.`}
+      />
+      <TabGroup index={activeIndex} onIndexChange={(index) => changeTab(tabs[index])}>
+        <TabList variant="line" className="mt-2">
+          <Tab>Location</Tab>
+          <Tab>Booking rules</Tab>
+          <Tab>Documents</Tab>
+          <Tab>Requirements</Tab>
+        </TabList>
+        <TabPanels className="mt-4">
+        <TabPanel>
+          <LocationSettings location={location} onSave={save} />
+        </TabPanel>
+        <TabPanel>
+          <BookingRulesSettings location={location} onSave={save} />
+        </TabPanel>
+        <TabPanel className="space-y-4">
+          <LicenseSettings
+            location={location}
+            onRefresh={() => {
+              queryClient.invalidateQueries({ queryKey: ["locationDetails", location.id] });
+              queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
+            }}
+          />
+          <FacilityDocsSettings location={location} />
+        </TabPanel>
+        <TabPanel>
+          <LocationRequirementsSettings locationId={location.id} />
+        </TabPanel>
+        </TabPanels>
+      </TabGroup>
+    </div>
+  );
 }
 
 // Component for managing kitchen gallery images
@@ -1126,8 +1331,7 @@ function KitchenGalleryImages({
       await updateGalleryImages(newGalleryImages);
     },
     onError: (error) => {
-      toast({
-        title: "Upload failed",
+      toast({ title: mt("uploadFailed2"),
         description: error,
         variant: "destructive",
       });
@@ -1142,7 +1346,7 @@ function KitchenGalleryImages({
     try {
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
-        throw new Error("Firebase user not available");
+        throw new Error(tt("firebaseUserNotAvailable"));
       }
 
       const token = await currentFirebaseUser.getIdToken();
@@ -1166,14 +1370,12 @@ function KitchenGalleryImages({
       setCurrentGalleryImages(newGalleryImages);
       queryClient.invalidateQueries({ queryKey: ['managerKitchens', locationId] });
 
-      toast({
-        title: "Success",
-        description: "Gallery images updated successfully",
+      toast({ title: mt("success"),
+        description: mt("galleryImagesUpdatedSuccessfully"),
       });
     } catch (error: any) {
       logger.error('Gallery images update error:', error);
-      toast({
-        title: "Error",
+      toast({ title: mt("error"),
         description: error.message || "Failed to update gallery images",
         variant: "destructive",
       });
@@ -1294,8 +1496,8 @@ function KitchenGalleryImages({
           ) : (
             <>
               <Upload className="h-8 w-8 text-gray-400 mb-2" />
-              <span className="text-sm font-medium text-gray-700 mb-1">Click to add gallery image</span>
-              <span className="text-xs text-gray-500">JPG, PNG, WebP (max 4.5MB)</span>
+              <span className="text-sm font-medium text-gray-700 mb-1">{mt("clickToAddGalleryImage")}</span>
+              <span className="text-xs text-gray-500">{mt("jPGPNGWebPMax45MB")}</span>
             </>
           )}
         </label>
@@ -1361,7 +1563,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
 
   // Helper function to extract filename from URL
   const getDocumentFilename = (url?: string): string => {
-    if (!url) return 'No document';
+    if (!url) return mt("noDocument");
     try {
       const urlObj = new URL(url);
       const pathname = urlObj.pathname;
@@ -1418,7 +1620,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       // Get Firebase token for authentication
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
-        throw new Error("Firebase user not available");
+        throw new Error(tt("firebaseUserNotAvailable"));
       }
 
       const token = await currentFirebaseUser.getIdToken();
@@ -1430,7 +1632,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
         headers,
         credentials: "include",
       });
-      if (!response.ok) throw new Error('Failed to fetch kitchens');
+      if (!response.ok) throw new Error(tt("failedToFetchKitchens"));
       return response.json();
     },
     enabled: !!location.id,
@@ -1471,7 +1673,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     try {
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
-        throw new Error("Firebase user not available");
+        throw new Error(tt("firebaseUserNotAvailable"));
       }
 
       const token = await currentFirebaseUser.getIdToken();
@@ -1484,7 +1686,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       });
 
       if (!response.ok) {
-        throw new Error('Failed to fetch overstay penalty defaults');
+        throw new Error(tt("failedToFetchOverstayDefaults"));
       }
 
       const data = await response.json();
@@ -1496,9 +1698,8 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       setOverstayPolicyText(data.locationDefaults.policyText || '');
     } catch (error: any) {
       logger.error('Error fetching overstay penalty defaults:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load overstay penalty settings",
+      toast({ title: mt("error"),
+        description: mt("failedToLoadOverstayPenaltySettings"),
         variant: "destructive"
       });
     } finally {
@@ -1543,7 +1744,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     try {
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
-        throw new Error("Firebase user not available");
+        throw new Error(tt("firebaseUserNotAvailable"));
       }
 
       const token = await currentFirebaseUser.getIdToken();
@@ -1570,14 +1771,12 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
         throw new Error(errorData.error || 'Failed to save overstay penalty defaults');
       }
 
-      toast({
-        title: "Success",
-        description: "Overstay penalty defaults updated successfully",
+      toast({ title: mt("success"),
+        description: mt("overstayPenaltyDefaultsUpdatedSuccessfully"),
       });
     } catch (error: any) {
       logger.error('Error saving overstay penalty defaults:', error);
-      toast({
-        title: "Error",
+      toast({ title: mt("error"),
         description: error.message || "Failed to save overstay penalty settings",
         variant: "destructive"
       });
@@ -1638,7 +1837,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       // Get Firebase token for authentication
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
-        throw new Error("Firebase user not available");
+        throw new Error(tt("firebaseUserNotAvailable"));
       }
 
       const token = await currentFirebaseUser.getIdToken();
@@ -1647,7 +1846,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
         'Content-Type': 'application/json',
       };
 
-      const updateResponse = await fetch(`/api/manager/kitchens/${kitchenId}`, {
+      const updateResponse = await fetch(`/api/manager/kitchens/${kitchenId}/details`, {
         method: 'PUT',
         headers,
         credentials: 'include',
@@ -1655,21 +1854,19 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       });
 
       if (!updateResponse.ok) {
-        const errorData = await updateResponse.json();
+        const errorData = await updateResponse.json().catch(() => ({}));
         throw new Error(errorData.error || 'Failed to update kitchen description');
       }
 
       // Refresh the kitchens list
       queryClient.invalidateQueries({ queryKey: ['managerKitchens', location.id] });
 
-      toast({
-        title: "Success",
-        description: "Kitchen description updated successfully",
+      toast({ title: mt("success"),
+        description: mt("kitchenDescriptionUpdatedSuccessfully"),
       });
     } catch (error: any) {
       logger.error('Kitchen description update error:', error);
-      toast({
-        title: "Error",
+      toast({ title: mt("error"),
         description: error.message || "Failed to update kitchen description",
         variant: "destructive",
       });
@@ -1682,23 +1879,21 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
   const handleLicenseUpload = async (file: File, expiryDate: string) => {
     // Validate expiration date is provided
     if (!expiryDate || expiryDate.trim() === '') {
-      toast({
-        title: "Expiration Date Required",
-        description: "Please provide an expiration date for the license.",
+      toast({ title: mt("expirationDateRequired"),
+        description: mt("pleaseProvideAnExpirationDateForTheLicense"),
         variant: "destructive",
       });
-      throw new Error("Expiration date is required");
+      throw new Error(tt("expirationDateRequired"));
     }
 
     // Validate expiration date is in the future
     const expiry = new Date(expiryDate);
     if (isNaN(expiry.getTime())) {
-      toast({
-        title: "Invalid Date",
-        description: "Please provide a valid expiration date.",
+      toast({ title: mt("invalidDate"),
+        description: mt("pleaseProvideAValidExpirationDate"),
         variant: "destructive",
       });
-      throw new Error("Invalid expiration date");
+      throw new Error(tt("invalidExpirationDate"));
     }
 
     setIsUploadingLicense(true);
@@ -1706,7 +1901,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       // Get Firebase token for authentication
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
-        throw new Error("Firebase user not available");
+        throw new Error(tt("firebaseUserNotAvailable"));
       }
 
       const token = await currentFirebaseUser.getIdToken();
@@ -1762,12 +1957,12 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
           location.kitchenLicenseStatus === 'pending_update');
 
       toast({
-        title: isReplacingPending ? 'Submission Replaced' : isUpdateFlow ? 'License Update Submitted' : 'License Uploaded',
+        title: isReplacingPending ? mt("submissionReplaced") : isUpdateFlow ? mt("licenseUpdateSubmitted") : mt("licenseUploaded"),
         description: isReplacingPending
-          ? 'Your pending submission has been replaced. The admin will review your updated document.'
+          ? mt("pendingSubmissionReplacedDesc")
           : isUpdateFlow
-            ? 'Your updated license has been submitted for admin review. Your current approved license remains active until approved.'
-            : 'Your license has been submitted for admin approval.',
+            ? mt("licenseUpdatedSubmittedDesc")
+            : mt("licenseSubmittedForApprovalDesc"),
       });
 
       setLicenseFile(null);
@@ -1775,8 +1970,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       return licenseUrl;
     } catch (error: any) {
       logger.error('License upload error:', error);
-      toast({
-        title: "Upload Failed",
+      toast({ title: mt("uploadFailed"),
         description: error.message || "Failed to upload license",
         variant: "destructive",
       });
@@ -1790,7 +1984,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     <div className="space-y-6">
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
         <div className="p-6 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-900">Location Settings</h2>
+          <h2 className="text-xl font-semibold text-gray-900">{mt("locationSettings")}</h2>
           <p className="text-sm text-gray-600 mt-1">{location.name}</p>
         </div>
 
@@ -1803,42 +1997,38 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
             {/* Settings Header with Breadcrumbs */}
             <div className="mb-6 space-y-4">
               <div className="flex items-center gap-2 text-sm text-gray-600">
-                <span>Dashboard</span>
-                <span>/</span>
-                <span className="text-gray-900 font-medium">Settings</span>
+                <span className="text-gray-900 font-medium">{mt("settings")}</span>
               </div>
               <div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">Location Settings</h2>
-                <p className="text-gray-600">
-                  Configure your location preferences, booking rules, application requirements, and notifications.
-                </p>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">{mt("locationSettings")}</h2>
+                <p className="text-gray-600">{mt("configureYourLocationPreferencesBookingRulesApplicationRequi")}</p>
               </div>
             </div>
 
-            <TabsList className="w-full gap-1 mb-6">
-              <TabsTrigger value="setup" className="flex items-center gap-2 rounded-lg">
-                <FileText className="h-4 w-4" />
-                <span className="hidden sm:inline">Setup</span>
+            <TabsList className="mb-6 grid h-auto w-full grid-cols-1 gap-2 bg-transparent p-0 sm:grid-cols-2 xl:grid-cols-3">
+              <TabsTrigger value="setup" className="h-auto items-start justify-start gap-3 rounded-xl border bg-card p-3 text-left shadow-sm data-[state=active]:border-primary/30 data-[state=active]:bg-primary/5">
+                <FileText className="mt-0.5 h-4 w-4 shrink-0" />
+                <span><span className="block font-medium">{mt("setupSetup")}</span><span className="mt-0.5 block text-xs font-normal text-muted-foreground">{mt("settingsSetupDescription")}</span></span>
               </TabsTrigger>
-              <TabsTrigger value="branding" className="flex items-center gap-2 rounded-lg">
-                <ImageIcon className="h-4 w-4" />
-                <span className="hidden sm:inline">Kitchen</span>
+              <TabsTrigger value="branding" className="h-auto items-start justify-start gap-3 rounded-xl border bg-card p-3 text-left shadow-sm data-[state=active]:border-primary/30 data-[state=active]:bg-primary/5">
+                <ImageIcon className="mt-0.5 h-4 w-4 shrink-0" />
+                <span><span className="block font-medium">{mt("settingsPublicProfile")}</span><span className="mt-0.5 block text-xs font-normal text-muted-foreground">{mt("settingsPublicProfileDescription")}</span></span>
               </TabsTrigger>
-              <TabsTrigger value="notifications" className="flex items-center gap-2 rounded-lg">
-                <Mail className="h-4 w-4" />
-                <span className="hidden sm:inline">Notifications</span>
+              <TabsTrigger value="notifications" className="h-auto items-start justify-start gap-3 rounded-xl border bg-card p-3 text-left shadow-sm data-[state=active]:border-primary/30 data-[state=active]:bg-primary/5">
+                <Mail className="mt-0.5 h-4 w-4 shrink-0" />
+                <span><span className="block font-medium">{mt("navNotifications")}</span><span className="mt-0.5 block text-xs font-normal text-muted-foreground">{mt("settingsNotificationsDescription")}</span></span>
               </TabsTrigger>
-              <TabsTrigger value="booking-rules" className="flex items-center gap-2 rounded-lg">
-                <Clock className="h-4 w-4" />
-                <span className="hidden sm:inline">Booking Rules</span>
+              <TabsTrigger value="booking-rules" className="h-auto items-start justify-start gap-3 rounded-xl border bg-card p-3 text-left shadow-sm data-[state=active]:border-primary/30 data-[state=active]:bg-primary/5">
+                <Clock className="mt-0.5 h-4 w-4 shrink-0" />
+                <span><span className="block font-medium">{mt("navBookingRules")}</span><span className="mt-0.5 block text-xs font-normal text-muted-foreground">{mt("settingsBookingRulesDescription")}</span></span>
               </TabsTrigger>
-              <TabsTrigger value="application-requirements" className="flex items-center gap-2 rounded-lg" title="Choose which information fields are required when chefs apply to use your kitchens">
-                <FileText className="h-4 w-4" />
-                <span className="hidden sm:inline">Application</span>
+              <TabsTrigger value="application-requirements" className="h-auto items-start justify-start gap-3 rounded-xl border bg-card p-3 text-left shadow-sm data-[state=active]:border-primary/30 data-[state=active]:bg-primary/5">
+                <FileText className="mt-0.5 h-4 w-4 shrink-0" />
+                <span><span className="block font-medium">{mt("application")}</span><span className="mt-0.5 block text-xs font-normal text-muted-foreground">{mt("settingsApplicationDescription")}</span></span>
               </TabsTrigger>
-              <TabsTrigger value="location" className="flex items-center gap-2 rounded-lg">
-                <Globe className="h-4 w-4" />
-                <span className="hidden sm:inline">Location</span>
+              <TabsTrigger value="location" className="h-auto items-start justify-start gap-3 rounded-xl border bg-card p-3 text-left shadow-sm data-[state=active]:border-primary/30 data-[state=active]:bg-primary/5">
+                <Globe className="mt-0.5 h-4 w-4 shrink-0" />
+                <span><span className="block font-medium">{mt("navLocation")}</span><span className="mt-0.5 block text-xs font-normal text-muted-foreground">{mt("settingsLocationDescription")}</span></span>
               </TabsTrigger>
             </TabsList>
 
@@ -1849,9 +2039,9 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 <div className="flex items-start gap-3">
                   <FileText className="h-5 w-5 text-blue-600 mt-0.5" />
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-1">Onboarding Wizard</h3>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-1">{mt("onboardingWizard")}</h3>
                     <p className="text-sm text-gray-600 mb-4">
-                      Complete or update your location setup, upload kitchen license, and configure your preferences using the onboarding wizard.
+                      {mt("onboardingWizardSetupDesc")}
                     </p>
                   </div>
                 </div>
@@ -1859,7 +2049,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 md:p-6 space-y-4 shadow-md">
                   <div>
                     <p className="text-sm text-gray-700 mb-4">
-                      Use the onboarding wizard to set up your location details, upload your kitchen license, and configure notification preferences.
+                      {mt("onboardingWizardHelpDesc")}
                     </p>
                     <Button
                       onClick={() => {
@@ -1869,9 +2059,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                       }}
                       className="gap-2"
                     >
-                      <HelpCircle className="h-4 w-4" />
-                      Open Onboarding Wizard
-                    </Button>
+                      <HelpCircle className="h-4 w-4" />{mt("openOnboardingWizard")}</Button>
                   </div>
                 </div>
               </div>
@@ -1881,10 +2069,8 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 <div className="flex items-start gap-3">
                   <FileText className="h-5 w-5 text-orange-600 mt-0.5" />
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-1">Kitchen License</h3>
-                    <p className="text-sm text-gray-600 mb-4">
-                      Upload or update your kitchen license. Bookings will be activated once approved by an admin.
-                    </p>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-1">{mt("kitchenLicense")}</h3>
+                    <p className="text-sm text-gray-600 mb-4">{mt("uploadOrUpdateYourKitchenLicenseBookingsWillBeActivatedOnceA")}</p>
                   </div>
                 </div>
 
@@ -1899,13 +2085,13 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                           </svg>
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-blue-800 mb-1">License Update Pending Admin Review</p>
+                          <p className="text-sm font-semibold text-blue-800 mb-1">{mt("licenseUpdatePendingAdminReview")}</p>
                           <p className="text-xs text-blue-700">
-                            A new license has been submitted and is awaiting admin approval. Your current license remains active until the update is approved.
+                            {mt("licenseUpdatePendingBody")}
                           </p>
                           {location.kitchenLicensePendingSubmittedAt && (
                             <p className="text-xs text-blue-600 mt-1.5">
-                              <span className="font-medium">Submitted:</span>{" "}
+                              <span className="font-medium">{mt("submitted")}</span>{" "}
                               {new Date(location.kitchenLicensePendingSubmittedAt).toLocaleDateString()} at{" "}
                               {new Date(location.kitchenLicensePendingSubmittedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </p>
@@ -1937,7 +2123,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                           ) : (
                             <CheckCircle className="h-5 w-5" />
                           )}
-                          <span className="font-medium">Kitchen License Document</span>
+                          <span className="font-medium">{mt("kitchenLicenseDocument")}</span>
                         </div>
                         <span className={`text-xs px-2 py-1 rounded-full font-medium ${location.kitchenLicenseStatus === "approved" && !isLicenseExpired
                           ? "bg-green-200 text-green-800"
@@ -1961,20 +2147,20 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                       <div className="space-y-2 mb-3">
                         <div className="flex items-center gap-2 text-sm">
                           <FileText className="h-4 w-4 text-gray-600" />
-                          <span className="text-gray-700">Document:</span>
+                          <span className="text-gray-700">{mt("document")}</span>
                           <span className="font-medium text-gray-900">{getDocumentFilename(location.kitchenLicenseUrl)}</span>
                         </div>
                         {location.kitchenLicenseUploadedAt && (
                           <div className="flex items-center gap-2 text-sm">
                             <Clock className="h-4 w-4 text-gray-600" />
-                            <span className="text-gray-700">Uploaded:</span>
+                            <span className="text-gray-700">{mt("uploaded")}</span>
                             <span className="text-gray-900">{new Date(location.kitchenLicenseUploadedAt).toLocaleDateString()} at {new Date(location.kitchenLicenseUploadedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                           </div>
                         )}
                         {location.kitchenLicenseExpiry && (
                           <div className="flex items-center gap-2 text-sm">
                             <Calendar className="h-4 w-4 text-gray-600" />
-                            <span className="text-gray-700">Expiration Date:</span>
+                            <span className="text-gray-700">{mt("expirationDate")}</span>
                             <span className={`font-medium ${isLicenseExpired ? "text-red-700" : isExpiryApproaching(location.kitchenLicenseExpiry) ? "text-orange-700" : "text-gray-900"
                               }`}>
                               {new Date(location.kitchenLicenseExpiry).toLocaleDateString()}
@@ -1997,7 +2183,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                         {location.kitchenLicenseExpiry && !isLicenseExpired && (
                           <div className="flex items-center gap-2 text-sm">
                             <Calendar className="h-4 w-4 text-blue-600" />
-                            <span className="text-gray-700">Next Upload Date:</span>
+                            <span className="text-gray-700">{mt("nextUploadDate")}</span>
                             <span className="font-medium text-blue-700">{new Date(location.kitchenLicenseExpiry).toLocaleDateString()}</span>
                             <span className="text-xs text-gray-500">(Upload new license on or before this date)</span>
                           </div>
@@ -2020,9 +2206,8 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                               type="button"
                               onClick={async () => {
                                 if (!licenseExpiryDate) {
-                                  toast({
-                                    title: "Expiration Date Required",
-                                    description: "Please enter an expiration date.",
+                                  toast({ title: mt("expirationDateRequired"),
+                                    description: mt("pleaseEnterAnExpirationDate"),
                                     variant: "destructive",
                                   });
                                   return;
@@ -2031,7 +2216,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                                 try {
                                   const currentFirebaseUser = auth.currentUser;
                                   if (!currentFirebaseUser) {
-                                    throw new Error("Firebase user not available");
+                                    throw new Error(tt("firebaseUserNotAvailable"));
                                   }
 
                                   const token = await currentFirebaseUser.getIdToken();
@@ -2056,14 +2241,12 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                                   queryClient.invalidateQueries({ queryKey: ['/api/manager/locations'] });
                                   queryClient.invalidateQueries({ queryKey: ['locationDetails', location.id] });
 
-                                  toast({
-                                    title: "Expiry Date Added",
-                                    description: "License expiration date has been added successfully.",
+                                  toast({ title: mt("expiryDateAdded"),
+                                    description: mt("licenseExpirationDateHasBeenAddedSuccessfully"),
                                   });
                                 } catch (error: any) {
                                   logger.error('Expiry date update error:', error);
-                                  toast({
-                                    title: "Update Failed",
+                                  toast({ title: mt("updateFailed"),
                                     description: error.message || "Failed to update expiry date",
                                     variant: "destructive",
                                   });
@@ -2071,9 +2254,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                               }}
                               disabled={!licenseExpiryDate}
                             >
-                              <Save className="h-4 w-4 mr-1" />
-                              Save Expiry Date
-                            </Button>
+                              <Save className="h-4 w-4 mr-1" />{mt("saveExpiryDate")}</Button>
                           </div>
                         </div>
                       )}
@@ -2119,41 +2300,38 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                     <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
                       <div className="flex items-center gap-2 text-red-800 mb-2">
                         <AlertCircle className="h-5 w-5" />
-                        <span className="font-medium">License Rejected</span>
+                        <span className="font-medium">{mt("licenseRejected")}</span>
                       </div>
                       {location.kitchenLicenseFeedback && (
                         <p className="text-sm text-red-700 mb-3">
-                          <strong>Admin Feedback:</strong> {location.kitchenLicenseFeedback}
+                          <strong>{mt("adminFeedback2")}</strong> {location.kitchenLicenseFeedback}
                         </p>
                       )}
-                      <p className="text-sm text-red-700 mb-3">
-                        Please upload a new license document to resubmit for approval.
-                      </p>
+                      <p className="text-sm text-red-700 mb-3">{mt("pleaseUploadANewLicenseDocumentToResubmitForApproval")}</p>
                     </div>
                   ) : location.kitchenLicenseStatus === "expired" || isLicenseExpired ? (
                     <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
                       <div className="flex items-center gap-2 text-red-800 mb-2">
                         <AlertCircle className="h-5 w-5" />
-                        <span className="font-medium">License Expired</span>
+                        <span className="font-medium">{mt("licenseExpired")}</span>
                       </div>
                       {location.kitchenLicenseExpiry && (
                         <p className="text-sm text-red-700 mb-2">
                           Expired on: {new Date(location.kitchenLicenseExpiry).toLocaleDateString()}
                         </p>
                       )}
-                      <p className="text-sm text-red-700 mb-3">
-                        Please upload a new license document with an expiration date to continue bookings.
-                      </p>
+                      <p className="text-sm text-red-700 mb-3">{mt("pleaseUploadANewLicenseDocumentWithAnExpirationDateToContinu")}</p>
                     </div>
                   ) : null}
 
                   {shouldShowUpload && (
                     <>
+                      <FormLegend />
                       {/* Context header — message differs by current status */}
                       {location.kitchenLicenseStatus === 'pending' && location.kitchenLicenseUrl && !isLicenseExpired && (
                         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-2">
                           <p className="text-xs text-blue-800">
-                            <span className="font-semibold">Replace your pending submission.</span>{" "}
+                            <span className="font-semibold">{mt("replaceYourPendingSubmission")}</span>{" "}
                             Since your license hasn't been approved yet, uploading a new document will replace it directly — the admin will review your updated submission.
                           </p>
                         </div>
@@ -2161,14 +2339,13 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                       {(location.kitchenLicenseStatus === 'approved' || location.kitchenLicenseStatus === 'pending_update') && !isLicenseExpired && (
                         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-2">
                           <p className="text-xs text-amber-800">
-                            <span className="font-semibold">Submitting a new license</span> will send it for admin review. Your current approved license stays active until the update is approved.
+                            <span className="font-semibold">{mt("submittingANewLicense")}</span> will send it for admin review. Your current approved license stays active until the update is approved.
                           </p>
                         </div>
                       )}
                       {/* Expiration Date Input */}
                       <div className="mb-4">
-                        <label className="block text-sm font-medium text-gray-900 mb-2">
-                          License Expiration Date <span className="text-red-500">*</span>
+                        <label className="block text-sm font-medium text-gray-900 mb-2">{mt("licenseExpirationDate")}<span className="text-red-500">*</span>
                         </label>
                         <input
                           type="date"
@@ -2178,9 +2355,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                           className="w-full max-w-md border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                           required
                         />
-                        <p className="text-xs text-gray-600 mt-1">
-                          Required. Enter the date when this license expires.
-                        </p>
+                        <p className="text-xs text-gray-600 mt-1">{mt("requiredEnterTheDateWhenThisLicenseExpires")}</p>
                       </div>
 
                       <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
@@ -2191,17 +2366,15 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                             const file = e.target.files?.[0];
                             if (file) {
                               if (file.size > 10 * 1024 * 1024) {
-                                toast({
-                                  title: "File Too Large",
-                                  description: "Please upload a file smaller than 10MB",
+                                toast({ title: mt("fileTooLarge"),
+                                  description: mt("pleaseUploadAFileSmallerThan10MB"),
                                   variant: "destructive",
                                 });
                                 return;
                               }
                               if (!licenseExpiryDate) {
-                                toast({
-                                  title: "Expiration Date Required",
-                                  description: "Please enter an expiration date before uploading.",
+                                toast({ title: mt("expirationDateRequired"),
+                                  description: mt("pleaseEnterAnExpirationDateBeforeUploading"),
                                   variant: "destructive",
                                 });
                                 return;
@@ -2223,7 +2396,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                           {isUploadingLicense ? (
                             <>
                               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600"></div>
-                              <span className="text-sm text-gray-600">Uploading...</span>
+                              <span className="text-sm text-gray-600">{mt("uploading")}</span>
                             </>
                           ) : (
                             <>
@@ -2237,9 +2410,9 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                                       ? 'Click to upload new license'
                                       : 'Click to upload license'}
                               </span>
-                              <span className="text-xs text-gray-500">PDF, JPG, or PNG (max 10MB)</span>
+                              <span className="text-xs text-gray-500">{mt("pDFJPGOrPNGMax10MB")}</span>
                               {!licenseExpiryDate && (
-                                <span className="text-xs text-red-500 mt-1">Please enter expiration date first</span>
+                                <span className="text-xs text-red-500 mt-1">{mt("pleaseEnterExpirationDateFirst")}</span>
                               )}
                             </>
                           )}
@@ -2256,9 +2429,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
 
                   {!shouldShowUpload && location.kitchenLicenseStatus === "approved" && !isLicenseExpired && (
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                      <p className="text-sm text-blue-700">
-                        Your license is currently active and not expired. You can upload a new license when the current one expires.
-                      </p>
+                      <p className="text-sm text-blue-700">{mt("yourLicenseIsCurrentlyActiveAndNotExpiredYouCanUploadANewLic")}</p>
                       {location.kitchenLicenseExpiry && (
                         <p className="text-xs text-blue-600 mt-1">
                           You can upload a new license starting {new Date(location.kitchenLicenseExpiry).toLocaleDateString()}.
@@ -2274,10 +2445,8 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 <div className="flex items-start gap-3">
                   <FileText className="h-5 w-5 text-blue-600 mt-0.5" />
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-1">Kitchen Terms & Policies</h3>
-                    <p className="text-sm text-gray-600 mb-4">
-                      Upload your kitchen-specific terms, house rules, and policies that chefs must review when applying.
-                    </p>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-1">{mt("kitchenTermsPolicies")}</h3>
+                    <p className="text-sm text-gray-600 mb-4">{mt("uploadYourKitchenSpecificTermsHouseRulesAndPoliciesThatChefs")}</p>
                   </div>
                 </div>
 
@@ -2287,19 +2456,19 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                     <div className="bg-white border border-blue-200 rounded-lg p-4">
                       <div className="flex items-center gap-2 font-medium text-blue-800 mb-2">
                         <CheckCircle className="h-5 w-5 text-blue-600" />
-                        <span>Terms Document Uploaded</span>
+                        <span>{mt("termsDocumentUploaded")}</span>
                       </div>
                       <div className="text-sm text-blue-700 space-y-1">
-                        <p>Document: <span className="font-medium">{getDocumentFilename(location.kitchenTermsUrl)}</span></p>
+                        <p>{mt("document")}<span className="font-medium">{getDocumentFilename(location.kitchenTermsUrl)}</span></p>
                         {location.kitchenTermsUploadedAt && (
-                          <p>Uploaded: <span className="font-medium">{new Date(location.kitchenTermsUploadedAt).toLocaleDateString()}</span></p>
+                          <p>{mt("uploaded")}<span className="font-medium">{new Date(location.kitchenTermsUploadedAt).toLocaleDateString()}</span></p>
                         )}
                       </div>
                       <AuthenticatedDocumentLink
                         url={location.kitchenTermsUrl}
                         className="text-sm text-blue-600 hover:text-blue-700 mt-2 inline-block"
                       >
-                        View Terms Document →
+                        {mt("viewTermsDocumentArrow")}
                       </AuthenticatedDocumentLink>
                     </div>
                   )}
@@ -2307,11 +2476,9 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                   {/* Upload section */}
                   <div className="space-y-2">
                     <label className="block text-sm font-medium text-gray-900 mb-2">
-                      {location.kitchenTermsUrl ? 'Replace Terms Document' : 'Upload Terms Document'}
+                      {location.kitchenTermsUrl ? mt("replaceTermsDocument") : mt("uploadTermsDocument")}
                     </label>
-                    <p className="text-xs text-gray-600 mb-3">
-                      Include house rules, equipment usage policies, liability waivers, and any other terms chefs should agree to.
-                    </p>
+                    <p className="text-xs text-gray-600 mb-3">{mt("includeHouseRulesEquipmentUsagePoliciesLiabilityWaiversAndAn")}</p>
                     <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
                       <input
                         type="file"
@@ -2321,9 +2488,8 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                           if (!file) return;
                           
                           if (file.size > 10 * 1024 * 1024) {
-                            toast({
-                              title: "File Too Large",
-                              description: "Please upload a file smaller than 10MB",
+                            toast({ title: mt("fileTooLarge"),
+                              description: mt("pleaseUploadAFileSmallerThan10MB"),
                               variant: "destructive",
                             });
                             return;
@@ -2332,7 +2498,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                           try {
                             const currentFirebaseUser = auth.currentUser;
                             if (!currentFirebaseUser) {
-                              throw new Error("Firebase user not available");
+                              throw new Error(tt("firebaseUserNotAvailable"));
                             }
                             const token = await currentFirebaseUser.getIdToken();
 
@@ -2344,7 +2510,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                               headers: { 'Authorization': `Bearer ${token}` },
                               body: formData,
                             });
-                            if (!uploadRes.ok) throw new Error("Upload failed");
+                            if (!uploadRes.ok) throw new Error(tt("uploadFailed"));
                             const { url } = await uploadRes.json();
 
                             // Update location with terms URL
@@ -2357,17 +2523,15 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                               credentials: 'include',
                               body: JSON.stringify({ kitchenTermsUrl: url }),
                             });
-                            if (!updateRes.ok) throw new Error("Update failed");
+                            if (!updateRes.ok) throw new Error(tt("updateFailed"));
 
                             queryClient.invalidateQueries({ queryKey: ['/api/manager/locations'] });
                             queryClient.invalidateQueries({ queryKey: ['locationDetails', location.id] });
-                            toast({ 
-                              title: "Terms Uploaded", 
-                              description: "Kitchen terms & policies saved successfully." 
+                            toast({ title: mt("termsUploaded"), 
+                              description: mt("kitchenTermsPoliciesSavedSuccessfully") 
                             });
                           } catch (err: any) {
-                            toast({ 
-                              title: "Error", 
+                            toast({ title: mt("error"), 
                               description: err.message || "Failed to upload terms", 
                               variant: "destructive" 
                             });
@@ -2384,7 +2548,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                         <span className="text-sm font-medium text-blue-600 mb-1">
                           {location.kitchenTermsUrl ? "Click to replace terms" : "Click to upload terms"}
                         </span>
-                        <span className="text-xs text-gray-500">PDF, JPG, PNG, or DOC (max 10MB)</span>
+                        <span className="text-xs text-gray-500">{mt("pDFJPGPNGOrDOCMax10MB")}</span>
                       </label>
                     </div>
                   </div>
@@ -2399,18 +2563,14 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 <div className="flex items-start gap-3">
                   <ImageIcon className="h-5 w-5 text-green-600 mt-0.5" />
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-1">Location Logo</h3>
-                    <p className="text-sm text-gray-600 mb-4">
-                      Upload your kitchen location logo to display in the manager header alongside the Local Cooks logo.
-                    </p>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-1">{mt("locationLogo")}</h3>
+                    <p className="text-sm text-gray-600 mb-4">{mt("uploadYourKitchenLocationLogoToDisplayInTheManagerHeaderAlon")}</p>
                   </div>
                 </div>
 
                 <div className="bg-green-50 border border-green-200 rounded-2xl p-4 md:p-6 space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-900 mb-2">
-                      Logo Image
-                    </label>
+                    <label className="block text-sm font-medium text-gray-900 mb-2">{mt("logoImage")}</label>
                     <div className="max-w-md">
                       <ImageWithReplace
                         imageUrl={logoUrl || undefined}
@@ -2437,9 +2597,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                         allowedTypes={['image/jpeg', 'image/jpg', 'image/png', 'image/webp']}
                       />
                     </div>
-                    <p className="text-xs text-gray-600 mt-2">
-                      Logo will appear in the manager header next to Local Cooks logo
-                    </p>
+                    <p className="text-xs text-gray-600 mt-2">{mt("logoWillAppearInTheManagerHeaderNextToLocalCooksLogo")}</p>
                   </div>
                 </div>
               </div>
@@ -2449,35 +2607,27 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 <div className="flex items-start gap-3">
                   <Globe className="h-5 w-5 text-indigo-600 mt-0.5" />
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-1">Landing Page Content</h3>
-                    <p className="text-sm text-gray-600 mb-4">
-                      Customize the information shown to chefs when they visit your kitchen landing page.
-                    </p>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-1">{mt("landingPageContent")}</h3>
+                    <p className="text-sm text-gray-600 mb-4">{mt("customizeTheInformationShownToChefsWhenTheyVisitYourKitchenL")}</p>
                   </div>
                 </div>
 
                 <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 md:p-6 space-y-4">
                   <div className="space-y-4">
                     <div>
-                      <Label htmlFor="description" className="text-sm font-medium text-gray-900">
-                        Public Description
-                      </Label>
+                      <Label htmlFor="description" className="text-sm font-medium text-gray-900">{mt("publicDescription")}</Label>
                       <textarea
                         id="description"
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
-                        placeholder="Welcome to our kitchen community! We offer state-of-the-art facilities for culinary professionals..."
+                        placeholder={mt("welcomeToOurKitchenCommunityWeOfferStateOfTheArtFacilitiesFo")}
                         className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[100px]"
                       />
-                      <p className="text-xs text-gray-600 mt-1">
-                        A brief overview of your location that will be displayed to chefs.
-                      </p>
+                      <p className="text-xs text-gray-600 mt-1">{mt("aBriefOverviewOfYourLocationThatWillBeDisplayedToChefs")}</p>
                     </div>
 
                     <div>
-                      <Label htmlFor="customOnboardingLink" className="text-sm font-medium text-gray-900">
-                        Custom Onboarding Link (optional)
-                      </Label>
+                      <Label htmlFor="customOnboardingLink" className="text-sm font-medium text-gray-900">{mt("customOnboardingLinkOptional")}</Label>
                       <Input
                         id="customOnboardingLink"
                         value={customOnboardingLink}
@@ -2485,9 +2635,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                         placeholder="https://example.com/onboarding"
                         className="mt-1 bg-white"
                       />
-                      <p className="text-xs text-gray-600 mt-1">
-                        If you have your own onboarding process, provide the URL here to redirect chefs.
-                      </p>
+                      <p className="text-xs text-gray-600 mt-1">{mt("ifYouHaveYourOwnOnboardingProcessProvideTheURLHereToRedirect")}</p>
                     </div>
 
                     <div className="flex justify-end pt-2">
@@ -2506,9 +2654,9 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
               {/* Kitchen Images Section */}
               <div className="space-y-4">
                 <div className="flex items-start gap-3">
-                  <ChefHat className="h-5 w-5 text-amber-600 mt-0.5" />
+                  <Calendar className="h-5 w-5 text-amber-600 mt-0.5" />
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-1">Kitchen Images</h3>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-1">{mt("kitchenImages")}</h3>
                     <p className="text-sm text-gray-600 mb-4">
                       Upload images for each kitchen space. These will be displayed on the chef landing page to help chefs see your facilities.
                     </p>
@@ -2517,22 +2665,20 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
 
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-4">
                   <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-sm font-medium text-gray-700">Kitchens</h4>
+                    <h4 className="text-sm font-medium text-gray-700">{mt("navKitchens")}</h4>
                     {!showCreateKitchen && (
                       <Button
                         size="sm"
                         onClick={() => setShowCreateKitchen(true)}
 
                       >
-                        <Plus className="h-4 w-4 mr-1" />
-                        Add Kitchen
-                      </Button>
+                        <Plus className="h-4 w-4 mr-1" />{mt("addKitchen")}</Button>
                     )}
                   </div>
 
                   {showCreateKitchen && (
                     <div className="bg-white rounded-lg border border-amber-300 p-4 mb-4">
-                      <h5 className="text-sm font-semibold text-gray-900 mb-3">Create New Kitchen</h5>
+                      <h5 className="text-sm font-semibold text-gray-900 mb-3">{mt("createNewKitchen")}</h5>
                       <div className="space-y-3">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -2542,18 +2688,16 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                             type="text"
                             value={newKitchenName}
                             onChange={(e) => setNewKitchenName(e.target.value)}
-                            placeholder="e.g., Main Kitchen"
+                            placeholder={mt("eGMainKitchen2")}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Description (Optional)
-                          </label>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">{mt("descriptionOptional")}</label>
                           <textarea
                             value={newKitchenDescription}
                             onChange={(e) => setNewKitchenDescription(e.target.value)}
-                            placeholder="Describe your kitchen..."
+                            placeholder={mt("describeYourKitchen2")}
                             rows={3}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none"
                           />
@@ -2563,9 +2707,8 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                             size="sm"
                             onClick={async () => {
                               if (!newKitchenName.trim()) {
-                                toast({
-                                  title: "Missing Information",
-                                  description: "Please enter a kitchen name",
+                                toast({ title: mt("missingInformation"),
+                                  description: mt("pleaseEnterAKitchenName"),
                                   variant: "destructive",
                                 });
                                 return;
@@ -2574,7 +2717,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                               try {
                                 const currentFirebaseUser = auth.currentUser;
                                 if (!currentFirebaseUser) {
-                                  throw new Error("Firebase user not available");
+                                  throw new Error(tt("firebaseUserNotAvailable"));
                                 }
 
                                 const token = await currentFirebaseUser.getIdToken();
@@ -2599,8 +2742,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
 
                                 const newKitchen = await response.json();
                                 queryClient.invalidateQueries({ queryKey: ['managerKitchens', location.id] });
-                                toast({
-                                  title: "Kitchen Created",
+                                toast({ title: mt("kitchenCreated"),
                                   description: `${newKitchen.name} has been created successfully.`,
                                 });
 
@@ -2608,8 +2750,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                                 setNewKitchenDescription('');
                                 setShowCreateKitchen(false);
                               } catch (error: any) {
-                                toast({
-                                  title: "Error",
+                                toast({ title: mt("error"),
                                   description: error.message || "Failed to create kitchen",
                                   variant: "destructive",
                                 });
@@ -2621,14 +2762,10 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                           >
                             {isCreatingKitchen ? (
                               <>
-                                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                                Creating...
-                              </>
+                                <Loader2 className="h-4 w-4 mr-1 animate-spin" />{mt("creating")}</>
                             ) : (
                               <>
-                                <Plus className="h-4 w-4 mr-1" />
-                                Create Kitchen
-                              </>
+                                <Plus className="h-4 w-4 mr-1" />{mt("createKitchen")}</>
                             )}
                           </Button>
                           <Button
@@ -2640,9 +2777,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                               setNewKitchenDescription('');
                             }}
                             disabled={isCreatingKitchen}
-                          >
-                            Cancel
-                          </Button>
+                          >{mt("cancel")}</Button>
                         </div>
                       </div>
                     </div>
@@ -2654,15 +2789,13 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                     </div>
                   ) : kitchens.length === 0 && !showCreateKitchen ? (
                     <div className="text-center py-4">
-                      <p className="text-sm text-gray-500 mb-3">No kitchens found for this location</p>
+                      <p className="text-sm text-gray-500 mb-3">{mt("noKitchensFoundForThisLocation")}</p>
                       <Button
                         size="sm"
                         onClick={() => setShowCreateKitchen(true)}
 
                       >
-                        <Plus className="h-4 w-4 mr-1" />
-                        Create Your First Kitchen
-                      </Button>
+                        <Plus className="h-4 w-4 mr-1" />{mt("createYourFirstKitchen")}</Button>
                     </div>
                   ) : (
                     <div className="space-y-4">
@@ -2679,48 +2812,42 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                                       size="sm"
                                       className="text-red-600 hover:text-red-700 hover:bg-red-50"
                                     >
-                                      <Trash2 className="h-4 w-4 mr-1" />
-                                      Delete
-                                    </Button>
+                                      <Trash2 className="h-4 w-4 mr-1" />{mt("delete")}</Button>
                                   </AlertDialogTrigger>
                                   <AlertDialogContent>
                                     <AlertDialogHeader>
-                                      <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                      <AlertDialogTitle>{mt("areYouAbsolutelySure")}</AlertDialogTitle>
                                       <AlertDialogDescription>
                                         This will permanently delete the kitchen &quot;{kitchen.name}&quot; and all associated bookings, availability settings, and custom overrides. This action cannot be undone.
                                       </AlertDialogDescription>
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
-                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogCancel>{mt("cancel")}</AlertDialogCancel>
                                       <AlertDialogAction
                                         className="bg-red-600 hover:bg-red-700 text-white"
                                         onClick={async () => {
                                           try {
                                             const currentFirebaseUser = auth.currentUser;
-                                            if (!currentFirebaseUser) throw new Error("Not authenticated");
+                                            if (!currentFirebaseUser) throw new Error(tt("notAuthenticated"));
                                             const token = await currentFirebaseUser.getIdToken();
                                             const response = await fetch(`/api/manager/kitchens/${kitchen.id}`, {
                                               method: 'DELETE',
                                               headers: { 'Authorization': `Bearer ${token}` }
                                             });
-                                            if (!response.ok) throw new Error("Failed to delete kitchen");
+                                            if (!response.ok) throw new Error(tt("failedToDeleteKitchen"));
                                             queryClient.invalidateQueries({ queryKey: ['managerKitchens', location.id] });
-                                            toast({ title: "Kitchen Deleted", description: "Kitchen has been successfully removed." });
+                                            toast({ title: mt("kitchenDeleted"), description: mt("kitchenHasBeenSuccessfullyRemoved") });
                                           } catch (e: any) {
-                                            toast({ title: "Error", description: e.message, variant: "destructive" });
+                                            toast({ title: mt("error"), description: e.message, variant: "destructive" });
                                           }
                                         }}
-                                      >
-                                        Delete Kitchen
-                                      </AlertDialogAction>
+                                      >{mt("deleteKitchen")}</AlertDialogAction>
                                     </AlertDialogFooter>
                                   </AlertDialogContent>
                                 </AlertDialog>
                               </div>
                               <div className="space-y-2">
-                                <label className="block text-sm font-medium text-gray-700">
-                                  Description
-                                </label>
+                                <label className="block text-sm font-medium text-gray-700">{mt("description")}</label>
                                 <textarea
                                   value={kitchenDescriptions[kitchen.id] !== undefined
                                     ? kitchenDescriptions[kitchen.id]
@@ -2738,20 +2865,18 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                                       handleKitchenDescriptionUpdate(kitchen.id, newDescription);
                                     }
                                   }}
-                                  placeholder="Enter a description for this kitchen (e.g., 'Modern commercial kitchen with professional equipment')"
+                                  placeholder={mt("enterKitchenDescriptionPlaceholder")}
                                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none"
                                   rows={3}
                                   disabled={updatingKitchenId === kitchen.id}
                                 />
                                 {updatingKitchenId === kitchen.id && (
-                                  <p className="text-xs text-amber-600">Saving...</p>
+                                  <p className="text-xs text-amber-600">{mt("saving")}</p>
                                 )}
                               </div>
                             </div>
                             <div className="w-48">
-                              <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Main Image
-                              </label>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">{mt("mainImage")}</label>
                               <ImageWithReplace
                                 imageUrl={(kitchen as any).imageUrl || undefined}
                                 onImageChange={async (newUrl) => {
@@ -2759,7 +2884,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                                     // Update the kitchen with the new image URL
                                     const currentFirebaseUser = auth.currentUser;
                                     if (!currentFirebaseUser) {
-                                      throw new Error("Firebase user not available");
+                                      throw new Error(tt("firebaseUserNotAvailable"));
                                     }
 
                                     const token = await currentFirebaseUser.getIdToken();
@@ -2783,15 +2908,14 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                                     // Refresh the kitchens list
                                     queryClient.invalidateQueries({ queryKey: ['managerKitchens', location.id] });
 
-                                    toast({
-                                      title: "Success",
-                                      description: "Kitchen image updated successfully",
+                                    toast({ title: mt("success"),
+                                      description: mt("kitchenImageUpdatedSuccessfully"),
                                     });
                                   } else {
                                     // Remove image
                                     const currentFirebaseUser = auth.currentUser;
                                     if (!currentFirebaseUser) {
-                                      throw new Error("Firebase user not available");
+                                      throw new Error(tt("firebaseUserNotAvailable"));
                                     }
 
                                     const token = await currentFirebaseUser.getIdToken();
@@ -2818,7 +2942,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                                 onRemove={async () => {
                                   const currentFirebaseUser = auth.currentUser;
                                   if (!currentFirebaseUser) {
-                                    throw new Error("Firebase user not available");
+                                    throw new Error(tt("firebaseUserNotAvailable"));
                                   }
 
                                   const token = await currentFirebaseUser.getIdToken();
@@ -2854,9 +2978,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
 
                           {/* Gallery Images Section */}
                           <div className="mt-4 pt-4 border-t border-amber-200">
-                            <label className="block text-sm font-medium text-gray-700 mb-3">
-                              Gallery Images
-                            </label>
+                            <label className="block text-sm font-medium text-gray-700 mb-3">{mt("galleryImages")}</label>
                             <KitchenGalleryImages
                               kitchenId={kitchen.id}
                               galleryImages={(kitchen as any).galleryImages || []}
@@ -2879,34 +3001,26 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 <div className="flex items-start gap-3">
                   <Mail className="h-5 w-5 text-purple-600 mt-0.5" />
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-1">Notification Settings</h3>
-                    <p className="text-sm text-gray-600 mb-4">
-                      Configure where booking notifications will be sent. If left empty, notifications will go to the manager's account email.
-                    </p>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-1">{mt("notificationSettings")}</h3>
+                    <p className="text-sm text-gray-600 mb-4">{mt("configureWhereBookingNotificationsWillBeSentIfLeftEmptyNotif")}</p>
                   </div>
                 </div>
 
                 <div className="bg-purple-50 border border-purple-200 rounded-2xl p-4 md:p-6 space-y-4 shadow-md">
                   <div>
-                    <label className="block text-sm font-medium text-gray-900 mb-2">
-                      Email Address
-                    </label>
+                    <label className="block text-sm font-medium text-gray-900 mb-2">{mt("emailAddress")}</label>
                     <input
                       type="email"
                       value={notificationEmail}
                       onChange={(e) => setNotificationEmail(e.target.value)}
-                      placeholder="notifications@localcooks.com"
+                      placeholder={mt("notificationsLocalcooksCom")}
                       className="w-full max-w-md border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                     />
-                    <p className="text-xs text-gray-600 mt-1">
-                      All booking notifications for this location will be sent to this email address
-                    </p>
+                    <p className="text-xs text-gray-600 mt-1">{mt("allBookingNotificationsForThisLocationWillBeSentToThisEmailA")}</p>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-900 mb-2">
-                      Phone Number (for SMS notifications)
-                    </label>
+                    <label className="block text-sm font-medium text-gray-900 mb-2">{mt("phoneNumberForSMSNotifications")}</label>
                     <input
                       type="tel"
                       value={notificationPhone}
@@ -2914,9 +3028,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                       placeholder="+1 (555) 123-4567"
                       className="w-full max-w-md border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                     />
-                    <p className="text-xs text-gray-600 mt-1">
-                      SMS notifications for bookings and cancellations will be sent to this phone number. If left empty, SMS will not be sent.
-                    </p>
+                    <p className="text-xs text-gray-600 mt-1">{mt("sMSNotificationsForBookingsAndCancellationsWillBeSentToThisP")}</p>
                   </div>
 
                   <div className="flex gap-3 pt-2">
@@ -2924,9 +3036,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                       onClick={() => handleSave()}
                       disabled={isUpdating}
                     >
-                      <Save className="h-4 w-4" />
-                      Save Changes
-                    </Button>
+                      <Save className="h-4 w-4" />{mt("saveChanges")}</Button>
                   </div>
                 </div>
               </div>
@@ -2939,42 +3049,36 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 <div className="flex items-start gap-3">
                   <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5" />
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-1">Cancellation Policy</h3>
-                    <p className="text-sm text-gray-600 mb-4">
-                      Configure when chefs can cancel their bookings. This policy applies to all kitchens at this location.
-                    </p>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-1">{mt("cancellationPolicy")}</h3>
+                    <p className="text-sm text-gray-600 mb-4">{mt("configureWhenChefsCanCancelTheirBookingsThisPolicyAppliesToA")}</p>
                   </div>
                 </div>
 
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-900 mb-2">
-                      Cancellation Window (Hours)
-                    </label>
+                    <label className="block text-sm font-medium text-gray-900 mb-2">{mt("cancellationWindowHours")}</label>
                     <NumericInput
-                      suffix="hours"
+                      suffix={mt("hoursSuffix")}
                       value={String(cancellationHours)}
                       onValueChange={(val) => setCancellationHours(parseInt(val) || 0)}
                       className="max-w-xs"
                     />
                     <p className="text-xs text-gray-600 mt-1">
-                      Minimum hours before booking time that cancellation is allowed (0 = no restrictions)
+                      {mt("minimumHoursBeforeCancellationAllowed")}
                     </p>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-900 mb-2">
-                      Policy Message
-                    </label>
+                    <label className="block text-sm font-medium text-gray-900 mb-2">{mt("policyMessage")}</label>
                     <textarea
                       value={cancellationMessage}
                       onChange={(e) => setCancellationMessage(e.target.value)}
                       rows={3}
                       className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Bookings cannot be cancelled within {hours} hours of the scheduled time."
+                      placeholder={mt("cancellationPolicyDefaultMessage")}
                     />
                     <p className="text-xs text-gray-600 mt-1">
-                      Use {"{hours}"} as a placeholder for the cancellation window. This message will be shown to chefs when they try to cancel.
+                      {mt("useHoursAsPlaceholderLong", { hours: "{hours}" })}
                     </p>
                   </div>
 
@@ -2983,9 +3087,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                       onClick={() => handleSave()}
                       disabled={isUpdating}
                     >
-                      <Save className="h-4 w-4" />
-                      Save Changes
-                    </Button>
+                      <Save className="h-4 w-4" />{mt("saveChanges")}</Button>
                   </div>
                 </div>
               </div>
@@ -2995,31 +3097,26 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 <div className="flex items-start gap-3">
                   <Clock className="h-5 w-5 text-green-600 mt-0.5" />
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-1">Daily Booking Limit</h3>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-1">{mt("dailyBookingLimit")}</h3>
                     <p className="text-sm text-gray-600 mb-4">
-                      Set the default maximum hours a chef can book per day. This applies to all kitchens at this location unless overridden for specific dates.
+                      {mt("maximumHoursAChefCanBookPerDay")}
                     </p>
                   </div>
                 </div>
 
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-900 mb-2">
-                      Default Hours per Chef per Day
-                    </label>
+                    <label className="block text-sm font-medium text-gray-900 mb-2">{mt("defaultHoursPerChefPerDay")}</label>
                     <NumericInput
-                      suffix="hours"
+                      suffix={mt("hoursSuffix")}
                       value={String(dailyBookingLimit)}
                       onValueChange={(val) => setDailyBookingLimit(parseInt(val) || 2)}
                       className="max-w-xs"
                     />
-                    <p className="text-xs text-gray-600 mt-1">
-                      Maximum hours a chef can book in a single day across all kitchens at this location (1-24 hours)
-                    </p>
+                    <p className="text-xs text-gray-600 mt-1">{mt("maximumHoursAChefCanBookInASingleDayAcrossAllKitchensAtThisL")}</p>
                     <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
                       <Info className="h-3 w-3 inline mr-1" />
-                      <strong>Note:</strong> You can override this limit for specific dates in the Availability calendar. Date-specific overrides take precedence.
-                    </div>
+                      <strong>{mt("note")}</strong>{mt("youCanOverrideThisLimitForSpecificDatesInTheAvailabilityCale2")}</div>
                   </div>
 
                   <div className="flex gap-3 pt-2">
@@ -3027,9 +3124,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                       onClick={() => handleSaveDailyBookingLimit()}
                       disabled={isUpdating}
                     >
-                      <Save className="h-4 w-4" />
-                      Save Changes
-                    </Button>
+                      <Save className="h-4 w-4" />{mt("saveChanges")}</Button>
                   </div>
                 </div>
               </div>
@@ -3039,20 +3134,18 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 <div className="flex items-start gap-3">
                   <Clock className="h-5 w-5 text-orange-600 mt-0.5" />
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-1">Minimum Booking Window</h3>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-1">{mt("minimumBookingWindow")}</h3>
                     <p className="text-sm text-gray-600 mb-4">
-                      Set the minimum advance notice required for bookings. Chefs cannot book a kitchen within this time window. This prevents last-minute bookings and gives managers time to prepare.
+                      {mt("minimumAdvanceNoticeRequiredForBookings")}
                     </p>
                   </div>
                 </div>
 
                 <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-900 mb-2">
-                      Minimum Hours in Advance
-                    </label>
+                    <label className="block text-sm font-medium text-gray-900 mb-2">{mt("minimumHoursInAdvance")}</label>
                     <NumericInput
-                      suffix="hours"
+                      suffix={mt("hoursSuffix")}
                       value={String(minimumBookingWindowHours)}
                       onValueChange={(val) => {
                         const parsed = parseInt(val, 10);
@@ -3061,11 +3154,11 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                       className="max-w-xs"
                     />
                     <p className="text-xs text-gray-600 mt-1">
-                      Chefs must book at least this many hours before the booking time (0 = no restrictions, default: 1 hour)
+                      {mt("chefsMustBookAtLeastHours")}
                     </p>
                     <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
                       <Info className="h-3 w-3 inline mr-1" />
-                      <strong>Example:</strong> With 1 hour, if it&apos;s 1:00 PM, chefs can only book times starting from 2:00 PM onwards.
+                      {mt("exampleWith1HourIfItS100PMChefsCanOnlyBookTimesStartingFrom2")}
                     </div>
                   </div>
 
@@ -3074,9 +3167,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                       onClick={() => handleSave()}
                       disabled={isUpdating}
                     >
-                      <Save className="h-4 w-4" />
-                      Save All Settings
-                    </Button>
+                      <Save className="h-4 w-4" />{mt("saveAllSettings")}</Button>
                   </div>
                 </div>
               </div>
@@ -3086,7 +3177,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 <div className="flex items-start gap-3">
                   <AlertCircle className="h-5 w-5 text-red-600 mt-0.5" />
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-1">Storage Overstay Penalty Defaults</h3>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-1">{mt("storageOverstayPenaltyDefaults")}</h3>
                     <p className="text-sm text-gray-600 mb-4">
                       Configure default penalty settings for storage overstays at this location. These defaults apply to all storage listings unless overridden per listing.
                     </p>
@@ -3097,39 +3188,33 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                   {isLoadingPenaltyDefaults ? (
                     <div className="flex items-center justify-center py-4">
                       <Loader2 className="h-6 w-6 animate-spin text-red-600" />
-                      <span className="ml-2 text-sm text-gray-600">Loading penalty settings...</span>
+                      <span className="ml-2 text-sm text-gray-600">{mt("loadingPenaltySettings")}</span>
                     </div>
                   ) : (
                     <>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
-                          <label className="block text-sm font-medium text-gray-900 mb-2">
-                            Grace Period (Days)
-                          </label>
+                          <label className="block text-sm font-medium text-gray-900 mb-2">{mt("gracePeriodDays")}</label>
                           <NumericInput
                             suffix="days"
                             value={overstayGracePeriodDays != null ? String(overstayGracePeriodDays) : ''}
                             onValueChange={(val) => {
                               setOverstayGracePeriodDays(val === '' ? null : parseInt(val));
                             }}
-                            placeholder="Use platform default"
+                            placeholder={mt("usePlatformDefault")}
                           />
-                          <p className="text-xs text-gray-600 mt-1">
-                            Days before penalties apply (0-14). Leave empty to use platform default.
-                          </p>
+                          <p className="text-xs text-gray-600 mt-1">{mt("daysBeforePenaltiesApply014LeaveEmptyToUsePlatformDefault")}</p>
                         </div>
 
                         <div>
-                          <label className="block text-sm font-medium text-gray-900 mb-2">
-                            Penalty Rate (%)
-                          </label>
+                          <label className="block text-sm font-medium text-gray-900 mb-2">{mt("penaltyRate2")}</label>
                           <NumericInput
                             suffix="%"
                             value={overstayPenaltyRate != null ? String(overstayPenaltyRate) : ''}
                             onValueChange={(val) => {
                               setOverstayPenaltyRate(val === '' ? null : parseInt(val));
                             }}
-                            placeholder="Use platform default"
+                            placeholder={mt("usePlatformDefault")}
                           />
                           <p className="text-xs text-gray-600 mt-1">
                             % of daily rate per day (0-50%). Leave empty to use platform default.
@@ -3137,37 +3222,29 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                         </div>
 
                         <div>
-                          <label className="block text-sm font-medium text-gray-900 mb-2">
-                            Max Penalty Days
-                          </label>
+                          <label className="block text-sm font-medium text-gray-900 mb-2">{mt("maxPenaltyDays")}</label>
                           <NumericInput
                             suffix="days"
                             value={overstayMaxPenaltyDays != null ? String(overstayMaxPenaltyDays) : ''}
                             onValueChange={(val) => {
                               setOverstayMaxPenaltyDays(val === '' ? null : parseInt(val));
                             }}
-                            placeholder="Use platform default"
+                            placeholder={mt("usePlatformDefault")}
                           />
-                          <p className="text-xs text-gray-600 mt-1">
-                            Max days to charge penalties (1-90). Leave empty to use platform default.
-                          </p>
+                          <p className="text-xs text-gray-600 mt-1">{mt("maxDaysToChargePenalties190LeaveEmptyToUsePlatformDefault")}</p>
                         </div>
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-900 mb-2">
-                          Policy Text (Optional)
-                        </label>
+                        <label className="block text-sm font-medium text-gray-900 mb-2">{mt("policyTextOptional")}</label>
                         <textarea
                           value={overstayPolicyText}
                           onChange={(e) => setOverstayPolicyText(e.target.value)}
                           rows={3}
                           className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                          placeholder="Custom policy text shown to chefs regarding overstay penalties..."
+                          placeholder={mt("customPolicyTextShownToChefsRegardingOverstayPenalties")}
                         />
-                        <p className="text-xs text-gray-600 mt-1">
-                          Optional custom message shown to chefs about your overstay policy.
-                        </p>
+                        <p className="text-xs text-gray-600 mt-1">{mt("optionalCustomMessageShownToChefsAboutYourOverstayPolicy")}</p>
                       </div>
 
                       <div className="flex gap-3 pt-2">
@@ -3175,9 +3252,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                           onClick={() => handleSaveOverstayPenaltyDefaults()}
                           disabled={isUpdating}
                         >
-                          <Save className="h-4 w-4" />
-                          Save Penalty Defaults
-                        </Button>
+                          <Save className="h-4 w-4" />{mt("savePenaltyDefaults")}</Button>
                       </div>
                     </>
                   )}
@@ -3200,7 +3275,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 <div className="flex items-start gap-3">
                   <Globe className="h-5 w-5 text-cyan-600 mt-0.5" />
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-1">Timezone Settings</h3>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-1">{mt("timezoneSettings")}</h3>
                     <p className="text-sm text-gray-600 mb-4">
                       The timezone for this location is locked to Newfoundland Time. All booking times will be interpreted according to this timezone.
                     </p>
@@ -3209,13 +3284,11 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
 
                 <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-4 space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-900 mb-2">
-                      Location Timezone
-                    </label>
+                    <label className="block text-sm font-medium text-gray-900 mb-2">{mt("locationTimezone")}</label>
                     <div className="w-full max-w-md border border-gray-300 rounded-lg px-4 py-2 bg-gray-50 text-gray-700 flex items-center gap-2">
                       <Globe className="h-4 w-4 text-gray-400" />
-                      <span>Newfoundland Time (GMT-3:30)</span>
-                      <span className="ml-auto text-xs text-gray-500 bg-gray-200 px-2 py-0.5 rounded">Locked</span>
+                      <span>{mt("newfoundlandTimeGMT330")}</span>
+                      <span className="ml-auto text-xs text-gray-500 bg-gray-200 px-2 py-0.5 rounded">{mt("locked")}</span>
                     </div>
                     <p className="text-xs text-gray-600 mt-1">
                       All booking times for this location will be interpreted in Newfoundland Time. This affects when bookings are considered "past", "upcoming", or "active".
@@ -3227,9 +3300,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                       onClick={() => handleSave()}
                       disabled={isUpdating}
                     >
-                      <Save className="h-4 w-4" />
-                      Save Changes
-                    </Button>
+                      <Save className="h-4 w-4" />{mt("saveChanges")}</Button>
                   </div>
                 </div>
               </div>
@@ -3240,4 +3311,3 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     </div>
   );
 }
-

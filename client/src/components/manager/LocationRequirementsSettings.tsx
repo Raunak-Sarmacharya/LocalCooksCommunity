@@ -4,7 +4,7 @@
  * Maintains backward compatibility with existing usage
  */
 
-import { ApplicationRequirementsWizard } from './requirements';
+import { ApplicationRequirementsWizard } from "./requirements";
 
 interface LocationRequirementsSettingsProps {
   locationId: number;
@@ -17,6 +17,7 @@ export default function LocationRequirementsSettings({
   locationName,
   onSaveSuccess,
 }: LocationRequirementsSettingsProps) {
+  
   return (
     <ApplicationRequirementsWizard
       locationId={locationId}

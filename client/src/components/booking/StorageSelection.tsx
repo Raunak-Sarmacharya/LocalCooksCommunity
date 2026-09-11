@@ -1,25 +1,15 @@
-import { useState, useMemo } from "react";
-import { Calendar } from "@/components/ui/calendar";
+import { useState, useMemo, useCallback, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
+import { Calendar, calendarRangeCellClass, calendarRangeDayClass, calendarRangeDayModifiers } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import {
-  Package,
-  X,
-  Calendar as CalendarIcon,
-  AlertCircle,
-  Check,
-  Snowflake,
-  Thermometer,
-  Pencil,
-} from "lucide-react";
+import { resolveStorageIcon } from "@/lib/kitchen-inventory-icons";
+import { Icon } from "@iconify/react";
+import { chefPrimaryCtaClass } from "@/lib/chef-cta";
 import type { DateRange } from "react-day-picker";
-import { format, differenceInDays, isBefore, startOfToday } from "date-fns";
+import { format, differenceInDays, isBefore, startOfDay, startOfToday } from "date-fns";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -48,31 +38,12 @@ interface StorageSelectionProps {
   kitchenBookingDate?: Date; // Suggested start date
 }
 
-// ── Storage type visual config ───────────────────────────────────────────────
+/** How many cards to show inline before "Show all" — keeps the booking step short. */
+const STORAGE_PREVIEW_COUNT = 4;
 
-const STORAGE_TYPE_CONFIG: Record<
-  string,
-  { icon: typeof Package; label: string; iconBg: string; badgeClass: string }
-> = {
-  freezer: {
-    icon: Snowflake,
-    label: "Freezer",
-    iconBg: "bg-blue-50 text-blue-600",
-    badgeClass: "bg-blue-50 text-blue-700 border-blue-200",
-  },
-  cold: {
-    icon: Thermometer,
-    label: "Refrigerator",
-    iconBg: "bg-cyan-50 text-cyan-600",
-    badgeClass: "bg-cyan-50 text-cyan-700 border-cyan-200",
-  },
-  dry: {
-    icon: Package,
-    label: "Dry Storage",
-    iconBg: "bg-amber-50 text-amber-600",
-    badgeClass: "bg-amber-50 text-amber-700 border-amber-200",
-  },
-};
+function monthStart(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -83,27 +54,17 @@ function calculatePrice(
   range: DateRange | undefined
 ): { days: number; total: number } | null {
   if (!range?.from || !range?.to) return null;
-  const days = Math.ceil(differenceInDays(range.to, range.from));
+  // Inclusive calendar days (Sep 9–11 = 3), not overnight gaps.
+  const days = differenceInDays(range.to, range.from) + 1;
   const minDays = listing.minimumBookingDuration || 1;
   const effectiveDays = Math.max(days, minDays);
   return { days: effectiveDays, total: listing.basePrice * effectiveDays };
 }
 
-function validateRange(
-  listing: StorageListing,
-  range: DateRange | undefined,
-  minDate: Date
-): string | null {
-  if (!range?.from) return null;
-  if (isBefore(range.from, minDate)) return "Start date cannot be in the past";
-  if (!range.to) return null;
-  if (isBefore(range.to, range.from)) return "End date must be after start date";
-  const days = Math.ceil(differenceInDays(range.to, range.from));
-  const minDays = listing.minimumBookingDuration || 1;
-  if (days < minDays) {
-    return `Minimum ${minDays} day${minDays > 1 ? "s" : ""} required`;
-  }
-  return null;
+function typeLabelKey(storageType: StorageListing["storageType"]) {
+  if (storageType === "freezer") return "storageSelFreezer";
+  if (storageType === "cold") return "storageSelRefrigerator";
+  return "storageSelDryStorage";
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -114,23 +75,71 @@ export function StorageSelection({
   onSelectionChange,
   kitchenBookingDate,
 }: StorageSelectionProps) {
+  const { t } = useTranslation("booking");
+
+  const validateRange = useCallback(
+    (listing: StorageListing, range: DateRange | undefined, minDate: Date): string | null => {
+      if (!range?.from) return null;
+      if (isBefore(range.from, minDate)) return t("storageSelStartDatePast");
+      if (!range.to) return null;
+      if (isBefore(range.to, range.from)) return t("storageSelEndBeforeStart");
+      const days = differenceInDays(range.to, range.from) + 1;
+      const minDays = listing.minimumBookingDuration || 1;
+      if (days < minDays) {
+        return t("storageSelMinDaysRequired", { minDays });
+      }
+      return null;
+    },
+    [t]
+  );
+
   const [openPopoverId, setOpenPopoverId] = useState<number | null>(null);
+  const [showAllOpen, setShowAllOpen] = useState(false);
   const [pendingRanges, setPendingRanges] = useState<
     Record<number, DateRange | undefined>
   >({});
+  /** Controlled month per listing — prevents DayPicker remount/reset flicker while picking a range. */
+  const [calendarMonthById, setCalendarMonthById] = useState<Record<number, Date>>({});
 
   const activeListings = useMemo(
     () => storageListings.filter((l) => l.isActive !== false),
     [storageListings]
   );
 
-  const minDate = startOfToday();
-  const defaultMonth = kitchenBookingDate || new Date();
+  const needsShowAll = activeListings.length > STORAGE_PREVIEW_COUNT;
+
+  // Keep selected units visible in the preview, fill remaining slots with others
+  const previewListings = useMemo(() => {
+    if (!needsShowAll) return activeListings;
+    const selectedIds = new Set(selectedStorage.map((s) => s.storageListingId));
+    const selected = activeListings.filter((l) => selectedIds.has(l.id));
+    const rest = activeListings.filter((l) => !selectedIds.has(l.id));
+    const out: StorageListing[] = [];
+    const seen = new Set<number>();
+    for (const listing of [...selected, ...rest]) {
+      if (seen.has(listing.id)) continue;
+      seen.add(listing.id);
+      out.push(listing);
+      if (out.length >= STORAGE_PREVIEW_COUNT) break;
+    }
+    return out;
+  }, [activeListings, needsShowAll, selectedStorage]);
+
+  // Stable for the session so `disabled` doesn't churn every render and flicker the grid.
+  const minDate = useMemo(() => startOfToday(), []);
+  const defaultMonth = useMemo(
+    () => monthStart(kitchenBookingDate ? startOfDay(kitchenBookingDate) : minDate),
+    [kitchenBookingDate, minDate]
+  );
+
+  const isDateDisabled = useCallback(
+    (date: Date) => isBefore(date, minDate),
+    [minDate]
+  );
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
   const handleOpenPopover = (listingId: number) => {
-    // Seed pending range from existing selection if editing
     const existing = selectedStorage.find(
       (s) => s.storageListingId === listingId
     );
@@ -139,6 +148,10 @@ export function StorageSelection({
       [listingId]: existing
         ? { from: existing.startDate, to: existing.endDate }
         : undefined,
+    }));
+    setCalendarMonthById((prev) => ({
+      ...prev,
+      [listingId]: monthStart(existing?.startDate || defaultMonth),
     }));
     setOpenPopoverId(listingId);
   };
@@ -154,7 +167,7 @@ export function StorageSelection({
   ) => {
     const current = pendingRanges[listingId];
     let newRange = range;
-    // If both dates exist and user clicks a new day, start a fresh range
+    // Starting a new range after a complete one — keep the clicked day as the new start.
     if (current?.from && current?.to && selectedDay) {
       newRange = { from: selectedDay, to: undefined };
     }
@@ -207,19 +220,20 @@ export function StorageSelection({
     const isEdit = selectedStorage.some(
       (s) => s.storageListingId === storage.id
     );
+    const month = calendarMonthById[storage.id] ?? defaultMonth;
 
     return (
-      <div className="flex flex-col">
-        {/* Popover header */}
-        <div className="px-3 pt-3 pb-2 border-b border-border">
+      <div className="flex w-72 flex-col">
+        <div className="border-b border-border px-3 pb-2 pt-3">
           <p className="text-sm font-medium text-foreground">{storage.name}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Min {minDays} day{minDays > 1 ? "s" : ""} &middot;{" "}
-            {formatCents(storage.basePrice)}/day
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            {t("storageSelMinDaysPrice", {
+              minDays,
+              price: formatCents(storage.basePrice),
+            })}
           </p>
         </div>
 
-        {/* Calendar */}
         <Calendar
           mode="range"
           selected={range}
@@ -227,31 +241,50 @@ export function StorageSelection({
             handleRangeSelect(storage.id, r, day)
           }
           numberOfMonths={1}
-          defaultMonth={defaultMonth}
-          disabled={(date: Date) => isBefore(date, minDate)}
-          className="p-2"
+          month={month}
+          onMonthChange={(next) =>
+            setCalendarMonthById((prev) => ({
+              ...prev,
+              [storage.id]: monthStart(next),
+            }))
+          }
+          disabled={isDateDisabled}
+          className="mx-auto w-full px-2 py-2"
+          classNames={{
+            months: "flex w-full flex-col",
+            month: "w-full space-y-2",
+            caption: "relative flex w-full items-center justify-center pt-0.5",
+            caption_label: "text-sm font-medium",
+            table: "w-full table-fixed border-collapse",
+            head_cell:
+              "w-[14.28%] pb-1 text-center text-[0.7rem] font-normal text-muted-foreground",
+            cell: calendarRangeCellClass,
+            day: calendarRangeDayClass,
+            ...calendarRangeDayModifiers,
+          }}
         />
 
-        {/* Footer: validation, price preview, confirm */}
-        <div className="px-3 pb-3 space-y-2 border-t border-border pt-2">
+        <div className="space-y-2 border-t border-border px-3 pb-3 pt-2">
           {error && (
-            <div className="flex items-center gap-1.5 text-xs text-destructive">
-              <AlertCircle className="h-3 w-3 flex-shrink-0" />
+            <div className="flex items-center gap-1.5 text-sm text-destructive">
+              <Icon icon="mdi:alert-circle-outline" className="h-3 w-3 flex-shrink-0" aria-hidden />
               <span>{error}</span>
             </div>
           )}
 
           {range?.from && !range?.to && (
-            <p className="text-xs text-muted-foreground text-center py-1">
-              Click an end date to complete the range
+            <p className="text-sm text-muted-foreground text-center py-1">
+              {t("storageSelClickEndDate")}
             </p>
           )}
 
           {price && !error && (
             <div className="flex items-center justify-between rounded-md bg-muted/50 px-2.5 py-1.5">
-              <span className="text-xs text-muted-foreground">
-                {price.days} day{price.days > 1 ? "s" : ""} &times;{" "}
-                {formatCents(storage.basePrice)}
+              <span className="text-sm text-muted-foreground">
+                {t("storageSelDaysTimesPrice", {
+                  days: price.days,
+                  price: formatCents(storage.basePrice),
+                })}
               </span>
               <span className="text-sm font-semibold text-foreground">
                 {formatCents(price.total)}
@@ -261,198 +294,212 @@ export function StorageSelection({
 
           <Button
             size="sm"
-            className="w-full"
+            className={chefPrimaryCtaClass("w-full")}
             disabled={!range?.from || !range?.to || !!error}
             onClick={() => handleConfirm(storage.id)}
           >
-            <Check className="h-3.5 w-3.5 mr-1.5" />
-            {isEdit ? "Update Dates" : "Add Storage"}
+            <Icon icon="mdi:check" className="h-3.5 w-3.5 mr-1.5" aria-hidden />
+            {isEdit ? t("storageSelUpdateDates") : t("storageSelAddStorage")}
           </Button>
         </div>
       </div>
     );
   };
 
-  // ── Empty state ──────────────────────────────────────────────────────────
+  const renderDatePopover = (
+    storage: StorageListing,
+    opts: { align: "start" | "end"; trigger: ReactNode }
+  ) => (
+    <Popover
+      // Nested inside the "Show all" Dialog — modal popovers fight the dialog
+      // focus trap and make the calendar open/close/jump on each click.
+      modal={false}
+      open={openPopoverId === storage.id}
+      onOpenChange={(open) => {
+        if (open) handleOpenPopover(storage.id);
+        else handleClosePopover();
+      }}
+    >
+      <PopoverTrigger asChild>{opts.trigger}</PopoverTrigger>
+      <PopoverContent
+        className="w-72 p-0"
+        align={opts.align}
+        sideOffset={8}
+        collisionPadding={12}
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        onCloseAutoFocus={(e) => e.preventDefault()}
+      >
+        {renderCalendarContent(storage)}
+      </PopoverContent>
+    </Popover>
+  );
 
-  if (activeListings.length === 0) {
-    return (
-      <div className="rounded-lg border border-border bg-muted/30 p-4 text-center">
-        <Package className="h-6 w-6 mx-auto mb-2 text-muted-foreground/50" />
-        <p className="text-sm text-muted-foreground">
-          No storage available for this kitchen
-        </p>
-      </div>
+  const renderCard = (storage: StorageListing) => {
+    const isSelected = selectedStorage.some(
+      (s) => s.storageListingId === storage.id
     );
-  }
+    const selection = selectedStorage.find(
+      (s) => s.storageListingId === storage.id
+    );
+    const minDays = storage.minimumBookingDuration || 1;
+    const selectionPrice = selection
+      ? calculatePrice(storage, {
+          from: selection.startDate,
+          to: selection.endDate,
+        })
+      : null;
+    const typeText = t(typeLabelKey(storage.storageType));
 
-  // ── Render ─────────────────────────────────────────────────────────────────
-
-  return (
-    <div className="space-y-2">
-      {activeListings.map((storage) => {
-        const isSelected = selectedStorage.some(
-          (s) => s.storageListingId === storage.id
-        );
-        const selection = selectedStorage.find(
-          (s) => s.storageListingId === storage.id
-        );
-        const config =
-          STORAGE_TYPE_CONFIG[storage.storageType] || STORAGE_TYPE_CONFIG.dry;
-        const TypeIcon = config.icon;
-        const minDays = storage.minimumBookingDuration || 1;
-        const selectionPrice = selection
-          ? calculatePrice(storage, {
-              from: selection.startDate,
-              to: selection.endDate,
-            })
-          : null;
-
-        return (
-          <div
-            key={storage.id}
-            className={cn(
-              "rounded-lg border transition-all duration-200",
-              isSelected
-                ? "border-primary/40 bg-primary/[0.02]"
-                : "border-border"
-            )}
-          >
-            {/* ── Row: type icon + name + badge + price ── */}
-            <div className="flex items-center justify-between p-3">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div
-                  className={cn(
-                    "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0",
-                    config.iconBg
-                  )}
-                >
-                  <TypeIcon className="h-4 w-4" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">
-                    {storage.name}
-                  </p>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "text-xs h-[18px] px-1.5 py-0 font-medium leading-none",
-                        config.badgeClass
-                      )}
-                    >
-                      {config.label}
-                    </Badge>
-                    {storage.climateControl && (
-                      <span className="text-xs text-muted-foreground">
-                        Climate ctrl
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div className="text-right flex-shrink-0 ml-3">
-                <p className="text-sm font-semibold text-foreground">
-                  {formatCents(storage.basePrice)}
-                  <span className="text-xs font-normal text-muted-foreground">
-                    /day
-                  </span>
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Min {minDays}d
+    return (
+      <div
+        key={storage.id}
+        className={cn(
+          "rounded-xl border px-3 py-2.5 transition-colors",
+          isSelected
+            ? "border-[#F51042]/40 bg-[#F51042]/[0.03]"
+            : "border-gray-200 bg-white"
+        )}
+      >
+        <div className="flex items-start gap-2.5">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#FFF8F5] text-[#F51042]">
+            <Icon
+              icon={resolveStorageIcon(storage.storageType, storage.name)}
+              width={16}
+              height={16}
+              className="text-[#F51042]"
+              aria-hidden
+            />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-900 truncate">{storage.name}</p>
+                <p className="text-sm text-muted-foreground mt-0.5 truncate">
+                  {typeText}
+                  {storage.climateControl ? ` · ${t("storageSelClimateCtrl")}` : ""}
+                  {` · ${t("storageSelMinDaysShort", { minDays })}`}
                 </p>
               </div>
+              <p className="text-sm font-semibold text-gray-900 shrink-0">
+                {formatCents(storage.basePrice)}
+                <span className="text-sm font-normal text-muted-foreground">
+                  {t("storageSelPerDay")}
+                </span>
+              </p>
             </div>
 
-            {/* ── Date selection / confirmation bar ── */}
-            <div className="px-3 pb-3">
+            <div className="mt-2">
               {isSelected && selection ? (
-                // Selected state: compact confirmation strip
-                <div className="flex items-center justify-between gap-2 rounded-md bg-primary/5 border border-primary/10 pl-2.5 pr-1 py-1.5">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Check className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+                <div className="flex items-center justify-between gap-2 rounded-md bg-primary/5 border border-primary/10 pl-2 pr-0.5 py-1">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <Icon icon="mdi:check" className="h-3.5 w-3.5 text-primary flex-shrink-0" aria-hidden />
                     <div className="min-w-0">
-                      <p className="text-xs font-medium text-foreground truncate">
-                        {format(selection.startDate, "MMM d")} &mdash;{" "}
+                      <p className="truncate text-sm font-semibold text-gray-900">
+                        {format(selection.startDate, "MMM d, yyyy")} &mdash;{" "}
                         {format(selection.endDate, "MMM d, yyyy")}
                       </p>
                       {selectionPrice && (
-                        <p className="text-xs text-muted-foreground">
-                          {selectionPrice.days} day
-                          {selectionPrice.days > 1 ? "s" : ""} &middot;{" "}
-                          <span className="font-medium text-primary">
-                            {formatCents(selectionPrice.total)}
-                          </span>
+                        <p className="text-sm text-muted-foreground">
+                          {formatCents(selectionPrice.total)}
                         </p>
                       )}
                     </div>
                   </div>
                   <div className="flex items-center flex-shrink-0">
-                    <Popover
-                      open={openPopoverId === storage.id}
-                      onOpenChange={(open) => {
-                        if (open) handleOpenPopover(storage.id);
-                        else handleClosePopover();
-                      }}
-                    >
-                      <PopoverTrigger asChild>
+                    {renderDatePopover(storage, {
+                      align: "end",
+                      trigger: (
                         <Button variant="ghost" size="icon" className="h-7 w-7">
-                          <Pencil className="h-3 w-3" />
+                          <Icon icon="mdi:pencil-outline" className="h-3 w-3" aria-hidden />
                         </Button>
-                      </PopoverTrigger>
-                      <PopoverContent
-                        className="p-0"
-                        align="end"
-                        sideOffset={8}
-                      >
-                        {renderCalendarContent(storage)}
-                      </PopoverContent>
-                    </Popover>
+                      ),
+                    })}
                     <Button
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7 text-muted-foreground hover:text-destructive"
                       onClick={() => handleRemove(storage.id)}
                     >
-                      <X className="h-3.5 w-3.5" />
+                      <Icon icon="mdi:close" className="h-3.5 w-3.5" aria-hidden />
                     </Button>
                   </div>
                 </div>
               ) : (
-                // Unselected state: date picker trigger button
-                <Popover
-                  open={openPopoverId === storage.id}
-                  onOpenChange={(open) => {
-                    if (open) handleOpenPopover(storage.id);
-                    else handleClosePopover();
-                  }}
-                >
-                  <PopoverTrigger asChild>
+                renderDatePopover(storage, {
+                  align: "start",
+                  trigger: (
                     <Button
                       variant="outline"
                       size="sm"
-                      className={cn(
-                        "w-full justify-start text-xs h-8 font-normal",
-                        "text-muted-foreground hover:text-foreground"
-                      )}
+                      className="w-full justify-start text-sm h-8 font-normal text-muted-foreground hover:text-foreground"
                     >
-                      <CalendarIcon className="h-3.5 w-3.5 mr-2" />
-                      Select storage dates
+                      <Icon icon="mdi:calendar-month-outline" className="h-3.5 w-3.5 mr-2" aria-hidden />
+                      {t("storageSelSelectDates")}
                     </Button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    className="p-0"
-                    align="start"
-                    sideOffset={8}
-                  >
-                    {renderCalendarContent(storage)}
-                  </PopoverContent>
-                </Popover>
+                  ),
+                })
               )}
             </div>
           </div>
-        );
-      })}
+        </div>
+      </div>
+    );
+  };
+
+  const renderGrid = (listings: StorageListing[]) => (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{listings.map(renderCard)}</div>
+  );
+
+  if (activeListings.length === 0) {
+    return (
+      <div className="rounded-lg border border-border bg-muted/30 p-4 text-center">
+        <Icon icon="mdi:archive-outline" className="h-6 w-6 mx-auto mb-2 text-muted-foreground/50" aria-hidden />
+        <p className="text-sm text-muted-foreground">{t("storageSelNoStorage")}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {renderGrid(previewListings)}
+
+      {needsShowAll && (
+        <>
+          <button
+            type="button"
+            className="inline-flex items-center text-sm font-medium text-[#F51042] hover:text-[#d10e39]"
+            onClick={() => setShowAllOpen(true)}
+          >
+            {t("storageSelShowAll", {
+              count: activeListings.length,
+              defaultValue: `Show all ${activeListings.length} storage options`,
+            })}
+            <Icon icon="mdi:chevron-right" className="ml-0.5 h-4 w-4" aria-hidden />
+          </button>
+
+          <Dialog open={showAllOpen} onOpenChange={setShowAllOpen}>
+            <DialogContent
+              showCloseButton={false}
+              className="flex max-h-[85vh] w-[min(100vw-1.5rem,48rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl"
+            >
+              <DialogHeader className="border-b border-gray-100 px-5 pb-4 pt-5 text-left">
+                <DialogTitle>
+                  {t("storageSelAllTitle", "Storage options")}
+                </DialogTitle>
+                <DialogDescription>
+                  {t(
+                    "storageSelAllDesc",
+                    "Pick fridge, freezer, or dry storage and set your dates."
+                  )}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+                {renderGrid(activeListings)}
+              </div>
+            </DialogContent>
+          </Dialog>
+        </>
+      )}
     </div>
   );
 }

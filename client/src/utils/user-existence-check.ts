@@ -1,6 +1,6 @@
 import { logger } from "@/lib/logger";
-import { auth } from '@/lib/firebase';
-import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { auth } from "@/lib/firebase";
+import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 
 export interface UserExistenceResult {
   exists: boolean;

@@ -1,12 +1,13 @@
 import { logger } from "@/lib/logger";
-import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { toast } from '@/hooks/use-toast';
-import { Upload, X, Loader2, Image as ImageIcon } from 'lucide-react';
-import { useSessionFileUpload } from '@/hooks/useSessionFileUpload';
-import { cn } from '@/lib/utils';
-import { auth } from '@/lib/firebase';
-import { getR2ProxyUrl } from '@/utils/r2-url-helper';
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { toast } from "@/hooks/use-toast";
+import { Upload, X, Loader2, Image as ImageIcon } from "lucide-react";
+import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
+import { cn } from "@/lib/utils";
+import { auth } from "@/lib/firebase";
+import { getR2ProxyUrl } from "@/utils/r2-url-helper";
+import { SmartImage } from "@/components/ui/smart-image";
 
 interface ImageWithReplaceProps {
   imageUrl: string | null | undefined;
@@ -170,12 +171,10 @@ export function ImageWithReplace({
       {imageUrl ? (
         <div className="relative group">
           <div className={cn('relative overflow-hidden rounded-lg border border-gray-200 bg-gray-100', aspectRatioClass, className)}>
-            {isLoading || !imageSrc ? (
-              <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
-                <Loader2 className="h-8 w-8 text-gray-400 animate-spin" />
-              </div>
+            {!imageSrc ? (
+              <div className="absolute inset-0 image-shimmer" aria-hidden="true" />
             ) : (
-              <img
+              <SmartImage
                 src={imageSrc}
                 alt={alt}
                 className={cn('w-full h-full object-cover', !aspectRatio && className)}
@@ -203,10 +202,9 @@ export function ImageWithReplace({
               />
             )}
 
-            {/* Overlay with action buttons - visible on hover */}
-            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+            <div className="absolute inset-x-0 bottom-0 flex items-center justify-end gap-2 bg-gradient-to-t from-black/65 to-transparent p-3 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
               {showReplaceButton && (
-                <label className="cursor-pointer">
+                <label className="inline-flex h-9 cursor-pointer items-center rounded-md bg-white px-3 text-sm font-medium text-slate-900 shadow-sm transition-colors hover:bg-slate-100">
                   <input
                     type="file"
                     accept={allowedTypes.join(',')}
@@ -214,34 +212,17 @@ export function ImageWithReplace({
                     className="hidden"
                     disabled={isUploading}
                   />
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    disabled={isUploading}
-                    className="bg-white hover:bg-slate-100 text-slate-900 border border-slate-200 shadow-sm"
-                  >
-                    {isUploading ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        {Math.round(uploadProgress)}%
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="h-4 w-4 mr-2" />
-                        Replace
-                      </>
-                    )}
-                  </Button>
+                  {isUploading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{Math.round(uploadProgress)}%</> : <><Upload className="mr-2 h-4 w-4" />Replace</>}
                 </label>
               )}
               {showRemoveButton && (
                 <Button
                   type="button"
                   size="sm"
-                  variant="destructive"
+                  variant="secondary"
                   onClick={handleRemove}
                   disabled={isUploading}
+                  className="bg-white text-destructive shadow-sm hover:bg-destructive hover:text-destructive-foreground"
                 >
                   <X className="h-4 w-4 mr-2" />
                   Remove

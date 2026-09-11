@@ -1,6 +1,6 @@
 import { logger } from "@/lib/logger";
-import { auth } from '@/lib/firebase';
-import { fetchSignInMethodsForEmail } from 'firebase/auth';
+import { auth } from "@/lib/firebase";
+import { fetchSignInMethodsForEmail } from "firebase/auth";
 
 /**
  * Check if an email exists in Firebase using client-side Firebase Auth

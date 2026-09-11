@@ -2,38 +2,12 @@ import { logger } from "@/lib/logger";
 import { useState, useEffect, useCallback } from "react";
 import { auth } from "@/lib/firebase";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import {
-  Loader2,
-  MapPin,
-  ChefHat,
-  Building2,
-  Users,
-  Clock,
-  Mail,
-  CreditCard,
-  Package,
-  Snowflake,
-  Thermometer,
-  FileText,
-  Shield,
-  Image,
-  Calendar,
-  Wrench,
-  ExternalLink,
-  CheckCircle2,
-  XCircle,
-  AlertCircle,
-} from "lucide-react";
+import { Loader2, MapPin, Calendar, Building2, Users, Clock, Mail, CreditCard, Package, Snowflake, Thermometer, FileText, Shield, Image, Wrench, ExternalLink, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
+import { SmartImage } from "@/components/ui/smart-image";
 
 interface LocationDetailSheetProps {
   locationId: number | null;
@@ -189,7 +163,7 @@ export function LocationDetailSheet({ locationId, open, onOpenChange }: Location
               <TabsContent value="kitchens" className="space-y-4">
                 {kitchensList.length === 0 ? (
                   <div className="py-8 text-center">
-                    <ChefHat className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+                    <Calendar className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
                     <p className="text-sm text-muted-foreground">No kitchens at this location</p>
                   </div>
                 ) : (
@@ -451,7 +425,7 @@ function KitchenDetailCard({ kitchen }: { kitchen: any }) {
       >
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-md bg-amber-100 flex-shrink-0">
-            <ChefHat className="h-4 w-4 text-amber-600" />
+            <Calendar className="h-4 w-4 text-amber-600" />
           </div>
           <div>
             <p className="font-medium text-sm">{kitchen.name}</p>
@@ -521,12 +495,12 @@ function KitchenDetailCard({ kitchen }: { kitchen: any }) {
               <div className="flex gap-2 flex-wrap">
                 {kitchen.imageUrl && (
                   <a href={getR2ProxyUrl(kitchen.imageUrl)} target="_blank" rel="noopener noreferrer" className="block w-16 h-16 rounded-md overflow-hidden border">
-                    <img src={getR2ProxyUrl(kitchen.imageUrl)} alt="Kitchen" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    <SmartImage src={getR2ProxyUrl(kitchen.imageUrl)} alt="Kitchen" className="w-full h-full object-cover" hideOnError />
                   </a>
                 )}
                 {kitchen.galleryImages?.map((url: string, i: number) => (
                   <a key={i} href={getR2ProxyUrl(url)} target="_blank" rel="noopener noreferrer" className="block w-16 h-16 rounded-md overflow-hidden border">
-                    <img src={getR2ProxyUrl(url)} alt={`Gallery ${i + 1}`} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    <SmartImage src={getR2ProxyUrl(url)} alt={`Gallery ${i + 1}`} className="w-full h-full object-cover" hideOnError />
                   </a>
                 ))}
               </div>

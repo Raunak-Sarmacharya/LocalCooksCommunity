@@ -13,11 +13,13 @@ import { Camera, Upload, X, Loader2, CheckCircle } from "lucide-react"
 import { toast } from "sonner"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { InfoChip } from "@/components/chef/info-chip"
 import { cn } from "@/lib/utils"
 import { getR2ProxyUrl } from "@/utils/r2-url-helper"
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload"
 import type { PhotoRequirement } from "@/hooks/use-location-checklist"
+import { SmartImage } from "@/components/ui/smart-image";
+import { useTranslation } from "react-i18next";
 
 const GENERIC_KEY = "__generic__"
 export const MAX_PHOTOS_PER_REQUIREMENT = 3
@@ -86,6 +88,12 @@ function SingleRequirementSlot({
   // Persistent loading toast — dismissed on success/error. Makes upload
   // feedback visible regardless of scroll position or slot visibility.
   const toastIdRef = useRef<string | number | null>(null)
+  
+  const { t: tStrict } = useTranslation("chef");
+  const t = (key: string, defaultText?: string, vars?: any): string => {
+    const val = tStrict(key as any, vars) as string;
+    return val !== key ? val : (defaultText || key);
+  };
 
   const dismissLoadingToast = useCallback(() => {
     if (toastIdRef.current !== null) {
@@ -99,7 +107,7 @@ function SingleRequirementSlot({
     allowedTypes: ["image/jpeg", "image/jpg", "image/png", "image/webp"],
     onSuccess: (response) => {
       dismissLoadingToast()
-      toast.success(`${label} photo uploaded`)
+      toast.success(t("photoUploadedMsg", `${label} photo uploaded`, { label }))
       onChange([...photos, response.url])
     },
     onError: (err) => {
@@ -113,14 +121,14 @@ function SingleRequirementSlot({
       const file = e.target.files?.[0]
       if (!file) return
       if (photos.length >= max) {
-        toast.error(`You can upload up to ${max} photo${max !== 1 ? "s" : ""} for this requirement`)
+        toast.error(t("maxPhotosMsg", `You can upload up to ${max} photo(s) for this requirement`, { max }))
         return
       }
       // Fire the loading toast SYNCHRONOUSLY before uploadFile so the chef
       // sees feedback immediately when the file dialog closes, even before
       // React commits the isUploading state update.
-      toastIdRef.current = toast.loading(`Uploading ${label} photo…`, {
-        description: "Please wait while your photo is uploaded.",
+      toastIdRef.current = toast.loading(t("uploadingPhotoMsg", `Uploading ${label} photo…`, { label }), {
+        description: t("pleaseWaitUpload", "Please wait while your photo is uploaded."),
       })
       uploadFile(file, uploadFolder)
       e.target.value = ""
@@ -141,8 +149,8 @@ function SingleRequirementSlot({
   return (
     <div
       className={cn(
-        "rounded-lg border p-3 space-y-2 transition-colors",
-        hasPhotos ? "border-green-200 bg-green-50/40" : "border-border bg-background",
+        "rounded-xl border p-3 space-y-2 transition-colors",
+        hasPhotos ? "border-success/30 bg-success/10" : "border-border bg-background",
       )}
     >
       {/* Header: label + status */}
@@ -156,14 +164,13 @@ function SingleRequirementSlot({
             </span>
           </p>
           {description && (
-            <p className="text-[11px] text-muted-foreground mt-0.5 ml-5">{description}</p>
+            <p className="text-xs text-muted-foreground mt-0.5 ml-5">{description}</p>
           )}
         </div>
         {hasPhotos && (
-          <Badge variant="success" className="text-[10px] shrink-0">
-            <CheckCircle className="h-2.5 w-2.5 mr-0.5" />
+          <InfoChip variant="success" icon={<CheckCircle className="h-2.5 w-2.5" />} className="shrink-0">
             {photos.length}/{max}
-          </Badge>
+          </InfoChip>
         )}
       </div>
 
@@ -172,10 +179,10 @@ function SingleRequirementSlot({
         <div className="grid grid-cols-3 gap-2">
           {photos.map((url, i) => (
             <div key={`${url}-${i}`} className="relative group">
-              <img
+              <SmartImage
                 src={getR2ProxyUrl(url)}
                 alt={`${label} photo ${i + 1}`}
-                className="w-full h-16 object-cover rounded-md border"
+                className="w-full h-16 object-cover rounded-xl border"
               />
               <button
                 type="button"
@@ -195,11 +202,11 @@ function SingleRequirementSlot({
       {photos.length < max && (
         <div
           className={cn(
-            "border-2 border-dashed rounded-md p-2.5 transition-colors",
+            "border-2 border-dashed rounded-xl p-2.5 transition-colors",
             isUploading
               ? "border-primary"
               : hasPhotos
-                ? "border-green-300 hover:border-green-400"
+                ? "border-success/30 hover:border-success/50"
                 : "border-border hover:border-primary/50",
             disabled && !isUploading && "opacity-50 cursor-not-allowed",
           )}
@@ -235,7 +242,7 @@ function SingleRequirementSlot({
             ) : (
               <>
                 <Upload className="h-3.5 w-3.5" />
-                <span>{hasPhotos ? "Add another photo" : "Upload photo"}</span>
+                <span>{hasPhotos ? t("addAnotherPhoto", "Add another photo") : t("uploadPhotoBtn", "Upload photo")}</span>
               </>
             )}
           </label>
@@ -260,15 +267,21 @@ export function PhotoRequirementUploader({
     [photos, onPhotosChange],
   )
 
+  const { t: tStrict } = useTranslation("chef");
+  const t = (key: string, defaultText?: string, vars?: any): string => {
+    const val = tStrict(key as any, vars) as string;
+    return val !== key ? val : (defaultText || key);
+  };
+
   // Fallback: no requirements defined → show single generic uploader with backwards-compatible behavior.
   if (requirements.length === 0) {
     return (
       <SingleRequirementSlot
         requirementId={GENERIC_KEY}
-        label="Condition Photos"
+        label={t("conditionPhotos", "Condition Photos")}
         description={
           genericInstruction ||
-          "Upload photos showing the current condition. This helps resolve any disputes and speeds up approval."
+          t("conditionPhotosDesc", "Upload photos showing the current condition. This helps resolve any disputes and speeds up approval.")
         }
         required
         max={GENERIC_MAX_PHOTOS}
@@ -294,17 +307,16 @@ export function PhotoRequirementUploader({
       <div className="flex items-center justify-between">
         <Label className="text-sm font-medium flex items-center gap-1.5">
           <Camera className="h-4 w-4" />
-          Photos Required
+          {t("photosRequired", "Photos Required")}
         </Label>
-        <Badge
+        <InfoChip
           variant={completedRequired === totalRequired ? "success" : "outline"}
-          className="text-[10px]"
         >
-          {completedRequired}/{totalRequired} completed
-        </Badge>
+          {completedRequired}/{totalRequired} {t("completed", "completed")}
+        </InfoChip>
       </div>
-      <p className="text-[11px] text-muted-foreground">
-        One photo required per item. You can upload up to {MAX_PHOTOS_PER_REQUIREMENT} per slot.
+      <p className="text-xs text-muted-foreground">
+        {t("onePhotoRequiredPerItem", "One photo required per item. You can upload up to {max} per slot.", { max: MAX_PHOTOS_PER_REQUIREMENT })}
       </p>
       <div className="space-y-2">
         {requirements.map((req) => (

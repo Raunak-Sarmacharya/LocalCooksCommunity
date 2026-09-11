@@ -1,70 +1,22 @@
 import { logger } from "@/lib/logger";
+import { mt } from "@/i18n/manager";
+import { useTranslation } from "react-i18next";
 import { useMemo, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
-import {
-  Calendar,
-  Clock,
-  TrendingUp,
-  TrendingDown,
-  Users,
-  DollarSign,
-  AlertTriangle,
-  CheckCircle2,
-  XCircle,
-  ArrowRight,
-  ChefHat,
-  Settings,
-  FileText,
-  Eye,
-  MessageSquare,
-  Percent,
-  CalendarDays,
-  BarChart3,
-  Bell,
-  Zap,
-  Search,
-  Mail,
-  Phone,
-  Star,
-  Filter,
-  MapPin,
-  Building2,
-  Info,
-} from "lucide-react";
+import { Calendar, Clock, TrendingUp, TrendingDown, Users, DollarSign, AlertTriangle, CheckCircle2, XCircle, ArrowRight, Settings, FileText, Eye, MessageSquare, Percent, CalendarDays, BarChart3, Bell, Zap, Search, Mail, Phone, Star, Filter, MapPin, Building2, Info } from "@/components/ui/manager-icons";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Tooltip as UITooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  Cell,
-} from "recharts";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from "recharts";
 import BookingCalendarWidget from "./BookingCalendarWidget";
 import { TodaysKitchenBookings } from "@/components/manager/TodaysKitchenBookings";
-import { formatCurrency } from "@/lib/formatters";
+import { formatCurrency, formatTime as formatTimeLocale, formatDate as formatDateLocale } from "@/lib/formatters";
+import { tt } from "@/i18n/common-ns";
 
 
 type ViewType = 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'revenue';
@@ -111,8 +63,10 @@ export default function KitchenDashboardOverview({
   onNavigate,
   onSelectLocation
 }: KitchenDashboardOverviewProps) {
+  
   // Get Firebase user for authentication
   const { user: firebaseUser } = useFirebaseAuth();
+  const { i18n } = useTranslation();
   
   // Create a map of location names to location IDs for filtering bookings
   const locationNameToIdMap = useMemo(() => {
@@ -128,12 +82,12 @@ export default function KitchenDashboardOverview({
     queryKey: ['managerBookings', firebaseUser?.uid],
     queryFn: async () => {
       if (!firebaseUser) {
-        throw new Error('Not authenticated');
+        throw new Error(tt("notAuthenticated"));
       }
       
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
-        throw new Error('Not authenticated');
+        throw new Error(tt("notAuthenticated"));
       }
       const token = await currentFirebaseUser.getIdToken();
       const headers: HeadersInit = {
@@ -147,7 +101,7 @@ export default function KitchenDashboardOverview({
       });
       
       if (!response.ok) {
-        throw new Error('Failed to fetch bookings');
+        throw new Error(tt("failedToFetchBookings"));
       }
       
       const contentType = response.headers.get('content-type');
@@ -187,12 +141,12 @@ export default function KitchenDashboardOverview({
     queryKey: ['managerKitchenApplications', firebaseUser?.uid],
     queryFn: async () => {
       if (!firebaseUser) {
-        throw new Error('Not authenticated');
+        throw new Error(tt("notAuthenticated"));
       }
       
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
-        throw new Error('Not authenticated');
+        throw new Error(tt("notAuthenticated"));
       }
       const token = await currentFirebaseUser.getIdToken();
       const headers: HeadersInit = {
@@ -206,7 +160,7 @@ export default function KitchenDashboardOverview({
       });
       
       if (!response.ok) {
-        throw new Error('Failed to fetch applications');
+        throw new Error(tt("failedToFetchApplications"));
       }
       
       const contentType = response.headers.get('content-type');
@@ -224,9 +178,9 @@ export default function KitchenDashboardOverview({
   const { data: viewingsData = [], isLoading: isLoadingViewings } = useQuery({
     queryKey: ['managerViewings', firebaseUser?.uid],
     queryFn: async () => {
-      if (!firebaseUser) throw new Error('Not authenticated');
+      if (!firebaseUser) throw new Error(tt("notAuthenticated"));
       const currentFirebaseUser = auth.currentUser;
-      if (!currentFirebaseUser) throw new Error('Not authenticated');
+      if (!currentFirebaseUser) throw new Error(tt("notAuthenticated"));
       const token = await currentFirebaseUser.getIdToken();
       
       const response = await fetch('/api/viewings/manager', {
@@ -237,7 +191,7 @@ export default function KitchenDashboardOverview({
         credentials: "include",
       });
       
-      if (!response.ok) throw new Error('Failed to fetch viewings');
+      if (!response.ok) throw new Error(tt("failedToFetchViewings"));
       
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
@@ -287,12 +241,12 @@ export default function KitchenDashboardOverview({
     queryKey: ['/api/manager/revenue/overview', thisMonthDateRange.startDate, thisMonthDateRange.endDate, selectedLocation?.id],
     queryFn: async () => {
       if (!firebaseUser) {
-        throw new Error('Not authenticated');
+        throw new Error(tt("notAuthenticated"));
       }
       
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
-        throw new Error('Not authenticated');
+        throw new Error(tt("notAuthenticated"));
       }
       const token = await currentFirebaseUser.getIdToken();
       
@@ -317,7 +271,7 @@ export default function KitchenDashboardOverview({
       if (!response.ok) {
         const errorText = await response.text();
         logger.error('[Overview] Failed to fetch revenue metrics:', response.status, errorText);
-        throw new Error('Failed to fetch revenue metrics');
+        throw new Error(tt("failedToFetchRevenueMetrics"));
       }
       
       const data = await response.json();
@@ -343,7 +297,7 @@ export default function KitchenDashboardOverview({
     queryFn: async () => {
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
-        throw new Error("Firebase user not available");
+        throw new Error(tt("firebaseUserNotAvailable"));
       }
       const token = await currentFirebaseUser.getIdToken();
       const response = await fetch('/api/manager/revenue/stripe-balance', {
@@ -354,7 +308,7 @@ export default function KitchenDashboardOverview({
         credentials: 'include',
       });
       if (!response.ok) {
-        throw new Error('Failed to fetch Stripe balance');
+        throw new Error(tt("failedToFetchStripeBalance"));
       }
       return response.json();
     },
@@ -471,7 +425,9 @@ export default function KitchenDashboardOverview({
 
   // Generate chart data for weekly bookings (next 7 days including today)
   const weeklyChartData = useMemo(() => {
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const days = Array.from({ length: 7 }, (_, i) =>
+      new Intl.DateTimeFormat(i18n.language, { weekday: "short" }).format(new Date(2024, 0, 7 + i))
+    );
     const today = new Date();
     // Set to start of day in local timezone to avoid timezone issues
     today.setHours(0, 0, 0, 0);
@@ -507,7 +463,7 @@ export default function KitchenDashboardOverview({
       });
     }
     return data;
-  }, [filteredBookings]);
+  }, [filteredBookings, i18n.language]);
 
   // Get recent bookings for the table
   const recentBookings = useMemo(() => {
@@ -525,7 +481,7 @@ export default function KitchenDashboardOverview({
       actions.push({
         type: 'info',
         icon: CalendarDays,
-        title: "Today's Sessions",
+        title: mt("todaysSessions"),
         count: dashboardMetrics.todayBookings,
         action: 'bookings'
       });
@@ -534,21 +490,8 @@ export default function KitchenDashboardOverview({
     return actions;
   }, [dashboardMetrics]);
 
-  // Format time helper
-  const formatTime = (time: string) => {
-    if (!time) return '';
-    const [hours, minutes] = time.split(':');
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour % 12 || 12;
-    return `${displayHour}:${minutes} ${ampm}`;
-  };
-
-  // Format date helper
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
+  const formatTime = (time: string) => formatTimeLocale(time, i18n.language);
+  const formatDate = (dateStr: string) => formatDateLocale(dateStr, 'short', undefined, i18n.language);
 
   // Calculate per-location metrics for summary cards
   const locationMetrics = useMemo(() => {
@@ -625,19 +568,20 @@ export default function KitchenDashboardOverview({
       {/* ═══════════════════════════════════════════════════════════════════════
           WELCOME HEADER WITH LOCATION SELECTOR
       ═══════════════════════════════════════════════════════════════════════ */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div className="flex-1">
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
-            Welcome back{selectedLocation ? `, ${selectedLocation.name}` : ''} 👋
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 min-w-0">
+        <div className="flex-1 min-w-0">
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 break-words">
+            {selectedLocation
+              ? mt("welcomeBackNamed", { name: selectedLocation.name })
+              : mt("welcomeBack")}
           </h1>
-          <p className="text-gray-500 mt-1">
-            {selectedLocation 
-              ? `Here's what's happening with ${selectedLocation.name} today`
-              : "Here's what's happening across all your locations today"
-            }
+          <p className="text-gray-500 mt-1 break-words">
+            {selectedLocation
+              ? mt("heresWhatsHappeningWith", { name: selectedLocation.name })
+              : mt("heresWhatsHappeningAcross")}
           </p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-wrap shrink-0 min-w-0">
           {/* Location Selector */}
           {(locations || []).length > 1 && onSelectLocation && (
             <Select
@@ -653,11 +597,11 @@ export default function KitchenDashboardOverview({
                 }
               }}
             >
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Select location" />
+              <SelectTrigger className="w-full max-w-[200px] sm:w-[200px]">
+                <SelectValue placeholder={mt("selectLocation")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Locations</SelectItem>
+                <SelectItem value="all">{mt("cmdAllLocations")}</SelectItem>
                 {(locations || []).map((location) => (
                   <SelectItem key={location.id} value={location.id.toString()}>
                     {location.name}
@@ -668,11 +612,11 @@ export default function KitchenDashboardOverview({
           )}
           <div className="flex items-center gap-2 text-sm text-gray-500">
             <CalendarDays className="h-4 w-4" />
-            {new Date().toLocaleDateString('en-US', { 
-              weekday: 'long', 
-              year: 'numeric', 
-              month: 'long', 
-              day: 'numeric' 
+            {new Date().toLocaleDateString(i18n.language, {
+              weekday: 'long',
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric'
             })}
           </div>
         </div>
@@ -689,9 +633,9 @@ export default function KitchenDashboardOverview({
             <CardContent className="p-4">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">Today</p>
+                  <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">{mt("today")}</p>
                   <p className="text-2xl font-bold mt-1 text-gray-900">{dashboardMetrics.todayBookings}</p>
-                  <p className="text-gray-500 text-xs mt-1">Sessions scheduled</p>
+                  <p className="text-gray-500 text-xs mt-1">{mt("sessionsScheduled")}</p>
                 </div>
                 <CalendarDays className="h-4 w-4 text-rose-500" />
               </div>
@@ -703,9 +647,9 @@ export default function KitchenDashboardOverview({
             <CardContent className="p-4">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">Today</p>
+                  <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">{mt("today")}</p>
                   <p className="text-2xl font-bold mt-1 text-gray-900">{dashboardMetrics.todayViewings}</p>
-                  <p className="text-gray-500 text-xs mt-1">Kitchen tours</p>
+                  <p className="text-gray-500 text-xs mt-1">{mt("kitchenTours2")}</p>
                 </div>
                 <Eye className="h-4 w-4 text-violet-500" />
               </div>
@@ -721,11 +665,10 @@ export default function KitchenDashboardOverview({
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between">
                         <div>
-                          <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider flex items-center gap-1">
-                            Pending <Info className="h-3 w-3 text-muted-foreground" />
+                          <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider flex items-center gap-1">{mt("pending")}<Info className="h-3 w-3 text-muted-foreground" />
                           </p>
                           <p className="text-2xl font-bold mt-1 text-gray-900">{dashboardMetrics.totalPendingCount}</p>
-                          <p className="text-gray-500 text-xs mt-1">Needs review</p>
+                          <p className="text-gray-500 text-xs mt-1">{mt("needsReview")}</p>
                         </div>
                         <Clock className="h-4 w-4 text-amber-500" />
                       </div>
@@ -735,17 +678,17 @@ export default function KitchenDashboardOverview({
               </TooltipTrigger>
               <TooltipContent>
                 <div className="text-xs space-y-1 p-1">
-                  <div className="font-semibold pb-1 mb-1 border-b">Pending Items Breakdown</div>
+                  <div className="font-semibold pb-1 mb-1 border-b">{mt("pendingItemsBreakdown")}</div>
                   <div className="flex justify-between gap-4">
-                    <span>Kitchen Bookings:</span>
+                    <span>{mt("kitchenBookings")}</span>
                     <span className="font-bold">{dashboardMetrics.pendingBookings}</span>
                   </div>
                   <div className="flex justify-between gap-4">
-                    <span className="flex items-center gap-2"><Eye className="h-4 w-4 text-primary" /> Kitchen Tours</span>
+                    <span className="flex items-center gap-2"><Eye className="h-4 w-4 text-primary" />{mt("kitchenTours")}</span>
                     <span className="font-bold">{dashboardMetrics.pendingViewings}</span>
                   </div>
                   <div className="flex justify-between gap-4">
-                    <span>Kitchen Applications:</span>
+                    <span>{mt("kitchenApplications")}</span>
                     <span className="font-bold">{dashboardMetrics.pendingApplications}</span>
                   </div>
                 </div>
@@ -763,15 +706,15 @@ export default function KitchenDashboardOverview({
                 <div className="flex items-center gap-2">
                   <BarChart3 className="h-4 w-4 text-blue-600" />
                   <div>
-                    <p className="text-gray-700 text-sm font-semibold">Weekly Activity</p>
-                    <p className="text-xs text-gray-500">Next 7 days</p>
+                    <p className="text-gray-700 text-sm font-semibold">{mt("weeklyActivity")}</p>
+                    <p className="text-xs text-gray-500">{mt("next7Days")}</p>
                   </div>
                 </div>
                 <div className="text-right">
                   <p className="text-lg font-bold text-gray-900">
                     {weeklyChartData.reduce((sum, day) => sum + day.total, 0)}
                   </p>
-                  <p className="text-[10px] text-gray-500">Total bookings</p>
+                  <p className="text-[10px] text-gray-500">{mt("totalBookings2")}</p>
                 </div>
               </div>
               <div className="h-[120px]">
@@ -782,8 +725,8 @@ export default function KitchenDashboardOverview({
                 ) : weeklyChartData.every(day => day.total === 0) ? (
                   <div className="flex flex-col items-center justify-center h-full text-center">
                     <BarChart3 className="h-8 w-8 text-gray-300 mb-2" />
-                    <p className="text-sm text-gray-500">No bookings this week</p>
-                    <p className="text-xs text-gray-400 mt-1">Bookings will appear here</p>
+                    <p className="text-sm text-gray-500">{mt("noBookingsThisWeek")}</p>
+                    <p className="text-xs text-gray-400 mt-1">{mt("bookingsWillAppearHere")}</p>
                   </div>
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
@@ -812,10 +755,10 @@ export default function KitchenDashboardOverview({
                         }}
                         cursor={{ fill: 'rgba(0,0,0,0.03)' }}
                         formatter={(value: any, name: string) => [value, name]}
-                        labelFormatter={(label) => `Day: ${label}`}
+                        labelFormatter={(label) => mt("chartDayLabel", { label })}
                       />
-                      <Bar dataKey="confirmed" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} name="Confirmed" />
-                      <Bar dataKey="pending" stackId="a" fill="#f59e0b" radius={[3, 3, 0, 0]} name="Pending" />
+                      <Bar dataKey="confirmed" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} name={mt("confirmed")} />
+                      <Bar dataKey="pending" stackId="a" fill="#f59e0b" radius={[3, 3, 0, 0]} name={mt("pending")} />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
@@ -823,11 +766,11 @@ export default function KitchenDashboardOverview({
               <div className="flex items-center justify-center gap-4 mt-2 pt-2 border-t border-gray-50">
                 <div className="flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                  <span className="text-[10px] text-gray-500">Confirmed</span>
+                  <span className="text-[10px] text-gray-500">{mt("confirmed")}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-amber-500" />
-                  <span className="text-[10px] text-gray-500">Pending</span>
+                  <span className="text-[10px] text-gray-500">{mt("pending")}</span>
                 </div>
               </div>
             </CardContent>
@@ -839,7 +782,7 @@ export default function KitchenDashboardOverview({
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <BarChart3 className="h-4 w-4 text-rose-600" />
-                  <p className="text-gray-700 text-sm font-semibold">This Month</p>
+                  <p className="text-gray-700 text-sm font-semibold">{mt("thisMonth")}</p>
                 </div>
                 <div className={`flex items-center gap-1 text-sm font-medium px-2 py-1 rounded-full ${
                   dashboardMetrics.bookingTrend >= 0 
@@ -854,21 +797,21 @@ export default function KitchenDashboardOverview({
                 </div>
               </div>
               <p className="text-4xl font-bold text-gray-900 mb-1">{dashboardMetrics.thisMonthBookings}</p>
-              <p className="text-gray-500 text-sm">Total Bookings</p>
+              <p className="text-gray-500 text-sm">{mt("totalBookings")}</p>
               
               <div className="mt-5 pt-4 border-t border-gray-100">
                 <div className="grid grid-cols-3 gap-3">
                   <div className="text-center p-3 bg-emerald-50 rounded-xl">
                     <p className="text-xl font-bold text-emerald-600">{dashboardMetrics.confirmedBookings}</p>
-                    <p className="text-xs text-emerald-600/70 font-medium">Confirmed</p>
+                    <p className="text-xs text-emerald-600/70 font-medium">{mt("confirmed")}</p>
                   </div>
                   <div className="text-center p-3 bg-amber-50 rounded-xl">
                     <p className="text-xl font-bold text-amber-600">{dashboardMetrics.pendingBookings}</p>
-                    <p className="text-xs text-amber-600/70 font-medium">Pending</p>
+                    <p className="text-xs text-amber-600/70 font-medium">{mt("pending")}</p>
                   </div>
                   <div className="text-center p-3 bg-gray-50 rounded-xl">
                     <p className="text-xl font-bold text-gray-500">{dashboardMetrics.cancelledBookings}</p>
-                    <p className="text-xs text-gray-500/70 font-medium">Cancelled</p>
+                    <p className="text-xs text-gray-500/70 font-medium">{mt("cancelled")}</p>
                   </div>
                 </div>
               </div>
@@ -886,7 +829,7 @@ export default function KitchenDashboardOverview({
             <CardContent className="p-4">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">This Month</p>
+                  <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">{mt("thisMonth")}</p>
                   <p className="text-2xl font-bold mt-1 text-gray-900">
                     {isLoadingRevenue ? (
                       <span className="text-gray-400">...</span>
@@ -896,12 +839,12 @@ export default function KitchenDashboardOverview({
                       '$0.00'
                     )}
                   </p>
-                  <p className="text-gray-500 text-xs mt-1">Total revenue</p>
+                  <p className="text-gray-500 text-xs mt-1">{mt("totalRevenue")}</p>
                 </div>
                 <DollarSign className="h-4 w-4 text-emerald-500" />
               </div>
               <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-1 text-xs text-gray-500">
-                <span>View details</span>
+                <span>{mt("viewDetails2")}</span>
                 <ArrowRight className="h-3 w-3" />
               </div>
             </CardContent>
@@ -915,7 +858,7 @@ export default function KitchenDashboardOverview({
             <CardContent className="p-4">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">Available Balance</p>
+                  <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">{mt("availableBalance")}</p>
                   <p className="text-2xl font-bold mt-1 text-gray-900">
                     {isLoadingStripeBalance ? (
                       <span className="text-gray-400">...</span>
@@ -926,13 +869,13 @@ export default function KitchenDashboardOverview({
                     )}
                   </p>
                   <p className="text-gray-500 text-xs mt-1">
-                    {stripeBalance?.hasStripeAccount ? 'Ready for payout' : 'No Stripe account'}
+                    {stripeBalance?.hasStripeAccount ? mt("readyForPayout") : mt("noStripeAccount")}
                   </p>
                 </div>
                 <DollarSign className="h-4 w-4 text-blue-500" />
               </div>
               <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-1 text-xs text-gray-500">
-                <span>View details</span>
+                <span>{mt("viewDetails2")}</span>
                 <ArrowRight className="h-3 w-3" />
               </div>
             </CardContent>
@@ -946,7 +889,7 @@ export default function KitchenDashboardOverview({
             <CardContent className="p-4">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">Pending</p>
+                  <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">{mt("pending")}</p>
                   <p className="text-2xl font-bold mt-1 text-gray-900">
                     {isLoadingStripeBalance ? (
                       <span className="text-gray-400">...</span>
@@ -954,7 +897,7 @@ export default function KitchenDashboardOverview({
                       formatCurrency(stripeBalance?.pending ?? 0)
                     )}
                   </p>
-                  <p className="text-gray-500 text-xs mt-1">Processing (2-7 days)</p>
+                  <p className="text-gray-500 text-xs mt-1">{mt("processing27Days")}</p>
                 </div>
                 <Clock className="h-4 w-4 text-amber-500" />
               </div>
@@ -971,7 +914,7 @@ export default function KitchenDashboardOverview({
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-3">
               <Bell className="h-4 w-4 text-rose-500" />
-              <h3 className="font-semibold text-gray-900 text-sm">Action Required</h3>
+              <h3 className="font-semibold text-gray-900 text-sm">{mt("actionRequired")}</h3>
             </div>
             <div className="flex flex-wrap gap-3">
               {urgentActions.map((action, idx) => (
@@ -1009,7 +952,7 @@ export default function KitchenDashboardOverview({
       {!selectedLocation && (locations || []).length > 1 && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">Location Overview</h2>
+            <h2 className="text-lg font-semibold text-gray-900">{mt("locationOverview")}</h2>
             <p className="text-sm text-gray-500">{(locations || []).length} locations</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1032,19 +975,19 @@ export default function KitchenDashboardOverview({
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="p-2 bg-rose-50 rounded-lg">
-                      <p className="text-xs text-gray-500 mb-1">Today</p>
+                      <p className="text-xs text-gray-500 mb-1">{mt("today")}</p>
                       <p className="text-lg font-bold text-gray-900">{metrics.todayBookings}</p>
                     </div>
                     <div className="p-2 bg-violet-50 rounded-lg">
-                      <p className="text-xs text-gray-500 mb-1">This Week</p>
+                      <p className="text-xs text-gray-500 mb-1">{mt("thisWeek")}</p>
                       <p className="text-lg font-bold text-gray-900">{metrics.weekBookings}</p>
                     </div>
                     <div className="p-2 bg-amber-50 rounded-lg">
-                      <p className="text-xs text-gray-500 mb-1">Pending</p>
+                      <p className="text-xs text-gray-500 mb-1">{mt("pending")}</p>
                       <p className="text-lg font-bold text-gray-900">{metrics.pendingBookings}</p>
                     </div>
                     <div className="p-2 bg-emerald-50 rounded-lg">
-                      <p className="text-xs text-gray-500 mb-1">This Month</p>
+                      <p className="text-xs text-gray-500 mb-1">{mt("thisMonth")}</p>
                       <p className="text-lg font-bold text-gray-900">
                         {new Intl.NumberFormat('en-CA', {
                           style: 'currency',
@@ -1087,8 +1030,8 @@ export default function KitchenDashboardOverview({
               <div className="flex items-center gap-2">
                 <FileText className="h-4 w-4 text-violet-600" />
                 <div>
-                  <CardTitle className="text-base">Recent Bookings</CardTitle>
-                  <p className="text-xs text-gray-500">Latest requests</p>
+                  <CardTitle className="text-base">{mt("recentBookings")}</CardTitle>
+                  <p className="text-xs text-gray-500">{mt("latestRequests")}</p>
                 </div>
               </div>
               <Button 
@@ -1096,9 +1039,7 @@ export default function KitchenDashboardOverview({
                 size="sm" 
                 onClick={() => onNavigate('bookings')}
                 className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-              >
-                View All
-                <ArrowRight className="ml-1 h-3 w-3" />
+              >{mt("viewAll")}<ArrowRight className="ml-1 h-3 w-3" />
               </Button>
             </div>
           </CardHeader>
@@ -1110,8 +1051,8 @@ export default function KitchenDashboardOverview({
             ) : recentBookings.length === 0 ? (
               <div className="text-center py-8 flex-1 flex flex-col items-center justify-center">
                 <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-500">No bookings yet</p>
-                <p className="text-sm text-gray-400">Bookings will appear here</p>
+                <p className="text-gray-500">{mt("noBookingsYet")}</p>
+                <p className="text-sm text-gray-400">{mt("bookingsWillAppearHere")}</p>
               </div>
             ) : (
               <div className="space-y-3 flex-1">
@@ -1127,7 +1068,7 @@ export default function KitchenDashboardOverview({
                         booking.status === 'pending' ? 'bg-amber-100' :
                         'bg-gray-100'
                       }`}>
-                        <ChefHat className={`h-5 w-5 ${
+                        <Calendar className={`h-5 w-5 ${
                           booking.status === 'confirmed' ? 'text-emerald-600' :
                           booking.status === 'pending' ? 'text-amber-600' :
                           'text-gray-500'
@@ -1135,7 +1076,7 @@ export default function KitchenDashboardOverview({
                       </div>
                       <div>
                         <p className="font-medium text-gray-900">
-                          {booking.chefName || booking.portalUserName || 'Guest Chef'}
+                          {booking.chefName || booking.portalUserName || mt("guestChef")}
                         </p>
                         <div className="flex items-center gap-2 text-sm text-gray-500">
                           <span>{formatDate(booking.bookingDate)}</span>
@@ -1157,7 +1098,11 @@ export default function KitchenDashboardOverview({
                         {booking.status === 'confirmed' && <CheckCircle2 className="h-3 w-3 mr-1" />}
                         {booking.status === 'pending' && <Clock className="h-3 w-3 mr-1" />}
                         {booking.status === 'cancelled' && <XCircle className="h-3 w-3 mr-1" />}
-                        {booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
+                        {booking.status === 'confirmed' ? mt("confirmed")
+                          : booking.status === 'pending' ? mt("pending")
+                          : booking.status === 'cancelled' ? mt("cancelled")
+                          : booking.status === 'completed' ? mt("completed")
+                          : booking.status}
                       </Badge>
                       <ArrowRight className="h-4 w-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                     </div>
@@ -1219,7 +1164,7 @@ function CustomerManagementPanel({ bookings, applications, onNavigate, isLoading
 
     bookings.forEach((booking: any) => {
       const chefId = booking.chefId || booking.userId || booking.portalUserId;
-      const chefName = booking.chefName || booking.portalUserName || 'Guest Chef';
+      const chefName = booking.chefName || booking.portalUserName || mt("guestChef");
       const chefEmail = booking.chefEmail || booking.portalUserEmail;
       const chefPhone = booking.chefPhone || booking.portalUserPhone;
       
@@ -1271,7 +1216,7 @@ function CustomerManagementPanel({ bookings, applications, onNavigate, isLoading
 
     applications.forEach((application: any) => {
       const chefId = application.chefId || application.chef?.id;
-      const chefName = application.fullName || application.chef?.username || 'Unknown Chef';
+      const chefName = application.fullName || application.chef?.username || mt("unknownChef");
       const chefEmail = application.email;
       const chefPhone = application.phone;
       
@@ -1405,10 +1350,10 @@ function CustomerManagementPanel({ bookings, applications, onNavigate, isLoading
   }, [chefs, searchQuery, activeFilter]);
 
   const filterTabs = [
-    { id: 'all' as const, label: 'All', count: chefs.length },
-    { id: 'pending' as const, label: 'Pending', count: chefs.filter(c => c.isPending).length },
-    { id: 'active' as const, label: 'Active', count: chefs.filter(c => c.isActive).length },
-    { id: 'recent' as const, label: 'Recent', count: chefs.filter(c => {
+    { id: 'all' as const, label: mt("filterAll"), count: chefs.length },
+    { id: 'pending' as const, label: mt("pending"), count: chefs.filter(c => c.isPending).length },
+    { id: 'active' as const, label: mt("active"), count: chefs.filter(c => c.isActive).length },
+    { id: 'recent' as const, label: mt("filterRecent"), count: chefs.filter(c => {
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       const date = c.applicationDate || c.lastBookingDate;
@@ -1449,8 +1394,8 @@ function CustomerManagementPanel({ bookings, applications, onNavigate, isLoading
           <div className="flex items-center gap-2">
             <Users className="h-4 w-4 text-blue-600" />
             <div>
-              <CardTitle className="text-base">Customer Management</CardTitle>
-              <p className="text-xs text-gray-500">Chefs</p>
+              <CardTitle className="text-base">{mt("customerManagement")}</CardTitle>
+              <p className="text-xs text-gray-500">{mt("chefs")}</p>
             </div>
           </div>
           <Button 
@@ -1458,9 +1403,7 @@ function CustomerManagementPanel({ bookings, applications, onNavigate, isLoading
             size="sm" 
             onClick={() => onNavigate('applications')}
             className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-          >
-            View All
-            <ArrowRight className="ml-1 h-3 w-3" />
+          >{mt("viewAll")}<ArrowRight className="ml-1 h-3 w-3" />
           </Button>
         </div>
       </CardHeader>
@@ -1470,7 +1413,7 @@ function CustomerManagementPanel({ bookings, applications, onNavigate, isLoading
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <Input
             type="text"
-            placeholder="Search chefs..."
+            placeholder={mt("searchChefs")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9 h-9 bg-gray-50/50 border-gray-200 focus:bg-white focus:border-gray-300 focus:ring-0 rounded-lg text-sm"
@@ -1519,8 +1462,8 @@ function CustomerManagementPanel({ bookings, applications, onNavigate, isLoading
           ) : filteredChefs.length === 0 ? (
             <div className="text-center py-6 flex-1 flex flex-col items-center justify-center">
               <Users className="h-10 w-10 text-gray-300 mx-auto mb-2" />
-              <p className="text-gray-500 text-sm">No chefs found</p>
-              <p className="text-gray-400 text-xs">Chef applications and bookings will appear here</p>
+              <p className="text-gray-500 text-sm">{mt("noChefsFound")}</p>
+              <p className="text-gray-400 text-xs">{mt("chefApplicationsAndBookingsWillAppearHere")}</p>
             </div>
           ) : (
             filteredChefs.map((chef, idx) => (
@@ -1540,19 +1483,15 @@ function CustomerManagementPanel({ bookings, applications, onNavigate, isLoading
                     <p className="font-medium text-gray-900 text-sm leading-tight break-words">{chef.name}</p>
                     {chef.isPending && (
                       <span className="flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 text-amber-600 rounded-md text-[10px] font-medium border border-amber-100">
-                        <span className="w-1 h-1 rounded-full bg-amber-500" />
-                        Pending
-                      </span>
+                        <span className="w-1 h-1 rounded-full bg-amber-500" />{mt("pending")}</span>
                     )}
                     {chef.isActive && !chef.isPending && (
                       <span className="flex items-center gap-1 px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded-md text-[10px] font-medium border border-emerald-100">
-                        <span className="w-1 h-1 rounded-full bg-emerald-500" />
-                        Active
-                      </span>
+                        <span className="w-1 h-1 rounded-full bg-emerald-500" />{mt("active")}</span>
                     )}
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5 leading-tight break-words">
-                    {chef.email || chef.locationName || `${chef.totalBookings} booking${chef.totalBookings !== 1 ? 's' : ''}`}
+                    {chef.email || chef.locationName || mt("bookingsCount", { count: chef.totalBookings })}
                   </p>
                   {chef.locationName && (
                     <p className="text-[10px] text-gray-400 mt-0.5">{chef.locationName}</p>
@@ -1564,18 +1503,18 @@ function CustomerManagementPanel({ bookings, applications, onNavigate, isLoading
                   <div className="text-right">
                     {chef.hasApplication && chef.isPending ? (
                       <>
-                        <p className="text-sm font-semibold text-amber-600">Review</p>
-                        <p className="text-[10px] text-gray-400">needed</p>
+                        <p className="text-sm font-semibold text-amber-600">{mt("review")}</p>
+                        <p className="text-[10px] text-gray-400">{mt("needed")}</p>
                       </>
                     ) : chef.totalBookings > 0 ? (
                       <>
                         <p className="text-sm font-semibold text-gray-900">{chef.confirmedBookings}</p>
-                        <p className="text-[10px] text-gray-400">bookings</p>
+                        <p className="text-[10px] text-gray-400">{mt("bookingsLabel")}</p>
                       </>
                     ) : (
                       <>
-                        <p className="text-sm font-semibold text-gray-500">New</p>
-                        <p className="text-[10px] text-gray-400">applicant</p>
+                        <p className="text-sm font-semibold text-gray-500">{mt("newLabel")}</p>
+                        <p className="text-[10px] text-gray-400">{mt("applicant")}</p>
                       </>
                     )}
                   </div>

@@ -478,7 +478,9 @@ async function sendAuthExpiryNotification(
           type === "kitchen_booking"
             ? `Your kitchen booking #${recordId} at ${kitchenName} was automatically cancelled because the manager did not respond within 24 hours. Your card has not been charged.`
             : `Your storage extension request #${recordId} was automatically cancelled because the manager did not respond within 24 hours. Your card has not been charged.`,
-        metadata: { type, recordId: String(recordId) },
+        metadata: { type, recordId: String(recordId), bookingId: type === "kitchen_booking" ? recordId : undefined },
+        actionUrl: type === "kitchen_booking" ? `/booking/${recordId}` : `/dashboard?view=bookings`,
+        actionLabel: "View details",
       });
     } catch {
       // Notification service may not support this yet — skip silently

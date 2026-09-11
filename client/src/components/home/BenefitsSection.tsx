@@ -1,58 +1,60 @@
+import { useTranslation } from "react-i18next";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { motion } from "framer-motion";
 import { Calendar, Camera, CreditCard, Medal, Megaphone, Settings, TrendingUp, Wallet } from "lucide-react";
 import foodDeliveryImage from "../../assets/food-delivery.png";
-
-const pilotBenefits = [
-  {
-    icon: <Medal className="text-amber-400" />,
-    text: "Reduced platform fees during trial phase",
-    description: "Save on commission fees while we grow together"
-  },
-  {
-    icon: <TrendingUp className="text-blue-400" />,
-    text: "Priority placement in our app",
-    description: "Get more visibility with featured chef status"
-  },
-  {
-    icon: <Camera className="text-green-400" />,
-    text: "Free professional photography for your dishes",
-    description: "High-quality images to showcase your food"
-  },
-  {
-    icon: <Megaphone className="text-purple-400" />,
-    text: "Personalized marketing support",
-    description: "Custom promotions to attract more customers"
-  }
-];
-
-// Chef benefits
-const chefBenefits = [
-  {
-    title: "Financial Freedom",
-    icon: <Wallet className="h-10 w-10 text-amber-500" />,
-    description: "Set your own prices and build a steady income stream without the overhead of a traditional restaurant"
-  },
-  {
-    title: "Flexible Schedule",
-    icon: <Calendar className="h-10 w-10 text-blue-500" />,
-    description: "Work when you want – whether that's full-time, weekends only, or just a few days a month"
-  },
-  {
-    title: "Weekly Payments",
-    icon: <CreditCard className="h-10 w-10 text-green-500" />,
-    description: "Get paid directly to your bank account every week – no long waiting periods"
-  },
-  {
-    title: "Simple Tools",
-    icon: <Settings className="h-10 w-10 text-purple-500" />,
-    description: "Easy-to-use platform to manage orders, update your menu, and track your earnings"
-  }
-];
-
+import { SmartImage } from "@/components/ui/smart-image";
 
 export default function BenefitsSection() {
+  const { t } = useTranslation("landing");
   const { user } = useFirebaseAuth();
+
+  const pilotBenefits = [
+    {
+      icon: <Medal className="text-amber-400" />,
+      text: t("pilotBenefits.0.text", "Reduced platform fees during trial phase"),
+      description: t("pilotBenefits.0.description", "Save on service fees while we grow together")
+    },
+    {
+      icon: <TrendingUp className="text-blue-400" />,
+      text: t("pilotBenefits.1.text", "Priority placement in our app"),
+      description: t("pilotBenefits.1.description", "Get more visibility with featured chef status")
+    },
+    {
+      icon: <Camera className="text-green-400" />,
+      text: t("pilotBenefits.2.text", "Free professional photography for your dishes"),
+      description: t("pilotBenefits.2.description", "High-quality images to showcase your food")
+    },
+    {
+      icon: <Megaphone className="text-purple-400" />,
+      text: t("pilotBenefits.3.text", "Personalized marketing support"),
+      description: t("pilotBenefits.3.description", "Custom promotions to attract more customers")
+    }
+  ];
+
+  const chefBenefits = [
+    {
+      title: t("chefBenefits.0.title", "Financial Freedom"),
+      icon: <Wallet className="h-10 w-10 text-amber-500" />,
+      description: t("chefBenefits.0.description", "Set your own prices and build a steady income stream without the overhead of a traditional restaurant")
+    },
+    {
+      title: t("chefBenefits.1.title", "Flexible Schedule"),
+      icon: <Calendar className="h-10 w-10 text-blue-500" />,
+      description: t("chefBenefits.1.description", "Work when you want – whether that's full-time, weekends only, or just a few days a month")
+    },
+    {
+      title: t("chefBenefits.2.title", "Weekly Payments"),
+      icon: <CreditCard className="h-10 w-10 text-green-500" />,
+      description: t("chefBenefits.2.description", "Get paid directly to your bank account every week – no long waiting periods")
+    },
+    {
+      title: t("chefBenefits.3.title", "Simple Tools"),
+      icon: <Settings className="h-10 w-10 text-purple-500" />,
+      description: t("chefBenefits.3.description", "Easy-to-use platform to manage orders, update your menu, and track your earnings")
+    }
+  ];
+
 
   // Determine which benefits to show based on user role
   const getBenefits = () => {
@@ -60,11 +62,11 @@ export default function BenefitsSection() {
   };
 
   const getTitle = () => {
-    return "Benefits for Cooks";
+    return t("benefitsForCooks", "Benefits for Cooks");
   };
 
   const getDescription = () => {
-    return "Unlock your culinary potential and build a sustainable cooking business with Local Cooks";
+    return t("benefitsForCooksDesc", "Unlock your culinary potential and build a sustainable cooking business with Local Cooks");
   };
 
   const mainBenefits = getBenefits();
@@ -79,9 +81,7 @@ export default function BenefitsSection() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: 0.1 }}
-          >
-            Why Join Us
-          </motion.span>
+          >{t("whyJoinUs")}</motion.span>
           <motion.h2
             className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-display text-brand-primary mb-3 sm:mb-4 px-2"
             initial={{ opacity: 0, y: 20 }}
@@ -144,18 +144,16 @@ export default function BenefitsSection() {
           <div className="p-4 sm:p-6 md:p-10 lg:p-14 flex flex-col md:flex-row items-center relative z-10">
             <div className="md:w-1/2 mb-6 md:mb-0 relative group w-full">
               <div className="absolute inset-0 bg-gradient-to-br from-brand-primary/20 to-transparent rounded-xl md:rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-              <img
+              <SmartImage
                 src={foodDeliveryImage}
-                alt="Chef delivering food to customer at doorstep"
+                alt={t("chefDeliveringImageAlt", "Chef delivering food to customer at doorstep")}
                 className="rounded-xl md:rounded-2xl w-full h-40 sm:h-48 md:h-60 lg:h-72 object-cover shadow-[0_10px_30px_rgba(0,0,0,0.3)] md:shadow-[0_15px_40px_rgba(0,0,0,0.4)] group-hover:scale-105 transition-transform duration-500"
               />
             </div>
 
             <div className="md:w-1/2 md:pl-6 lg:pl-8 xl:pl-10 text-white w-full">
-              <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-4 sm:mb-5 md:mb-6 text-shadow-lg leading-tight">Early Bird Advantages</h2>
-              <p className="text-base sm:text-lg md:text-xl mb-4 sm:mb-6 md:mb-8 opacity-95 text-shadow-md leading-relaxed">
-                Join during our trial phase and get exclusive benefits that won't be available later.
-              </p>
+              <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-4 sm:mb-5 md:mb-6 text-shadow-lg leading-tight">{t("earlyBirdAdvantages")}</h2>
+              <p className="text-base sm:text-lg md:text-xl mb-4 sm:mb-6 md:mb-8 opacity-95 text-shadow-md leading-relaxed">{t("joinDuringTrial")}</p>
 
               <ul className="space-y-3 sm:space-y-4 md:space-y-5 mb-4 sm:mb-6 md:mb-8">
                 {pilotBenefits.map((benefit, index) => (

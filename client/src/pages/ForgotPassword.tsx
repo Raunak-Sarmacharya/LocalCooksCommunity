@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { ArrowLeft } from "lucide-react";
 import { useState } from "react";
 import { useLocation } from "wouter";
+import { getRoleLoginOrigin } from "@shared/subdomain-utils";
 import ForgotPasswordForm from "../components/auth/ForgotPasswordForm";
 
 export default function ForgotPassword() {
@@ -45,14 +46,10 @@ export default function ForgotPassword() {
       admin: '/admin/login',
     };
 
-    const subdomainMap: Record<string, string> = {
-      manager: 'https://kitchen.localcooks.ca',
-      chef: 'https://chef.localcooks.ca',
-      admin: 'https://admin.localcooks.ca',
-    };
-
     const detectedRole = role || 'chef';
-    const subdomain = subdomainMap[detectedRole] || subdomainMap.chef;
+    const subdomain = getRoleLoginOrigin(detectedRole, window.location.hostname, {
+      vercelEnv: import.meta.env.VITE_VERCEL_ENV,
+    });
     const path = redirectPaths[detectedRole] || redirectPaths.chef;
     window.location.href = `${subdomain}${path}`;
   };

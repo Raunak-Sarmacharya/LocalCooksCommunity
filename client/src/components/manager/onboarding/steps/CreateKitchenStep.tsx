@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
-import { CheckCircle, Plus, ChefHat, Edit2, ChevronDown, ChevronUp, Image, DollarSign, Clock, Info } from "lucide-react";
+import { mt } from "@/i18n/manager";
+import { CheckCircle, Plus, Calendar, Edit2, ChevronDown, ChevronUp, Image, DollarSign, Clock, Info } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +18,19 @@ import { useManagerOnboarding } from "../ManagerOnboardingContext";
 import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter";
 import { cn } from "@/lib/utils";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
+import { SmartImage } from "@/components/ui/smart-image";
+import { FormLegend } from "@/components/ui/form-legend";
+
+const COMMON_AMENITIES = [
+  "Commercial oven",
+  "Range",
+  "Prep tables",
+  "Walk-in fridge",
+  "Freezer",
+  "Dishwasher",
+  "Ventilation",
+  "Parking",
+];
 
 // Enterprise-grade Kitchen Card Component
 interface KitchenCardProps {
@@ -44,17 +58,14 @@ function KitchenCard({ kitchen, locationId, isExpanded, onToggle }: KitchenCardP
                 {/* Kitchen Thumbnail */}
                 <div className="w-14 h-14 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center overflow-hidden shrink-0 border border-slate-200 dark:border-slate-700">
                   {imageUrl ? (
-                    <img
+                    <SmartImage
                       src={imageUrl}
                       alt={kitchen.name}
                       className="w-full h-full object-cover"
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.style.display = 'none';
-                      }}
+                      hideOnError
                     />
                   ) : (
-                    <ChefHat className="w-6 h-6 text-slate-400" />
+                    <Calendar className="w-6 h-6 text-slate-400" />
                   )}
                 </div>
 
@@ -73,9 +84,7 @@ function KitchenCard({ kitchen, locationId, isExpanded, onToggle }: KitchenCardP
                     )}
                     {!hasImage && (
                       <Badge variant="warning" className="text-xs">
-                        <Image className="w-3 h-3 mr-1" />
-                        Add photos
-                      </Badge>
+                        <Image className="w-3 h-3 mr-1" />{mt("addPhotos")}</Badge>
                     )}
                   </div>
                 </div>
@@ -101,15 +110,15 @@ function KitchenCard({ kitchen, locationId, isExpanded, onToggle }: KitchenCardP
           <CardContent className="pt-0 space-y-5 border-t border-slate-100 dark:border-slate-800">
             {/* Description */}
             <div className="pt-4">
-              <Label className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Description</Label>
+              <Label className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">{mt("description")}</Label>
               <p className="text-sm text-slate-700 dark:text-slate-300 mt-1.5">
-                {kitchen.description || "No description provided yet."}
+                {kitchen.description || mt("noDescriptionProvidedYet")}
               </p>
             </div>
 
             {/* Gallery Images */}
             <div>
-              <Label className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3 block">Gallery Images</Label>
+              <Label className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3 block">{mt("galleryImages")}</Label>
               <KitchenGalleryImages
                 kitchenId={kitchen.id}
                 galleryImages={kitchen.galleryImages || []}
@@ -121,9 +130,7 @@ function KitchenCard({ kitchen, locationId, isExpanded, onToggle }: KitchenCardP
             <div className="flex justify-end pt-2">
               <Button variant="outline" size="sm" className="text-slate-600 dark:text-slate-400" asChild>
                 <a href={`/manager/dashboard?location=${locationId}&kitchen=${kitchen.id}&tab=settings`}>
-                  <Edit2 className="w-3.5 h-3.5 mr-1.5" />
-                  Edit Details
-                </a>
+                  <Edit2 className="w-3.5 h-3.5 mr-1.5" />{mt("editDetails")}</a>
               </Button>
             </div>
           </CardContent>
@@ -135,6 +142,7 @@ function KitchenCard({ kitchen, locationId, isExpanded, onToggle }: KitchenCardP
 
 
 export default function CreateKitchenStep() {
+  
   const {
     kitchens,
     kitchenForm,
@@ -156,6 +164,7 @@ export default function CreateKitchenStep() {
   const [localHourlyRate, setLocalHourlyRate] = useState(ctxData.hourlyRate);
   const [localMinHours, setLocalMinHours] = useState(ctxData.minimumBookingHours);
   const [localImageUrl, setLocalImageUrl] = useState(ctxData.imageUrl);
+  const [localFeatures, setLocalFeatures] = useState<string[]>(ctxData.features || []);
 
   // Sync local state from context whenever the form is opened (showCreate flips to true)
   const prevShowCreate = useRef(showCreate);
@@ -166,6 +175,7 @@ export default function CreateKitchenStep() {
       setLocalHourlyRate(ctxData.hourlyRate);
       setLocalMinHours(ctxData.minimumBookingHours);
       setLocalImageUrl(ctxData.imageUrl);
+      setLocalFeatures(ctxData.features || []);
     }
     prevShowCreate.current = showCreate;
   }, [showCreate]);
@@ -183,6 +193,7 @@ export default function CreateKitchenStep() {
       currency: ctxData.currency,
       minimumBookingHours: localMinHours,
       imageUrl: localImageUrl,
+      features: localFeatures,
     });
   };
 
@@ -202,6 +213,7 @@ export default function CreateKitchenStep() {
     currency: ctxData.currency,
     minimumBookingHours: localMinHours,
     imageUrl: localImageUrl,
+    features: localFeatures,
   };
 
   const handleToggleExpand = (kitchenId: number) => {
@@ -243,8 +255,7 @@ export default function CreateKitchenStep() {
               onClick={() => setShowCreate(true)} 
               className="w-full border-dashed border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-600 text-slate-600 dark:text-slate-400"
             >
-              <Plus className="h-4 w-4 mr-2" /> Add Another Kitchen Space
-            </Button>
+              <Plus className="h-4 w-4 mr-2" />{mt("addAnotherKitchenSpace")}</Button>
           )}
         </div>
       )}
@@ -254,15 +265,12 @@ export default function CreateKitchenStep() {
         <Card className="border-dashed border-2 border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50">
           <CardContent className="py-12 text-center">
             <div className="w-16 h-16 rounded-2xl bg-red-50 dark:bg-red-950/30 flex items-center justify-center mx-auto mb-5">
-              <ChefHat className="h-8 w-8 text-[#F51042]" />
+              <Calendar className="h-8 w-8 text-[#F51042]" />
             </div>
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">Create Your Kitchen Space</h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 max-w-sm mx-auto">
-              Set up your first kitchen to start receiving booking requests from chefs in your area.
-            </p>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">{mt("createYourKitchenSpace")}</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 max-w-sm mx-auto">{mt("setUpYourFirstKitchenToStartReceivingBookingRequestsFromChef")}</p>
             <Button onClick={() => setShowCreate(true)} size="lg">
-              <Plus className="h-4 w-4 mr-2" /> Create Kitchen Space
-            </Button>
+              <Plus className="h-4 w-4 mr-2" />{mt("createKitchenSpace")}</Button>
           </CardContent>
         </Card>
       )}
@@ -271,34 +279,31 @@ export default function CreateKitchenStep() {
       {showCreate && (
         <Card className="border-slate-200/60 dark:border-slate-700/60 shadow-sm animate-in fade-in zoom-in-95 duration-200">
           <CardContent className="space-y-6 pt-6">
+            <FormLegend />
             {/* Basic Information Section */}
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="kitchen-name" className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                  Kitchen Name
-                  <span className="text-destructive ml-1">*</span>
+                <Label htmlFor="kitchen-name" className="text-sm font-medium text-slate-700 dark:text-slate-300">{mt("kitchenName")}<span className="text-destructive ml-1">*</span>
                 </Label>
                 <Input
                   id="kitchen-name"
                   value={data.name}
                   onChange={(e) => setLocalName(e.target.value)}
-                  placeholder="e.g., Main Kitchen, Prep Area, Bakery Station"
+                  placeholder={mt("eGMainKitchenPrepAreaBakeryStation")}
                   className="h-10"
                 />
               </div>
 
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <Label htmlFor="kitchen-description" className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                    Description
-                  </Label>
-                  <span className="text-xs text-slate-400">(Optional)</span>
+                  <Label htmlFor="kitchen-description" className="text-sm font-medium text-slate-700 dark:text-slate-300">{mt("description")}</Label>
+                  <span className="text-destructive">*</span>
                 </div>
                 <Textarea
                   id="kitchen-description"
                   value={data.description}
                   onChange={(e) => setLocalDescription(e.target.value)}
-                  placeholder="Describe your kitchen space, equipment, and what makes it special for chefs..."
+                  placeholder={mt("describeYourKitchenSpaceEquipmentAndWhatMakesItSpecialForChe")}
                   rows={3}
                   className="resize-none"
                 />
@@ -307,17 +312,15 @@ export default function CreateKitchenStep() {
               {/* Cover Image */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                    Cover Image
-                  </Label>
-                  <span className="text-xs text-slate-400">(Optional)</span>
+                  <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">{mt("coverImage")}</Label>
+                  <span className="text-destructive">*</span>
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Info className="w-3.5 h-3.5 text-slate-400 cursor-help" />
                       </TooltipTrigger>
                       <TooltipContent side="right" className="max-w-xs">
-                        <p className="text-xs">A great cover photo helps attract more chefs to your space.</p>
+                        <p className="text-xs">{mt("aGreatCoverPhotoHelpsAttractMoreChefsToYourSpace")}</p>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -333,6 +336,30 @@ export default function CreateKitchenStep() {
                   />
                 </div>
               </div>
+
+              <div className="space-y-3">
+                <Label>Available amenities <span className="text-destructive">*</span></Label>
+                <p className="text-xs text-muted-foreground">Choose what a chef can rely on. You can add detailed equipment later.</p>
+                <div className="flex flex-wrap gap-2">
+                  {COMMON_AMENITIES.map((amenity) => {
+                    const selected = data.features.includes(amenity);
+                    return (
+                      <Button
+                        key={amenity}
+                        type="button"
+                        size="sm"
+                        variant={selected ? "default" : "outline"}
+                        aria-pressed={selected}
+                        onClick={() => setLocalFeatures((current) =>
+                          selected ? current.filter((item) => item !== amenity) : [...current, amenity]
+                        )}
+                      >
+                        {amenity}
+                      </Button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
 
             {/* Pricing Section */}
@@ -340,9 +367,7 @@ export default function CreateKitchenStep() {
               <CardContent className="py-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                      Hourly Rate (CAD)
-                      <span className="text-destructive ml-1">*</span>
+                    <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">{mt("hourlyRateCAD")}<span className="text-destructive ml-1">*</span>
                     </Label>
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">$</span>
@@ -358,9 +383,7 @@ export default function CreateKitchenStep() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                      Minimum Booking
-                      <span className="text-xs text-slate-400 font-normal ml-1">(hours)</span>
+                    <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">{mt("minimumBooking")}<span className="text-xs text-slate-400 font-normal ml-1">(hours)</span>
                     </Label>
                     <Input
                       type="number"
@@ -392,18 +415,16 @@ export default function CreateKitchenStep() {
               <StatusButton
                 status={isCreating ? "loading" : "idle"}
                 onClick={handleCreate}
-                disabled={!data.name || !data.hourlyRate}
+                disabled={!data.name.trim() || !data.description.trim() || !data.imageUrl || !data.hourlyRate || data.features.length === 0}
                 className="flex-1"
-                labels={{ idle: "Create Kitchen", loading: "Creating", success: "Created" }}
+                labels={{ idle: mt("createKitchen"), loading: mt("creating"), success: mt("created") }}
               />
               <Button 
                 variant="outline" 
                 onClick={() => setShowCreate(false)} 
                 disabled={isCreating}
                 className="text-slate-600 dark:text-slate-400"
-              >
-                Cancel
-              </Button>
+              >{mt("cancel")}</Button>
             </div>
           </CardContent>
         </Card>

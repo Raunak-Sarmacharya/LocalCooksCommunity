@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 /**
  * CheckinStatusTracker
  *
@@ -11,27 +12,14 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import {
-  Camera,
-  CheckCircle,
-  Clock,
-  Loader2,
-  ShieldCheck,
-  AlertTriangle,
-  LogIn,
-} from "lucide-react";
+import { Camera, CheckCircle, Clock, Loader2, ShieldCheck, AlertTriangle, LogIn } from "lucide-react";
 import { auth } from "@/lib/firebase";
-import { Badge } from "@/components/ui/badge";
+import { InfoChip } from "@/components/chef/info-chip";
 import { Separator } from "@/components/ui/separator";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { bt } from "@/i18n/booking-ns";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -94,21 +82,21 @@ function StepIcon({ state }: { state: StepState }) {
 
   if (state === "completed") {
     return (
-      <div className={cn(base, "border-green-500 bg-green-50 text-green-600")}>
+      <div className={cn(base, "border-success/30 bg-success/10 text-success")}>
         <CheckCircle className="h-4 w-4" />
       </div>
     );
   }
   if (state === "active") {
     return (
-      <div className={cn(base, "border-blue-500 bg-blue-50 text-blue-600 ring-4 ring-blue-100")}>
+      <div className={cn(base, "border-foreground/20 bg-muted text-foreground ring-4 ring-muted")}>
         <Loader2 className="h-4 w-4 animate-spin" />
       </div>
     );
   }
   if (state === "error") {
     return (
-      <div className={cn(base, "border-amber-500 bg-amber-50 text-amber-600")}>
+      <div className={cn(base, "border-warning/30 bg-warning/10 text-warning")}>
         <AlertTriangle className="h-4 w-4" />
       </div>
     );
@@ -129,6 +117,15 @@ export function CheckinStatusTracker({
   storageName,
   checkinStatus: propCheckinStatus,
 }: CheckinStatusTrackerProps) {
+  const { t: tStrict } = useTranslation("chef");
+  const t = (key: string, defaultTextOrOptions?: string | Record<string, unknown>): string => {
+    if (defaultTextOrOptions && typeof defaultTextOrOptions === "object") {
+      return String(tStrict(key as any, defaultTextOrOptions as any));
+    }
+    const val = tStrict(key as any) as string;
+    return val !== key ? val : (defaultTextOrOptions || key);
+  };
+
   const { data, isLoading } = useQuery<CheckinStatusData>({
     queryKey: ["/api/chef/storage-bookings", storageBookingId, "checkin-status"],
     queryFn: async () => {
@@ -137,7 +134,7 @@ export function CheckinStatusTracker({
         `/api/chef/storage-bookings/${storageBookingId}/checkin-status`,
         { headers, credentials: "include" }
       );
-      if (!response.ok) throw new Error("Failed to fetch check-in status");
+      if (!response.ok) throw new Error(bt("failedToFetchCheckinStatus"));
       return response.json();
     },
     enabled: open && !!storageBookingId,
@@ -145,18 +142,20 @@ export function CheckinStatusTracker({
   });
 
   const status = data?.checkinStatus || propCheckinStatus || "not_checked_in";
-  const steps: Step[] = buildSteps(status, data);
+  const steps: Step[] = buildSteps(status, data, t);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-md overflow-y-auto">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
-            <LogIn className="h-5 w-5 text-emerald-600" />
-            Check-In Status
+            <LogIn className="h-5 w-5 text-muted-foreground" />
+            {t("cstTitle")}
           </SheetTitle>
           <SheetDescription>
-            {storageName || "Storage Unit"} — Move-In Inspection Progress
+            {t("cstMoveInProgress", {
+              name: storageName || t("cstStorageUnitFallback"),
+            })}
           </SheetDescription>
         </SheetHeader>
 
@@ -177,9 +176,9 @@ export function CheckinStatusTracker({
                         className={cn(
                           "w-0.5 flex-1 mt-2",
                           step.state === "completed"
-                            ? "bg-green-300"
+                            ? "bg-success/30"
                             : step.state === "active"
-                              ? "bg-blue-200"
+                              ? "bg-muted-foreground/20"
                               : "bg-muted-foreground/20"
                         )}
                       />
@@ -193,15 +192,15 @@ export function CheckinStatusTracker({
                         className={cn(
                           "text-sm font-medium",
                           step.state === "upcoming" && "text-muted-foreground",
-                          step.state === "error" && "text-amber-700"
+                          step.state === "error" && "text-warning"
                         )}
                       >
                         {step.label}
                       </span>
                       {step.state === "active" && (
-                        <Badge variant="info" className="text-xs font-normal">
+                        <InfoChip variant="outline" className="font-normal">
                           In Progress
-                        </Badge>
+                        </InfoChip>
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">
@@ -247,7 +246,7 @@ export function CheckinStatusTracker({
                     <div className={cn(
                       "h-3.5 w-3.5 rounded-sm border flex items-center justify-center flex-shrink-0",
                       item.checked
-                        ? "bg-green-100 border-green-300 text-green-600"
+                        ? "bg-success/10 border-success/30 text-success"
                         : "bg-muted border-muted-foreground/30 text-muted-foreground"
                     )}>
                       {item.checked && <CheckCircle className="h-2.5 w-2.5" />}
@@ -267,7 +266,7 @@ export function CheckinStatusTracker({
             <div className="mt-3">
               <Separator className="my-4" />
               <div className="text-xs text-muted-foreground">
-                <span className="font-medium">Notes:</span>{" "}
+                <span className="font-medium">{t("cstNotesLabel")}</span>{" "}
                 {data.checkinNotes}
               </div>
             </div>
@@ -282,7 +281,8 @@ export function CheckinStatusTracker({
 
 function buildSteps(
   status: string,
-  data: CheckinStatusData | undefined
+  data: CheckinStatusData | undefined,
+  t: (key: string, defaultText?: string) => string
 ): Step[] {
   const steps: Step[] = [];
 
@@ -293,10 +293,10 @@ function buildSteps(
     status === "skipped";
 
   steps.push({
-    label: "Check-In Completed",
+    label: t("cstCheckInCompleted"),
     description: isCompleted
-      ? "You submitted your move-in inspection photos and checklist"
-      : "Submit photos and checklist documenting the storage unit condition",
+      ? t("cstDescSubmittedPhotos")
+      : t("cstDescSubmitPhotos"),
     state: isCompleted ? "completed" : "upcoming",
     timestamp: data?.checkinCompletedAt || data?.checkinRequestedAt,
     icon: <Camera className="h-4 w-4" />,
@@ -307,12 +307,12 @@ function buildSteps(
   const reviewDone = status === "checkin_completed" || status === "skipped";
 
   steps.push({
-    label: "Baseline Recorded",
+    label: t("cstBaselineRecorded"),
     description: isUnderReview
-      ? "Move-in inspection is submitted and awaiting finalisation"
+      ? t("cstDescAwaitingFinalisation")
       : reviewDone
-        ? "Your move-in baseline is recorded and protects you from unfair damage claims"
-        : "Submit your move-in inspection to establish the baseline condition",
+        ? t("cstDescBaselineRecorded")
+        : t("cstDescEstablishBaseline"),
     state: isUnderReview ? "active" : reviewDone ? "completed" : "upcoming",
     icon: <ShieldCheck className="h-4 w-4" />,
   });
@@ -320,8 +320,8 @@ function buildSteps(
   // Step 3: Outcome
   if (status === "checkin_completed") {
     steps.push({
-      label: "Check-In Approved",
-      description: "Your move-in baseline is recorded — this protects you from unfair damage claims at checkout",
+      label: t("cstCheckInApproved"),
+      description: t("cstDescApprovedProtects"),
       state: "completed",
       timestamp: data?.checkinCompletedAt,
       icon: <CheckCircle className="h-4 w-4" />,
@@ -333,24 +333,24 @@ function buildSteps(
     });
   } else if (status === "skipped") {
     steps.push({
-      label: "Check-In Skipped",
-      description: "The move-in inspection step was skipped",
+      label: t("cstCheckInSkipped"),
+      description: t("cstDescSkipped"),
       state: "completed",
       timestamp: data?.checkinCompletedAt,
       icon: <CheckCircle className="h-4 w-4" />,
     });
   } else if (status === "not_checked_in") {
     steps.push({
-      label: "Awaiting Inspection",
-      description: "Submit your move-in inspection to establish the baseline condition",
+      label: t("cstAwaitingInspection"),
+      description: t("cstDescEstablishBaseline"),
       state: "upcoming",
       icon: <LogIn className="h-4 w-4" />,
     });
   } else {
     // checkin_requested — legacy status, still awaiting manager review
     steps.push({
-      label: "Awaiting Review",
-      description: "Your move-in inspection is awaiting final confirmation",
+      label: t("cstAwaitingReview"),
+      description: t("cstDescAwaitingConfirmation"),
       state: "active",
       icon: <Clock className="h-4 w-4" />,
     });

@@ -1,0 +1,14 @@
+{
+  "invoice": "FACTURE",
+  "billTo": "Facturer à",
+  "bookingDetails": "Détails de la réservation",
+  "kitchen": "Cuisine",
+  "payoutStatement": "RELEVÉ DE PAIEMENT",
+  "payTo": "Payer à",
+  "statementNumber": "Relevé n°",
+  "sellerStatement": "Relevé du vendeur",
+  "executiveSummary": "Sommaire",
+  "certificateTitle": "Certificat de réussite",
+  "awardedTo": "Décerné à",
+  "forCompleting": "Pour avoir terminé"
+}

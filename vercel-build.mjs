@@ -20,11 +20,15 @@ function runCommand(command) {
 
 console.log('🔨 Building for production...');
 
-// 1. Build frontend with Vite
+// 1. Regenerate the explicit, anchored resource-search index.
+console.log('Building search content index...');
+runCommand('node scripts/build-search-content.mjs');
+
+// 2. Build frontend with Vite
 console.log('Building frontend...');
 runCommand('npx vite build');
 
-// 2. Bundle for Vercel using esbuild directly from TypeScript source
+// 3. Bundle for Vercel using esbuild directly from TypeScript source
 // This creates a single unified api/index.js from server/index.ts
 // esbuild handles TypeScript natively and resolves imports correctly
 // This unifies the entry point - no more dual entry points!
@@ -42,6 +46,7 @@ if (!fs.existsSync('api')) {
 // Generate source maps when SENTRY_AUTH_TOKEN is present for readable server-side stack traces
 const sourcemapFlag = process.env.SENTRY_AUTH_TOKEN ? ' --sourcemap' : '';
 runCommand(`npx esbuild server/index.ts --bundle --platform=node --packages=external --format=esm --outfile=api/index.js --external:vite --external:rollup${sourcemapFlag}`);
+fs.copyFileSync('shared/search-content.generated.json', 'api/search-content.generated.json');
 
 // Note: api/sitemap.ts is left as-is — Vercel compiles .ts files in api/ directory natively
 // We don't bundle it because it imports @vercel/node types which aren't in dependencies

@@ -797,6 +797,119 @@ export class BookingService {
     }
 
     /**
+     * Month availability where a day is true only if at least one bookable slot remains
+     * (not fully booked, and not in the past for today).
+     * ponytail: 3 DB round-trips total regardless of month length (schedule + bookings reused per day).
+     */
+    async getMonthBookableAvailability(
+        kitchenId: number,
+        year: number,
+        month: number
+    ): Promise<Record<string, boolean>> {
+        const scheduleMap = await kitchenService.getMonthAvailability(kitchenId, year, month);
+        const monthStart = new Date(Date.UTC(year, month, 1, 0, 0, 0));
+        const monthEnd = new Date(Date.UTC(year, month + 1, 0, 23, 59, 59, 999));
+
+        const [weeklyAvailability, overrides, bookings] = await Promise.all([
+            kitchenService.getKitchenAvailability(kitchenId),
+            kitchenService.getKitchenDateOverrides(kitchenId, monthStart, monthEnd),
+            this.getBookingsByKitchen(kitchenId),
+        ]);
+
+        const weeklyMap = new Map<number, { isAvailable: boolean; startTime: string; endTime: string; maxConcurrentBookings?: number }>();
+        weeklyAvailability.forEach((a: any) => {
+            weeklyMap.set(a.dayOfWeek, {
+                isAvailable: !!a.isAvailable,
+                startTime: a.startTime,
+                endTime: a.endTime,
+                maxConcurrentBookings: a.maxConcurrentBookings,
+            });
+        });
+
+        const overrideMap = new Map<string, typeof overrides[number]>();
+        overrides.forEach((o) => {
+            const dateStr = new Date(o.specificDate).toISOString().split('T')[0];
+            overrideMap.set(dateStr, o);
+        });
+
+        const now = new Date();
+        const result: Record<string, boolean> = {};
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+        for (let day = 1; day <= daysInMonth; day++) {
+            const date = new Date(Date.UTC(year, month, day, 12, 0, 0));
+            const dateStr = date.toISOString().split('T')[0];
+
+            if (!scheduleMap[dateStr]) {
+                result[dateStr] = false;
+                continue;
+            }
+
+            const override = overrideMap.get(dateStr);
+            let startHour: number;
+            let endHour: number;
+            let capacity: number;
+
+            if (override) {
+                if (!override.isAvailable || !override.startTime || !override.endTime) {
+                    result[dateStr] = false;
+                    continue;
+                }
+                startHour = parseInt(override.startTime.split(':')[0]);
+                endHour = parseInt(override.endTime.split(':')[0]);
+                capacity = (override as any).maxConcurrentBookings ?? 1;
+            } else {
+                const dayOfWeek = date.getUTCDay();
+                const dayAvail = weeklyMap.get(dayOfWeek);
+                if (!dayAvail?.isAvailable || !dayAvail.startTime || !dayAvail.endTime) {
+                    result[dateStr] = false;
+                    continue;
+                }
+                startHour = parseInt(dayAvail.startTime.split(':')[0]);
+                endHour = parseInt(dayAvail.endTime.split(':')[0]);
+                capacity = dayAvail.maxConcurrentBookings ?? 1;
+            }
+
+            const allSlots: string[] = [];
+            for (let hour = startHour; hour < endHour; hour++) {
+                allSlots.push(`${hour.toString().padStart(2, '0')}:00`);
+            }
+
+            const dayBookings = bookings.filter((b) => {
+                const bookingDateStr = new Date(b.bookingDate).toISOString().split('T')[0];
+                return bookingDateStr === dateStr && b.status !== 'cancelled';
+            });
+
+            const slotBookingCounts = new Map<string, number>();
+            allSlots.forEach((slot) => slotBookingCounts.set(slot, 0));
+
+            dayBookings.forEach((booking) => {
+                const [startHours, startMins] = booking.startTime.split(':').map(Number);
+                const [endHours, endMins] = booking.endTime.split(':').map(Number);
+                const startTotalMins = startHours * 60 + startMins;
+                const endTotalMins = endHours * 60 + endMins;
+
+                allSlots.forEach((slot) => {
+                    const [slotHours, slotMins] = slot.split(':').map(Number);
+                    const slotTotalMins = slotHours * 60 + slotMins;
+                    if (slotTotalMins >= startTotalMins && slotTotalMins < endTotalMins) {
+                        slotBookingCounts.set(slot, (slotBookingCounts.get(slot) || 0) + 1);
+                    }
+                });
+            });
+
+            result[dateStr] = allSlots.some((slot) => {
+                if ((slotBookingCounts.get(slot) || 0) >= capacity) return false;
+                const [h, m] = slot.split(':').map(Number);
+                const slotTime = new Date(year, month, day, h, m, 0, 0);
+                return slotTime > now;
+            });
+        }
+
+        return result;
+    }
+
+    /**
      * @deprecated Use overstayPenaltyService.detectOverstays() instead.
      * This method is kept for backward compatibility but no longer auto-charges.
      * The new system requires manager approval before any charges.
