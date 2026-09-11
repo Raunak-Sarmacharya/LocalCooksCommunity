@@ -1,35 +1,11 @@
 import { useState, useMemo } from "react";
 import { mt } from "@/i18n/manager";
 import { format } from "date-fns";
-import {
-  AlertTriangle,
-  CheckCircle,
-  XCircle,
-  Clock,
-  ChefHat,
-  MapPin,
-  Boxes,
-  Calendar,
-} from "@/components/ui/manager-icons";
+import { AlertTriangle, CheckCircle, XCircle, Clock, Calendar, MapPin, Boxes } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -232,7 +208,7 @@ export function PendingCancellationRequests({
                   className={`h-8 w-8 rounded-md flex items-center justify-center shrink-0 ${req.kind === "kitchen" ? "bg-blue-50" : "bg-purple-50"}`}
                 >
                   {req.kind === "kitchen" ? (
-                    <ChefHat className="h-4 w-4 text-blue-600" />
+                    <Calendar className="h-4 w-4 text-blue-600" />
                   ) : (
                     <Boxes className="h-4 w-4 text-purple-600" />
                   )}
@@ -241,7 +217,7 @@ export function PendingCancellationRequests({
                   <p className="text-sm font-medium truncate">{req.label}</p>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1">
-                      <ChefHat className="h-3 w-3" />
+                      <Calendar className="h-3 w-3" />
                       {req.chefName}
                     </span>
                     {req.locationName && (

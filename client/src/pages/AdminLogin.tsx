@@ -1,28 +1,14 @@
 import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardFooter,
-    CardHeader,
-    CardTitle,
-} from "@/components/ui/card";
-import {
-    Form,
-    FormControl,
-    FormField,
-    FormItem,
-    FormLabel,
-    FormMessage,
-} from "@/components/ui/form";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { queryClient } from "@/lib/queryClient";
 import { auth } from "@/lib/firebase";
 import { signInWithCustomToken } from "firebase/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ChefHat, Loader2 } from "lucide-react";
+import { Calendar, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Redirect, useLocation } from "wouter";
@@ -255,7 +241,7 @@ export default function AdminLogin() {
       <Card className="mx-auto w-full max-w-md">
         <CardHeader className="space-y-1 text-center">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary">
-            <ChefHat className="h-6 w-6 text-white" />
+            <Calendar className="h-6 w-6 text-white" />
           </div>
           <CardTitle className="text-2xl font-bold">Admin Login</CardTitle>
           <CardDescription>

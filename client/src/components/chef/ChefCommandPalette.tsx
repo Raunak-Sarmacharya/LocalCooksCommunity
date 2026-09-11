@@ -1,30 +1,8 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import {
-  CommandDialog,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandSeparator,
-} from "@/components/ui/command";
-import {
-  LayoutDashboard,
-  FileText,
-  Building,
-  Calendar,
-  BookOpen,
-  MessageCircle,
-  Search,
-  Headphones,
-  CreditCard,
-  AlertTriangle,
-  Store,
-  MessageSquare,
-  DollarSign,
-} from "lucide-react";
+import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "@/components/ui/command";
+import { LayoutDashboard, FileText, Building, Calendar, BookOpen, MessageCircle, Search, Headphones, CreditCard, AlertTriangle, Store, MessageSquare, DollarSign } from "lucide-react";
 import { useChefSidebarHiddenItems } from "@/hooks/use-chef-sidebar-hidden-items";
 
 interface ChefCommandPaletteProps {

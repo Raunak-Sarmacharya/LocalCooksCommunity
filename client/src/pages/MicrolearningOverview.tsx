@@ -1,11 +1,11 @@
 import Footer from '@/components/layout/Footer';
 import Header from '@/components/layout/Header';
 import TrainingOverviewPanel from '@/components/training/TrainingOverviewPanel';
-import { Skeleton } from '@/components/ui/skeleton';
-import { useFirebaseAuth } from '@/hooks/use-auth';
-import { tt } from '@/i18n/common-ns';
-import { useEffect } from 'react';
-import { useLocation } from 'wouter';
+import { Skeleton } from "@/components/ui/skeleton";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { tt } from "@/i18n/common-ns";
+import { useEffect } from "react";
+import { useLocation } from "wouter";
 
 export default function MicrolearningOverview() {
   const { user, loading } = useFirebaseAuth();

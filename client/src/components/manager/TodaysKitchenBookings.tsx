@@ -8,25 +8,7 @@
 
 import { useState, useCallback } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import {
-  CheckCircle,
-  Clock,
-  User,
-  Loader2,
-  MoreHorizontal,
-  ChefHat,
-  LogIn,
-  LogOut,
-  XCircle,
-  ShieldCheck,
-  FileWarning,
-  RefreshCw,
-  Camera,
-  Upload,
-  X,
-  KeyRound,
-  Calendar,
-} from "@/components/ui/manager-icons"
+import { CheckCircle, Clock, User, Loader2, MoreHorizontal, Calendar, LogIn, LogOut, XCircle, ShieldCheck, FileWarning, RefreshCw, Camera, Upload, X, KeyRound } from "@/components/ui/manager-icons"
 import { toast } from "sonner"
 import { auth } from "@/lib/firebase"
 import { Button } from "@/components/ui/button"
@@ -34,38 +16,12 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { CurrencyInput } from "@/components/ui/currency-input"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
 import { format } from "date-fns"
@@ -505,7 +461,7 @@ export function TodaysKitchenBookings() {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="flex items-center gap-2">
-                <ChefHat className="h-5 w-5 text-orange-600" />{mt("upcomingKitchenBookings")}</CardTitle>
+                <Calendar className="h-5 w-5 text-orange-600" />{mt("upcomingKitchenBookings")}</CardTitle>
               <CardDescription>{mt("liveCheckInCheckoutStatusAndUpcomingBookings")}</CardDescription>
             </div>
             <Button
@@ -553,7 +509,7 @@ export function TodaysKitchenBookings() {
             </div>
           ) : bookings.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              <ChefHat className="h-8 w-8 mx-auto mb-2 opacity-40" />
+              <Calendar className="h-8 w-8 mx-auto mb-2 opacity-40" />
               <p className="text-sm">{mt("noUpcomingBookings")}</p>
             </div>
           ) : (
@@ -630,7 +586,7 @@ export function TodaysKitchenBookings() {
                             <DropdownMenuItem
                               onClick={() => openAction(booking, "view")}
                             >
-                              <ChefHat className="h-4 w-4 mr-2" />{mt("viewDetails")}</DropdownMenuItem>
+                              <Calendar className="h-4 w-4 mr-2" />{mt("viewDetails")}</DropdownMenuItem>
 
                             {booking.checkinStatus ===
                               "checkout_requested" && (
@@ -669,7 +625,7 @@ export function TodaysKitchenBookings() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <ChefHat className="h-5 w-5 text-purple-600" />{mt("upcomingKitchenViewings")}</CardTitle>
+            <Calendar className="h-5 w-5 text-purple-600" />{mt("upcomingKitchenViewings")}</CardTitle>
           <CardDescription>{mt("scheduledViewingsForYourKitchens")}</CardDescription>
         </CardHeader>
         <CardContent>

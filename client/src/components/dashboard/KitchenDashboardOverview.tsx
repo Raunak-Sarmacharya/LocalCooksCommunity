@@ -5,65 +5,14 @@ import { useMemo, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
-import {
-  Calendar,
-  Clock,
-  TrendingUp,
-  TrendingDown,
-  Users,
-  DollarSign,
-  AlertTriangle,
-  CheckCircle2,
-  XCircle,
-  ArrowRight,
-  ChefHat,
-  Settings,
-  FileText,
-  Eye,
-  MessageSquare,
-  Percent,
-  CalendarDays,
-  BarChart3,
-  Bell,
-  Zap,
-  Search,
-  Mail,
-  Phone,
-  Star,
-  Filter,
-  MapPin,
-  Building2,
-  Info,
-} from "@/components/ui/manager-icons";
+import { Calendar, Clock, TrendingUp, TrendingDown, Users, DollarSign, AlertTriangle, CheckCircle2, XCircle, ArrowRight, Settings, FileText, Eye, MessageSquare, Percent, CalendarDays, BarChart3, Bell, Zap, Search, Mail, Phone, Star, Filter, MapPin, Building2, Info } from "@/components/ui/manager-icons";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Tooltip as UITooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  Cell,
-} from "recharts";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from "recharts";
 import BookingCalendarWidget from "./BookingCalendarWidget";
 import { TodaysKitchenBookings } from "@/components/manager/TodaysKitchenBookings";
 import { formatCurrency, formatTime as formatTimeLocale, formatDate as formatDateLocale } from "@/lib/formatters";
@@ -1119,7 +1068,7 @@ export default function KitchenDashboardOverview({
                         booking.status === 'pending' ? 'bg-amber-100' :
                         'bg-gray-100'
                       }`}>
-                        <ChefHat className={`h-5 w-5 ${
+                        <Calendar className={`h-5 w-5 ${
                           booking.status === 'confirmed' ? 'text-emerald-600' :
                           booking.status === 'pending' ? 'text-amber-600' :
                           'text-gray-500'

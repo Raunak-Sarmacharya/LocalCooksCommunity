@@ -2,11 +2,7 @@ import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
 import { useManagerKitchenApplications } from "@/hooks/use-manager-kitchen-applications";
 import { useToast } from "@/hooks/use-toast";
-import {
-  ExternalLink,
-  Loader2,
-  Shield,
-} from "@/components/ui/manager-icons";
+import { ExternalLink, Loader2, Shield } from "@/components/ui/manager-icons";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import ChatPanel from "@/components/chat/ChatPanel";
@@ -14,14 +10,7 @@ import { getConversationForApplication, createConversation } from "@/services/ch
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 

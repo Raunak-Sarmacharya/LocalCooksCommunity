@@ -9,7 +9,7 @@ import { tt } from "@/i18n/common-ns";
  */
 
 import React, { useState, useMemo } from "react";
-import { Info, Plus, CheckCircle, Loader2, Search, Check, ChevronDown, ChevronUp, X, DollarSign, Package, Flame, ChefHat, Snowflake, UtensilsCrossed, SprayCan, PlusCircle, SearchX } from "@/components/ui/manager-icons";
+import { Info, Plus, CheckCircle, Loader2, Search, Check, ChevronDown, ChevronUp, X, DollarSign, Package, Flame, Calendar, Snowflake, UtensilsCrossed, SprayCan, PlusCircle, SearchX } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { Input } from "@/components/ui/input";
@@ -17,11 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
@@ -32,7 +28,7 @@ import { EQUIPMENT_CATEGORIES, type EquipmentTemplate, type EquipmentCategoryId 
 // Icon component mapping for categories (enterprise pattern - no emojis)
 const CategoryIcon = ({ iconName, className }: { iconName: string; className?: string }) => {
   const icons: Record<string, React.ComponentType<{ className?: string }>> = {
-    Flame, ChefHat, Snowflake, UtensilsCrossed, SprayCan
+    Flame, Calendar, Snowflake, UtensilsCrossed, SprayCan
   };
   const Icon = icons[iconName] || Package;
   return <Icon className={className} />;

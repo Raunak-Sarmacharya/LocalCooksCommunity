@@ -1,17 +1,17 @@
 import { logger } from "@/lib/logger";
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { AlertCircle, MessageCircle } from 'lucide-react';
-import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { auth } from '@/lib/firebase';
-import { getAllConversations, type Conversation } from '@/services/chat-service';
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { AlertCircle, MessageCircle } from "lucide-react";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { auth } from "@/lib/firebase";
+import { getAllConversations, type Conversation } from "@/services/chat-service";
 import ChatPanel from './ChatPanel';
-import { ConversationList } from './ConversationList';
-import { ApplicationStatus } from './ConversationItem';
-import { cn } from '@/lib/utils';
-import { useTranslation } from 'react-i18next';
+import { ConversationList } from "./ConversationList";
+import { ApplicationStatus } from "./ConversationItem";
+import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 interface ApplicationDetails {
   id: number;

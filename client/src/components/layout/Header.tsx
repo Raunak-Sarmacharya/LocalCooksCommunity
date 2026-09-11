@@ -5,12 +5,7 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { Application } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Building2, Check, ChevronDown, CookingPot, CreditCard, GraduationCap, LogOut, Menu, ShoppingBag, Store, Truck, User, Warehouse, X } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";

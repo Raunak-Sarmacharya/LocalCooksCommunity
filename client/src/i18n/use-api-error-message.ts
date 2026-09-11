@@ -1,9 +1,5 @@
 import { useTranslation } from "react-i18next";
-import {
-  isApiErrorCode,
-  type ApiErrorBody,
-  type ApiErrorCode,
-} from "@shared/i18n";
+import { isApiErrorCode, type ApiErrorBody, type ApiErrorCode } from "@shared/i18n";
 
 /**
  * Resolve an API error payload (or legacy string) to a localized message.

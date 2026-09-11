@@ -13,33 +13,13 @@
 
 import { useState, useCallback } from "react"
 import { useTranslation } from "react-i18next"
-import {
-  Camera,
-  CheckCircle,
-  Clock,
-  Loader2,
-  ShieldCheck,
-  AlertTriangle,
-  FileWarning,
-  LogIn,
-  LogOut,
-  ChefHat,
-  XCircle,
-  Lock,
-  Info,
-} from "lucide-react"
+import { Camera, CheckCircle, Clock, Loader2, ShieldCheck, AlertTriangle, FileWarning, LogIn, LogOut, Calendar, XCircle, Lock, Info } from "lucide-react"
 import { InfoChip } from "@/components/chef/info-chip"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 import { FormLegend } from "@/components/ui/form-legend"
 import { format } from "date-fns"
@@ -48,11 +28,7 @@ import { useKitchenCheckin, type KitchenCheckinStatus } from "@/hooks/use-kitche
 import { useLocationChecklist, type ChecklistItem, type PhotoRequirement } from "@/hooks/use-location-checklist"
 import { Checkbox } from "@/components/ui/checkbox"
 import { bt } from "@/i18n/booking-ns";
-import {
-  PhotoRequirementUploader,
-  flattenPhotos,
-  areAllRequiredPhotosUploaded,
-} from "./PhotoRequirementUploader"
+import { PhotoRequirementUploader, flattenPhotos, areAllRequiredPhotosUploaded } from "./PhotoRequirementUploader"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -271,7 +247,7 @@ export function KitchenCheckinTracker({
       <SheetContent className="w-full sm:max-w-md overflow-y-auto">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
-            <ChefHat className="h-5 w-5 text-muted-foreground" />
+            <Calendar className="h-5 w-5 text-muted-foreground" />
             {t("kciDialogTitle", "Kitchen Check-In")}
           </SheetTitle>
           <SheetDescription>
@@ -751,7 +727,7 @@ function buildSteps(
         ? t("kciDescCompleted", "Kitchen session completed")
         : t("kciDescUseBooked", "Use the kitchen during your booked time"),
     state: isCooking ? "active" : cookingDone ? "completed" : "upcoming",
-    icon: <ChefHat className="h-4 w-4" />,
+    icon: <Calendar className="h-4 w-4" />,
   })
 
   // Step 3: Checkout Requested

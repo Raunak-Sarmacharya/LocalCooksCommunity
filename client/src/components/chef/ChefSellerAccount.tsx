@@ -1,38 +1,15 @@
 import type { ComponentType, ReactNode } from "react";
-import {
-  ArrowLeftRight,
-  Banknote,
-  Building2,
-  Clock,
-  ExternalLink,
-  FileText,
-  Loader2,
-  ShoppingBag,
-  Store,
-  UtensilsCrossed,
-} from "lucide-react";
+import { ArrowLeftRight, Banknote, Building2, Clock, ExternalLink, FileText, Loader2, ShoppingBag, Store, UtensilsCrossed } from "lucide-react";
 import { SiStripe } from "react-icons/si";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Button } from "@/components/ui/button";
 import { InfoChip } from "@/components/chef/info-chip";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChefPageHeader, QuietNotice, StatTile } from "@/components/chef/ui";
-import {
-  openChefShopHome,
-  useShopStatus,
-  useStripeDashboardLink,
-  useEarningsSummary,
-} from "@/components/chef/seller-revenue/hooks/useSellerRevenue";
+import { openChefShopHome, useShopStatus, useStripeDashboardLink, useEarningsSummary } from "@/components/chef/seller-revenue/hooks/useSellerRevenue";
 import { Icon } from "@iconify/react";
 import { useToast } from "@/hooks/use-toast";
 import { formatDate } from "@/lib/formatters";

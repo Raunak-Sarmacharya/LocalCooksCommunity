@@ -1,12 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  chefTourRowHasDetails,
-  countPendingOrUpcomingTours,
-  formatTourWhen,
-  isPendingOrUpcomingTour,
-  normalizeChefTourRow,
-  viewingStatusBadge,
-} from "./chef-viewing-display";
+import { chefTourRowHasDetails, countPendingOrUpcomingTours, formatTourWhen, isPendingOrUpcomingTour, normalizeChefTourRow, viewingStatusBadge } from "./chef-viewing-display";
 
 describe("viewingStatusBadge", () => {
   it("maps pending to warning and confirmed to success", () => {

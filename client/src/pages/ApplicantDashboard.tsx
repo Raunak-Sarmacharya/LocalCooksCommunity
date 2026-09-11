@@ -15,45 +15,18 @@ import { useKitchenBookings } from "@/hooks/use-kitchen-bookings";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
 import { useChefShellChrome } from "@/layouts/chef-shell-context";
 import ChefCommandPalette from "@/components/chef/ChefCommandPalette";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
-import {
-  CardDescription,
-} from "@/components/ui/card";
-import {
-  formatApplicationStatus
-} from "@/lib/applicationSchema";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { CardDescription } from "@/components/ui/card";
+import { formatApplicationStatus } from "@/lib/applicationSchema";
 import { queryClient } from "@/lib/queryClient";
 import { Application, UserWithFlags } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
-import {
-  ChevronRight,
-  CheckCircle,
-  ChefHat,
-  Shield,
-  AlertCircle,
-  MessageCircle,
-  CreditCard,
-  Loader2,
-} from "lucide-react";
+import { ChevronRight, CheckCircle, Calendar, Shield, AlertCircle, MessageCircle, CreditCard, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { useCustomAlerts } from "@/components/ui/custom-alerts";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useChefOnboardingStatus } from "@/hooks/use-chef-onboarding-status";
 import KitchenDiscovery from "@/components/kitchen-application/KitchenDiscovery";
 import TrainingOverviewPanel from "@/components/training/TrainingOverviewPanel";
@@ -76,15 +49,7 @@ import { ChefPageHeader } from "@/components/chef/ui";
 import { useTranslation } from "react-i18next";
 import { tt } from "@/i18n/common-ns";
 import { bt } from "@/i18n/booking-ns";
-import {
-  OverviewTabContent,
-  MyKitchensTabContent,
-  SellerApplicationTabContent,
-  type PublicKitchen,
-  type KitchenApplicationWithLocation,
-  type BookingLocation,
-  getTrainingStatusLabel,
-} from "@/components/chef/dashboard";
+import { OverviewTabContent, MyKitchensTabContent, SellerApplicationTabContent, type PublicKitchen, type KitchenApplicationWithLocation, type BookingLocation, getTrainingStatusLabel } from "@/components/chef/dashboard";
 
 // Type alias for application
 type AnyApplication = Application;
@@ -513,7 +478,7 @@ export default function ApplicantDashboard() {
         applications: applications as AnyApplication[],
         applicationFormUrl: '/apply',
         roleName: 'Chef',
-        icon: ChefHat,
+        icon: Calendar,
         isLoading,
         error
       };
@@ -523,7 +488,7 @@ export default function ApplicantDashboard() {
         applications: [] as AnyApplication[],
         applicationFormUrl: '/apply',
         roleName: 'Get Started',
-        icon: ChefHat,
+        icon: Calendar,
         isLoading: false,
         error: null
       };

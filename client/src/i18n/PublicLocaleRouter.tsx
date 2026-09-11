@@ -1,13 +1,7 @@
 import { useEffect } from "react";
 import { useLocation, useRoute } from "wouter";
 import { useTranslation } from "react-i18next";
-import {
-  SUPPORTED_LOCALES,
-  negotiateLocale,
-  LOCALE_COOKIE,
-  isAppLocale,
-  type AppLocale,
-} from "@shared/i18n";
+import { SUPPORTED_LOCALES, negotiateLocale, LOCALE_COOKIE, isAppLocale, type AppLocale } from "@shared/i18n";
 import { changeAppLocale } from "./locale-actions";
 import { parseLocationLocale, isPublicLocalizedPath, buildLocalizedPath } from "./routing";
 

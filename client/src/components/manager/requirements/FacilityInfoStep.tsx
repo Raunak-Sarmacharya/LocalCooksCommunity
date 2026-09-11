@@ -3,29 +3,19 @@
  * Information automatically shared with approved chefs
  */
 
-import { useState } from 'react';
+import { useState } from "react";
 import { mt } from "@/i18n/manager";
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
-import {
-  Building2,
-  Upload,
-  FileText,
-  X,
-  Loader2,
-  FolderOpen,
-  Wind,
-  Info,
-  CheckCircle2,
-} from '@/components/ui/manager-icons';
-import { useFileUpload } from '@/hooks/useFileUpload';
-import { useToast } from '@/hooks/use-toast';
-import { usePresignedDocumentUrl } from '@/hooks/use-presigned-document-url';
-import { SettingsFileUpload } from '@/components/manager/settings/SettingsFileUpload';
-import { LocationRequirements } from './types';
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Building2, Upload, FileText, X, Loader2, FolderOpen, Wind, Info, CheckCircle2 } from "@/components/ui/manager-icons";
+import { useFileUpload } from "@/hooks/useFileUpload";
+import { useToast } from "@/hooks/use-toast";
+import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
+import { SettingsFileUpload } from "@/components/manager/settings/SettingsFileUpload";
+import { LocationRequirements } from "./types";
 
 function AuthenticatedDocumentLink({ url, className, children }: { url: string | null | undefined; className?: string; children: React.ReactNode }) {
   const { url: presignedUrl } = usePresignedDocumentUrl(url);

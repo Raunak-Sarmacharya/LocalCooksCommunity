@@ -1,6 +1,6 @@
 import React from "react";
 import { mt } from "@/i18n/manager";
-import { ArrowRight, Building, ChefHat, Clock, CreditCard, Package, Wrench } from "@/components/ui/manager-icons";
+import { ArrowRight, Building, Calendar, Clock, CreditCard, Package, Wrench } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
 import { cn } from "@/lib/utils";
@@ -13,7 +13,7 @@ const SETUP_STEPS = [
     required: true,
   },
   {
-    icon: ChefHat,
+    icon: Calendar,
     titleKey: "welcomeStepKitchenTitle",
     descKey: "welcomeStepKitchenDesc",
     required: true,

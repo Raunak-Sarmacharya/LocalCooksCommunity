@@ -1,8 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  SpotlightWalkthrough,
-  walkthroughStorageKey,
-} from "@/components/ui/spotlight-walkthrough";
+import { SpotlightWalkthrough, walkthroughStorageKey } from "@/components/ui/spotlight-walkthrough";
 import { useAuthModal } from "@/components/auth/AuthModalProvider";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useTranslation } from "react-i18next";

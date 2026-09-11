@@ -1,13 +1,5 @@
 import assert from "node:assert/strict";
-import {
-  formatEquipmentBreakdown,
-  formatEquipmentLine,
-  formatStorageLine,
-  mergeEquipmentLists,
-  mergeEquipmentSummaries,
-  mergeStorageSummaries,
-  resolveEquipmentLabel,
-} from "./kitchen-grid-card";
+import { formatEquipmentBreakdown, formatEquipmentLine, formatStorageLine, mergeEquipmentLists, mergeEquipmentSummaries, mergeStorageSummaries, resolveEquipmentLabel } from "./kitchen-grid-card";
 
 {
   assert.equal(

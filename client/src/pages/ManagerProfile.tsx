@@ -13,6 +13,8 @@ import { User, Mail, Phone, Loader2, KeyRound } from "@/components/ui/manager-ic
 import ManagerHeader from "@/components/layout/ManagerHeader";
 import ChangePassword from "@/components/auth/ChangePassword";
 import { tt } from "@/i18n/common-ns";
+import { Edit3 } from "lucide-react";
+import { InfoChip } from "@/components/chef/info-chip";
 
 export default function ManagerProfile() {
   const { t } = useTranslation("manager");
@@ -213,9 +215,20 @@ export default function ManagerProfile() {
       <ManagerHeader />
       <div className="pt-24 pb-12 container mx-auto px-4 max-w-4xl">
         <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-          <div className="p-6 border-b border-gray-200">
-            <h1 className="text-2xl font-bold text-gray-900">{t("myProfile")}</h1>
-            <p className="text-sm text-gray-600 mt-1">{t("manageYourPersonalInformationAndProfileSettings")}</p>
+          <div className="p-6 border-b border-gray-200 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl font-bold text-gray-900">{t("myProfile")}</h1>
+                <InfoChip tone="neutral" className="bg-white border border-gray-200 shadow-sm">
+                  {t("kitchenManager", "Kitchen Manager")}
+                </InfoChip>
+              </div>
+              <p className="text-sm text-gray-600 mt-1">{t("manageYourPersonalInformationAndProfileSettings")}</p>
+            </div>
+            <Button variant="outline" className="bg-white hover:bg-gray-50 text-gray-900 border-gray-200 shrink-0">
+              <Edit3 className="mr-2 h-4 w-4" />
+              {t("edit", "Edit")}
+            </Button>
           </div>
 
           <div className="p-6 space-y-6">

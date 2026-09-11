@@ -12,25 +12,7 @@ import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { SecureDocumentLink } from "@/components/common/SecureDocumentLink"
 import { parseBusinessInfo } from "@/utils/parseBusinessInfo"
-import {
-    User,
-    Mail,
-    Phone,
-    Building2,
-    Calendar,
-    Briefcase,
-    Shield,
-    FileText,
-    Check,
-    X,
-    Clock,
-    Ban,
-    MessageCircle,
-    ChefHat,
-    ExternalLink,
-    CheckCircle,
-    AlertCircle
-} from "@/components/ui/manager-icons"
+import { User, Mail, Phone, Building2, Calendar, Briefcase, Shield, FileText, Check, X, Clock, Ban, MessageCircle, ExternalLink, CheckCircle, AlertCircle } from "@/components/ui/manager-icons"
 import { cn } from "@/lib/utils"
 
 interface LocationRequirements {
@@ -208,7 +190,7 @@ export function ApplicationDetailPanel({
                 <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center gap-4">
                         <div className="w-14 h-14 rounded-xl bg-[#208D80]/10 flex items-center justify-center">
-                            <ChefHat className="h-7 w-7 text-[#208D80]" />
+                            <Calendar className="h-7 w-7 text-[#208D80]" />
                         </div>
                         <div>
                             <h2 className="text-xl font-semibold text-gray-900">{application.fullName}</h2>

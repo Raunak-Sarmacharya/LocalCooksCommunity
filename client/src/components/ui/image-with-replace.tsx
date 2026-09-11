@@ -1,12 +1,12 @@
 import { logger } from "@/lib/logger";
-import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { toast } from '@/hooks/use-toast';
-import { Upload, X, Loader2, Image as ImageIcon } from 'lucide-react';
-import { useSessionFileUpload } from '@/hooks/useSessionFileUpload';
-import { cn } from '@/lib/utils';
-import { auth } from '@/lib/firebase';
-import { getR2ProxyUrl } from '@/utils/r2-url-helper';
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { toast } from "@/hooks/use-toast";
+import { Upload, X, Loader2, Image as ImageIcon } from "lucide-react";
+import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
+import { cn } from "@/lib/utils";
+import { auth } from "@/lib/firebase";
+import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { SmartImage } from "@/components/ui/smart-image";
 
 interface ImageWithReplaceProps {

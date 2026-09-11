@@ -10,60 +10,21 @@ import { Card, CardContent } from "@/components/ui/card";
 import { InfoChip } from "@/components/chef/info-chip";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-  ArrowLeft,
-  MapPin,
-  User,
-  ChefHat,
-  Package,
-  Wrench,
-  FileText,
-  Download,
-  Loader2,
-  CheckCircle2,
-  XCircle,
-  AlertCircle,
-  CreditCard,
-  Phone,
-  Mail,
-  Receipt,
-  Hash,
-  Info,
-  LogIn,
-  LogOut,
-  Camera,
-  FileWarning,
-  Clock,
-} from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { ArrowLeft, MapPin, User, Calendar, Package, Wrench, FileText, Download, Loader2, CheckCircle2, XCircle, AlertCircle, CreditCard, Phone, Mail, Receipt, Hash, Info, LogIn, LogOut, Camera, FileWarning, Clock } from "lucide-react";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 import { useQueryClient } from "@tanstack/react-query";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
-import {
-  BookingActionSheet,
-  type BookingForAction,
-} from "@/components/manager/bookings/BookingActionSheet";
-import {
-  BookingManagementSheet,
-  type BookingForManagement,
-  type ManagementSubmitParams,
-} from "@/components/manager/bookings/BookingManagementSheet";
+import { BookingActionSheet, type BookingForAction } from "@/components/manager/bookings/BookingActionSheet";
+import { BookingManagementSheet, type BookingForManagement, type ManagementSubmitParams } from "@/components/manager/bookings/BookingManagementSheet";
 import { KitchenCheckinTracker } from "@/components/booking/KitchenCheckinTracker";
 import { StripeProcessingFeeRefundInfo } from "@/components/booking/StripeProcessingFeeRefundInfo";
 import { SmartImage } from "@/components/ui/smart-image";
 import { tt } from "@/i18n/common-ns";
 import { mt } from "@/i18n/manager";
-import {
-  ChefBookingReceiptBreakdown,
-  KitchenPayoutStatementBreakdown,
-} from "@/components/booking/BookingPricingBreakdown";
+import { ChefBookingReceiptBreakdown, KitchenPayoutStatementBreakdown } from "@/components/booking/BookingPricingBreakdown";
 
 interface BookingDetails {
   id: number;
@@ -1455,7 +1416,7 @@ export default function BookingDetailsPage() {
               </h2>
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center shrink-0">
-                  <ChefHat className="h-4 w-4 text-muted-foreground" />
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
                 </div>
                 <div>
                   <p className="text-sm font-medium">

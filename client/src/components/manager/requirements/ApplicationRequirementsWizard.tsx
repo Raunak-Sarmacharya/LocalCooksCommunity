@@ -7,30 +7,20 @@ import { tt } from "@/i18n/common-ns";
  * Reusable component for both manager settings and onboarding flow
  */
 
-import { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Button } from '@/components/ui/button';
-import { StatusButton } from '@/components/ui/status-button';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { cn } from '@/lib/utils';
-import {
-  Save,
-  Loader2,
-  ChevronRight,
-  ChevronLeft,
-  CheckCircle2,
-  ClipboardList,
-  Settings2,
-  Building2,
-  AlertCircle,
-} from '@/components/ui/manager-icons';
-import { useToast } from '@/hooks/use-toast';
-import { auth } from '@/lib/firebase';
+import { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { StatusButton } from "@/components/ui/status-button";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
+import { Save, Loader2, ChevronRight, ChevronLeft, CheckCircle2, ClipboardList, Settings2, Building2, AlertCircle } from "@/components/ui/manager-icons";
+import { useToast } from "@/hooks/use-toast";
+import { auth } from "@/lib/firebase";
 
 
-import { RequirementsStepTwo } from './RequirementsStepTwo';
-import { LocationRequirements, WizardStep, WIZARD_STEPS } from './types';
+import { RequirementsStepTwo } from "./RequirementsStepTwo";
+import { LocationRequirements, WizardStep, WIZARD_STEPS } from "./types";
 
 export interface ApplicationRequirementsWizardHandle {
   /** Trigger a save of the current requirements state. Returns a promise that resolves when save completes. */

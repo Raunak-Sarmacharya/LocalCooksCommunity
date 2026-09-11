@@ -1,0 +1,53 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Manager Storage Bookings Navigation",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    { "id": "navigation", "label": "Manager Navigation" },
+    { "id": "page", "label": "Storage Bookings Page" },
+    { "id": "data", "label": "Manager-Scoped Data" }
+  ],
+  "mainPath": ["manager", "storageParent", "storagePage", "storageApi", "storageRecords"],
+  "nodes": [
+    { "id": "manager", "lane": "navigation", "col": 0, "type": "external", "label": "Manager", "sublabel": "opens dashboard" },
+    { "id": "storageParent", "lane": "navigation", "col": 1, "type": "frontend", "label": "My Storage Bookings", "sublabel": "clickable parent page", "width": 180 },
+    { "id": "storageChildren", "lane": "navigation", "col": 3, "type": "frontend", "label": "Storage Children", "sublabel": "always-visible links", "width": 158 },
+    { "id": "storagePage", "lane": "page", "col": 2, "type": "frontend", "label": "My Storage Bookings", "sublabel": "My Bookings page pattern", "width": 174 },
+    { "id": "tanstackTable", "lane": "page", "col": 3, "type": "frontend", "label": "TanStack Table", "sublabel": "search, filters, sorting, pages", "width": 164 },
+    { "id": "childPages", "lane": "page", "col": 5, "type": "frontend", "label": "Operational Pages", "sublabel": "check-in, penalties, inspections", "width": 174 },
+    { "id": "storageApi", "lane": "data", "col": 3, "type": "backend", "label": "Manager Storage API", "sublabel": "ownership-scoped query", "width": 170 },
+    { "id": "storageRecords", "lane": "data", "col": 4, "type": "database", "label": "Storage Bookings", "sublabel": "listing, kitchen, chef, location", "width": 172 },
+    { "id": "breadcrumbs", "lane": "data", "col": 0, "type": "frontend", "label": "Breadcrumbs", "sublabel": "My Storage Bookings › child", "width": 176 }
+  ],
+  "edges": [
+    { "from": "manager", "to": "storageParent", "label": "select" },
+    { "from": "storageParent", "to": "storagePage", "label": "open parent" },
+    { "from": "storageParent", "to": "storageChildren", "label": "show children" },
+    { "from": "storagePage", "to": "tanstackTable", "label": "render bookings" },
+    { "from": "storagePage", "to": "storageApi", "label": "fetch" },
+    { "from": "storageApi", "to": "storageRecords", "label": "join owned records" },
+    { "from": "storageChildren", "to": "childPages", "label": "navigate" },
+    { "from": "childPages", "to": "breadcrumbs", "label": "derive trail" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Parent Page Contract",
+      "items": [
+        "My Storage Bookings is a real page modeled on My Bookings",
+        "The table supports search, status and location filters, sorting, and pagination"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Child Page Contract",
+      "items": [
+        "Storage Check-In / Out, Overstay Penalties, and Storage Inspections stay separate pages",
+        "Each child keeps Storage Bookings highlighted and shows the parent breadcrumb"
+      ]
+    }
+  ]
+}

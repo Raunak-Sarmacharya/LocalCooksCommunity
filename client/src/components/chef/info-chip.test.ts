@@ -1,13 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
-import {
-  defaultInfoChipIcon,
-  infoChipIconClass,
-  infoChipIconShellClass,
-  prepareInfoChipIcon,
-  sanitizeInfoChipIconClass,
-  statusVariantToTone,
-} from "@/components/chef/info-chip";
+import { defaultInfoChipIcon, infoChipIconClass, infoChipIconShellClass, prepareInfoChipIcon, sanitizeInfoChipIconClass, statusVariantToTone } from "@/components/chef/info-chip";
 
 describe("InfoChip tone helpers", () => {
   it("maps badge variants to tones for icon color", () => {

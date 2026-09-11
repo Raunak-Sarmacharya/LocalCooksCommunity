@@ -2,25 +2,7 @@ import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
 import React, { useMemo, useState, useCallback } from "react";
 import { useLocation } from "wouter";
-import {
-    CheckCircle2,
-    Circle,
-    Clock,
-    ArrowRight,
-    Building,
-    ChefHat,
-    CalendarClock,
-    ClipboardList,
-    FileCheck,
-    CreditCard,
-    Package,
-    Wrench,
-    PartyPopper,
-    AlertCircle,
-    Shield,
-    Rocket,
-    Loader2
-} from "@/components/ui/manager-icons";
+import { CheckCircle2, Circle, Clock, ArrowRight, Building, Calendar, CalendarClock, ClipboardList, FileCheck, CreditCard, Package, Wrench, PartyPopper, AlertCircle, Shield, Rocket, Loader2 } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
@@ -73,7 +55,7 @@ export default function CompletionSummaryStep() {
         // 2. Kitchen Space
         items.push({
             id: "kitchen",
-            icon: ChefHat,
+            icon: Calendar,
             label: mt("onboardingKitchenSpace"),
             status: kitchens.length > 0 ? 'complete' : 'incomplete',
             isRequired: true,

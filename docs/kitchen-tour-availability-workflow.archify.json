@@ -1,0 +1,45 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Kitchen-Specific Tour Availability",
+    "quality_profile": "showcase",
+    "output": "docs/kitchen-tour-availability-workflow.html"
+  },
+  "lanes": [
+    { "id": "manager", "label": "Manager Availability" },
+    { "id": "api", "label": "Tour API" },
+    { "id": "storage", "label": "Kitchen-Scoped Storage" },
+    { "id": "chef", "label": "Chef Tour Request" }
+  ],
+  "phases": [
+    { "id": "configure", "label": "Configure", "fromCol": 0, "toCol": 1 },
+    { "id": "persist", "label": "Persist + calculate", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "book", "label": "Discover + book", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": ["select_kitchen", "edit_schedule", "save_api", "kitchen_tables", "discover_slots", "book_tour", "kitchen_conflict"],
+  "nodes": [
+    { "id": "select_kitchen", "lane": "manager", "col": 0, "type": "frontend", "label": "Select Kitchen", "sublabel": "availability dropdown" },
+    { "id": "edit_schedule", "lane": "manager", "col": 1, "type": "frontend", "label": "Edit Tour Rules", "sublabel": "dirty against baseline", "width": 116 },
+    { "id": "save_api", "lane": "api", "col": 2, "type": "backend", "label": "Save by kitchenId", "sublabel": "settings / hours / blackouts", "width": 124 },
+    { "id": "kitchen_tables", "lane": "storage", "col": 3, "type": "database", "label": "Kitchen Tour Tables", "sublabel": "kitchen_id is scope", "width": 138 },
+    { "id": "discover_slots", "lane": "chef", "col": 4, "type": "frontend", "label": "Discover Slots", "sublabel": "selected kitchen only" },
+    { "id": "book_tour", "lane": "api", "col": 5, "type": "backend", "label": "Book Tour", "sublabel": "validate kitchen + location", "width": 116 },
+    { "id": "kitchen_conflict", "lane": "storage", "col": 5, "type": "security", "label": "Conflict Check", "sublabel": "same kitchen only" },
+    { "id": "refresh_baseline", "lane": "manager", "col": 3, "type": "messagebus", "label": "Refresh Baseline", "sublabel": "Save disabled again", "width": 120 }
+  ],
+  "edges": [
+    { "id": "select_edit", "from": "select_kitchen", "to": "edit_schedule" },
+    { "id": "edit_save", "from": "edit_schedule", "to": "save_api", "label": "changed values", "variant": "emphasis" },
+    { "id": "save_store", "from": "save_api", "to": "kitchen_tables", "label": "upsert / replace" },
+    { "id": "store_discover", "from": "kitchen_tables", "to": "discover_slots", "label": "available slots", "variant": "emphasis" },
+    { "id": "discover_book", "from": "discover_slots", "to": "book_tour", "label": "kitchenId + locationId" },
+    { "id": "book_conflict", "from": "book_tour", "to": "kitchen_conflict", "label": "overlap guard", "variant": "security" },
+    { "id": "saved_refresh", "from": "kitchen_tables", "to": "refresh_baseline", "label": "saved response", "variant": "dashed" },
+    { "id": "refresh_edit", "from": "refresh_baseline", "to": "edit_schedule", "label": "new baseline", "variant": "dashed", "role": "return" }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "Save Contract", "items": ["Defaults form the baseline even before a row exists", "Any edit enables its matching Save button", "A successful save resets only that baseline"] },
+    { "dot": "cyan", "title": "Kitchen Scope", "items": ["Settings, hours, blackouts, slots, and conflicts share kitchenId", "locationId remains for ownership and reporting"] }
+  ]
+}

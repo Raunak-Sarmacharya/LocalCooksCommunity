@@ -3,47 +3,19 @@
  * Enterprise-grade reusable component for creating and editing custom application fields
  */
 
-import { useState } from 'react';
+import { useState } from "react";
 import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Badge } from '@/components/ui/badge';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
-  Plus,
-  X,
-  Pencil,
-  Trash2,
-  GripVertical,
-  Type,
-  AlignLeft,
-  Hash,
-  ChevronDown,
-  CheckSquare,
-  Calendar,
-  Upload,
-  Cloud,
-  AlertCircle,
-} from '@/components/ui/manager-icons';
-import { CustomField, CUSTOM_FIELD_TYPES } from './types';
-import { FormLegend } from '@/components/ui/form-legend';
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Plus, X, Pencil, Trash2, GripVertical, Type, AlignLeft, Hash, ChevronDown, CheckSquare, Calendar, Upload, Cloud, AlertCircle } from "@/components/ui/manager-icons";
+import { CustomField, CUSTOM_FIELD_TYPES } from "./types";
+import { FormLegend } from "@/components/ui/form-legend";
 
 interface CustomFieldBuilderProps {
   fields: CustomField[];

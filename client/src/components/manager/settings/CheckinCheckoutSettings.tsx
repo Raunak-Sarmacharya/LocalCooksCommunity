@@ -8,53 +8,23 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { mt } from "@/i18n/manager";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  Loader2,
-  Lock,
-  AlertTriangle,
-  KeyRound,
-  Hash,
-  Copy,
-  Eye,
-  EyeOff,
-  ChefHat,
-  Clock,
-  Info,
-} from "@/components/ui/manager-icons";
+import { Loader2, Lock, AlertTriangle, KeyRound, Hash, Copy, Eye, EyeOff, Calendar, Clock, Info } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiGet, apiPut } from "@/lib/api";
 import type {
   ChecklistItem,
   PhotoRequirement,
 } from "./shared/ChecklistEditor";
-import {
-  KitchenCheckinCheckoutEditor,
-  itemsToStorage,
-  unifyStorageToItems,
-  validateUnifiedItems,
-  type UnifiedChecklistItem,
-} from "./KitchenCheckinCheckoutEditor";
+import { KitchenCheckinCheckoutEditor, itemsToStorage, unifyStorageToItems, validateUnifiedItems, type UnifiedChecklistItem } from "./KitchenCheckinCheckoutEditor";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -355,7 +325,7 @@ function AccessCodesSection({ locationId }: { locationId: number }) {
           </div>
         ) : kitchensList.length === 0 ? (
           <div className="text-center py-6 text-sm text-muted-foreground border border-dashed rounded-lg">
-            <ChefHat className="size-8 text-muted-foreground/40 mx-auto mb-2" />{mt("noKitchensFoundAtThisLocation")}</div>
+            <Calendar className="size-8 text-muted-foreground/40 mx-auto mb-2" />{mt("noKitchensFoundAtThisLocation")}</div>
         ) : (
           kitchensList.map((kitchen) => {
             const config = kitchen.smartLockConfig || {};
@@ -373,7 +343,7 @@ function AccessCodesSection({ locationId }: { locationId: number }) {
                 {/* Kitchen Header Row */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <ChefHat className="size-4 text-muted-foreground" />
+                    <Calendar className="size-4 text-muted-foreground" />
                     <span className="text-sm font-medium">{kitchen.name}</span>
                   </div>
                   <div className="flex items-center gap-2">

@@ -1,10 +1,4 @@
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoChip } from "@/components/chef/info-chip";
 import { cn } from "@/lib/utils";
 import DocumentUpload from "@/components/document-verification/DocumentUpload";

@@ -1,20 +1,7 @@
 import { Link } from "wouter";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  BadgeCheck,
-  BookOpen,
-  Building,
-  Check,
-  Clock,
-  Compass,
-  FileText,
-  HelpCircle,
-  Home,
-  Shield,
-  Store,
-  User,
-} from "lucide-react";
+import { BadgeCheck, BookOpen, Building, Check, Clock, Compass, FileText, HelpCircle, Home, Shield, Store, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { SKILLSPASS_OFFICIAL_CERT_URL } from "@/config/skillspass";

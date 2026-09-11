@@ -18,31 +18,16 @@ import { useTranslation, Trans } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, LogIn, Camera } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import {
-  useLocationChecklist,
-  type ChecklistItem,
-  type PhotoRequirement,
-} from "@/hooks/use-location-checklist";
+import { useLocationChecklist, type ChecklistItem, type PhotoRequirement } from "@/hooks/use-location-checklist";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { FormLegend } from "@/components/ui/form-legend";
-import {
-  PhotoRequirementUploader,
-  flattenPhotos,
-  areAllRequiredPhotosUploaded,
-} from "./PhotoRequirementUploader";
+import { PhotoRequirementUploader, flattenPhotos, areAllRequiredPhotosUploaded } from "./PhotoRequirementUploader";
 
 interface StorageCheckinDialogProps {
   open: boolean;

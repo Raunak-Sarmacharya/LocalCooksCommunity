@@ -46,7 +46,6 @@ export const CheckCheck = managerIcon("mdi:check-all");
 export const CheckCircle = managerIcon("mdi:check-circle-outline");
 export const CheckCircle2 = CheckCircle;
 export const CheckSquare = managerIcon("mdi:checkbox-marked-outline");
-export const ChefHat = managerIcon("mdi:chef-hat");
 export const ChevronDown = managerIcon("mdi:chevron-down");
 export const ChevronLeft = managerIcon("mdi:chevron-left");
 export const ChevronRight = managerIcon("mdi:chevron-right");

@@ -7,15 +7,15 @@ import { mt } from "@/i18n/manager";
  * after the platform service fee is deducted.
  */
 
-import { useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, CreditCard, CheckCircle2, AlertCircle, ExternalLink, Clock, ShieldAlert, Ban } from '@/components/ui/manager-icons';
-import { toast } from '@/hooks/use-toast';
-import { useFirebaseAuth } from '@/hooks/use-auth';
-import { auth } from '@/lib/firebase';
+import { useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Loader2, CreditCard, CheckCircle2, AlertCircle, ExternalLink, Clock, ShieldAlert, Ban } from "@/components/ui/manager-icons";
+import { toast } from "@/hooks/use-toast";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { auth } from "@/lib/firebase";
 import { tt } from "@/i18n/common-ns";
 
 export default function StripeConnectSetup() {

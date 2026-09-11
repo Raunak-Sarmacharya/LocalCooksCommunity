@@ -8,12 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  Edit3,
-  Lock,
-  X,
-  Info,
-} from "lucide-react";
+import { Edit3, Lock, X, Info } from "lucide-react";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
 import ChangePassword from "@/components/auth/ChangePassword";
@@ -21,11 +16,7 @@ import { useTranslation } from "react-i18next";
 import { tt } from "@/i18n/common-ns";
 import type { PasswordFormMode } from "@/components/auth/password-form-mode";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { motion } from "framer-motion";
 import { StatusDot } from "@/components/chef/ui";
 import { InfoChip } from "@/components/chef/info-chip";

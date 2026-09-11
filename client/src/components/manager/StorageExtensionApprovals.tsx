@@ -2,7 +2,7 @@ import { useState } from "react";
 import { mt } from "@/i18n/manager";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Check, X, Package, Clock, AlertCircle, CheckCircle, Calendar, ChefHat } from "@/components/ui/manager-icons";
+import { Check, X, Package, Clock, AlertCircle, CheckCircle, Calendar } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -212,7 +212,7 @@ export function StorageExtensionApprovals() {
                   </p>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1">
-                      <ChefHat className="h-3 w-3" />
+                      <Calendar className="h-3 w-3" />
                       {extension.chefEmail}
                     </span>
                     <span className="flex items-center gap-1">

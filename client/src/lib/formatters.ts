@@ -6,14 +6,7 @@
  * Delegates locale-aware formatting to @shared/i18n (default en-CA).
  */
 
-import {
-  formatCurrency as sharedFormatCurrency,
-  formatDate as sharedFormatDate,
-  formatNumber as sharedFormatNumber,
-  formatRelativeTime as sharedFormatRelativeTime,
-  DEFAULT_LOCALE,
-  DEFAULT_TIMEZONE,
-} from "@shared/i18n";
+import { formatCurrency as sharedFormatCurrency, formatDate as sharedFormatDate, formatNumber as sharedFormatNumber, formatRelativeTime as sharedFormatRelativeTime, DEFAULT_LOCALE, DEFAULT_TIMEZONE } from "@shared/i18n";
 
 /**
  * Format amount in cents to currency string

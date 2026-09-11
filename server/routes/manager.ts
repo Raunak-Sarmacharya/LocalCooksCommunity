@@ -3613,6 +3613,46 @@ router.get(
   },
 );
 
+// Get all storage bookings belonging to this manager's locations.
+router.get(
+  "/storage-bookings",
+  requireFirebaseAuthWithUser,
+  requireManager,
+  async (req: Request, res: Response) => {
+    try {
+      const managerId = req.neonUser!.id;
+      const bookings = await db
+        .select({
+          id: storageBookingsTable.id,
+          referenceCode: storageBookingsTable.referenceCode,
+          storageName: storageListings.name,
+          storageType: storageListings.storageType,
+          kitchenName: kitchens.name,
+          locationName: locations.name,
+          chefName: users.username,
+          startDate: storageBookingsTable.startDate,
+          endDate: storageBookingsTable.endDate,
+          status: storageBookingsTable.status,
+          totalPrice: storageBookingsTable.totalPrice,
+          currency: storageBookingsTable.currency,
+          createdAt: storageBookingsTable.createdAt,
+        })
+        .from(storageBookingsTable)
+        .innerJoin(storageListings, eq(storageBookingsTable.storageListingId, storageListings.id))
+        .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+        .innerJoin(locations, eq(kitchens.locationId, locations.id))
+        .leftJoin(users, eq(storageBookingsTable.chefId, users.id))
+        .where(eq(locations.managerId, managerId))
+        .orderBy(desc(storageBookingsTable.createdAt));
+
+      res.json(bookings.map((booking) => ({ ...booking, chefName: booking.chefName || "—" })));
+    } catch (error) {
+      logger.error("Error fetching manager storage bookings:", error);
+      return errorResponse(res, error);
+    }
+  },
+);
+
 // Manager: Get manager profile
 router.get(
   "/profile",

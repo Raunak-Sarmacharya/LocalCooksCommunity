@@ -1,35 +1,12 @@
 import { Fragment, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import {
-  ColumnDef,
-  ExpandedState,
-  flexRender,
-  getCoreRowModel,
-  getExpandedRowModel,
-  getSortedRowModel,
-  SortingState,
-  useReactTable,
-} from "@tanstack/react-table";
+import { ColumnDef, ExpandedState, flexRender, getCoreRowModel, getExpandedRowModel, getSortedRowModel, SortingState, useReactTable } from "@tanstack/react-table";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { InfoChip } from "@/components/chef/info-chip";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Loader2,
-  Eye,
-  ChevronDown,
-  ChevronRight,
-  MapPin,
-  MessageSquare,
-} from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Loader2, Eye, ChevronDown, ChevronRight, MapPin, MessageSquare } from "lucide-react";
 import { Icon } from "@iconify/react";
 import { DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { auth } from "@/lib/firebase";
@@ -37,13 +14,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Link } from "wouter";
 import { tt } from "@/i18n/common-ns";
-import {
-  ChefTourRow,
-  chefTourRowHasDetails,
-  formatTourWhen,
-  normalizeChefTourRow,
-  viewingStatusBadge,
-} from "@/lib/chef-viewing-display";
+import { ChefTourRow, chefTourRowHasDetails, formatTourWhen, normalizeChefTourRow, viewingStatusBadge } from "@/lib/chef-viewing-display";
 
 function getTourColumns(
   t: (key: string, defaultValue?: string | Record<string, unknown>) => string

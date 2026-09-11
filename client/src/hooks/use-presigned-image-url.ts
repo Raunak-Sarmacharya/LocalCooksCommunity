@@ -1,6 +1,6 @@
 import { logger } from "@/lib/logger";
-import { useState, useEffect } from 'react';
-import { auth } from '@/lib/firebase';
+import { useState, useEffect } from "react";
+import { auth } from "@/lib/firebase";
 
 /**
  * Hook to fetch presigned URL for an image from the bucket

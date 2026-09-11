@@ -5,16 +5,7 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  ShieldCheck, 
-  Loader2, 
-  ArrowRight, 
-  ArrowDown,
-  ScrollText, 
-  Lock, 
-  CheckCircle2,
-  AlertCircle
-} from "lucide-react";
+import { ShieldCheck, Loader2, ArrowRight, ArrowDown, ScrollText, Lock, CheckCircle2, AlertCircle } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation, Redirect } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";

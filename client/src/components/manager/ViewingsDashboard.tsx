@@ -9,70 +9,22 @@
 import { useState } from "react"
 import { mt } from "@/i18n/manager"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import {
-  Eye,
-  Clock,
-  User,
-  Loader2,
-  MoreHorizontal,
-  CheckCircle,
-  XCircle,
-  AlertTriangle,
-  Calendar,
-  MapPin,
-  RefreshCw,
-  Briefcase,
-  FileText,
-  Settings,
-} from "@/components/ui/manager-icons"
+import { Eye, Clock, User, Loader2, MoreHorizontal, CheckCircle, XCircle, AlertTriangle, Calendar, MapPin, RefreshCw, Briefcase, FileText } from "@/components/ui/manager-icons"
 import { toast } from "sonner"
 import { auth } from "@/lib/firebase"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetFooter,
-} from "@/components/ui/sheet"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetFooter } from "@/components/ui/sheet"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import { format, isPast, isFuture } from "date-fns"
-import ViewingSettingsPanel from "./ViewingSettingsPanel"
 
 // ─── Auth Helper ──────────────────────────────────────────────────────────────
 
@@ -178,7 +130,6 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
   const [noShowReason, setNoShowReason] = useState("")
   const [cancellationReason, setCancellationReason] = useState("")
   const [activeTab, setActiveTab] = useState("upcoming")
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
   // Fetch viewings
   const queryUrl = locationId
@@ -409,14 +360,6 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
                 disabled={isLoading}
               >
                 <RefreshCw className={cn("h-4 w-4 mr-1", isLoading && "animate-spin")} />{mt("refresh")}</Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="shrink-0"
-                onClick={() => setIsSettingsOpen(true)}
-                title={mt("viewingSettings")}
-              >
-                <Settings className="h-4 w-4 mr-2" />{mt("settings")}</Button>
             </div>
           </div>
 
@@ -672,26 +615,6 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
         </SheetContent>
       </Sheet>
 
-      {/* Settings Sheet */}
-      <Sheet open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-        <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
-          <SheetHeader className="mb-6">
-            <SheetTitle>{mt("viewingSettings")}</SheetTitle>
-            <SheetDescription>{mt("configureHowChefsCanBookViewingsAtThisLocation")}</SheetDescription>
-          </SheetHeader>
-          <div className="py-2">
-            {locationId ? (
-              <ViewingSettingsPanel locationId={locationId} />
-            ) : (
-              <div className="text-center py-12 text-muted-foreground border rounded-lg bg-gray-50/50">
-                <Settings className="h-8 w-8 mx-auto mb-3 opacity-40" />
-                <p className="text-sm font-medium">{mt("selectALocationToManageSettings")}</p>
-                <p className="text-xs mt-1">{mt("viewingSettingsAreConfiguredPerLocation")}</p>
-              </div>
-            )}
-          </div>
-        </SheetContent>
-      </Sheet>
     </>
   )
 }

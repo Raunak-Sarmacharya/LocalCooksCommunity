@@ -1,24 +1,17 @@
 import { logger } from "@/lib/logger";
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
-import { Skeleton } from '@/components/ui/skeleton';
-import { SKILLSPASS_OFFICIAL_CERT_URL } from '@/config/skillspass';
-import { useCustomAlerts } from '@/components/ui/custom-alerts';
-import { useFirebaseAuth } from '@/hooks/use-auth';
-import { auth } from '@/lib/firebase';
-import { cn } from '@/lib/utils';
-import { useQuery } from '@tanstack/react-query';
-import {
-  BookOpen,
-  Download,
-  ExternalLink,
-  Play,
-  Shield,
-  type LucideIcon,
-} from 'lucide-react';
-import { useState, type ReactNode } from 'react';
-import { useTranslation } from 'react-i18next';
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
+import { SKILLSPASS_OFFICIAL_CERT_URL } from "@/config/skillspass";
+import { useCustomAlerts } from "@/components/ui/custom-alerts";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { auth } from "@/lib/firebase";
+import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
+import { BookOpen, Download, ExternalLink, Play, Shield, type LucideIcon } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { ChefPageHeader } from "@/components/chef/ui";
 import TrainingVideoPlayer from './TrainingVideoPlayer';
 import { tt } from "@/i18n/common-ns";

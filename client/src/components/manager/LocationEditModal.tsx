@@ -13,28 +13,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-  FormDescription,
-} from "@/components/ui/form";
-import {
-  Building2, MapPin, Mail, Phone, Clock, Calendar,
-  Globe, Save, Loader2, CheckCircle,
-  XCircle, AlertCircle, FileText
-} from "@/components/ui/manager-icons";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
+import { Building2, MapPin, Mail, Phone, Clock, Calendar, Globe, Save, Loader2, CheckCircle, XCircle, AlertCircle, FileText } from "@/components/ui/manager-icons";
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { auth } from "@/lib/firebase";
 import { cn } from "@/lib/utils";

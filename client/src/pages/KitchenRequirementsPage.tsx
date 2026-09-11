@@ -341,11 +341,11 @@ export default function KitchenRequirementsPage() {
             </div>
 
             {/* Schedule Viewing Widget as Modal */}
-            {user && !isStep1Done && (
+            {user && !isStep1Done && kitchen?.id && (
                 <ScheduleViewingWidget 
                     locationId={Number(locationId)} 
                     locationName={locationData?.location?.name || kitchen?.name}
-                    targetedKitchenId={kitchen?.id} 
+                    targetedKitchenId={kitchen.id}
                     targetedKitchenName={kitchen?.name}
                     open={showTourModal}
                     onClose={() => setShowTourModal(false)}

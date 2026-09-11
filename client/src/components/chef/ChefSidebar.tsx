@@ -1,44 +1,18 @@
 "use client"
 
 import * as React from "react"
-import {
-    Sidebar,
-    SidebarContent,
-    SidebarFooter,
-    SidebarGroup,
-    SidebarGroupLabel,
-    SidebarHeader,
-    SidebarMenu,
-    SidebarMenuButton,
-    SidebarMenuItem,
-    SidebarMenuBadge,
-    SidebarMenuSub,
-    SidebarMenuSubItem,
-    SidebarRail,
-    useSidebar,
-} from "@/components/ui/sidebar"
+import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuBadge, SidebarMenuSub, SidebarMenuSubItem, SidebarRail, useSidebar } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 import Logo from "@/components/ui/logo"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useFirebaseAuth } from "@/hooks/use-auth"
 import { useTranslation } from "react-i18next"
 import type { TFunction } from "i18next"
 import { LanguageMenuSection } from "@/components/i18n/LanguageSwitcher"
 import { Icon } from "@iconify/react"
 import "@/lib/kitchen-inventory-icons"
-import {
-    chefNavSections,
-    sidebarBranchForView,
-    type ChefBreadcrumb,
-    type ChefNavItem,
-} from "@/lib/chef-nav-sections"
+import { chefNavSections, sidebarBranchForView, type ChefBreadcrumb, type ChefNavItem } from "@/lib/chef-nav-sections"
 
 function sectionHasHeader(title: string | undefined, itemCount: number) {
     return Boolean(title) && itemCount > 1

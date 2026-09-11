@@ -1,15 +1,15 @@
 import { logger } from "@/lib/logger";
 import { normalizeChatSystemMessage } from "@/lib/chat-system-message";
 import { useTranslation } from "react-i18next";
-import { useState, useRef, useEffect } from 'react';
-import { X, Info, FileText } from 'lucide-react';
-import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { useState, useRef, useEffect } from "react";
+import { X, Info, FileText } from "lucide-react";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import FacilityDocumentsPanel from './FacilityDocumentsPanel';
-import { useChat } from '@/hooks/use-chat';
-import { usePresignedDocumentUrl } from '@/hooks/use-presigned-document-url';
-import { Timestamp } from 'firebase/firestore';
+import { useChat } from "@/hooks/use-chat";
+import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
+import { Timestamp } from "firebase/firestore";
 
 // Authenticated file link component for chat attachments
 function AuthenticatedFileLink({ url, fileName, className }: { url: string | null | undefined; fileName?: string; className?: string }) {
@@ -39,11 +39,11 @@ function AuthenticatedFileLink({ url, fileName, className }: { url: string | nul
 }
 
 // Shadcn Chat Components
-import { ChatBubble } from '@/components/ui/chat/chat-bubble';
-import { ChatInput } from '@/components/ui/chat/chat-input';
-import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
-import { ChatAvatar } from '@/components/ui/chat/chat-avatar';
-import { Separator } from '@/components/ui/separator';
+import { ChatBubble } from "@/components/ui/chat/chat-bubble";
+import { ChatInput } from "@/components/ui/chat/chat-input";
+import { ChatMessageList } from "@/components/ui/chat/chat-message-list";
+import { ChatAvatar } from "@/components/ui/chat/chat-avatar";
+import { Separator } from "@/components/ui/separator";
 
 interface ChatPanelProps {
   conversationId: string;

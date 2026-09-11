@@ -1,30 +1,19 @@
 import { logger } from "@/lib/logger";
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
-import { useCustomAlerts } from '@/components/ui/custom-alerts';
-import { useFirebaseAuth } from '@/hooks/use-auth';
-import { useTranslation } from 'react-i18next';
-import { auth } from '@/lib/firebase';
-import { cn } from '@/lib/utils';
-import { useQueryClient } from '@tanstack/react-query';
-import { useRef } from 'react';
-import { SKILLSPASS_OFFICIAL_CERT_URL } from '@/config/skillspass';
-import {
-  Award,
-  CheckCircle,
-  ChevronLeft,
-  ChevronRight,
-  Download,
-  ExternalLink,
-  FileText,
-  Lock,
-  Play,
-  Shield
-} from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'wouter';
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { useCustomAlerts } from "@/components/ui/custom-alerts";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { useTranslation } from "react-i18next";
+import { auth } from "@/lib/firebase";
+import { cn } from "@/lib/utils";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRef } from "react";
+import { SKILLSPASS_OFFICIAL_CERT_URL } from "@/config/skillspass";
+import { Award, CheckCircle, ChevronLeft, ChevronRight, Download, ExternalLink, FileText, Lock, Play, Shield } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "wouter";
 import VideoPlayer from '@/components/microlearning/VideoPlayer';
 
 interface VideoData {

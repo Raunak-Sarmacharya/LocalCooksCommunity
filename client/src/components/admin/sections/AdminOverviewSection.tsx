@@ -1,17 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  Shield,
-  FileText,
-  Building2,
-  DollarSign,
-  Users,
-  ChefHat,
-  AlertTriangle,
-  Loader2,
-  ArrowRight,
-} from "lucide-react";
+import { Shield, FileText, Building2, DollarSign, Users, Calendar, AlertTriangle, Loader2, ArrowRight } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import type { AdminSection } from "@/components/admin/layout/AdminSidebar";
 
@@ -251,7 +241,7 @@ export function AdminOverviewSection({
             <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => onNavigate("kitchen-management")}>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base font-semibold flex items-center gap-2">
-                  <ChefHat className="h-4 w-4 text-purple-600" />
+                  <Calendar className="h-4 w-4 text-purple-600" />
                   Kitchen Management
                 </CardTitle>
               </CardHeader>

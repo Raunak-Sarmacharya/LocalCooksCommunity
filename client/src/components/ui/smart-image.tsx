@@ -1,12 +1,4 @@
-import {
-  forwardRef,
-  useCallback,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ImgHTMLAttributes,
-  type SyntheticEvent,
-} from "react";
+import { forwardRef, useCallback, useLayoutEffect, useRef, useState, type ImgHTMLAttributes, type SyntheticEvent } from "react";
 import { cn } from "@/lib/utils";
 
 export interface SmartImageProps extends ImgHTMLAttributes<HTMLImageElement> {

@@ -1,10 +1,6 @@
 import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
-import { 
-  Package, Plus, Check, Loader2, Pencil, Trash2, Search,
-  Thermometer, Snowflake, Grid3X3, DollarSign, PlusCircle, SearchX,
-  AlertTriangle
-} from "@/components/ui/manager-icons";
+import { Package, Plus, Check, Loader2, Pencil, Trash2, Search, Thermometer, Snowflake, Grid3X3, DollarSign, PlusCircle, SearchX, AlertTriangle } from "@/components/ui/manager-icons";
 import { useState, useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -22,31 +18,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown, ChevronUp } from "@/components/ui/manager-icons";
 import { ManagerPageLayout } from "@/components/layout/ManagerPageLayout";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
-import {
-  STORAGE_CATEGORIES,
-  StorageTemplate,
-  StorageTypeId,
-  ACCESS_TYPE_LABELS,
-  getDefaultTemperatureRange,
-} from "@/lib/storage-templates";
+import { STORAGE_CATEGORIES, StorageTemplate, StorageTypeId, ACCESS_TYPE_LABELS, getDefaultTemperatureRange } from "@/lib/storage-templates";
 import { cn } from "@/lib/utils";
 
 const StorageCategoryIcon = ({ iconName, className }: { iconName: string; className?: string }) => {

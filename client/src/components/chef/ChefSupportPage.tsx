@@ -1,26 +1,8 @@
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
-import {
-  MessageCircle,
-  Mail,
-  Phone,
-  HelpCircle,
-  BookOpen,
-  FileText,
-  ChefHat,
-  Building,
-  CreditCard,
-  Shield,
-  ExternalLink,
-  AlertTriangle,
-} from "lucide-react";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { MessageCircle, Mail, Phone, HelpCircle, BookOpen, FileText, Calendar, Building, CreditCard, Shield, ExternalLink, AlertTriangle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useTidioChat } from "@/components/chat/TidioController";
 import { ChefPageHeader, QuietNotice } from "@/components/chef/ui";
@@ -43,7 +25,7 @@ export default function ChefSupportPage({
   const faqItems = [
     {
       category: t("supportCategoryGettingStarted", "Getting started"),
-      icon: ChefHat,
+      icon: Calendar,
       questions: [
         {
           q: t("supportFaqGettingStartedQ1", "How do I complete my chef application?"),
@@ -226,7 +208,7 @@ export default function ChefSupportPage({
         <CardContent className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <Button variant="outline" asChild className="h-auto justify-start py-3">
             <a href="/chef-setup">
-              <ChefHat />
+              <Calendar />
               {t("chefSetupLink", "Chef setup")}
             </a>
           </Button>

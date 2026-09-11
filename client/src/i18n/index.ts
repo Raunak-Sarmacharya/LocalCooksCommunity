@@ -2,15 +2,7 @@ import i18n from "i18next";
 import ICU from "i18next-icu";
 import { initReactI18next } from "react-i18next";
 import resourcesToBackend from "i18next-resources-to-backend";
-import {
-  DEFAULT_LOCALE,
-  SUPPORTED_LOCALES,
-  I18N_NAMESPACES,
-  buildFallbackLng,
-  negotiateLocale,
-  LOCALE_COOKIE,
-  type AppLocale,
-} from "@shared/i18n";
+import { DEFAULT_LOCALE, SUPPORTED_LOCALES, I18N_NAMESPACES, buildFallbackLng, negotiateLocale, LOCALE_COOKIE, type AppLocale } from "@shared/i18n";
 
 function readCookie(name: string): string | null {
   if (typeof document === "undefined") return null;

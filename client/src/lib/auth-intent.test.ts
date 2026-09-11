@@ -1,11 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  coerceTourStepForActor,
-  kitchenActor,
-  nextTourStepAfterSlot,
-  resolvePendingApplyPhase,
-  skipKitchenVerify,
-} from "./auth-intent";
+import { coerceTourStepForActor, kitchenActor, nextTourStepAfterSlot, resolvePendingApplyPhase, skipKitchenVerify } from "./auth-intent";
 
 describe("kitchenActor", () => {
   it("guest → registering → signed_in", () => {

@@ -1,10 +1,10 @@
-import { useState } from 'react';
-import { Search } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { ConversationItem, ApplicationStatus } from './ConversationItem';
-import { Conversation } from '@/services/chat-service';
-import { useTranslation } from 'react-i18next';
+import { useState } from "react";
+import { Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { ConversationItem, ApplicationStatus } from "./ConversationItem";
+import { Conversation } from "@/services/chat-service";
+import { useTranslation } from "react-i18next";
 
 interface ConversationListProps {
   conversations: Conversation[];

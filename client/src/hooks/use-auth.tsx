@@ -3,24 +3,8 @@ import { auth, db } from "@/lib/firebase";
 import { getAuthIntent } from "@/lib/auth-intent";
 import { sendVerificationEmailWithFallback } from "@/lib/send-verification-email";
 import { queryClient } from "@/lib/queryClient";
-import {
-  createUserWithEmailAndPassword,
-  getAdditionalUserInfo,
-  GoogleAuthProvider,
-  isSignInWithEmailLink,
-  onAuthStateChanged,
-  sendEmailVerification,
-  signInWithEmailAndPassword,
-  signInWithEmailLink,
-  signInWithPopup,
-  signOut,
-  updateProfile
-} from "firebase/auth";
-import {
-  doc,
-  serverTimestamp,
-  setDoc
-} from "firebase/firestore";
+import { createUserWithEmailAndPassword, getAdditionalUserInfo, GoogleAuthProvider, isSignInWithEmailLink, onAuthStateChanged, sendEmailVerification, signInWithEmailAndPassword, signInWithEmailLink, signInWithPopup, signOut, updateProfile } from "firebase/auth";
+import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { createContext, ReactNode, useContext, useEffect, useState, useRef, useCallback } from "react";
 import { getSubdomainFromHostname, getRoleLoginOrigin } from "@shared/subdomain-utils";
 import { User, UserWithFlags } from "@shared/schema";

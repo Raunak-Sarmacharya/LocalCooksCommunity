@@ -2,16 +2,9 @@
 import { mt } from "@/i18n/manager";
 
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowUpDown, MoreHorizontal, Eye, MessageCircle, Check, X, ChefHat, Building2, FileText, Clock, Ban } from "@/components/ui/manager-icons"
+import { ArrowUpDown, MoreHorizontal, Eye, MessageCircle, Check, X, Calendar, Building2, FileText, Clock, Ban } from "@/components/ui/manager-icons"
 import { Button } from "@/components/ui/button"
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Application } from "./types"

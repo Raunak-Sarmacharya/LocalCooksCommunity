@@ -3,12 +3,7 @@ import { useTranslation } from "react-i18next";
 import { SmartImage } from "@/components/ui/smart-image";
 import { TruncatedText } from "@/components/common/TruncatedText";
 import { KitchenPhotoPlaceholder } from "@/components/kitchen/KitchenPhotoPlaceholder";
-import {
-  formatEquipmentBreakdown,
-  formatStorageLine,
-  type KitchenGridEquipmentSummary,
-  type KitchenGridStorageSummary,
-} from "@/lib/kitchen-grid-card";
+import { formatEquipmentBreakdown, formatStorageLine, type KitchenGridEquipmentSummary, type KitchenGridStorageSummary } from "@/lib/kitchen-grid-card";
 import { CARD_RADIUS } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";

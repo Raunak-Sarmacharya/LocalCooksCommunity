@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import i18n from "@/i18n";
-import {
-  estimateKitchenBookingPrice,
-  type BookingPriceEstimate,
-} from "@/lib/booking-price-estimate";
+import { estimateKitchenBookingPrice, type BookingPriceEstimate } from "@/lib/booking-price-estimate";
 import { formatHourSlotRange } from "@/lib/formatters";
 
 export type PersistedBookingPricePreview = {

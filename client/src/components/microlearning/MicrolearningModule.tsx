@@ -1,32 +1,16 @@
 import { logger } from "@/lib/logger";
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { useCustomAlerts } from '@/components/ui/custom-alerts';
-import { useFirebaseAuth } from '@/hooks/use-auth';
-import { auth } from '@/lib/firebase';
-import { motion } from 'framer-motion';
-import {
-  ArrowRight,
-  Award,
-  BookOpen,
-  CheckCircle,
-  ChevronLeft,
-  ChevronRight,
-  Circle,
-  Clock,
-  Download,
-  FileText,
-  Lock,
-  Play,
-  Shield,
-  TrendingUp,
-  ExternalLink,
-} from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { Link } from 'wouter';
-import { SKILLSPASS_OFFICIAL_CERT_URL } from '@/config/skillspass';
-import { QuietNotice } from '@/components/chef/ui';
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { useCustomAlerts } from "@/components/ui/custom-alerts";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { auth } from "@/lib/firebase";
+import { motion } from "framer-motion";
+import { ArrowRight, Award, BookOpen, CheckCircle, ChevronLeft, ChevronRight, Circle, Clock, Download, FileText, Lock, Play, Shield, TrendingUp, ExternalLink } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { Link } from "wouter";
+import { SKILLSPASS_OFFICIAL_CERT_URL } from "@/config/skillspass";
+import { QuietNotice } from "@/components/chef/ui";
 import VideoPlayer from './VideoPlayer';
 
 interface VideoData {

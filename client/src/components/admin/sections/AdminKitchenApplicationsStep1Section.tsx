@@ -1,11 +1,7 @@
 import { logger } from "@/lib/logger";
 import { useAdminKitchenApplications } from "@/hooks/use-admin-kitchen-applications";
 import { useToast } from "@/hooks/use-toast";
-import {
-  ExternalLink,
-  Loader2,
-  Shield,
-} from "lucide-react";
+import { ExternalLink, Loader2, Shield } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import ChatPanel from "@/components/chat/ChatPanel";
@@ -13,14 +9,7 @@ import { getConversationForApplication, createConversation } from "@/services/ch
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";

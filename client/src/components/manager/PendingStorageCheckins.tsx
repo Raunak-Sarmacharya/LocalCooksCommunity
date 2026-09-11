@@ -12,55 +12,15 @@
 import { useState, useMemo } from "react";
 import { mt } from "@/i18n/manager";
 import { useQuery } from "@tanstack/react-query";
-import {
-  ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
-  SortingState,
-  useReactTable,
-} from "@tanstack/react-table";
-import {
-  CheckCircle,
-  Clock,
-  Package,
-  User,
-  Image as ImageIcon,
-  Loader2,
-  ArrowUpDown,
-  MapPin,
-  Eye,
-  RefreshCw,
-  LogIn,
-  SkipForward,
-  ClipboardCheck,
-} from "@/components/ui/manager-icons";
+import { ColumnDef, flexRender, getCoreRowModel, getSortedRowModel, SortingState, useReactTable } from "@tanstack/react-table";
+import { CheckCircle, Clock, Package, User, Image as ImageIcon, Loader2, ArrowUpDown, MapPin, Eye, RefreshCw, LogIn, SkipForward, ClipboardCheck } from "@/components/ui/manager-icons";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";

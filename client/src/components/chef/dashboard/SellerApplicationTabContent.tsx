@@ -1,21 +1,12 @@
 import { Button } from "@/components/ui/button";
 import { InfoChip } from "@/components/chef/info-chip";
-import {
-  Card,
-  CardContent,
-  CardFooter,
-} from "@/components/ui/card";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { ChefPageHeader, QuietNotice, StatTile, StatusDot } from "@/components/chef/ui";
 import { TruncatedText } from "@/components/common/TruncatedText";
 import { KitchenApplicationCard } from "@/components/chef/applications";
 import EmptyApplicationState from "./EmptyApplicationState";
 import { KitchenPathEmptyCard, SellerPathEmptyCard } from "./GetStartedPathCards";
-import {
-  documentToneFromLabel,
-  getKitchenDisplayStatus,
-  toneToBadgeVariant,
-  type StatusTone,
-} from "@/components/chef/applications/status";
+import { documentToneFromLabel, getKitchenDisplayStatus, toneToBadgeVariant, type StatusTone } from "@/components/chef/applications/status";
 import { formatApplicationStatus } from "@/lib/applicationSchema";
 import { Application } from "@shared/schema";
 import { ArrowRight, Building, Store } from "lucide-react";

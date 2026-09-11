@@ -30,9 +30,9 @@ import {
   sendEmail
 } from "../email";
 import {
-  locationViewingSettings,
-  locationViewingAvailability,
-  locationViewingBlackouts,
+  kitchenViewingSettings,
+  kitchenViewingAvailability,
+  kitchenViewingBlackouts,
   kitchenViewings,
   locations,
   kitchens,
@@ -40,9 +40,8 @@ import {
   applications,
   insertKitchenViewingSchema,
   updateKitchenViewingStatusSchema,
-  updateLocationViewingSettingsSchema,
-  insertLocationViewingAvailabilitySchema,
-  insertLocationViewingBlackoutSchema,
+  updateKitchenViewingSettingsSchema,
+  insertKitchenViewingBlackoutSchema,
 } from "@shared/schema";
 
 import { getUserDisplayName } from "../utils/user-display";
@@ -72,7 +71,7 @@ interface TimeSlot {
  * 5. Remove slots that violate the advance notice rule
  */
 async function calculateAvailableSlots(
-  locationId: number,
+  kitchenId: number,
   dateStr: string, // YYYY-MM-DD
   timezone: string = "America/St_Johns",
   prefetched?: {
@@ -87,8 +86,8 @@ async function calculateAvailableSlots(
   if (!settings) {
     const [fetchedSettings] = await db
       .select()
-      .from(locationViewingSettings)
-      .where(eq(locationViewingSettings.locationId, locationId))
+      .from(kitchenViewingSettings)
+      .where(eq(kitchenViewingSettings.kitchenId, kitchenId))
       .limit(1);
     settings = fetchedSettings;
   }
@@ -109,12 +108,12 @@ async function calculateAvailableSlots(
   } else {
     availabilityWindows = await db
       .select()
-      .from(locationViewingAvailability)
+      .from(kitchenViewingAvailability)
       .where(
         and(
-          eq(locationViewingAvailability.locationId, locationId),
-          eq(locationViewingAvailability.dayOfWeek, dayOfWeek),
-          eq(locationViewingAvailability.isAvailable, true)
+          eq(kitchenViewingAvailability.kitchenId, kitchenId),
+          eq(kitchenViewingAvailability.dayOfWeek, dayOfWeek),
+          eq(kitchenViewingAvailability.isAvailable, true)
         )
       );
   }
@@ -131,12 +130,12 @@ async function calculateAvailableSlots(
   if (!blackouts) {
     blackouts = await db
       .select()
-      .from(locationViewingBlackouts)
+      .from(kitchenViewingBlackouts)
       .where(
         and(
-          eq(locationViewingBlackouts.locationId, locationId),
-          lte(locationViewingBlackouts.startDate, dayEnd),
-          gte(locationViewingBlackouts.endDate, dayStart)
+          eq(kitchenViewingBlackouts.kitchenId, kitchenId),
+          lte(kitchenViewingBlackouts.startDate, dayEnd),
+          gte(kitchenViewingBlackouts.endDate, dayStart)
         )
       );
   }
@@ -164,7 +163,7 @@ async function calculateAvailableSlots(
       .from(kitchenViewings)
       .where(
         and(
-          eq(kitchenViewings.locationId, locationId),
+          eq(kitchenViewings.targetedKitchenId, kitchenId),
           gte(kitchenViewings.scheduledAt, dayStart),
           lte(kitchenViewings.scheduledAt, dayEnd),
           // Exclude cancelled viewings
@@ -261,21 +260,32 @@ async function calculateAvailableSlots(
 // ===================================
 
 /**
- * GET /api/viewings/calendar-availability/:locationId
- * Get calendar metadata (availability by day of week & blackouts) for a location.
+ * GET /api/viewings/calendar-availability/:kitchenId
+ * Get calendar metadata (availability by day of week & blackouts) for a kitchen.
  * Used by chefs to visually disable unavailable dates on the calendar picker.
  */
 router.get(
-  "/calendar-availability/:locationId",
+  "/calendar-availability/:kitchenId",
   async (req: Request, res: Response) => {
     try {
-      const locationId = parseInt(req.params.locationId);
+      const kitchenId = parseInt(req.params.kitchenId);
+
+      const [kitchenContext] = await db
+        .select({ timezone: locations.timezone })
+        .from(kitchens)
+        .innerJoin(locations, eq(kitchens.locationId, locations.id))
+        .where(eq(kitchens.id, kitchenId))
+        .limit(1);
+
+      if (!kitchenContext) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
 
       // Check if location has viewings enabled
       const [settings] = await db
         .select()
-        .from(locationViewingSettings)
-        .where(eq(locationViewingSettings.locationId, locationId))
+        .from(kitchenViewingSettings)
+        .where(eq(kitchenViewingSettings.kitchenId, kitchenId))
         .limit(1);
 
       if (!settings || !settings.isActive) {
@@ -284,16 +294,16 @@ router.get(
 
       const availability = await db
         .select()
-        .from(locationViewingAvailability)
-        .where(eq(locationViewingAvailability.locationId, locationId));
+        .from(kitchenViewingAvailability)
+        .where(eq(kitchenViewingAvailability.kitchenId, kitchenId));
 
       const blackouts = await db
         .select()
-        .from(locationViewingBlackouts)
+        .from(kitchenViewingBlackouts)
         .where(
           and(
-            eq(locationViewingBlackouts.locationId, locationId),
-            gte(locationViewingBlackouts.endDate, new Date()) // only fetch future/ongoing
+            eq(kitchenViewingBlackouts.kitchenId, kitchenId),
+            gte(kitchenViewingBlackouts.endDate, new Date()) // only fetch future/ongoing
           )
         );
 
@@ -308,7 +318,7 @@ router.get(
         .from(kitchenViewings)
         .where(
           and(
-            eq(kitchenViewings.locationId, locationId),
+            eq(kitchenViewings.targetedKitchenId, kitchenId),
             gte(kitchenViewings.scheduledAt, today),
             lte(kitchenViewings.scheduledAt, endWindow),
             sql`${kitchenViewings.status} != 'cancelled'`
@@ -320,12 +330,12 @@ router.get(
       const { format } = await import('date-fns');
       const prefetched = { settings, availability, blackouts, existingViewings };
       
-      // We assume America/St_Johns timezone for calculation, or location timezone if available in the future
+      const timezone = kitchenContext.timezone || "America/St_Johns";
       for (let i = 0; i <= maxDays; i++) {
         const d = new Date(today);
         d.setDate(d.getDate() + i);
         const dateStr = format(d, "yyyy-MM-dd");
-        const slots = await calculateAvailableSlots(locationId, dateStr, "America/St_Johns", prefetched);
+        const slots = await calculateAvailableSlots(kitchenId, dateStr, timezone, prefetched);
         if (slots.length === 0) {
           fullyBookedDates.push(dateStr);
         }
@@ -351,47 +361,48 @@ router.get(
 // ===================================
 
 /**
- * GET /api/viewings/settings/:locationId
- * Get viewing settings for a location
+ * GET /api/viewings/settings/:kitchenId
+ * Get viewing settings for a kitchen
  */
 router.get(
-  "/settings/:locationId",
+  "/settings/:kitchenId",
   requireFirebaseAuthWithUser,
   requireManager,
   async (req: Request, res: Response) => {
     try {
-      const locationId = parseInt(req.params.locationId);
+      const kitchenId = parseInt(req.params.kitchenId);
       const managerId = req.neonUser!.id;
 
-      // Verify manager owns this location
-      const [location] = await db
-        .select()
-        .from(locations)
-        .where(and(eq(locations.id, locationId), eq(locations.managerId, managerId)))
+      // Verify the kitchen belongs to a location owned by this manager.
+      const [kitchen] = await db
+        .select({ id: kitchens.id })
+        .from(kitchens)
+        .innerJoin(locations, eq(kitchens.locationId, locations.id))
+        .where(and(eq(kitchens.id, kitchenId), eq(locations.managerId, managerId)))
         .limit(1);
 
-      if (!location) {
-        return res.status(404).json({ error: "Location not found or access denied" });
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found or access denied" });
       }
 
       const [settings] = await db
         .select()
-        .from(locationViewingSettings)
-        .where(eq(locationViewingSettings.locationId, locationId))
+        .from(kitchenViewingSettings)
+        .where(eq(kitchenViewingSettings.kitchenId, kitchenId))
         .limit(1);
 
       const availability = await db
         .select()
-        .from(locationViewingAvailability)
-        .where(eq(locationViewingAvailability.locationId, locationId));
+        .from(kitchenViewingAvailability)
+        .where(eq(kitchenViewingAvailability.kitchenId, kitchenId));
 
       const blackoutsList = await db
         .select()
-        .from(locationViewingBlackouts)
+        .from(kitchenViewingBlackouts)
         .where(
           and(
-            eq(locationViewingBlackouts.locationId, locationId),
-            gte(locationViewingBlackouts.endDate, new Date()) // Only future blackouts
+            eq(kitchenViewingBlackouts.kitchenId, kitchenId),
+            gte(kitchenViewingBlackouts.endDate, new Date()) // Only future blackouts
           )
         );
 
@@ -408,30 +419,30 @@ router.get(
 );
 
 /**
- * PUT /api/viewings/settings/:locationId
- * Create or update viewing settings for a location
+ * PUT /api/viewings/settings/:kitchenId
+ * Create or update viewing settings for a kitchen
  */
 router.put(
-  "/settings/:locationId",
+  "/settings/:kitchenId",
   requireFirebaseAuthWithUser,
   requireManager,
   async (req: Request, res: Response) => {
     try {
-      const locationId = parseInt(req.params.locationId);
+      const kitchenId = parseInt(req.params.kitchenId);
       const managerId = req.neonUser!.id;
 
-      // Verify manager owns this location
-      const [location] = await db
-        .select()
-        .from(locations)
-        .where(and(eq(locations.id, locationId), eq(locations.managerId, managerId)))
+      const [kitchen] = await db
+        .select({ id: kitchens.id })
+        .from(kitchens)
+        .innerJoin(locations, eq(kitchens.locationId, locations.id))
+        .where(and(eq(kitchens.id, kitchenId), eq(locations.managerId, managerId)))
         .limit(1);
 
-      if (!location) {
-        return res.status(404).json({ error: "Location not found or access denied" });
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found or access denied" });
       }
 
-      const parsed = updateLocationViewingSettingsSchema.safeParse(req.body);
+      const parsed = updateKitchenViewingSettingsSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() });
       }
@@ -439,33 +450,33 @@ router.put(
       // Check if settings exist
       const [existing] = await db
         .select()
-        .from(locationViewingSettings)
-        .where(eq(locationViewingSettings.locationId, locationId))
+        .from(kitchenViewingSettings)
+        .where(eq(kitchenViewingSettings.kitchenId, kitchenId))
         .limit(1);
 
       let result;
       if (existing) {
         // Update existing
         [result] = await db
-          .update(locationViewingSettings)
+          .update(kitchenViewingSettings)
           .set({
             ...parsed.data,
             updatedAt: new Date(),
           })
-          .where(eq(locationViewingSettings.locationId, locationId))
+          .where(eq(kitchenViewingSettings.kitchenId, kitchenId))
           .returning();
       } else {
         // Create new
         [result] = await db
-          .insert(locationViewingSettings)
+          .insert(kitchenViewingSettings)
           .values({
-            locationId,
+            kitchenId,
             ...parsed.data,
           })
           .returning();
       }
 
-      logger.info(`[Viewings] Settings ${existing ? "updated" : "created"} for location ${locationId} by manager ${managerId}`);
+      logger.info(`[Viewings] Settings ${existing ? "updated" : "created"} for kitchen ${kitchenId} by manager ${managerId}`);
       res.json(result);
     } catch (error) {
       logger.error("Error updating viewing settings:", error);
@@ -475,27 +486,27 @@ router.put(
 );
 
 /**
- * PUT /api/viewings/availability/:locationId
- * Replace all weekly availability for a location (batch update)
+ * PUT /api/viewings/availability/:kitchenId
+ * Replace all weekly availability for a kitchen (batch update)
  */
 router.put(
-  "/availability/:locationId",
+  "/availability/:kitchenId",
   requireFirebaseAuthWithUser,
   requireManager,
   async (req: Request, res: Response) => {
     try {
-      const locationId = parseInt(req.params.locationId);
+      const kitchenId = parseInt(req.params.kitchenId);
       const managerId = req.neonUser!.id;
 
-      // Verify manager owns this location
-      const [location] = await db
-        .select()
-        .from(locations)
-        .where(and(eq(locations.id, locationId), eq(locations.managerId, managerId)))
+      const [kitchen] = await db
+        .select({ id: kitchens.id })
+        .from(kitchens)
+        .innerJoin(locations, eq(kitchens.locationId, locations.id))
+        .where(and(eq(kitchens.id, kitchenId), eq(locations.managerId, managerId)))
         .limit(1);
 
-      if (!location) {
-        return res.status(404).json({ error: "Location not found or access denied" });
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found or access denied" });
       }
 
       const { slots } = req.body;
@@ -506,13 +517,13 @@ router.put(
       // Delete existing and insert new in a transaction
       await db.transaction(async (tx) => {
         await tx
-          .delete(locationViewingAvailability)
-          .where(eq(locationViewingAvailability.locationId, locationId));
+          .delete(kitchenViewingAvailability)
+          .where(eq(kitchenViewingAvailability.kitchenId, kitchenId));
 
         if (slots.length > 0) {
-          await tx.insert(locationViewingAvailability).values(
+          await tx.insert(kitchenViewingAvailability).values(
             slots.map((slot: any) => ({
-              locationId,
+              kitchenId,
               dayOfWeek: slot.dayOfWeek,
               startTime: slot.startTime,
               endTime: slot.endTime,
@@ -525,10 +536,10 @@ router.put(
       // Fetch the updated list
       const updated = await db
         .select()
-        .from(locationViewingAvailability)
-        .where(eq(locationViewingAvailability.locationId, locationId));
+        .from(kitchenViewingAvailability)
+        .where(eq(kitchenViewingAvailability.kitchenId, kitchenId));
 
-      logger.info(`[Viewings] Availability updated for location ${locationId} by manager ${managerId}: ${slots.length} slots`);
+      logger.info(`[Viewings] Availability updated for kitchen ${kitchenId} by manager ${managerId}: ${slots.length} slots`);
       res.json(updated);
     } catch (error) {
       logger.error("Error updating viewing availability:", error);
@@ -538,41 +549,41 @@ router.put(
 );
 
 /**
- * POST /api/viewings/blackouts/:locationId
- * Add a blackout period for a location
+ * POST /api/viewings/blackouts/:kitchenId
+ * Add a blackout period for a kitchen
  */
 router.post(
-  "/blackouts/:locationId",
+  "/blackouts/:kitchenId",
   requireFirebaseAuthWithUser,
   requireManager,
   async (req: Request, res: Response) => {
     try {
-      const locationId = parseInt(req.params.locationId);
+      const kitchenId = parseInt(req.params.kitchenId);
       const managerId = req.neonUser!.id;
 
-      // Verify manager owns this location
-      const [location] = await db
-        .select()
-        .from(locations)
-        .where(and(eq(locations.id, locationId), eq(locations.managerId, managerId)))
+      const [kitchen] = await db
+        .select({ id: kitchens.id, name: kitchens.name, locationId: kitchens.locationId })
+        .from(kitchens)
+        .innerJoin(locations, eq(kitchens.locationId, locations.id))
+        .where(and(eq(kitchens.id, kitchenId), eq(locations.managerId, managerId)))
         .limit(1);
 
-      if (!location) {
-        return res.status(404).json({ error: "Location not found or access denied" });
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found or access denied" });
       }
 
-      const parsed = insertLocationViewingBlackoutSchema.safeParse({
+      const parsed = insertKitchenViewingBlackoutSchema.safeParse({
         ...req.body,
-        locationId,
+        kitchenId,
       });
       if (!parsed.success) {
         return res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() });
       }
 
       const [result] = await db
-        .insert(locationViewingBlackouts)
+        .insert(kitchenViewingBlackouts)
         .values({
-          locationId,
+          kitchenId,
           startDate: new Date(parsed.data.startDate as string),
           endDate: new Date(parsed.data.endDate as string),
           reason: parsed.data.reason,
@@ -585,7 +596,7 @@ router.post(
         .from(kitchenViewings)
         .where(
           and(
-            eq(kitchenViewings.locationId, locationId),
+            eq(kitchenViewings.targetedKitchenId, kitchenId),
             gte(kitchenViewings.scheduledAt, new Date(parsed.data.startDate as string)),
             lte(kitchenViewings.scheduledAt, new Date(parsed.data.endDate as string)),
             sql`${kitchenViewings.status} NOT IN ('cancelled', 'completed', 'no_show')`
@@ -612,8 +623,8 @@ router.post(
               type: "booking_cancelled",
               priority: "high",
               title: "Kitchen Viewing Cancelled",
-              message: `Your scheduled viewing at ${location.name} has been cancelled by the manager. Reason: ${parsed.data.reason || "Schedule change"}. Please book a new time.`,
-              metadata: { viewingId: viewing.id, locationId },
+              message: `Your scheduled viewing of ${kitchen.name} has been cancelled by the manager. Reason: ${parsed.data.reason || "Schedule change"}. Please book a new time.`,
+              metadata: { viewingId: viewing.id, locationId: kitchen.locationId, kitchenId },
               actionUrl: `/dashboard?view=viewings`,
               actionLabel: "Reschedule",
             });
@@ -621,7 +632,7 @@ router.post(
             logger.error("[Viewings] Failed to notify chef of blackout cancellation:", e);
           }
         }
-        logger.info(`[Viewings] Auto-cancelled ${conflicting.length} viewings due to blackout at location ${locationId}`);
+        logger.info(`[Viewings] Auto-cancelled ${conflicting.length} viewings due to blackout for kitchen ${kitchenId}`);
       }
 
       res.json(result);
@@ -645,12 +656,15 @@ router.delete(
       const blackoutId = parseInt(req.params.blackoutId);
       const managerId = req.neonUser!.id;
 
-      // Verify blackout belongs to a location this manager owns
+      // Verify blackout belongs to a kitchen at a location this manager owns.
       const result = await db.execute(sql`
-        DELETE FROM location_viewing_blackouts
+        DELETE FROM kitchen_viewing_blackouts
         WHERE id = ${blackoutId}
-          AND location_id IN (
-            SELECT id FROM locations WHERE manager_id = ${managerId}
+          AND kitchen_id IN (
+            SELECT k.id
+            FROM kitchens k
+            JOIN locations l ON l.id = k.location_id
+            WHERE l.manager_id = ${managerId}
           )
       `);
 
@@ -671,44 +685,49 @@ router.delete(
 // ===================================
 
 /**
- * GET /api/viewings/available-slots/:locationId
+ * GET /api/viewings/available-slots/:kitchenId
  * Get available viewing time slots for a specific date
  * Accessible by authenticated chefs
  */
 router.get(
-  "/available-slots/:locationId",
+  "/available-slots/:kitchenId",
   async (req: Request, res: Response) => {
     try {
-      const locationId = parseInt(req.params.locationId);
+      const kitchenId = parseInt(req.params.kitchenId);
       const dateStr = req.query.date as string; // YYYY-MM-DD
 
       if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
         return res.status(400).json({ error: "date query parameter is required in YYYY-MM-DD format" });
       }
 
-      // Get location timezone (default to St. John's)
-      const [location] = await db
-        .select({ timezone: locations.timezone, name: locations.name })
-        .from(locations)
-        .where(eq(locations.id, locationId))
+      const [kitchen] = await db
+        .select({
+          name: kitchens.name,
+          locationName: locations.name,
+          timezone: locations.timezone,
+        })
+        .from(kitchens)
+        .innerJoin(locations, eq(kitchens.locationId, locations.id))
+        .where(eq(kitchens.id, kitchenId))
         .limit(1);
 
-      if (!location) {
-        return res.status(404).json({ error: "Location not found" });
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
       }
 
-      const timezone = location.timezone || "America/St_Johns";
-      const slots = await calculateAvailableSlots(locationId, dateStr, timezone);
+      const timezone = kitchen.timezone || "America/St_Johns";
+      const slots = await calculateAvailableSlots(kitchenId, dateStr, timezone);
 
       // Also get settings for the frontend (duration, max booking days, etc.)
       const [settings] = await db
         .select()
-        .from(locationViewingSettings)
-        .where(eq(locationViewingSettings.locationId, locationId))
+        .from(kitchenViewingSettings)
+        .where(eq(kitchenViewingSettings.kitchenId, kitchenId))
         .limit(1);
 
       res.json({
-        locationName: location.name,
+        kitchenName: kitchen.name,
+        locationName: kitchen.locationName,
         date: dateStr,
         timezone,
         slots,
@@ -758,28 +777,36 @@ router.post(
 
       const { locationId, targetedKitchenId, scheduledAt, durationMinutes, chefNotes, intakeData } = parsed.data;
 
-      // Get location + manager info
-      const [location] = await db
-        .select()
-        .from(locations)
-        .where(eq(locations.id, locationId))
+      // The kitchen is authoritative; location remains on the viewing for ownership/reporting.
+      const [kitchen] = await db
+        .select({
+          id: kitchens.id,
+          name: kitchens.name,
+          locationId: kitchens.locationId,
+          locationName: locations.name,
+          timezone: locations.timezone,
+          managerId: locations.managerId,
+        })
+        .from(kitchens)
+        .innerJoin(locations, eq(kitchens.locationId, locations.id))
+        .where(and(eq(kitchens.id, targetedKitchenId), eq(kitchens.locationId, locationId)))
         .limit(1);
 
-      if (!location) {
-        return res.status(404).json({ error: "Location not found" });
+      if (!kitchen) {
+        return res.status(400).json({ error: "Kitchen does not belong to this location" });
       }
 
-      const timezone = location.timezone || "America/St_Johns";
+      const timezone = kitchen.timezone || "America/St_Johns";
 
       // Get settings
       const [settings] = await db
         .select()
-        .from(locationViewingSettings)
-        .where(eq(locationViewingSettings.locationId, locationId))
+        .from(kitchenViewingSettings)
+        .where(eq(kitchenViewingSettings.kitchenId, targetedKitchenId))
         .limit(1);
 
       if (!settings || !settings.isActive) {
-        return res.status(400).json({ error: "Kitchen viewings are not currently available at this location" });
+        return res.status(400).json({ error: "Tours are not currently available for this kitchen" });
       }
 
       const tourDuration = durationMinutes || settings.defaultDurationMinutes;
@@ -791,7 +818,7 @@ router.post(
         .where(
           and(
             eq(kitchenViewings.chefId, chefId),
-            eq(kitchenViewings.locationId, locationId),
+            eq(kitchenViewings.targetedKitchenId, targetedKitchenId),
             sql`${kitchenViewings.status} IN ('pending', 'confirmed')`
           )
         )
@@ -830,7 +857,7 @@ router.post(
           .from(kitchenViewings)
           .where(
             and(
-              eq(kitchenViewings.locationId, locationId),
+              eq(kitchenViewings.targetedKitchenId, targetedKitchenId),
               sql`${kitchenViewings.status} NOT IN ('cancelled', 'no_show')`,
               // Overlap check: new slot [bufferStart, bufferEnd] overlaps with existing [scheduledAt, scheduledAt+duration]
               sql`${kitchenViewings.scheduledAt} < ${bufferEnd.toISOString()}::timestamp`,
@@ -847,9 +874,9 @@ router.post(
           .insert(kitchenViewings)
           .values({
             locationId,
-            targetedKitchenId: targetedKitchenId || null,
+            targetedKitchenId,
             chefId,
-            managerId: location.managerId,
+            managerId: kitchen.managerId,
             status: "pending", // Viewings require manager confirmation now
             scheduledAt: scheduledDate,
             durationMinutes: tourDuration,
@@ -865,26 +892,27 @@ router.post(
       // Notify manager
       let managerName = "Manager";
       let managerEmail = null;
-      if (location.managerId) {
+      if (kitchen.managerId) {
         try {
           const [manager] = await db
             .select({ username: users.username })
             .from(users)
-            .where(eq(users.id, location.managerId))
+            .where(eq(users.id, kitchen.managerId))
             .limit(1);
             
           managerEmail = manager?.username;
-          managerName = await getUserDisplayName(location.managerId, 'manager');
+          managerName = await getUserDisplayName(kitchen.managerId, 'manager');
 
           await notificationService.createForManager({
-            managerId: location.managerId,
+            managerId: kitchen.managerId,
             locationId,
             type: "booking_new",
             priority: "high",
             title: "New Kitchen Viewing Request",
-            message: `${chefName} has requested a kitchen viewing at ${location.name} on ${format(scheduledDate, "MMM d, yyyy")} at ${format(scheduledDate, "h:mm a")}.`,
+            message: `${chefName} has requested a viewing of ${kitchen.name} at ${kitchen.locationName} on ${format(scheduledDate, "MMM d, yyyy")} at ${format(scheduledDate, "h:mm a")}.`,
             metadata: {
               viewingId: newViewing.id,
+              kitchenId: targetedKitchenId,
               chefId,
               chefName,
               scheduledAt: scheduledDate.toISOString(),
@@ -898,7 +926,7 @@ router.post(
               managerEmail,
               managerName,
               chefName,
-              kitchenName: location.name,
+              kitchenName: kitchen.name,
               tourDate: scheduledDate,
               startTime: format(scheduledDate, "h:mm a"),
               chefNotes: chefNotes || undefined,
@@ -918,11 +946,12 @@ router.post(
           type: "booking_confirmed", // Reusing this type, but logically it's a request receipt
           priority: "normal",
           title: "Kitchen Viewing Request Received",
-          message: `Your viewing request at ${location.name} for ${format(scheduledDate, "MMM d, yyyy")} at ${format(scheduledDate, "h:mm a")} has been sent to the manager for approval.`,
+          message: `Your viewing request for ${kitchen.name} at ${kitchen.locationName} on ${format(scheduledDate, "MMM d, yyyy")} at ${format(scheduledDate, "h:mm a")} has been sent to the manager for approval.`,
           metadata: {
             viewingId: newViewing.id,
             locationId,
-            locationName: location.name,
+            kitchenId: targetedKitchenId,
+            locationName: kitchen.locationName,
             scheduledAt: scheduledDate.toISOString(),
           },
           actionUrl: `/dashboard?view=viewings`,
@@ -939,7 +968,7 @@ router.post(
           const emailContent = generateTourRequestedChefEmail({
             chefEmail,
             chefName,
-            kitchenName: location.name,
+            kitchenName: kitchen.name,
             tourDate: scheduledDate,
             startTime: format(scheduledDate, "h:mm a"),
             timezone
@@ -950,7 +979,7 @@ router.post(
         logger.error("[Viewings] Failed to notify chef:", e);
       }
 
-      logger.info(`[Viewings] Chef ${chefId} booked viewing ${newViewing.id} at location ${locationId} for ${scheduledDate.toISOString()}`);
+      logger.info(`[Viewings] Chef ${chefId} booked viewing ${newViewing.id} for kitchen ${targetedKitchenId} at ${scheduledDate.toISOString()}`);
       res.status(201).json(newViewing);
     } catch (error: any) {
       if (error.message === "SLOT_TAKEN") {
@@ -1294,31 +1323,31 @@ router.patch(
 );
 
 /**
- * GET /api/viewings/location/:locationId/is-active
- * Quick check if kitchen tours can be scheduled at this location.
+ * GET /api/viewings/kitchen/:kitchenId/is-active
+ * Quick check if tours can be scheduled for a kitchen.
  */
 router.get(
-  "/location/:locationId/is-active",
+  "/kitchen/:kitchenId/is-active",
   async (req: Request, res: Response) => {
     try {
-      const locationId = parseInt(req.params.locationId);
-      if (isNaN(locationId)) {
-        return res.status(400).json({ error: "Invalid location ID" });
+      const kitchenId = parseInt(req.params.kitchenId);
+      if (isNaN(kitchenId)) {
+        return res.status(400).json({ error: "Invalid kitchen ID" });
       }
 
       const [settings] = await db
-        .select({ isActive: locationViewingSettings.isActive })
-        .from(locationViewingSettings)
-        .where(eq(locationViewingSettings.locationId, locationId))
+        .select({ isActive: kitchenViewingSettings.isActive })
+        .from(kitchenViewingSettings)
+        .where(eq(kitchenViewingSettings.kitchenId, kitchenId))
         .limit(1);
 
       const [openTourDay] = await db
-        .select({ id: locationViewingAvailability.id })
-        .from(locationViewingAvailability)
+        .select({ id: kitchenViewingAvailability.id })
+        .from(kitchenViewingAvailability)
         .where(
           and(
-            eq(locationViewingAvailability.locationId, locationId),
-            eq(locationViewingAvailability.isAvailable, true)
+            eq(kitchenViewingAvailability.kitchenId, kitchenId),
+            eq(kitchenViewingAvailability.isAvailable, true)
           )
         )
         .limit(1);

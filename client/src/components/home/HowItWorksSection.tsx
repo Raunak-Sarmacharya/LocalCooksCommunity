@@ -1,10 +1,10 @@
 import { useTranslation } from "react-i18next";
-import { ChefHat, Truck, Utensils, PackageCheck, Timer, DollarSign, CalendarClock, Monitor } from "lucide-react";
+import { Calendar, Truck, Utensils, PackageCheck, Timer, DollarSign, CalendarClock, Monitor } from "lucide-react";
 import { motion } from "framer-motion";
 
 const steps = [
   {
-    icon: <ChefHat className="h-8 w-8 text-white" />,
+    icon: <Calendar className="h-8 w-8 text-white" />,
     bgColor: "bg-gradient-to-br from-orange-500 to-rose-600",
     number: "01",
     title: "Create Your Menu",

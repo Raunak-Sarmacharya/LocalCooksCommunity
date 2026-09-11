@@ -1,18 +1,5 @@
-import {
-  cloneElement,
-  isValidElement,
-  type ComponentPropsWithoutRef,
-  type ReactElement,
-  type ReactNode,
-} from "react";
-import {
-  AlertTriangle,
-  Check,
-  Clock,
-  Info,
-  XCircle,
-  type LucideIcon,
-} from "lucide-react";
+import { cloneElement, isValidElement, type ComponentPropsWithoutRef, type ReactElement, type ReactNode } from "react";
+import { AlertTriangle, Check, Clock, Info, XCircle, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { StatusTone } from "@/components/chef/applications/status";
 import type { StatusVariant } from "@/components/chef/dashboard/types";

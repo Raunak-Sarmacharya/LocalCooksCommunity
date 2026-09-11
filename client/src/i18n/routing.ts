@@ -2,14 +2,7 @@
  * Public locale URL helpers for wouter + SEO.
  */
 
-import {
-  type AppLocale,
-  DEFAULT_LOCALE,
-  PUBLIC_LOCALIZED_PATHS,
-  stripLocalePrefix,
-  withLocalePrefix,
-  isAppLocale,
-} from "@shared/i18n";
+import { type AppLocale, DEFAULT_LOCALE, PUBLIC_LOCALIZED_PATHS, stripLocalePrefix, withLocalePrefix, isAppLocale } from "@shared/i18n";
 
 const PUBLIC_SET = new Set<string>(PUBLIC_LOCALIZED_PATHS);
 

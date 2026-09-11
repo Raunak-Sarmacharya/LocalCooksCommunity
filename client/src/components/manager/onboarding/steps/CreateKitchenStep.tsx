@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { mt } from "@/i18n/manager";
-import { CheckCircle, Plus, ChefHat, Edit2, ChevronDown, ChevronUp, Image, DollarSign, Clock, Info } from "@/components/ui/manager-icons";
+import { CheckCircle, Plus, Calendar, Edit2, ChevronDown, ChevronUp, Image, DollarSign, Clock, Info } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { Input } from "@/components/ui/input";
@@ -65,7 +65,7 @@ function KitchenCard({ kitchen, locationId, isExpanded, onToggle }: KitchenCardP
                       hideOnError
                     />
                   ) : (
-                    <ChefHat className="w-6 h-6 text-slate-400" />
+                    <Calendar className="w-6 h-6 text-slate-400" />
                   )}
                 </div>
 
@@ -265,7 +265,7 @@ export default function CreateKitchenStep() {
         <Card className="border-dashed border-2 border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50">
           <CardContent className="py-12 text-center">
             <div className="w-16 h-16 rounded-2xl bg-red-50 dark:bg-red-950/30 flex items-center justify-center mx-auto mb-5">
-              <ChefHat className="h-8 w-8 text-[#F51042]" />
+              <Calendar className="h-8 w-8 text-[#F51042]" />
             </div>
             <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">{mt("createYourKitchenSpace")}</h3>
             <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 max-w-sm mx-auto">{mt("setUpYourFirstKitchenToStartReceivingBookingRequestsFromChef")}</p>

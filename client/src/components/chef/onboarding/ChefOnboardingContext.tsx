@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
-import { useOnboarding } from '@onboardjs/react';
+import { useOnboarding } from "@onboardjs/react";
 import { chefOnboardingSteps, CHEF_STEP_IDS, getStepsForPath, markChefOnboardingStarted, clearChefOnboardingStarted } from "@/config/chef-onboarding-steps";
 
 // Step ID mapping for database storage

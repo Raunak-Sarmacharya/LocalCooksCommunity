@@ -1,15 +1,8 @@
 import { ExternalLink, Info } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import {
-  STRIPE_PROCESSING_FEE_REFUND_DOCS,
-  stripeLinkClassName,
-} from "@/lib/stripe-brand";
+import { STRIPE_PROCESSING_FEE_REFUND_DOCS, stripeLinkClassName } from "@/lib/stripe-brand";
 
 export {
   STRIPE_PROCESSING_FEE_REFUND_DOCS,

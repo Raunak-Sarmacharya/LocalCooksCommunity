@@ -11,11 +11,7 @@ import { mt } from "@/i18n/manager";
  * - Modern, intuitive UI with shadcn components
  */
 
-import { 
-  Wrench, Save, Loader2, Plus, X, Check, Search, Pencil, Trash2, 
-  Package, Grid3X3, DollarSign, ChevronDown, ChevronUp,
-  Flame, ChefHat, Snowflake, UtensilsCrossed, SprayCan, PlusCircle, SearchX
-} from "@/components/ui/manager-icons";
+import { Wrench, Save, Loader2, Plus, X, Check, Search, Pencil, Trash2, Package, Grid3X3, DollarSign, ChevronDown, ChevronUp, Flame, Calendar, Snowflake, UtensilsCrossed, SprayCan, PlusCircle, SearchX } from "@/components/ui/manager-icons";
 import { useState, useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -34,11 +30,7 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 import { EQUIPMENT_CATEGORIES, type EquipmentTemplate, type EquipmentCategoryId } from "@/lib/equipment-templates";
@@ -46,7 +38,7 @@ import { EQUIPMENT_CATEGORIES, type EquipmentTemplate, type EquipmentCategoryId 
 // Icon component mapping for categories (enterprise pattern - no emojis)
 const CategoryIcon = ({ iconName, className }: { iconName: string; className?: string }) => {
   const icons: Record<string, React.ComponentType<{ className?: string }>> = {
-    Flame, ChefHat, Snowflake, UtensilsCrossed, SprayCan
+    Flame, Calendar, Snowflake, UtensilsCrossed, SprayCan
   };
   const Icon = icons[iconName] || Package;
   return <Icon className={className} />;

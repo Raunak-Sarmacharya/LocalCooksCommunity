@@ -8,88 +8,26 @@
 import { useState, useMemo } from "react";
 import { mt } from "@/i18n/manager";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
-  getFilteredRowModel,
-  SortingState,
-  useReactTable,
-} from "@tanstack/react-table";
-import { 
-  Card, 
-  CardContent, 
-  CardDescription, 
-  CardHeader, 
-  CardTitle 
-} from "@/components/ui/card";
+import { ColumnDef, flexRender, getCoreRowModel, getSortedRowModel, getFilteredRowModel, SortingState, useReactTable } from "@tanstack/react-table";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { 
-  AlertTriangle, 
-  Clock, 
-  DollarSign, 
-  CheckCircle, 
-  XCircle, 
-  CreditCard,
-  Package,
-  User,
-  RefreshCw,
-  MoreHorizontal,
-  ArrowUpDown,
-  ChevronDown,
-  ChevronUp,
-  Shield,
-} from "@/components/ui/manager-icons";
+import { AlertTriangle, Clock, DollarSign, CheckCircle, XCircle, CreditCard, Package, User, RefreshCw, MoreHorizontal, ArrowUpDown, ChevronDown, ChevronUp, Shield, Settings } from "@/components/ui/manager-icons";
 import { formatDistanceToNow, format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { OverstayPenaltySettings } from "./OverstayPenaltySettings";
 
 // Types
 interface OverstayRecord {
@@ -564,12 +502,13 @@ function OverstayCard({
 }
 
 // Main component
-export function OverstayPenaltyQueue() {
+export function OverstayPenaltyQueue({ locationId }: { locationId?: number }) {
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const [showPastPenalties, setShowPastPenalties] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Fetch overstays (including past if toggled)
   const { data, isLoading, error, refetch } = useQuery({
@@ -747,6 +686,9 @@ export function OverstayPenaltyQueue() {
           <p className="text-muted-foreground">{mt("reviewAndManageStorageOverstaySituations")}</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setIsSettingsOpen(true)} disabled={!locationId}>
+            <Settings className="mr-2 h-4 w-4" />{mt("settings")}
+          </Button>
           <Button 
             variant={showPastPenalties ? "default" : "outline"} 
             onClick={() => setShowPastPenalties(!showPastPenalties)}
@@ -910,6 +852,20 @@ export function OverstayPenaltyQueue() {
           </CardContent>
         </Card>
       )}
+
+      <Sheet open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+        <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
+          <SheetHeader className="mb-6">
+            <SheetTitle>{mt("storageOverstayPenaltyDefaults")}</SheetTitle>
+            <SheetDescription>{mt("configureDefaultPenaltySettingsForStorageOverstays")}</SheetDescription>
+          </SheetHeader>
+          {locationId ? (
+            <OverstayPenaltySettings locationId={locationId} />
+          ) : (
+            <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">{mt("selectALocationToManageSettings")}</div>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

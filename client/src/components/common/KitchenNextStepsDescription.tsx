@@ -1,8 +1,5 @@
 import { useTranslation } from "react-i18next";
-import {
-  KitchenApplicationJourneySteps,
-  type KitchenJourneyPhase,
-} from "./KitchenApplicationJourneySteps";
+import { KitchenApplicationJourneySteps, type KitchenJourneyPhase } from "./KitchenApplicationJourneySteps";
 
 export function KitchenNextStepsDescription({
   type = "book",

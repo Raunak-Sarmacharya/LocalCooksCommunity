@@ -1,24 +1,7 @@
 import { Helmet } from "react-helmet-async";
 import { useTranslation } from "react-i18next";
-import {
-  DEFAULT_LOCALE,
-  SUPPORTED_LOCALES,
-  getOgLocale,
-  isAppLocale,
-  withLocalePrefix,
-  type AppLocale,
-} from "@shared/i18n";
-import {
-  type SEOHeadProps,
-  defaults,
-  createLocalBusinessSchema,
-  createWebsiteSchema,
-  createWebPageSchema,
-  createBreadcrumbSchema,
-  createFAQSchema,
-  createSiteNavigationSchema,
-  getSubdomainBaseUrl,
-} from "./SEOHead.utils";
+import { DEFAULT_LOCALE, SUPPORTED_LOCALES, getOgLocale, isAppLocale, withLocalePrefix, type AppLocale } from "@shared/i18n";
+import { type SEOHeadProps, defaults, createLocalBusinessSchema, createWebsiteSchema, createWebPageSchema, createBreadcrumbSchema, createFAQSchema, createSiteNavigationSchema, getSubdomainBaseUrl } from "./SEOHead.utils";
 
 /**
  * SEO Configuration for LocalCooks Community Platform

@@ -9,7 +9,7 @@ import { auth } from "@/lib/firebase";
 import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
 import { Location, Kitchen, StorageListing, EquipmentListing } from "./types";
 import { optionalPhoneNumberSchema } from "@shared/phone-validation";
-import { useOnboarding } from '@onboardjs/react';
+import { useOnboarding } from "@onboardjs/react";
 import { steps } from "@/config/onboarding-steps";
 import { Link, useLocation } from "wouter";
 

@@ -11,42 +11,14 @@ import { BookingStorageSelector } from "./BookingStorageSelector";
 import { BookingPriceSummary, FeesInfoPopover } from "./BookingPriceSummary";
 import { useUnpaidPenaltiesCheck } from "@/hooks/use-unpaid-penalties";
 
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Calendar as UICalendar } from "@/components/ui/calendar";
 import { SmartImage } from "@/components/ui/smart-image";
-import {
-  Stepper,
-  StepperDescription,
-  StepperIndicator,
-  StepperItem,
-  StepperNav,
-  StepperSeparator,
-  StepperTitle,
-  StepperTrigger,
-} from "@/components/reui/stepper";
+import { Stepper, StepperDescription, StepperIndicator, StepperItem, StepperNav, StepperSeparator, StepperTitle, StepperTrigger } from "@/components/reui/stepper";
 import { findPersistedBookingForKitchens, notifyBookingPrefsChanged } from "@/lib/persisted-booking-prefs";
 import { resolveEquipmentIcon, resolveStorageIcon } from "@/lib/kitchen-inventory-icons";
 import { chefOutlineCtaClass, chefPrimaryCtaClass } from "@/lib/chef-cta";
@@ -78,7 +50,7 @@ function kitchenCoverUrl(kitchen: {
   );
 }
 
-/** Compact Airbnb-style kitchen thumb for confirm summary; ChefHat if missing/broken. */
+/** Compact Airbnb-style kitchen thumb for confirm summary; Calendar if missing/broken. */
 function ConfirmKitchenThumbnail({
   src,
   alt,

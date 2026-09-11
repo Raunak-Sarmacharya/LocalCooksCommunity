@@ -6,15 +6,7 @@ import { useTranslation } from "react-i18next";
 import { useEffect, useMemo, useState } from "react";
 import SEOHead from "@/components/SEO/SEOHead";
 import { motion } from "framer-motion";
-import {
-  Building2,
-  MapPin,
-  ArrowRight,
-  ArrowLeft,
-  Search,
-  ChefHat,
-  Lock,
-} from "lucide-react";
+import { Building2, MapPin, ArrowRight, ArrowLeft, Search, Calendar, Lock } from "lucide-react";
 import { bookNowIcon as BookNowIcon } from "@/components/chef/applications/status-icons";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -382,7 +374,7 @@ export default function KitchenComparisonPage() {
           <FadeInSection>
             <div className="mb-8 max-w-3xl sm:mb-10">
               <span className="mb-4 inline-flex items-center gap-2 rounded-full bg-[#F51042]/10 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.3em] text-[#F51042] sm:text-xs">
-                <ChefHat className="h-3.5 w-3.5" />
+                <Calendar className="h-3.5 w-3.5" />
                 {t("kitchenAccessBadge", "Kitchen Access")}
               </span>
               <h1 className="mb-3 text-3xl font-bold leading-tight text-[#1A1A1A] sm:text-4xl lg:text-5xl">

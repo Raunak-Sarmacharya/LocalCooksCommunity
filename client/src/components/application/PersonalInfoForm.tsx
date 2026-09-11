@@ -11,10 +11,7 @@ import { Label } from "@/components/ui/label";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { ApplicationStepFooter } from "./ApplicationStepFooter";
-import {
-  clearRegistrationName,
-  getRegistrationName,
-} from "@/lib/registration-identity";
+import { clearRegistrationName, getRegistrationName } from "@/lib/registration-identity";
 
 // Phone validation helper (matches server-side validation)
 const phoneNumberSchema = z.string()

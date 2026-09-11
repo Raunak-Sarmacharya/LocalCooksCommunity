@@ -1,25 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { InfoChip } from "@/components/chef/info-chip";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  CardFooter,
-} from "@/components/ui/card";
-import {
-  BookOpen,
-  Building,
-  Calendar,
-  FileText,
-  Shield,
-  MessageCircle,
-  Store,
-  ArrowRight,
-  Utensils,
-  TrendingUp,
-} from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { BookOpen, Building, Calendar, FileText, Shield, MessageCircle, Store, ArrowRight, Utensils, TrendingUp } from "lucide-react";
 import { Link } from "wouter";
 import { Application } from "@shared/schema";
 import { formatApplicationStatus } from "@/lib/applicationSchema";

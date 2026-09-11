@@ -1,9 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import {
-  clearRegistrationName,
-  getRegistrationName,
-  saveRegistrationName,
-} from "./registration-identity";
+import { clearRegistrationName, getRegistrationName, saveRegistrationName } from "./registration-identity";
 
 describe("registration identity", () => {
   beforeEach(() => window.localStorage.clear());

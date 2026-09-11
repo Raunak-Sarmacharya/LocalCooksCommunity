@@ -238,7 +238,7 @@
   "bcpNoteLabel": "Note:",
   "bcpStorageType": "Storage Type",
   "bcpTotalStorageCostInclExt": "Total Storage Cost (Incl. Storage Extension)",
-  "bcpOverstayPenaltyResolved": "Overstay Penalty Resolved",
+  "bcpOverstayPenaltyResolved": "Storage Overstay Penalty Resolved",
   "bcpLocation": "Location",
   "kbfSelectAsMany": "Select as many as you need.",
   "kbfDiscardUnsavedTitle": "Discard unsaved changes?",

@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  acceptingRequestsIcon,
-  bookNowIcon,
-  kitchenActionKindIcon,
-} from "./status-icons";
+import { acceptingRequestsIcon, bookNowIcon, kitchenActionKindIcon } from "./status-icons";
 
 describe("kitchen status icons", () => {
   it("keeps Accepting Requests and Book Now on different icons", () => {

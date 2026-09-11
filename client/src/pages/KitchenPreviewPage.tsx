@@ -7,24 +7,14 @@ import { Helmet } from "react-helmet-async";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Icon } from "@iconify/react";
 import { formatCurrency, formatTime } from "@/lib/formatters";
-import {
-  notifyBookingPrefsChanged,
-  usePersistedBookingPricePreview,
-  type PersistedBookingPricePreview,
-} from "@/lib/persisted-booking-prefs";
+import { notifyBookingPrefsChanged, usePersistedBookingPricePreview, type PersistedBookingPricePreview } from "@/lib/persisted-booking-prefs";
 import { Button } from "@/components/ui/button";
 import { chefOutlineCtaClass, chefPrimaryCtaClass } from "@/lib/chef-cta";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { InfoChip } from "@/components/chef/info-chip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -36,10 +26,7 @@ import { useAuthModal } from "@/components/auth/AuthModalProvider";
 import { isChefUser } from "@/config/chef-onboarding-steps";
 import { chefDashboardHref } from "@/lib/chef-dashboard-nav";
 import { resolveChefDashboardNavigation } from "@shared/subdomain-utils";
-import {
-  useChefKitchenApplicationForLocation,
-  useChefKitchenApplications,
-} from "@/hooks/use-chef-kitchen-applications";
+import { useChefKitchenApplicationForLocation, useChefKitchenApplications } from "@/hooks/use-chef-kitchen-applications";
 import { getKitchenDisplayStatus, kitchenLocationId } from "@/components/chef/applications/status";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
@@ -52,20 +39,13 @@ import { KitchenPreviewWalkthrough } from "@/components/kitchen-application/Kitc
 import { getAuthHeaders } from "@/lib/api";
 import { saveAuthIntentFromCurrentPage } from "@/lib/auth-intent";
 import { pickPreviewActiveSectionId } from "@/lib/preview-scroll-spy";
-import {
-  CancellationPolicyDialog,
-  KitchenTermsDialog,
-  cancellationPolicyFirstLine,
-} from "@/components/booking/CancellationPolicyDialog";
+import { CancellationPolicyDialog, KitchenTermsDialog, cancellationPolicyFirstLine } from "@/components/booking/CancellationPolicyDialog";
 import { resolveEquipmentIcon, resolveStorageIcon } from "@/lib/kitchen-inventory-icons";
 import { SmartImage } from "@/components/ui/smart-image";
 import { Calendar as UICalendar } from "@/components/ui/calendar";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { kt } from "@/i18n/kitchen-ns";
-import {
-  evaluateTypedKitchenDate,
-  parseLocalDateInput,
-} from "@/lib/kitchen-typed-date";
+import { evaluateTypedKitchenDate, parseLocalDateInput } from "@/lib/kitchen-typed-date";
 import { fitDescriptionPreview } from "@/lib/fit-description-preview";
 import { resolvePreviewPrimaryCta } from "@/lib/kitchen-preview-cta";
 
@@ -2006,7 +1986,7 @@ function GuestHoursCard({
   const isAuthenticated = !!user;
   
   const storageKey = kitchenId ? `kitchen_dates_${kitchenId}` : 'kitchen_dates_generic';
-  const tourStorageKey = locationId ? `viewing_booking_${locationId}` : null;
+  const tourStorageKey = kitchenId ? `viewing_booking_${kitchenId}` : null;
 
   const hasRate = !!kitchenRate;
   const hasSchedule = !!(
@@ -3132,25 +3112,26 @@ export default function KitchenPreviewPage() {
     hasSchedule?: boolean;
     toursAvailable?: boolean;
   }>({
-    queryKey: [`/api/viewings/location/${locationId}/is-active`],
+    queryKey: [`/api/viewings/kitchen/${selectedKitchen?.id}/is-active`],
     queryFn: async () => {
       const headers = await getAuthHeaders();
-      const response = await fetch(`/api/viewings/location/${locationId}/is-active`, {
+      const response = await fetch(`/api/viewings/kitchen/${selectedKitchen!.id}/is-active`, {
         headers,
         credentials: "include",
       });
       if (!response.ok) return { toursAvailable: false };
       return response.json();
     },
-    enabled: !!locationId,
+    enabled: !!selectedKitchen?.id,
   });
   const toursAvailable = tourStatus?.toursAvailable ?? tourStatus?.isActive ?? false;
 
-  // Existing tour request for this location (pending / confirmed).
+  // Existing tour request for this kitchen (pending / confirmed).
   type ChefViewingRow = {
-    viewing?: { id: number; locationId: number; status: string; scheduledAt: string };
+    viewing?: { id: number; locationId: number; targetedKitchenId?: number | null; status: string; scheduledAt: string };
     id?: number;
     locationId?: number;
+    targetedKitchenId?: number | null;
     status?: string;
     scheduledAt?: string;
   };
@@ -3167,16 +3148,16 @@ export default function KitchenPreviewPage() {
     },
     enabled: !!isAuthenticated && !!user?.uid,
   });
-  const activeLocationTour = useMemo(() => {
-    if (!locationId || !chefViewings.length) return null;
+  const activeKitchenTour = useMemo(() => {
+    if (!selectedKitchen?.id || !chefViewings.length) return null;
     const ACTIVE = new Set(["pending", "confirmed"]);
     const rows = chefViewings
       .map((r) => r.viewing ?? r)
       .filter(
-        (v): v is { id: number; locationId: number; status: string; scheduledAt: string } =>
+        (v): v is { id: number; locationId: number; targetedKitchenId?: number | null; status: string; scheduledAt: string } =>
           !!v &&
           typeof v.id === "number" &&
-          Number(v.locationId) === Number(locationId) &&
+          Number(v.targetedKitchenId) === Number(selectedKitchen.id) &&
           ACTIVE.has(String(v.status || "").toLowerCase())
       )
       .sort(
@@ -3184,9 +3165,9 @@ export default function KitchenPreviewPage() {
           new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime()
       );
     return rows[0] ?? null;
-  }, [chefViewings, locationId]);
-  const activeTourStatus = String(activeLocationTour?.status || "").toLowerCase();
-  const activeTourKind: "pending" | "confirmed" | null = !activeLocationTour
+  }, [chefViewings, selectedKitchen?.id]);
+  const activeTourStatus = String(activeKitchenTour?.status || "").toLowerCase();
+  const activeTourKind: "pending" | "confirmed" | null = !activeKitchenTour
     ? null
     : activeTourStatus === "confirmed"
       ? "confirmed"
@@ -3196,11 +3177,11 @@ export default function KitchenPreviewPage() {
   // is already pending/confirmed — leftover sessionStorage used to pop the dialog
   // on every preview visit.
   useEffect(() => {
-    if (!locationId) return;
-    const key = `viewing_booking_${locationId}`;
+    if (!selectedKitchen?.id) return;
+    const key = `viewing_booking_${selectedKitchen.id}`;
     try {
       if (isAuthenticated && user?.uid && !chefViewingsFetched) return;
-      if (activeLocationTour) {
+      if (activeKitchenTour) {
         sessionStorage.removeItem(key);
         return;
       }
@@ -3209,7 +3190,7 @@ export default function KitchenPreviewPage() {
     } catch {
       /* ignore */
     }
-  }, [locationId, isAuthenticated, user, activeLocationTour, chefViewingsFetched]);
+  }, [selectedKitchen?.id, isAuthenticated, user, activeKitchenTour, chefViewingsFetched]);
 
   const {
     application: locationApplication,
@@ -3342,7 +3323,7 @@ export default function KitchenPreviewPage() {
     alreadyApplied,
     toursAvailable,
     tourStatusLoading,
-    activeLocationTour,
+    activeKitchenTour,
     isLoading,
     useChefChrome,
     staticSiteHeader,
@@ -3548,14 +3529,14 @@ export default function KitchenPreviewPage() {
   };
 
   const handleScheduleTour = () => {
-    if (!locationId) return;
+    if (!locationId || !selectedKitchen?.id) return;
     if (alreadyApplied) return;
-    if (activeLocationTour) {
+    if (activeKitchenTour) {
       goToMyTours();
       return;
     }
     if (!isAuthenticated) {
-      saveAuthIntentFromCurrentPage("tour", locationId);
+      saveAuthIntentFromCurrentPage("tour", locationId, selectedKitchen.id);
     }
     setTourModalOpen(true);
   };
@@ -4207,10 +4188,12 @@ export default function KitchenPreviewPage() {
     navigate(chefDashboardHref(view), { replace: true });
   };
 
-  const scheduleTourSheet = locationId != null && !alreadyApplied ? (
+  const scheduleTourSheet = locationId != null && selectedKitchen?.id != null && !alreadyApplied ? (
     <ScheduleViewingWidget
       locationId={locationId}
       locationName={locationData?.name}
+      targetedKitchenId={selectedKitchen.id}
+      targetedKitchenName={selectedKitchen.name}
       open={tourModalOpen}
       onClose={() => setTourModalOpen(false)}
       onRequireOpen={() => setTourModalOpen(true)}

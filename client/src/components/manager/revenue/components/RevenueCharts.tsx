@@ -8,28 +8,10 @@ import { mt } from "@/i18n/manager";
  */
 
 import { useMemo } from "react"
-import {
-    AreaChart,
-    Area,
-    BarChart,
-    Bar,
-    PieChart,
-    Pie,
-    Cell,
-    XAxis,
-    YAxis,
-    CartesianGrid,
-} from "recharts"
+import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid } from "recharts"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-    ChartContainer,
-    ChartTooltip,
-    ChartTooltipContent,
-    ChartLegend,
-    ChartLegendContent,
-    type ChartConfig,
-} from "@/components/ui/chart"
+import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent, type ChartConfig } from "@/components/ui/chart"
 import { TrendingUp, Building2, CircleDollarSign } from "@/components/ui/manager-icons"
 import { formatChartDate, centsToDollars } from "@/lib/formatters"
 import type { RevenueByDate, RevenueByLocation, PaymentStatus } from "../types"

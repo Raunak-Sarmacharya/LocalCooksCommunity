@@ -1,49 +1,9 @@
 "use client"
 
 import * as React from "react"
-import {
-    Calendar,
-    CreditCard,
-    Settings,
-    User,
-    MapPin,
-    LayoutDashboard,
-    LogOut,
-    Search,
-    Wrench,
-    Package,
-    DollarSign,
-    Store,
-    MessageCircle,
-    FileText,
-    Loader2,
-    Hash,
-    ExternalLink,
-    AlertTriangle,
-    BookOpen,
-    Building2,
-    Shield,
-    BarChart3,
-    Users,
-    Gift,
-    Clock,
-    Bell,
-    ClipboardList,
-    PackageCheck,
-    Mail,
-    ChevronRight,
-} from "lucide-react"
+import { Calendar, CreditCard, Settings, User, MapPin, LayoutDashboard, LogOut, Search, Wrench, Package, DollarSign, Store, MessageCircle, FileText, Loader2, Hash, ExternalLink, AlertTriangle, BookOpen, Building2, Shield, BarChart3, Users, Gift, Clock, Bell, ClipboardList, PackageCheck, Mail, ChevronRight } from "lucide-react"
 
-import {
-    CommandDialog,
-    CommandEmpty,
-    CommandGroup,
-    CommandInput,
-    CommandItem,
-    CommandList,
-    CommandSeparator,
-    CommandShortcut,
-} from "@/components/ui/command"
+import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator, CommandShortcut } from "@/components/ui/command"
 import { useQuery } from "@tanstack/react-query"
 import { auth } from "@/lib/firebase"
 import { useLocation } from "wouter"
@@ -489,10 +449,6 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout, portal
                                 <CommandItem onSelect={() => runCommand(() => onViewChange?.("revenue"))}>
                                     <DollarSign className="mr-2 h-4 w-4" />
                                     <span>{mt("navRevenue")}</span>
-                                </CommandItem>
-                                <CommandItem onSelect={() => runCommand(() => onViewChange?.("payments"))}>
-                                    <CreditCard className="mr-2 h-4 w-4" />
-                                    <span>{mt("cmdPaymentsBilling")}</span>
                                 </CommandItem>
                             </CommandGroup>
                             <CommandSeparator />

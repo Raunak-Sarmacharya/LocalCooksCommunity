@@ -58,7 +58,7 @@ export const EQUIPMENT_CATEGORIES: EquipmentCategory[] = [
   {
     id: 'food-prep',
     name: 'Prep Equipment',
-    iconName: 'ChefHat',
+    iconName: 'Calendar',
     items: [
       { id: 'mixer-5qt', name: 'Planetary Mixer (5qt)', category: 'food-prep', defaultCondition: 'good', suggestedSessionRate: 10 },
       { id: 'mixer-20qt', name: 'Planetary Mixer (20qt)', category: 'food-prep', defaultCondition: 'good', suggestedSessionRate: 15 },

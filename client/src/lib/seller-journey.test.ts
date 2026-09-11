@@ -1,10 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import {
-  clearSellerJourneyDraft,
-  getSellerJourneyDraft,
-  saveSellerJourneyDraft,
-  sellerJourneyPayload,
-} from "./seller-journey";
+import { clearSellerJourneyDraft, getSellerJourneyDraft, saveSellerJourneyDraft, sellerJourneyPayload } from "./seller-journey";
 
 describe("seller journey draft", () => {
   beforeEach(() => window.localStorage.clear());

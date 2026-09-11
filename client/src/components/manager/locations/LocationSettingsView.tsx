@@ -4,11 +4,7 @@ import { tt } from "@/i18n/common-ns";
 
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-    FileText, ImageIcon, Mail, Clock, Globe, HelpCircle,
-    Upload, Loader2, Plus, Info, Save, AlertCircle, CheckCircle, Calendar,
-    KeyRound
-} from "@/components/ui/manager-icons";
+import { FileText, ImageIcon, Mail, Clock, Globe, HelpCircle, Upload, Loader2, Plus, Info, Save, AlertCircle, CheckCircle, Calendar, KeyRound } from "@/components/ui/manager-icons";
 
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";

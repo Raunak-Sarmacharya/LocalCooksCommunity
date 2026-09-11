@@ -1,21 +1,11 @@
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { useChefOnboarding } from "./ChefOnboardingContext";
-import {
-  BookOpen,
-  Building,
-  Check,
-  ChefHat,
-  ClipboardCheck,
-  Compass,
-  FileText,
-  PartyPopper,
-  Store,
-} from "lucide-react";
+import { BookOpen, Building, Check, Calendar, ClipboardCheck, Compass, FileText, PartyPopper, Store } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 const STEP_ICONS: Record<string, LucideIcon> = {
-  welcome: ChefHat,
+  welcome: Calendar,
   "path-selection": Compass,
   "localcooks-application": FileText,
   "food-safety-training": BookOpen,

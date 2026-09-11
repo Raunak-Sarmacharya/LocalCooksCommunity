@@ -13,11 +13,7 @@ import { startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, startOfYear, en
 
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
-import {
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
-} from "@/components/ui/popover"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
 import { formatDate } from "@/lib/formatters"
 import type { DateRangePreset, DateRange as AppDateRange } from "../types"
@@ -136,15 +132,15 @@ export function DateRangePicker({
                 </Button>
             </PopoverTrigger>
             <PopoverContent
-                className="w-[calc(100vw-2rem)] max-w-[760px] overflow-hidden p-0"
+                className="w-auto max-w-[calc(100vw-2rem)] overflow-hidden p-0"
                 align="end"
                 sideOffset={8}
             >
-                <div className="flex flex-col md:flex-row">
+                <div className="flex flex-col sm:flex-row">
                     {/* Presets Sidebar */}
-                    <div className="w-full border-b p-3 md:w-44 md:border-b-0 md:border-r">
+                    <div className="w-full border-b p-3 sm:w-40 sm:border-b-0 sm:border-r">
                         <p className="text-xs font-medium text-muted-foreground mb-2 px-2">{mt("quickSelect")}</p>
-                        <div className="grid grid-cols-2 gap-1 md:block md:space-y-1">
+                        <div className="grid grid-cols-2 gap-1 sm:block sm:space-y-1">
                             {presets.map((preset) => (
                                 <Button
                                     key={preset.labelKey}
@@ -160,7 +156,7 @@ export function DateRangePicker({
                     </div>
 
                     {/* Calendar */}
-                    <div className="overflow-x-auto p-3">
+                    <div className="p-3">
                         <Calendar
                             mode="range"
                             selected={{
@@ -168,11 +164,11 @@ export function DateRangePicker({
                                 to: dateRange.to,
                             }}
                             onSelect={handleCalendarSelect}
-                            numberOfMonths={2}
+                            numberOfMonths={1}
                             defaultMonth={dateRange.from}
                             className="p-0"
                             classNames={{
-                                months: "flex flex-col sm:flex-row gap-4 space-y-0 sm:space-x-0",
+                                months: "block w-[280px] space-y-0",
                                 month: "w-[280px] flex-shrink-0 space-y-4",
                                 caption: "flex justify-center pt-1 relative items-center",
                                 table: "w-[280px] border-collapse",

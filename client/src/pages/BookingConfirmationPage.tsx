@@ -1,5 +1,5 @@
 import { logger } from "@/lib/logger";
-import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, Package, Wrench, DollarSign, ChefHat, ArrowLeft, CreditCard, Loader2 } from "lucide-react";
+import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, Package, Wrench, DollarSign, ArrowLeft, CreditCard, Loader2 } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
 import { estimateBookingCheckoutTotal } from "@/lib/booking-price-estimate";
 import { useState, useEffect, useMemo, useRef } from "react";
@@ -604,7 +604,7 @@ export default function BookingConfirmationPage() {
                     {/* GROUP 1: Kitchen Booking + Equipment Add-ons */}
                     <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-lg border-2 border-blue-200">
                       <h3 className="text-base font-bold text-blue-900 mb-3 flex items-center gap-2">
-                        <ChefHat className="h-5 w-5" />
+                        <CalendarIcon className="h-5 w-5" />
                         Kitchen Booking & Add-ons
                       </h3>
                       

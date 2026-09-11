@@ -15,7 +15,7 @@
  */
 
 import * as Sentry from '@sentry/react';
-import { COOKIE_CONSENT_EVENT, hasOptionalCookieConsent } from './lib/cookie-consent';
+import { COOKIE_CONSENT_EVENT, hasOptionalCookieConsent } from "./lib/cookie-consent";
 
 const sentryDsn = import.meta.env.VITE_SENTRY_DSN;
 const isProduction = import.meta.env.PROD;

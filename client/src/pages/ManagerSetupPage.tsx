@@ -6,22 +6,7 @@ import EnterpriseStepper from "@/components/manager/onboarding/EnterpriseStepper
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { 
-    X, 
-    ChevronRight, 
-    Home,
-    HelpCircle,
-    MapPin,
-    ChefHat,
-    ClipboardList,
-    CreditCard,
-    Clock,
-    Package,
-    CookingPot,
-    PartyPopper,
-    Handshake,
-    Loader2
-} from "@/components/ui/manager-icons";
+import { X, ChevronRight, Home, HelpCircle, MapPin, Calendar, ClipboardList, CreditCard, Clock, Package, CookingPot, PartyPopper, Handshake, Loader2 } from "@/components/ui/manager-icons";
 import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -30,7 +15,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 const STEP_ICONS: Record<string, React.ElementType> = {
     'welcome': Handshake,
     'location': MapPin,
-    'create-kitchen': ChefHat,
+    'create-kitchen': Calendar,
     'application-requirements': ClipboardList,
     'payment-setup': CreditCard,
     'availability': Clock,

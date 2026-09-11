@@ -1,9 +1,4 @@
-import {
-  LOCALE_COOKIE,
-  getLocaleDir,
-  isAppLocale,
-  type AppLocale,
-} from "@shared/i18n";
+import { LOCALE_COOKIE, getLocaleDir, isAppLocale, type AppLocale } from "@shared/i18n";
 import i18n from "./index";
 
 const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365; // 1 year

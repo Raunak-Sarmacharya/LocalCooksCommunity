@@ -18,13 +18,7 @@ import { auth } from "@/lib/firebase";
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
 import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter";
 import { cn } from "@/lib/utils";
-import {
-  STORAGE_CATEGORIES,
-  StorageTemplate,
-  StorageTypeId,
-  ACCESS_TYPE_LABELS,
-  getDefaultTemperatureRange,
-} from "@/lib/storage-templates";
+import { STORAGE_CATEGORIES, StorageTemplate, StorageTypeId, ACCESS_TYPE_LABELS, getDefaultTemperatureRange } from "@/lib/storage-templates";
 
 // Category icon component for dynamic rendering
 const StorageCategoryIcon = ({ iconName, className }: { iconName: string; className?: string }) => {

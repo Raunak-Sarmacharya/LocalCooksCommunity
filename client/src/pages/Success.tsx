@@ -1,13 +1,7 @@
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { QuietNotice, StatTile, StatusDot } from "@/components/chef/ui";
 import type { StatusTone } from "@/components/chef/applications/status";
 import { useFirebaseAuth } from "@/hooks/use-auth";

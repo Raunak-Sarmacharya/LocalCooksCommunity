@@ -2,11 +2,7 @@
  * Runnable check for uid-scoped walkthrough storage keys.
  * Run: npx tsx client/src/components/ui/spotlight-walkthrough.check.ts
  */
-import {
-  hasCompletedTourFamily,
-  migrateTourFamilyCompletion,
-  walkthroughStorageKey,
-} from "./spotlight-walkthrough";
+import { hasCompletedTourFamily, migrateTourFamilyCompletion, walkthroughStorageKey } from "./spotlight-walkthrough";
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) throw new Error(msg);

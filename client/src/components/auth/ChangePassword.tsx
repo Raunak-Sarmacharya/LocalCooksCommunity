@@ -1,20 +1,7 @@
 import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { KeyRound, Loader2, ShieldCheck, Chrome, Mail } from "lucide-react";
@@ -24,12 +11,7 @@ import { z } from "zod";
 import { toast } from "@/hooks/use-toast";
 import { useTranslation } from "react-i18next";
 import { auth } from "@/lib/firebase";
-import {
-  EmailAuthProvider,
-  linkWithCredential,
-  reauthenticateWithCredential,
-  updatePassword,
-} from "firebase/auth";
+import { EmailAuthProvider, linkWithCredential, reauthenticateWithCredential, updatePassword } from "firebase/auth";
 import { cn } from "@/lib/utils";
 import { resolvePasswordFormMode, type PasswordFormMode } from "./password-form-mode";
 

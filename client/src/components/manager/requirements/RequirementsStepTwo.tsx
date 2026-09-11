@@ -3,26 +3,14 @@
  * Kitchen Coordination requirements after initial application approval
  */
 
-import { Switch } from '@/components/ui/switch';
+import { Switch } from "@/components/ui/switch";
 import { mt } from "@/i18n/manager";
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion';
-import {
-  FileCheck,
-  ShieldAlert,
-  ClipboardList,
-  BadgeCheck,
-  Info,
-  AlertTriangle,
-} from '@/components/ui/manager-icons';
-import { CustomFieldBuilder } from './CustomFieldBuilder';
-import { LocationRequirements, CustomField, STEP2_BUILT_IN_FIELDS } from './types';
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { FileCheck, ShieldAlert, ClipboardList, BadgeCheck, Info, AlertTriangle } from "@/components/ui/manager-icons";
+import { CustomFieldBuilder } from "./CustomFieldBuilder";
+import { LocationRequirements, CustomField, STEP2_BUILT_IN_FIELDS } from "./types";
 
 interface RequirementsStepTwoProps {
   requirements: Partial<LocationRequirements>;

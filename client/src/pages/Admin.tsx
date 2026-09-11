@@ -21,11 +21,7 @@ import AdminDamageClaimsHistory from "@/components/admin/sections/AdminDamageCla
 import { AccessCodeDashboard } from "@/components/admin/sections/AccessCodeDashboard";
 import { PasswordResetSection } from "@/components/admin/sections/PasswordResetSection";
 import { EmailLogSection } from "@/components/admin/sections/EmailLogSection";
-import {
-  formatApplicationStatus,
-  formatCertificationStatus,
-  formatKitchenPreference
-} from "@/lib/applicationSchema";
+import { formatApplicationStatus, formatCertificationStatus, formatKitchenPreference } from "@/lib/applicationSchema";
 import { Application } from "@shared/schema";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
@@ -76,27 +72,7 @@ import { auth } from "@/lib/firebase";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { AdminOverviewSection } from "@/components/admin/sections/AdminOverviewSection";
 import { SecuritySettingsSection } from "@/components/admin/sections/SecuritySettingsSection";
-import {
-  AlertCircle,
-  AlertTriangle,
-  CalendarDays,
-  CheckCircle,
-  Clock,
-  ExternalLink,
-  RefreshCw,
-  Search,
-  Shield,
-  User as UserIcon,
-  XCircle,
-  Check,
-  Building2,
-  Loader2,
-  MailCheck,
-  Eye,
-  EyeOff,
-  KeyRound,
-  Copy,
-} from "lucide-react";
+import { AlertCircle, AlertTriangle, CalendarDays, CheckCircle, Clock, ExternalLink, RefreshCw, Search, Shield, User as UserIcon, XCircle, Check, Building2, Loader2, MailCheck, Eye, EyeOff, KeyRound, Copy } from "lucide-react";
 
 function AdminDashboard() {
   const [, navigate] = useLocation();

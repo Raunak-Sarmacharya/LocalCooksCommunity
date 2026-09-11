@@ -2,14 +2,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 import * as React from "react"
 import { ChefSidebar } from "@/components/chef/ChefSidebar"
 import { Separator } from "@/components/ui/separator"
-import {
-    Breadcrumb,
-    BreadcrumbItem,
-    BreadcrumbLink,
-    BreadcrumbList,
-    BreadcrumbPage,
-    BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb"
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
 import { useFirebaseAuth } from "@/hooks/use-auth"
 import { useChefSidebarHiddenItems } from "@/hooks/use-chef-sidebar-hidden-items"
 import { Command } from "lucide-react"
@@ -21,10 +14,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useTranslation } from "react-i18next"
 import type { TFunction } from "i18next"
-import {
-    findChefNavItem,
-    type ChefBreadcrumb,
-} from "@/lib/chef-nav-sections"
+import { findChefNavItem, type ChefBreadcrumb } from "@/lib/chef-nav-sections"
 import { ChefShellUiProvider } from "@/layouts/chef-shell-context"
 
 interface ChefDashboardLayoutProps {

@@ -1,11 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  COOKIE_CONSENT_EVENT,
-  COOKIE_CONSENT_STORAGE_KEY,
-  getCookieConsent,
-  hasOptionalCookieConsent,
-  setCookieConsent,
-} from "./cookie-consent";
+import { COOKIE_CONSENT_EVENT, COOKIE_CONSENT_STORAGE_KEY, getCookieConsent, hasOptionalCookieConsent, setCookieConsent } from "./cookie-consent";
 
 describe("cookie consent", () => {
   beforeEach(() => {

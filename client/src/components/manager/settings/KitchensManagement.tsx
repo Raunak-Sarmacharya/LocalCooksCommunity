@@ -6,39 +6,30 @@ import { tt } from "@/i18n/common-ns";
  * Manages kitchen photos, descriptions, and gallery images
  */
 
-import { useState, useEffect } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Storefront, Plus, Trash2, Loader2, ImagePlus, KeyRound, Package, Wrench, Image as Images, Clock } from '@/components/ui/manager-icons';
-import { Separator } from '@/components/ui/separator';
-import { Button } from '@/components/ui/button';
-import { StatusButton } from '@/components/ui/status-button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { ImageWithReplace } from '@/components/ui/image-with-replace';
-import { useSessionFileUpload } from '@/hooks/useSessionFileUpload';
-import { useToast } from '@/hooks/use-toast';
-import { auth } from '@/lib/firebase';
-import { cn } from '@/lib/utils';
-import { ChefPageHeader } from '@/components/chef/ui';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { EquipmentListingContent } from '@/pages/EquipmentListingManagement';
-import { StorageListingContent } from '@/pages/StorageListingManagement';
-import { KitchenPricingContent } from '@/pages/KitchenPricingManagement';
-import { kitchenSectionFromParams, type KitchenSection } from '@/lib/manager-kitchens-navigation';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Storefront, Plus, Trash2, Loader2, ImagePlus, KeyRound, Package, Wrench, Image as Images, Clock, ClipboardCheck } from "@/components/ui/manager-icons";
+import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
+import { StatusButton } from "@/components/ui/status-button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { ImageWithReplace } from "@/components/ui/image-with-replace";
+import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
+import { useToast } from "@/hooks/use-toast";
+import { auth } from "@/lib/firebase";
+import { cn } from "@/lib/utils";
+import { ChefPageHeader } from "@/components/chef/ui";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { EquipmentListingContent } from "@/pages/EquipmentListingManagement";
+import { StorageListingContent } from "@/pages/StorageListingManagement";
+import { KitchenPricingContent } from "@/pages/KitchenPricingManagement";
+import { kitchenSectionFromParams, type KitchenSection } from "@/lib/manager-kitchens-navigation";
+import { apiPut } from "@/lib/api";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 interface Kitchen {
   id: number;
@@ -48,6 +39,7 @@ interface Kitchen {
   locationId: number;
   isActive: boolean;
   galleryImages?: string[];
+  minimumBookingHours?: number;
   /** Admin-controlled capability gate. When false, all smart-door UI is hidden. */
   smartLockAvailable?: boolean;
   smartLockEnabled?: boolean;
@@ -65,6 +57,7 @@ interface Location {
 interface KitchensManagementProps {
   location: Location;
   onNavigate: (view: 'availability') => void;
+  onConfigureRequirements: () => void;
 }
 
 function KitchenGalleryImages({
@@ -251,7 +244,7 @@ function KitchenGalleryImages({
   );
 }
 
-export default function KitchensManagement({ location, onNavigate }: KitchensManagementProps) {
+export default function KitchensManagement({ location, onNavigate, onConfigureRequirements }: KitchensManagementProps) {
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -265,6 +258,8 @@ export default function KitchensManagement({ location, onNavigate }: KitchensMan
   const [newKitchenMinimumHours, setNewKitchenMinimumHours] = useState('1');
   const [isCreatingKitchen, setIsCreatingKitchen] = useState(false);
   const [selectedKitchenId, setSelectedKitchenId] = useState<number | null>(null);
+  const [minimumBookingHours, setMinimumBookingHours] = useState<Record<number, number>>({});
+  const [savingMinimumKitchenId, setSavingMinimumKitchenId] = useState<number | null>(null);
   const [activeSection, setActiveSection] = useState<KitchenSection>(getInitialKitchenSection);
 
   const { data: kitchens = [], isLoading: isLoadingKitchens } = useQuery<Kitchen[]>({
@@ -293,10 +288,13 @@ export default function KitchensManagement({ location, onNavigate }: KitchensMan
   useEffect(() => {
     if (kitchens.length > 0) {
       const descriptions: Record<number, string> = {};
+      const minimums: Record<number, number> = {};
       kitchens.forEach((kitchen) => {
         descriptions[kitchen.id] = kitchen.description || '';
+        minimums[kitchen.id] = kitchen.minimumBookingHours ?? 0;
       });
       setKitchenDescriptions(descriptions);
+      setMinimumBookingHours(minimums);
       setSelectedKitchenId((current) => kitchens.some((kitchen) => kitchen.id === current) ? current : kitchens[0].id);
     }
   }, [kitchens]);
@@ -355,6 +353,20 @@ export default function KitchensManagement({ location, onNavigate }: KitchensMan
       });
     } finally {
       setUpdatingKitchenId(null);
+    }
+  };
+
+  const handleMinimumBookingHoursUpdate = async (kitchen: Kitchen) => {
+    const value = minimumBookingHours[kitchen.id] ?? 0;
+    setSavingMinimumKitchenId(kitchen.id);
+    try {
+      await apiPut(`/manager/kitchens/${kitchen.id}/pricing`, { minimumBookingHours: value });
+      await queryClient.invalidateQueries({ queryKey: ['managerKitchens', location.id] });
+      toast({ title: mt("success"), description: mt("minimumBookingDurationUpdated") });
+    } catch (error: any) {
+      toast({ title: mt("error"), description: error.message || tt("failedToUpdateGeneric"), variant: "destructive" });
+    } finally {
+      setSavingMinimumKitchenId(null);
     }
   };
 
@@ -491,6 +503,9 @@ export default function KitchensManagement({ location, onNavigate }: KitchensMan
         description={mt("managePhotosForLocation", { name: location.name })}
         actions={
           <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={onConfigureRequirements}>
+              <ClipboardCheck className="mr-1.5 h-4 w-4" />{mt("navApplicationRequirements")}
+            </Button>
             <Button variant="outline" size="sm" onClick={() => onNavigate('availability')}>
               <Clock className="mr-1.5 h-4 w-4" />{mt("navAvailability")}
             </Button>
@@ -756,6 +771,46 @@ export default function KitchensManagement({ location, onNavigate }: KitchensMan
                 </Card>
               ))}
               <div className="mt-5">
+                {kitchens.filter((kitchen) => kitchen.id === activeKitchenId).map((kitchen) => (
+                  <Card key={`minimum-${kitchen.id}`} className="mb-5">
+                    <CardHeader className="p-4 pb-3">
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        <Clock className="h-5 w-5 text-violet-600" />{mt("minimumBookingDuration")}
+                      </CardTitle>
+                      <p className="text-sm text-muted-foreground">{mt("setTheMinimumHoursRequiredPerBookingForEachKitchen")}</p>
+                    </CardHeader>
+                    <CardContent className="p-4 pt-0">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                        <div className="w-full max-w-xs">
+                          <Label htmlFor={`min-booking-duration-${kitchen.id}`}>{mt("minimumHoursPerBooking")}</Label>
+                          <Input
+                            id={`min-booking-duration-${kitchen.id}`}
+                            type="number"
+                            min="0"
+                            max="24"
+                            step="1"
+                            value={minimumBookingHours[kitchen.id] ?? 0}
+                            onChange={(event) => {
+                              const parsed = parseInt(event.target.value, 10);
+                              setMinimumBookingHours((current) => ({
+                                ...current,
+                                [kitchen.id]: Number.isNaN(parsed) ? 0 : Math.min(24, Math.max(0, parsed)),
+                              }));
+                            }}
+                            className="mt-1.5"
+                          />
+                          <p className="mt-1 text-xs text-muted-foreground">0 = no restriction, maximum 24 hours.</p>
+                        </div>
+                        <StatusButton
+                          status={savingMinimumKitchenId === kitchen.id ? "loading" : "idle"}
+                          onClick={() => handleMinimumBookingHoursUpdate(kitchen)}
+                          disabled={(minimumBookingHours[kitchen.id] ?? 0) === (kitchen.minimumBookingHours ?? 0)}
+                          labels={{ idle: mt("saveDuration"), loading: mt("savingShort"), success: mt("saved") }}
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
                 <KitchenPricingContent selectedLocationId={location.id} selectedKitchenId={activeKitchenId} />
               </div>
             </TabsContent>

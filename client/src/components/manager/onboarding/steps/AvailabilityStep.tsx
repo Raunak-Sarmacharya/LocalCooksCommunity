@@ -1,11 +1,11 @@
 import React, { useRef, useState } from 'react';
 import { mt } from "@/i18n/manager";
-import { CheckCircle, Calendar } from '@/components/ui/manager-icons';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Card, CardContent } from '@/components/ui/card';
+import { CheckCircle, Calendar } from "@/components/ui/manager-icons";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Card, CardContent } from "@/components/ui/card";
 import KitchenAvailabilityManagement, { type KitchenAvailabilityManagementHandle } from '@/pages/KitchenAvailabilityManagement';
-import { useManagerOnboarding } from '../ManagerOnboardingContext';
-import { OnboardingNavigationFooter } from '../OnboardingNavigationFooter';
+import { useManagerOnboarding } from "../ManagerOnboardingContext";
+import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter";
 
 const AvailabilityStep = () => {
     const {

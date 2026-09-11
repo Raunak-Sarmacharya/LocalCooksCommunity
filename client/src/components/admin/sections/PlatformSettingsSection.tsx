@@ -7,14 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
-import {
-  AlertCircle,
-  Clock,
-  DollarSign,
-  RefreshCw,
-  Save,
-  TrendingUp,
-} from "lucide-react";
+import { AlertCircle, Clock, DollarSign, RefreshCw, Save, TrendingUp } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 
 export function PlatformSettingsSection() {

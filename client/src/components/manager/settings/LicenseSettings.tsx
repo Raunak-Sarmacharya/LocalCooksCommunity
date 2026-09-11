@@ -6,21 +6,21 @@ import { tt } from "@/i18n/common-ns";
  * Manages kitchen license upload and status for a location
  */
 
-import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { FileText, Upload, CheckCircle, Clock, XCircle, AlertCircle, ExternalLink, Loader2, Calendar as CalendarIcon } from '@/components/ui/manager-icons';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { useToast } from '@/hooks/use-toast';
-import { auth } from '@/lib/firebase';
-import { usePresignedDocumentUrl } from '@/hooks/use-presigned-document-url';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { format } from 'date-fns';
-import { SettingsFileUpload } from './SettingsFileUpload';
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { FileText, Upload, CheckCircle, Clock, XCircle, AlertCircle, ExternalLink, Loader2, Calendar as CalendarIcon } from "@/components/ui/manager-icons";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
+import { auth } from "@/lib/firebase";
+import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { format } from "date-fns";
+import { SettingsFileUpload } from "./SettingsFileUpload";
 
 interface Location {
   id: number;
@@ -374,6 +374,7 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
                           onSelect={(date) => setLicenseExpiryDate(date ? format(date, 'yyyy-MM-dd') : '')}
                           disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
                           initialFocus
+                          className="w-[280px] p-3"
                         />
                       </PopoverContent>
                     </Popover>

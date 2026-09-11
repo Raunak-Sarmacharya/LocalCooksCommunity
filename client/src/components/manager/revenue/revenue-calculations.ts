@@ -1,9 +1,6 @@
 import { formatCurrency, formatDate } from "@/lib/formatters";
 import type { PaymentStatus, Transaction } from "./types";
-import {
-  buildKitchenPayoutStatementBreakdown,
-  aggregateKitchenPayoutTotals,
-} from "@shared/booking-pricing-breakdown";
+import { buildKitchenPayoutStatementBreakdown, aggregateKitchenPayoutTotals } from "@shared/booking-pricing-breakdown";
 
 const REVENUE_ELIGIBLE_STATUSES = new Set<PaymentStatus>([
     "paid",

@@ -8,34 +8,14 @@ import Logo from "@/components/ui/logo";
 import { SiStripe } from "react-icons/si";
 import { InfoChip } from "@/components/chef/info-chip";
 import { KitchenStatusChip } from "@/components/chef/applications/status-icons";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { formatDate, formatTime } from "@/lib/formatters";
-import {
-  ArrowRight,
-  ExternalLink,
-  Loader2,
-} from "lucide-react";
+import { ArrowRight, ExternalLink, Loader2 } from "lucide-react";
 import { formatApplicationStatus } from "@/lib/applicationSchema";
-import {
-  openChefShopHome,
-  useShopStatus,
-  useStripeDashboardLink,
-} from "@/components/chef/seller-revenue/hooks/useSellerRevenue";
+import { openChefShopHome, useShopStatus, useStripeDashboardLink } from "@/components/chef/seller-revenue/hooks/useSellerRevenue";
 import { useToast } from "@/hooks/use-toast";
-import {
-  applicationStatusVariant,
-  documentToneFromLabel,
-  getKitchenDisplayStatus,
-  type StatusTone,
-} from "@/components/chef/applications/status";
+import { applicationStatusVariant, documentToneFromLabel, getKitchenDisplayStatus, type StatusTone } from "@/components/chef/applications/status";
 import type {
   AnyApplication,
   KitchenApplicationWithLocation,

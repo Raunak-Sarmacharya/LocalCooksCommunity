@@ -10,15 +10,7 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 
 type ChefTFunction = TFunction<"chef", undefined>;
-import {
-  ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
-  getFilteredRowModel,
-  SortingState,
-  useReactTable,
-} from "@tanstack/react-table";
+import { ColumnDef, flexRender, getCoreRowModel, getSortedRowModel, getFilteredRowModel, SortingState, useReactTable } from "@tanstack/react-table";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,78 +21,17 @@ import { Icon } from "@iconify/react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Loader2,
-  DollarSign,
-  TrendingUp,
-  Receipt,
-  ExternalLink,
-  Link2,
-  Store,
-  Truck,
-  ShoppingBag,
-  Clock,
-  CheckCircle2,
-  AlertCircle,
-  Info,
-  ArrowUpDown,
-  Calendar,
-  User,
-  Hash,
-  Search,
-  X,
-  Download,
-  RefreshCw,
-  ChevronLeft,
-  ChevronRight,
-  Minus,
-  FileText,
-  FileSpreadsheet,
-  ChevronDown,
-  Users,
-  Star,
-  MapPin,
-} from "lucide-react";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Loader2, DollarSign, TrendingUp, Receipt, ExternalLink, Link2, Store, Truck, ShoppingBag, Clock, CheckCircle2, AlertCircle, Info, ArrowUpDown, Calendar, User, Hash, Search, X, Download, RefreshCw, ChevronLeft, ChevronRight, Minus, FileText, FileSpreadsheet, ChevronDown, Users, Star, MapPin } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import locoLogo from "@/assets/LoCoLogo.svg";
 import { SiUber } from "react-icons/si";
 import { formatNumber } from "@/lib/formatters";
-import {
-  useShopStatus,
-  useLinkShop,
-  useEarningsSummary,
-  useSellerOrders,
-  useStripeDashboardLink,
-  useSellerRetention,
-  openChefShopHome,
-} from "./hooks/useSellerRevenue";
+import { useShopStatus, useLinkShop, useEarningsSummary, useSellerOrders, useStripeDashboardLink, useSellerRetention, openChefShopHome } from "./hooks/useSellerRevenue";
 import type { SellerOrder } from "./hooks/useSellerRevenue";
 import { ChefRevenueMatrix } from "./ChefRevenueMatrix";
 import { PickupOrderIcon } from "@/components/ui/PickupOrderIcon";

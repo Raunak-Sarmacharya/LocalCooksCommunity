@@ -10,56 +10,17 @@ import { useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 // date-fns format removed — using toLocaleDateString with timeZone for timezone-aware display
-import {
-  ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
-  getFilteredRowModel,
-  SortingState,
-  useReactTable,
-} from "@tanstack/react-table";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { ColumnDef, flexRender, getCoreRowModel, getSortedRowModel, getFilteredRowModel, SortingState, useReactTable } from "@tanstack/react-table";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { InfoChip } from "@/components/chef/info-chip";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  RefreshCw,
-  Building2,
-  Package,
-  DollarSign,
-  ArrowUpDown,
-  Calendar,
-  Receipt,
-  ChefHat,
-  Search,
-  X,
-  Hash,
-} from "lucide-react";
+import { RefreshCw, Building2, Package, DollarSign, ArrowUpDown, Calendar, Receipt, Search, X, Hash } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import { ChefPageHeader, StatTile } from "@/components/chef/ui";
@@ -144,7 +105,7 @@ function getStatusBadge(status: string, refundAmount: number, t: any) {
 function getBookingTypeIcon(type: string) {
   switch (type) {
     case "kitchen":
-      return <ChefHat className="h-4 w-4 text-muted-foreground" />;
+      return <Calendar className="h-4 w-4 text-muted-foreground" />;
     case "storage":
       return <Package className="h-4 w-4 text-muted-foreground" />;
     case "equipment":

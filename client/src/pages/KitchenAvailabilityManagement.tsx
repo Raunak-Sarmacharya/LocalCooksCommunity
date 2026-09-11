@@ -1,7 +1,7 @@
 import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
-import { Calendar as CalendarIcon, Save, Trash2, Loader2, AlertTriangle } from "@/components/ui/manager-icons";
-import { forwardRef, useEffect, useState, useCallback, useImperativeHandle } from "react";
+import { Calendar as CalendarIcon, Save, Trash2, Loader2, AlertTriangle, Eye } from "@/components/ui/manager-icons";
+import { forwardRef, useEffect, useState, useCallback, useImperativeHandle, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -10,25 +10,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -37,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { tt } from "@/i18n/common-ns";
 import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
 import { ChefPageHeader } from "@/components/chef/ui";
+import ViewingSettingsPanel, { type ViewingSettingsPanelHandle } from "@/components/manager/ViewingSettingsPanel";
 
 // --- Types ---
 interface DateAvailability {
@@ -80,8 +66,12 @@ interface WeeklyScheduleItem {
   end_time?: string;
 }
 
-export interface KitchenAvailabilityManagementHandle {
+interface AvailabilityContentHandle {
   saveWeeklySchedule: () => Promise<boolean>;
+}
+
+export interface KitchenAvailabilityManagementHandle extends AvailabilityContentHandle {
+  saveAllChanges: () => Promise<boolean>;
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -106,20 +96,38 @@ interface KitchenAvailabilityManagementProps {
   embedded?: boolean;
   initialLocationId?: number;
   initialKitchenId?: number;
+  initialAvailabilityTab?: "bookings" | "tours";
+  onDirtyChange?: (dirty: boolean) => void;
   onSaveSuccess?: () => void | Promise<void>; // [NEW] Callback when availability is saved
   hideWeeklyScheduleSaveButton?: boolean;
 }
+
+type PendingAvailabilityChange =
+  | { type: "kitchen"; kitchenId: number }
+  | { type: "tab"; tab: "bookings" | "tours" };
 
 const KitchenAvailabilityManagement = forwardRef<KitchenAvailabilityManagementHandle, KitchenAvailabilityManagementProps>(function KitchenAvailabilityManagement({
   embedded = false,
   initialLocationId,
   initialKitchenId,
+  initialAvailabilityTab = "bookings",
+  onDirtyChange,
   onSaveSuccess,
   hideWeeklyScheduleSaveButton = false
 }, ref) {
   const { kitchens, isLoadingKitchens } = useManagerDashboard();
   const availableKitchens = kitchens.filter((kitchen) => !initialLocationId || kitchen.locationId === initialLocationId);
   const [selectedKitchenId, setSelectedKitchenId] = useState<number | null>(initialKitchenId || null);
+  const [activeAvailabilityTab, setActiveAvailabilityTab] = useState<"bookings" | "tours">(initialAvailabilityTab);
+  const [bookingDirty, setBookingDirty] = useState(false);
+  const [tourDirty, setTourDirty] = useState(false);
+  const [pendingChange, setPendingChange] = useState<PendingAvailabilityChange | null>(null);
+  const [isSavingBeforeSwitch, setIsSavingBeforeSwitch] = useState(false);
+  const [contentVersion, setContentVersion] = useState(0);
+  const bookingRef = useRef<AvailabilityContentHandle>(null);
+  const tourRef = useRef<ViewingSettingsPanelHandle>(null);
+  const selectedKitchen = availableKitchens.find((kitchen) => kitchen.id === selectedKitchenId);
+  const selectedLocationId = initialLocationId ?? selectedKitchen?.locationId ?? null;
 
   useEffect(() => {
     setSelectedKitchenId((current) =>
@@ -129,12 +137,78 @@ const KitchenAvailabilityManagement = forwardRef<KitchenAvailabilityManagementHa
     );
   }, [initialLocationId, initialKitchenId, kitchens]);
 
+  useEffect(() => {
+    setActiveAvailabilityTab(initialAvailabilityTab);
+  }, [initialAvailabilityTab]);
+
+  const hasUnsavedChanges = bookingDirty || tourDirty;
+
+  useEffect(() => {
+    onDirtyChange?.(hasUnsavedChanges);
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!hasUnsavedChanges) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [hasUnsavedChanges, onDirtyChange]);
+
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
+
+  const saveAllChanges = useCallback(async () => {
+    const bookingSaved = !bookingDirty || await (bookingRef.current?.saveWeeklySchedule() ?? Promise.resolve(false));
+    if (!bookingSaved) return false;
+    return !tourDirty || await (tourRef.current?.saveChanges() ?? Promise.resolve(false));
+  }, [bookingDirty, tourDirty]);
+
+  useImperativeHandle(ref, () => ({
+    saveWeeklySchedule: () => bookingRef.current?.saveWeeklySchedule() ?? Promise.resolve(true),
+    saveAllChanges,
+  }), [saveAllChanges]);
+
+  const applyPendingChange = useCallback((change: PendingAvailabilityChange) => {
+    if (change.type === "kitchen") setSelectedKitchenId(change.kitchenId);
+    else setActiveAvailabilityTab(change.tab);
+    setPendingChange(null);
+  }, []);
+
+  const requestKitchenChange = (kitchenId: number) => {
+    if (kitchenId === selectedKitchenId) return;
+    if (hasUnsavedChanges) setPendingChange({ type: "kitchen", kitchenId });
+    else setSelectedKitchenId(kitchenId);
+  };
+
+  const requestTabChange = (tab: "bookings" | "tours") => {
+    if (tab === activeAvailabilityTab) return;
+    if (hasUnsavedChanges) setPendingChange({ type: "tab", tab });
+    else setActiveAvailabilityTab(tab);
+  };
+
+  const saveAndApplyPendingChange = async () => {
+    if (!pendingChange) return;
+    setIsSavingBeforeSwitch(true);
+    const saved = await saveAllChanges();
+    setIsSavingBeforeSwitch(false);
+    if (saved) applyPendingChange(pendingChange);
+  };
+
+  const discardAndApplyPendingChange = () => {
+    if (!pendingChange) return;
+    setBookingDirty(false);
+    setTourDirty(false);
+    setContentVersion((version) => version + 1);
+    applyPendingChange(pendingChange);
+  };
+
   if (embedded) {
     // If embedded, we expect IDs to be passed.
     // If not, we can show a placeholder or just try to render with nulls (which Content handles).
     return (
       <AvailabilityContent
-        ref={ref}
+        ref={bookingRef}
         selectedLocationId={initialLocationId || null}
         selectedKitchenId={initialKitchenId || null}
         onSaveSuccess={onSaveSuccess}
@@ -149,40 +223,99 @@ const KitchenAvailabilityManagement = forwardRef<KitchenAvailabilityManagementHa
 
   return (
     <div className="space-y-6">
-      <ChefPageHeader title={mt("availabilityManagement")} description={mt("manageRecurringSchedulesAndSpecificDateAvailability")} />
+      <ChefPageHeader title={mt("availabilityManagement")} description={mt("availabilityHubDescription")} />
       {availableKitchens.length > 0 && (
-        <Tabs value={selectedKitchenId?.toString()} onValueChange={(value) => setSelectedKitchenId(Number(value))}>
-          <TabsList className="flex w-full gap-1 rounded-xl bg-muted p-1" aria-label={mt("selectKitchen")}>
-            {availableKitchens.map((kitchen) => (
-              <TabsTrigger key={kitchen.id} value={kitchen.id.toString()} className="min-w-36 flex-1 rounded-lg py-2.5 data-[state=active]:bg-background">
-                {kitchen.name}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+        <div className="max-w-sm space-y-2">
+          <Label htmlFor="availability-kitchen">{mt("kitchen")}</Label>
+          <Select value={selectedKitchenId?.toString() || ""} onValueChange={(value) => requestKitchenChange(Number(value))}>
+            <SelectTrigger id="availability-kitchen" className="w-full">
+              <SelectValue placeholder={mt("selectKitchen")} />
+            </SelectTrigger>
+            <SelectContent>
+              {availableKitchens.map((kitchen) => (
+                <SelectItem key={kitchen.id} value={kitchen.id.toString()}>{kitchen.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       )}
-      <AvailabilityContent
-        ref={ref}
-        selectedLocationId={initialLocationId || null}
-        selectedKitchenId={selectedKitchenId}
-        hideWeeklyScheduleSaveButton={hideWeeklyScheduleSaveButton}
-      />
+      <Tabs value={activeAvailabilityTab} onValueChange={(value) => requestTabChange(value as "bookings" | "tours")}>
+        <TabsList className="grid w-full grid-cols-2 rounded-xl bg-muted p-1">
+          <TabsTrigger value="bookings" className="gap-2 rounded-lg py-2.5 data-[state=active]:bg-background">
+            <CalendarIcon className="h-4 w-4" />{mt("kitchenBookingAvailability")}
+          </TabsTrigger>
+          <TabsTrigger value="tours" className="gap-2 rounded-lg py-2.5 data-[state=active]:bg-background">
+            <Eye className="h-4 w-4" />{mt("kitchenTours")}
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="bookings" className="mt-6">
+          <AvailabilityContent
+            key={`bookings-${selectedKitchenId}-${contentVersion}`}
+            ref={bookingRef}
+            selectedLocationId={selectedLocationId}
+            selectedKitchenId={selectedKitchenId}
+            hideWeeklyScheduleSaveButton={hideWeeklyScheduleSaveButton}
+            onDirtyChange={setBookingDirty}
+          />
+        </TabsContent>
+        <TabsContent value="tours" className="mt-6">
+          {selectedKitchenId ? (
+            <ViewingSettingsPanel
+              key={`tours-${selectedKitchenId}-${contentVersion}`}
+              ref={tourRef}
+              kitchenId={selectedKitchenId}
+              kitchenName={selectedKitchen?.name}
+              onDirtyChange={setTourDirty}
+            />
+          ) : (
+            <Card className="border-dashed">
+              <CardContent className="p-12 text-center text-muted-foreground">{mt("selectAKitchenToManageAvailability")}</CardContent>
+            </Card>
+          )}
+        </TabsContent>
+      </Tabs>
+      <AlertDialog open={pendingChange !== null} onOpenChange={(open) => !open && setPendingChange(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{mt("unsavedChanges")}</AlertDialogTitle>
+            <AlertDialogDescription>{mt("availabilityUnsavedChangesDescription")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSavingBeforeSwitch}>{mt("cancel")}</AlertDialogCancel>
+            <Button variant="outline" disabled={isSavingBeforeSwitch} onClick={discardAndApplyPendingChange}>
+              {mt("discardChanges")}
+            </Button>
+            <AlertDialogAction
+              disabled={isSavingBeforeSwitch}
+              onClick={(event) => {
+                event.preventDefault();
+                void saveAndApplyPendingChange();
+              }}
+            >
+              {isSavingBeforeSwitch && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {mt("saveChanges")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 });
 
 export default KitchenAvailabilityManagement;
 
-const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
+const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
   selectedLocationId: number | null,
   selectedKitchenId: number | null,
   onSaveSuccess?: () => void | Promise<void>,
-  hideWeeklyScheduleSaveButton?: boolean
+  hideWeeklyScheduleSaveButton?: boolean,
+  onDirtyChange?: (dirty: boolean) => void
 }>(function AvailabilityContent({
   selectedLocationId,
   selectedKitchenId,
   onSaveSuccess,
-  hideWeeklyScheduleSaveButton = false
+  hideWeeklyScheduleSaveButton = false,
+  onDirtyChange
 }, ref) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -499,6 +632,14 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
   };
 
 
+  const isScheduleDirty = !!savedWeeklySchedule && JSON.stringify(weeklySchedule) !== savedWeeklySchedule;
+
+  useEffect(() => {
+    onDirtyChange?.(isScheduleDirty);
+  }, [isScheduleDirty, onDirtyChange]);
+
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
+
   if (!selectedKitchenId) {
     return (
       <Card className="border-dashed h-full">
@@ -512,7 +653,6 @@ const AvailabilityContent = forwardRef<KitchenAvailabilityManagementHandle, {
   }
 
   const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-  const isScheduleDirty = !!savedWeeklySchedule && JSON.stringify(weeklySchedule) !== savedWeeklySchedule;
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-top-4">

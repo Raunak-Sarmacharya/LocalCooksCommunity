@@ -6,13 +6,7 @@ import { Plus, Building2, Search, Filter, RefreshCw } from "@/components/ui/mana
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import LocationCard, { LocationCardSkeleton, type LocationData } from "./LocationCard";
 import LocationEditModal from "./LocationEditModal";
 import { auth } from "@/lib/firebase";

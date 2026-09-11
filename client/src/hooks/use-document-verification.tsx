@@ -1,11 +1,7 @@
 import { logger } from "@/lib/logger";
 import { useToast } from "@/hooks/use-toast";
 import { Application } from "@shared/schema";
-import {
-  useMutation,
-  UseMutationResult,
-  useQuery,
-} from "@tanstack/react-query";
+import { useMutation, UseMutationResult, useQuery } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { queryClient } from "../lib/queryClient";
 import { pickDocumentVerificationApp } from "./pick-document-verification-app";

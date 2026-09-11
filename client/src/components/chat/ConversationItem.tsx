@@ -1,11 +1,11 @@
-import { formatDistanceToNow } from 'date-fns';
-import { cn } from '@/lib/utils';
-import { Badge } from '@/components/ui/badge';
-import { ChatAvatar } from '@/components/ui/chat/chat-avatar';
-import { Conversation } from '@/services/chat-service';
-import { Timestamp } from 'firebase/firestore';
-import { CheckCircle, Clock, MessageCircle } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
+import { formatDistanceToNow } from "date-fns";
+import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { ChatAvatar } from "@/components/ui/chat/chat-avatar";
+import { Conversation } from "@/services/chat-service";
+import { Timestamp } from "firebase/firestore";
+import { CheckCircle, Clock, MessageCircle } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 export type ApplicationStatus = 'inReview' | 'step1_approved' | 'step2_review' | 'fully_approved' | 'rejected' | 'unknown';
 

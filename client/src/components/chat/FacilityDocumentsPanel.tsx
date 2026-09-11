@@ -1,16 +1,12 @@
 import { logger } from "@/lib/logger";
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { FileText, Paperclip, Loader2, Eye, ChevronsUpDown } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { auth } from '@/lib/firebase';
-import { useToast } from '@/hooks/use-toast';
-import { usePresignedDocumentUrl } from '@/hooks/use-presigned-document-url';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { FileText, Paperclip, Loader2, Eye, ChevronsUpDown } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { auth } from "@/lib/firebase";
+import { useToast } from "@/hooks/use-toast";
+import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Separator } from "@/components/ui/separator"
 
 interface FacilityDocument {

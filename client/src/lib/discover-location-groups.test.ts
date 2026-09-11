@@ -1,9 +1,5 @@
 import assert from "node:assert/strict";
-import {
-  groupKitchensByLocation,
-  kitchenPreviewPath,
-  type DiscoverKitchenLike,
-} from "./discover-location-groups";
+import { groupKitchensByLocation, kitchenPreviewPath, type DiscoverKitchenLike } from "./discover-location-groups";
 
 function kitchen(
   overrides: Partial<DiscoverKitchenLike> & Pick<DiscoverKitchenLike, "id" | "locationId">

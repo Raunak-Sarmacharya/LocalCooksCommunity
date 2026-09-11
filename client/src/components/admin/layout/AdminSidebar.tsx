@@ -1,40 +1,6 @@
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuBadge,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarRail,
-  SidebarSeparator,
-} from "@/components/ui/sidebar";
+import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem, SidebarRail, SidebarSeparator } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
-import {
-  Shield,
-  FileText,
-  AlertTriangle,
-  Users,
-  Building2,
-  Gift,
-  DollarSign,
-  Settings,
-  Clock,
-  LogOut,
-  BarChart3,
-  Lock,
-  LayoutDashboard,
-  CreditCard,
-  Package,
-  FileWarning,
-  Key,
-  KeyRound,
-  Mail,
-} from "lucide-react";
+import { Shield, FileText, AlertTriangle, Users, Building2, Gift, DollarSign, Settings, Clock, LogOut, BarChart3, Lock, LayoutDashboard, CreditCard, Package, FileWarning, Key, KeyRound, Mail } from "lucide-react";
 
 export type AdminSection =
   | "overview"

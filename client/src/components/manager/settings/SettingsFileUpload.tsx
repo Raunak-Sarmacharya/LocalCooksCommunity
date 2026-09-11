@@ -1,5 +1,5 @@
-import { Card } from '@tremor/react';
-import { RiUploadCloud2Line } from '@remixicon/react';
+import { Card } from "@tremor/react";
+import { RiUploadCloud2Line } from "@remixicon/react";
 
 interface SettingsFileUploadProps {
   id: string;

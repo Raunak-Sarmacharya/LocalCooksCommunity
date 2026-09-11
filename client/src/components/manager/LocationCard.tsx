@@ -1,10 +1,6 @@
 import { useState } from "react";
 import { mt } from "@/i18n/manager";
-import {
-  Building2, MapPin, ChefHat, Calendar, Clock,
-  CheckCircle, AlertCircle, XCircle, Edit, Eye,
-  ArrowRight, Info, Image as ImageIcon
-} from "@/components/ui/manager-icons";
+import { Building2, MapPin, Calendar, Clock, CheckCircle, AlertCircle, XCircle, Edit, Eye, ArrowRight, Info, Image as ImageIcon } from "@/components/ui/manager-icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
@@ -165,7 +161,7 @@ export default function LocationCard({
           <div className="grid grid-cols-3 sm:grid-cols-3 gap-3">
             <div className="text-center p-2.5 rounded-lg bg-gray-50">
               <div className="flex items-center justify-center gap-1 text-gray-500 mb-1">
-                <ChefHat className="w-4 h-4" />
+                <Calendar className="w-4 h-4" />
               </div>
               <p className="text-lg font-bold text-gray-900">{kitchenCount}</p>
               <p className="text-xs text-gray-500">{mt("navKitchens")}</p>

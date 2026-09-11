@@ -1,26 +1,11 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, Languages } from "lucide-react";
-import {
-  LOCALE_META,
-  SUPPORTED_LOCALES,
-  type AppLocale,
-  isAppLocale,
-} from "@shared/i18n";
+import { LOCALE_META, SUPPORTED_LOCALES, type AppLocale, isAppLocale } from "@shared/i18n";
 import { changeAppLocale } from "@/i18n/locale-actions";
 import { auth } from "@/lib/firebase";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  DropdownMenuItem,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-} from "@/components/ui/dropdown-menu";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
 type LanguageSwitcherProps = {

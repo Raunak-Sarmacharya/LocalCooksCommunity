@@ -1,8 +1,5 @@
 import assert from "node:assert/strict";
-import {
-  EN_CANCELLATION_POLICY_DEFAULT,
-  formatCancellationWindowText,
-} from "./cancellation-policy";
+import { EN_CANCELLATION_POLICY_DEFAULT, formatCancellationWindowText } from "./cancellation-policy";
 
 {
   const out = formatCancellationWindowText(

@@ -2,12 +2,7 @@ import { useMemo, useState } from "react";
 import { differenceInDays, format, isBefore, startOfDay, startOfToday } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import { Icon } from "@iconify/react";
-import {
-  Calendar,
-  calendarRangeCellClass,
-  calendarRangeDayClass,
-  calendarRangeDayModifiers,
-} from "@/components/ui/calendar";
+import { Calendar, calendarRangeCellClass, calendarRangeDayClass, calendarRangeDayModifiers } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { chefOutlineCtaClass, chefPrimaryCtaClass } from "@/lib/chef-cta";

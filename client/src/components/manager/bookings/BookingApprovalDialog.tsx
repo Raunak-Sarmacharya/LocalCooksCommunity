@@ -1,29 +1,10 @@
 import { useState } from "react";
 import { mt } from "@/i18n/manager";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import {
-  CheckCircle2,
-  XCircle,
-  Loader2,
-  Package,
-  Boxes,
-  Calendar,
-  Clock,
-  MapPin,
-  ChefHat,
-  DollarSign,
-  AlertTriangle,
-} from "@/components/ui/manager-icons";
+import { CheckCircle2, XCircle, Loader2, Package, Boxes, Calendar, Clock, MapPin, DollarSign, AlertTriangle } from "@/components/ui/manager-icons";
 import { cn } from "@/lib/utils";
 import { TruncatedText } from "@/components/common/TruncatedText";
 
@@ -258,7 +239,7 @@ function BookingApprovalDialogContent({
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-muted-foreground">
                 {booking.chefName && (
                   <span className="flex items-center gap-1">
-                    <ChefHat className="h-3 w-3" />
+                    <Calendar className="h-3 w-3" />
                     {booking.chefName}
                   </span>
                 )}
@@ -298,7 +279,7 @@ function BookingApprovalDialogContent({
                   isConfirmMode ? "bg-green-100" : "bg-red-100"
                 )}
               >
-                <ChefHat
+                <Calendar
                   className={cn(
                     "h-4 w-4",
                     isConfirmMode ? "text-green-600" : "text-red-600"

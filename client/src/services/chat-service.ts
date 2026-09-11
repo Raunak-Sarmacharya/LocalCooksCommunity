@@ -1,22 +1,6 @@
 import { logger } from "@/lib/logger";
-import {
-  collection,
-  doc,
-  addDoc,
-  updateDoc,
-  getDoc,
-  getDocs,
-  query,
-  where,
-  orderBy,
-  limit,
-  onSnapshot,
-  Timestamp,
-  serverTimestamp,
-  QuerySnapshot,
-  DocumentData
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { collection, doc, addDoc, updateDoc, getDoc, getDocs, query, where, orderBy, limit, onSnapshot, Timestamp, serverTimestamp, QuerySnapshot, DocumentData } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 export interface ChatMessage {
   id?: string;

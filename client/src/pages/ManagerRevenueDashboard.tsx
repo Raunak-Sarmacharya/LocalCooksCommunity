@@ -20,41 +20,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 // Import from our revenue module
-import {
-  useRevenueMetrics,
-  useRevenueByLocation,
-  useRevenueChartData,
-  useTransactions,
-  useInvoices,
-  usePayouts,
-  useStripeConnectStatus,
-  downloadInvoice,
-  downloadPayoutStatement,
-  refundTransaction,
-  getDefaultDateRange,
-  type DateRange,
-  type LocationOption,
-  type PaymentStatus,
-  type Transaction,
-} from "@/components/manager/revenue"
+import { useRevenueMetrics, useRevenueByLocation, useRevenueChartData, useTransactions, useInvoices, usePayouts, useStripeConnectStatus, downloadInvoice, downloadPayoutStatement, refundTransaction, getDefaultDateRange, type DateRange, type LocationOption, type PaymentStatus, type Transaction } from "@/components/manager/revenue"
 
 import { RevenueMetricCards } from "@/components/manager/revenue/components/RevenueMetricCards"
 import { TransactionTable } from "@/components/manager/revenue/components/TransactionTable"
 import { DateRangePicker } from "@/components/manager/revenue/components/DateRangePicker"
-import {
-  RevenueTrendChart,
-  RevenueByLocationChart,
-  PaymentStatusChart,
-} from "@/components/manager/revenue/components/RevenueCharts"
+import { RevenueTrendChart, RevenueByLocationChart, PaymentStatusChart } from "@/components/manager/revenue/components/RevenueCharts"
 import { formatCurrency, formatDate, generateInvoiceNumber } from "@/lib/formatters"
 import { useToast } from "@/hooks/use-toast"
 
@@ -228,14 +202,7 @@ export default function ManagerRevenueDashboard({
 
   return (
     <div className="space-y-6">
-      {/* Header with Filters */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-foreground">{mt("revenueDashboard")}</h1>
-          <p className="text-muted-foreground mt-1">{mt("trackYourEarningsPaymentsAndFinancialPerformance")}</p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center justify-end gap-3">
           {/* Date Range Picker */}
           <DateRangePicker
             dateRange={dateRange}
@@ -263,7 +230,6 @@ export default function ManagerRevenueDashboard({
               </SelectContent>
             </Select>
           )}
-        </div>
       </div>
 
       {/* Info Banner */}

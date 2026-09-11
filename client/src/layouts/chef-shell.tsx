@@ -6,11 +6,7 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
 import { isChefShellPath } from "@/lib/chef-shell-path";
 import { isChefUser } from "@/config/chef-onboarding-steps";
-import {
-  ChefShellContext,
-  type ChefShellChrome,
-  type ChefShellContextValue,
-} from "@/layouts/chef-shell-context";
+import { ChefShellContext, type ChefShellChrome, type ChefShellContextValue } from "@/layouts/chef-shell-context";
 
 export { isChefShellPath } from "@/lib/chef-shell-path";
 export {

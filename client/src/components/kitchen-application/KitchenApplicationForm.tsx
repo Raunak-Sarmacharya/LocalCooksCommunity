@@ -4,21 +4,7 @@ import { useChefKitchenApplications, useChefKitchenApplicationForLocation } from
 import { useToast } from "@/hooks/use-toast";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion } from "framer-motion";
-import {
-  AlertCircle,
-  ArrowLeft,
-  Building2,
-  CalendarDays,
-  Check,
-  Clock,
-  FileText,
-  Info,
-  Loader2,
-  MapPin,
-  Send,
-  Upload,
-  XCircle,
-} from "lucide-react";
+import { AlertCircle, ArrowLeft, Building2, CalendarDays, Check, Clock, FileText, Info, Loader2, MapPin, Send, Upload, XCircle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type FieldErrors, useForm, useWatch } from "react-hook-form";
 import { useLocation } from "wouter";
@@ -32,39 +18,17 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { InfoChip } from "@/components/chef/info-chip";
 import { ChefPageHeader } from "@/components/chef/ui";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { FormLegend } from "@/components/ui/form-legend";
 import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
 import { Calendar as UICalendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 // Helper component for authenticated document links
 function AuthenticatedDocumentLink({ url, className, children }: { url: string | null | undefined; className?: string; children: React.ReactNode }) {
@@ -204,10 +168,7 @@ interface KitchenApplicationFormProps {
 }
 
 // Business type / frequency options — shared with registration “Request to apply” modal
-import {
-  REQUEST_TO_APPLY_BUSINESS_TYPES,
-  REQUEST_TO_APPLY_FREQUENCIES,
-} from "./request-to-apply-fields";
+import { REQUEST_TO_APPLY_BUSINESS_TYPES, REQUEST_TO_APPLY_FREQUENCIES } from "./request-to-apply-fields";
 
 const businessTypes = REQUEST_TO_APPLY_BUSINESS_TYPES.map((o) => ({
   value: o.value,

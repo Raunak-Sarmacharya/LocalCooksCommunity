@@ -3,18 +3,18 @@
  * Manages timezone and location-specific settings
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from "react";
 import { mt } from "@/i18n/manager";
-import { Globe, Image as ImageIcon } from '@/components/ui/manager-icons';
-import { StatusButton } from '@/components/ui/status-button';
-import { useStatusButton } from '@/hooks/use-status-button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { DEFAULT_TIMEZONE } from '@/utils/timezone-utils';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { useSessionFileUpload } from '@/hooks/useSessionFileUpload';
-import { getR2ProxyUrl } from '@/utils/r2-url-helper';
-import { SettingsFileUpload } from './SettingsFileUpload';
+import { Globe, Image as ImageIcon } from "@/components/ui/manager-icons";
+import { StatusButton } from "@/components/ui/status-button";
+import { useStatusButton } from "@/hooks/use-status-button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
+import { getR2ProxyUrl } from "@/utils/r2-url-helper";
+import { SettingsFileUpload } from "./SettingsFileUpload";
 
 interface Location {
   id: number;

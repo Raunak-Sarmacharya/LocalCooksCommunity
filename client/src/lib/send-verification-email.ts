@@ -1,10 +1,7 @@
 import { sendEmailVerification } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { logger } from "@/lib/logger";
-import {
-  getAuthIntent,
-  resolveVerificationReturnPath,
-} from "@/lib/auth-intent";
+import { getAuthIntent, resolveVerificationReturnPath } from "@/lib/auth-intent";
 import { getSubdomainOriginForEnvironment } from "@shared/subdomain-utils";
 
 export type VerificationSendChannel = "server" | "firebase";

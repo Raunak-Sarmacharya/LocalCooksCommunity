@@ -3,14 +3,14 @@
  * Manages email and phone notification preferences
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from "react";
 import { mt } from "@/i18n/manager";
-import { Mail, Phone } from '@/components/ui/manager-icons';
-import { StatusButton } from '@/components/ui/status-button';
-import { useStatusButton } from '@/hooks/use-status-button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Mail, Phone } from "@/components/ui/manager-icons";
+import { StatusButton } from "@/components/ui/status-button";
+import { useStatusButton } from "@/hooks/use-status-button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 interface Location {
   id: number;

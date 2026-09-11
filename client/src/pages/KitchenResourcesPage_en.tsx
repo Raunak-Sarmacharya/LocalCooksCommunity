@@ -12,12 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import {
-  ExternalLink, Shield, FileText,
-  Scale, ClipboardCheck, BadgeCheck, Flame,
-  CheckCircle2, AlertTriangle, Info, ChevronRight,
-  Menu, DollarSign, AlertCircle,
-} from "lucide-react";
+import { ExternalLink, Shield, FileText, Scale, ClipboardCheck, BadgeCheck, Flame, CheckCircle2, AlertTriangle, Info, ChevronRight, Menu, DollarSign, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ═══════════════════════════════════════════════════════════════

@@ -1,8 +1,8 @@
 import { logger } from "@/lib/logger";
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Mail, User, X } from 'lucide-react';
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Mail, User, X } from "lucide-react";
 import React, { useEffect, useState } from 'react';
 
 interface User {

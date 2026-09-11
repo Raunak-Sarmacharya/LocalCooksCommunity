@@ -1,9 +1,5 @@
 import assert from "node:assert/strict";
-import {
-  kitchensForTourAtLocation,
-  resolveTourKitchenTarget,
-  shouldPromptTourKitchenSelect,
-} from "./tour-kitchen-select";
+import { kitchensForTourAtLocation, resolveTourKitchenTarget, shouldPromptTourKitchenSelect } from "./tour-kitchen-select";
 
 const kitchens = [
   { id: 1, name: "Kitchen A", locationId: 10 },

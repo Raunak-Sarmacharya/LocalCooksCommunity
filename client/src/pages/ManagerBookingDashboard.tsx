@@ -1,12 +1,8 @@
 import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  Calendar, Clock, ChefHat, Settings,
-  Check, Save, AlertCircle, FileText,
-  ChevronRight, Info, Mail, Upload, Image as ImageIcon, Globe, CheckCircle, Plus, Loader2, HelpCircle, Trash2, Eye
-} from "@/components/ui/manager-icons";
+import { Calendar, Clock, Settings, Check, Save, AlertCircle, FileText, ChevronRight, Info, Mail, Upload, Image as ImageIcon, Globe, CheckCircle, Plus, Loader2, HelpCircle, Trash2, Eye, Package } from "@/components/ui/manager-icons";
 import { ImageWithReplace } from "@/components/ui/image-with-replace";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
 import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
@@ -20,13 +16,12 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import KitchenAvailabilityManagement from "./KitchenAvailabilityManagement";
+import KitchenAvailabilityManagement, { type KitchenAvailabilityManagementHandle } from "./KitchenAvailabilityManagement";
 import ManagerBookingsPanel from "./ManagerBookingsPanel";
+import ManagerStorageBookingsPage from "./ManagerStorageBookingsPage";
 import ViewingsDashboard from "@/components/manager/ViewingsDashboard";
-import ViewingSettingsPanel from "@/components/manager/ViewingSettingsPanel";
 import { ManagerKitchenApplicationsContent } from "./ManagerKitchenApplications";
 import KitchenDashboardOverview from "@/components/dashboard/KitchenDashboardOverview";
-import StripeConnectSetup from "@/components/manager/StripeConnectSetup";
 import { OverstayPenaltyQueue } from "@/components/manager/overstays/OverstayPenaltyQueue";
 import { DamageClaimQueue } from "@/components/manager/damage-claims/DamageClaimQueue";
 import { PendingStorageCheckouts } from "@/components/manager/PendingStorageCheckouts";
@@ -35,16 +30,7 @@ import ManagerLocationsPage from "@/components/manager/ManagerLocationsPage";
 import ManagerRevenueDashboard from "./ManagerRevenueDashboard";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
 import LocationRequirementsSettings from "@/components/manager/LocationRequirementsSettings";
-import {
-  LicenseSettings,
-  BookingRulesSettings,
-  LocationSettings,
-  KitchensManagement,
-  NotificationsSettings,
-  FacilityDocsSettings,
-  CheckinCheckoutSettings,
-  StorageCheckinCheckoutSettings,
-} from "@/components/manager/settings";
+import { LicenseSettings, BookingRulesSettings, LocationSettings, KitchensManagement, FacilityDocsSettings, CheckinCheckoutSettings, StorageCheckinCheckoutSettings } from "@/components/manager/settings";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import DashboardLayout from "@/layouts/DashboardLayout";
@@ -60,18 +46,8 @@ import NotificationCenter from "@/components/manager/NotificationCenter";
 import { legacyKitchenSection, type ManagerBreadcrumb } from "@/lib/manager-kitchens-navigation";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { ChefPageHeader } from "@/components/chef/ui";
-import { Tab, TabGroup, TabList, TabPanel, TabPanels } from '@tremor/react';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { Tab, TabGroup, TabList, TabPanel, TabPanels } from "@tremor/react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 // Helper component for authenticated document links
 function AuthenticatedDocumentLink({ url, className, children }: { url: string | null | undefined; className?: string; children: React.ReactNode }) {
@@ -170,7 +146,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 }
 
 
-type ViewType = 'my-locations' | 'overview' | 'bookings' | 'viewings' | 'availability' | 'tour-availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'revenue' | 'messages' | 'profile' | 'kitchens' | 'settings-license' | 'settings-booking-rules' | 'settings-facility-docs' | 'settings-location' | 'settings-checkin-checkout' | 'settings-storage-checkin-checkout' | 'application-requirements' | 'notifications' | 'notification-settings' | 'overstays' | 'damage-claims' | 'storage-checkouts';
+type ViewType = 'my-locations' | 'overview' | 'bookings' | 'storage-bookings' | 'viewings' | 'availability' | 'tour-availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'revenue' | 'messages' | 'profile' | 'kitchens' | 'settings-license' | 'settings-booking-rules' | 'settings-facility-docs' | 'settings-location' | 'settings-checkin-checkout' | 'settings-storage-checkin-checkout' | 'application-requirements' | 'notifications' | 'notification-settings' | 'overstays' | 'damage-claims' | 'storage-checkouts';
 
 
 export default function ManagerBookingDashboard() {
@@ -185,7 +161,7 @@ export default function ManagerBookingDashboard() {
   const [activeView, setActiveView] = useState<ViewType>(() => {
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
-    const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'viewings', 'availability', 'tour-availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'notification-settings', 'overstays', 'damage-claims', 'storage-checkouts'];
+    const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'storage-bookings', 'viewings', 'availability', 'tour-availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'notification-settings', 'overstays', 'damage-claims', 'storage-checkouts'];
     // Back-compat: redirect legacy 'settings-storage-checkout' URLs to the new combined page.
     if (view === 'settings-storage-checkout') {
       return 'settings-storage-checkin-checkout';
@@ -198,6 +174,11 @@ export default function ManagerBookingDashboard() {
     }
     return 'overview';
   });
+  const availabilityRef = useRef<KitchenAvailabilityManagementHandle>(null);
+  const bypassAvailabilityGuard = useRef(false);
+  const [availabilityDirty, setAvailabilityDirty] = useState(false);
+  const [pendingAvailabilityView, setPendingAvailabilityView] = useState<ViewType | null>(null);
+  const [isSavingBeforeLeave, setIsSavingBeforeLeave] = useState(false);
 
   // Handle locationId from URL for direct navigation (e.g., returning from setup, notification links)
   useEffect(() => {
@@ -268,7 +249,7 @@ export default function ManagerBookingDashboard() {
       const params = new URLSearchParams(window.location.search);
       const view = params.get('view');
       setDeepLinkConversationId(params.get("conversation"));
-      const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'viewings', 'availability', 'tour-availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'notification-settings', 'overstays', 'damage-claims', 'storage-checkouts'];
+      const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'storage-bookings', 'viewings', 'availability', 'tour-availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'notification-settings', 'overstays', 'damage-claims', 'storage-checkouts'];
       // Back-compat: redirect legacy URL to the new combined page.
       if (view === 'settings-storage-checkout') {
         setActiveView('settings-storage-checkin-checkout');
@@ -302,7 +283,15 @@ export default function ManagerBookingDashboard() {
   // returning to whatever tab was last viewed before opening a sub-page.
   const handleViewChange = (view: ViewType) => {
     const legacySection = legacyKitchenSection(view);
-    const nextView = legacySection ? 'kitchens' : view;
+    const profileTab = view === 'payments' ? 'payments' : view === 'notification-settings' ? 'notifications' : null;
+    const availabilityTab = view === 'tour-availability' ? 'tours' : null;
+    const nextView = availabilityTab ? 'availability' : profileTab ? 'profile' : legacySection ? 'kitchens' : view;
+    const isSameDestination = nextView === activeView && !availabilityTab && !profileTab && !legacySection;
+    if (isSameDestination) return;
+    if (activeView === 'availability' && availabilityDirty && !bypassAvailabilityGuard.current) {
+      setPendingAvailabilityView(view);
+      return;
+    }
     setActiveView(nextView);
     const url = new URL(window.location.href);
     if (legacySection) {
@@ -312,6 +301,9 @@ export default function ManagerBookingDashboard() {
       url.searchParams.delete('view');
     } else {
       url.searchParams.set('view', nextView);
+      if (profileTab) url.searchParams.set('tab', profileTab);
+      else if (availabilityTab) url.searchParams.set('tab', availabilityTab);
+      else if (nextView !== 'profile') url.searchParams.delete('tab');
       if (nextView !== 'kitchens') url.searchParams.delete('section');
     }
     const nextUrl = url.toString();
@@ -320,13 +312,35 @@ export default function ManagerBookingDashboard() {
     }
   };
 
+  const continueFromAvailability = (view: ViewType) => {
+    bypassAvailabilityGuard.current = true;
+    setAvailabilityDirty(false);
+    setPendingAvailabilityView(null);
+    handleViewChange(view);
+    bypassAvailabilityGuard.current = false;
+  };
+
+  const saveAndLeaveAvailability = async () => {
+    if (!pendingAvailabilityView) return;
+    setIsSavingBeforeLeave(true);
+    const saved = await availabilityRef.current?.saveAllChanges();
+    setIsSavingBeforeLeave(false);
+    if (saved) continueFromAvailability(pendingAvailabilityView);
+  };
+
   const kitchenChildLabel: Partial<Record<ViewType, string>> = {
     availability: mt("navAvailability"),
     "settings-checkin-checkout": mt("navCheckinCheckout"),
     "damage-claims": mt("navDamageClaims"),
   };
+  const storageChildLabel: Partial<Record<ViewType, string>> = {
+    "settings-storage-checkin-checkout": mt("navStorageCheckinCheckout"),
+    overstays: mt("navOverstayPenalties"),
+    "storage-checkouts": mt("navStorageInspections"),
+  };
   const isKitchenChild = Boolean(kitchenChildLabel[activeView]);
-  const shellActiveView = isKitchenChild ? 'kitchens' : activeView;
+  const isStorageChild = Boolean(storageChildLabel[activeView]);
+  const shellActiveView = isKitchenChild ? 'kitchens' : isStorageChild ? 'storage-bookings' : activeView;
   const breadcrumbs: ManagerBreadcrumb[] = activeView === 'kitchens'
     ? [{ label: mt("navSpaces"), navId: "kitchens" }]
     : isKitchenChild
@@ -334,7 +348,14 @@ export default function ManagerBookingDashboard() {
           { label: mt("navSpaces"), navId: "kitchens", onClick: () => handleViewChange('kitchens') },
           { label: kitchenChildLabel[activeView]!, navId: activeView },
         ]
-      : [];
+      : activeView === 'storage-bookings'
+        ? [{ label: mt("navStorageBookings"), navId: "storage-bookings" }]
+        : isStorageChild
+          ? [
+              { label: mt("navStorageBookings"), navId: "storage-bookings", onClick: () => handleViewChange('storage-bookings') },
+              { label: storageChildLabel[activeView]!, navId: activeView },
+            ]
+          : [];
 
   // Handle Stripe Connect Return
   useEffect(() => {
@@ -388,11 +409,11 @@ export default function ManagerBookingDashboard() {
           await queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
           await queryClient.invalidateQueries({ queryKey: ['/api/manager/stripe-connect/status'] });
 
-          // Switch to payments view
-          setActiveView('payments');
+          // Return to the Payments tab inside the profile page.
+          setActiveView('profile');
 
           // Clean up URL
-          window.history.replaceState({}, '', '/manager/dashboard?view=payments');
+          window.history.replaceState({}, '', '/manager/dashboard?view=profile&tab=payments');
 
           // [NEW] Broadcast success to other tabs
           const channel = new BroadcastChannel('stripe_onboarding_channel');
@@ -676,7 +697,10 @@ export default function ManagerBookingDashboard() {
       />
 
       {activeView === 'profile' && (
-        <ManagerProfileSettings />
+        <ManagerProfileSettings
+          notificationLocation={locationDetails || selectedLocation}
+          onSaveNotificationSettings={(updates) => updateLocationSettings.mutateAsync(updates)}
+        />
       )}
 
       {activeView === 'overview' && (
@@ -695,6 +719,11 @@ export default function ManagerBookingDashboard() {
           <ChefPageHeader
             title={activeView === 'bookings' ? mt("bookingRequests") : mt("kitchenTours")}
             description={activeView === 'bookings' ? mt("reviewAndManageChefBookingRequests") : mt("manageUpcomingAndPastKitchenTours")}
+            actions={activeView === 'bookings' ? (
+              <Button variant="outline" size="sm" onClick={() => handleViewChange('storage-bookings')}>
+                <Package className="mr-2 h-4 w-4" />{mt("navStorageBookings")}
+              </Button>
+            ) : undefined}
           />
           <Tabs value={activeView} onValueChange={(view) => handleViewChange(view as ViewType)}>
             <TabsList className="mb-6 grid w-full grid-cols-2 rounded-xl bg-muted p-1">
@@ -711,18 +740,31 @@ export default function ManagerBookingDashboard() {
         </div>
       )}
 
+      {activeView === 'storage-bookings' && (
+        <div className="space-y-6 animate-fade-in">
+          <ChefPageHeader
+            title={mt("navStorageBookings")}
+            description={mt("manageStorageBookingsDescription")}
+          />
+          <ManagerStorageBookingsPage />
+        </div>
+      )}
+
       {activeView === 'availability' && (
         <div className="min-h-[calc(100vh-10rem)]">
-          <KitchenAvailabilityManagement initialLocationId={selectedLocation?.id} />
+          <KitchenAvailabilityManagement
+            ref={availabilityRef}
+            initialLocationId={selectedLocation?.id}
+            initialAvailabilityTab={new URLSearchParams(window.location.search).get('tab') === 'tours' ? 'tours' : 'bookings'}
+            onDirtyChange={setAvailabilityDirty}
+          />
         </div>
       )}
 
       {activeView === 'tour-availability' && (
-        selectedLocation ? (
-          <ViewingSettingsPanel locationId={selectedLocation.id} />
-        ) : (
-          <Card className="border-dashed"><CardContent className="p-12 text-center text-muted-foreground">{mt("selectALocationToManageSettings")}</CardContent></Card>
-        )
+        <div className="min-h-[calc(100vh-10rem)]">
+          <KitchenAvailabilityManagement initialLocationId={selectedLocation?.id} initialAvailabilityTab="tours" />
+        </div>
       )}
 
       {activeView === 'applications' && (
@@ -774,15 +816,15 @@ export default function ManagerBookingDashboard() {
       )}
 
       {activeView === 'payments' && (
-        <div className="space-y-6">
-          <h2 className="text-2xl font-bold tracking-tight">{mt("paymentsPayouts")}</h2>
-          <StripeConnectSetup />
-        </div>
+        <ManagerProfileSettings
+          notificationLocation={locationDetails || selectedLocation}
+          onSaveNotificationSettings={(updates) => updateLocationSettings.mutateAsync(updates)}
+        />
       )}
 
       {activeView === 'overstays' && (
         <div className="space-y-6">
-          <OverstayPenaltyQueue />
+          <OverstayPenaltyQueue locationId={selectedLocation?.id} />
         </div>
       )}
 
@@ -816,12 +858,20 @@ export default function ManagerBookingDashboard() {
         <KitchensManagement
           location={locationDetails || selectedLocation}
           onNavigate={handleViewChange}
+          onConfigureRequirements={() => {
+            handleViewChange('settings');
+            const url = new URL(window.location.href);
+            url.searchParams.set('view', 'settings');
+            url.searchParams.set('tab', 'requirements');
+            window.history.replaceState({}, '', url);
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          }}
         />
       )}
 
       {activeView === 'kitchens' && !selectedLocation && (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
-          <ChefHat className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+          <Calendar className="h-16 w-16 text-gray-300 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("selectALocation")}</h3>
           <p className="text-gray-500">{mt("chooseALocationToManageKitchens")}</p>
         </div>
@@ -913,19 +963,11 @@ export default function ManagerBookingDashboard() {
         <NotificationCenter locationId={selectedLocation?.id} variant="page" />
       )}
 
-      {activeView === 'notification-settings' && selectedLocation && (
-        <NotificationsSettings
-          location={locationDetails || selectedLocation}
-          onSave={(updates) => updateLocationSettings.mutateAsync(updates)}
+      {activeView === 'notification-settings' && (
+        <ManagerProfileSettings
+          notificationLocation={locationDetails || selectedLocation}
+          onSaveNotificationSettings={(updates) => updateLocationSettings.mutateAsync(updates)}
         />
-      )}
-
-      {activeView === 'notification-settings' && !selectedLocation && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
-          <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("selectALocation")}</h3>
-          <p className="text-gray-500">{mt("chooseALocationToManageNotificationSettings")}</p>
-        </div>
       )}
 
       {activeView === 'settings-checkin-checkout' && selectedLocation && (
@@ -954,6 +996,29 @@ export default function ManagerBookingDashboard() {
         </div>
       )}
 
+      <AlertDialog open={pendingAvailabilityView !== null} onOpenChange={(open) => !open && setPendingAvailabilityView(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{mt("unsavedChanges")}</AlertDialogTitle>
+            <AlertDialogDescription>{mt("availabilityUnsavedChangesDescription")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSavingBeforeLeave}>{mt("cancel")}</AlertDialogCancel>
+            <Button
+              variant="outline"
+              disabled={isSavingBeforeLeave}
+              onClick={() => pendingAvailabilityView && continueFromAvailability(pendingAvailabilityView)}
+            >
+              {mt("discardChanges")}
+            </Button>
+            <AlertDialogAction disabled={isSavingBeforeLeave} onClick={(event) => { event.preventDefault(); void saveAndLeaveAvailability(); }}>
+              {isSavingBeforeLeave && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {mt("saveChanges")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </DashboardLayout>
   );
 }
@@ -964,15 +1029,7 @@ export default function ManagerBookingDashboard() {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createLocationSchema, type CreateLocationFormValues } from "@/schemas/locationSchema";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-  FormDescription
-} from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { tt } from "@/i18n/common-ns";
 
@@ -1189,7 +1246,7 @@ function CompactSettingsView({ location, onUpdateSettings }: SettingsViewProps) 
   const queryClient = useQueryClient();
   const initialTab = new URLSearchParams(window.location.search).get("tab");
   const [tab, setTab] = useState(
-    ["location", "booking", "notifications", "documents", "requirements"].includes(initialTab || "")
+    ["location", "booking", "documents", "requirements"].includes(initialTab || "")
       ? initialTab!
       : "location",
   );
@@ -1202,7 +1259,7 @@ function CompactSettingsView({ location, onUpdateSettings }: SettingsViewProps) 
   };
 
   const save = (updates: any) => onUpdateSettings.mutateAsync(updates);
-  const tabs = ["location", "booking", "notifications", "documents", "requirements"];
+  const tabs = ["location", "booking", "documents", "requirements"];
   const activeIndex = Math.max(0, tabs.indexOf(tab));
 
   return (
@@ -1215,7 +1272,6 @@ function CompactSettingsView({ location, onUpdateSettings }: SettingsViewProps) 
         <TabList variant="line" className="mt-2">
           <Tab>Location</Tab>
           <Tab>Booking rules</Tab>
-          <Tab>Notifications</Tab>
           <Tab>Documents</Tab>
           <Tab>Requirements</Tab>
         </TabList>
@@ -1225,9 +1281,6 @@ function CompactSettingsView({ location, onUpdateSettings }: SettingsViewProps) 
         </TabPanel>
         <TabPanel>
           <BookingRulesSettings location={location} onSave={save} />
-        </TabPanel>
-        <TabPanel>
-          <NotificationsSettings location={location} onSave={save} />
         </TabPanel>
         <TabPanel className="space-y-4">
           <LicenseSettings
@@ -2592,7 +2645,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
               {/* Kitchen Images Section */}
               <div className="space-y-4">
                 <div className="flex items-start gap-3">
-                  <ChefHat className="h-5 w-5 text-amber-600 mt-0.5" />
+                  <Calendar className="h-5 w-5 text-amber-600 mt-0.5" />
                   <div className="flex-1">
                     <h3 className="text-lg font-semibold text-gray-900 mb-1">{mt("kitchenImages")}</h3>
                     <p className="text-sm text-gray-600 mb-4">

@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { useApplicationStatus } from "@/hooks/use-application-status";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { motion } from "framer-motion";
-import { ChefHat, CreditCard, ShoppingBag, Users } from "lucide-react";
+import { Calendar, CreditCard, ShoppingBag, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
@@ -151,7 +151,7 @@ export default function HeroSection() {
               transition={{ type: "spring", stiffness: 300 }}
             >
               <div className="p-3 md:p-4 bg-gradient-to-br from-green-100 to-green-200 rounded-2xl shadow-md group-hover:shadow-xl transition-all duration-300">
-                <ChefHat className="h-6 w-6 md:h-7 md:w-7 text-green-600" />
+                <Calendar className="h-6 w-6 md:h-7 md:w-7 text-green-600" />
               </div>
               <span className="text-xs md:text-sm font-semibold text-brand-text">{t("benefitShowcase")}</span>
             </motion.div>

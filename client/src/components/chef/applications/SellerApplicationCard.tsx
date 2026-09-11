@@ -5,20 +5,12 @@ import type { TFunction } from "i18next";
 import { Card } from "@/components/ui/card";
 import { InfoChip } from "@/components/chef/info-chip";
 import { Button } from "@/components/ui/button";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatApplicationStatus } from "@/lib/applicationSchema";
 import { Application } from "@shared/schema";
-import {
-  applicationStatusVariant,
-  documentToneFromLabel,
-  toneToBadgeVariant,
-} from "./status";
+import { applicationStatusVariant, documentToneFromLabel, toneToBadgeVariant } from "./status";
 import type { StatusVariant } from "@/components/chef/dashboard/types";
 
 type ChefTFunction = TFunction<"chef", undefined>;

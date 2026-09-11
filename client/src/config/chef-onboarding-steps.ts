@@ -1,4 +1,4 @@
-import { OnboardingStep } from '@onboardjs/core';
+import { OnboardingStep } from "@onboardjs/core";
 
 export interface ChefOnboardingGuidance {
     title: string;

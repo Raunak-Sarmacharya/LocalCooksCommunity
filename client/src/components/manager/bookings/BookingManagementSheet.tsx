@@ -1,37 +1,12 @@
 import { useState, useMemo, useCallback } from "react";
 import { mt } from "@/i18n/manager";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { Label } from "@/components/ui/label";
-import {
-  CheckCircle2,
-  XCircle,
-  Loader2,
-  Package,
-  Boxes,
-  Calendar,
-  Clock,
-  MapPin,
-  ChefHat,
-  DollarSign,
-  AlertTriangle,
-  Info,
-  Pencil,
-  Settings2,
-  Ban,
-  RotateCcw,
-  ShieldAlert,
-} from "@/components/ui/manager-icons";
+import { CheckCircle2, XCircle, Loader2, Package, Boxes, Calendar, Clock, MapPin, DollarSign, AlertTriangle, Info, Pencil, Settings2, Ban, RotateCcw, ShieldAlert } from "@/components/ui/manager-icons";
 import { cn } from "@/lib/utils";
 import { TruncatedText } from "@/components/common/TruncatedText";
 
@@ -497,7 +472,7 @@ function BookingManagementContent({
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-muted-foreground">
               {booking.chefName && (
                 <span className="flex items-center gap-1">
-                  <ChefHat className="h-3 w-3" />
+                  <Calendar className="h-3 w-3" />
                   {booking.chefName}
                 </span>
               )}
@@ -568,7 +543,7 @@ function BookingManagementContent({
         {/* ── Kitchen Session ── */}
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-            <ChefHat className="h-3.5 w-3.5" />{mt("kitchenSession")}</p>
+            <Calendar className="h-3.5 w-3.5" />{mt("kitchenSession")}</p>
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); toggleKitchenDecision(); }}
@@ -587,7 +562,7 @@ function BookingManagementContent({
                 "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
                 kitchenDecision === "keep" ? "bg-green-100" : "bg-red-100",
               )}>
-                <ChefHat className={cn("h-4 w-4", kitchenDecision === "keep" ? "text-green-600" : "text-red-600")} />
+                <Calendar className={cn("h-4 w-4", kitchenDecision === "keep" ? "text-green-600" : "text-red-600")} />
               </div>
               <div>
                 <p className="text-sm font-medium">{mt("kitchenBooking")}</p>

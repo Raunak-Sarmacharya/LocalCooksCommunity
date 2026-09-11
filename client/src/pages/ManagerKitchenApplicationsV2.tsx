@@ -7,42 +7,14 @@ import { ManagerPageLayout } from "@/components/layout/ManagerPageLayout";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import {
-    CheckCircle,
-    XCircle,
-    Clock,
-    AlertCircle,
-    Settings,
-    ExternalLink,
-    Search,
-    Filter,
-    Users,
-    FileCheck,
-    ChefHat
-} from "@/components/ui/manager-icons";
+import { CheckCircle, XCircle, Clock, AlertCircle, Settings, ExternalLink, Search, Filter, Users, FileCheck, Calendar } from "@/components/ui/manager-icons";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
-import {
-    Sheet,
-    SheetContent,
-    SheetTitle,
-    SheetDescription,
-} from "@/components/ui/sheet";
-import {
-    Dialog,
-    DialogContent,
-    DialogTitle,
-    DialogDescription,
-} from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
 import { getConversationForApplication, createConversation } from "@/services/chat-service";
@@ -621,7 +593,7 @@ export function ManagerKitchenApplicationsContent({
                     ) : (
                         <div className="flex flex-col items-center justify-center py-16 text-center">
                             <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-                                <ChefHat className="h-8 w-8 text-gray-400" />
+                                <Calendar className="h-8 w-8 text-gray-400" />
                             </div>
                             <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("noApplicationsFound")}</h3>
                             <p className="text-sm text-gray-500 max-w-sm">

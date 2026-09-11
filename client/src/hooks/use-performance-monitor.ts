@@ -1,5 +1,5 @@
 import { logger } from "@/lib/logger";
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef } from "react";
 
 interface PerformanceMetrics {
   apiCallTime: number;

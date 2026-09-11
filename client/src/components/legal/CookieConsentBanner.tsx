@@ -1,10 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  getCookieConsent,
-  setCookieConsent,
-  type CookieConsentChoice,
-} from "@/lib/cookie-consent";
+import { getCookieConsent, setCookieConsent, type CookieConsentChoice } from "@/lib/cookie-consent";
 
 export default function CookieConsentBanner() {
   const { t } = useTranslation("common");

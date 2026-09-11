@@ -2,44 +2,23 @@ import { useChefKitchenApplicationsStatus } from "@/hooks/use-chef-kitchen-appli
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import {
-  Building2,
-  Check,
-  ChefHat,
-  Clock,
-  Plus,
-  Search,
-  Eye,
-} from "lucide-react";
+import { Building2, Check, Calendar, Clock, Plus, Search, Eye } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Icon } from "@iconify/react";
 import { Link, useLocation } from "wouter";
 import ChefViewingsList from "@/components/chef/ChefViewingsList";
 import { ChefPageHeader, InfoChip } from "@/components/chef/ui";
-import {
-  getKitchenDisplayStatus,
-  kitchenLocationId,
-} from "@/components/chef/applications/status";
-import {
-  KitchenStatusChip,
-  acceptingRequestsIcon as AcceptingRequestsIcon,
-  bookNowIcon as BookNowIcon,
-} from "@/components/chef/applications/status-icons";
+import { getKitchenDisplayStatus, kitchenLocationId } from "@/components/chef/applications/status";
+import { KitchenStatusChip, acceptingRequestsIcon as AcceptingRequestsIcon, bookNowIcon as BookNowIcon } from "@/components/chef/applications/status-icons";
 import { KitchenGridCard } from "@/components/kitchen/KitchenGridCard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TruncatedText } from "@/components/common/TruncatedText";
-import {
-  countPendingOrUpcomingTours,
-  normalizeChefTourRow,
-} from "@/lib/chef-viewing-display";
-import {
-  groupKitchensByLocation,
-  kitchenPreviewPath,
-} from "@/lib/discover-location-groups";
+import { countPendingOrUpcomingTours, normalizeChefTourRow } from "@/lib/chef-viewing-display";
+import { groupKitchensByLocation, kitchenPreviewPath } from "@/lib/discover-location-groups";
 import { chefOutlineCtaClass, chefPrimaryCtaClass } from "@/lib/chef-cta";
 import { auth } from "@/lib/firebase";
 import { cn } from "@/lib/utils";
@@ -400,7 +379,7 @@ export default function KitchenDiscovery({
             <Card className="border-dashed border-2 bg-muted/5">
               <CardContent className="py-16 text-center">
                 <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-4">
-                  <ChefHat className="h-8 w-8 text-muted-foreground" />
+                  <Calendar className="h-8 w-8 text-muted-foreground" />
                 </div>
                 <h3 className="text-lg font-semibold text-foreground mb-2">
                   {searchQuery

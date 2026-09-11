@@ -4,15 +4,7 @@ import { useTranslation } from "react-i18next";
 import { OnboardingProvider } from "@onboardjs/react";
 import { ChefOnboardingProvider, useChefOnboarding } from "@/components/chef/onboarding/ChefOnboardingContext";
 import { ChefStepper } from "@/components/chef/onboarding/ChefStepper";
-import {
-  BrowseKitchensStep,
-  CompletionStep,
-  LocalCooksApplicationStep,
-  PathSelectionStep,
-  SummaryStep,
-  TrainingStep,
-  WelcomeStep,
-} from "@/components/chef/onboarding/ChefOnboardingSteps";
+import { BrowseKitchensStep, CompletionStep, LocalCooksApplicationStep, PathSelectionStep, SummaryStep, TrainingStep, WelcomeStep } from "@/components/chef/onboarding/ChefOnboardingSteps";
 import { BrandName, withBrandName } from "@/components/chef/onboarding/BrandName";
 import { chefOnboardingSteps } from "@/config/chef-onboarding-steps";
 import { Button } from "@/components/ui/button";

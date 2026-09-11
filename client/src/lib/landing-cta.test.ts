@@ -1,9 +1,5 @@
 import assert from "node:assert/strict";
-import {
-  landingBrowseKitchensPath,
-  landingDashboardPath,
-  landingListKitchenPath,
-} from "./landing-cta";
+import { landingBrowseKitchensPath, landingDashboardPath, landingListKitchenPath } from "./landing-cta";
 
 assert.equal(landingDashboardPath(null), "/auth");
 assert.equal(landingDashboardPath({ role: "admin" }), "/admin");

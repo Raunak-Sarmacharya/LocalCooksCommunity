@@ -13,12 +13,12 @@ import { logger } from "@/lib/logger";
  * 3. Auto-redirect to the appropriate page after a short delay
  */
 
-import { useEffect, useState, useRef } from 'react';
-import { CheckCircle2, Loader2, AlertCircle, X, ExternalLink } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { auth } from '@/lib/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
+import { useEffect, useState, useRef } from "react";
+import { CheckCircle2, Loader2, AlertCircle, X, ExternalLink } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { auth } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
 
 type SyncStatus = 'loading' | 'success' | 'error' | 'unauthenticated';
 
@@ -40,7 +40,7 @@ export default function StripeConnectReturn() {
     } else if (fromSetup) {
       return { url: '/manager/setup', label: 'Setup Page' };
     } else {
-      return { url: '/manager/dashboard?view=payments', label: 'Payments Dashboard' };
+      return { url: '/manager/dashboard?view=profile&tab=payments', label: 'Payment Settings' };
     }
   };
 

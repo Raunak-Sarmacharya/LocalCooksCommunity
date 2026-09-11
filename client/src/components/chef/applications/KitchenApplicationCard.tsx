@@ -3,26 +3,8 @@ import { Card } from "@/components/ui/card";
 import { InfoChip } from "@/components/chef/info-chip";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import {
-  Building,
-  CheckCircle,
-  Clock,
-  FileText,
-  MapPin,
-  ArrowRight,
-  User,
-  Mail,
-  Phone,
-  FileCheck,
-  Eye,
-} from "lucide-react";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Building, CheckCircle, Clock, FileText, MapPin, ArrowRight, User, Mail, Phone, FileCheck, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Link } from "wouter";
 import { useTranslation } from "react-i18next";
@@ -34,10 +16,7 @@ import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { parseBusinessInfo, formatExperience, formatExpiryDate } from "@/utils/parseBusinessInfo";
 import { SecureDocumentLink } from "@/components/common/SecureDocumentLink";
 import { TruncatedText } from "@/components/common/TruncatedText";
-import {
-  getKitchenDisplayStatus,
-  hasStep2BeenSubmitted,
-} from "./status";
+import { getKitchenDisplayStatus, hasStep2BeenSubmitted } from "./status";
 import { KitchenStatusChip, bookNowIcon as BookNowIcon } from "./status-icons";
 import { SmartImage } from "@/components/ui/smart-image";
 

@@ -3,18 +3,7 @@ import { mt } from "@/i18n/manager";
 
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import {
-    Clock,
-    Check,
-    BookOpen,
-    X,
-    MapPin,
-    ChefHat,
-    User,
-    Boxes,
-    Package,
-    Eye,
-} from "@/components/ui/manager-icons";
+import { Clock, Check, BookOpen, X, MapPin, Calendar, User, Boxes, Package, Eye } from "@/components/ui/manager-icons";
 // We will stick to the existing calendar for now to minimize logic breakage, 
 // but encapsulate it better. 
 // Ideally we would move to Shadcn Calendar (react-day-picker) but that requires rewrite of modifiers.
@@ -512,7 +501,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                                                 </div>
                                                 {booking.kitchenName && (
                                                     <p className="text-sm text-muted-foreground flex items-center gap-1 mb-1">
-                                                        <ChefHat className="h-3 w-3" />
+                                                        <Calendar className="h-3 w-3" />
                                                         {booking.kitchenName}
                                                     </p>
                                                 )}
@@ -611,7 +600,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                                                 </div>
                                                 {viewingRec.kitchenName && (
                                                     <p className="text-sm text-muted-foreground flex items-center gap-1 mb-1">
-                                                        <ChefHat className="h-3 w-3" />
+                                                        <Calendar className="h-3 w-3" />
                                                         {viewingRec.kitchenName}
                                                     </p>
                                                 )}

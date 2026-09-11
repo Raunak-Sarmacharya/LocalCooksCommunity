@@ -9,33 +9,10 @@ import { useToast } from "@/hooks/use-toast";
 import ManagerHeader from "@/components/layout/ManagerHeader";
 import { StorageExtensionApprovals } from "@/components/manager/StorageExtensionApprovals";
 import { PendingCancellationRequests } from "@/components/manager/PendingCancellationRequests";
-import {
-  BookingActionSheet,
-  type BookingForAction,
-} from "@/components/manager/bookings/BookingActionSheet";
-import {
-  BookingManagementSheet,
-  type BookingForManagement,
-  type ManagementSubmitParams,
-} from "@/components/manager/bookings/BookingManagementSheet";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { BookingActionSheet, type BookingForAction } from "@/components/manager/bookings/BookingActionSheet";
+import { BookingManagementSheet, type BookingForManagement, type ManagementSubmitParams } from "@/components/manager/bookings/BookingManagementSheet";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";

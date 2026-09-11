@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
 import type { SubdomainType } from '@shared/subdomain-utils';
-import { getSubdomainFromHostname, getSubdomainUrlForEnvironment } from '@shared/subdomain-utils';
+import { getSubdomainFromHostname, getSubdomainUrlForEnvironment } from "@shared/subdomain-utils";
 
 /**
  * Hook to detect the current subdomain

@@ -2,14 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  AlertCircle,
-  BarChart3,
-  DollarSign,
-  Loader2,
-  TrendingUp,
-  Users,
-} from "lucide-react";
+import { AlertCircle, BarChart3, DollarSign, Loader2, TrendingUp, Users } from "lucide-react";
 
 interface PlatformOverviewSectionProps {
   getFirebaseToken: () => Promise<string>;

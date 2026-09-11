@@ -1,12 +1,6 @@
 /** One Discover card per location, regardless of how many kitchens share it. */
 
-import {
-  mergeEquipmentLists,
-  mergeEquipmentSummaries,
-  mergeStorageSummaries,
-  type KitchenGridEquipmentSummary,
-  type KitchenGridStorageSummary,
-} from "@/lib/kitchen-grid-card";
+import { mergeEquipmentLists, mergeEquipmentSummaries, mergeStorageSummaries, type KitchenGridEquipmentSummary, type KitchenGridStorageSummary } from "@/lib/kitchen-grid-card";
 
 export type DiscoverKitchenLike = {
   id: number;

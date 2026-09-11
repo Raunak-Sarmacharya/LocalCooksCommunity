@@ -1,22 +1,11 @@
 import { logger } from "@/lib/logger";
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { useFirebaseAuth } from '@/hooks/use-auth';
-import { auth } from '@/lib/firebase';
-import { motion } from 'framer-motion';
-import {
-    ArrowRight,
-    BarChart3,
-    CheckCircle,
-    ChefHat,
-    FileText,
-    GraduationCap,
-    HeartHandshake,
-    Loader2,
-    Rocket,
-    Upload
-} from 'lucide-react';
-import { useState } from 'react';
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { auth } from "@/lib/firebase";
+import { motion } from "framer-motion";
+import { ArrowRight, BarChart3, CheckCircle, Calendar, FileText, GraduationCap, HeartHandshake, Loader2, Rocket, Upload } from "lucide-react";
+import { useState } from "react";
 
 interface WelcomeScreenProps {
   onComplete?: () => void;
@@ -110,7 +99,7 @@ export default function WelcomeScreen({ onComplete, onContinue }: WelcomeScreenP
   // Chef portal info (default)
   const getUserPortalInfo = () => {
     return {
-      icon: ChefHat,
+      icon: Calendar,
       title: 'Your Chef Portal',
       subtitle: 'Your gateway to joining the Local Cooks community',
       description: 'Join our growing community of talented chefs and take the first step toward sharing your culinary passion.',

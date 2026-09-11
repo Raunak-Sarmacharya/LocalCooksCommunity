@@ -1,8 +1,8 @@
 import { logger } from "@/lib/logger";
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { ChevronDown, Mail, User, X } from 'lucide-react';
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ChevronDown, Mail, User, X } from "lucide-react";
 import React, { useEffect, useRef, useState } from 'react';
 
 interface User {

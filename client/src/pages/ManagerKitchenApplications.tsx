@@ -29,39 +29,11 @@ import { ManagerPageLayout } from "@/components/layout/ManagerPageLayout";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import {
-  User,
-  Check,
-  CheckCircle,
-  XCircle,
-  Clock,
-  Mail,
-  Phone,
-  Building2,
-  AlertCircle,
-  Loader2,
-  FileText,
-  Eye,
-  Download,
-  ChefHat,
-  Briefcase,
-  Calendar,
-  Shield,
-  Ban,
-  Settings,
-  ExternalLink,
-  MessageCircle
-} from "@/components/ui/manager-icons";
+import { User, Check, CheckCircle, XCircle, Clock, Mail, Phone, Building2, AlertCircle, Loader2, FileText, Eye, Download, Calendar, Briefcase, Shield, Ban, Settings, ExternalLink, MessageCircle } from "@/components/ui/manager-icons";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Separator } from "@/components/ui/separator";
 import { useQuery } from "@tanstack/react-query";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -709,7 +681,7 @@ function ManagerKitchenApplicationsContentLegacy({
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <ChefHat className="h-5 w-5 text-primary" />{mt("reviewChefApplication")}</DialogTitle>
+              <Calendar className="h-5 w-5 text-primary" />{mt("reviewChefApplication")}</DialogTitle>
             <DialogDescription>
               Review the chef&apos;s application details and documents.
             </DialogDescription>
@@ -1143,7 +1115,7 @@ function ApplicationCard({
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-[#208D80]/10 flex items-center justify-center">
-              <ChefHat className="h-5 w-5 text-[#208D80]" />
+              <Calendar className="h-5 w-5 text-[#208D80]" />
             </div>
             <div>
               <CardTitle className="text-base">{application.fullName}</CardTitle>

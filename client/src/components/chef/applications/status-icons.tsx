@@ -1,12 +1,5 @@
 import type { ComponentPropsWithoutRef } from "react";
-import {
-  CalendarCheck2,
-  ClipboardList,
-  Clock,
-  Inbox,
-  Search,
-  type LucideIcon,
-} from "lucide-react";
+import { CalendarCheck2, ClipboardList, Clock, Inbox, Search, type LucideIcon } from "lucide-react";
 import { InfoChip } from "@/components/chef/info-chip";
 import type { KitchenActionKind, KitchenDisplayStatus } from "./status";
 

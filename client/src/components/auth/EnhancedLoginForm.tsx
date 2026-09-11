@@ -2,10 +2,7 @@ import { logger } from "@/lib/logger";
 import { useTranslation } from "react-i18next";
 import { useCustomAlerts } from "@/components/ui/custom-alerts";
 import { useFirebaseAuth } from "@/hooks/use-auth";
-import {
-  mapPasswordSignInError,
-  type LoginChallenge,
-} from "@/lib/login-challenge";
+import { mapPasswordSignInError, type LoginChallenge } from "@/lib/login-challenge";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AnimatePresence, motion } from "framer-motion";
 import { Icon } from "@iconify/react";

@@ -20,41 +20,13 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  Bell, 
-  BellOff, 
-  Check, 
-  CheckCheck, 
-  Archive, 
-  Trash2, 
-  ChevronRight,
-  Calendar,
-  CreditCard,
-  FileText,
-  MessageSquare,
-  AlertTriangle,
-  Info,
-  RefreshCw,
-  GraduationCap,
-  Package,
-  PartyPopper
-} from "lucide-react";
+import { Bell, BellOff, Check, CheckCheck, Archive, Trash2, ChevronRight, Calendar, CreditCard, FileText, MessageSquare, AlertTriangle, Info, RefreshCw, GraduationCap, Package, PartyPopper } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertTitle, AlertDescription, AlertAction } from "@/components/reui/alert";
 import { Frame, FramePanel } from "@/components/reui/frame";

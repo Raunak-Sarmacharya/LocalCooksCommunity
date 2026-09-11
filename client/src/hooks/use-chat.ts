@@ -1,15 +1,8 @@
 import { logger } from "@/lib/logger";
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useFirebaseAuth } from '@/hooks/use-auth';
-import {
-  getMessages,
-  sendMessage,
-  subscribeToMessages,
-  markAsRead,
-  uploadChatFile,
-  type ChatMessage,
-} from '@/services/chat-service';
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { getMessages, sendMessage, subscribeToMessages, markAsRead, uploadChatFile, type ChatMessage } from "@/services/chat-service";
 
 interface UseChatOptions {
   conversationId: string;

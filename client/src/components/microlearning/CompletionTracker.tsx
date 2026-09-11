@@ -1,10 +1,10 @@
-import { Badge } from '@/components/ui/badge';
+import { Badge } from "@/components/ui/badge";
 import { useCustomAlerts } from "@/components/ui/custom-alerts";
-import { Progress } from '@/components/ui/progress';
-import { cn } from '@/lib/utils';
-import { motion } from 'framer-motion';
-import { Award, CheckCircle, Circle, Clock, Lock, TrendingUp } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
+import { Progress } from "@/components/ui/progress";
+import { cn } from "@/lib/utils";
+import { motion } from "framer-motion";
+import { Award, CheckCircle, Circle, Clock, Lock, TrendingUp } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 interface VideoProgress {
   id: string;

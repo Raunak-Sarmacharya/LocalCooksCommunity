@@ -2,27 +2,12 @@
 
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { InfoChip } from "@/components/chef/info-chip"
 import { Separator } from "@/components/ui/separator"
-import {
-  AlertTriangle,
-  Clock,
-  Send,
-  X,
-  Calendar,
-  MapPin,
-  Info,
-} from "lucide-react"
+import { AlertTriangle, Clock, Send, X, Calendar, MapPin, Info } from "lucide-react"
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

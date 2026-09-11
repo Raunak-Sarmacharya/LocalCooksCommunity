@@ -1,16 +1,16 @@
 import { logger } from "@/lib/logger";
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
-import { QuietNotice } from '@/components/chef/ui';
-import { useFirebaseAuth } from '@/hooks/use-auth';
-import { cn } from '@/lib/utils';
-import { motion } from 'framer-motion';
-import { AlertCircle, ArrowRight, Award, CheckCircle, Clock, FileText } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { Link } from 'wouter';
-import { useTranslation } from 'react-i18next';
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { QuietNotice } from "@/components/chef/ui";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { cn } from "@/lib/utils";
+import { motion } from "framer-motion";
+import { AlertCircle, ArrowRight, Award, CheckCircle, Clock, FileText } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link } from "wouter";
+import { useTranslation } from "react-i18next";
 import type { TFunction } from 'i18next';
 
 interface Application {

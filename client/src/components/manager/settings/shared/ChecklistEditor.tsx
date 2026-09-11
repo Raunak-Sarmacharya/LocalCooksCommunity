@@ -9,40 +9,16 @@
 import { useState, useCallback } from "react";
 import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
-import {
-  Plus,
-  Trash2,
-  Camera,
-  ClipboardCheck,
-  Lock,
-  Eye,
-  Info,
-  ChefHat,
-  LogIn,
-  LogOut,
-  Upload,
-} from "@/components/ui/manager-icons";
+import { Plus, Trash2, Camera, ClipboardCheck, Lock, Eye, Info, Calendar, LogIn, LogOut, Upload } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { FormLegend } from "@/components/ui/form-legend";
 
@@ -213,7 +189,7 @@ function ChefViewPreview({
     <div className="space-y-3 max-h-[70vh] overflow-y-auto">
       {/* Mock chef-sheet header */}
       <div className="flex items-center gap-2 pb-2 border-b">
-        <ChefHat className="h-5 w-5 text-primary" />
+        <Calendar className="h-5 w-5 text-primary" />
         <div>
           <p className="text-sm font-semibold">{title}</p>
           <p className="text-[11px] text-muted-foreground">{mt("thisIsExactlyWhatChefsWillSee")}</p>

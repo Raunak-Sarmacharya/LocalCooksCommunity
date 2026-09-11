@@ -1,6 +1,6 @@
 import { logger } from "@/lib/logger";
 import { useTranslation } from "react-i18next";
-import { useCustomAlerts } from '@/components/ui/custom-alerts';
+import { useCustomAlerts } from "@/components/ui/custom-alerts";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 // Removed sendEmailVerification from firebase/auth
@@ -16,12 +16,7 @@ import EmailVerificationScreen from "./EmailVerificationScreen";
 import LoadingOverlay from "./LoadingOverlay";
 import { getEmailContinueMessage } from "./EmailContinueHint";
 import { Icon } from "@iconify/react";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { phoneNumberSchema } from "@shared/phone-validation";
 import { hasVerifiedEmail } from "@/lib/auth-verification";
 import { saveRegistrationName } from "@/lib/registration-identity";

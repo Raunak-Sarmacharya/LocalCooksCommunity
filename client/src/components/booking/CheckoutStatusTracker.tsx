@@ -12,26 +12,11 @@ import { useTranslation } from "react-i18next";
  */
 
 import { useQuery } from "@tanstack/react-query";
-import {
-  Camera,
-  CheckCircle,
-  Clock,
-  Loader2,
-  ShieldCheck,
-  AlertTriangle,
-  FileWarning,
-  Timer,
-} from "lucide-react";
+import { Camera, CheckCircle, Clock, Loader2, ShieldCheck, AlertTriangle, FileWarning, Timer } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { InfoChip } from "@/components/chef/info-chip";
 import { Separator } from "@/components/ui/separator";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow, format, isPast } from "date-fns";
 import { bt } from "@/i18n/booking-ns";

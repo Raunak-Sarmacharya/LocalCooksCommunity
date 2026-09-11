@@ -1,33 +1,13 @@
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Slider } from '@/components/ui/slider';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { cn } from '@/lib/utils';
-import {
-  MediaPlayer,
-  MediaProvider,
-  useMediaPlayer,
-  useMediaRemote,
-  useMediaState,
-  type MediaPlayerInstance,
-} from '@vidstack/react';
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+import { MediaPlayer, MediaProvider, useMediaPlayer, useMediaRemote, useMediaState, type MediaPlayerInstance } from "@vidstack/react";
 import '@vidstack/react/player/styles/base.css';
-import {
-  AlertCircle,
-  CheckCircle,
-  Maximize,
-  Minimize,
-  Pause,
-  Play,
-  RotateCcw,
-  SkipBack,
-  SkipForward,
-  Volume2,
-  VolumeX,
-  X
-} from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { AlertCircle, CheckCircle, Maximize, Minimize, Pause, Play, RotateCcw, SkipBack, SkipForward, Volume2, VolumeX, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 interface VideoPlayerProps {
   videoUrl: string;

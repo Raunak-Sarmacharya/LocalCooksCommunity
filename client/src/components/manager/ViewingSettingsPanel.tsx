@@ -7,85 +7,26 @@
  * Built mobile-first with shadcn/ui components.
  */
 
-import { useState, useEffect } from "react"
+import { forwardRef, useEffect, useImperativeHandle, useState } from "react"
 import { mt } from "@/i18n/manager"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import {
-  Settings,
-  Clock,
-  Calendar as CalendarIcon,
-  Loader2,
-  Plus,
-  Trash2,
-  Save,
-  Eye,
-  EyeOff,
-  Shield,
-  AlertCircle,
-  AlertTriangle,
-  Info
-} from "@/components/ui/manager-icons"
+import { Settings, Clock, Calendar as CalendarIcon, Loader2, Plus, Trash2, Save, Eye, EyeOff, Shield, AlertCircle, AlertTriangle, Info } from "@/components/ui/manager-icons"
 import { toast } from "sonner"
 import { auth } from "@/lib/firebase"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { Calendar } from "@/components/ui/calendar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter
-} from "@/components/ui/dialog"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { format, isBefore, startOfDay, isWithinInterval, addDays } from "date-fns"
 
@@ -107,7 +48,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 
 interface ViewingSettings {
   id: number
-  locationId: number
+  kitchenId: number
   isActive: boolean
   defaultDurationMinutes: number
   bufferBeforeMinutes: number
@@ -118,7 +59,7 @@ interface ViewingSettings {
 
 interface AvailabilitySlot {
   id?: number
-  locationId: number
+  kitchenId: number
   dayOfWeek: number
   startTime: string
   endTime: string
@@ -127,7 +68,7 @@ interface AvailabilitySlot {
 
 interface Blackout {
   id: number
-  locationId: number
+  kitchenId: number
   startDate: string
   endDate: string
   reason: string | null
@@ -150,14 +91,28 @@ const DAY_NAMES = [
   "Saturday",
 ]
 
+const DEFAULT_SETTINGS = {
+  isActive: false,
+  defaultDurationMinutes: 30,
+  bufferBeforeMinutes: 0,
+  bufferAfterMinutes: 15,
+  advanceNoticeHours: 24,
+  maxAdvanceBookingDays: 30,
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 interface ViewingSettingsPanelProps {
-  locationId: number
-  locationName?: string
+  kitchenId: number
+  kitchenName?: string
+  onDirtyChange?: (dirty: boolean) => void
 }
 
-export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettingsPanelProps) {
+export interface ViewingSettingsPanelHandle {
+  saveChanges: () => Promise<boolean>
+}
+
+export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, ViewingSettingsPanelProps>(function ViewingSettingsPanel({ kitchenId, kitchenName, onDirtyChange }, ref) {
   
   const queryClient = useQueryClient()
 
@@ -175,6 +130,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
   // Weekly availability editing - map to exactly 1 per day
   const [weeklySchedule, setWeeklySchedule] = useState<Record<number, AvailabilitySlot>>({})
   const [savedWeeklySchedule, setSavedWeeklySchedule] = useState('')
+  const [savedSettings, setSavedSettings] = useState('')
 
   // Blackout Dialog form
   const [isBlackoutDialogOpen, setIsBlackoutDialogOpen] = useState(false)
@@ -184,26 +140,41 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
 
   // Fetch current settings
   const { data, isLoading } = useQuery<SettingsResponse>({
-    queryKey: [`/api/viewings/settings/${locationId}`],
+    queryKey: [`/api/viewings/settings/${kitchenId}`],
     staleTime: 10000,
   })
 
   // Initialize local state from fetched data
   useEffect(() => {
-    if (data?.settings) {
-      setIsActive(data.settings.isActive)
-      setDuration(data.settings.defaultDurationMinutes)
-      setBufferBefore(data.settings.bufferBeforeMinutes)
-      setBufferAfter(data.settings.bufferAfterMinutes)
-      setAdvanceNotice(data.settings.advanceNoticeHours)
-      setMaxDays(data.settings.maxAdvanceBookingDays)
+    if (!data) {
+      setSavedSettings('')
+      setSavedWeeklySchedule('')
+      return
     }
-    if (data?.availability) {
+
+    const source = data.settings ?? DEFAULT_SETTINGS
+    const settings = {
+      isActive: source.isActive,
+      defaultDurationMinutes: source.defaultDurationMinutes,
+      bufferBeforeMinutes: source.bufferBeforeMinutes,
+      bufferAfterMinutes: source.bufferAfterMinutes,
+      advanceNoticeHours: source.advanceNoticeHours,
+      maxAdvanceBookingDays: source.maxAdvanceBookingDays,
+    }
+    setIsActive(settings.isActive)
+    setDuration(settings.defaultDurationMinutes)
+    setBufferBefore(settings.bufferBeforeMinutes)
+    setBufferAfter(settings.bufferAfterMinutes)
+    setAdvanceNotice(settings.advanceNoticeHours)
+    setMaxDays(settings.maxAdvanceBookingDays)
+    setSavedSettings(JSON.stringify(settings))
+
+    if (data.availability) {
       const scheduleMap: Record<number, AvailabilitySlot> = {}
       // Pre-fill with defaults
       for (let i = 0; i < 7; i++) {
         scheduleMap[i] = {
-          locationId,
+          kitchenId,
           dayOfWeek: i,
           startTime: "09:00",
           endTime: "17:00",
@@ -222,34 +193,28 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
       setWeeklySchedule(scheduleMap)
       setSavedWeeklySchedule(JSON.stringify(scheduleMap))
     }
-  }, [data, locationId])
+  }, [data, kitchenId])
 
-  const isSettingsDirty = !!data?.settings && (
-    isActive !== data.settings.isActive
-    || duration !== data.settings.defaultDurationMinutes
-    || bufferBefore !== data.settings.bufferBeforeMinutes
-    || bufferAfter !== data.settings.bufferAfterMinutes
-    || advanceNotice !== data.settings.advanceNoticeHours
-    || maxDays !== data.settings.maxAdvanceBookingDays
-  )
+  const currentSettings = {
+    isActive,
+    defaultDurationMinutes: duration,
+    bufferBeforeMinutes: bufferBefore,
+    bufferAfterMinutes: bufferAfter,
+    advanceNoticeHours: advanceNotice,
+    maxAdvanceBookingDays: maxDays,
+  }
+  const isSettingsDirty = !!savedSettings && JSON.stringify(currentSettings) !== savedSettings
   const isScheduleDirty = !!savedWeeklySchedule && JSON.stringify(weeklySchedule) !== savedWeeklySchedule
 
   // Save settings mutation
   const saveSettingsMutation = useMutation({
     mutationFn: async () => {
       const headers = await getAuthHeaders()
-      const response = await fetch(`/api/viewings/settings/${locationId}`, {
+      const response = await fetch(`/api/viewings/settings/${kitchenId}`, {
         method: "PUT",
         headers,
         credentials: "include",
-        body: JSON.stringify({
-          isActive,
-          defaultDurationMinutes: duration,
-          bufferBeforeMinutes: bufferBefore,
-          bufferAfterMinutes: bufferAfter,
-          advanceNoticeHours: advanceNotice,
-          maxAdvanceBookingDays: maxDays,
-        }),
+        body: JSON.stringify(currentSettings),
       })
       if (!response.ok) {
         const err = await response.json().catch(() => ({}))
@@ -258,7 +223,8 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
       return response.json()
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/viewings/settings/${locationId}`] })
+      setSavedSettings(JSON.stringify(currentSettings))
+      queryClient.invalidateQueries({ queryKey: [`/api/viewings/settings/${kitchenId}`] })
       toast.success(mt("viewingSettingsSaved"))
     },
     onError: (error: Error) => toast.error(error.message),
@@ -269,7 +235,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
     mutationFn: async () => {
       const slotsToSave = Object.values(weeklySchedule).filter((s) => s.isAvailable)
       const headers = await getAuthHeaders()
-      const response = await fetch(`/api/viewings/availability/${locationId}`, {
+      const response = await fetch(`/api/viewings/availability/${kitchenId}`, {
         method: "PUT",
         headers,
         credentials: "include",
@@ -285,18 +251,36 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
     },
     onSuccess: () => {
       setSavedWeeklySchedule(JSON.stringify(weeklySchedule))
-      queryClient.invalidateQueries({ queryKey: [`/api/viewings/settings/${locationId}`] })
+      queryClient.invalidateQueries({ queryKey: [`/api/viewings/settings/${kitchenId}`] })
       toast.success(mt("weeklyAvailabilitySaved"))
     },
     onError: (error: Error) => toast.error(error.message),
   })
+
+  useEffect(() => {
+    onDirtyChange?.(isSettingsDirty || isScheduleDirty)
+  }, [isScheduleDirty, isSettingsDirty, onDirtyChange])
+
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange])
+
+  useImperativeHandle(ref, () => ({
+    saveChanges: async () => {
+      try {
+        if (isSettingsDirty) await saveSettingsMutation.mutateAsync()
+        if (isScheduleDirty) await saveAvailabilityMutation.mutateAsync()
+        return true
+      } catch {
+        return false
+      }
+    },
+  }), [isScheduleDirty, isSettingsDirty, saveAvailabilityMutation, saveSettingsMutation])
 
   // Add blackout mutation
   const addBlackoutMutation = useMutation({
     mutationFn: async () => {
       if (!blackoutStart || !blackoutEnd) throw new Error(mt("selectStartAndEndDates"))
       const headers = await getAuthHeaders()
-      const response = await fetch(`/api/viewings/blackouts/${locationId}`, {
+      const response = await fetch(`/api/viewings/blackouts/${kitchenId}`, {
         method: "POST",
         headers,
         credentials: "include",
@@ -313,7 +297,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
       return response.json()
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/viewings/settings/${locationId}`] })
+      queryClient.invalidateQueries({ queryKey: [`/api/viewings/settings/${kitchenId}`] })
       setIsBlackoutDialogOpen(false)
       setBlackoutStart(undefined)
       setBlackoutEnd(undefined)
@@ -336,7 +320,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
       return response.json()
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/viewings/settings/${locationId}`] })
+      queryClient.invalidateQueries({ queryKey: [`/api/viewings/settings/${kitchenId}`] })
       toast.success(mt("exceptionRemoved"))
     },
     onError: (error: Error) => toast.error(error.message),
@@ -376,7 +360,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
               <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                 <Settings className="h-5 w-5" />{mt("viewingSettings")}</CardTitle>
               <CardDescription className="text-xs sm:text-sm">
-                Configure how chefs can book viewings at {locationName || "your location"}
+                Configure how chefs can book viewings of {kitchenName || "this kitchen"}
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -600,7 +584,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
                   </TableHeader>
                   <TableBody>
                     {DAY_NAMES.map((dayName, index) => {
-                      const schedule = weeklySchedule[index] || { isAvailable: false, startTime: "09:00", endTime: "17:00", dayOfWeek: index, locationId };
+                      const schedule = weeklySchedule[index] || { isAvailable: false, startTime: "09:00", endTime: "17:00", dayOfWeek: index, kitchenId };
                       return (
                         <TableRow key={index}>
                           <TableCell className="font-medium">{dayName}</TableCell>
@@ -810,6 +794,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
                       selected={blackoutStart}
                       onSelect={setBlackoutStart}
                       disabled={(date) => isBefore(date, startOfDay(new Date()))}
+                      className="w-[280px] p-3"
                     />
                   </PopoverContent>
                 </Popover>
@@ -833,6 +818,7 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
                       selected={blackoutEnd}
                       onSelect={setBlackoutEnd}
                       disabled={(date) => isBefore(date, blackoutStart || startOfDay(new Date()))}
+                      className="w-[280px] p-3"
                     />
                   </PopoverContent>
                 </Popover>
@@ -861,6 +847,6 @@ export function ViewingSettingsPanel({ locationId, locationName }: ViewingSettin
 
     </div>
   )
-}
+})
 
 export default ViewingSettingsPanel

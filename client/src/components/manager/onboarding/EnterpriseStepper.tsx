@@ -1,22 +1,8 @@
 import React, { useMemo } from 'react';
 import { mt } from "@/i18n/manager";
-import { useManagerOnboarding } from './ManagerOnboardingContext';
+import { useManagerOnboarding } from "./ManagerOnboardingContext";
 import { cn } from "@/lib/utils";
-import { 
-    Check, 
-    Circle, 
-    MapPin, 
-    ChefHat, 
-    ClipboardList, 
-    CreditCard, 
-    Clock, 
-    Package, 
-    CookingPot, 
-    PartyPopper,
-    Handshake,
-    ClipboardCheck,
-    Lock
-} from "@/components/ui/manager-icons";
+import { Check, Circle, MapPin, Calendar, ClipboardList, CreditCard, Clock, Package, CookingPot, PartyPopper, Handshake, ClipboardCheck, Lock } from "@/components/ui/manager-icons";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -27,7 +13,7 @@ import Logo from "@/components/ui/logo";
 const STEP_ICONS: Record<string, React.ElementType> = {
     'welcome': Handshake,
     'location': MapPin,
-    'create-kitchen': ChefHat,
+    'create-kitchen': Calendar,
     'application-requirements': ClipboardList,
     'payment-setup': CreditCard,
     'availability': Clock,

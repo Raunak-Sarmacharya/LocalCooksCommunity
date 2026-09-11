@@ -4,35 +4,14 @@ import { InfoChip } from "@/components/chef/info-chip";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { useDocumentVerification } from "@/hooks/use-document-verification";
 import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
 import { useToast } from "@/hooks/use-toast";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { motion } from "framer-motion";
-import {
-  AlertTriangle,
-  Award,
-  CheckCircle,
-  ChefHat,
-  Clock,
-  FileText,
-  FolderOpen,
-  Loader2,
-  Plus,
-  Upload,
-  XCircle
-} from "lucide-react";
+import { AlertTriangle, Award, CheckCircle, Calendar, Clock, FileText, FolderOpen, Loader2, Plus, Upload, XCircle } from "lucide-react";
 import React, { useState } from "react";
 import { Link } from "wouter";
 import { useTranslation } from "react-i18next";
@@ -521,7 +500,7 @@ export default function DocumentUpload({
         <div className="space-y-3">
           <Button asChild className="rounded-xl">
             <Link href="/dashboard?view=applications&action=new">
-              <ChefHat className="mr-2 h-4 w-4" />
+              <Calendar className="mr-2 h-4 w-4" />
               {t("duSubmitNewApplication")}
             </Link>
           </Button>

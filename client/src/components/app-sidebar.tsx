@@ -1,51 +1,10 @@
 "use client"
 
 import * as React from "react"
-import {
-    AlertTriangle,
-    Bell,
-    Boxes,
-    Calendar,
-    ChevronsUpDown,
-    ClipboardCheck,
-    Clock,
-    CreditCard,
-    DollarSign,
-    Eye,
-    FileText,
-    LayoutDashboard,
-    LogOut,
-    ArchiveCheck,
-    Send,
-    Settings,
-    Storefront,
-    User as UserIcon,
-    Users,
-} from "@/components/ui/manager-icons"
+import { AlertTriangle, Bell, Boxes, Calendar, ChevronsUpDown, ClipboardCheck, Clock, DollarSign, Eye, FileText, LayoutDashboard, LogOut, ArchiveCheck, Package, Send, Settings, Storefront, User as UserIcon, Users } from "@/components/ui/manager-icons"
 
-import {
-    Sidebar,
-    SidebarContent,
-    SidebarFooter,
-    SidebarGroup,
-    SidebarGroupLabel,
-    SidebarHeader,
-    SidebarMenu,
-    SidebarMenuButton,
-    SidebarMenuItem,
-    SidebarMenuSub,
-    SidebarMenuSubButton,
-    SidebarMenuSubItem,
-    SidebarRail,
-    useSidebar,
-} from "@/components/ui/sidebar"
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem, SidebarRail, useSidebar } from "@/components/ui/sidebar"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import Logo from "@/components/ui/logo"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -84,23 +43,24 @@ const navData: { navMain: NavGroup[] } = {
                         { labelKey: "navDamageClaims", url: "damage-claims", icon: FileText },
                     ],
                 },
+                {
+                    labelKey: "navStorageBookings",
+                    url: "storage-bookings",
+                    icon: Package,
+                    children: [
+                        { labelKey: "navStorageCheckinCheckout", url: "settings-storage-checkin-checkout", icon: Boxes },
+                        { labelKey: "navOverstayPenalties", url: "overstays", icon: AlertTriangle },
+                        { labelKey: "navStorageInspections", url: "storage-checkouts", icon: ArchiveCheck },
+                    ],
+                },
                 { labelKey: "navSettings", url: "settings", icon: Settings },
             ],
         },
-        {
-            labelKey: "navKitchenOperations",
-            items: [
-                { labelKey: "kitchenTours", url: "tour-availability", icon: Eye },
-                { labelKey: "navStorageCheckinCheckout", url: "settings-storage-checkin-checkout", icon: Boxes },
-                { labelKey: "navStorageInspections", url: "storage-checkouts", icon: ArchiveCheck },
-                { labelKey: "navOverstayPenalties", url: "overstays", icon: AlertTriangle },
-            ],
-        },
+
         {
             labelKey: "navMoney",
             items: [
                 { labelKey: "navRevenue", url: "revenue", icon: DollarSign },
-                { labelKey: "navPayments", url: "payments", icon: CreditCard },
             ],
         },
         {
@@ -119,7 +79,6 @@ const SETTINGS_VIEWS = new Set([
     "settings-booking-rules",
     "settings-facility-docs",
     "settings-location",
-    "notification-settings",
     "application-requirements",
 ]);
 
@@ -175,8 +134,7 @@ export function AppSidebar({
             </SidebarHeader>
             <SidebarContent className="gap-0">
                 {navData.navMain.map((group) => (
-                    <SidebarGroup key={group.labelKey} className="px-2 py-2">
-                        <SidebarGroupLabel className="h-7 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{mt(group.labelKey)}</SidebarGroupLabel>
+                    <SidebarGroup key={group.labelKey} className="px-2 py-0.5">
                         <SidebarMenu className="gap-0.5">
                             {group.items.map((item) => {
                                 const isActive = activeView === item.url || (item.url === "settings" && SETTINGS_VIEWS.has(activeView));

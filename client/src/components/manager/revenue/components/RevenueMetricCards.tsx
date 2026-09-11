@@ -17,24 +17,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
-} from "@/components/ui/tooltip"
-import {
-    TrendingUp,
-    TrendingDown,
-    DollarSign,
-    BarChart3,
-    Receipt,
-    CreditCard,
-    Wallet,
-    Info,
-    Clock,
-    Banknote,
-} from "@/components/ui/manager-icons"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { TrendingUp, TrendingDown, DollarSign, BarChart3, Receipt, CreditCard, Wallet, Info, Clock, Banknote } from "@/components/ui/manager-icons"
 import { formatCurrency, formatPercent } from "@/lib/formatters"
 import type { RevenueMetrics, Transaction } from "../types"
 import { getTransactionRevenueBreakdown, aggregateTransactionPayoutTotals } from "../revenue-calculations"
@@ -113,17 +97,13 @@ function MetricCard({
                             <p className="text-xs text-muted-foreground">
                                 {subtitle}
                             </p>
-                            {changePercent !== undefined && changePercent !== 0 && (
+                            {changePercent !== undefined && changePercent > 0 && (
                                 <Badge
-                                    variant={changePercent >= 0 ? "default" : "destructive"}
+                                    variant="success"
                                     className="text-xs py-0 px-1.5 h-5 gap-0.5"
                                 >
-                                    {changePercent >= 0 ? (
-                                        <TrendingUp className="h-3 w-3" />
-                                    ) : (
-                                        <TrendingDown className="h-3 w-3" />
-                                    )}
-                                    {formatPercent(Math.abs(changePercent))}
+                                    <TrendingUp className="h-3 w-3" />
+                                    {formatPercent(changePercent)}
                                 </Badge>
                             )}
                         </div>

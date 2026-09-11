@@ -5,7 +5,7 @@ import React, { useCallback, useState } from 'react';
 import { auth } from "@/lib/firebase";
 
 // Import design components
-import { EmailDesignStudio } from './email-design-system/EmailDesignStudio';
+import { EmailDesignStudio } from "./email-design-system/EmailDesignStudio";
 
 // Interface definitions matching EmailDesignStudio
 interface EmailDesignData {

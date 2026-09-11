@@ -1,20 +1,9 @@
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardTitle } from "@/components/ui/card";
 import { useTranslation } from "react-i18next";
-import {
-  Building,
-  Clock,
-  MessageCircle,
-  ArrowRight,
-  FileCheck,
-} from "lucide-react";
+import { Building, Clock, MessageCircle, ArrowRight, FileCheck } from "lucide-react";
 import type {
   KitchenApplicationWithLocation,
   PublicKitchen,
@@ -26,10 +15,7 @@ import { KitchenStatusChip } from "@/components/chef/applications/status-icons";
 import { KitchenGridCard } from "@/components/kitchen/KitchenGridCard";
 import { chefOutlineCtaClass, chefPrimaryCtaClass } from "@/lib/chef-cta";
 import { kitchenPreviewPath } from "@/lib/discover-location-groups";
-import {
-  mergeEquipmentSummaries,
-  mergeStorageSummaries,
-} from "@/lib/kitchen-grid-card";
+import { mergeEquipmentSummaries, mergeStorageSummaries } from "@/lib/kitchen-grid-card";
 import { cn } from "@/lib/utils";
 import { Icon } from "@iconify/react";
 

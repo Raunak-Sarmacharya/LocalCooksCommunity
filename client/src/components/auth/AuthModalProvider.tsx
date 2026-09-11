@@ -1,15 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import EnhancedLoginForm from "./EnhancedLoginForm";
 import EnhancedRegisterForm from "./EnhancedRegisterForm";
 import { useTranslation } from "react-i18next";
@@ -18,43 +9,16 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import {
-  normalizePhoneNumber,
-  isValidNorthAmericanPhone,
-} from "@shared/phone-validation";
+import { normalizePhoneNumber, isValidNorthAmericanPhone } from "@shared/phone-validation";
 import { KitchenNextStepsDescription } from "@/components/common/KitchenNextStepsDescription";
-import {
-  getPendingApplicationModal,
-  savePendingApplicationModal,
-  clearPendingApplicationModal,
-  clearAbandonedApplicationSession,
-  getAuthIntent,
-  resolveVerificationReturnPath,
-  kitchenActor,
-  skipKitchenVerify,
-  resolvePendingApplyPhase,
-  type KitchenActor,
-  type PendingApplicationPhase,
-  type PendingApplicationReview,
-} from "@/lib/auth-intent";
+import { getPendingApplicationModal, savePendingApplicationModal, clearPendingApplicationModal, clearAbandonedApplicationSession, getAuthIntent, resolveVerificationReturnPath, kitchenActor, skipKitchenVerify, resolvePendingApplyPhase, type KitchenActor, type PendingApplicationPhase, type PendingApplicationReview } from "@/lib/auth-intent";
 import { sendVerificationEmailWithFallback } from "@/lib/send-verification-email";
 import { resolveChefDashboardNavigation } from "@shared/subdomain-utils";
 import { CheckCircle2, Loader2, Clock, RefreshCw, Mail } from "lucide-react";
-import {
-  KitchenBookingPreferencesPanel,
-  type EquipmentListingOption,
-  type StorageListingOption,
-} from "@/components/kitchen-application/KitchenBookingPreferencesPanel";
+import { KitchenBookingPreferencesPanel, type EquipmentListingOption, type StorageListingOption } from "@/components/kitchen-application/KitchenBookingPreferencesPanel";
 import { BookingPriceSummary } from "@/components/kitchen-application/BookingPriceSummary";
-import {
-  RequestToApplyFields,
-  EMPTY_REQUEST_TO_APPLY_DRAFT,
-  type RequestToApplyDraft,
-} from "@/components/kitchen-application/request-to-apply-fields";
-import {
-  usePersistedBookingPricePreview,
-  type PersistedBookingPricePreview,
-} from "@/lib/persisted-booking-prefs";
+import { RequestToApplyFields, EMPTY_REQUEST_TO_APPLY_DRAFT, type RequestToApplyDraft } from "@/components/kitchen-application/request-to-apply-fields";
+import { usePersistedBookingPricePreview, type PersistedBookingPricePreview } from "@/lib/persisted-booking-prefs";
 import { Button } from "@/components/ui/button";
 
 function ApplyBookingPriceFooter({

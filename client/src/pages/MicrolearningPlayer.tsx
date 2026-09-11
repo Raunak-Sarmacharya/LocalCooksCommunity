@@ -1,12 +1,12 @@
 import Footer from '@/components/layout/Footer';
 import Header from '@/components/layout/Header';
 import TrainingVideoPlayer from '@/components/training/TrainingVideoPlayer';
-import { useFirebaseAuth } from '@/hooks/use-auth';
-import { tt } from '@/i18n/common-ns';
-import { ct } from '@/i18n/chef-ns';
-import { ChevronLeft, Home, Loader2 } from 'lucide-react';
-import { useEffect } from 'react';
-import { Link, useLocation } from 'wouter';
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { tt } from "@/i18n/common-ns";
+import { ct } from "@/i18n/chef-ns";
+import { ChevronLeft, Home, Loader2 } from "lucide-react";
+import { useEffect } from "react";
+import { Link, useLocation } from "wouter";
 
 export default function MicrolearningPlayer() {
   const { user, loading } = useFirebaseAuth();

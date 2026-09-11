@@ -1,10 +1,6 @@
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/formatters";
-import {
-  buildChefBookingReceiptBreakdown,
-  buildKitchenPayoutStatementBreakdown,
-  type BookingPricingBreakdownInput,
-} from "@shared/booking-pricing-breakdown";
+import { buildChefBookingReceiptBreakdown, buildKitchenPayoutStatementBreakdown, type BookingPricingBreakdownInput } from "@shared/booking-pricing-breakdown";
 
 type LineProps = {
   label: React.ReactNode;

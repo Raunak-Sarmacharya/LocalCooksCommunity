@@ -1,8 +1,5 @@
 import assert from "node:assert/strict";
-import {
-  estimateBookingCheckoutTotal,
-  estimateKitchenBookingPrice,
-} from "./booking-price-estimate";
+import { estimateBookingCheckoutTotal, estimateKitchenBookingPrice } from "./booking-price-estimate";
 
 // $50/hr × 2h = $100; 13% tax = $13; 7% fee on $100 = $7 → total $120
 {

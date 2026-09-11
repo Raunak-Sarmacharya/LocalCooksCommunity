@@ -20,21 +20,10 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { FormLegend } from "@/components/ui/form-legend";
-import {
-  PhotoRequirementUploader,
-  flattenPhotos,
-  areAllRequiredPhotosUploaded,
-} from "./PhotoRequirementUploader";
+import { PhotoRequirementUploader, flattenPhotos, areAllRequiredPhotosUploaded } from "./PhotoRequirementUploader";
 
 interface StorageCheckoutDialogProps {
   open: boolean;

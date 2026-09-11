@@ -1,39 +1,10 @@
 import { useTranslation } from "react-i18next";
 import { mt } from "@/i18n/manager";
 import { useMemo, useState } from "react";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Calendar as CalendarIcon,
-  Clock,
-  ChefHat,
-  CheckCircle2,
-  AlertCircle,
-  XCircle,
-  LayoutGrid,
-  List,
-  CalendarDays,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar , Clock, CalendarIcon, CheckCircle2, AlertCircle, XCircle, LayoutGrid, List, CalendarDays } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  format,
-  startOfMonth,
-  endOfMonth,
-  startOfWeek,
-  endOfWeek,
-  addDays,
-  addMonths,
-  subMonths,
-  addWeeks,
-  subWeeks,
-  isSameMonth,
-  isSameDay,
-  isSameWeek,
-  isToday,
-  getHours,
-  getMinutes,
-} from "date-fns";
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, addMonths, subMonths, addWeeks, subWeeks, isSameMonth, isSameDay, isSameWeek, isToday, getHours, getMinutes } from "date-fns";
 import { enCA, frCA, uk as ukLocale } from "date-fns/locale";
 import { formatTime as formatTimeLocale } from "@/lib/formatters";
 
@@ -633,7 +604,7 @@ export default function BookingCalendarWidget({
                           {/* Kitchen */}
                           {booking.kitchenName && (
                             <div className="flex items-center gap-1 text-xs text-gray-500">
-                              <ChefHat className="h-3 w-3" />
+                              <CalendarIcon className="h-3 w-3" />
                               <span className="truncate">{booking.kitchenName}</span>
                             </div>
                           )}

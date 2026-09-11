@@ -8,18 +8,7 @@ import { useState, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Icon } from "@iconify/react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  CalendarDays,
-  Clock,
-  MapPin,
-  Loader2,
-  CheckCircle,
-  ArrowLeft,
-  Building2,
-  Send,
-  Mail,
-  RefreshCw,
-} from "lucide-react";
+import { CalendarDays, Clock, MapPin, Loader2, CheckCircle, ArrowLeft, Building2, Send, Mail, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { auth } from "@/lib/firebase";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -35,23 +24,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { InfoChip } from "@/components/chef/info-chip";
 import { Calendar } from "@/components/ui/calendar";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { format, addDays, isBefore, startOfDay, endOfDay } from "date-fns";
@@ -93,7 +67,7 @@ type TourStep = "date" | "time" | "account" | "verify" | "confirm" | "success";
 interface ScheduleViewingWidgetProps {
   locationId: number;
   locationName?: string;
-  targetedKitchenId?: number;
+  targetedKitchenId: number;
   targetedKitchenName?: string;
   onClose?: () => void;
   onRequireOpen?: () => void;
@@ -142,7 +116,7 @@ export function ScheduleViewingWidget({
     step !== "date" || !!selectedDate || !!selectedSlot || chefNotes.trim().length > 0;
   const isDataTaking = open && step !== "success";
 
-  const storageKey = `viewing_booking_${locationId}`;
+  const storageKey = `viewing_booking_${targetedKitchenId}`;
 
   const persistProgress = useCallback(
     (next?: Partial<{
@@ -236,24 +210,24 @@ export function ScheduleViewingWidget({
     isLoading: slotsLoading,
     isFetching: slotsFetching,
   } = useQuery<AvailabilityResponse>({
-    queryKey: [`/api/viewings/available-slots/${locationId}?date=${dateStr}`],
+    queryKey: [`/api/viewings/available-slots/${targetedKitchenId}?date=${dateStr}`],
     enabled: !!selectedDate && !!dateStr,
     staleTime: 30000,
     refetchOnWindowFocus: true,
   });
 
   const { data: calMetadata } = useQuery({
-    queryKey: [`/api/viewings/calendar-availability/${locationId}`],
+    queryKey: [`/api/viewings/calendar-availability/${targetedKitchenId}`],
     queryFn: async () => {
       const headers = await getAuthHeaders();
-      const response = await fetch(`/api/viewings/calendar-availability/${locationId}`, {
+      const response = await fetch(`/api/viewings/calendar-availability/${targetedKitchenId}`, {
         headers,
         credentials: "include",
       });
       if (!response.ok) return null;
       return response.json();
     },
-    enabled: !!locationId,
+    enabled: !!targetedKitchenId,
   });
 
   const bookMutation = useMutation({

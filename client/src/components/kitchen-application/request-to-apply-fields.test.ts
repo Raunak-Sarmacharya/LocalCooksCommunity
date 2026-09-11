@@ -2,10 +2,7 @@
  * ponytail: assert shared request-to-apply name split + required-first field order.
  */
 import { describe, expect, it } from "vitest";
-import {
-  REQUEST_TO_APPLY_FIELD_ORDER,
-  splitFullName,
-} from "./request-to-apply-fields";
+import { REQUEST_TO_APPLY_FIELD_ORDER, splitFullName } from "./request-to-apply-fields";
 
 describe("splitFullName", () => {
   it("splits first and last", () => {

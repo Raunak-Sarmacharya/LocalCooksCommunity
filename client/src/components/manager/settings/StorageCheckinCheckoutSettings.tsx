@@ -24,13 +24,7 @@ import type {
   ChecklistItem,
   PhotoRequirement,
 } from "./shared/ChecklistEditor";
-import {
-  StorageCheckinCheckoutEditor,
-  unifyStorageInspectionItems,
-  storageInspectionItemsToArrays,
-  validateStorageInspectionItems,
-  type UnifiedStorageInspectionItem,
-} from "./StorageCheckinCheckoutEditor";
+import { StorageCheckinCheckoutEditor, unifyStorageInspectionItems, storageInspectionItemsToArrays, validateStorageInspectionItems, type UnifiedStorageInspectionItem } from "./StorageCheckinCheckoutEditor";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

@@ -1,11 +1,7 @@
 import { logger } from "@/lib/logger";
-import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, Package, Wrench, DollarSign, ChefHat, Lock, FileText, Loader2 } from "lucide-react";
+import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, Package, Wrench, DollarSign, Lock, FileText, Loader2 } from "lucide-react";
 import { formatCurrency } from "@/lib/formatters";
-import {
-  estimateBookingCheckoutTotal,
-  estimateKitchenBookingPrice,
-  type BookingPriceEstimate,
-} from "@/lib/booking-price-estimate";
+import { estimateBookingCheckoutTotal, estimateKitchenBookingPrice, type BookingPriceEstimate } from "@/lib/booking-price-estimate";
 import { BookingPriceSummary } from "@/components/kitchen-application/BookingPriceSummary";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
@@ -1189,7 +1185,7 @@ export default function KitchenBookingCalendar() {
                     {equipmentListings.all.length > 0 && (
                       <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl shadow-sm border-2 border-blue-200 p-6">
                         <div className="flex items-center gap-2 mb-4">
-                          <ChefHat className="h-5 w-5 text-blue-600" />
+                          <CalendarIcon className="h-5 w-5 text-blue-600" />
                           <h3 className="text-lg font-semibold text-blue-900">Kitchen Add-ons</h3>
                         </div>
 

@@ -1,5 +1,5 @@
 import React, { ReactNode, useState } from "react";
-import { OnboardingProvider } from '@onboardjs/react';
+import { OnboardingProvider } from "@onboardjs/react";
 import { steps } from "@/config/onboarding-steps";
 import { componentRegistry } from "@/config/onboarding";
 import { ManagerOnboardingLogic } from "./ManagerOnboardingContext";
