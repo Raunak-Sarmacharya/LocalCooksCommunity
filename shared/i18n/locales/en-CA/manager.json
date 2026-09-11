@@ -1058,7 +1058,7 @@
   "paymentDataWillBeAvailableAfterCheckoutCompletes": "Payment data will be available after checkout completes",
   "paymentHeld2": "Payment held",
   "paymentHoldReleasedNoChargeWasMadeToTheChef": "Payment hold released — no charge was made to the chef.",
-  "paymentsPayouts": "Payments & Payouts",
+  "paymentsPayouts": "Payments (Stripe)",
   "paymentsConnected": "Payments Connected",
   "paymentsBeingProcessed": "Payments being processed.",
   "payoutHistory": "Payout History",

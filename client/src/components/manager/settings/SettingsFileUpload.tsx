@@ -1,5 +1,6 @@
 import { Card } from "@tremor/react";
 import { RiUploadCloud2Line } from "@remixicon/react";
+import { Loader2 } from "lucide-react";
 
 interface SettingsFileUploadProps {
   id: string;
@@ -24,7 +25,11 @@ export function SettingsFileUpload({ id, accept, file, label, hint, disabled, on
       />
       <label htmlFor={id} className="flex min-h-16 cursor-pointer items-center gap-3 px-4 py-3">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-background">
-          <RiUploadCloud2Line className="h-4 w-4 text-muted-foreground" aria-hidden />
+          {disabled ? (
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-hidden />
+          ) : (
+            <RiUploadCloud2Line className="h-4 w-4 text-muted-foreground" aria-hidden />
+          )}
         </span>
         <span className="min-w-0">
           <span className="block truncate text-sm font-medium text-foreground">{file?.name || label}</span>

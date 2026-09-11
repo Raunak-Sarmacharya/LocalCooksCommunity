@@ -358,11 +358,11 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
                 </h4>
                 
                 <div className="space-y-4">
-                  <div>
+                  <div className="flex flex-col gap-2">
                     <Label htmlFor="license-expiry">{mt("licenseExpirationDate")}</Label>
                     <Popover>
                       <PopoverTrigger asChild>
-                        <Button id="license-expiry" type="button" variant="outline" className="mt-1.5 w-full max-w-xs justify-start font-normal">
+                        <Button id="license-expiry" type="button" variant="outline" className="w-fit justify-start font-normal">
                           <CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground" />
                           {licenseExpiryDate ? format(new Date(`${licenseExpiryDate}T00:00:00`), 'PPP') : mt("licenseExpirationDate")}
                         </Button>
