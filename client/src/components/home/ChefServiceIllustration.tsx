@@ -131,7 +131,7 @@ export function ChefServiceIllustration({ variant }: { variant: "storefront" | "
             </span>
             <div className="text-right">
               <span className="block text-[10px] font-bold text-[#F51042]">$24<span className="text-[8px] font-normal text-[#F51042]">/hr</span></span>
-              <span className="block text-[8px] text-slate-500">or $180/day</span>
+              <span className="block text-[8px] text-slate-500">or $180 per day</span>
             </div>
           </div>
         </div>

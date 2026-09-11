@@ -168,6 +168,7 @@ export default function MyKitchensTabContent({
                 }
                 imageUrl={imageUrl}
                 hourlyRateCents={kitchenData?.hourlyRate}
+                dailyRateCents={kitchenData?.dailyRate}
                 equipmentSummary={equipmentSummary}
                 storageSummary={storageSummary}
                 overlayChip={

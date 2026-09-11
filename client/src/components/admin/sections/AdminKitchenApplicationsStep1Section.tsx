@@ -1,7 +1,7 @@
 import { logger } from "@/lib/logger";
 import { useAdminKitchenApplications } from "@/hooks/use-admin-kitchen-applications";
 import { useToast } from "@/hooks/use-toast";
-import { ExternalLink, Loader2, Shield } from "lucide-react";
+import { Loader2, Shield } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import ChatPanel from "@/components/chat/ChatPanel";
@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { SecureDocumentLink } from "@/components/common/SecureDocumentLink";
 
 // New Modular Imports
 import { ApplicationsTable } from "../../manager/applications";
@@ -393,18 +394,11 @@ export function AdminKitchenApplicationsStep1Section({
                     </div>
                     {getDocStatusBadge(documentsApplication.foodSafetyLicenseStatus)}
                   </div>
-                  <div className="flex gap-2">
-                    <a
-                      href={documentsApplication.foodSafetyLicenseUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      <Button variant="outline" size="sm">
-                        <ExternalLink className="h-4 w-4 mr-1" />
-                        View
-                      </Button>
-                    </a>
-                  </div>
+                  <SecureDocumentLink
+                    url={documentsApplication.foodSafetyLicenseUrl}
+                    label="View"
+                    showIcon={false}
+                  />
                 </div>
               )}
               {documentsApplication.foodEstablishmentCertUrl && (
@@ -416,18 +410,11 @@ export function AdminKitchenApplicationsStep1Section({
                     </div>
                     {getDocStatusBadge(documentsApplication.foodEstablishmentCertStatus)}
                   </div>
-                  <div className="flex gap-2">
-                    <a
-                      href={documentsApplication.foodEstablishmentCertUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      <Button variant="outline" size="sm">
-                        <ExternalLink className="h-4 w-4 mr-1" />
-                        View
-                      </Button>
-                    </a>
-                  </div>
+                  <SecureDocumentLink
+                    url={documentsApplication.foodEstablishmentCertUrl}
+                    label="View"
+                    showIcon={false}
+                  />
                 </div>
               )}
             </div>

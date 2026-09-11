@@ -1,0 +1,41 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Kitchen Documents and Mobile Date Selection",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    { "id": "admin", "label": "Admin documents" },
+    { "id": "mobile", "label": "Mobile kitchen preview" }
+  ],
+  "mainPath": ["chefUpload", "applicationApi", "secureLink", "signedDocument"],
+  "nodes": [
+    { "id": "chefUpload", "lane": "admin", "col": 0, "type": "frontend", "label": "Chef upload", "sublabel": "protected certificate", "width": 140 },
+    { "id": "applicationApi", "lane": "admin", "col": 1, "type": "backend", "label": "Applications API", "sublabel": "stored document URL", "width": 145 },
+    { "id": "secureLink", "lane": "admin", "col": 2, "type": "security", "label": "SecureDocumentLink", "sublabel": "authenticated presign", "width": 165 },
+    { "id": "signedDocument", "lane": "admin", "col": 3, "type": "cloud", "label": "Signed document", "sublabel": "temporary R2 URL", "width": 145 },
+    { "id": "dateControl", "lane": "mobile", "col": 0, "type": "frontend", "label": "Date control", "sublabel": "one mobile trigger", "width": 140 },
+    { "id": "inlineCalendar", "lane": "mobile", "col": 1, "type": "frontend", "label": "Inline calendar", "sublabel": "single picker", "width": 140 },
+    { "id": "bookingCard", "lane": "mobile", "col": 2, "type": "frontend", "label": "Booking card", "sublabel": "normal mobile flow", "width": 140 },
+    { "id": "pageScroll", "lane": "mobile", "col": 3, "type": "frontend", "label": "Page scroll", "sublabel": "desktop sticky only", "width": 140 }
+  ],
+  "edges": [
+    { "id": "uploadApi", "from": "chefUpload", "to": "applicationApi", "label": "save URL" },
+    { "id": "apiSecure", "from": "applicationApi", "to": "secureLink", "label": "render" },
+    { "id": "secureSigned", "from": "secureLink", "to": "signedDocument", "label": "Firebase token" },
+    { "id": "controlCalendar", "from": "dateControl", "to": "inlineCalendar", "label": "toggle" },
+    { "id": "calendarCard", "from": "inlineCalendar", "to": "bookingCard", "label": "select date" },
+    { "id": "cardScroll", "from": "bookingCard", "to": "pageScroll", "label": "document flow" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Fix boundary",
+      "items": [
+        "Protected documents always pass through the authenticated presign helper",
+        "Mobile exposes one calendar and leaves the booking card in normal page flow"
+      ]
+    }
+  ]
+}

@@ -386,6 +386,7 @@ interface PublicKitchen {
   locationSlug?: string | null;
   locationAddress?: string | null;
   hourlyRate?: number | null;
+  dailyRate?: number | null;
   pricingModel?: string | null;
   currency?: string | null;
   equipment?: {
@@ -418,22 +419,23 @@ function getKitchenImages(kitchen: PublicKitchen): string[] {
 }
 
 function formatKitchenRate(kitchen: PublicKitchen): string | null {
-  if (kitchen.hourlyRate == null || kitchen.hourlyRate <= 0) return null;
-  const amount = formatCurrency(kitchen.hourlyRate, kitchen.currency || "CAD");
-  const model = kitchen.pricingModel || "hourly";
-  if (model === "daily") {
-    return `${amount}${String(i18n.t("perDaySuffix", { ns: "kitchen", defaultValue: "/day" }))}`;
+  const rates = [];
+  if (kitchen.hourlyRate != null && kitchen.hourlyRate > 0) {
+    rates.push(`${formatCurrency(kitchen.hourlyRate, kitchen.currency || "CAD")} ${String(i18n.t("perHour", { ns: "kitchen", defaultValue: "per hour" }))}`);
   }
-  if (model === "hourly") {
-    return `${amount} ${String(i18n.t("perHour", { ns: "kitchen", defaultValue: "per hour" }))}`;
+  if (kitchen.dailyRate != null && kitchen.dailyRate > 0) {
+    rates.push(`${formatCurrency(kitchen.dailyRate, kitchen.currency || "CAD")}${String(i18n.t("perDaySuffix", { ns: "kitchen", defaultValue: "/day" }))}`);
   }
-  return amount;
+  return rates.length ? rates.join(" · ") : null;
 }
 
 /** Rate + at least one operating day — otherwise date booking UX is Coming Soon. */
 function kitchenReadyForDateBooking(kitchen: PublicKitchen | null | undefined): boolean {
   if (!kitchen) return false;
-  if (kitchen.hourlyRate == null || Number(kitchen.hourlyRate) <= 0) return false;
+  if (
+    Number(kitchen.hourlyRate || 0) <= 0 &&
+    Number(kitchen.dailyRate || 0) <= 0
+  ) return false;
   const availability = kitchen.availability;
   if (!availability?.length) return false;
   return availability.some((day) => {
@@ -2168,7 +2170,8 @@ function GuestHoursCard({
       return;
     }
 
-    const status = evaluateTypedKitchenDate(dateStr, dateAvailability, todayStr);
+    const dateKey = toLocalDateString(next);
+    const status = evaluateTypedKitchenDate(dateKey, dateAvailability, todayStr);
     if (status === "pending") {
       // Month fetch finished without this day → unavailable.
       setSelectedDate(undefined);
@@ -2255,6 +2258,12 @@ function GuestHoursCard({
         sessionStorage.removeItem(`kitchen_booking_prefs_${kitchenId}`);
         notifyBookingPrefsChanged(kitchenId);
       }
+      return;
+    }
+    if (value.length < 10) {
+      setSelectedDate(undefined);
+      setDateNotAvailable(false);
+      pendingTypedDateRef.current = null;
       return;
     }
     queueTypedDate(value);
@@ -2476,24 +2485,18 @@ function GuestHoursCard({
                 {t("selectYourDate", "Choose your date")}
               </span>
               <input
-                type="date"
+                type="text"
                 value={dateInputValue}
-                min={todayStr}
-                onChange={(e) => handleDateInputChange(e.target.value)}
-                onFocus={() => setCalendarOpen(true)}
+                inputMode="numeric"
+                maxLength={10}
+                onChange={(event) => handleDateInputChange(event.target.value)}
+                placeholder={t("datePlaceholder", "DD/MM/YYYY")}
                 aria-invalid={dateNotAvailable}
                 aria-describedby={dateNotAvailable ? "preview-date-unavailable" : undefined}
-                className={cn(
-                  "mt-0.5 w-full min-w-0 border-0 bg-transparent p-0 text-sm outline-none",
-                  "text-gray-900 [color-scheme:light]",
-                  "focus-visible:ring-0"
-                )}
+                className="mt-0.5 w-full min-w-0 border-0 bg-transparent p-0 text-sm text-gray-900 outline-none focus-visible:ring-0"
               />
               {dateNotAvailable ? (
-                <span
-                  id="preview-date-unavailable"
-                  className="mt-0.5 block text-xs font-medium text-[#F51042]"
-                >
+                <span id="preview-date-unavailable" className="mt-0.5 block text-xs font-medium text-[#F51042]">
                   {t("dateNotAvailable", "Date is not available")}
                 </span>
               ) : null}
@@ -2503,16 +2506,9 @@ function GuestHoursCard({
               onClick={() => setCalendarOpen(!calendarOpen)}
               className="shrink-0 rounded-md p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
               aria-expanded={calendarOpen}
-              aria-label={
-                calendarOpen
-                  ? t("hideCalendar", "Hide calendar")
-                  : t("showCalendar", "Show calendar")
-              }
+              aria-label={calendarOpen ? t("hideCalendar", "Hide calendar") : t("showCalendar", "Show calendar")}
             >
-              <PreviewIcon
-                icon={calendarOpen ? "mdi:chevron-up" : "mdi:chevron-down"}
-                size={18}
-              />
+              <PreviewIcon icon={calendarOpen ? "mdi:chevron-up" : "mdi:chevron-down"} size={18} />
             </button>
           </div>
           {hasSelection && (
@@ -3595,7 +3591,6 @@ export default function KitchenPreviewPage() {
     const includedCount = kitchenEquipment?.included?.length ?? 0;
     const rentalCount = kitchenEquipment?.rental?.length ?? 0;
     const storageCount = kitchenStorage?.length ?? 0;
-    const amenityCount = selectedKitchen?.amenities?.length ?? 0;
 
     // Ready-to-book chip beside sticky CTA rate — only when chef can book.
     const bookingAccessChip: BookingAccessChip | null =
@@ -3967,7 +3962,7 @@ export default function KitchenPreviewPage() {
         {/* Airbnb-style: left listing content + sticky date/CTA card on the right */}
         <div className="flex flex-col lg:grid lg:grid-cols-12 gap-x-6 gap-y-3 sm:gap-x-8 sm:gap-y-3 lg:items-start">
           <div className="order-1 lg:col-span-7 xl:col-span-8 space-y-2 min-w-0">
-            {(hoursSummary || amenityCount > 0 || tourFactCard) && (
+            {(hoursSummary || tourFactCard) && (
               <div className="space-y-1.5">
                 <RateHoursFacts
                   hoursSummary={hoursSummary}
@@ -3979,17 +3974,6 @@ export default function KitchenPreviewPage() {
                     ) : undefined
                   }
                 />
-                {amenityCount > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    <KitchenFactChip
-                      icon="mdi:format-list-checks"
-                      label={t("amenitiesCount", {
-                        count: amenityCount,
-                        defaultValue: `${amenityCount} ${amenityCount === 1 ? "amenity" : "amenities"}`,
-                      })}
-                    />
-                  </div>
-                )}
               </div>
             )}
 
@@ -4052,7 +4036,7 @@ export default function KitchenPreviewPage() {
             id="preview-dates"
             className={cn(
               "order-2 lg:col-span-5 xl:col-span-4 lg:row-span-2 lg:col-start-8 xl:col-start-9 w-full min-w-0 max-w-md lg:max-w-none mx-auto lg:mx-0 self-start scroll-mt-32",
-              "sticky",
+              "lg:sticky",
               useChefChrome
                 ? "top-20"
                 : isAuthenticated

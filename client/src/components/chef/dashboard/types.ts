@@ -26,6 +26,7 @@ export interface PublicKitchen {
     rental: number;
   };
   hourlyRate?: number | null;
+  dailyRate?: number | null;
   locationId: number;
   locationName: string;
   locationSlug?: string;
