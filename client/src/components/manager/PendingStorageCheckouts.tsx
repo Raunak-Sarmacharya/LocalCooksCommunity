@@ -671,7 +671,7 @@ export function PendingStorageCheckouts() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <CardTitle className="text-xl font-semibold flex items-center gap-2">
-                <ShieldCheck className="h-5 w-5 text-green-600" />{mt("storageCheckouts")}</CardTitle>
+                {mt("storageCheckouts")}</CardTitle>
               <CardDescription>
                 {viewType === 'pending'
                   ? mt("pendingCheckoutReviews", { count: pendingCheckouts.length })

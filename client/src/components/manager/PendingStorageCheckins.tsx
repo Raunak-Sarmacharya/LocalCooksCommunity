@@ -415,7 +415,7 @@ export function PendingStorageCheckins() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <CardTitle className="text-xl font-semibold flex items-center gap-2">
-              <LogIn className="h-5 w-5 text-emerald-600" />{mt("storageCheckInHistory")}</CardTitle>
+              {mt("storageCheckInHistory")}</CardTitle>
             <CardDescription>
               {mt("completedMoveInInspections", { count: checkinHistory.length })}
             </CardDescription>

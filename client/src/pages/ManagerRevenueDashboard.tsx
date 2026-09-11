@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ChefPageHeader } from "@/components/chef/ui"
 
 // Import from our revenue module
 import { useRevenueMetrics, useRevenueByLocation, useRevenueChartData, useTransactions, useInvoices, usePayouts, useStripeConnectStatus, downloadInvoice, downloadPayoutStatement, refundTransaction, getDefaultDateRange, type DateRange, type LocationOption, type PaymentStatus, type Transaction } from "@/components/manager/revenue"
@@ -202,35 +203,40 @@ export default function ManagerRevenueDashboard({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-end gap-3">
-          {/* Date Range Picker */}
-          <DateRangePicker
-            dateRange={dateRange}
-            onDateRangeChange={setDateRange}
-          />
+      <ChefPageHeader 
+        title={mt("navRevenue")}
+        actions={
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Date Range Picker */}
+            <DateRangePicker
+              dateRange={dateRange}
+              onDateRangeChange={setDateRange}
+            />
 
-          {/* Location Filter */}
-          {locations.length > 1 && (
-            <Select
-              value={selectedLocationFilter === "all" ? "all" : selectedLocationFilter.toString()}
-              onValueChange={(value) =>
-                setSelectedLocationFilter(value === "all" ? "all" : parseInt(value))
-              }
-            >
-              <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder={mt("cmdAllLocations")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{mt("cmdAllLocations")}</SelectItem>
-                {locations.map((loc) => (
-                  <SelectItem key={loc.id} value={loc.id.toString()}>
-                    {loc.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-      </div>
+            {/* Location Filter */}
+            {locations.length > 1 && (
+              <Select
+                value={selectedLocationFilter === "all" ? "all" : selectedLocationFilter.toString()}
+                onValueChange={(value) =>
+                  setSelectedLocationFilter(value === "all" ? "all" : parseInt(value))
+                }
+              >
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue placeholder={mt("cmdAllLocations")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{mt("cmdAllLocations")}</SelectItem>
+                  {locations.map((loc) => (
+                    <SelectItem key={loc.id} value={loc.id.toString()}>
+                      {loc.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+        }
+      />
 
       {/* Info Banner */}
       <Card className="border-blue-200 bg-blue-50/50">

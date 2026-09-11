@@ -723,9 +723,6 @@ export default function NotificationCenter({
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <span className="flex size-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                  <Bell className="size-5" aria-hidden="true" />
-                </span>
                 <h1 className="text-2xl font-semibold tracking-tight">{mt("navNotifications")}</h1>
                 {unreadCount > 0 && <Badge variant="secondary">{unreadCount} {mt("unread").toLowerCase()}</Badge>}
               </div>

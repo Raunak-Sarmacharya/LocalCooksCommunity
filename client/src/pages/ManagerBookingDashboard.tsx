@@ -823,19 +823,28 @@ export default function ManagerBookingDashboard() {
       )}
 
       {activeView === 'overstays' && (
-        <div className="space-y-6">
+        <div className="space-y-6 animate-fade-in">
+          <ChefPageHeader
+            title={mt("navOverstayPenalties")}
+          />
           <OverstayPenaltyQueue locationId={selectedLocation?.id} />
         </div>
       )}
 
       {activeView === 'damage-claims' && (
-        <div className="space-y-6">
+        <div className="space-y-6 animate-fade-in">
+          <ChefPageHeader
+            title={mt("navDamageClaims")}
+          />
           <DamageClaimQueue />
         </div>
       )}
 
       {activeView === 'storage-checkouts' && (
-        <div className="space-y-6">
+        <div className="space-y-6 animate-fade-in">
+          <ChefPageHeader
+            title={mt("navStorageInspections")}
+          />
           <PendingStorageCheckins />
           <PendingStorageCheckouts />
         </div>
