@@ -452,7 +452,7 @@ export function useChefKitchenApplicationsStatus() {
     a.status === "approved" && 
     ((a as any).current_tier ?? 1) >= 3
   ).length;
-  const pendingCount = applications.filter(a => a.status === "inReview").length;
+  const pendingCount = applications.filter(a => ["inreview", "pending"].includes(a.status.toLowerCase())).length;
   const rejectedCount = applications.filter(a => a.status === "rejected").length;
 
   const hasAnyApproved = approvedCount > 0;
@@ -474,4 +474,3 @@ export function useChefKitchenApplicationsStatus() {
     totalApplications: applications.length,
   };
 }
-

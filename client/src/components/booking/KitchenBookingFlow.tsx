@@ -247,7 +247,7 @@ function BookingPlaceContext({
             {locationAddress && (
               <p className="mt-2 flex items-start gap-1.5 text-sm leading-relaxed text-muted-foreground">
                 <Icon icon="mdi:map-marker-outline" className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-                <span className="truncate">{locationAddress}</span>
+                <span className="min-w-0 break-words">{locationAddress}</span>
               </p>
             )}
           </div>

@@ -872,39 +872,20 @@ function BookingActionSheetContent({
               </div>
               <div className="space-y-1 text-xs p-2.5 rounded-md bg-white/60 border border-blue-100">
                 <p className="text-[10px] font-medium text-blue-700 uppercase tracking-wide mb-1">{mt("captureBreakdown")}</p>
-                {captureCalc.approvedSubtotal > 0 && (
-                  <div className="flex justify-between text-muted-foreground">
-                    <span>{mt("kitchenSession2")}</span>
-                    <span className="font-mono">{formatPrice(captureCalc.approvedSubtotal)}</span>
-                  </div>
-                )}
-                {captureCalc.approvedTax > 0 && (
-                  <div className="flex justify-between text-muted-foreground">
-                    <span>{mt("taxPercentLabel", { percent: captureCalc.taxRatePercent })}</span>
-                    <span className="font-mono">+{formatPrice(captureCalc.approvedTax)}</span>
-                  </div>
-                )}
-                {captureCalc.approvedServiceFee > 0 && (
-                  <div className="flex justify-between text-blue-600">
-                    <span>{mt("localCooksServiceFee")}</span>
-                    <span className="font-mono">+{formatPrice(captureCalc.approvedServiceFee)}</span>
-                  </div>
-                )}
-                <Separator className="my-1" />
                 <div className="flex justify-between text-muted-foreground">
-                  <span>{mt("chefWillBeCharged2")}</span>
+                  <span>{mt("totalCharged3")}</span>
                   <span className="font-mono font-medium">{formatPrice(captureCalc.captureAmount)}</span>
                 </div>
+                {captureCalc.approvedServiceFee > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>{mt("localCooksServiceFee")}</span>
+                    <span className="font-mono text-red-600">-{formatPrice(captureCalc.approvedServiceFee)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-muted-foreground">
                   <span>{mt("estStripeFee")}</span>
                   <span className="font-mono text-red-600">-{formatPrice(captureCalc.estimatedStripeFee)}</span>
                 </div>
-                {captureCalc.approvedServiceFee > 0 && (
-                  <div className="flex justify-between text-blue-600">
-                    <span>{mt("localCooksServiceFee")}</span>
-                    <span className="font-mono">-{formatPrice(captureCalc.approvedServiceFee)}</span>
-                  </div>
-                )}
                 <Separator className="my-1" />
                 <div className="flex justify-between font-semibold text-sm">
                   <span>{mt("estYouReceive")}</span>
@@ -935,41 +916,16 @@ function BookingActionSheetContent({
               {/* Capture Breakdown */}
               <div className="space-y-1 text-xs p-2.5 rounded-md bg-white/60 border border-amber-100">
                 <p className="text-[10px] font-medium text-amber-700 uppercase tracking-wide mb-1">{mt("captureBreakdown")}</p>
-                {captureCalc.approvedKitchenCents > 0 && (
-                  <div className="flex justify-between text-muted-foreground">
-                    <span>{mt("kitchenSession2")}</span>
-                    <span className="font-mono">{formatPrice(captureCalc.approvedKitchenCents)}</span>
-                  </div>
-                )}
-                {captureCalc.approvedStorageCents > 0 && (
-                  <div className="flex justify-between text-muted-foreground">
-                    <span>{mt("approvedStorage")}</span>
-                    <span className="font-mono">{formatPrice(captureCalc.approvedStorageCents)}</span>
-                  </div>
-                )}
-                {captureCalc.approvedEquipmentCents > 0 && (
-                  <div className="flex justify-between text-muted-foreground">
-                    <span>{mt("approvedEquipment")}</span>
-                    <span className="font-mono">{formatPrice(captureCalc.approvedEquipmentCents)}</span>
-                  </div>
-                )}
-                {captureCalc.approvedTax > 0 && (
-                  <div className="flex justify-between text-muted-foreground">
-                    <span>{mt("taxPercentLabel", { percent: captureCalc.taxRatePercent })}</span>
-                    <span className="font-mono">+{formatPrice(captureCalc.approvedTax)}</span>
-                  </div>
-                )}
+                <div className="flex justify-between font-medium text-foreground">
+                  <span>{mt("totalCharged3")}</span>
+                  <span className="font-mono">{formatPrice(captureCalc.captureAmount)}</span>
+                </div>
                 {captureCalc.approvedServiceFee > 0 && (
                   <div className="flex justify-between text-muted-foreground">
                     <span>{mt("localCooksServiceFee")}</span>
-                    <span className="font-mono">+{formatPrice(captureCalc.approvedServiceFee)}</span>
+                    <span className="font-mono text-red-600">-{formatPrice(captureCalc.approvedServiceFee)}</span>
                   </div>
                 )}
-                <Separator className="my-1" />
-                <div className="flex justify-between font-medium text-foreground">
-                  <span>{mt("willBeCharged")}</span>
-                  <span className="font-mono">{formatPrice(captureCalc.captureAmount)}</span>
-                </div>
                 <div className="flex justify-between text-muted-foreground">
                   <span>{mt("estStripeFee")}</span>
                   <span className="font-mono text-red-600">-{formatPrice(captureCalc.estimatedStripeFee)}</span>

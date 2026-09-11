@@ -161,6 +161,11 @@ export default function KitchenDiscovery({
 
   const isLoading = applicationsLoading || kitchensLoading;
 
+  const pendingApplications = useMemo(
+    () => applications.filter((app) => ["inreview", "pending"].includes(app.status.toLowerCase())),
+    [applications]
+  );
+
   const applicationByLocationId = useMemo(() => {
     const map = new Map<number, (typeof applications)[number]>();
     for (const app of applications) {
@@ -347,7 +352,7 @@ export default function KitchenDiscovery({
           <TabsTrigger value="applications">
             <Clock className="h-4 w-4 mr-2" />
             {t("applyFlowMyApplicationsTabLabel", {
-              count: applications.length,
+              count: pendingApplications.length,
               defaultValue: "My Applications ({count})",
             })}
           </TabsTrigger>
@@ -481,11 +486,11 @@ export default function KitchenDiscovery({
         </TabsContent>
 
         <TabsContent value="applications" className="space-y-4">
-          {applications.length === 0 ? (
+          {pendingApplications.length === 0 ? (
             <div className="text-center py-12 bg-muted/50 rounded-lg">
               <Clock className="h-12 w-12 text-muted-foreground/40 mx-auto mb-3" />
               <p className="text-muted-foreground font-medium">
-                {t("applyFlowNoApplicationsYet", "No applications yet")}
+                {t("applyFlowNoPendingApplications", "No pending applications")}
               </p>
               <p className="text-sm text-muted-foreground/70 mt-1">
                 {t("applyFlowApplyToGetStarted", "Apply to a kitchen to get started")}
@@ -502,7 +507,7 @@ export default function KitchenDiscovery({
               animate="visible"
               className="space-y-3"
             >
-              {applications.map((app) => {
+              {pendingApplications.map((app) => {
                 return (
                   <motion.div key={app.id} variants={itemVariants}>
                     <Card className="shadow-none">
@@ -662,15 +667,15 @@ export default function KitchenDiscovery({
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  disabled
                                   className={cn(
                                     chefOutlineCtaClass(),
-                                    "cursor-not-allowed border border-gray-200"
+                                    "border border-gray-200"
                                   )}
+                                  onClick={() => navigate(`/kitchen-requirements/${app.locationId}`)}
                                 >
                                   {t(
-                                    "applyFlowCompleteAllTiersToBook",
-                                    "Complete all tiers to book"
+                                    "applyFlowContinueApplication",
+                                    "Continue application"
                                   )}
                                 </Button>
                               )}

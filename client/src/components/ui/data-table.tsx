@@ -16,6 +16,7 @@ interface DataTableProps<TData> {
     defaultSorting?: SortingState
     initialColumnVisibility?: VisibilityState
     pageSize?: number
+    onRowClick?: (row: TData) => void
 }
 
 export function DataTable<TData>({
@@ -26,6 +27,7 @@ export function DataTable<TData>({
     defaultSorting = [],
     initialColumnVisibility = {},
     pageSize = 10,
+    onRowClick,
 }: DataTableProps<TData>) {
     const { t } = useTranslation("common")
     const resolvedFilterPlaceholder = filterPlaceholder ?? t("filterByName")
@@ -96,6 +98,19 @@ export function DataTable<TData>({
                                 <TableRow
                                     key={row.id}
                                     data-state={row.getIsSelected() && "selected"}
+                                    tabIndex={onRowClick ? 0 : undefined}
+                                    className={onRowClick ? "cursor-pointer hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring" : undefined}
+                                    onClick={(event) => {
+                                        if (!(event.target as HTMLElement).closest("button, a, input, select, textarea, [role='menuitem']")) {
+                                            onRowClick?.(row.original)
+                                        }
+                                    }}
+                                    onKeyDown={(event) => {
+                                        if (onRowClick && (event.key === "Enter" || event.key === " ")) {
+                                            event.preventDefault()
+                                            onRowClick(row.original)
+                                        }
+                                    }}
                                 >
                                     {row.getVisibleCells().map((cell) => (
                                         <TableCell key={cell.id} className="whitespace-nowrap">

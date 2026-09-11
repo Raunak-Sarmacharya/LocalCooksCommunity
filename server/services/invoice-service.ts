@@ -34,6 +34,7 @@ export async function generateInvoicePDF(
   let managerRevenueCents = 0;
   let storedTaxAmountCents = 0;
   let ptMetadata: Record<string, unknown> = {};
+  let transactionStatus = String(booking.paymentStatus || booking.payment_status || 'paid');
 
   if (paymentIntentId) {
     try {
@@ -44,6 +45,7 @@ export async function generateInvoicePDF(
         .limit(1);
 
       if (paymentTransaction) {
+        transactionStatus = String(paymentTransaction.status || transactionStatus);
         // Use Stripe-synced values
         stripeTotalAmount = parseInt(String(paymentTransaction.amount)) || 0;
         stripePlatformFee = parseInt(String(paymentTransaction.serviceFee)) || 0;
@@ -584,13 +586,19 @@ export async function generateInvoicePDF(
       }
 
       // Payment status (seller invoice style)
-      const statusBg = '#dcfce7';
-      const statusBorder = '#bbf7d0';
-      const statusColor = '#16a34a';
+      const isRefunded = transactionStatus === 'refunded' || transactionStatus === 'partially_refunded';
+      const statusLabel = transactionStatus === 'refunded'
+        ? 'REFUNDED'
+        : transactionStatus === 'partially_refunded'
+          ? 'PARTIALLY REFUNDED'
+          : 'PAID';
+      const statusBg = isRefunded ? '#fff7ed' : '#dcfce7';
+      const statusBorder = isRefunded ? '#fed7aa' : '#bbf7d0';
+      const statusColor = isRefunded ? '#c2410c' : '#16a34a';
       doc.roundedRect(50, yPos, tableWidth, 40, 5).fillAndStroke(statusBg, statusBorder);
       doc.font('Helvetica-Bold').fontSize(12).fillColor(textColor)
         .text('Payment Status: ', 70, yPos + 14, { continued: true })
-        .fillColor(statusColor).text('PAID');
+        .fillColor(statusColor).text(statusLabel);
 
       doc.fontSize(10).font('Helvetica').fillColor('#9CA3AF');
       doc.text('For questions, contact support@localcook.shop', 50, doc.page.height - 60, {

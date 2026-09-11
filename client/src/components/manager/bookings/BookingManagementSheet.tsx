@@ -933,9 +933,7 @@ function BookingManagementContent({
 
               <div className="flex items-start gap-1.5 text-[10px] text-amber-600">
                 <Info className="h-3 w-3 mt-0.5 shrink-0" />
-                <span>
-                  {mt("stripeFeeTaxProportionalCancel")}
-                </span>
+                <span>{mt("stripeFeeTaxProportionalCancel")} <a href="/terms#refund-policy" target="_blank" rel="noreferrer" className="font-medium underline">{mt("viewRefundPolicy")}</a></span>
               </div>
             </div>
           </>
@@ -989,7 +987,8 @@ function BookingManagementContent({
                       placeholder="0.00"
                     />
                     <p className="text-[10px] text-blue-600">
-                      {mt("maxDebitedFromStripe", { amount: formatPrice(refundCalc.availableBalance) })}
+                      {mt("maxDebitedFromStripe", { amount: formatPrice(refundCalc.availableBalance) })}{" "}
+                      <a href="/terms#refund-policy" target="_blank" rel="noreferrer" className="font-medium underline">{mt("viewRefundPolicy")}</a>
                     </p>
                   </div>
 

@@ -2220,12 +2220,14 @@ async function handlePaymentIntentCanceled(
       await tx
         .update(kitchenBookings)
         .set({
+          status: "cancelled",
           paymentStatus: "failed", // Map cancel to failed for backward compatibility
           updatedAt: new Date(),
         })
         .where(
           and(
             eq(kitchenBookings.paymentIntentId, paymentIntent.id),
+            eq(kitchenBookings.status, "pending"),
             notInArray(kitchenBookings.paymentStatus, excludedStatuses),
           ),
         );

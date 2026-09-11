@@ -928,7 +928,7 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
                                 <Settings2 className="mr-2 h-4 w-4" />{mt("manageBooking")}</DropdownMenuItem>
                         )}
 
-                        {canCancel && (
+                        {canCancel && !onManageBooking && (
                             <DropdownMenuItem
                                 onClick={() => onCancel(booking)}
                                 className="text-red-600 focus:text-red-700 focus:bg-red-50"
@@ -936,7 +936,7 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
                                 <XCircle className="mr-2 h-4 w-4" />{mt("cancelBooking")}</DropdownMenuItem>
                         )}
 
-                        {canCancel && onCancelAndRefund && hasRefundableAmount && (
+                        {canCancel && !onManageBooking && onCancelAndRefund && hasRefundableAmount && (
                             <DropdownMenuItem
                                 onClick={() => onCancelAndRefund(booking)}
                                 className="text-red-600 focus:text-red-700 focus:bg-red-50"
@@ -945,14 +945,14 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
                         )}
 
                         {/* Cancellation Request actions — Accept (cancel + then Issue Refund) or Decline */}
-                        {isCancellationRequested && onAcceptCancellation && (
+                        {isCancellationRequested && !onManageBooking && onAcceptCancellation && (
                             <DropdownMenuItem
                                 onClick={() => onAcceptCancellation(booking)}
                                 className="text-green-600 focus:text-green-700 focus:bg-green-50"
                             >
                                 <CheckCircle className="mr-2 h-4 w-4" />{mt("acceptCancellation")}</DropdownMenuItem>
                         )}
-                        {isCancellationRequested && onDeclineCancellation && (
+                        {isCancellationRequested && !onManageBooking && onDeclineCancellation && (
                             <DropdownMenuItem
                                 onClick={() => onDeclineCancellation(booking)}
                                 className="text-red-600 focus:text-red-700 focus:bg-red-50"
@@ -963,7 +963,7 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
                         {/* Storage cancellation request actions — per-item accept/decline */}
                         {(() => {
                             const storageWithCancelRequest = (booking.storageItems || []).filter(s => s.cancellationRequested);
-                            if (storageWithCancelRequest.length === 0) return null;
+                            if (onManageBooking || storageWithCancelRequest.length === 0) return null;
                             return storageWithCancelRequest.map((s) => {
                                 const sbId = s.storageBookingId || s.id;
                                 return (
@@ -995,7 +995,7 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
                             This covers both:
                             - Cancelled confirmed bookings (need manual refund)
                             - Active bookings where manager wants to issue partial refund */}
-                        {onRefund && hasRefundableAmount && (
+                        {onRefund && !onManageBooking && hasRefundableAmount && (
                             <DropdownMenuItem
                                 onClick={() => onRefund(booking)}
                                 className="text-orange-600 focus:text-orange-700 focus:bg-orange-50"

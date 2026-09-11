@@ -4463,12 +4463,36 @@ router.put(
       // Only allow confirmation if payment is 'processing', 'paid', or 'authorized' (manual capture)
       if (status === "confirmed") {
         const paymentStatus = (booking as any).paymentStatus;
-        if (paymentStatus === "pending") {
+        if (!["authorized", "processing", "paid"].includes(paymentStatus)) {
           return res.status(400).json({
             error:
-              "Cannot confirm booking - payment has not been completed. The chef may have abandoned checkout.",
+              "Cannot confirm booking - the payment authorization is no longer valid.",
             paymentStatus: paymentStatus,
           });
+        }
+        if (paymentStatus === "authorized" && (booking as any).paymentIntentId) {
+          const { getPaymentIntent } = await import("../services/stripe-service");
+          const paymentIntent = await getPaymentIntent((booking as any).paymentIntentId);
+          if (paymentIntent?.status !== "requires_capture") {
+            await db.transaction(async (tx) => {
+              await tx
+                .update(kitchenBookings)
+                .set({ status: "cancelled", paymentStatus: "failed", updatedAt: new Date() })
+                .where(eq(kitchenBookings.id, id));
+              await tx
+                .update(storageBookingsTable)
+                .set({ status: "cancelled", paymentStatus: "failed", updatedAt: new Date() })
+                .where(eq(storageBookingsTable.kitchenBookingId, id));
+              await tx
+                .update(equipmentBookingsTable)
+                .set({ status: "cancelled", paymentStatus: "failed", updatedAt: new Date() })
+                .where(eq(equipmentBookingsTable.kitchenBookingId, id));
+            });
+            return res.status(409).json({
+              error: "Cannot confirm booking - the payment authorization was voided or expired. The booking has been cancelled.",
+              paymentStatus: paymentIntent?.status || "missing",
+            });
+          }
         }
         // AUTH-THEN-CAPTURE: If payment is authorized, capture is deferred until AFTER
         // storage/equipment actions are determined, so we can do PARTIAL capture.

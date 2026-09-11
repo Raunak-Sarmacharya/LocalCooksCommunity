@@ -712,7 +712,7 @@ export default function TermsContent() {
       <p className="mb-4">Kitchen Owner sets the hourly rental fee for the Kitchen (e.g., $25/hour). This fee is displayed in the Kitchen listing and Booking confirmation.</p>
       <p className="mb-4">Chef agrees to pay the stated fee for the rental period booked. Overstay (use beyond the scheduled end time) will be charged at the hourly rate (prorated) or as stated in the Kitchen Owner&apos;s cancellation policy.</p>
 
-      <h3 className="text-xl font-semibold mt-6 mb-3">9.2 Payment Processing &amp; Payout</h3>
+      <h3 id="refund-policy" className="scroll-mt-24 text-xl font-semibold mt-6 mb-3">9.2 Payment Processing &amp; Payout</h3>
       <p className="mb-2 font-semibold">Payment Flow:</p>
       <ul className="list-disc pl-6 mb-4">
         <li>Chef submits Booking and payment through Local Cooks (via Stripe or similar processor)</li>
@@ -722,8 +722,9 @@ export default function TermsContent() {
       </ul>
       <p className="mb-2 font-semibold">Refunds:</p>
       <ul className="list-disc pl-6 mb-4">
-        <li>If Kitchen Owner cancels a Booking, the Chef is entitled to a full refund (processed within 5&ndash;7 business days)</li>
+        <li>If Kitchen Owner cancels a Booking, the Chef is entitled to a refund of the booking charges, excluding the original payment processing fee (processed within 5&ndash;7 business days)</li>
         <li>If Chef cancels per Kitchen Owner&apos;s stated cancellation policy, the refund amount depends on the policy (non-refundable, 50%, 100%, etc.)</li>
+        <li>Payment processing fees charged on the original transaction are not returned as part of a refund.</li>
       </ul>
       <p className="mb-2 font-semibold">No Chargebacks:</p>
       <p className="mb-4">Chef agrees not to dispute or chargeback the payment with their credit card company unless Local Cooks fails to process the payment correctly. Fraudulent chargebacks may result in Chef account termination.</p>
