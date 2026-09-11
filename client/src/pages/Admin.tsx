@@ -1667,7 +1667,8 @@ function AdminDashboard() {
                                 className="text-xs text-blue-600 hover:underline flex items-center gap-1"
                                 onClick={async (e) => {
                                   const url = selectedApplication.foodSafetyLicenseUrl;
-                                  if (url && !presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
+                                  const isPrivateR2Url = url ? (url.includes('r2.cloudflarestorage.com') || url.includes('files.localcooks.ca')) : false;
+                                  if (url && !presignedUrls[url] && isPrivateR2Url) {
                                     e.preventDefault();
                                     const presignedUrl = await getPresignedUrl(url);
                                     window.open(presignedUrl, '_blank');
@@ -1705,7 +1706,8 @@ function AdminDashboard() {
                                 className="text-xs text-blue-600 hover:underline flex items-center gap-1"
                                 onClick={async (e) => {
                                   const url = selectedApplication.foodEstablishmentCertUrl;
-                                  if (url && !presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
+                                  const isPrivateR2Url = url ? (url.includes('r2.cloudflarestorage.com') || url.includes('files.localcooks.ca')) : false;
+                                  if (url && !presignedUrls[url] && isPrivateR2Url) {
                                     e.preventDefault();
                                     const presignedUrl = await getPresignedUrl(url);
                                     window.open(presignedUrl, '_blank');
