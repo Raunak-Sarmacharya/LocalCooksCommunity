@@ -459,12 +459,12 @@ __export(schema_exports, {
   insertKitchenBookingSchema: () => insertKitchenBookingSchema,
   insertKitchenDateOverrideSchema: () => insertKitchenDateOverrideSchema,
   insertKitchenSchema: () => insertKitchenSchema,
+  insertKitchenViewingAvailabilitySchema: () => insertKitchenViewingAvailabilitySchema,
+  insertKitchenViewingBlackoutSchema: () => insertKitchenViewingBlackoutSchema,
   insertKitchenViewingSchema: () => insertKitchenViewingSchema,
+  insertKitchenViewingSettingsSchema: () => insertKitchenViewingSettingsSchema,
   insertLocationRequirementsSchema: () => insertLocationRequirementsSchema,
   insertLocationSchema: () => insertLocationSchema,
-  insertLocationViewingAvailabilitySchema: () => insertLocationViewingAvailabilitySchema,
-  insertLocationViewingBlackoutSchema: () => insertLocationViewingBlackoutSchema,
-  insertLocationViewingSettingsSchema: () => insertLocationViewingSettingsSchema,
   insertMicrolearningCompletionSchema: () => insertMicrolearningCompletionSchema,
   insertPaymentTransactionSchema: () => insertPaymentTransactionSchema,
   insertPlatformSettingSchema: () => insertPlatformSettingSchema,
@@ -483,13 +483,13 @@ __export(schema_exports, {
   kitchenCheckoutReviewSchema: () => kitchenCheckoutReviewSchema,
   kitchenDateOverrides: () => kitchenDateOverrides,
   kitchenPreferenceEnum: () => kitchenPreferenceEnum,
+  kitchenViewingAvailability: () => kitchenViewingAvailability,
+  kitchenViewingBlackouts: () => kitchenViewingBlackouts,
+  kitchenViewingSettings: () => kitchenViewingSettings,
   kitchenViewings: () => kitchenViewings,
   kitchens: () => kitchens,
   listingStatusEnum: () => listingStatusEnum,
   locationRequirements: () => locationRequirements,
-  locationViewingAvailability: () => locationViewingAvailability,
-  locationViewingBlackouts: () => locationViewingBlackouts,
-  locationViewingSettings: () => locationViewingSettings,
   locations: () => locations,
   microlearningCompletions: () => microlearningCompletions,
   noShowReasonEnum: () => noShowReasonEnum,
@@ -531,10 +531,10 @@ __export(schema_exports, {
   updateKitchenBookingSchema: () => updateKitchenBookingSchema,
   updateKitchenDateOverrideSchema: () => updateKitchenDateOverrideSchema,
   updateKitchenSchema: () => updateKitchenSchema,
+  updateKitchenViewingSettingsSchema: () => updateKitchenViewingSettingsSchema,
   updateKitchenViewingStatusSchema: () => updateKitchenViewingStatusSchema,
   updateLocationRequirementsSchema: () => updateLocationRequirementsSchema,
   updateLocationSchema: () => updateLocationSchema,
-  updateLocationViewingSettingsSchema: () => updateLocationViewingSettingsSchema,
   updatePaymentTransactionSchema: () => updatePaymentTransactionSchema,
   updatePlatformSettingSchema: () => updatePlatformSettingSchema,
   updatePortalUserApplicationStatusSchema: () => updatePortalUserApplicationStatusSchema,
@@ -552,7 +552,7 @@ __export(schema_exports, {
 import { boolean, date, integer, jsonb, numeric, pgEnum, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z as z2 } from "zod";
-var kitchenPreferenceEnum, certificationStatusEnum, applicationStatusEnum, userRoleEnum, documentVerificationStatusEnum, applicationTypeEnum, bookingStatusEnum, storageTypeEnum, checkoutStatusEnum, storageCheckinStatusEnum, kitchenCheckinStatusEnum, storagePricingModelEnum, bookingDurationUnitEnum, listingStatusEnum, equipmentCategoryEnum, equipmentConditionEnum, equipmentPricingModelEnum, equipmentAvailabilityTypeEnum, paymentStatusEnum, transactionStatusEnum, bookingTypeEnum, users, applications, insertApplicationSchema, updateApplicationStatusSchema, updateApplicationDocumentsSchema, updateDocumentVerificationSchema, insertUserSchema, emailVerificationTokens, microlearningCompletions, videoProgress, insertMicrolearningCompletionSchema, insertVideoProgressSchema, locations, locationRequirements, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, accessCodeAudit, insertAccessCodeAuditSchema, checkinCheckoutChecklists, checklistItemSchema, photoRequirementSchema, insertCheckinCheckoutChecklistSchema, completedChecklistItemSchema, timeWindowSettingsSchema, chefLocationAccess, chefKitchenAccess, chefKitchenProfiles, chefLocationProfiles, portalUserApplications, portalUserLocationAccess, insertLocationSchema, updateLocationSchema, insertLocationRequirementsSchema, customFieldSchema, updateLocationRequirementsSchema, insertKitchenSchema, updateKitchenSchema, insertKitchenAvailabilitySchema, insertKitchenDateOverrideSchema, updateKitchenDateOverrideSchema, insertKitchenBookingSchema, updateKitchenBookingSchema, insertChefLocationAccessSchema, insertChefKitchenAccessSchema, insertChefKitchenProfileSchema, updateChefKitchenProfileSchema, insertChefLocationProfileSchema, updateChefLocationProfileSchema, insertPortalUserApplicationSchema, updatePortalUserApplicationStatusSchema, insertPortalUserLocationAccessSchema, storageListings, insertStorageListingSchema, updateStorageListingSchema, updateStorageListingStatusSchema, equipmentListings, insertEquipmentListingSchema, updateEquipmentListingSchema, updateEquipmentListingStatusSchema, storageBookings, insertStorageBookingSchema, updateStorageBookingSchema, updateStorageBookingStatusSchema, storageCheckoutRequestSchema, storageCheckinRequestSchema, storageCheckoutApprovalSchema, kitchenCheckinRequestSchema, kitchenCheckoutRequestSchema, kitchenCheckoutReviewSchema, equipmentBookings, insertEquipmentBookingSchema, updateEquipmentBookingSchema, updateEquipmentBookingStatusSchema, platformSettings, insertPlatformSettingSchema, updatePlatformSettingSchema, chefKitchenApplications, insertChefKitchenApplicationSchema, updateChefKitchenApplicationSchema, updateChefKitchenApplicationStatusSchema, updateApplicationTierSchema, updateChefKitchenApplicationDocumentsSchema, paymentTransactions, paymentHistory, insertPaymentTransactionSchema, updatePaymentTransactionSchema, pendingStorageExtensions, overstayStatusEnum, storageOverstayRecords, storageOverstayHistory, insertStorageOverstayRecordSchema, updateStorageOverstayRecordSchema, damageClaimStatusEnum, evidenceTypeEnum, damageClaims, damageEvidence, damageClaimHistory, damageClaimStatusValues, evidenceTypeValues, damagedItemSchema, insertDamageClaimSchema, updateDamageClaimSchema, insertDamageEvidenceSchema, chefDamageClaimResponseSchema, adminDamageClaimDecisionSchema, viewingStatusEnum, noShowReasonEnum, locationViewingSettings, locationViewingAvailability, locationViewingBlackouts, kitchenViewings, emailLogs, insertLocationViewingSettingsSchema, updateLocationViewingSettingsSchema, insertLocationViewingAvailabilitySchema, insertLocationViewingBlackoutSchema, viewingIntakeDataSchema, insertKitchenViewingSchema, updateKitchenViewingStatusSchema;
+var kitchenPreferenceEnum, certificationStatusEnum, applicationStatusEnum, userRoleEnum, documentVerificationStatusEnum, applicationTypeEnum, bookingStatusEnum, storageTypeEnum, checkoutStatusEnum, storageCheckinStatusEnum, kitchenCheckinStatusEnum, storagePricingModelEnum, bookingDurationUnitEnum, listingStatusEnum, equipmentCategoryEnum, equipmentConditionEnum, equipmentPricingModelEnum, equipmentAvailabilityTypeEnum, paymentStatusEnum, transactionStatusEnum, bookingTypeEnum, users, applications, insertApplicationSchema, updateApplicationStatusSchema, updateApplicationDocumentsSchema, updateDocumentVerificationSchema, insertUserSchema, emailVerificationTokens, microlearningCompletions, videoProgress, insertMicrolearningCompletionSchema, insertVideoProgressSchema, locations, locationRequirements, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, accessCodeAudit, insertAccessCodeAuditSchema, checkinCheckoutChecklists, checklistItemSchema, photoRequirementSchema, insertCheckinCheckoutChecklistSchema, completedChecklistItemSchema, timeWindowSettingsSchema, chefLocationAccess, chefKitchenAccess, chefKitchenProfiles, chefLocationProfiles, portalUserApplications, portalUserLocationAccess, insertLocationSchema, updateLocationSchema, insertLocationRequirementsSchema, customFieldSchema, updateLocationRequirementsSchema, insertKitchenSchema, updateKitchenSchema, insertKitchenAvailabilitySchema, insertKitchenDateOverrideSchema, updateKitchenDateOverrideSchema, insertKitchenBookingSchema, updateKitchenBookingSchema, insertChefLocationAccessSchema, insertChefKitchenAccessSchema, insertChefKitchenProfileSchema, updateChefKitchenProfileSchema, insertChefLocationProfileSchema, updateChefLocationProfileSchema, insertPortalUserApplicationSchema, updatePortalUserApplicationStatusSchema, insertPortalUserLocationAccessSchema, storageListings, insertStorageListingSchema, updateStorageListingSchema, updateStorageListingStatusSchema, equipmentListings, insertEquipmentListingSchema, updateEquipmentListingSchema, updateEquipmentListingStatusSchema, storageBookings, insertStorageBookingSchema, updateStorageBookingSchema, updateStorageBookingStatusSchema, storageCheckoutRequestSchema, storageCheckinRequestSchema, storageCheckoutApprovalSchema, kitchenCheckinRequestSchema, kitchenCheckoutRequestSchema, kitchenCheckoutReviewSchema, equipmentBookings, insertEquipmentBookingSchema, updateEquipmentBookingSchema, updateEquipmentBookingStatusSchema, platformSettings, insertPlatformSettingSchema, updatePlatformSettingSchema, chefKitchenApplications, insertChefKitchenApplicationSchema, updateChefKitchenApplicationSchema, updateChefKitchenApplicationStatusSchema, updateApplicationTierSchema, updateChefKitchenApplicationDocumentsSchema, paymentTransactions, paymentHistory, insertPaymentTransactionSchema, updatePaymentTransactionSchema, pendingStorageExtensions, overstayStatusEnum, storageOverstayRecords, storageOverstayHistory, insertStorageOverstayRecordSchema, updateStorageOverstayRecordSchema, damageClaimStatusEnum, evidenceTypeEnum, damageClaims, damageEvidence, damageClaimHistory, damageClaimStatusValues, evidenceTypeValues, damagedItemSchema, insertDamageClaimSchema, updateDamageClaimSchema, insertDamageEvidenceSchema, chefDamageClaimResponseSchema, adminDamageClaimDecisionSchema, viewingStatusEnum, noShowReasonEnum, kitchenViewingSettings, kitchenViewingAvailability, kitchenViewingBlackouts, kitchenViewings, emailLogs, insertKitchenViewingSettingsSchema, updateKitchenViewingSettingsSchema, insertKitchenViewingAvailabilitySchema, insertKitchenViewingBlackoutSchema, viewingIntakeDataSchema, insertKitchenViewingSchema, updateKitchenViewingStatusSchema;
 var init_schema = __esm({
   "shared/schema.ts"() {
     "use strict";
@@ -722,6 +722,7 @@ var init_schema = __esm({
       id: z2.number(),
       foodSafetyLicenseStatus: z2.enum(["pending", "approved", "rejected"]).optional(),
       foodEstablishmentCertStatus: z2.enum(["pending", "approved", "rejected"]).optional(),
+      foodEstablishmentCert: z2.enum(["yes", "no", "notSure"]).optional(),
       documentsAdminFeedback: z2.string().optional(),
       documentsReviewedBy: z2.number().optional()
     });
@@ -925,6 +926,8 @@ var init_schema = __esm({
       // Pricing fields (all prices stored as integers in cents to avoid floating-point precision issues)
       hourlyRate: numeric("hourly_rate"),
       // Base hourly rate in cents (e.g., 5000 = $50.00/hour)
+      dailyRate: numeric("daily_rate"),
+      // Base daily rate in cents; can coexist with hourlyRate
       currency: text("currency").default("CAD").notNull(),
       // Currency code (ISO 4217)
       minimumBookingHours: integer("minimum_booking_hours").default(1).notNull(),
@@ -1319,6 +1322,7 @@ var init_schema = __esm({
       description: z2.string().optional(),
       isActive: z2.boolean().optional(),
       hourlyRate: z2.number().int().positive("Hourly rate must be positive").optional(),
+      dailyRate: z2.number().int().positive("Daily rate must be positive").optional(),
       currency: z2.string().min(3).max(3).optional(),
       minimumBookingHours: z2.number().int().min(0, "Minimum booking hours cannot be negative").max(24, "Minimum booking hours cannot exceed 24").optional(),
       pricingModel: z2.enum(["hourly", "daily", "weekly"]).optional(),
@@ -1334,6 +1338,7 @@ var init_schema = __esm({
       description: z2.string().optional(),
       isActive: z2.boolean().optional(),
       hourlyRate: z2.number().int().positive("Hourly rate must be positive").optional(),
+      dailyRate: z2.number().int().positive("Daily rate must be positive").nullable().optional(),
       currency: z2.string().min(3).max(3).optional(),
       minimumBookingHours: z2.number().int().min(0, "Minimum booking hours cannot be negative").max(24, "Minimum booking hours cannot exceed 24").optional(),
       pricingModel: z2.enum(["hourly", "daily", "weekly"]).optional(),
@@ -2439,9 +2444,9 @@ var init_schema = __esm({
     });
     viewingStatusEnum = pgEnum("viewing_status", ["pending", "confirmed", "cancelled", "completed", "no_show"]);
     noShowReasonEnum = pgEnum("no_show_reason", ["chef_cancelled_late", "chef_no_response", "rescheduled_by_manager", "weather", "other"]);
-    locationViewingSettings = pgTable("location_viewing_settings", {
+    kitchenViewingSettings = pgTable("kitchen_viewing_settings", {
       id: serial("id").primaryKey(),
-      locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull().unique(),
+      kitchenId: integer("kitchen_id").references(() => kitchens.id, { onDelete: "cascade" }).notNull().unique(),
       isActive: boolean("is_active").default(false).notNull(),
       // Toggle viewing feature on/off
       defaultDurationMinutes: integer("default_duration_minutes").default(30).notNull(),
@@ -2459,9 +2464,9 @@ var init_schema = __esm({
       createdAt: timestamp("created_at").defaultNow().notNull(),
       updatedAt: timestamp("updated_at").defaultNow().notNull()
     });
-    locationViewingAvailability = pgTable("location_viewing_availability", {
+    kitchenViewingAvailability = pgTable("kitchen_viewing_availability", {
       id: serial("id").primaryKey(),
-      locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull(),
+      kitchenId: integer("kitchen_id").references(() => kitchens.id, { onDelete: "cascade" }).notNull(),
       dayOfWeek: integer("day_of_week").notNull(),
       // 0-6, Sunday is 0
       startTime: text("start_time").notNull(),
@@ -2470,9 +2475,9 @@ var init_schema = __esm({
       // HH:MM format
       isAvailable: boolean("is_available").default(true).notNull()
     });
-    locationViewingBlackouts = pgTable("location_viewing_blackouts", {
+    kitchenViewingBlackouts = pgTable("kitchen_viewing_blackouts", {
       id: serial("id").primaryKey(),
-      locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull(),
+      kitchenId: integer("kitchen_id").references(() => kitchens.id, { onDelete: "cascade" }).notNull(),
       startDate: timestamp("start_date").notNull(),
       endDate: timestamp("end_date").notNull(),
       reason: text("reason"),
@@ -2484,7 +2489,7 @@ var init_schema = __esm({
       locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull(),
       // Tours are location-level
       targetedKitchenId: integer("targeted_kitchen_id").references(() => kitchens.id, { onDelete: "set null" }),
-      // Optional: specific kitchen intent
+      // Required for new tours; nullable only when a historical kitchen is deleted
       chefId: integer("chef_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
       managerId: integer("manager_id").references(() => users.id, { onDelete: "set null" }),
       // Manager assigned to conduct the tour
@@ -2533,8 +2538,8 @@ var init_schema = __esm({
       retryOfId: integer("retry_of_id"),
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
-    insertLocationViewingSettingsSchema = createInsertSchema(locationViewingSettings, {
-      locationId: z2.number(),
+    insertKitchenViewingSettingsSchema = createInsertSchema(kitchenViewingSettings, {
+      kitchenId: z2.number(),
       isActive: z2.boolean().optional(),
       defaultDurationMinutes: z2.number().int().min(10).max(120).optional(),
       bufferBeforeMinutes: z2.number().int().min(0).max(60).optional(),
@@ -2548,7 +2553,7 @@ var init_schema = __esm({
       createdAt: true,
       updatedAt: true
     });
-    updateLocationViewingSettingsSchema = z2.object({
+    updateKitchenViewingSettingsSchema = z2.object({
       isActive: z2.boolean().optional(),
       defaultDurationMinutes: z2.number().int().min(10).max(120).optional(),
       bufferBeforeMinutes: z2.number().int().min(0).max(60).optional(),
@@ -2556,8 +2561,8 @@ var init_schema = __esm({
       advanceNoticeHours: z2.number().int().min(0).max(168).optional(),
       maxAdvanceBookingDays: z2.number().int().min(1).max(90).optional()
     });
-    insertLocationViewingAvailabilitySchema = createInsertSchema(locationViewingAvailability, {
-      locationId: z2.number(),
+    insertKitchenViewingAvailabilitySchema = createInsertSchema(kitchenViewingAvailability, {
+      kitchenId: z2.number(),
       dayOfWeek: z2.number().int().min(0).max(6),
       startTime: z2.string().regex(/^\d{2}:\d{2}$/, "Time must be in HH:MM format"),
       endTime: z2.string().regex(/^\d{2}:\d{2}$/, "Time must be in HH:MM format"),
@@ -2565,8 +2570,8 @@ var init_schema = __esm({
     }).omit({
       id: true
     });
-    insertLocationViewingBlackoutSchema = createInsertSchema(locationViewingBlackouts, {
-      locationId: z2.number(),
+    insertKitchenViewingBlackoutSchema = createInsertSchema(kitchenViewingBlackouts, {
+      kitchenId: z2.number(),
       startDate: z2.string().or(z2.date()),
       endDate: z2.string().or(z2.date()),
       reason: z2.string().max(200).optional()
@@ -2588,7 +2593,7 @@ var init_schema = __esm({
     });
     insertKitchenViewingSchema = z2.object({
       locationId: z2.number(),
-      targetedKitchenId: z2.number().optional(),
+      targetedKitchenId: z2.number(),
       chefId: z2.number(),
       scheduledAt: z2.string().or(z2.date()),
       // ISO date string
@@ -2639,7 +2644,7 @@ var init_db = __esm({
 });
 
 // server/domains/users/user.repository.ts
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 var UserRepository;
 var init_user_repository = __esm({
   "server/domains/users/user.repository.ts"() {
@@ -2652,7 +2657,8 @@ var init_user_repository = __esm({
         return user || null;
       }
       async findByUsername(username) {
-        const [user] = await db.select().from(users).where(eq(users.username, username));
+        const normalizedUsername = username.trim().toLowerCase();
+        const [user] = await db.select().from(users).where(sql`lower(${users.username}) = ${normalizedUsername}`);
         return user || null;
       }
       async findByFirebaseUid(firebaseUid) {
@@ -2660,7 +2666,8 @@ var init_user_repository = __esm({
         return user || null;
       }
       async usernameExists(username) {
-        const [user] = await db.select({ id: users.id }).from(users).where(eq(users.username, username)).limit(1);
+        const normalizedUsername = username.trim().toLowerCase();
+        const [user] = await db.select({ id: users.id }).from(users).where(sql`lower(${users.username}) = ${normalizedUsername}`).limit(1);
         return !!user;
       }
       async create(data) {
@@ -2758,7 +2765,7 @@ var init_domain_error = __esm({
 
 // server/reference-code.ts
 import crypto from "crypto";
-import { sql } from "drizzle-orm";
+import { sql as sql2 } from "drizzle-orm";
 function generateCode(prefix) {
   const bytes = crypto.randomBytes(CODE_LENGTH);
   let code = "";
@@ -2771,7 +2778,7 @@ async function generateReferenceCode(type) {
   const prefix = REFERENCE_PREFIXES[type];
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = generateCode(prefix);
-    const result = await db.execute(sql`
+    const result = await db.execute(sql2`
       SELECT 1 FROM (
         SELECT reference_code FROM kitchen_bookings WHERE reference_code = ${code}
         UNION ALL
@@ -3049,7 +3056,7 @@ var notification_service_exports = {};
 __export(notification_service_exports, {
   notificationService: () => notificationService
 });
-import { sql as sql2 } from "drizzle-orm";
+import { sql as sql3 } from "drizzle-orm";
 import { format } from "date-fns";
 async function createNotification(params) {
   const {
@@ -3074,7 +3081,7 @@ async function createNotification(params) {
   try {
     let result;
     if (target === "manager") {
-      result = await db.execute(sql2`
+      result = await db.execute(sql3`
         INSERT INTO manager_notifications 
         (manager_id, location_id, type, priority, title, message, metadata, action_url, action_label, expires_at)
         VALUES (
@@ -3093,7 +3100,7 @@ async function createNotification(params) {
       `);
       logger.info(`[NotificationService] Created ${type} notification for manager ${userId}`);
     } else {
-      result = await db.execute(sql2`
+      result = await db.execute(sql3`
         INSERT INTO chef_notifications 
         (chef_id, type, priority, title, message, metadata, action_url, action_label, expires_at)
         VALUES (
@@ -3266,8 +3273,8 @@ async function notifyStep2ApplicationSubmitted(data) {
     locationId: data.locationId,
     type: "application_new",
     priority: "high",
-    title: "Step 2 Submitted",
-    message: `${data.chefName} (${data.chefEmail}) submitted Step 2 documents${data.locationName ? ` for ${data.locationName}` : ""}. Review Step 2 to approve full booking access.`,
+    title: "Kitchen Coordination Submitted",
+    message: `${data.chefName} (${data.chefEmail}) submitted Kitchen Coordination documents${data.locationName ? ` for ${data.locationName}` : ""}. Review Kitchen Coordination to approve full booking access.`,
     metadata: {
       applicationId: data.applicationId,
       chefName: data.chefName,
@@ -3276,7 +3283,7 @@ async function notifyStep2ApplicationSubmitted(data) {
       step: 2
     },
     actionUrl: managerDashboardView("applications"),
-    actionLabel: "Review Step 2"
+    actionLabel: "Review Kitchen Coordination"
   });
 }
 async function notifyApplicationApproved(data) {
@@ -3393,7 +3400,7 @@ async function notifySystemAnnouncement(managerId, data) {
 }
 async function broadcastSystemAnnouncement(data) {
   try {
-    const result = await db.execute(sql2`
+    const result = await db.execute(sql3`
       SELECT id FROM users WHERE is_manager = true
     `);
     const managerIds = result.rows.map((row) => row.id);
@@ -3497,7 +3504,7 @@ async function notifyChefApplicationApproved(data) {
       currentTier
     },
     actionUrl: isFullyApproved ? chefDashboardView("discover-kitchens") : data.locationId ? `/kitchen-requirements/${data.locationId}` : chefDashboardView("kitchen-applications"),
-    actionLabel: isFullyApproved ? "Book Now" : "Complete Step 2"
+    actionLabel: isFullyApproved ? "Book Now" : "Complete Kitchen Coordination"
   });
 }
 async function notifyChefApplicationRejected(data) {
@@ -3582,7 +3589,7 @@ async function notifyChefMessage(data) {
 }
 async function broadcastChefAnnouncement(data) {
   try {
-    const result = await db.execute(sql2`
+    const result = await db.execute(sql3`
       SELECT id FROM users WHERE is_chef = true OR role = 'chef'
     `);
     const chefIds = result.rows.map((row) => row.id);
@@ -4696,7 +4703,7 @@ __export(email_log_service_exports, {
   resolveRecipientRole: () => resolveRecipientRole,
   retryFailedEmail: () => retryFailedEmail
 });
-import { eq as eq4, sql as sql3 } from "drizzle-orm";
+import { eq as eq4, sql as sql4 } from "drizzle-orm";
 function parseRecipients(to) {
   if (!to) return [];
   const seen = /* @__PURE__ */ new Set();
@@ -4758,9 +4765,9 @@ async function lookupRecipient(email) {
     isManager: users.isManager,
     isPortalUser: users.isPortalUser,
     role: users.role
-  }).from(users).where(sql3`lower(${users.username}) = ${email}`).limit(1);
+  }).from(users).where(sql4`lower(${users.username}) = ${email}`).limit(1);
   if (user) return user;
-  const [application] = await db.select({ userId: applications.userId }).from(applications).where(sql3`lower(${applications.email}) = ${email}`).limit(1);
+  const [application] = await db.select({ userId: applications.userId }).from(applications).where(sql4`lower(${applications.email}) = ${email}`).limit(1);
   if (application?.userId) {
     return {
       id: application.userId,
@@ -4903,6 +4910,7 @@ __export(email_exports, {
   generateKitchenCheckinReminderEmail: () => generateKitchenCheckinReminderEmail,
   generateKitchenCheckoutClearedChefEmail: () => generateKitchenCheckoutClearedChefEmail,
   generateKitchenCheckoutRequestManagerEmail: () => generateKitchenCheckoutRequestManagerEmail,
+  generateKitchenCoordinationSubmittedManagerEmail: () => generateKitchenCoordinationSubmittedManagerEmail,
   generateKitchenLicenseApprovedEmail: () => generateKitchenLicenseApprovedEmail,
   generateKitchenLicenseRejectedEmail: () => generateKitchenLicenseRejectedEmail,
   generateKitchenLicenseSubmittedAdminEmail: () => generateKitchenLicenseSubmittedAdminEmail,
@@ -4914,6 +4922,7 @@ __export(email_exports, {
   generateManagerCredentialsEmail: () => generateManagerCredentialsEmail,
   generateManagerMagicLinkEmail: () => generateManagerMagicLinkEmail,
   generateNewKitchenApplicationManagerEmail: () => generateNewKitchenApplicationManagerEmail,
+  generateNewSellerApplicationAdminEmail: () => generateNewSellerApplicationAdminEmail,
   generateNewUserRegistrationAdminEmail: () => generateNewUserRegistrationAdminEmail,
   generateOverstayDetectedEmail: () => generateOverstayDetectedEmail,
   generateOverstayManagerNotificationEmail: () => generateOverstayManagerNotificationEmail,
@@ -5191,7 +5200,7 @@ The Local Cooks Team
     ]
   });
 }
-var createBookingDateTimeImpl, loadAttempted, recentEmails, DUPLICATE_PREVENTION_WINDOW, createTransporter, getEmailConfig, sendEmail, getDomainFromEmail, getOrganizationName, getUnsubscribeEmail, getSupportEmail, detectEmailProvider, formatDateForCalendar, escapeIcalText, generateEventUid, generateGoogleCalendarUrl, generateIcsFile, generateCalendarUrl, getUniformEmailStyles, generateStatusChangeEmail, generateVendorCredentials, generateFullVerificationEmail, generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateDocumentStatusChangeEmail, generatePasswordResetEmail, generateEmailVerificationEmail, generateMagicLinkEmail, generateWelcomeEmail, getSubdomainUrl, getWebsiteUrl, getDashboardUrl, getVendorDashboardUrl, getPromoUrl, generateDocumentUpdateEmail, generatePromoCodeEmail, generateChefAllDocumentsApprovedEmail, generateManagerMagicLinkEmail, generateManagerCredentialsEmail, generateBookingNotificationEmail, generateBookingPaymentReceivedEmail, generateBookingCancellationNotificationEmail, generateBookingStatusChangeNotificationEmail, generateBookingRequestEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateKitchenAvailabilityChangeEmail, generateKitchenSettingsChangeEmail, generateChefProfileRequestEmail, generateChefLocationAccessApprovedEmail, generateChefKitchenAccessApprovedEmail, generateLocationEmailChangedEmail, generateStorageExtensionPendingApprovalEmail, generateStorageExtensionPaymentReceivedEmail, generateStorageExtensionApprovedEmail, generateStorageExtensionRejectedEmail, generateStorageExpiringWarningEmail, generateOverstayDetectedEmail, generatePenaltyChargedEmail, generatePenaltyApprovedEmail, generatePenaltyWaivedEmail, generateOverstayManagerNotificationEmail, generateNewKitchenApplicationManagerEmail, generateKitchenApplicationReceivedChefEmail, generateKitchenApplicationStep2ReceivedChefEmail, generateKitchenApplicationSubmittedChefEmail, generateKitchenApplicationApprovedEmail, generateKitchenApplicationRejectedEmail, generateKitchenLicenseApprovedEmail, generateKitchenLicenseRejectedEmail, generateKitchenLicenseSubmittedAdminEmail, generateDamageClaimFiledEmail, generateDamageClaimResponseEmail, generateDamageClaimDisputedAdminEmail, generateDamageClaimDecisionEmail, generateDamageClaimChargedEmail, generateNewUserRegistrationAdminEmail, generateCancellationAcceptedEmail, generateCancellationDeclinedEmail, generateBookingRefundEmail, generateKitchenCheckinManagerEmail, generateKitchenCheckinChefEmail, generateKitchenCheckoutRequestManagerEmail, generateKitchenCheckinReminderEmail, generateStorageCheckinReminderEmail, generateKitchenCheckoutClearedChefEmail, generateKitchenNoShowManagerEmail, generateKitchenNoShowChefEmail, generateTourRequestedChefEmail, generateTourRequestedManagerEmail, generateTourConfirmedEmail, generateTourRejectedChefEmail, getUniformEmailFooter;
+var createBookingDateTimeImpl, loadAttempted, recentEmails, DUPLICATE_PREVENTION_WINDOW, createTransporter, getEmailConfig, sendEmail, getDomainFromEmail, getOrganizationName, getUnsubscribeEmail, getSupportEmail, detectEmailProvider, formatDateForCalendar, escapeIcalText, generateEventUid, generateGoogleCalendarUrl, generateIcsFile, generateCalendarUrl, getUniformEmailStyles, generateStatusChangeEmail, generateVendorCredentials, generateFullVerificationEmail, generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateDocumentStatusChangeEmail, generatePasswordResetEmail, generateEmailVerificationEmail, generateMagicLinkEmail, generateWelcomeEmail, getSubdomainUrl, getWebsiteUrl, getDashboardUrl, getVendorDashboardUrl, getPromoUrl, generateDocumentUpdateEmail, generatePromoCodeEmail, generateChefAllDocumentsApprovedEmail, generateManagerMagicLinkEmail, generateManagerCredentialsEmail, generateBookingNotificationEmail, generateBookingPaymentReceivedEmail, generateBookingCancellationNotificationEmail, generateBookingStatusChangeNotificationEmail, generateBookingRequestEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateKitchenAvailabilityChangeEmail, generateKitchenSettingsChangeEmail, generateChefProfileRequestEmail, generateChefLocationAccessApprovedEmail, generateChefKitchenAccessApprovedEmail, generateLocationEmailChangedEmail, generateStorageExtensionPendingApprovalEmail, generateStorageExtensionPaymentReceivedEmail, generateStorageExtensionApprovedEmail, generateStorageExtensionRejectedEmail, generateStorageExpiringWarningEmail, generateOverstayDetectedEmail, generatePenaltyChargedEmail, generatePenaltyApprovedEmail, generatePenaltyWaivedEmail, generateOverstayManagerNotificationEmail, generateNewKitchenApplicationManagerEmail, generateKitchenCoordinationSubmittedManagerEmail, generateKitchenApplicationReceivedChefEmail, generateKitchenApplicationStep2ReceivedChefEmail, generateKitchenApplicationSubmittedChefEmail, generateKitchenApplicationApprovedEmail, generateKitchenApplicationRejectedEmail, generateKitchenLicenseApprovedEmail, generateKitchenLicenseRejectedEmail, generateKitchenLicenseSubmittedAdminEmail, generateDamageClaimFiledEmail, generateDamageClaimResponseEmail, generateDamageClaimDisputedAdminEmail, generateDamageClaimDecisionEmail, generateDamageClaimChargedEmail, generateNewSellerApplicationAdminEmail, generateNewUserRegistrationAdminEmail, generateCancellationAcceptedEmail, generateCancellationDeclinedEmail, generateBookingRefundEmail, generateKitchenCheckinManagerEmail, generateKitchenCheckinChefEmail, generateKitchenCheckoutRequestManagerEmail, generateKitchenCheckinReminderEmail, generateStorageCheckinReminderEmail, generateKitchenCheckoutClearedChefEmail, generateKitchenNoShowManagerEmail, generateKitchenNoShowChefEmail, generateTourRequestedChefEmail, generateTourRequestedManagerEmail, generateTourConfirmedEmail, generateTourRejectedChefEmail, getUniformEmailFooter;
 var init_email = __esm({
   "server/email.ts"() {
     "use strict";
@@ -5413,19 +5422,16 @@ var init_email = __esm({
           html: content.html,
           // Add attachments if provided (e.g., .ics calendar files)
           attachments: content.attachments || [],
-          // Optimized headers for better deliverability with Hostinger SMTP
+          // Keep transport headers minimal. The authenticated SMTP relay owns DKIM
+          // and Return-Path; declaring those manually can create conflicting
+          // identities after the relay rewrites the envelope.
           headers: {
             "Organization": organizationName,
             "X-Mailer": "Local Cooks Community",
-            // Proper sender identification for DKIM/SPF alignment
-            "Sender": config.auth.user,
-            "Return-Path": config.auth.user,
-            "Reply-To": config.auth.user,
-            // Standard priority headers (avoid high priority to reduce spam score)
-            "Importance": "Normal",
             // Merge any additional headers from content
             ...content.headers || {}
           },
+          replyTo: config.auth.user,
           // Proper encoding settings for DKIM
           encoding: "utf8",
           // Enhanced delivery options for Hostinger SMTP
@@ -6514,10 +6520,7 @@ The Local Cooks Team
         text: text2,
         html,
         headers: {
-          "X-Priority": "3",
-          "X-MSMail-Priority": "Normal",
-          "Importance": "Normal",
-          "List-Unsubscribe": `<mailto:${getUnsubscribeEmail()}>`
+          "X-Transactional-Type": "account-verification"
         }
       };
     };
@@ -7018,7 +7021,7 @@ The Local Cooks Team
         if (greetingSection?.content || greetingSection?.text) {
           return greetingSection.content || greetingSection.text;
         }
-        return userData.greeting || "Hello! \u{1F44B}";
+        return userData.greeting || "Hello! ";
       };
       const getCustomMessage = () => {
         const messageSection = getSectionData("custom-message") || getSectionData("custom-message-section");
@@ -9583,7 +9586,7 @@ The Local Cooks Team
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: #f8fafc; color: #1e293b !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0; border: 1px solid #e2e8f0;">View Dashboard</a>
       </div>
       <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">What to expect:</p>
-      <p class="message" style="margin-bottom: 20px;">No action is needed from you right now. When ${chefFirstName} completes Step 2 after admin approval, you&#8217;ll review and approve their documents in your dashboard.</p>
+      <p class="message" style="margin-bottom: 20px;">No action is needed from you right now. When ${chefFirstName} completes Kitchen Coordination after admin approval, you&#8217;ll review and approve their documents in your dashboard.</p>
       <div style="margin: 0 0 8px 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View Dashboard</a>
       </div>
@@ -9610,7 +9613,7 @@ Chef Information:
 Name: ${data.chefName}
 
 What to expect:
-No action is needed from you right now. When ${chefFirstName} completes Step 2 after admin approval, you'll review and approve their documents in your dashboard.
+No action is needed from you right now. When ${chefFirstName} completes Kitchen Coordination after admin approval, you'll review and approve their documents in your dashboard.
 
 View dashboard at: ${dashboardUrl}
 
@@ -9627,6 +9630,40 @@ The Local Cooks Team
         to: data.managerEmail,
         subject,
         text: text2,
+        html
+      };
+    };
+    generateKitchenCoordinationSubmittedManagerEmail = (data) => {
+      const subject = `Kitchen Coordination Ready for Review \u2013 ${data.chefName}`;
+      const dashboardUrl = `${getDashboardUrl("kitchen")}?view=applications`;
+      const managerFirstName = data.managerName ? data.managerName.split(" ")[0] : data.managerEmail.split("@")[0];
+      const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head>
+<body>
+  <div class="email-container">
+    <div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div>
+    <div class="content">
+      <h2 class="greeting">Hi ${managerFirstName},</h2>
+      <p class="message"><strong>${data.chefName}</strong> has submitted Kitchen Coordination documents for <strong>${data.locationName}</strong>.</p>
+      <p class="message">Please review the documents and approve or request changes so the chef can complete kitchen access.</p>
+      <div style="text-align:center;margin:24px 0"><a href="${dashboardUrl}" class="cta-button">Review Kitchen Coordination</a></div>
+      <p style="font-size:13px;color:#94a3b8">Submitted ${data.submittedAt.toLocaleString("en-CA")} \xB7 Application #${data.applicationId}</p>
+    </div>
+    <div class="footer"><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p></div>
+  </div>
+</body>
+</html>`;
+      return {
+        to: data.managerEmail,
+        subject,
+        text: `Hi ${managerFirstName},
+
+${data.chefName} has submitted Kitchen Coordination documents for ${data.locationName}. Please review them in your dashboard so the chef can complete kitchen access.
+
+Review: ${dashboardUrl}
+Application #${data.applicationId}`,
         html
       };
     };
@@ -9722,7 +9759,7 @@ The Local Cooks Team
       };
     };
     generateKitchenApplicationStep2ReceivedChefEmail = (data) => {
-      const subject = `Step 2 Documents Received \u2013 ${data.locationName}`;
+      const subject = `Kitchen Coordination Documents Received \u2013 ${data.locationName}`;
       const dashboardUrl = getDashboardUrl();
       const firstName = data.chefName.split(" ")[0];
       const html = `
@@ -9741,17 +9778,17 @@ The Local Cooks Team
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
-      <p class="message" style="margin-bottom: 20px;">We&#8217;ve received your Step 2 documents for <strong>${data.locationName}</strong>. The kitchen manager will review them and get back to you shortly.</p>
+      <p class="message" style="margin-bottom: 20px;">We&#8217;ve received your Kitchen Coordination documents for <strong>${data.locationName}</strong>. The kitchen manager will review them and get back to you shortly.</p>
       <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
         <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Kitchen:</span> <strong style="color: #1e293b;">${data.locationName}</strong></p>
         ${data.locationAddress ? `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Address:</span> <strong style="color: #1e293b;">${data.locationAddress}</strong></p>` : ""}
-        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Status:</span> <strong style="color: #d97706;">Step 2 Under Review</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Status:</span> <strong style="color: #d97706;">Kitchen Coordination Under Review</strong></p>
       </div>
       <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">What happens next:</p>
       <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 24px 4px;">
         <tr>
           <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
-          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">The kitchen manager will review your Step 2 documents</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">The kitchen manager will review your Kitchen Coordination documents</td>
         </tr>
         <tr>
           <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
@@ -9763,7 +9800,7 @@ The Local Cooks Team
         </tr>
       </table>
       <div style="margin: 16px 0 4px 0; text-align: center;">
-        <span style="display: inline-block; padding: 4px 12px; background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#8987; Step 2 Under Review</span>
+        <span style="display: inline-block; padding: 4px 12px; background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#8987; Kitchen Coordination Under Review</span>
       </div>
       <div style="margin: 16px 0 0 0; text-align: center;">
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View My Application</a>
@@ -9784,15 +9821,15 @@ The Local Cooks Team
       const text2 = `
 Hi ${firstName},
 
-We've received your Step 2 documents for ${data.locationName}. The kitchen manager will review them and get back to you shortly.
+We've received your Kitchen Coordination documents for ${data.locationName}. The kitchen manager will review them and get back to you shortly.
 
 Kitchen: ${data.locationName}
 ${data.locationAddress ? `Address: ${data.locationAddress}
-` : ""}Status: Step 2 Under Review
+` : ""}Status: Kitchen Coordination Under Review
 
 What happens next:
 
-\u2022 The kitchen manager will review your Step 2 documents
+\u2022 The kitchen manager will review your Kitchen Coordination documents
 \u2022 You'll receive an email once you're fully approved and able to book
 \u2022 You can track your application status in your dashboard at any time
 
@@ -9833,7 +9870,7 @@ The Local Cooks Team
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
       <p class="message" style="margin-bottom: 20px;">Good news &#8212; your request to apply for ${data.locationName} has been approved.</p>
-      <p class="message" style="margin-bottom: 24px;">You now have access to the chat feature with this kitchen inside your Local Cooks dashboard. This allows you and the kitchen manager to coordinate directly and share any information needed to complete Step 2.</p>
+      <p class="message" style="margin-bottom: 24px;">You now have access to the chat feature with this kitchen inside your Local Cooks dashboard. This allows you and the kitchen manager to coordinate directly and share any information needed to complete Kitchen Coordination.</p>
       <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">What to do next:</p>
       <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 24px 4px;">
         <tr>
@@ -9845,7 +9882,7 @@ The Local Cooks Team
           <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Confirm any requirements or details they need from you</td>
         </tr>
       </table>
-      <p class="message" style="margin-bottom: 10px;">When you&#8217;re ready, complete Step 2 of your application by submitting your:</p>
+      <p class="message" style="margin-bottom: 10px;">When you&#8217;re ready, complete Kitchen Coordination of your application by submitting your:</p>
       <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 24px 4px;">
         <tr>
           <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
@@ -9857,10 +9894,10 @@ The Local Cooks Team
         </tr>
         <tr>
           <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
-          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Any additional information requested in the Step 2 form</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Any additional information requested in the Kitchen Coordination form</td>
         </tr>
       </table>
-      <p class="message" style="margin-bottom: 20px;">Once Step 2 is submitted and approved, you&#8217;ll be able to start booking this kitchen through Local Cooks.</p>
+      <p class="message" style="margin-bottom: 20px;">Once Kitchen Coordination is submitted and approved, you&#8217;ll be able to start booking this kitchen through Local Cooks.</p>
       <div style="margin: 16px 0 4px 0; text-align: center;">
         <span style="display: inline-block; padding: 4px 12px; background: #f0fdf4; color: #16a34a; border: 1px solid #dcfce7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#10003; Request to apply approved</span>
       </div>
@@ -9885,20 +9922,20 @@ Hi ${firstName},
 
 Good news \u2014 your request to apply for ${data.locationName} has been approved.
 
-You now have access to the chat feature with this kitchen inside your Local Cooks dashboard. This allows you and the kitchen manager to coordinate directly and share any information needed to complete Step 2.
+You now have access to the chat feature with this kitchen inside your Local Cooks dashboard. This allows you and the kitchen manager to coordinate directly and share any information needed to complete Kitchen Coordination.
 
 What to do next:
 
 \u2022 Use the chat in your dashboard to connect with the kitchen manager
 \u2022 Confirm any requirements or details they need from you
 
-When you're ready, complete Step 2 of your application by submitting your:
+When you're ready, complete Kitchen Coordination of your application by submitting your:
 
 \u2022 Food establishment certificate
 \u2022 Insurance documents (if required)
-\u2022 Any additional information requested in the Step 2 form
+\u2022 Any additional information requested in the Kitchen Coordination form
 
-Once Step 2 is submitted and approved, you'll be able to start booking this kitchen through Local Cooks.
+Once Kitchen Coordination is submitted and approved, you'll be able to start booking this kitchen through Local Cooks.
 
 Go to your dashboard at: ${dashboardUrl}
 
@@ -9937,7 +9974,7 @@ The Local Cooks Team
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
-      <p class="message" style="margin-bottom: 20px;">Your Step 2 application for ${data.locationName} has been reviewed and approved.</p>
+      <p class="message" style="margin-bottom: 20px;">Your Kitchen Coordination application for ${data.locationName} has been reviewed and approved.</p>
       <p class="message" style="margin-bottom: 24px;">You now have access to this kitchen through Local Cooks and can begin submitting booking requests based on the kitchen&#8217;s availability.</p>
       <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">What you can do now:</p>
       <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 24px 4px;">
@@ -9977,7 +10014,7 @@ The Local Cooks Team
       const text2 = `
 Hi ${firstName},
 
-Your Step 2 application for ${data.locationName} has been reviewed and approved.
+Your Kitchen Coordination application for ${data.locationName} has been reviewed and approved.
 
 You now have access to this kitchen through Local Cooks and can begin submitting booking requests based on the kitchen's availability.
 
@@ -10645,6 +10682,72 @@ A payment of ${data.chargedAmount} has been processed for the damage claim "${da
 View details: ${dashboardUrl}
 
 Best,
+The Local Cooks Team
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks`,
+        html
+      };
+    };
+    generateNewSellerApplicationAdminEmail = (data) => {
+      const subject = `New Seller Application from ${data.chefName}`;
+      const dashboardUrl = `${getDashboardUrl("admin")}?section=applications`;
+      const formattedDate = data.submittedAt.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">New Seller Application</h2>
+      <p class="message" style="margin-bottom: 20px;">A chef has submitted a new seller application on the Local Cooks platform and is awaiting your review.</p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Name:</span> <strong style="color: #1e293b;">${data.chefName}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Email:</span> <strong style="color: #1e293b;">${data.chefEmail}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Submitted:</span> <strong style="color: #1e293b;">${formattedDate}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Documents:</span> <strong style="color: #1e293b;">${data.hasDocuments ? "Included" : "Not yet uploaded"}</strong></p>
+      </div>
+      <div style="margin: 0 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#9679; Pending Review</span>
+      </div>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Review Application</a>
+      </div>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
+      return {
+        to: data.adminEmail,
+        subject,
+        text: `New Seller Application
+
+A chef has submitted a seller application.
+
+Name: ${data.chefName}
+Email: ${data.chefEmail}
+Submitted: ${formattedDate}
+Documents: ${data.hasDocuments ? "Included" : "Not yet uploaded"}
+
+Review at: ${dashboardUrl}
+
+Best regards,
 The Local Cooks Team
 
 \xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks`,
@@ -11640,7 +11743,7 @@ __export(payment_transactions_service_exports, {
   syncStripeFees: () => syncStripeFees,
   updatePaymentTransaction: () => updatePaymentTransaction
 });
-import { sql as sql4 } from "drizzle-orm";
+import { sql as sql5 } from "drizzle-orm";
 async function createPaymentTransaction(params, db3) {
   const {
     bookingId,
@@ -11663,7 +11766,7 @@ async function createPaymentTransaction(params, db3) {
   } = params;
   const netAmount = amount;
   const stripeProcessingFeeCents = stripeProcessingFee != null ? stripeProcessingFee : 0;
-  const result = await db3.execute(sql4`
+  const result = await db3.execute(sql5`
     INSERT INTO payment_transactions (
       booking_id,
       booking_type,
@@ -11723,7 +11826,7 @@ async function createPaymentTransaction(params, db3) {
   return record;
 }
 async function updatePaymentTransaction(transactionId, params, db3) {
-  const currentResult = await db3.execute(sql4`
+  const currentResult = await db3.execute(sql5`
     SELECT status, refund_amount, amount
     FROM payment_transactions
     WHERE id = ${transactionId}
@@ -11737,78 +11840,78 @@ async function updatePaymentTransaction(transactionId, params, db3) {
   const currentAmount = parseFloat(current.amount || "0");
   const updates = [];
   if (params.status !== void 0) {
-    updates.push(sql4`status = ${params.status}`);
+    updates.push(sql5`status = ${params.status}`);
   }
   if (params.stripeStatus !== void 0) {
-    updates.push(sql4`stripe_status = ${params.stripeStatus}`);
+    updates.push(sql5`stripe_status = ${params.stripeStatus}`);
   }
   if (params.paymentIntentId !== void 0) {
-    updates.push(sql4`payment_intent_id = ${params.paymentIntentId}`);
+    updates.push(sql5`payment_intent_id = ${params.paymentIntentId}`);
   }
   if (params.paymentMethodId !== void 0) {
-    updates.push(sql4`payment_method_id = ${params.paymentMethodId}`);
+    updates.push(sql5`payment_method_id = ${params.paymentMethodId}`);
   }
   if (params.chargeId !== void 0) {
-    updates.push(sql4`charge_id = ${params.chargeId}`);
+    updates.push(sql5`charge_id = ${params.chargeId}`);
   }
   if (params.refundId !== void 0) {
-    updates.push(sql4`refund_id = ${params.refundId}`);
+    updates.push(sql5`refund_id = ${params.refundId}`);
   }
   if (params.amount !== void 0) {
-    updates.push(sql4`amount = ${params.amount.toString()}`);
+    updates.push(sql5`amount = ${params.amount.toString()}`);
   }
   if (params.serviceFee !== void 0) {
-    updates.push(sql4`service_fee = ${params.serviceFee.toString()}`);
+    updates.push(sql5`service_fee = ${params.serviceFee.toString()}`);
   }
   if (params.taxAmount !== void 0) {
-    updates.push(sql4`tax_amount = ${params.taxAmount.toString()}`);
+    updates.push(sql5`tax_amount = ${params.taxAmount.toString()}`);
   }
   if (params.managerRevenue !== void 0) {
-    updates.push(sql4`manager_revenue = ${params.managerRevenue.toString()}`);
+    updates.push(sql5`manager_revenue = ${params.managerRevenue.toString()}`);
   }
   if (params.refundAmount !== void 0) {
-    updates.push(sql4`refund_amount = ${params.refundAmount.toString()}`);
+    updates.push(sql5`refund_amount = ${params.refundAmount.toString()}`);
     const effectiveAmount = params.amount !== void 0 ? params.amount : currentAmount;
     const newRefundAmount = params.refundAmount;
     const netAmount = effectiveAmount - newRefundAmount;
-    updates.push(sql4`net_amount = ${netAmount.toString()}`);
+    updates.push(sql5`net_amount = ${netAmount.toString()}`);
   }
   if (params.refundReason !== void 0) {
-    updates.push(sql4`refund_reason = ${params.refundReason}`);
+    updates.push(sql5`refund_reason = ${params.refundReason}`);
   }
   if (params.failureReason !== void 0) {
-    updates.push(sql4`failure_reason = ${params.failureReason}`);
+    updates.push(sql5`failure_reason = ${params.failureReason}`);
   }
   if (params.paidAt !== void 0) {
-    updates.push(sql4`paid_at = ${params.paidAt}`);
+    updates.push(sql5`paid_at = ${params.paidAt}`);
   }
   if (params.refundedAt !== void 0) {
-    updates.push(sql4`refunded_at = ${params.refundedAt}`);
+    updates.push(sql5`refunded_at = ${params.refundedAt}`);
   }
   if (params.lastSyncedAt !== void 0) {
-    updates.push(sql4`last_synced_at = ${params.lastSyncedAt}`);
+    updates.push(sql5`last_synced_at = ${params.lastSyncedAt}`);
   }
   if (params.webhookEventId !== void 0) {
-    updates.push(sql4`webhook_event_id = ${params.webhookEventId}`);
+    updates.push(sql5`webhook_event_id = ${params.webhookEventId}`);
   }
   if (params.stripeAmount !== void 0 || params.stripeNetAmount !== void 0) {
     if (params.stripeAmount !== void 0) {
-      updates.push(sql4`amount = ${params.stripeAmount.toString()}`);
+      updates.push(sql5`amount = ${params.stripeAmount.toString()}`);
       if (params.refundAmount === void 0) {
         const netCharged = params.stripeAmount - currentRefundAmount;
-        updates.push(sql4`net_amount = ${netCharged.toString()}`);
+        updates.push(sql5`net_amount = ${netCharged.toString()}`);
       }
     }
     if (params.stripeProcessingFee !== void 0) {
-      updates.push(sql4`stripe_processing_fee = ${params.stripeProcessingFee.toString()}`);
+      updates.push(sql5`stripe_processing_fee = ${params.stripeProcessingFee.toString()}`);
     }
     if (params.serviceFee === void 0 && params.stripePlatformFee !== void 0 && params.stripePlatformFee > 0) {
-      updates.push(sql4`service_fee = ${params.stripePlatformFee.toString()}`);
+      updates.push(sql5`service_fee = ${params.stripePlatformFee.toString()}`);
     }
     if (params.managerRevenue === void 0 && params.stripePlatformFee !== void 0 && params.stripePlatformFee > 0 && params.stripeNetAmount !== void 0) {
-      updates.push(sql4`manager_revenue = ${params.stripeNetAmount.toString()}`);
+      updates.push(sql5`manager_revenue = ${params.stripeNetAmount.toString()}`);
     }
-    const currentMetadataResult = await db3.execute(sql4`
+    const currentMetadataResult = await db3.execute(sql5`
       SELECT metadata FROM payment_transactions WHERE id = ${transactionId}
     `);
     const currentMetadata = currentMetadataResult.rows[0]?.metadata ? typeof currentMetadataResult.rows[0].metadata === "string" ? JSON.parse(currentMetadataResult.rows[0].metadata) : currentMetadataResult.rows[0].metadata : {};
@@ -11822,19 +11925,19 @@ async function updatePaymentTransaction(transactionId, params, db3) {
       ...params.metadata || {},
       stripeFees
     };
-    updates.push(sql4`metadata = ${JSON.stringify(updatedMetadata)}`);
+    updates.push(sql5`metadata = ${JSON.stringify(updatedMetadata)}`);
   } else if (params.metadata !== void 0) {
-    updates.push(sql4`metadata = ${JSON.stringify(params.metadata)}`);
+    updates.push(sql5`metadata = ${JSON.stringify(params.metadata)}`);
   }
   if (updates.length === 0) {
-    const result2 = await db3.execute(sql4`
+    const result2 = await db3.execute(sql5`
       SELECT * FROM payment_transactions WHERE id = ${transactionId}
     `);
     return result2.rows[0];
   }
-  const result = await db3.execute(sql4`
+  const result = await db3.execute(sql5`
     UPDATE payment_transactions
-    SET ${sql4.join(updates, sql4`, `)}, updated_at = NOW()
+    SET ${sql5.join(updates, sql5`, `)}, updated_at = NOW()
     WHERE id = ${transactionId}
     RETURNING *
   `);
@@ -11910,7 +12013,7 @@ async function updatePaymentTransaction(transactionId, params, db3) {
 }
 async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db3) {
   try {
-    const transactionResult = await db3.execute(sql4`
+    const transactionResult = await db3.execute(sql5`
       SELECT 
         pt.id,
         pt.booking_id,
@@ -11936,17 +12039,17 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db3) 
       return;
     }
     if (bookingType === "bundle") {
-      const kitchenBooking = await db3.execute(sql4`
+      const kitchenBooking = await db3.execute(sql5`
         SELECT id, total_price, service_fee
         FROM kitchen_bookings
         WHERE id = ${bookingId}
       `);
-      const storageBookings2 = await db3.execute(sql4`
+      const storageBookings2 = await db3.execute(sql5`
         SELECT id, total_price, service_fee
         FROM storage_bookings
         WHERE kitchen_booking_id = ${bookingId}
       `);
-      const equipmentBookings2 = await db3.execute(sql4`
+      const equipmentBookings2 = await db3.execute(sql5`
         SELECT id, total_price, service_fee
         FROM equipment_bookings
         WHERE kitchen_booking_id = ${bookingId}
@@ -11964,7 +12067,7 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db3) 
         const kbStripeAmount = Math.round(stripeAmounts.stripeAmount * kbProportion);
         const kbStripeNet = Math.round(stripeAmounts.stripeNetAmount * kbProportion);
         const kbServiceFee = stripeAmounts.stripePlatformFee > 0 ? Math.round(stripeAmounts.stripePlatformFee * kbProportion) : Math.round((kbStripeAmount - kbStripeNet) * 0.5);
-        await db3.execute(sql4`
+        await db3.execute(sql5`
           UPDATE kitchen_bookings
           SET 
             total_price = ${kbStripeAmount.toString()},
@@ -11980,7 +12083,7 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db3) 
           const sbStripeAmount = Math.round(stripeAmounts.stripeAmount * sbProportion);
           const sbStripeNet = Math.round(stripeAmounts.stripeNetAmount * sbProportion);
           const sbServiceFee = stripeAmounts.stripePlatformFee > 0 ? Math.round(stripeAmounts.stripePlatformFee * sbProportion) : Math.round((sbStripeAmount - sbStripeNet) * 0.5);
-          await db3.execute(sql4`
+          await db3.execute(sql5`
             UPDATE storage_bookings
             SET 
               total_price = ${sbStripeAmount.toString()},
@@ -11997,7 +12100,7 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db3) 
           const ebStripeAmount = Math.round(stripeAmounts.stripeAmount * ebProportion);
           const ebStripeNet = Math.round(stripeAmounts.stripeNetAmount * ebProportion);
           const ebServiceFee = stripeAmounts.stripePlatformFee > 0 ? Math.round(stripeAmounts.stripePlatformFee * ebProportion) : Math.round((ebStripeAmount - ebStripeNet) * 0.5);
-          await db3.execute(sql4`
+          await db3.execute(sql5`
             UPDATE equipment_bookings
             SET 
               total_price = ${ebStripeAmount.toString()},
@@ -12010,7 +12113,7 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db3) 
     } else {
       const serviceFee = stripeAmounts.stripePlatformFee > 0 ? stripeAmounts.stripePlatformFee : Math.max(0, stripeAmounts.stripeAmount - stripeAmounts.stripeNetAmount - stripeAmounts.stripeProcessingFee);
       if (bookingType === "kitchen") {
-        await db3.execute(sql4`
+        await db3.execute(sql5`
           UPDATE kitchen_bookings
           SET 
             total_price = ${stripeAmounts.stripeAmount.toString()},
@@ -12019,7 +12122,7 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db3) 
           WHERE id = ${bookingId}
         `);
       } else if (bookingType === "storage") {
-        await db3.execute(sql4`
+        await db3.execute(sql5`
           UPDATE storage_bookings
           SET 
             total_price = ${stripeAmounts.stripeAmount.toString()},
@@ -12028,7 +12131,7 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db3) 
           WHERE id = ${bookingId}
         `);
       } else if (bookingType === "equipment") {
-        await db3.execute(sql4`
+        await db3.execute(sql5`
           UPDATE equipment_bookings
           SET 
             total_price = ${stripeAmounts.stripeAmount.toString()},
@@ -12074,8 +12177,8 @@ async function syncExistingPaymentTransactionsFromStripe(managerId, db3, options
   const onlyUnsynced = options?.onlyUnsynced !== false;
   try {
     const params = [managerId];
-    const unsyncedFilter = onlyUnsynced ? sql4` AND (pt.last_synced_at IS NULL OR pt.metadata->>'stripeFees' IS NULL)` : sql4``;
-    const result = await db3.execute(sql4`
+    const unsyncedFilter = onlyUnsynced ? sql5` AND (pt.last_synced_at IS NULL OR pt.metadata->>'stripeFees' IS NULL)` : sql5``;
+    const result = await db3.execute(sql5`
       SELECT 
         pt.id,
         pt.payment_intent_id,
@@ -12113,7 +12216,7 @@ async function syncExistingPaymentTransactionsFromStripe(managerId, db3, options
       try {
         let managerConnectAccountId;
         try {
-          const managerResult = await db3.execute(sql4`
+          const managerResult = await db3.execute(sql5`
             SELECT stripe_connect_account_id 
             FROM users 
             WHERE id = ${transaction.manager_id || managerId} AND stripe_connect_account_id IS NOT NULL
@@ -12158,7 +12261,7 @@ async function syncExistingPaymentTransactionsFromStripe(managerId, db3, options
   }
 }
 async function findPaymentTransactionByIntentId(paymentIntentId, db3) {
-  const result = await db3.execute(sql4`
+  const result = await db3.execute(sql5`
     SELECT * FROM payment_transactions
     WHERE payment_intent_id = ${paymentIntentId}
     LIMIT 1
@@ -12166,7 +12269,7 @@ async function findPaymentTransactionByIntentId(paymentIntentId, db3) {
   return result.rows[0];
 }
 async function findPaymentTransactionById(transactionId, db3) {
-  const result = await db3.execute(sql4`
+  const result = await db3.execute(sql5`
     SELECT * FROM payment_transactions
     WHERE id = ${transactionId}
     LIMIT 1
@@ -12174,7 +12277,7 @@ async function findPaymentTransactionById(transactionId, db3) {
   return result.rows[0];
 }
 async function findPaymentTransactionByBooking(bookingId, bookingType, db3) {
-  const result = await db3.execute(sql4`
+  const result = await db3.execute(sql5`
     SELECT * FROM payment_transactions
     WHERE booking_id = ${bookingId} AND booking_type = ${bookingType}
     ORDER BY created_at DESC
@@ -12183,7 +12286,7 @@ async function findPaymentTransactionByBooking(bookingId, bookingType, db3) {
   return result.rows[0];
 }
 async function findPaymentTransactionByMetadata(metadataKey, metadataValue, db3) {
-  const result = await db3.execute(sql4`
+  const result = await db3.execute(sql5`
     SELECT * FROM payment_transactions
     WHERE metadata->>${metadataKey} = ${metadataValue}
     ORDER BY created_at DESC
@@ -12192,7 +12295,7 @@ async function findPaymentTransactionByMetadata(metadataKey, metadataValue, db3)
   return result.rows[0];
 }
 async function addPaymentHistory(transactionId, history, db3) {
-  await db3.execute(sql4`
+  await db3.execute(sql5`
     INSERT INTO payment_history (
       transaction_id,
       previous_status,
@@ -12217,7 +12320,7 @@ async function addPaymentHistory(transactionId, history, db3) {
   `);
 }
 async function getPaymentHistory(transactionId, db3) {
-  const result = await db3.execute(sql4`
+  const result = await db3.execute(sql5`
     SELECT * FROM payment_history
     WHERE transaction_id = ${transactionId}
     ORDER BY created_at ASC
@@ -12225,12 +12328,12 @@ async function getPaymentHistory(transactionId, db3) {
   return result.rows;
 }
 async function getManagerPaymentTransactions(managerId, db3, filters) {
-  const whereConditions = [sql4`manager_id = ${managerId}`];
+  const whereConditions = [sql5`manager_id = ${managerId}`];
   if (filters?.status) {
-    whereConditions.push(sql4`status = ${filters.status}`);
+    whereConditions.push(sql5`status = ${filters.status}`);
   }
   if (filters?.startDate) {
-    whereConditions.push(sql4`
+    whereConditions.push(sql5`
       (
         (status = 'succeeded' AND paid_at IS NOT NULL AND paid_at >= ${filters.startDate})
         OR (status != 'succeeded' AND created_at >= ${filters.startDate})
@@ -12238,21 +12341,21 @@ async function getManagerPaymentTransactions(managerId, db3, filters) {
     `);
   }
   if (filters?.endDate) {
-    whereConditions.push(sql4`
+    whereConditions.push(sql5`
       (
         (status = 'succeeded' AND paid_at IS NOT NULL AND paid_at <= ${filters.endDate})
         OR (status != 'succeeded' AND created_at <= ${filters.endDate})
       )
     `);
   }
-  const whereClause = sql4`WHERE ${sql4.join(whereConditions, sql4` AND `)}`;
-  const countResult = await db3.execute(sql4`
+  const whereClause = sql5`WHERE ${sql5.join(whereConditions, sql5` AND `)}`;
+  const countResult = await db3.execute(sql5`
     SELECT COUNT(*) as total FROM payment_transactions ${whereClause}
   `);
   const total = parseInt(countResult.rows[0].total);
   const limit = filters?.limit || 50;
   const offset = filters?.offset || 0;
-  const result = await db3.execute(sql4`
+  const result = await db3.execute(sql5`
     SELECT * FROM payment_transactions
     ${whereClause}
     ORDER BY 
@@ -12269,15 +12372,15 @@ async function getManagerPaymentTransactions(managerId, db3, filters) {
   };
 }
 async function getChefPaymentTransactions(chefId, db3, filters) {
-  const whereConditions = [sql4`pt.chef_id = ${chefId}`];
+  const whereConditions = [sql5`pt.chef_id = ${chefId}`];
   if (filters?.status) {
-    whereConditions.push(sql4`pt.status = ${filters.status}`);
+    whereConditions.push(sql5`pt.status = ${filters.status}`);
   }
   if (filters?.bookingType) {
-    whereConditions.push(sql4`pt.booking_type = ${filters.bookingType}`);
+    whereConditions.push(sql5`pt.booking_type = ${filters.bookingType}`);
   }
   if (filters?.startDate) {
-    whereConditions.push(sql4`
+    whereConditions.push(sql5`
       (
         (pt.status = 'succeeded' AND pt.paid_at IS NOT NULL AND pt.paid_at >= ${filters.startDate})
         OR (pt.status != 'succeeded' AND pt.created_at >= ${filters.startDate})
@@ -12285,21 +12388,21 @@ async function getChefPaymentTransactions(chefId, db3, filters) {
     `);
   }
   if (filters?.endDate) {
-    whereConditions.push(sql4`
+    whereConditions.push(sql5`
       (
         (pt.status = 'succeeded' AND pt.paid_at IS NOT NULL AND pt.paid_at <= ${filters.endDate})
         OR (pt.status != 'succeeded' AND pt.created_at <= ${filters.endDate})
       )
     `);
   }
-  const whereClause = sql4`WHERE ${sql4.join(whereConditions, sql4` AND `)}`;
-  const countResult = await db3.execute(sql4`
+  const whereClause = sql5`WHERE ${sql5.join(whereConditions, sql5` AND `)}`;
+  const countResult = await db3.execute(sql5`
     SELECT COUNT(*) as total FROM payment_transactions pt ${whereClause}
   `);
   const total = parseInt(countResult.rows[0].total);
   const limit = filters?.limit || 50;
   const offset = filters?.offset || 0;
-  const result = await db3.execute(sql4`
+  const result = await db3.execute(sql5`
     SELECT 
       pt.*,
       CASE 
@@ -12359,15 +12462,15 @@ async function syncStripeFees(db3, managerId, limit = 100) {
     apiVersion: "2026-02-25.clover"
   });
   const whereConditions = [
-    sql4`payment_intent_id IS NOT NULL`,
-    sql4`(stripe_processing_fee IS NULL OR stripe_processing_fee = '0')`,
-    sql4`status IN ('succeeded', 'partially_refunded')`
+    sql5`payment_intent_id IS NOT NULL`,
+    sql5`(stripe_processing_fee IS NULL OR stripe_processing_fee = '0')`,
+    sql5`status IN ('succeeded', 'partially_refunded')`
   ];
   if (managerId) {
-    whereConditions.push(sql4`manager_id = ${managerId}`);
+    whereConditions.push(sql5`manager_id = ${managerId}`);
   }
-  const whereClause = sql4`WHERE ${sql4.join(whereConditions, sql4` AND `)}`;
-  const result = await db3.execute(sql4`
+  const whereClause = sql5`WHERE ${sql5.join(whereConditions, sql5` AND `)}`;
+  const result = await db3.execute(sql5`
     SELECT id, payment_intent_id, amount, manager_id
     FROM payment_transactions
     ${whereClause}
@@ -12425,42 +12528,42 @@ async function syncStripeFees(db3, managerId, limit = 100) {
 async function getAdminPaymentTransactions(db3, filters) {
   const whereConditions = [];
   if (filters?.status) {
-    whereConditions.push(sql4`pt.status = ${filters.status}`);
+    whereConditions.push(sql5`pt.status = ${filters.status}`);
   }
   if (filters?.bookingType) {
-    whereConditions.push(sql4`pt.booking_type = ${filters.bookingType}`);
+    whereConditions.push(sql5`pt.booking_type = ${filters.bookingType}`);
   }
   if (filters?.locationId) {
-    whereConditions.push(sql4`(
+    whereConditions.push(sql5`(
       (pt.booking_type = 'kitchen' AND k.location_id = ${filters.locationId}) OR
       (pt.booking_type = 'storage' AND sk.location_id = ${filters.locationId}) OR
       (pt.booking_type = 'equipment' AND ek.location_id = ${filters.locationId})
     )`);
   }
   if (filters?.kitchenId) {
-    whereConditions.push(sql4`(
+    whereConditions.push(sql5`(
       (pt.booking_type = 'kitchen' AND kb.kitchen_id = ${filters.kitchenId}) OR
       (pt.booking_type = 'storage' AND sl.kitchen_id = ${filters.kitchenId}) OR
       (pt.booking_type = 'equipment' AND el.kitchen_id = ${filters.kitchenId})
     )`);
   }
   if (filters?.chefId) {
-    whereConditions.push(sql4`pt.chef_id = ${filters.chefId}`);
+    whereConditions.push(sql5`pt.chef_id = ${filters.chefId}`);
   }
   if (filters?.managerId) {
-    whereConditions.push(sql4`pt.manager_id = ${filters.managerId}`);
+    whereConditions.push(sql5`pt.manager_id = ${filters.managerId}`);
   }
   if (filters?.startDate) {
-    whereConditions.push(sql4`pt.created_at >= ${filters.startDate}`);
+    whereConditions.push(sql5`pt.created_at >= ${filters.startDate}`);
   }
   if (filters?.endDate) {
-    whereConditions.push(sql4`pt.created_at <= ${filters.endDate}`);
+    whereConditions.push(sql5`pt.created_at <= ${filters.endDate}`);
   }
   if (filters?.search) {
     const searchTerm = filters.search.trim();
     const numericSearch = parseInt(searchTerm);
     const isNumeric = !isNaN(numericSearch);
-    whereConditions.push(sql4`(
+    whereConditions.push(sql5`(
       pt.payment_intent_id ILIKE ${"%" + searchTerm + "%"}
       OR pt.charge_id ILIKE ${"%" + searchTerm + "%"}
       OR pt.refund_id ILIKE ${"%" + searchTerm + "%"}
@@ -12475,11 +12578,11 @@ async function getAdminPaymentTransactions(db3, filters) {
       OR k.name ILIKE ${"%" + searchTerm + "%"}
       OR CAST(pt.id AS TEXT) = ${searchTerm}
       OR CAST(pt.booking_id AS TEXT) = ${searchTerm}
-      ${isNumeric ? sql4`OR pt.chef_id = ${numericSearch} OR pt.manager_id = ${numericSearch}` : sql4``}
+      ${isNumeric ? sql5`OR pt.chef_id = ${numericSearch} OR pt.manager_id = ${numericSearch}` : sql5``}
     )`);
   }
-  const whereClause = whereConditions.length > 0 ? sql4`WHERE ${sql4.join(whereConditions, sql4` AND `)}` : sql4``;
-  const countResult = await db3.execute(sql4`
+  const whereClause = whereConditions.length > 0 ? sql5`WHERE ${sql5.join(whereConditions, sql5` AND `)}` : sql5``;
+  const countResult = await db3.execute(sql5`
     SELECT COUNT(*) as total 
     FROM payment_transactions pt
     LEFT JOIN kitchen_bookings kb ON pt.booking_type = 'kitchen' AND pt.booking_id = kb.id
@@ -12502,7 +12605,7 @@ async function getAdminPaymentTransactions(db3, filters) {
   const total = parseInt(countResult.rows[0].total);
   const limit = filters?.limit || 50;
   const offset = filters?.offset || 0;
-  const result = await db3.execute(sql4`
+  const result = await db3.execute(sql5`
     SELECT 
       pt.id,
       pt.booking_id,
@@ -13698,7 +13801,7 @@ __export(overstay_penalty_service_exports, {
   refundOverstayPenalty: () => refundOverstayPenalty,
   resolveOverstay: () => resolveOverstay
 });
-import { eq as eq6, and as and3, lt, not, inArray, desc as desc2, asc, sql as sql5 } from "drizzle-orm";
+import { eq as eq6, and as and3, lt, not, inArray, desc as desc2, asc, sql as sql6 } from "drizzle-orm";
 import Stripe3 from "stripe";
 async function detectOverstays() {
   const today = /* @__PURE__ */ new Date();
@@ -15026,7 +15129,7 @@ async function hasChefUnpaidPenalties(chefId) {
     "charge_failed",
     "escalated"
   ];
-  const [result] = await db.select({ count: sql5`count(*)` }).from(storageOverstayRecords).innerJoin(storageBookings, eq6(storageOverstayRecords.storageBookingId, storageBookings.id)).where(
+  const [result] = await db.select({ count: sql6`count(*)` }).from(storageOverstayRecords).innerJoin(storageBookings, eq6(storageOverstayRecords.storageBookingId, storageBookings.id)).where(
     and3(
       eq6(storageBookings.chefId, chefId),
       inArray(storageOverstayRecords.status, blockingStatuses)
@@ -15418,7 +15521,7 @@ __export(damage_claim_service_exports, {
   submitClaim: () => submitClaim,
   updateDraftClaim: () => updateDraftClaim
 });
-import { eq as eq8, and as and4, inArray as inArray2, desc as desc3, sql as sql6 } from "drizzle-orm";
+import { eq as eq8, and as and4, inArray as inArray2, desc as desc3, sql as sql7 } from "drizzle-orm";
 import Stripe4 from "stripe";
 import { format as format2 } from "date-fns";
 async function createHistoryEntry(damageClaimId, previousStatus, newStatus, action, actionBy, actionByUserId, notes, metadata) {
@@ -15686,7 +15789,7 @@ async function submitClaim(claimId, managerId) {
     if (claim.status !== "draft") {
       return { success: false, error: "Can only submit draft claims" };
     }
-    const evidenceCount = await db.select({ count: sql6`count(*)` }).from(damageEvidence).where(eq8(damageEvidence.damageClaimId, claimId));
+    const evidenceCount = await db.select({ count: sql7`count(*)` }).from(damageEvidence).where(eq8(damageEvidence.damageClaimId, claimId));
     if (!evidenceCount[0] || evidenceCount[0].count < 2) {
       return { success: false, error: "Minimum 2 pieces of evidence required" };
     }
@@ -16823,7 +16926,7 @@ async function processExpiredClaims() {
   try {
     const expiredClaims = await db.select().from(damageClaims).where(and4(
       eq8(damageClaims.status, "submitted"),
-      sql6`${damageClaims.chefResponseDeadline} < ${now}`
+      sql7`${damageClaims.chefResponseDeadline} < ${now}`
     ));
     logger.info(`[DamageClaimService] Found ${expiredClaims.length} expired claims to process`);
     for (const claim of expiredClaims) {
@@ -17046,7 +17149,7 @@ async function hasChefUnpaidDamageClaims(chefId) {
     "charge_failed",
     "escalated"
   ];
-  const [result] = await db.select({ count: sql6`count(*)` }).from(damageClaims).where(
+  const [result] = await db.select({ count: sql7`count(*)` }).from(damageClaims).where(
     and4(
       eq8(damageClaims.chefId, chefId),
       inArray2(damageClaims.status, blockingStatuses)
@@ -17351,12 +17454,16 @@ async function requireFirebaseAuthWithUser(req, res, next) {
       name: decodedToken.name,
       picture: decodedToken.picture
     };
-    const neonUser = await userService.getUserByFirebaseUid(req.firebaseUser.uid);
+    let neonUser = await userService.getUserByFirebaseUid(req.firebaseUser.uid);
     if (!neonUser) {
       return res.status(404).json({
         error: "User not found",
         message: "This account is not registered with Local Cooks. Please create an account first."
       });
+    }
+    if (req.firebaseUser.email_verified === true && neonUser.isVerified !== true) {
+      const syncedUser = await userService.updateUser(neonUser.id, { isVerified: true });
+      if (syncedUser) neonUser = syncedUser;
     }
     req.neonUser = {
       ...neonUser,
@@ -17877,6 +17984,7 @@ var init_application_repository = __esm({
         const [updated] = await db.update(applications).set({
           foodSafetyLicenseStatus: data.foodSafetyLicenseStatus,
           foodEstablishmentCertStatus: data.foodEstablishmentCertStatus,
+          ...data.foodEstablishmentCert ? { foodEstablishmentCert: data.foodEstablishmentCert } : {},
           documentsAdminFeedback: data.documentsAdminFeedback,
           documentsReviewedBy: data.documentsReviewedBy,
           documentsReviewedAt: /* @__PURE__ */ new Date()
@@ -18417,7 +18525,7 @@ __export(chat_service_exports, {
   sendSystemNotification: () => sendSystemNotification
 });
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
-import { eq as eq16 } from "drizzle-orm";
+import { eq as eq16, inArray as inArray4 } from "drizzle-orm";
 async function getAdminDb() {
   if (!adminDb) {
     const app2 = initializeFirebaseAdmin();
@@ -18438,14 +18546,34 @@ async function initializeConversation(applicationData) {
       return null;
     }
     const managerId = location.managerId;
+    const participants = await db.select({ id: users.id, firebaseUid: users.firebaseUid }).from(users).where(inArray4(users.id, [applicationData.chefId, managerId]));
+    const chefFirebaseUid = participants.find((participant) => participant.id === applicationData.chefId)?.firebaseUid;
+    const managerFirebaseUid = participants.find((participant) => participant.id === managerId)?.firebaseUid;
+    if (!chefFirebaseUid || !managerFirebaseUid) {
+      logger.error("Cannot initialize chat without Firebase UIDs for both participants", {
+        applicationId: applicationData.id,
+        hasChefFirebaseUid: Boolean(chefFirebaseUid),
+        hasManagerFirebaseUid: Boolean(managerFirebaseUid)
+      });
+      return null;
+    }
     const existingQuery = await adminDb2.collection("conversations").where("applicationId", "==", applicationData.id).limit(1).get();
     if (!existingQuery.empty) {
-      return existingQuery.docs[0].id;
+      const existingConversation = existingQuery.docs[0];
+      await existingConversation.ref.set({
+        chefId: applicationData.chefId,
+        managerId,
+        chefFirebaseUid,
+        managerFirebaseUid
+      }, { merge: true });
+      return existingConversation.id;
     }
     const conversationRef = await adminDb2.collection("conversations").add({
       applicationId: applicationData.id,
       chefId: applicationData.chefId,
       managerId,
+      chefFirebaseUid,
+      managerFirebaseUid,
       locationId: applicationData.locationId,
       createdAt: FieldValue.serverTimestamp(),
       lastMessageAt: FieldValue.serverTimestamp(),
@@ -18931,7 +19059,7 @@ var init_location_service = __esm({
 });
 
 // server/domains/kitchens/kitchen.repository.ts
-import { eq as eq18, and as and10, desc as desc8, gte, lte, sql as sql8 } from "drizzle-orm";
+import { eq as eq18, and as and10, desc as desc8, gte, lte, sql as sql9 } from "drizzle-orm";
 var KitchenRepository;
 var init_kitchen_repository = __esm({
   "server/domains/kitchens/kitchen.repository.ts"() {
@@ -18949,6 +19077,7 @@ var init_kitchen_repository = __esm({
           ...row,
           description: row.description || void 0,
           hourlyRate: row.hourlyRate ? parseFloat(row.hourlyRate) : null,
+          dailyRate: row.dailyRate ? parseFloat(row.dailyRate) : null,
           galleryImages: row.galleryImages || [],
           // Ensure type safety for JSONB
           amenities: row.amenities || [],
@@ -19045,6 +19174,7 @@ var init_kitchen_repository = __esm({
             isActive: dto.isActive !== void 0 ? dto.isActive : true,
             hourlyRate: dto.hourlyRate ? dto.hourlyRate.toString() : null,
             // Convert number to string for numeric column
+            dailyRate: dto.dailyRate ? dto.dailyRate.toString() : null,
             currency: dto.currency || "CAD",
             minimumBookingHours: dto.minimumBookingHours || 1,
             pricingModel: dto.pricingModel || "hourly",
@@ -19076,6 +19206,7 @@ var init_kitchen_repository = __esm({
             isActive: dto.isActive,
             hourlyRate: dto.hourlyRate ? dto.hourlyRate.toString() : void 0,
             // Convert number to string
+            dailyRate: dto.dailyRate ? dto.dailyRate.toString() : dto.dailyRate === null ? null : void 0,
             currency: dto.currency,
             minimumBookingHours: dto.minimumBookingHours,
             pricingModel: dto.pricingModel,
@@ -19330,7 +19461,7 @@ var init_kitchen_repository = __esm({
           const [override] = await db.select().from(kitchenDateOverrides).where(
             and10(
               eq18(kitchenDateOverrides.kitchenId, kitchenId),
-              sql8`DATE(${kitchenDateOverrides.specificDate}) = ${dateStr}::date`
+              sql9`DATE(${kitchenDateOverrides.specificDate}) = ${dateStr}::date`
             )
           ).limit(1);
           return override ? this.mapOverrideToDTO(override) : null;
@@ -19962,16 +20093,9 @@ var init_user = __esm({
       try {
         let user = req.neonUser;
         const firebaseEmailVerified = req.firebaseUser?.email_verified;
-        if (firebaseEmailVerified && (!user.isVerified || !user.termsAccepted)) {
+        if (firebaseEmailVerified && !user.isVerified) {
           logger.info(`\u{1F4E7} Updating is_verified for user ${user.id} - Firebase email verified (profile fetch)`);
-          const updatedUser = await userService.updateUser(user.id, { isVerified: true, termsAccepted: true, termsAcceptedAt: /* @__PURE__ */ new Date(), termsVersion: CURRENT_POLICY_VERSION });
-          if (updatedUser) {
-            user = updatedUser;
-          }
-        }
-        if (user && (!user.termsAccepted || user.termsVersion !== CURRENT_POLICY_VERSION)) {
-          logger.info(`\u{1F4E7} Updating termsAccepted for user ${user.id} - (profile fetch)`);
-          const updatedUser = await userService.updateUser(user.id, { termsAccepted: true, termsAcceptedAt: /* @__PURE__ */ new Date(), termsVersion: CURRENT_POLICY_VERSION });
+          const updatedUser = await userService.updateUser(user.id, { isVerified: true });
           if (updatedUser) {
             user = updatedUser;
           }
@@ -20025,9 +20149,9 @@ var init_user = __esm({
       try {
         let user = req.neonUser;
         const firebaseEmailVerified = req.firebaseUser?.email_verified;
-        if (firebaseEmailVerified && (!user.isVerified || !user.termsAccepted)) {
+        if (firebaseEmailVerified && !user.isVerified) {
           logger.info(`\u{1F4E7} Updating is_verified for user ${user.id} - Firebase email verified`);
-          const updatedUser = await userService.updateUser(user.id, { isVerified: true, termsAccepted: true, termsAcceptedAt: /* @__PURE__ */ new Date(), termsVersion: CURRENT_POLICY_VERSION });
+          const updatedUser = await userService.updateUser(user.id, { isVerified: true });
           if (updatedUser) {
             user = updatedUser;
           }
@@ -20082,7 +20206,7 @@ var init_user = __esm({
         if (firebaseEmailVerified) {
           if (!user.isVerified) {
             logger.info(`\u{1F4E7} Updating is_verified for user ${user.id} - Firebase email verified`);
-            const updatedUser = await userService.updateUser(user.id, { isVerified: true, termsAccepted: true, termsAcceptedAt: /* @__PURE__ */ new Date(), termsVersion: CURRENT_POLICY_VERSION });
+            const updatedUser = await userService.updateUser(user.id, { isVerified: true });
             if (updatedUser) {
               user = updatedUser;
               verificationUpdated = true;
@@ -20138,7 +20262,11 @@ var init_user = __esm({
     });
     router8.post("/verify-email-complete", async (req, res) => {
       try {
-        const { email } = req.body;
+        const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+        const genericResponse = {
+          success: true,
+          message: "If this verification belongs to an eligible account, its status has been updated."
+        };
         if (!email) {
           return res.status(400).json({ error: "Email is required" });
         }
@@ -20146,21 +20274,18 @@ var init_user = __esm({
         const firebaseUser = await getFirebaseUserByEmail(email);
         if (!firebaseUser) {
           logger.info(`\u274C Firebase user not found for email: ${email}`);
-          return res.status(404).json({ error: "User not found in Firebase" });
+          return res.json(genericResponse);
         }
         logger.info(`   - Firebase emailVerified: ${firebaseUser.emailVerified}`);
         logger.info(`   - Firebase UID: ${firebaseUser.uid}`);
         if (!firebaseUser.emailVerified) {
           logger.info(`\u26A0\uFE0F Firebase email NOT verified for: ${email}`);
-          return res.status(400).json({
-            error: "Email not verified in Firebase",
-            firebaseVerified: false
-          });
+          return res.json(genericResponse);
         }
         const user = await userService.getUserByUsername(email);
-        if (!user) {
-          logger.info(`\u274C User not found in Neon DB for email: ${email}`);
-          return res.status(404).json({ error: "User not found in database" });
+        if (!user || user.firebaseUid !== firebaseUser.uid) {
+          logger.info(`\u274C No matching linked Neon identity for verified Firebase email: ${email}`);
+          return res.json(genericResponse);
         }
         logger.info(`   - Neon user ID: ${user.id}`);
         logger.info(`   - Neon isVerified: ${user.isVerified}`);
@@ -20231,67 +20356,11 @@ var init_user = __esm({
         } else {
           logger.info(`\u2139\uFE0F Welcome email already sent at ${user.welcomeEmailSentAt} - skipping`);
         }
-        res.json({
-          success: true,
-          userId: user.id,
-          email,
-          firebaseVerified: true,
-          databaseVerified: true,
-          verificationUpdated,
-          welcomeEmailSent,
-          welcomeEmailPreviouslySent: !!user.welcomeEmailSentAt && !welcomeEmailSent,
-          role: user.role,
-          // ENTERPRISE: Include email config status for debugging
-          emailConfigStatus: {
-            hasEmailUser: !!process.env.EMAIL_USER,
-            hasEmailPass: !!process.env.EMAIL_PASS,
-            hasEmailFrom: !!process.env.EMAIL_FROM,
-            environment: process.env.VERCEL_ENV || process.env.NODE_ENV || "unknown"
-          }
-        });
+        res.json(genericResponse);
       } catch (error) {
         logger.error("\u274C Error in verify-email-complete:", error);
         res.status(500).json({
           error: "Failed to complete email verification",
-          details: error instanceof Error ? error.message : "Unknown error"
-        });
-      }
-    });
-    router8.post("/lookup-role", async (req, res) => {
-      try {
-        const { email } = req.body;
-        if (!email) {
-          return res.status(400).json({ error: "Email is required" });
-        }
-        logger.info(`\u{1F50D} PUBLIC ROLE LOOKUP for email: ${email}`);
-        const user = await userService.getUserByUsername(email);
-        if (!user) {
-          logger.info(`   - User not found in database, defaulting to chef role`);
-          return res.json({
-            email,
-            role: "chef",
-            userExists: false
-          });
-        }
-        const userRole = (() => {
-          if (user.role === "manager" || user.role === "chef" || user.role === "admin") {
-            return user.role;
-          }
-          if (user.isManager || user.is_manager) return "manager";
-          if (user.isAdmin || user.is_admin) return "admin";
-          return "chef";
-        })();
-        logger.info(`   - Resolved role: ${userRole}`);
-        return res.json({
-          email,
-          role: userRole,
-          userExists: true
-        });
-      } catch (error) {
-        logger.error("\u274C Error in lookup-role:", error);
-        res.status(500).json({
-          error: "Failed to look up role",
-          role: "chef",
           details: error instanceof Error ? error.message : "Unknown error"
         });
       }
@@ -20421,10 +20490,10 @@ var init_places = __esm({
         const componentsParam = provinceCode ? "country:ca" : components;
         url.searchParams.set("components", componentsParam);
         if (provinceCode) {
-          const { sw, ne: ne7 } = PROVINCE_BOUNDS[provinceCode];
-          url.searchParams.set("locationrestriction", `rectangle:${sw[0]},${sw[1]}|${ne7[0]},${ne7[1]}`);
-          const centerLat = (sw[0] + ne7[0]) / 2;
-          const centerLng = (sw[1] + ne7[1]) / 2;
+          const { sw, ne: ne8 } = PROVINCE_BOUNDS[provinceCode];
+          url.searchParams.set("locationrestriction", `rectangle:${sw[0]},${sw[1]}|${ne8[0]},${ne8[1]}`);
+          const centerLat = (sw[0] + ne8[0]) / 2;
+          const centerLng = (sw[1] + ne8[1]) / 2;
           url.searchParams.set("location", `${centerLat},${centerLng}`);
           url.searchParams.set("radius", "50000");
           url.searchParams.set("strictbounds", "true");
@@ -21075,6 +21144,36 @@ var init_applications = __esm({
           } catch (emailError) {
             logger.error("Error sending new application email:", emailError);
           }
+          try {
+            const { users: users5 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+            const { eq: eqOp, isNotNull: isNotNull4, ne: ne8, and: andOp } = await import("drizzle-orm");
+            const { db: db3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+            const adminUsers = await db3.select({ username: users5.username }).from(users5).where(
+              andOp(
+                eqOp(users5.role, "admin"),
+                isNotNull4(users5.username),
+                ne8(users5.username, "")
+              )
+            );
+            const hasDocuments = !!(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl);
+            for (const admin2 of adminUsers) {
+              if (admin2.username) {
+                const adminEmail = generateNewSellerApplicationAdminEmail({
+                  adminEmail: admin2.username,
+                  chefName: application.fullName || "Chef",
+                  chefEmail: application.email || "",
+                  hasDocuments,
+                  submittedAt: /* @__PURE__ */ new Date()
+                });
+                await sendEmail(adminEmail, {
+                  trackingId: `seller_app_admin_notify_${admin2.username}_${application.id}_${Date.now()}`
+                });
+              }
+            }
+            logger.info(`\u2705 Sent seller application admin notification to ${adminUsers.length} admin(s)`);
+          } catch (adminEmailError) {
+            logger.error("Error sending admin notification for new seller application:", adminEmailError);
+          }
           logger.info("=== APPLICATION SUBMISSION COMPLETE ===");
           return res.status(201).json(application);
         } catch (error) {
@@ -21325,6 +21424,7 @@ var init_applications = __esm({
           id: applicationId,
           foodSafetyLicenseStatus: parsedData.data.foodSafetyLicenseStatus || existingApplication.foodSafetyLicenseStatus,
           foodEstablishmentCertStatus: parsedData.data.foodEstablishmentCertStatus || existingApplication.foodEstablishmentCertStatus,
+          foodEstablishmentCert: parsedData.data.foodEstablishmentCert,
           documentsAdminFeedback: parsedData.data.documentsAdminFeedback,
           documentsReviewedBy: req.neonUser.id
         };
@@ -22582,13 +22682,13 @@ var init_files = __esm({
             const searchPattern = `%${filename}`;
             const { kitchens: kitchens3 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
             const { db: db3 } = await Promise.resolve().then(() => (init_db(), db_exports));
-            const { or: or8, like: like2, sql: sql26 } = await import("drizzle-orm");
+            const { or: or8, like: like2, sql: sql27 } = await import("drizzle-orm");
             const [kitchenMatch] = await db3.select({ id: kitchens3.id }).from(kitchens3).where(
               or8(
                 like2(kitchens3.imageUrl, searchPattern),
-                sql26`${kitchens3.galleryImages} @> ${JSON.stringify([`/api/files/documents/${filename}`])}::jsonb`,
+                sql27`${kitchens3.galleryImages} @> ${JSON.stringify([`/api/files/documents/${filename}`])}::jsonb`,
                 // also try with just filename if that's how it's stored in array
-                sql26`${kitchens3.galleryImages} @> ${JSON.stringify([filename])}::jsonb`
+                sql27`${kitchens3.galleryImages} @> ${JSON.stringify([filename])}::jsonb`
               )
             ).limit(1);
             if (kitchenMatch) {
@@ -23084,7 +23184,7 @@ var init_config = __esm({
 });
 
 // server/domains/bookings/booking.repository.ts
-import { eq as eq21, and as and13, desc as desc10, asc as asc2, lt as lt2, not as not2, or as or2, sql as sql9, ne as ne3 } from "drizzle-orm";
+import { eq as eq21, and as and13, desc as desc10, asc as asc2, lt as lt2, not as not2, or as or2, sql as sql10, ne as ne4 } from "drizzle-orm";
 function getKitchenBookingSelection() {
   return {
     id: kitchenBookings.id,
@@ -23294,7 +23394,7 @@ var init_booking_repository = __esm({
           eq21(locations.managerId, managerId),
           // CRITICAL: Only show bookings where payment has been initiated (not abandoned at checkout)
           // 'pending' paymentStatus means chef never completed checkout - don't show to manager
-          ne3(kitchenBookings.paymentStatus, "pending")
+          ne4(kitchenBookings.paymentStatus, "pending")
         )).orderBy(desc10(kitchenBookings.createdAt));
         return results.map((row) => {
           const mappedBooking = this.mapKitchenBookingToDTO(row.booking);
@@ -23381,8 +23481,8 @@ var init_booking_repository = __esm({
       async getBookingsByKitchen(kitchenId) {
         return db.select({
           ...getKitchenBookingSelection(),
-          chefName: sql9`COALESCE(${chefKitchenApplications.fullName}, ${users.username})`.as("chef_name"),
-          chefEmail: sql9`COALESCE(${chefKitchenApplications.email}, ${users.username})`.as("chef_email")
+          chefName: sql10`COALESCE(${chefKitchenApplications.fullName}, ${users.username})`.as("chef_name"),
+          chefEmail: sql10`COALESCE(${chefKitchenApplications.email}, ${users.username})`.as("chef_email")
         }).from(kitchenBookings).innerJoin(kitchens, eq21(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq21(kitchens.locationId, locations.id)).leftJoin(users, eq21(kitchenBookings.chefId, users.id)).leftJoin(chefKitchenApplications, and13(
           eq21(chefKitchenApplications.chefId, kitchenBookings.chefId),
           eq21(chefKitchenApplications.locationId, locations.id)
@@ -23393,9 +23493,9 @@ var init_booking_repository = __esm({
         const conditions = [
           eq21(kitchenBookings.kitchenId, kitchenId),
           not2(eq21(kitchenBookings.status, "cancelled")),
-          sql9`DATE(${kitchenBookings.bookingDate}) = ${dateStr}::date`,
-          sql9`${kitchenBookings.startTime} < ${endTime}`,
-          sql9`${kitchenBookings.endTime} > ${startTime}`
+          sql10`DATE(${kitchenBookings.bookingDate}) = ${dateStr}::date`,
+          sql10`${kitchenBookings.startTime} < ${endTime}`,
+          sql10`${kitchenBookings.endTime} > ${startTime}`
         ];
         if (excludeBookingId) {
           conditions.push(not2(eq21(kitchenBookings.id, excludeBookingId)));
@@ -23435,7 +23535,7 @@ var init_booking_repository = __esm({
           chargeSucceededAt: storageOverstayRecords.chargeSucceededAt,
           stripeChargeId: storageOverstayRecords.stripeChargeId
         }).from(storageOverstayRecords).where(
-          sql9`${storageOverstayRecords.storageBookingId} IN (${sql9.join(bookingIds.map((id) => sql9`${id}`), sql9`, `)})`
+          sql10`${storageOverstayRecords.storageBookingId} IN (${sql10.join(bookingIds.map((id) => sql10`${id}`), sql10`, `)})`
         ) : [];
         const isPenaltyPaid = (p) => {
           return p.status === "charge_succeeded" || !!p.stripeChargeId || p.resolutionType === "paid" || !!p.chargeSucceededAt;
@@ -24596,7 +24696,7 @@ var init_booking_service = __esm({
 });
 
 // server/domains/users/chef.repository.ts
-import { eq as eq25, and as and15, inArray as inArray5 } from "drizzle-orm";
+import { eq as eq25, and as and15, inArray as inArray6 } from "drizzle-orm";
 var ChefRepository;
 var init_chef_repository = __esm({
   "server/domains/users/chef.repository.ts"() {
@@ -24661,7 +24761,7 @@ var init_chef_repository = __esm({
       // Complex query for Manager Dashboard
       async getProfilesForManager(locationIds) {
         if (locationIds.length === 0) return [];
-        const profiles = await db.select().from(chefLocationProfiles).where(inArray5(chefLocationProfiles.locationId, locationIds));
+        const profiles = await db.select().from(chefLocationProfiles).where(inArray6(chefLocationProfiles.locationId, locationIds));
         return profiles;
       }
     };
@@ -24862,7 +24962,7 @@ var init_chef_service = __esm({
 });
 
 // server/domains/managers/manager.repository.ts
-import { eq as eq27, sql as sql10 } from "drizzle-orm";
+import { eq as eq27, sql as sql11 } from "drizzle-orm";
 var ManagerRepository, managerRepository;
 var init_manager_repository = __esm({
   "server/domains/managers/manager.repository.ts"() {
@@ -24889,7 +24989,7 @@ var init_manager_repository = __esm({
       // Moved from server/routes/manager.ts
       async findInvoices(managerId, filters) {
         const { startDate, endDate, locationId, limit = 50, offset = 0 } = filters;
-        const kitchenResult = await db.execute(sql10`
+        const kitchenResult = await db.execute(sql11`
             SELECT 
                 kb.id,
                 kb.booking_date,
@@ -24919,9 +25019,9 @@ var init_manager_repository = __esm({
             WHERE l.manager_id = ${managerId}
               AND kb.status != 'cancelled'
               AND kb.payment_status = 'paid'
-              ${startDate ? sql10`AND (DATE(kb.booking_date) >= ${Array.isArray(startDate) ? startDate[0] : String(startDate)}::date OR DATE(kb.created_at) >= ${Array.isArray(startDate) ? startDate[0] : String(startDate)}::date)` : sql10``}
-              ${endDate ? sql10`AND (DATE(kb.booking_date) <= ${Array.isArray(endDate) ? endDate[0] : String(endDate)}::date OR DATE(kb.created_at) <= ${Array.isArray(endDate) ? endDate[0] : String(endDate)}::date)` : sql10``}
-              ${locationId ? sql10`AND l.id = ${Number(locationId)}` : sql10``}
+              ${startDate ? sql11`AND (DATE(kb.booking_date) >= ${Array.isArray(startDate) ? startDate[0] : String(startDate)}::date OR DATE(kb.created_at) >= ${Array.isArray(startDate) ? startDate[0] : String(startDate)}::date)` : sql11``}
+              ${endDate ? sql11`AND (DATE(kb.booking_date) <= ${Array.isArray(endDate) ? endDate[0] : String(endDate)}::date OR DATE(kb.created_at) <= ${Array.isArray(endDate) ? endDate[0] : String(endDate)}::date)` : sql11``}
+              ${locationId ? sql11`AND l.id = ${Number(locationId)}` : sql11``}
             ORDER BY kb.created_at DESC, kb.booking_date DESC
             LIMIT ${limit}
             OFFSET ${offset}
@@ -24946,7 +25046,7 @@ var init_manager_repository = __esm({
           bookingType: row.booking_type
         }));
         logger.info(`[ManagerRepository] Kitchen invoices query for manager ${managerId}: Found ${rows.length} invoices`);
-        const storageRows = await db.execute(sql10`
+        const storageRows = await db.execute(sql11`
             SELECT 
                 pt.booking_id as id,
                 sb.start_date as booking_date,
@@ -25072,7 +25172,7 @@ __export(revenue_service_v2_exports, {
   getRevenueByLocationFromTransactions: () => getRevenueByLocationFromTransactions,
   getRevenueMetricsFromTransactions: () => getRevenueMetricsFromTransactions
 });
-import { sql as sql11 } from "drizzle-orm";
+import { sql as sql12 } from "drizzle-orm";
 async function getRevenueMetricsFromTransactions(managerId, db3, startDate, endDate, locationId) {
   try {
     if (managerId === void 0 || managerId === null || isNaN(managerId)) {
@@ -25084,7 +25184,7 @@ async function getRevenueMetricsFromTransactions(managerId, db3, startDate, endD
       params.push(locationId);
     }
     logger.info("[Revenue Service V2] getRevenueMetricsFromTransactions params:", { managerId, locationId, startDate, endDate });
-    const tableCheck = await db3.execute(sql11`
+    const tableCheck = await db3.execute(sql12`
       SELECT EXISTS (
         SELECT 1 FROM information_schema.tables 
         WHERE table_schema = 'public' 
@@ -25096,8 +25196,8 @@ async function getRevenueMetricsFromTransactions(managerId, db3, startDate, endD
       logger.info("[Revenue Service V2] payment_transactions table does not exist, will fallback to legacy method");
       throw new Error("payment_transactions table does not exist");
     }
-    const managerIdParam = sql11`${managerId}`;
-    const countCheck = await db3.execute(sql11`
+    const managerIdParam = sql12`${managerId}`;
+    const countCheck = await db3.execute(sql12`
       SELECT COUNT(*) as count
       FROM payment_transactions pt
       WHERE pt.manager_id = ${managerIdParam}
@@ -25106,7 +25206,7 @@ async function getRevenueMetricsFromTransactions(managerId, db3, startDate, endD
     `);
     const transactionCount = parseInt(countCheck.rows[0]?.count || "0");
     logger.info(`[Revenue Service V2] Found ${transactionCount} payment_transactions for manager ${managerId}`);
-    const bookingCountCheck = await db3.execute(sql11`
+    const bookingCountCheck = await db3.execute(sql12`
       SELECT 
         COUNT(DISTINCT kb.id) as total_bookings,
         COUNT(DISTINCT CASE WHEN pt_kitchen.id IS NOT NULL OR pt_bundle.id IS NOT NULL THEN kb.id END) as bookings_with_transactions
@@ -25134,7 +25234,7 @@ async function getRevenueMetricsFromTransactions(managerId, db3, startDate, endD
       logger.info(`[Revenue Service V2] Incomplete payment_transactions coverage (${bookingsWithTransactions}/${totalBookings}), falling back to legacy method`);
       throw new Error("Incomplete payment_transactions coverage");
     }
-    const metricsTimezoneResult = await db3.execute(sql11`
+    const metricsTimezoneResult = await db3.execute(sql12`
       SELECT COALESCE(l.timezone, 'America/St_Johns') as timezone
       FROM locations l
       WHERE l.manager_id = ${managerIdParam}
@@ -25142,15 +25242,15 @@ async function getRevenueMetricsFromTransactions(managerId, db3, startDate, endD
     `);
     const metricsTimezone = metricsTimezoneResult.rows[0]?.timezone || "America/St_Johns";
     const simpleWhereConditions = [
-      sql11`pt.manager_id = ${managerIdParam}`,
-      sql11`(pt.status = 'succeeded' OR pt.status = 'processing' OR pt.status = 'refunded' OR pt.status = 'partially_refunded')`,
-      sql11`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`
+      sql12`pt.manager_id = ${managerIdParam}`,
+      sql12`(pt.status = 'succeeded' OR pt.status = 'processing' OR pt.status = 'refunded' OR pt.status = 'partially_refunded')`,
+      sql12`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`
     ];
     if (startDate || endDate) {
       const start = startDate ? typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0] : null;
       const end = endDate ? typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0] : null;
       if (start && end) {
-        simpleWhereConditions.push(sql11`
+        simpleWhereConditions.push(sql12`
           (
             (pt.status = 'succeeded' AND (
               (pt.paid_at IS NOT NULL AND DATE(pt.paid_at AT TIME ZONE 'UTC' AT TIME ZONE ${metricsTimezone}) >= ${start}::date AND DATE(pt.paid_at AT TIME ZONE 'UTC' AT TIME ZONE ${metricsTimezone}) <= ${end}::date)
@@ -25160,7 +25260,7 @@ async function getRevenueMetricsFromTransactions(managerId, db3, startDate, endD
           )
         `);
       } else if (start) {
-        simpleWhereConditions.push(sql11`
+        simpleWhereConditions.push(sql12`
           (
             (pt.status = 'succeeded' AND (
               (pt.paid_at IS NOT NULL AND DATE(pt.paid_at AT TIME ZONE 'UTC' AT TIME ZONE ${metricsTimezone}) >= ${start}::date)
@@ -25170,7 +25270,7 @@ async function getRevenueMetricsFromTransactions(managerId, db3, startDate, endD
           )
         `);
       } else if (end) {
-        simpleWhereConditions.push(sql11`
+        simpleWhereConditions.push(sql12`
           (
             (pt.status = 'succeeded' AND (
               (pt.paid_at IS NOT NULL AND DATE(pt.paid_at AT TIME ZONE 'UTC' AT TIME ZONE ${metricsTimezone}) <= ${end}::date)
@@ -25181,7 +25281,7 @@ async function getRevenueMetricsFromTransactions(managerId, db3, startDate, endD
         `);
       }
     }
-    simpleWhereConditions.push(sql11`
+    simpleWhereConditions.push(sql12`
       NOT (
         pt.booking_type = 'kitchen' 
         AND EXISTS (
@@ -25192,8 +25292,8 @@ async function getRevenueMetricsFromTransactions(managerId, db3, startDate, endD
         )
       )
     `);
-    const simpleWhereClause = sql11`WHERE ${sql11.join(simpleWhereConditions, sql11` AND `)}`;
-    const result = await db3.execute(sql11`
+    const simpleWhereClause = sql12`WHERE ${sql12.join(simpleWhereConditions, sql12` AND `)}`;
+    const result = await db3.execute(sql12`
       SELECT 
         COALESCE(SUM(pt.amount::numeric), 0)::bigint as total_revenue,
         -- Platform fee: use service_fee if available, otherwise calculate as amount - manager_revenue
@@ -25223,7 +25323,7 @@ async function getRevenueMetricsFromTransactions(managerId, db3, startDate, endD
       FROM payment_transactions pt
       ${simpleWhereClause}
     `);
-    const kitchenTaxResult = await db3.execute(sql11`
+    const kitchenTaxResult = await db3.execute(sql12`
       SELECT 
         COALESCE(SUM(
           CASE
@@ -25274,7 +25374,7 @@ async function getRevenueMetricsFromTransactions(managerId, db3, startDate, endD
       LEFT JOIN kitchens k ON kb.kitchen_id = k.id
       ${simpleWhereClause}
     `);
-    const storageTaxResult = await db3.execute(sql11`
+    const storageTaxResult = await db3.execute(sql12`
       SELECT 
         COALESCE(SUM(
           CASE 
@@ -25405,7 +25505,7 @@ async function getRevenueMetricsFromTransactions(managerId, db3, startDate, endD
 }
 async function getRevenueByLocationFromTransactions(managerId, db3, startDate, endDate) {
   try {
-    const tableCheck = await db3.execute(sql11`
+    const tableCheck = await db3.execute(sql12`
       SELECT EXISTS (
         SELECT 1 FROM information_schema.tables 
         WHERE table_schema = 'public' 
@@ -25415,10 +25515,10 @@ async function getRevenueByLocationFromTransactions(managerId, db3, startDate, e
     if (!tableCheck.rows[0]?.table_exists) {
       throw new Error("payment_transactions table does not exist");
     }
-    const whereConditions = [sql11`pt.manager_id = ${managerId}`];
-    whereConditions.push(sql11`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`);
-    whereConditions.push(sql11`(pt.status = 'succeeded' OR pt.status = 'processing' OR pt.status = 'refunded' OR pt.status = 'partially_refunded')`);
-    whereConditions.push(sql11`
+    const whereConditions = [sql12`pt.manager_id = ${managerId}`];
+    whereConditions.push(sql12`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`);
+    whereConditions.push(sql12`(pt.status = 'succeeded' OR pt.status = 'processing' OR pt.status = 'refunded' OR pt.status = 'partially_refunded')`);
+    whereConditions.push(sql12`
       NOT (
         pt.booking_type = 'kitchen' 
         AND EXISTS (
@@ -25429,8 +25529,8 @@ async function getRevenueByLocationFromTransactions(managerId, db3, startDate, e
         )
       )
     `);
-    const whereClause = sql11`WHERE ${sql11.join(whereConditions, sql11` AND `)}`;
-    const result = await db3.execute(sql11`
+    const whereClause = sql12`WHERE ${sql12.join(whereConditions, sql12` AND `)}`;
+    const result = await db3.execute(sql12`
       SELECT 
         l.id as location_id,
         l.name as location_name,
@@ -25496,7 +25596,7 @@ async function getRevenueByLocationFromTransactions(managerId, db3, startDate, e
 }
 async function getRevenueByDateFromTransactions(managerId, db3, startDate, endDate) {
   try {
-    const tableCheck = await db3.execute(sql11`
+    const tableCheck = await db3.execute(sql12`
       SELECT EXISTS (
         SELECT 1 FROM information_schema.tables 
         WHERE table_schema = 'public' 
@@ -25506,7 +25606,7 @@ async function getRevenueByDateFromTransactions(managerId, db3, startDate, endDa
     if (!tableCheck.rows[0]?.table_exists) {
       throw new Error("payment_transactions table does not exist");
     }
-    const tzResult = await db3.execute(sql11`
+    const tzResult = await db3.execute(sql12`
       SELECT COALESCE(l.timezone, 'America/St_Johns') as timezone
       FROM locations l
       WHERE l.manager_id = ${managerId}
@@ -25515,9 +25615,9 @@ async function getRevenueByDateFromTransactions(managerId, db3, startDate, endDa
     const managerTimezone = tzResult.rows[0]?.timezone || "America/St_Johns";
     const start = typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0];
     const end = typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0];
-    const whereConditions = [sql11`pt.manager_id = ${managerId}`];
-    whereConditions.push(sql11`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`);
-    whereConditions.push(sql11`
+    const whereConditions = [sql12`pt.manager_id = ${managerId}`];
+    whereConditions.push(sql12`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`);
+    whereConditions.push(sql12`
       NOT (
         pt.booking_type = 'kitchen' 
         AND EXISTS (
@@ -25528,7 +25628,7 @@ async function getRevenueByDateFromTransactions(managerId, db3, startDate, endDa
         )
       )
     `);
-    whereConditions.push(sql11`
+    whereConditions.push(sql12`
       (
         (pt.status = 'succeeded' AND pt.paid_at IS NOT NULL 
           AND DATE(pt.paid_at AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}) >= ${start}::date 
@@ -25538,8 +25638,8 @@ async function getRevenueByDateFromTransactions(managerId, db3, startDate, endDa
           AND DATE(pt.created_at AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone}) <= ${end}::date)
       )
     `);
-    const whereClause = sql11`WHERE ${sql11.join(whereConditions, sql11` AND `)}`;
-    const result = await db3.execute(sql11`
+    const whereClause = sql12`WHERE ${sql12.join(whereConditions, sql12` AND `)}`;
+    const result = await db3.execute(sql12`
       SELECT 
         DATE(
           CASE 
@@ -25610,7 +25710,7 @@ __export(revenue_service_exports, {
   getRevenueMetrics: () => getRevenueMetrics,
   getTransactionHistory: () => getTransactionHistory
 });
-import { sql as sql12 } from "drizzle-orm";
+import { sql as sql13 } from "drizzle-orm";
 function calculateManagerRevenue(totalRevenue, serviceFeeRate) {
   if (serviceFeeRate < 0 || serviceFeeRate > 1) {
     logger.warn(`Invalid service fee rate: ${serviceFeeRate}, using 0`);
@@ -25621,14 +25721,14 @@ function calculateManagerRevenue(totalRevenue, serviceFeeRate) {
 }
 async function getRevenueMetrics(managerId, db3, startDate, endDate, locationId) {
   try {
-    const whereConditions = [sql12`l.manager_id = ${managerId}`, sql12`kb.status != 'cancelled'`];
+    const whereConditions = [sql13`l.manager_id = ${managerId}`, sql13`kb.status != 'cancelled'`];
     if (locationId) {
-      whereConditions.push(sql12`l.id = ${locationId}`);
+      whereConditions.push(sql13`l.id = ${locationId}`);
     }
-    const whereClause = sql12`WHERE ${sql12.join(whereConditions, sql12` AND `)}`;
+    const whereClause = sql13`WHERE ${sql13.join(whereConditions, sql13` AND `)}`;
     const { getServiceFeeRate: getServiceFeeRate2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
     const serviceFeeRate = await getServiceFeeRate2();
-    const debugQuery = await db3.execute(sql12`
+    const debugQuery = await db3.execute(sql13`
       SELECT 
         COUNT(*) as total_bookings,
         COUNT(CASE WHEN kb.total_price IS NOT NULL THEN 1 END) as bookings_with_price,
@@ -25651,7 +25751,7 @@ async function getRevenueMetrics(managerId, db3, startDate, endDate, locationId)
       startDate,
       endDate
     });
-    const result = await db3.execute(sql12`
+    const result = await db3.execute(sql13`
       SELECT 
         COALESCE(SUM(
           COALESCE(
@@ -25725,15 +25825,15 @@ async function getRevenueMetrics(managerId, db3, startDate, endDate, locationId)
       ${whereClause}
     `);
     const pendingWhereConditions = [
-      sql12`l.manager_id = ${managerId}`,
-      sql12`kb.status != 'cancelled'`,
-      sql12`kb.payment_status = 'processing'`
+      sql13`l.manager_id = ${managerId}`,
+      sql13`kb.status != 'cancelled'`,
+      sql13`kb.payment_status = 'processing'`
     ];
     if (locationId) {
-      pendingWhereConditions.push(sql12`l.id = ${locationId}`);
+      pendingWhereConditions.push(sql13`l.id = ${locationId}`);
     }
-    const pendingWhereClause = sql12`WHERE ${sql12.join(pendingWhereConditions, sql12` AND `)}`;
-    const pendingResult = await db3.execute(sql12`
+    const pendingWhereClause = sql13`WHERE ${sql13.join(pendingWhereConditions, sql13` AND `)}`;
+    const pendingResult = await db3.execute(sql13`
       SELECT 
         COALESCE(SUM(
           COALESCE(
@@ -25758,15 +25858,15 @@ async function getRevenueMetrics(managerId, db3, startDate, endDate, locationId)
       pendingAmount: pendingResult.rows[0]?.pending_payments_all || 0
     });
     const completedWhereConditions = [
-      sql12`l.manager_id = ${managerId}`,
-      sql12`kb.status != 'cancelled'`,
-      sql12`kb.payment_status = 'paid'`
+      sql13`l.manager_id = ${managerId}`,
+      sql13`kb.status != 'cancelled'`,
+      sql13`kb.payment_status = 'paid'`
     ];
     if (locationId) {
-      completedWhereConditions.push(sql12`l.id = ${locationId}`);
+      completedWhereConditions.push(sql13`l.id = ${locationId}`);
     }
-    const completedWhereClause = sql12`WHERE ${sql12.join(completedWhereConditions, sql12` AND `)}`;
-    const completedResult = await db3.execute(sql12`
+    const completedWhereClause = sql13`WHERE ${sql13.join(completedWhereConditions, sql13` AND `)}`;
+    const completedResult = await db3.execute(sql13`
       SELECT 
         COALESCE(SUM(
           COALESCE(
@@ -25804,7 +25904,7 @@ async function getRevenueMetrics(managerId, db3, startDate, endDate, locationId)
     }
     if (result.rows.length === 0) {
       logger.info("[Revenue Service] No bookings in date range, checking for payments outside date range...");
-      const pendingFeeResult = await db3.execute(sql12`
+      const pendingFeeResult = await db3.execute(sql13`
         SELECT 
           COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as pending_service_fee,
           COALESCE(SUM(
@@ -25824,7 +25924,7 @@ async function getRevenueMetrics(managerId, db3, startDate, endDate, locationId)
         JOIN locations l ON k.location_id = l.id
         ${pendingWhereClause}
       `);
-      const completedFeeResult = await db3.execute(sql12`
+      const completedFeeResult = await db3.execute(sql13`
         SELECT 
           COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as completed_service_fee,
           COALESCE(SUM(
@@ -25857,7 +25957,7 @@ async function getRevenueMetrics(managerId, db3, startDate, endDate, locationId)
       const paidCount = parseInt(completedRow.completed_count_all) || 0;
       let actualStripeFeeFromDb = 0;
       try {
-        const feeResult = await db3.execute(sql12`
+        const feeResult = await db3.execute(sql13`
           SELECT COALESCE(SUM(stripe_processing_fee::numeric), 0)::bigint as total_stripe_fee
           FROM payment_transactions
           WHERE manager_id = ${managerId} AND status = 'succeeded' AND stripe_processing_fee > 0
@@ -25899,7 +25999,7 @@ async function getRevenueMetrics(managerId, db3, startDate, endDate, locationId)
     const totalRevenue = typeof row.total_revenue === "string" ? parseInt(row.total_revenue) : row.total_revenue ? parseInt(String(row.total_revenue)) : 0;
     const platformFee = typeof row.platform_fee === "string" ? parseInt(row.platform_fee) : row.platform_fee ? parseInt(String(row.platform_fee)) : 0;
     const totalRevenueWithAllPayments = allCompletedPayments + allPendingPayments;
-    const pendingFeeResult2 = await db3.execute(sql12`
+    const pendingFeeResult2 = await db3.execute(sql13`
       SELECT 
         COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as pending_service_fee,
         COALESCE(SUM(
@@ -25919,7 +26019,7 @@ async function getRevenueMetrics(managerId, db3, startDate, endDate, locationId)
       JOIN locations l ON k.location_id = l.id
       ${pendingWhereClause}
     `);
-    const completedFeeResult2 = await db3.execute(sql12`
+    const completedFeeResult2 = await db3.execute(sql13`
       SELECT 
         COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as completed_service_fee,
         COALESCE(SUM(
@@ -25953,14 +26053,14 @@ async function getRevenueMetrics(managerId, db3, startDate, endDate, locationId)
     let stripeFeeSource = "estimated";
     try {
       const stripeFeeConditions = [
-        sql12`pt.manager_id = ${managerId}`,
-        sql12`pt.status IN ('succeeded', 'partially_refunded')`,
+        sql13`pt.manager_id = ${managerId}`,
+        sql13`pt.status IN ('succeeded', 'partially_refunded')`,
         // Include partially refunded but not fully refunded
-        sql12`pt.stripe_processing_fee IS NOT NULL`,
-        sql12`pt.stripe_processing_fee > 0`
+        sql13`pt.stripe_processing_fee IS NOT NULL`,
+        sql13`pt.stripe_processing_fee > 0`
       ];
       if (locationId) {
-        stripeFeeConditions.push(sql12`EXISTS (
+        stripeFeeConditions.push(sql13`EXISTS (
           SELECT 1 FROM kitchen_bookings kb 
           JOIN kitchens k ON kb.kitchen_id = k.id 
           WHERE kb.id = pt.booking_id 
@@ -25968,7 +26068,7 @@ async function getRevenueMetrics(managerId, db3, startDate, endDate, locationId)
           AND k.location_id = ${locationId}
         )`);
       }
-      const stripeFeeResult = await db3.execute(sql12`
+      const stripeFeeResult = await db3.execute(sql13`
         SELECT COALESCE(SUM(
           CASE 
             WHEN pt.amount::numeric > 0 THEN
@@ -25977,7 +26077,7 @@ async function getRevenueMetrics(managerId, db3, startDate, endDate, locationId)
           END
         ), 0)::bigint as total_stripe_fee
         FROM payment_transactions pt
-        WHERE ${sql12.join(stripeFeeConditions, sql12` AND `)}
+        WHERE ${sql13.join(stripeFeeConditions, sql13` AND `)}
       `);
       const stripeFeeRow = stripeFeeResult.rows[0] || {};
       const storedStripeFee = typeof stripeFeeRow.total_stripe_fee === "string" ? parseInt(stripeFeeRow.total_stripe_fee) || 0 : stripeFeeRow.total_stripe_fee ? parseInt(String(stripeFeeRow.total_stripe_fee)) : 0;
@@ -25997,7 +26097,7 @@ async function getRevenueMetrics(managerId, db3, startDate, endDate, locationId)
     const refundedAmount = typeof row.refunded_amount === "string" ? isNaN(parseInt(row.refunded_amount)) ? 0 : parseInt(row.refunded_amount) || 0 : row.refunded_amount ? isNaN(parseInt(String(row.refunded_amount))) ? 0 : parseInt(String(row.refunded_amount)) : 0;
     let effectiveTaxAmount = 0;
     try {
-      const effectiveTaxResult = await db3.execute(sql12`
+      const effectiveTaxResult = await db3.execute(sql13`
         SELECT COALESCE(SUM(
           -- Tax = kb.total_price * tax_rate / 100 (same formula as transaction history)
           -- For partial refunds: multiply by (1 - refund_ratio) to get effective tax
@@ -26053,20 +26153,20 @@ async function getRevenueByLocation(managerId, db3, startDate, endDate) {
       logger.error("[Revenue Service] Invalid managerId:", managerId);
       throw new Error("Invalid manager ID");
     }
-    const managerIdParam = sql12`${managerId}`;
-    const whereConditions = [sql12`l.manager_id = ${managerIdParam}`, sql12`kb.status != 'cancelled'`];
+    const managerIdParam = sql13`${managerId}`;
+    const whereConditions = [sql13`l.manager_id = ${managerIdParam}`, sql13`kb.status != 'cancelled'`];
     if (startDate) {
       const start = typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0];
-      whereConditions.push(sql12`DATE(kb.booking_date) >= ${start}::date`);
+      whereConditions.push(sql13`DATE(kb.booking_date) >= ${start}::date`);
     }
     if (endDate) {
       const end = typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0];
-      whereConditions.push(sql12`DATE(kb.booking_date) <= ${end}::date`);
+      whereConditions.push(sql13`DATE(kb.booking_date) <= ${end}::date`);
     }
-    const whereClause = sql12`WHERE ${sql12.join(whereConditions, sql12` AND `)}`;
+    const whereClause = sql13`WHERE ${sql13.join(whereConditions, sql13` AND `)}`;
     const { getServiceFeeRate: getServiceFeeRate2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
     const serviceFeeRate = await getServiceFeeRate2();
-    const result = await db3.execute(sql12`
+    const result = await db3.execute(sql13`
       SELECT 
         l.id as location_id,
         l.name as location_name,
@@ -26117,13 +26217,13 @@ async function getRevenueByDate(managerId, db3, startDate, endDate) {
     }
     const start = typeof startDate === "string" ? startDate : startDate ? startDate.toISOString().split("T")[0] : null;
     const end = typeof endDate === "string" ? endDate : endDate ? endDate.toISOString().split("T")[0] : null;
-    const managerIdParam = sql12`${managerId}`;
+    const managerIdParam = sql13`${managerId}`;
     if (!start || !end) {
       logger.warn("[Revenue Service] Missing date parameters for getRevenueByDate");
     }
-    const startParam = start ? sql12`${start}::date` : sql12`CURRENT_DATE - INTERVAL '30 days'`;
-    const endParam = end ? sql12`${end}::date` : sql12`CURRENT_DATE`;
-    const tzResult = await db3.execute(sql12`
+    const startParam = start ? sql13`${start}::date` : sql13`CURRENT_DATE - INTERVAL '30 days'`;
+    const endParam = end ? sql13`${end}::date` : sql13`CURRENT_DATE`;
+    const tzResult = await db3.execute(sql13`
       SELECT COALESCE(l.timezone, 'America/St_Johns') as timezone
       FROM locations l
       WHERE l.manager_id = ${managerIdParam}
@@ -26132,7 +26232,7 @@ async function getRevenueByDate(managerId, db3, startDate, endDate) {
     const managerTimezone = tzResult.rows[0]?.timezone || "America/St_Johns";
     const { getServiceFeeRate: getServiceFeeRate2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
     const serviceFeeRate = await getServiceFeeRate2();
-    const result = await db3.execute(sql12`
+    const result = await db3.execute(sql13`
       SELECT 
         DATE(kb.booking_date AT TIME ZONE 'UTC' AT TIME ZONE ${managerTimezone})::text as date,
         COALESCE(SUM(
@@ -26192,22 +26292,22 @@ async function getTransactionHistory(managerId, db3, startDate, endDate, locatio
       return status;
     };
     const kitchenWhereConditions = [
-      sql12`l.manager_id = ${managerId}`,
+      sql13`l.manager_id = ${managerId}`,
       // Show all non-cancelled bookings, PLUS cancelled bookings that have a payment transaction
       // (i.e., they were paid/refunded and should appear in transaction history)
-      sql12`(kb.status != 'cancelled' OR pt.id IS NOT NULL)`
+      sql13`(kb.status != 'cancelled' OR pt.id IS NOT NULL)`
     ];
     if (start) {
-      kitchenWhereConditions.push(sql12`(DATE(kb.booking_date) >= ${start}::date OR DATE(kb.created_at) >= ${start}::date)`);
+      kitchenWhereConditions.push(sql13`(DATE(kb.booking_date) >= ${start}::date OR DATE(kb.created_at) >= ${start}::date)`);
     }
     if (end) {
-      kitchenWhereConditions.push(sql12`(DATE(kb.booking_date) <= ${end}::date OR DATE(kb.created_at) <= ${end}::date)`);
+      kitchenWhereConditions.push(sql13`(DATE(kb.booking_date) <= ${end}::date OR DATE(kb.created_at) <= ${end}::date)`);
     }
     if (locationId) {
-      kitchenWhereConditions.push(sql12`l.id = ${locationId}`);
+      kitchenWhereConditions.push(sql13`l.id = ${locationId}`);
     }
-    const kitchenWhereClause = sql12`WHERE ${sql12.join(kitchenWhereConditions, sql12` AND `)}`;
-    const kitchenResult = await db3.execute(sql12`
+    const kitchenWhereClause = sql13`WHERE ${sql13.join(kitchenWhereConditions, sql13` AND `)}`;
+    const kitchenResult = await db3.execute(sql13`
       SELECT 
         kb.id,
         kb.booking_date,
@@ -26360,7 +26460,7 @@ async function getTransactionHistory(managerId, db3, startDate, endDate, locatio
         description
       };
     });
-    const storageResult = await db3.execute(sql12`
+    const storageResult = await db3.execute(sql13`
       SELECT 
         pt.id as transaction_id,
         pt.booking_id,
@@ -26535,20 +26635,20 @@ async function getCompleteRevenueMetrics(managerId, db3, startDate, endDate, loc
     }
     const kitchenMetrics = await getRevenueMetrics(managerId, db3, startDate, endDate, locationId);
     logger.info("[Revenue Service] Kitchen metrics:", kitchenMetrics);
-    const whereConditions = [sql12`l.manager_id = ${managerId}`];
+    const whereConditions = [sql13`l.manager_id = ${managerId}`];
     if (startDate) {
       const start = typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0];
-      whereConditions.push(sql12`DATE(sb.start_date) >= ${start}::date`);
+      whereConditions.push(sql13`DATE(sb.start_date) >= ${start}::date`);
     }
     if (endDate) {
       const end = typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0];
-      whereConditions.push(sql12`DATE(sb.start_date) <= ${end}::date`);
+      whereConditions.push(sql13`DATE(sb.start_date) <= ${end}::date`);
     }
     if (locationId) {
-      whereConditions.push(sql12`l.id = ${locationId}`);
+      whereConditions.push(sql13`l.id = ${locationId}`);
     }
-    const whereClause = sql12`WHERE ${sql12.join(whereConditions, sql12` AND `)}`;
-    const storageResult = await db3.execute(sql12`
+    const whereClause = sql13`WHERE ${sql13.join(whereConditions, sql13` AND `)}`;
+    const storageResult = await db3.execute(sql13`
       SELECT 
         COALESCE(SUM(COALESCE(sb.total_price, 0)::numeric), 0)::bigint as total_revenue,
         COALESCE(SUM(COALESCE(sb.service_fee, 0)::numeric), 0)::bigint as platform_fee,
@@ -26563,20 +26663,20 @@ async function getCompleteRevenueMetrics(managerId, db3, startDate, endDate, loc
       ${whereClause}
         AND sb.status != 'cancelled'
     `);
-    const equipmentWhereConditions = [sql12`l.manager_id = ${managerId}`];
+    const equipmentWhereConditions = [sql13`l.manager_id = ${managerId}`];
     if (startDate) {
       const start = typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0];
-      equipmentWhereConditions.push(sql12`DATE(eb.start_date) >= ${start}::date`);
+      equipmentWhereConditions.push(sql13`DATE(eb.start_date) >= ${start}::date`);
     }
     if (endDate) {
       const end = typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0];
-      equipmentWhereConditions.push(sql12`DATE(eb.start_date) <= ${end}::date`);
+      equipmentWhereConditions.push(sql13`DATE(eb.start_date) <= ${end}::date`);
     }
     if (locationId) {
-      equipmentWhereConditions.push(sql12`l.id = ${locationId}`);
+      equipmentWhereConditions.push(sql13`l.id = ${locationId}`);
     }
-    const equipmentWhereClause = sql12`WHERE ${sql12.join(equipmentWhereConditions, sql12` AND `)}`;
-    const equipmentResult = await db3.execute(sql12`
+    const equipmentWhereClause = sql13`WHERE ${sql13.join(equipmentWhereConditions, sql13` AND `)}`;
+    const equipmentResult = await db3.execute(sql13`
       SELECT 
         COALESCE(SUM(COALESCE(eb.total_price, 0)::numeric), 0)::bigint as total_revenue,
         COALESCE(SUM(COALESCE(eb.service_fee, 0)::numeric), 0)::bigint as platform_fee,
@@ -27084,10 +27184,12 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
   let managerRevenueCents = 0;
   let storedTaxAmountCents = 0;
   let ptMetadata = {};
+  let transactionStatus = String(booking.paymentStatus || booking.payment_status || "paid");
   if (paymentIntentId) {
     try {
       const [paymentTransaction] = await db.select().from(paymentTransactions).where(eq29(paymentTransactions.paymentIntentId, paymentIntentId)).limit(1);
       if (paymentTransaction) {
+        transactionStatus = String(paymentTransaction.status || transactionStatus);
         stripeTotalAmount = parseInt(String(paymentTransaction.amount)) || 0;
         stripePlatformFee = parseInt(String(paymentTransaction.serviceFee)) || 0;
         stripeBaseAmount = parseInt(String(paymentTransaction.baseAmount)) || 0;
@@ -27491,11 +27593,13 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
         });
         yPos += 36;
       }
-      const statusBg = "#dcfce7";
-      const statusBorder = "#bbf7d0";
-      const statusColor = "#16a34a";
+      const isRefunded = transactionStatus === "refunded" || transactionStatus === "partially_refunded";
+      const statusLabel = transactionStatus === "refunded" ? "REFUNDED" : transactionStatus === "partially_refunded" ? "PARTIALLY REFUNDED" : "PAID";
+      const statusBg = isRefunded ? "#fff7ed" : "#dcfce7";
+      const statusBorder = isRefunded ? "#fed7aa" : "#bbf7d0";
+      const statusColor = isRefunded ? "#c2410c" : "#16a34a";
       doc.roundedRect(50, yPos, tableWidth, 40, 5).fillAndStroke(statusBg, statusBorder);
-      doc.font("Helvetica-Bold").fontSize(12).fillColor(textColor).text("Payment Status: ", 70, yPos + 14, { continued: true }).fillColor(statusColor).text("PAID");
+      doc.font("Helvetica-Bold").fontSize(12).fillColor(textColor).text("Payment Status: ", 70, yPos + 14, { continued: true }).fillColor(statusColor).text(statusLabel);
       doc.fontSize(10).font("Helvetica").fillColor("#9CA3AF");
       doc.text("For questions, contact support@localcook.shop", 50, doc.page.height - 60, {
         align: "center",
@@ -28003,7 +28107,7 @@ __export(auth_expiry_service_exports, {
   lazyExpireStorageExtensionAuth: () => lazyExpireStorageExtensionAuth,
   processExpiredAuthorizations: () => processExpiredAuthorizations
 });
-import { eq as eq31, and as and17, lt as lt3, sql as sql13 } from "drizzle-orm";
+import { eq as eq31, and as and17, lt as lt3, sql as sql14 } from "drizzle-orm";
 async function lazyExpireKitchenBookingAuth(booking) {
   if (booking.paymentStatus !== "authorized" || booking.status !== "pending") return false;
   if (!booking.paymentIntentId || !booking.createdAt) return false;
@@ -28200,7 +28304,7 @@ async function processExpiredAuthorizations() {
       stripePaymentIntentId: pendingStorageExtensions.stripePaymentIntentId,
       storageBookingId: pendingStorageExtensions.storageBookingId,
       createdAt: pendingStorageExtensions.createdAt,
-      chefId: sql13`(
+      chefId: sql14`(
           SELECT sb.chef_id FROM storage_bookings sb 
           WHERE sb.id = ${pendingStorageExtensions.storageBookingId}
         )`.as("chefId")
@@ -28667,7 +28771,7 @@ __export(kitchen_checkout_service_exports, {
   validateRequiredChecklistItems: () => validateRequiredChecklistItems,
   validateRequiredPhotos: () => validateRequiredPhotos
 });
-import { eq as eq32, and as and18, lt as lt4, inArray as inArray6, sql as sql14 } from "drizzle-orm";
+import { eq as eq32, and as and18, lt as lt4, inArray as inArray7, sql as sql15 } from "drizzle-orm";
 import { randomInt, randomBytes as randomBytes2 } from "crypto";
 import bcrypt2 from "bcryptjs";
 async function getCheckinSettings(locationId) {
@@ -28781,9 +28885,9 @@ async function generateAccessCode(kitchenId, bookingDate, format9 = "alphanumeri
     const existingHashes = await db.select({ hash: kitchenBookings.accessCodeHash }).from(kitchenBookings).where(
       and18(
         eq32(kitchenBookings.kitchenId, kitchenId),
-        sql14`DATE(kitchen_bookings.booking_date) = ${dateStr}`,
-        inArray6(kitchenBookings.status, ["confirmed", "completed"]),
-        sql14`access_code_hash IS NOT NULL`
+        sql15`DATE(kitchen_bookings.booking_date) = ${dateStr}`,
+        inArray7(kitchenBookings.status, ["confirmed", "completed"]),
+        sql15`access_code_hash IS NOT NULL`
       )
     );
     let collision = false;
@@ -29292,7 +29396,7 @@ async function expireAccessCodes() {
         eq32(kitchenBookings.status, "confirmed"),
         lt4(kitchenBookings.accessCodeValidUntil, now),
         // Only bookings that actually have a code
-        sql14`access_code_hash IS NOT NULL`
+        sql15`access_code_hash IS NOT NULL`
       )
     );
     result.processed = expired.length;
@@ -29585,8 +29689,8 @@ async function emergencyRevokeAccessCodes(params) {
     const now = /* @__PURE__ */ new Date();
     const conditions = [
       eq32(kitchenBookings.status, "confirmed"),
-      sql14`access_code_hash IS NOT NULL`,
-      sql14`access_code_valid_until > ${now}`
+      sql15`access_code_hash IS NOT NULL`,
+      sql15`access_code_valid_until > ${now}`
     ];
     if (params.bookingId) {
       conditions.push(eq32(kitchenBookings.id, params.bookingId));
@@ -29654,15 +29758,15 @@ async function getAccessCodeAnalytics(params) {
       conditions.push(eq32(accessCodeAudit.kitchenId, params.kitchenId));
     }
     if (params?.dateFrom) {
-      conditions.push(sql14`${accessCodeAudit.createdAt} >= ${params.dateFrom}::timestamp`);
+      conditions.push(sql15`${accessCodeAudit.createdAt} >= ${params.dateFrom}::timestamp`);
     }
     if (params?.dateTo) {
-      conditions.push(sql14`${accessCodeAudit.createdAt} <= ${params.dateTo}::timestamp`);
+      conditions.push(sql15`${accessCodeAudit.createdAt} <= ${params.dateTo}::timestamp`);
     }
     const whereClause = conditions.length > 0 ? and18(...conditions) : void 0;
     const actionCounts = await db.select({
       action: accessCodeAudit.action,
-      count: sql14`count(*)::int`
+      count: sql15`count(*)::int`
     }).from(accessCodeAudit).where(whereClause).groupBy(accessCodeAudit.action);
     const counts = new Map(actionCounts.map((r) => [r.action, r.count]));
     const totalGenerated = counts.get("generated") || 0;
@@ -29672,7 +29776,7 @@ async function getAccessCodeAnalytics(params) {
     const totalFailedValidations = counts.get("validated_failed") || 0;
     const usageRate = totalGenerated > 0 ? totalUsed / totalGenerated * 100 : 0;
     const avgTimeResult = await db.select({
-      avgMinutes: sql14`avg(
+      avgMinutes: sql15`avg(
           EXTRACT(EPOCH FROM (
             SELECT MIN(a2.created_at)
             FROM access_code_audit a2
@@ -29687,10 +29791,10 @@ async function getAccessCodeAnalytics(params) {
       )
     );
     const avgTimeToFirstUseMinutes = avgTimeResult[0]?.avgMinutes ?? null;
-    const noShowResult = await db.select({ count: sql14`count(*)::int` }).from(kitchenBookings).where(
+    const noShowResult = await db.select({ count: sql15`count(*)::int` }).from(kitchenBookings).where(
       and18(
         eq32(kitchenBookings.checkinStatus, "no_show"),
-        sql14`access_code_hash IS NOT NULL`,
+        sql15`access_code_hash IS NOT NULL`,
         ...params?.kitchenId ? [eq32(kitchenBookings.kitchenId, params.kitchenId)] : []
       )
     );
@@ -29778,7 +29882,7 @@ __export(storage_checkout_service_exports, {
   requestStorageCheckin: () => requestStorageCheckin,
   requestStorageCheckout: () => requestStorageCheckout
 });
-import { eq as eq33, desc as desc14, and as and19, or as or3, inArray as inArray7, lt as lt5 } from "drizzle-orm";
+import { eq as eq33, desc as desc14, and as and19, or as or3, inArray as inArray8, lt as lt5 } from "drizzle-orm";
 async function requestStorageCheckout(storageBookingId, chefId, checkoutNotes, checkoutPhotoUrls, checkoutChecklistItems) {
   try {
     if (!storageBookingId || storageBookingId <= 0) {
@@ -30565,7 +30669,7 @@ async function getCheckoutHistory(locationIds, limit = 20) {
       checkoutPhotoUrls: storageBookings.checkoutPhotoUrls
     }).from(storageBookings).innerJoin(storageListings, eq33(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq33(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq33(kitchens.locationId, locations.id)).leftJoin(users, eq33(storageBookings.chefId, users.id)).where(
       and19(
-        inArray7(locations.id, locationIds),
+        inArray8(locations.id, locationIds),
         or3(
           eq33(storageBookings.checkoutStatus, "completed"),
           eq33(storageBookings.checkoutStatus, "checkout_claim_filed")
@@ -30725,7 +30829,7 @@ async function getCheckinHistory(locationIds, limit = 20) {
       checkinChecklistItems: storageBookings.checkinChecklistItems
     }).from(storageBookings).innerJoin(storageListings, eq33(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq33(kitchens.id, storageListings.kitchenId)).innerJoin(locations, eq33(locations.id, kitchens.locationId)).leftJoin(users, eq33(users.id, storageBookings.chefId)).where(
       and19(
-        inArray7(locations.id, locationIds),
+        inArray8(locations.id, locationIds),
         or3(
           eq33(storageBookings.checkinStatus, "checkin_completed"),
           eq33(storageBookings.checkinStatus, "skipped")
@@ -30818,7 +30922,7 @@ __export(bookings_exports, {
   syncStorageItemStatusInKitchenBooking: () => syncStorageItemStatusInKitchenBooking
 });
 import { Router as Router15 } from "express";
-import { eq as eq34, and as and20, or as or4, desc as desc15, inArray as inArray8 } from "drizzle-orm";
+import { eq as eq34, and as and20, or as or4, desc as desc15, inArray as inArray9 } from "drizzle-orm";
 function getBaseUrl(req) {
   const host = req.get("x-forwarded-host") || req.get("host") || "localhost:5001";
   const isLocalhost = host.includes("localhost") || host.includes("127.0.0.1");
@@ -30930,11 +31034,11 @@ async function processExpiredCancellationRequests() {
       return results;
     }
     const cutoffDate = new Date(Date.now() - autoAcceptHours * 60 * 60 * 1e3);
-    const { lte: lte6, isNotNull: isNotNull3 } = await import("drizzle-orm");
+    const { lte: lte6, isNotNull: isNotNull4 } = await import("drizzle-orm");
     const expiredRequests = await db.select({ id: kitchenBookings.id, chefId: kitchenBookings.chefId }).from(kitchenBookings).where(
       and20(
         eq34(kitchenBookings.status, "cancellation_requested"),
-        isNotNull3(kitchenBookings.cancellationRequestedAt),
+        isNotNull4(kitchenBookings.cancellationRequestedAt),
         lte6(kitchenBookings.cancellationRequestedAt, cutoffDate)
       )
     );
@@ -30985,7 +31089,7 @@ async function processExpiredCancellationRequests() {
     const expiredStorageRequests = await db.select({ id: storageBookingsTable.id, chefId: storageBookingsTable.chefId }).from(storageBookingsTable).where(
       and20(
         eq34(storageBookingsTable.status, "cancellation_requested"),
-        isNotNull3(storageBookingsTable.cancellationRequestedAt),
+        isNotNull4(storageBookingsTable.cancellationRequestedAt),
         lte6(storageBookingsTable.cancellationRequestedAt, cutoffDate)
       )
     );
@@ -31513,7 +31617,7 @@ var init_bookings = __esm({
           const kitchenNames = /* @__PURE__ */ new Map();
           const kitchenLocations = /* @__PURE__ */ new Map();
           if (kitchenIds.length > 0) {
-            const kitchenRows = await db.select({ id: kitchens.id, name: kitchens.name, locationName: locations.name }).from(kitchens).innerJoin(locations, eq34(kitchens.locationId, locations.id)).where(inArray8(kitchens.id, kitchenIds));
+            const kitchenRows = await db.select({ id: kitchens.id, name: kitchens.name, locationName: locations.name }).from(kitchens).innerJoin(locations, eq34(kitchens.locationId, locations.id)).where(inArray9(kitchens.id, kitchenIds));
             kitchenRows.forEach((k) => {
               kitchenNames.set(k.id, k.name);
               kitchenLocations.set(k.id, k.locationName);
@@ -31522,7 +31626,7 @@ var init_bookings = __esm({
           const chefIds = Array.from(new Set(todayBookings.map((b) => b.chefId).filter(Boolean)));
           const chefEmails = /* @__PURE__ */ new Map();
           if (chefIds.length > 0) {
-            const chefRows = await db.select({ id: users.id, username: users.username }).from(users).where(inArray8(users.id, chefIds));
+            const chefRows = await db.select({ id: users.id, username: users.username }).from(users).where(inArray9(users.id, chefIds));
             chefRows.forEach((c) => chefEmails.set(c.id, c.username));
           }
           const { sendEmail: sendEmail2, generateKitchenCheckinReminderEmail: generateKitchenCheckinReminderEmail2, generateStorageCheckinReminderEmail: generateStorageCheckinReminderEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
@@ -31581,7 +31685,7 @@ var init_bookings = __esm({
           const storageChefIds = Array.from(new Set(todayStorage.map((b) => b.chefId).filter(Boolean)));
           const storageChefEmails = /* @__PURE__ */ new Map();
           if (storageChefIds.length > 0) {
-            const chefRows = await db.select({ id: users.id, username: users.username }).from(users).where(inArray8(users.id, storageChefIds));
+            const chefRows = await db.select({ id: users.id, username: users.username }).from(users).where(inArray9(users.id, storageChefIds));
             chefRows.forEach((c) => storageChefEmails.set(c.id, c.username));
           }
           for (const sb of todayStorage) {
@@ -31728,7 +31832,7 @@ var init_bookings = __esm({
           const { storageOverstayRecords: storageOverstayRecords2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
           const [activeOverstay] = await db.select({ id: storageOverstayRecords2.id, status: storageOverstayRecords2.status }).from(storageOverstayRecords2).where(and20(
             eq34(storageOverstayRecords2.storageBookingId, id),
-            inArray8(storageOverstayRecords2.status, ["detected", "grace_period", "pending_review", "penalty_approved", "charge_pending", "charge_failed", "escalated"])
+            inArray9(storageOverstayRecords2.status, ["detected", "grace_period", "pending_review", "penalty_approved", "charge_pending", "charge_failed", "escalated"])
           )).limit(1);
           if (activeOverstay) {
             return res.status(400).json({
@@ -31815,7 +31919,7 @@ var init_bookings = __esm({
           const { storageOverstayRecords: storageOverstayRecords2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
           const [activeOverstay] = await db.select({ id: storageOverstayRecords2.id, status: storageOverstayRecords2.status }).from(storageOverstayRecords2).where(and20(
             eq34(storageOverstayRecords2.storageBookingId, id),
-            inArray8(storageOverstayRecords2.status, ["detected", "grace_period", "pending_review", "penalty_approved", "charge_pending", "charge_failed", "escalated"])
+            inArray9(storageOverstayRecords2.status, ["detected", "grace_period", "pending_review", "penalty_approved", "charge_pending", "charge_failed", "escalated"])
           )).limit(1);
           if (activeOverstay) {
             return res.status(400).json({
@@ -33983,7 +34087,7 @@ var payment_transactions_backfill_exports = {};
 __export(payment_transactions_backfill_exports, {
   backfillPaymentTransactionsFromBookings: () => backfillPaymentTransactionsFromBookings
 });
-import { sql as sql15 } from "drizzle-orm";
+import { sql as sql16 } from "drizzle-orm";
 async function backfillPaymentTransactionsFromBookings(managerId, db3, options) {
   const limit = options?.limit || 100;
   const result = {
@@ -33992,7 +34096,7 @@ async function backfillPaymentTransactionsFromBookings(managerId, db3, options) 
     errors: []
   };
   try {
-    const kitchenBookingsResult = await db3.execute(sql15`
+    const kitchenBookingsResult = await db3.execute(sql16`
       SELECT 
         kb.id,
         kb.chef_id,
@@ -34049,7 +34153,7 @@ async function backfillPaymentTransactionsFromBookings(managerId, db3, options) 
         });
       }
     }
-    const storageBookingsResult = await db3.execute(sql15`
+    const storageBookingsResult = await db3.execute(sql16`
       SELECT 
         sb.id,
         sb.chef_id,
@@ -34105,7 +34209,7 @@ async function backfillPaymentTransactionsFromBookings(managerId, db3, options) 
         });
       }
     }
-    const equipmentBookingsResult = await db3.execute(sql15`
+    const equipmentBookingsResult = await db3.execute(sql16`
       SELECT 
         eb.id,
         eb.chef_id,
@@ -34383,11 +34487,11 @@ __export(manager_exports, {
 import { Router as Router16 } from "express";
 import {
   eq as eq35,
-  inArray as inArray9,
+  inArray as inArray10,
   and as and21,
   desc as desc16,
-  ne as ne5,
-  sql as sql16,
+  ne as ne6,
+  sql as sql17,
   or as or5,
   gte as gte3,
   lte as lte3
@@ -34568,7 +34672,7 @@ var init_manager = __esm({
           }
           let chef = null;
           if (booking.chefId) {
-            const chefResult = await db.execute(sql16`
+            const chefResult = await db.execute(sql17`
                 SELECT u.id, u.username, cka.full_name
                 FROM users u
                 LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = u.id
@@ -34760,7 +34864,7 @@ var init_manager = __esm({
           if (metadata?.storage_extension_id) {
             const extensionId = parseInt(String(metadata.storage_extension_id));
             if (!isNaN(extensionId)) {
-              const extensionResult = await db.execute(sql16`
+              const extensionResult = await db.execute(sql17`
                     SELECT 
                         pse.id,
                         pse.extension_days,
@@ -34784,7 +34888,7 @@ var init_manager = __esm({
           }
           let chef = null;
           if (storageBooking.chefId) {
-            const chefResult = await db.execute(sql16`
+            const chefResult = await db.execute(sql17`
                 SELECT u.id, u.username, cka.full_name
                 FROM users u
                 LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = u.id
@@ -34915,7 +35019,7 @@ var init_manager = __esm({
           }
           let chef = null;
           if (storageBooking.chefId) {
-            const chefResult = await db.execute(sql16`
+            const chefResult = await db.execute(sql17`
                 SELECT u.id, u.username, cka.full_name
                 FROM users u
                 LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = u.id
@@ -35127,8 +35231,8 @@ var init_manager = __esm({
             await db.update(kitchenBookings3).set({ status: "cancelled", updatedAt: /* @__PURE__ */ new Date() }).where(eq35(kitchenBookings3.id, bookingId));
             try {
               const { storageBookings: sbTable, equipmentBookings: ebTable } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-              await db.update(sbTable).set({ status: "cancelled", updatedAt: /* @__PURE__ */ new Date() }).where(and21(eq35(sbTable.kitchenBookingId, bookingId), ne5(sbTable.status, "cancelled")));
-              await db.update(ebTable).set({ status: "cancelled", updatedAt: /* @__PURE__ */ new Date() }).where(and21(eq35(ebTable.kitchenBookingId, bookingId), ne5(ebTable.status, "cancelled")));
+              await db.update(sbTable).set({ status: "cancelled", updatedAt: /* @__PURE__ */ new Date() }).where(and21(eq35(sbTable.kitchenBookingId, bookingId), ne6(sbTable.status, "cancelled")));
+              await db.update(ebTable).set({ status: "cancelled", updatedAt: /* @__PURE__ */ new Date() }).where(and21(eq35(ebTable.kitchenBookingId, bookingId), ne6(ebTable.status, "cancelled")));
             } catch (cascadeErr) {
               logger.warn(`[Cancellation Request] Cascade cancel failed for booking ${bookingId}:`, cascadeErr);
             }
@@ -35689,7 +35793,7 @@ var init_manager = __esm({
         try {
           const managerId = req.neonUser.id;
           const fromSetup = req.body?.from === "setup" || req.query.from === "setup";
-          const userResult = await db.execute(sql16`
+          const userResult = await db.execute(sql17`
             SELECT id, username as email, stripe_connect_account_id 
             FROM users 
             WHERE id = ${managerId} 
@@ -35758,7 +35862,7 @@ var init_manager = __esm({
       async (req, res) => {
         try {
           const managerId = req.neonUser.id;
-          const userResult = await db.execute(sql16`
+          const userResult = await db.execute(sql17`
             SELECT stripe_connect_account_id 
             FROM users 
             WHERE id = ${managerId} 
@@ -35792,7 +35896,7 @@ var init_manager = __esm({
       async (req, res) => {
         try {
           const managerId = req.neonUser.id;
-          const userResult = await db.execute(sql16`
+          const userResult = await db.execute(sql17`
             SELECT stripe_connect_account_id 
             FROM users 
             WHERE id = ${managerId} 
@@ -36093,8 +36197,8 @@ var init_manager = __esm({
             and21(
               eq35(locations.managerId, managerId),
               eq35(kitchenBookings.paymentStatus, "paid"),
-              sql16`DATE(${kitchenBookings.bookingDate}) >= ${periodStart.toISOString().split("T")[0]}::date`,
-              sql16`DATE(${kitchenBookings.bookingDate}) <= ${payoutDate.toISOString().split("T")[0]}::date`
+              sql17`DATE(${kitchenBookings.bookingDate}) >= ${periodStart.toISOString().split("T")[0]}::date`,
+              sql17`DATE(${kitchenBookings.bookingDate}) <= ${payoutDate.toISOString().split("T")[0]}::date`
             )
           ).orderBy(desc16(kitchenBookings.bookingDate));
           res.json({
@@ -36192,8 +36296,8 @@ var init_manager = __esm({
             and21(
               eq35(locations.managerId, managerId),
               eq35(kitchenBookings.paymentStatus, "paid"),
-              sql16`DATE(${kitchenBookings.bookingDate}) >= ${periodStart.toISOString().split("T")[0]}::date`,
-              sql16`DATE(${kitchenBookings.bookingDate}) <= ${payoutDate.toISOString().split("T")[0]}::date`
+              sql17`DATE(${kitchenBookings.bookingDate}) >= ${periodStart.toISOString().split("T")[0]}::date`,
+              sql17`DATE(${kitchenBookings.bookingDate}) <= ${payoutDate.toISOString().split("T")[0]}::date`
             )
           ).orderBy(desc16(kitchenBookings.bookingDate));
           const { getBalanceTransactions: getBalanceTransactions2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
@@ -36253,13 +36357,28 @@ var init_manager = __esm({
       async (req, res) => {
         try {
           const user = req.neonUser;
-          const { locationId, name, description, features, imageUrl } = req.body;
+          const {
+            locationId,
+            name,
+            description,
+            features,
+            imageUrl,
+            hourlyRate,
+            currency,
+            minimumBookingHours
+          } = req.body;
           const location = await locationService.getLocationById(locationId);
           if (!location) {
             return res.status(404).json({ error: "Location not found" });
           }
           if (location.managerId !== user.id) {
             return res.status(403).json({ error: "Access denied to this location" });
+          }
+          if (hourlyRate !== void 0 && (typeof hourlyRate !== "number" || hourlyRate <= 0)) {
+            return res.status(400).json({ error: "Hourly rate must be a positive number" });
+          }
+          if (minimumBookingHours !== void 0 && (typeof minimumBookingHours !== "number" || !Number.isInteger(minimumBookingHours) || minimumBookingHours < 0 || minimumBookingHours > 24)) {
+            return res.status(400).json({ error: "Minimum booking hours must be a whole number between 0 and 24" });
           }
           const created = await kitchenService.createKitchen({
             locationId,
@@ -36269,9 +36388,9 @@ var init_manager = __esm({
             amenities: features || [],
             isActive: true,
             // Auto-activate
-            hourlyRate: void 0,
-            // Manager sets pricing later
-            minimumBookingHours: 1,
+            hourlyRate,
+            currency: currency || "CAD",
+            minimumBookingHours: minimumBookingHours ?? 1,
             pricingModel: "hourly"
           });
           res.status(201).json(created);
@@ -36691,6 +36810,7 @@ var init_manager = __esm({
           res.json({
             hourlyRate: kitchen.hourlyRate,
             // In dollars if getKitchenById handled it, or cents?
+            dailyRate: kitchen.dailyRate,
             // routes.ts typically converted it?
             // Wait, updateKitchenPricing converts dollars to cents.
             // getKitchenById likely returns cents?
@@ -36732,6 +36852,7 @@ var init_manager = __esm({
           }
           const {
             hourlyRate,
+            dailyRate,
             currency,
             minimumBookingHours,
             pricingModel,
@@ -36739,6 +36860,9 @@ var init_manager = __esm({
           } = req.body;
           if (hourlyRate !== void 0 && hourlyRate !== null && (typeof hourlyRate !== "number" || hourlyRate < 0)) {
             return res.status(400).json({ error: "Hourly rate must be a positive number or null" });
+          }
+          if (dailyRate !== void 0 && dailyRate !== null && (typeof dailyRate !== "number" || dailyRate < 0)) {
+            return res.status(400).json({ error: "Daily rate must be a positive number or null" });
           }
           if (currency !== void 0 && typeof currency !== "string") {
             return res.status(400).json({ error: "Currency must be a string" });
@@ -36766,6 +36890,9 @@ var init_manager = __esm({
           const pricing = {};
           if (hourlyRate !== void 0) {
             pricing.hourlyRate = hourlyRate === null ? null : hourlyRate;
+          }
+          if (dailyRate !== void 0) {
+            pricing.dailyRate = dailyRate === null ? null : dailyRate;
           }
           if (currency !== void 0) pricing.currency = currency;
           if (minimumBookingHours !== void 0)
@@ -36849,6 +36976,35 @@ var init_manager = __esm({
         } catch (error) {
           logger.error("Error fetching bookings:", error);
           res.status(500).json({ error: error.message || "Failed to fetch bookings" });
+        }
+      }
+    );
+    router16.get(
+      "/storage-bookings",
+      requireFirebaseAuthWithUser,
+      requireManager,
+      async (req, res) => {
+        try {
+          const managerId = req.neonUser.id;
+          const bookings = await db.select({
+            id: storageBookings.id,
+            referenceCode: storageBookings.referenceCode,
+            storageName: storageListings.name,
+            storageType: storageListings.storageType,
+            kitchenName: kitchens.name,
+            locationName: locations.name,
+            chefName: users.username,
+            startDate: storageBookings.startDate,
+            endDate: storageBookings.endDate,
+            status: storageBookings.status,
+            totalPrice: storageBookings.totalPrice,
+            currency: storageBookings.currency,
+            createdAt: storageBookings.createdAt
+          }).from(storageBookings).innerJoin(storageListings, eq35(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq35(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq35(kitchens.locationId, locations.id)).leftJoin(users, eq35(storageBookings.chefId, users.id)).where(eq35(locations.managerId, managerId)).orderBy(desc16(storageBookings.createdAt));
+          res.json(bookings.map((booking) => ({ ...booking, chefName: booking.chefName || "\u2014" })));
+        } catch (error) {
+          logger.error("Error fetching manager storage bookings:", error);
+          return errorResponse(res, error);
         }
       }
     );
@@ -36979,7 +37135,7 @@ var init_manager = __esm({
           }).from(portalUserApplications).innerJoin(
             locations,
             eq35(portalUserApplications.locationId, locations.id)
-          ).innerJoin(users5, eq35(portalUserApplications.userId, users5.id)).where(inArray9(portalUserApplications.locationId, locationIds));
+          ).innerJoin(users5, eq35(portalUserApplications.userId, users5.id)).where(inArray10(portalUserApplications.locationId, locationIds));
           const formatted = applications5.map((app2) => ({
             ...app2.application,
             location: {
@@ -36992,7 +37148,7 @@ var init_manager = __esm({
             id: app2.application.id
             // Ensure ID is correct
           }));
-          const accessRecords = await db.select().from(portalUserLocationAccess).where(inArray9(portalUserLocationAccess.locationId, locationIds));
+          const accessRecords = await db.select().from(portalUserLocationAccess).where(inArray10(portalUserLocationAccess.locationId, locationIds));
           res.json({ applications: formatted, accessCount: accessRecords.length });
         } catch (error) {
           logger.error("Error getting apps:", error);
@@ -37071,7 +37227,7 @@ var init_manager = __esm({
           const managerId = req.neonUser.id;
           const now = /* @__PURE__ */ new Date();
           const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-          const { gte: gteOp, inArray: inArray14 } = await import("drizzle-orm");
+          const { gte: gteOp, inArray: inArray15 } = await import("drizzle-orm");
           const todaysBookings = await db.select({
             id: kitchenBookings.id,
             referenceCode: kitchenBookings.referenceCode,
@@ -37099,7 +37255,7 @@ var init_manager = __esm({
             accessCodeFormat: kitchenBookings.accessCodeFormat,
             accessCodeValidFrom: kitchenBookings.accessCodeValidFrom,
             accessCodeValidUntil: kitchenBookings.accessCodeValidUntil,
-            hasAccessCodeHash: sql16`${kitchenBookings.accessCodeHash} IS NOT NULL`,
+            hasAccessCodeHash: sql17`${kitchenBookings.accessCodeHash} IS NOT NULL`,
             smartLockEnabled: kitchens.smartLockEnabled,
             kitchenName: kitchens.name,
             locationName: locations.name,
@@ -37109,7 +37265,7 @@ var init_manager = __esm({
           }).from(kitchenBookings).innerJoin(kitchens, eq35(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq35(kitchens.locationId, locations.id)).leftJoin(users, eq35(kitchenBookings.chefId, users.id)).where(
             and21(
               eq35(locations.managerId, managerId),
-              inArray14(kitchenBookings.status, ["confirmed", "pending"]),
+              inArray15(kitchenBookings.status, ["confirmed", "pending"]),
               gteOp(kitchenBookings.bookingDate, todayStart)
             )
           ).orderBy(kitchenBookings.bookingDate, kitchenBookings.startTime);
@@ -37428,11 +37584,26 @@ var init_manager = __esm({
           }
           if (status === "confirmed") {
             const paymentStatus = booking.paymentStatus;
-            if (paymentStatus === "pending") {
+            if (!["authorized", "processing", "paid"].includes(paymentStatus)) {
               return res.status(400).json({
-                error: "Cannot confirm booking - payment has not been completed. The chef may have abandoned checkout.",
+                error: "Cannot confirm booking - the payment authorization is no longer valid.",
                 paymentStatus
               });
+            }
+            if (paymentStatus === "authorized" && booking.paymentIntentId) {
+              const { getPaymentIntent: getPaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+              const paymentIntent = await getPaymentIntent2(booking.paymentIntentId);
+              if (paymentIntent?.status !== "requires_capture") {
+                await db.transaction(async (tx) => {
+                  await tx.update(kitchenBookings).set({ status: "cancelled", paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq35(kitchenBookings.id, id));
+                  await tx.update(storageBookings).set({ status: "cancelled", paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq35(storageBookings.kitchenBookingId, id));
+                  await tx.update(equipmentBookings).set({ status: "cancelled", paymentStatus: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq35(equipmentBookings.kitchenBookingId, id));
+                });
+                return res.status(409).json({
+                  error: "Cannot confirm booking - the payment authorization was voided or expired. The booking has been cancelled.",
+                  paymentStatus: paymentIntent?.status || "missing"
+                });
+              }
             }
           }
           await bookingService.updateBookingStatus(id, status);
@@ -37614,7 +37785,7 @@ var init_manager = __esm({
                       applicationFee: platformCommissionCents
                     }
                   }, db);
-                  await db.execute(sql16`
+                  await db.execute(sql17`
                 UPDATE payment_transactions
                 SET base_amount = ${managerGrossCents.toString()},
                     tax_amount = ${approvedTaxCents.toString()}
@@ -37693,7 +37864,7 @@ var init_manager = __esm({
                     taxAmount: approvedTaxCents,
                     metadata: captureMetadata
                   }, db);
-                  await db.execute(sql16`
+                  await db.execute(sql17`
                 UPDATE payment_transactions
                 SET base_amount = ${capturedBaseAmount.toString()},
                     service_fee = ${platformCommissionCents.toString()},
@@ -37792,9 +37963,9 @@ var init_manager = __esm({
                   id: storageBookings.id,
                   totalPrice: storageBookings.totalPrice
                 }).from(storageBookings).where(
-                  sql16`${storageBookings.id} IN (${sql16.join(
-                    rejectedStorageIds.map((rid) => sql16`${rid}`),
-                    sql16`, `
+                  sql17`${storageBookings.id} IN (${sql17.join(
+                    rejectedStorageIds.map((rid) => sql17`${rid}`),
+                    sql17`, `
                   )})`
                 );
                 for (const row of rejectedRows) {
@@ -37807,9 +37978,9 @@ var init_manager = __esm({
                   id: equipmentBookings.id,
                   totalPrice: equipmentBookings.totalPrice
                 }).from(equipmentBookings).where(
-                  sql16`${equipmentBookings.id} IN (${sql16.join(
-                    rejectedEquipmentIds.map((rid) => sql16`${rid}`),
-                    sql16`, `
+                  sql17`${equipmentBookings.id} IN (${sql17.join(
+                    rejectedEquipmentIds.map((rid) => sql17`${rid}`),
+                    sql17`, `
                   )})`
                 );
                 for (const row of rejectedEqRows) {
@@ -38341,6 +38512,8 @@ var init_manager = __esm({
             return res.status(400).json({ error: "Invalid location ID" });
           }
           const {
+            name,
+            address,
             cancellationPolicyHours,
             cancellationPolicyMessage,
             defaultDailyBookingLimit,
@@ -38416,6 +38589,18 @@ var init_manager = __esm({
           const updates = {
             updatedAt: /* @__PURE__ */ new Date()
           };
+          if (name !== void 0) {
+            if (typeof name !== "string" || !name.trim()) {
+              return res.status(400).json({ error: "Location name is required" });
+            }
+            updates.name = name.trim();
+          }
+          if (address !== void 0) {
+            if (typeof address !== "string" || !address.trim()) {
+              return res.status(400).json({ error: "Location address is required" });
+            }
+            updates.address = address.trim();
+          }
           if (cancellationPolicyHours !== void 0) {
             updates.cancellationPolicyHours = cancellationPolicyHours;
           }
@@ -38724,7 +38909,10 @@ var init_manager = __esm({
             kitchenLicenseUrl,
             kitchenLicenseStatus,
             kitchenLicenseExpiry,
-            kitchenTermsUrl
+            kitchenTermsUrl,
+            logoUrl,
+            brandImageUrl,
+            description
           } = req.body;
           logger.info(
             "[POST /locations] Request body:",
@@ -38774,7 +38962,10 @@ var init_manager = __esm({
             kitchenLicenseUrl: kitchenLicenseUrl || void 0,
             kitchenLicenseStatus: kitchenLicenseStatus || "pending",
             kitchenLicenseExpiry: kitchenLicenseExpiry || void 0,
-            kitchenTermsUrl: kitchenTermsUrl || void 0
+            kitchenTermsUrl: kitchenTermsUrl || void 0,
+            logoUrl: logoUrl || void 0,
+            brandImageUrl: brandImageUrl || void 0,
+            description: description || void 0
           });
           const mappedLocation = {
             ...location,
@@ -38851,11 +39042,17 @@ var init_manager = __esm({
             kitchenLicenseUrl,
             kitchenLicenseStatus,
             kitchenLicenseExpiry,
-            kitchenTermsUrl
+            kitchenTermsUrl,
+            logoUrl,
+            brandImageUrl,
+            description
           } = req.body;
           const updates = {};
           if (name !== void 0) updates.name = name;
           if (address !== void 0) updates.address = address;
+          if (logoUrl !== void 0) updates.logoUrl = logoUrl || null;
+          if (brandImageUrl !== void 0) updates.brandImageUrl = brandImageUrl || null;
+          if (description !== void 0) updates.description = description || null;
           if (notificationEmail !== void 0)
             updates.notificationEmail = notificationEmail || null;
           if (notificationPhone !== void 0) {
@@ -39339,7 +39536,7 @@ var init_manager = __esm({
             const activeOverstays = await db.select({ id: storageOverstayRecords2.id }).from(storageOverstayRecords2).where(
               and21(
                 eq35(storageOverstayRecords2.storageBookingId, extension.storageBookingId),
-                inArray9(storageOverstayRecords2.status, ["detected", "grace_period", "pending_review"])
+                inArray10(storageOverstayRecords2.status, ["detected", "grace_period", "pending_review"])
               )
             );
             if (activeOverstays.length > 0) {
@@ -40676,7 +40873,7 @@ ${rejectionReason ? `Reason: ${rejectionReason}
             locationName: locations.name
           }).from(kitchenBookings).innerJoin(kitchens, eq35(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq35(kitchens.locationId, locations.id)).innerJoin(users, eq35(kitchenBookings.chefId, users.id)).where(
             and21(
-              inArray9(locations.id, locationIds),
+              inArray10(locations.id, locationIds),
               gte3(kitchenBookings.bookingDate, cutoffDate),
               // Not older than deadline
               lte3(kitchenBookings.bookingDate, now),
@@ -40698,7 +40895,7 @@ ${rejectionReason ? `Reason: ${rejectionReason}
             eq35(storageBookings.storageListingId, storageListings.id)
           ).innerJoin(kitchens, eq35(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq35(kitchens.locationId, locations.id)).innerJoin(users, eq35(storageBookings.chefId, users.id)).where(
             and21(
-              inArray9(locations.id, locationIds),
+              inArray10(locations.id, locationIds),
               gte3(storageBookings.endDate, cutoffDate),
               // Not older than deadline
               lte3(storageBookings.endDate, now),
@@ -40718,7 +40915,7 @@ ${rejectionReason ? `Reason: ${rejectionReason}
               availabilityType: equipmentListings.availabilityType,
               status: equipmentBookings.status
             }).from(equipmentBookings).innerJoin(equipmentListings, eq35(equipmentBookings.equipmentListingId, equipmentListings.id)).where(
-              sql16`${equipmentBookings.kitchenBookingId} IN (${sql16.join(kitchenBookingIds.map((id) => sql16`${id}`), sql16`, `)})`
+              sql17`${equipmentBookings.kitchenBookingId} IN (${sql17.join(kitchenBookingIds.map((id) => sql17`${id}`), sql17`, `)})`
             );
             for (const eq_item of rentedEquipment) {
               const list = equipmentMap.get(eq_item.kitchenBookingId) || [];
@@ -40742,7 +40939,7 @@ ${rejectionReason ? `Reason: ${rejectionReason}
                 availabilityType: equipmentListings.availabilityType
               }).from(equipmentListings).where(
                 and21(
-                  sql16`${equipmentListings.kitchenId} IN (${sql16.join(kitchenIds.map((id) => sql16`${id}`), sql16`, `)})`,
+                  sql17`${equipmentListings.kitchenId} IN (${sql17.join(kitchenIds.map((id) => sql17`${id}`), sql17`, `)})`,
                   eq35(equipmentListings.availabilityType, "included"),
                   eq35(equipmentListings.isActive, true)
                 )
@@ -41171,7 +41368,7 @@ __export(notifications_exports, {
   markAsRead: () => markAsRead
 });
 import { Router as Router17 } from "express";
-import { sql as sql17 } from "drizzle-orm";
+import { sql as sql18 } from "drizzle-orm";
 async function createNotification2(params) {
   const {
     managerId,
@@ -41185,7 +41382,7 @@ async function createNotification2(params) {
     actionLabel,
     expiresAt
   } = params;
-  const result = await db.execute(sql17`
+  const result = await db.execute(sql18`
     INSERT INTO manager_notifications 
     (manager_id, location_id, type, priority, title, message, metadata, action_url, action_label, expires_at)
     VALUES (
@@ -41213,17 +41410,17 @@ async function getNotifications(managerId, options = {}) {
     locationId
   } = options;
   const offset = (page - 1) * limit;
-  let filterCondition = sql17`AND is_archived = false`;
+  let filterCondition = sql18`AND is_archived = false`;
   if (filter === "unread") {
-    filterCondition = sql17`AND is_read = false AND is_archived = false`;
+    filterCondition = sql18`AND is_read = false AND is_archived = false`;
   } else if (filter === "read") {
-    filterCondition = sql17`AND is_read = true AND is_archived = false`;
+    filterCondition = sql18`AND is_read = true AND is_archived = false`;
   } else if (filter === "archived") {
-    filterCondition = sql17`AND is_archived = true`;
+    filterCondition = sql18`AND is_archived = true`;
   }
-  const typeCondition = type ? sql17`AND type = ${type}::notification_type` : sql17``;
-  const locationCondition = locationId ? sql17`AND (location_id = ${locationId} OR location_id IS NULL)` : sql17``;
-  const notificationsResult = await db.execute(sql17`
+  const typeCondition = type ? sql18`AND type = ${type}::notification_type` : sql18``;
+  const locationCondition = locationId ? sql18`AND (location_id = ${locationId} OR location_id IS NULL)` : sql18``;
+  const notificationsResult = await db.execute(sql18`
     SELECT 
       id, manager_id, location_id, type, priority, title, message, 
       metadata, is_read, read_at, is_archived, archived_at, 
@@ -41245,7 +41442,7 @@ async function getNotifications(managerId, options = {}) {
     LIMIT ${limit}
     OFFSET ${offset}
   `);
-  const countResult = await db.execute(sql17`
+  const countResult = await db.execute(sql18`
     SELECT COUNT(*) as total
     FROM manager_notifications
     WHERE manager_id = ${managerId}
@@ -41268,8 +41465,8 @@ async function getNotifications(managerId, options = {}) {
   };
 }
 async function getUnreadCount(managerId, locationId) {
-  const locationCondition = locationId ? sql17`AND (location_id = ${locationId} OR location_id IS NULL)` : sql17``;
-  const result = await db.execute(sql17`
+  const locationCondition = locationId ? sql18`AND (location_id = ${locationId} OR location_id IS NULL)` : sql18``;
+  const result = await db.execute(sql18`
     SELECT COUNT(*) as count
     FROM manager_notifications
     WHERE manager_id = ${managerId}
@@ -41282,18 +41479,18 @@ async function getUnreadCount(managerId, locationId) {
 }
 async function markAsRead(managerId, notificationIds) {
   if (notificationIds.length === 0) return { updated: 0 };
-  const result = await db.execute(sql17`
+  const result = await db.execute(sql18`
     UPDATE manager_notifications
     SET is_read = true, read_at = NOW()
     WHERE manager_id = ${managerId}
-      AND id IN (${sql17.join(notificationIds.map((id) => sql17`${id}`), sql17`, `)})
+      AND id IN (${sql18.join(notificationIds.map((id) => sql18`${id}`), sql18`, `)})
       AND is_read = false
   `);
   return { updated: result.rowCount || 0 };
 }
 async function markAllAsRead(managerId, locationId) {
-  const locationCondition = locationId ? sql17`AND location_id = ${locationId}` : sql17``;
-  const result = await db.execute(sql17`
+  const locationCondition = locationId ? sql18`AND location_id = ${locationId}` : sql18``;
+  const result = await db.execute(sql18`
     UPDATE manager_notifications
     SET is_read = true, read_at = NOW()
     WHERE manager_id = ${managerId}
@@ -41304,30 +41501,30 @@ async function markAllAsRead(managerId, locationId) {
 }
 async function archiveNotifications(managerId, notificationIds) {
   if (notificationIds.length === 0) return { updated: 0 };
-  const result = await db.execute(sql17`
+  const result = await db.execute(sql18`
     UPDATE manager_notifications
     SET is_archived = true, archived_at = NOW()
     WHERE manager_id = ${managerId}
-      AND id IN (${sql17.join(notificationIds.map((id) => sql17`${id}`), sql17`, `)})
+      AND id IN (${sql18.join(notificationIds.map((id) => sql18`${id}`), sql18`, `)})
       AND is_archived = false
   `);
   return { updated: result.rowCount || 0 };
 }
 async function unarchiveNotifications(managerId, notificationIds) {
   if (notificationIds.length === 0) return { updated: 0 };
-  const result = await db.execute(sql17`
+  const result = await db.execute(sql18`
     UPDATE manager_notifications
     SET is_archived = false, archived_at = NULL
     WHERE manager_id = ${managerId}
-      AND id IN (${sql17.join(notificationIds.map((id) => sql17`${id}`), sql17`, `)})
+      AND id IN (${sql18.join(notificationIds.map((id) => sql18`${id}`), sql18`, `)})
       AND is_archived = true
   `);
   return { updated: result.rowCount || 0 };
 }
 async function cleanupOldNotifications(daysOld = 30) {
-  const result = await db.execute(sql17`
+  const result = await db.execute(sql18`
     DELETE FROM manager_notifications
-    WHERE created_at < NOW() - INTERVAL '${sql17.raw(String(daysOld))} days'
+    WHERE created_at < NOW() - INTERVAL '${sql18.raw(String(daysOld))} days'
        OR (is_read = true AND created_at < NOW() - INTERVAL '10 days')
   `);
   return { deleted: result.rowCount || 0 };
@@ -41458,7 +41655,7 @@ var init_notifications = __esm({
       try {
         const managerId = req.neonUser.id;
         const notificationId = parseInt(req.params.id);
-        const result = await db.execute(sql17`
+        const result = await db.execute(sql18`
       DELETE FROM manager_notifications
       WHERE id = ${notificationId}
         AND manager_id = ${managerId}
@@ -41488,7 +41685,7 @@ __export(chef_notifications_exports, {
   notificationService: () => notificationService
 });
 import { Router as Router18 } from "express";
-import { sql as sql18 } from "drizzle-orm";
+import { sql as sql19 } from "drizzle-orm";
 async function getNotifications2(chefId, options = {}) {
   const {
     page = 1,
@@ -41497,16 +41694,16 @@ async function getNotifications2(chefId, options = {}) {
     type
   } = options;
   const offset = (page - 1) * limit;
-  let filterCondition = sql18`AND is_archived = false`;
+  let filterCondition = sql19`AND is_archived = false`;
   if (filter === "unread") {
-    filterCondition = sql18`AND is_read = false AND is_archived = false`;
+    filterCondition = sql19`AND is_read = false AND is_archived = false`;
   } else if (filter === "read") {
-    filterCondition = sql18`AND is_read = true AND is_archived = false`;
+    filterCondition = sql19`AND is_read = true AND is_archived = false`;
   } else if (filter === "archived") {
-    filterCondition = sql18`AND is_archived = true`;
+    filterCondition = sql19`AND is_archived = true`;
   }
-  const typeCondition = type ? sql18`AND type = ${type}::chef_notification_type` : sql18``;
-  const notificationsResult = await db.execute(sql18`
+  const typeCondition = type ? sql19`AND type = ${type}::chef_notification_type` : sql19``;
+  const notificationsResult = await db.execute(sql19`
     SELECT 
       id, chef_id, type, priority, title, message, 
       metadata, is_read, read_at, is_archived, archived_at, 
@@ -41525,7 +41722,7 @@ async function getNotifications2(chefId, options = {}) {
     LIMIT ${limit}
     OFFSET ${offset}
   `);
-  const countResult = await db.execute(sql18`
+  const countResult = await db.execute(sql19`
     SELECT COUNT(*) as total
     FROM chef_notifications
     WHERE chef_id = ${chefId}
@@ -41546,7 +41743,7 @@ async function getNotifications2(chefId, options = {}) {
   };
 }
 async function getUnreadCount2(chefId) {
-  const result = await db.execute(sql18`
+  const result = await db.execute(sql19`
     SELECT COUNT(*) as count
     FROM chef_notifications
     WHERE chef_id = ${chefId}
@@ -41558,17 +41755,17 @@ async function getUnreadCount2(chefId) {
 }
 async function markAsRead2(chefId, notificationIds) {
   if (notificationIds.length === 0) return { updated: 0 };
-  const result = await db.execute(sql18`
+  const result = await db.execute(sql19`
     UPDATE chef_notifications
     SET is_read = true, read_at = NOW()
     WHERE chef_id = ${chefId}
-      AND id IN (${sql18.join(notificationIds.map((id) => sql18`${id}`), sql18`, `)})
+      AND id IN (${sql19.join(notificationIds.map((id) => sql19`${id}`), sql19`, `)})
       AND is_read = false
   `);
   return { updated: result.rowCount || 0 };
 }
 async function markAllAsRead2(chefId) {
-  const result = await db.execute(sql18`
+  const result = await db.execute(sql19`
     UPDATE chef_notifications
     SET is_read = true, read_at = NOW()
     WHERE chef_id = ${chefId}
@@ -41579,11 +41776,11 @@ async function markAllAsRead2(chefId) {
 }
 async function archiveNotifications2(chefId, notificationIds) {
   if (notificationIds.length === 0) return { updated: 0 };
-  const result = await db.execute(sql18`
+  const result = await db.execute(sql19`
     UPDATE chef_notifications
     SET is_archived = true, archived_at = NOW()
     WHERE chef_id = ${chefId}
-      AND id IN (${sql18.join(notificationIds.map((id) => sql18`${id}`), sql18`, `)})
+      AND id IN (${sql19.join(notificationIds.map((id) => sql19`${id}`), sql19`, `)})
       AND is_archived = false
   `);
   return { updated: result.rowCount || 0 };
@@ -41684,7 +41881,7 @@ var init_chef_notifications = __esm({
       try {
         const chefId = req.neonUser.id;
         const notificationId = parseInt(req.params.id);
-        const result = await db.execute(sql18`
+        const result = await db.execute(sql19`
       DELETE FROM chef_notifications
       WHERE id = ${notificationId}
         AND chef_id = ${chefId}
@@ -41708,13 +41905,13 @@ __export(viewings_exports, {
   default: () => viewings_default
 });
 import { Router as Router19 } from "express";
-import { eq as eq37, and as and23, sql as sql19, desc as desc18, gte as gte4, lte as lte5 } from "drizzle-orm";
+import { eq as eq37, and as and23, sql as sql20, desc as desc18, gte as gte4, lte as lte5 } from "drizzle-orm";
 import { TZDate as TZDate3 } from "@date-fns/tz";
 import { format as format6, addMinutes, isBefore as isBefore2, isAfter as isAfter3, differenceInHours as differenceInHours2 } from "date-fns";
-async function calculateAvailableSlots(locationId, dateStr, timezone = "America/St_Johns", prefetched) {
+async function calculateAvailableSlots(kitchenId, dateStr, timezone = "America/St_Johns", prefetched) {
   let settings = prefetched?.settings;
   if (!settings) {
-    const [fetchedSettings] = await db.select().from(locationViewingSettings).where(eq37(locationViewingSettings.locationId, locationId)).limit(1);
+    const [fetchedSettings] = await db.select().from(kitchenViewingSettings).where(eq37(kitchenViewingSettings.kitchenId, kitchenId)).limit(1);
     settings = fetchedSettings;
   }
   if (!settings || !settings.isActive) {
@@ -41727,11 +41924,11 @@ async function calculateAvailableSlots(locationId, dateStr, timezone = "America/
   if (prefetched?.availability) {
     availabilityWindows = prefetched.availability.filter((a) => a.dayOfWeek === dayOfWeek && a.isAvailable);
   } else {
-    availabilityWindows = await db.select().from(locationViewingAvailability).where(
+    availabilityWindows = await db.select().from(kitchenViewingAvailability).where(
       and23(
-        eq37(locationViewingAvailability.locationId, locationId),
-        eq37(locationViewingAvailability.dayOfWeek, dayOfWeek),
-        eq37(locationViewingAvailability.isAvailable, true)
+        eq37(kitchenViewingAvailability.kitchenId, kitchenId),
+        eq37(kitchenViewingAvailability.dayOfWeek, dayOfWeek),
+        eq37(kitchenViewingAvailability.isAvailable, true)
       )
     );
   }
@@ -41742,11 +41939,11 @@ async function calculateAvailableSlots(locationId, dateStr, timezone = "America/
   const dayEnd = new TZDate3(year, month - 1, day, 23, 59, 59, 0, timezone);
   let blackouts = prefetched?.blackouts;
   if (!blackouts) {
-    blackouts = await db.select().from(locationViewingBlackouts).where(
+    blackouts = await db.select().from(kitchenViewingBlackouts).where(
       and23(
-        eq37(locationViewingBlackouts.locationId, locationId),
-        lte5(locationViewingBlackouts.startDate, dayEnd),
-        gte4(locationViewingBlackouts.endDate, dayStart)
+        eq37(kitchenViewingBlackouts.kitchenId, kitchenId),
+        lte5(kitchenViewingBlackouts.startDate, dayEnd),
+        gte4(kitchenViewingBlackouts.endDate, dayStart)
       )
     );
   }
@@ -41764,11 +41961,11 @@ async function calculateAvailableSlots(locationId, dateStr, timezone = "America/
   } else {
     existingViewings = await db.select().from(kitchenViewings).where(
       and23(
-        eq37(kitchenViewings.locationId, locationId),
+        eq37(kitchenViewings.targetedKitchenId, kitchenId),
         gte4(kitchenViewings.scheduledAt, dayStart),
         lte5(kitchenViewings.scheduledAt, dayEnd),
         // Exclude cancelled viewings
-        sql19`${kitchenViewings.status} != 'cancelled'`
+        sql20`${kitchenViewings.status} != 'cancelled'`
       )
     );
   }
@@ -41848,19 +42045,23 @@ var init_viewings = __esm({
     init_user_display();
     router19 = Router19();
     router19.get(
-      "/calendar-availability/:locationId",
+      "/calendar-availability/:kitchenId",
       async (req, res) => {
         try {
-          const locationId = parseInt(req.params.locationId);
-          const [settings] = await db.select().from(locationViewingSettings).where(eq37(locationViewingSettings.locationId, locationId)).limit(1);
+          const kitchenId = parseInt(req.params.kitchenId);
+          const [kitchenContext] = await db.select({ timezone: locations.timezone }).from(kitchens).innerJoin(locations, eq37(kitchens.locationId, locations.id)).where(eq37(kitchens.id, kitchenId)).limit(1);
+          if (!kitchenContext) {
+            return res.status(404).json({ error: "Kitchen not found" });
+          }
+          const [settings] = await db.select().from(kitchenViewingSettings).where(eq37(kitchenViewingSettings.kitchenId, kitchenId)).limit(1);
           if (!settings || !settings.isActive) {
             return res.json({ settings: null, availability: [], blackouts: [] });
           }
-          const availability = await db.select().from(locationViewingAvailability).where(eq37(locationViewingAvailability.locationId, locationId));
-          const blackouts = await db.select().from(locationViewingBlackouts).where(
+          const availability = await db.select().from(kitchenViewingAvailability).where(eq37(kitchenViewingAvailability.kitchenId, kitchenId));
+          const blackouts = await db.select().from(kitchenViewingBlackouts).where(
             and23(
-              eq37(locationViewingBlackouts.locationId, locationId),
-              gte4(locationViewingBlackouts.endDate, /* @__PURE__ */ new Date())
+              eq37(kitchenViewingBlackouts.kitchenId, kitchenId),
+              gte4(kitchenViewingBlackouts.endDate, /* @__PURE__ */ new Date())
               // only fetch future/ongoing
             )
           );
@@ -41870,20 +42071,21 @@ var init_viewings = __esm({
           endWindow.setDate(endWindow.getDate() + maxDays);
           const existingViewings = await db.select().from(kitchenViewings).where(
             and23(
-              eq37(kitchenViewings.locationId, locationId),
+              eq37(kitchenViewings.targetedKitchenId, kitchenId),
               gte4(kitchenViewings.scheduledAt, today),
               lte5(kitchenViewings.scheduledAt, endWindow),
-              sql19`${kitchenViewings.status} != 'cancelled'`
+              sql20`${kitchenViewings.status} != 'cancelled'`
             )
           );
           const fullyBookedDates = [];
           const { format: format9 } = await import("date-fns");
           const prefetched = { settings, availability, blackouts, existingViewings };
+          const timezone = kitchenContext.timezone || "America/St_Johns";
           for (let i = 0; i <= maxDays; i++) {
             const d = new Date(today);
             d.setDate(d.getDate() + i);
             const dateStr = format9(d, "yyyy-MM-dd");
-            const slots = await calculateAvailableSlots(locationId, dateStr, "America/St_Johns", prefetched);
+            const slots = await calculateAvailableSlots(kitchenId, dateStr, timezone, prefetched);
             if (slots.length === 0) {
               fullyBookedDates.push(dateStr);
             }
@@ -41903,23 +42105,23 @@ var init_viewings = __esm({
       }
     );
     router19.get(
-      "/settings/:locationId",
+      "/settings/:kitchenId",
       requireFirebaseAuthWithUser,
       requireManager,
       async (req, res) => {
         try {
-          const locationId = parseInt(req.params.locationId);
+          const kitchenId = parseInt(req.params.kitchenId);
           const managerId = req.neonUser.id;
-          const [location] = await db.select().from(locations).where(and23(eq37(locations.id, locationId), eq37(locations.managerId, managerId))).limit(1);
-          if (!location) {
-            return res.status(404).json({ error: "Location not found or access denied" });
+          const [kitchen] = await db.select({ id: kitchens.id }).from(kitchens).innerJoin(locations, eq37(kitchens.locationId, locations.id)).where(and23(eq37(kitchens.id, kitchenId), eq37(locations.managerId, managerId))).limit(1);
+          if (!kitchen) {
+            return res.status(404).json({ error: "Kitchen not found or access denied" });
           }
-          const [settings] = await db.select().from(locationViewingSettings).where(eq37(locationViewingSettings.locationId, locationId)).limit(1);
-          const availability = await db.select().from(locationViewingAvailability).where(eq37(locationViewingAvailability.locationId, locationId));
-          const blackoutsList = await db.select().from(locationViewingBlackouts).where(
+          const [settings] = await db.select().from(kitchenViewingSettings).where(eq37(kitchenViewingSettings.kitchenId, kitchenId)).limit(1);
+          const availability = await db.select().from(kitchenViewingAvailability).where(eq37(kitchenViewingAvailability.kitchenId, kitchenId));
+          const blackoutsList = await db.select().from(kitchenViewingBlackouts).where(
             and23(
-              eq37(locationViewingBlackouts.locationId, locationId),
-              gte4(locationViewingBlackouts.endDate, /* @__PURE__ */ new Date())
+              eq37(kitchenViewingBlackouts.kitchenId, kitchenId),
+              gte4(kitchenViewingBlackouts.endDate, /* @__PURE__ */ new Date())
               // Only future blackouts
             )
           );
@@ -41935,35 +42137,35 @@ var init_viewings = __esm({
       }
     );
     router19.put(
-      "/settings/:locationId",
+      "/settings/:kitchenId",
       requireFirebaseAuthWithUser,
       requireManager,
       async (req, res) => {
         try {
-          const locationId = parseInt(req.params.locationId);
+          const kitchenId = parseInt(req.params.kitchenId);
           const managerId = req.neonUser.id;
-          const [location] = await db.select().from(locations).where(and23(eq37(locations.id, locationId), eq37(locations.managerId, managerId))).limit(1);
-          if (!location) {
-            return res.status(404).json({ error: "Location not found or access denied" });
+          const [kitchen] = await db.select({ id: kitchens.id }).from(kitchens).innerJoin(locations, eq37(kitchens.locationId, locations.id)).where(and23(eq37(kitchens.id, kitchenId), eq37(locations.managerId, managerId))).limit(1);
+          if (!kitchen) {
+            return res.status(404).json({ error: "Kitchen not found or access denied" });
           }
-          const parsed = updateLocationViewingSettingsSchema.safeParse(req.body);
+          const parsed = updateKitchenViewingSettingsSchema.safeParse(req.body);
           if (!parsed.success) {
             return res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() });
           }
-          const [existing] = await db.select().from(locationViewingSettings).where(eq37(locationViewingSettings.locationId, locationId)).limit(1);
+          const [existing] = await db.select().from(kitchenViewingSettings).where(eq37(kitchenViewingSettings.kitchenId, kitchenId)).limit(1);
           let result;
           if (existing) {
-            [result] = await db.update(locationViewingSettings).set({
+            [result] = await db.update(kitchenViewingSettings).set({
               ...parsed.data,
               updatedAt: /* @__PURE__ */ new Date()
-            }).where(eq37(locationViewingSettings.locationId, locationId)).returning();
+            }).where(eq37(kitchenViewingSettings.kitchenId, kitchenId)).returning();
           } else {
-            [result] = await db.insert(locationViewingSettings).values({
-              locationId,
+            [result] = await db.insert(kitchenViewingSettings).values({
+              kitchenId,
               ...parsed.data
             }).returning();
           }
-          logger.info(`[Viewings] Settings ${existing ? "updated" : "created"} for location ${locationId} by manager ${managerId}`);
+          logger.info(`[Viewings] Settings ${existing ? "updated" : "created"} for kitchen ${kitchenId} by manager ${managerId}`);
           res.json(result);
         } catch (error) {
           logger.error("Error updating viewing settings:", error);
@@ -41972,27 +42174,27 @@ var init_viewings = __esm({
       }
     );
     router19.put(
-      "/availability/:locationId",
+      "/availability/:kitchenId",
       requireFirebaseAuthWithUser,
       requireManager,
       async (req, res) => {
         try {
-          const locationId = parseInt(req.params.locationId);
+          const kitchenId = parseInt(req.params.kitchenId);
           const managerId = req.neonUser.id;
-          const [location] = await db.select().from(locations).where(and23(eq37(locations.id, locationId), eq37(locations.managerId, managerId))).limit(1);
-          if (!location) {
-            return res.status(404).json({ error: "Location not found or access denied" });
+          const [kitchen] = await db.select({ id: kitchens.id }).from(kitchens).innerJoin(locations, eq37(kitchens.locationId, locations.id)).where(and23(eq37(kitchens.id, kitchenId), eq37(locations.managerId, managerId))).limit(1);
+          if (!kitchen) {
+            return res.status(404).json({ error: "Kitchen not found or access denied" });
           }
           const { slots } = req.body;
           if (!Array.isArray(slots)) {
             return res.status(400).json({ error: "slots must be an array" });
           }
           await db.transaction(async (tx) => {
-            await tx.delete(locationViewingAvailability).where(eq37(locationViewingAvailability.locationId, locationId));
+            await tx.delete(kitchenViewingAvailability).where(eq37(kitchenViewingAvailability.kitchenId, kitchenId));
             if (slots.length > 0) {
-              await tx.insert(locationViewingAvailability).values(
+              await tx.insert(kitchenViewingAvailability).values(
                 slots.map((slot) => ({
-                  locationId,
+                  kitchenId,
                   dayOfWeek: slot.dayOfWeek,
                   startTime: slot.startTime,
                   endTime: slot.endTime,
@@ -42001,8 +42203,8 @@ var init_viewings = __esm({
               );
             }
           });
-          const updated = await db.select().from(locationViewingAvailability).where(eq37(locationViewingAvailability.locationId, locationId));
-          logger.info(`[Viewings] Availability updated for location ${locationId} by manager ${managerId}: ${slots.length} slots`);
+          const updated = await db.select().from(kitchenViewingAvailability).where(eq37(kitchenViewingAvailability.kitchenId, kitchenId));
+          logger.info(`[Viewings] Availability updated for kitchen ${kitchenId} by manager ${managerId}: ${slots.length} slots`);
           res.json(updated);
         } catch (error) {
           logger.error("Error updating viewing availability:", error);
@@ -42011,36 +42213,36 @@ var init_viewings = __esm({
       }
     );
     router19.post(
-      "/blackouts/:locationId",
+      "/blackouts/:kitchenId",
       requireFirebaseAuthWithUser,
       requireManager,
       async (req, res) => {
         try {
-          const locationId = parseInt(req.params.locationId);
+          const kitchenId = parseInt(req.params.kitchenId);
           const managerId = req.neonUser.id;
-          const [location] = await db.select().from(locations).where(and23(eq37(locations.id, locationId), eq37(locations.managerId, managerId))).limit(1);
-          if (!location) {
-            return res.status(404).json({ error: "Location not found or access denied" });
+          const [kitchen] = await db.select({ id: kitchens.id, name: kitchens.name, locationId: kitchens.locationId }).from(kitchens).innerJoin(locations, eq37(kitchens.locationId, locations.id)).where(and23(eq37(kitchens.id, kitchenId), eq37(locations.managerId, managerId))).limit(1);
+          if (!kitchen) {
+            return res.status(404).json({ error: "Kitchen not found or access denied" });
           }
-          const parsed = insertLocationViewingBlackoutSchema.safeParse({
+          const parsed = insertKitchenViewingBlackoutSchema.safeParse({
             ...req.body,
-            locationId
+            kitchenId
           });
           if (!parsed.success) {
             return res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() });
           }
-          const [result] = await db.insert(locationViewingBlackouts).values({
-            locationId,
+          const [result] = await db.insert(kitchenViewingBlackouts).values({
+            kitchenId,
             startDate: new Date(parsed.data.startDate),
             endDate: new Date(parsed.data.endDate),
             reason: parsed.data.reason
           }).returning();
           const conflicting = await db.select().from(kitchenViewings).where(
             and23(
-              eq37(kitchenViewings.locationId, locationId),
+              eq37(kitchenViewings.targetedKitchenId, kitchenId),
               gte4(kitchenViewings.scheduledAt, new Date(parsed.data.startDate)),
               lte5(kitchenViewings.scheduledAt, new Date(parsed.data.endDate)),
-              sql19`${kitchenViewings.status} NOT IN ('cancelled', 'completed', 'no_show')`
+              sql20`${kitchenViewings.status} NOT IN ('cancelled', 'completed', 'no_show')`
             )
           );
           if (conflicting.length > 0) {
@@ -42058,8 +42260,8 @@ var init_viewings = __esm({
                   type: "booking_cancelled",
                   priority: "high",
                   title: "Kitchen Viewing Cancelled",
-                  message: `Your scheduled viewing at ${location.name} has been cancelled by the manager. Reason: ${parsed.data.reason || "Schedule change"}. Please book a new time.`,
-                  metadata: { viewingId: viewing.id, locationId },
+                  message: `Your scheduled viewing of ${kitchen.name} has been cancelled by the manager. Reason: ${parsed.data.reason || "Schedule change"}. Please book a new time.`,
+                  metadata: { viewingId: viewing.id, locationId: kitchen.locationId, kitchenId },
                   actionUrl: `/dashboard?view=viewings`,
                   actionLabel: "Reschedule"
                 });
@@ -42067,7 +42269,7 @@ var init_viewings = __esm({
                 logger.error("[Viewings] Failed to notify chef of blackout cancellation:", e);
               }
             }
-            logger.info(`[Viewings] Auto-cancelled ${conflicting.length} viewings due to blackout at location ${locationId}`);
+            logger.info(`[Viewings] Auto-cancelled ${conflicting.length} viewings due to blackout for kitchen ${kitchenId}`);
           }
           res.json(result);
         } catch (error) {
@@ -42084,11 +42286,14 @@ var init_viewings = __esm({
         try {
           const blackoutId = parseInt(req.params.blackoutId);
           const managerId = req.neonUser.id;
-          const result = await db.execute(sql19`
-        DELETE FROM location_viewing_blackouts
+          const result = await db.execute(sql20`
+        DELETE FROM kitchen_viewing_blackouts
         WHERE id = ${blackoutId}
-          AND location_id IN (
-            SELECT id FROM locations WHERE manager_id = ${managerId}
+          AND kitchen_id IN (
+            SELECT k.id
+            FROM kitchens k
+            JOIN locations l ON l.id = k.location_id
+            WHERE l.manager_id = ${managerId}
           )
       `);
           if (result.rowCount === 0) {
@@ -42102,23 +42307,28 @@ var init_viewings = __esm({
       }
     );
     router19.get(
-      "/available-slots/:locationId",
+      "/available-slots/:kitchenId",
       async (req, res) => {
         try {
-          const locationId = parseInt(req.params.locationId);
+          const kitchenId = parseInt(req.params.kitchenId);
           const dateStr = req.query.date;
           if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
             return res.status(400).json({ error: "date query parameter is required in YYYY-MM-DD format" });
           }
-          const [location] = await db.select({ timezone: locations.timezone, name: locations.name }).from(locations).where(eq37(locations.id, locationId)).limit(1);
-          if (!location) {
-            return res.status(404).json({ error: "Location not found" });
+          const [kitchen] = await db.select({
+            name: kitchens.name,
+            locationName: locations.name,
+            timezone: locations.timezone
+          }).from(kitchens).innerJoin(locations, eq37(kitchens.locationId, locations.id)).where(eq37(kitchens.id, kitchenId)).limit(1);
+          if (!kitchen) {
+            return res.status(404).json({ error: "Kitchen not found" });
           }
-          const timezone = location.timezone || "America/St_Johns";
-          const slots = await calculateAvailableSlots(locationId, dateStr, timezone);
-          const [settings] = await db.select().from(locationViewingSettings).where(eq37(locationViewingSettings.locationId, locationId)).limit(1);
+          const timezone = kitchen.timezone || "America/St_Johns";
+          const slots = await calculateAvailableSlots(kitchenId, dateStr, timezone);
+          const [settings] = await db.select().from(kitchenViewingSettings).where(eq37(kitchenViewingSettings.kitchenId, kitchenId)).limit(1);
           res.json({
-            locationName: location.name,
+            kitchenName: kitchen.name,
+            locationName: kitchen.locationName,
             date: dateStr,
             timezone,
             slots,
@@ -42142,6 +42352,12 @@ var init_viewings = __esm({
       async (req, res) => {
         try {
           const chefId = req.neonUser.id;
+          if (req.firebaseUser?.email_verified !== true) {
+            return res.status(403).json({
+              error: "Please verify your email before requesting a kitchen tour.",
+              code: "EMAIL_NOT_VERIFIED"
+            });
+          }
           const parsed = insertKitchenViewingSchema.safeParse({
             ...req.body,
             chefId
@@ -42150,22 +42366,29 @@ var init_viewings = __esm({
             return res.status(400).json({ error: "Invalid booking data", details: parsed.error.flatten() });
           }
           const { locationId, targetedKitchenId, scheduledAt, durationMinutes, chefNotes, intakeData } = parsed.data;
-          const [location] = await db.select().from(locations).where(eq37(locations.id, locationId)).limit(1);
-          if (!location) {
-            return res.status(404).json({ error: "Location not found" });
+          const [kitchen] = await db.select({
+            id: kitchens.id,
+            name: kitchens.name,
+            locationId: kitchens.locationId,
+            locationName: locations.name,
+            timezone: locations.timezone,
+            managerId: locations.managerId
+          }).from(kitchens).innerJoin(locations, eq37(kitchens.locationId, locations.id)).where(and23(eq37(kitchens.id, targetedKitchenId), eq37(kitchens.locationId, locationId))).limit(1);
+          if (!kitchen) {
+            return res.status(400).json({ error: "Kitchen does not belong to this location" });
           }
-          const timezone = location.timezone || "America/St_Johns";
-          const [settings] = await db.select().from(locationViewingSettings).where(eq37(locationViewingSettings.locationId, locationId)).limit(1);
+          const timezone = kitchen.timezone || "America/St_Johns";
+          const [settings] = await db.select().from(kitchenViewingSettings).where(eq37(kitchenViewingSettings.kitchenId, targetedKitchenId)).limit(1);
           if (!settings || !settings.isActive) {
-            return res.status(400).json({ error: "Kitchen viewings are not currently available at this location" });
+            return res.status(400).json({ error: "Tours are not currently available for this kitchen" });
           }
           const tourDuration = durationMinutes || settings.defaultDurationMinutes;
           const scheduledDate = new Date(scheduledAt);
           const [existingActiveTour] = await db.select({ id: kitchenViewings.id }).from(kitchenViewings).where(
             and23(
               eq37(kitchenViewings.chefId, chefId),
-              eq37(kitchenViewings.locationId, locationId),
-              sql19`${kitchenViewings.status} IN ('pending', 'confirmed')`
+              eq37(kitchenViewings.targetedKitchenId, targetedKitchenId),
+              sql20`${kitchenViewings.status} IN ('pending', 'confirmed')`
             )
           ).limit(1);
           if (existingActiveTour) {
@@ -42189,11 +42412,11 @@ var init_viewings = __esm({
             const bufferEnd = addMinutes(tourEnd, settings.bufferAfterMinutes);
             const conflicts = await tx.select().from(kitchenViewings).where(
               and23(
-                eq37(kitchenViewings.locationId, locationId),
-                sql19`${kitchenViewings.status} NOT IN ('cancelled', 'no_show')`,
+                eq37(kitchenViewings.targetedKitchenId, targetedKitchenId),
+                sql20`${kitchenViewings.status} NOT IN ('cancelled', 'no_show')`,
                 // Overlap check: new slot [bufferStart, bufferEnd] overlaps with existing [scheduledAt, scheduledAt+duration]
-                sql19`${kitchenViewings.scheduledAt} < ${bufferEnd.toISOString()}::timestamp`,
-                sql19`(${kitchenViewings.scheduledAt} + (${kitchenViewings.durationMinutes} || ' minutes')::interval) > ${bufferStart.toISOString()}::timestamp`
+                sql20`${kitchenViewings.scheduledAt} < ${bufferEnd.toISOString()}::timestamp`,
+                sql20`(${kitchenViewings.scheduledAt} + (${kitchenViewings.durationMinutes} || ' minutes')::interval) > ${bufferStart.toISOString()}::timestamp`
               )
             );
             if (conflicts.length > 0) {
@@ -42201,9 +42424,9 @@ var init_viewings = __esm({
             }
             [newViewing] = await tx.insert(kitchenViewings).values({
               locationId,
-              targetedKitchenId: targetedKitchenId || null,
+              targetedKitchenId,
               chefId,
-              managerId: location.managerId,
+              managerId: kitchen.managerId,
               status: "pending",
               // Viewings require manager confirmation now
               scheduledAt: scheduledDate,
@@ -42215,20 +42438,21 @@ var init_viewings = __esm({
           const chefName = await getUserDisplayName(chefId, "chef");
           let managerName = "Manager";
           let managerEmail = null;
-          if (location.managerId) {
+          if (kitchen.managerId) {
             try {
-              const [manager] = await db.select({ username: users.username }).from(users).where(eq37(users.id, location.managerId)).limit(1);
+              const [manager] = await db.select({ username: users.username }).from(users).where(eq37(users.id, kitchen.managerId)).limit(1);
               managerEmail = manager?.username;
-              managerName = await getUserDisplayName(location.managerId, "manager");
+              managerName = await getUserDisplayName(kitchen.managerId, "manager");
               await notificationService.createForManager({
-                managerId: location.managerId,
+                managerId: kitchen.managerId,
                 locationId,
                 type: "booking_new",
                 priority: "high",
                 title: "New Kitchen Viewing Request",
-                message: `${chefName} has requested a kitchen viewing at ${location.name} on ${format6(scheduledDate, "MMM d, yyyy")} at ${format6(scheduledDate, "h:mm a")}.`,
+                message: `${chefName} has requested a viewing of ${kitchen.name} at ${kitchen.locationName} on ${format6(scheduledDate, "MMM d, yyyy")} at ${format6(scheduledDate, "h:mm a")}.`,
                 metadata: {
                   viewingId: newViewing.id,
+                  kitchenId: targetedKitchenId,
                   chefId,
                   chefName,
                   scheduledAt: scheduledDate.toISOString()
@@ -42241,7 +42465,7 @@ var init_viewings = __esm({
                   managerEmail,
                   managerName,
                   chefName,
-                  kitchenName: location.name,
+                  kitchenName: kitchen.name,
                   tourDate: scheduledDate,
                   startTime: format6(scheduledDate, "h:mm a"),
                   chefNotes: chefNotes || void 0,
@@ -42260,11 +42484,12 @@ var init_viewings = __esm({
               // Reusing this type, but logically it's a request receipt
               priority: "normal",
               title: "Kitchen Viewing Request Received",
-              message: `Your viewing request at ${location.name} for ${format6(scheduledDate, "MMM d, yyyy")} at ${format6(scheduledDate, "h:mm a")} has been sent to the manager for approval.`,
+              message: `Your viewing request for ${kitchen.name} at ${kitchen.locationName} on ${format6(scheduledDate, "MMM d, yyyy")} at ${format6(scheduledDate, "h:mm a")} has been sent to the manager for approval.`,
               metadata: {
                 viewingId: newViewing.id,
                 locationId,
-                locationName: location.name,
+                kitchenId: targetedKitchenId,
+                locationName: kitchen.locationName,
                 scheduledAt: scheduledDate.toISOString()
               },
               actionUrl: `/dashboard?view=viewings`,
@@ -42276,7 +42501,7 @@ var init_viewings = __esm({
               const emailContent = generateTourRequestedChefEmail({
                 chefEmail,
                 chefName,
-                kitchenName: location.name,
+                kitchenName: kitchen.name,
                 tourDate: scheduledDate,
                 startTime: format6(scheduledDate, "h:mm a"),
                 timezone
@@ -42286,7 +42511,7 @@ var init_viewings = __esm({
           } catch (e) {
             logger.error("[Viewings] Failed to notify chef:", e);
           }
-          logger.info(`[Viewings] Chef ${chefId} booked viewing ${newViewing.id} at location ${locationId} for ${scheduledDate.toISOString()}`);
+          logger.info(`[Viewings] Chef ${chefId} booked viewing ${newViewing.id} for kitchen ${targetedKitchenId} at ${scheduledDate.toISOString()}`);
           res.status(201).json(newViewing);
         } catch (error) {
           if (error.message === "SLOT_TAKEN") {
@@ -42534,18 +42759,18 @@ var init_viewings = __esm({
       }
     );
     router19.get(
-      "/location/:locationId/is-active",
+      "/kitchen/:kitchenId/is-active",
       async (req, res) => {
         try {
-          const locationId = parseInt(req.params.locationId);
-          if (isNaN(locationId)) {
-            return res.status(400).json({ error: "Invalid location ID" });
+          const kitchenId = parseInt(req.params.kitchenId);
+          if (isNaN(kitchenId)) {
+            return res.status(400).json({ error: "Invalid kitchen ID" });
           }
-          const [settings] = await db.select({ isActive: locationViewingSettings.isActive }).from(locationViewingSettings).where(eq37(locationViewingSettings.locationId, locationId)).limit(1);
-          const [openTourDay] = await db.select({ id: locationViewingAvailability.id }).from(locationViewingAvailability).where(
+          const [settings] = await db.select({ isActive: kitchenViewingSettings.isActive }).from(kitchenViewingSettings).where(eq37(kitchenViewingSettings.kitchenId, kitchenId)).limit(1);
+          const [openTourDay] = await db.select({ id: kitchenViewingAvailability.id }).from(kitchenViewingAvailability).where(
             and23(
-              eq37(locationViewingAvailability.locationId, locationId),
-              eq37(locationViewingAvailability.isAvailable, true)
+              eq37(kitchenViewingAvailability.kitchenId, kitchenId),
+              eq37(kitchenViewingAvailability.isAvailable, true)
             )
           ).limit(1);
           const isActive = settings?.isActive ?? false;
@@ -42568,7 +42793,7 @@ __export(kitchens_exports, {
   default: () => kitchens_default
 });
 import { Router as Router20 } from "express";
-import { eq as eq38, inArray as inArray10, desc as desc19, and as and24 } from "drizzle-orm";
+import { eq as eq38, inArray as inArray11, desc as desc19, and as and24 } from "drizzle-orm";
 var router20, kitchens_default;
 var init_kitchens = __esm({
   "server/routes/kitchens.ts"() {
@@ -42634,6 +42859,7 @@ var init_kitchens = __esm({
         const taxRatePercent = kitchen.taxRatePercent !== null && kitchen.taxRatePercent !== void 0 ? Number(kitchen.taxRatePercent) : 0;
         const pricing = {
           hourlyRate: kitchen.hourlyRate,
+          dailyRate: kitchen.dailyRate,
           currency: kitchen.currency,
           pricingModel: kitchen.pricingModel,
           minimumBookingHours: kitchen.minimumBookingHours,
@@ -42729,7 +42955,7 @@ var init_kitchens = __esm({
         if (locationIds.length === 0) {
           return res.json([]);
         }
-        const allLocations = await db.select().from(locations).where(inArray10(locations.id, locationIds));
+        const allLocations = await db.select().from(locations).where(inArray11(locations.id, locationIds));
         const profiles = await Promise.all(
           locationIds.map(async (locationId) => {
             const profile = await chefService.getProfile(chefId, locationId);
@@ -43446,14 +43672,14 @@ __export(security_exports, {
 import helmet from "helmet";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
-import { sql as sql20 } from "drizzle-orm";
+import { sql as sql21 } from "drizzle-orm";
 async function loadRateLimitConfig() {
   const now = Date.now();
   if (now - lastConfigFetch < CONFIG_CACHE_TTL) {
     return cachedConfig;
   }
   try {
-    const result = await db.execute(sql20`
+    const result = await db.execute(sql21`
       SELECT key, value FROM platform_settings 
       WHERE key LIKE 'rate_limit_%'
     `);
@@ -43624,7 +43850,7 @@ function registerSecurityMiddleware(app2) {
     windowMs: DEFAULT_RATE_LIMITS.authWindowMs,
     max: async () => {
       const config = await loadRateLimitConfig();
-      return config.authMaxRequests;
+      return isProduction2 ? Math.min(config.authMaxRequests, 30) : config.authMaxRequests;
     },
     standardHeaders: true,
     legacyHeaders: false,
@@ -43639,7 +43865,11 @@ function registerSecurityMiddleware(app2) {
   app2.use("/api/portal-login", authLimiter);
   app2.use("/api/firebase-register-user", authLimiter);
   app2.use("/api/firebase-sync-user", authLimiter);
-  app2.use("/api/user-exists", authLimiter);
+  app2.use("/api/firebase/send-magic-link-email", authLimiter);
+  app2.use("/api/firebase/send-verification-email", authLimiter);
+  app2.use("/api/firebase/forgot-password", authLimiter);
+  app2.use("/api/manager/forgot-password", authLimiter);
+  app2.use("/api/user/verify-email-complete", authLimiter);
   const webhookLimiter = rateLimit({
     windowMs: DEFAULT_RATE_LIMITS.webhookWindowMs,
     max: async () => {
@@ -43711,7 +43941,7 @@ __export(admin_exports, {
   default: () => admin_default
 });
 import { Router as Router23 } from "express";
-import { eq as eq39, sql as sql21, desc as desc20, ilike, and as and25, inArray as inArray11, count as count3 } from "drizzle-orm";
+import { eq as eq39, sql as sql22, desc as desc20, ilike, and as and25, inArray as inArray12, count as count3 } from "drizzle-orm";
 import { getFirestore as getFirestore2 } from "firebase-admin/firestore";
 async function getFirestoreDisplayNames(firebaseUids) {
   const nameMap = {};
@@ -43822,16 +44052,16 @@ var init_admin = __esm({
           return;
         }
         const { startDate, endDate } = req.query;
-        const conditions = [sql21`pt.status = 'succeeded'`];
+        const conditions = [sql22`pt.status = 'succeeded'`];
         if (startDate) {
-          conditions.push(sql21`DATE(pt.paid_at) >= ${startDate}::date`);
+          conditions.push(sql22`DATE(pt.paid_at) >= ${startDate}::date`);
         }
         if (endDate) {
-          conditions.push(sql21`DATE(pt.paid_at) <= ${endDate}::date`);
+          conditions.push(sql22`DATE(pt.paid_at) <= ${endDate}::date`);
         }
-        const txnFilters = sql21.join(conditions, sql21` AND `);
+        const txnFilters = sql22.join(conditions, sql22` AND `);
         const managerRole = "manager";
-        const result = await db.execute(sql21`
+        const result = await db.execute(sql22`
         SELECT 
           u.id as manager_id,
           u.username as manager_name,
@@ -43869,17 +44099,17 @@ var init_admin = __esm({
           return;
         }
         const { startDate, endDate } = req.query;
-        const managerCountResult = await db.select({ count: sql21`count(*)::int` }).from(users).where(eq39(users.role, "manager"));
+        const managerCountResult = await db.select({ count: sql22`count(*)::int` }).from(users).where(eq39(users.role, "manager"));
         const totalManagers = managerCountResult[0]?.count || 0;
-        const conditions = [sql21`kb.status != 'cancelled'`];
+        const conditions = [sql22`kb.status != 'cancelled'`];
         if (startDate) {
-          conditions.push(sql21`kb.booking_date >= ${startDate}::date`);
+          conditions.push(sql22`kb.booking_date >= ${startDate}::date`);
         }
         if (endDate) {
-          conditions.push(sql21`kb.booking_date <= ${endDate}::date`);
+          conditions.push(sql22`kb.booking_date <= ${endDate}::date`);
         }
-        const bookingFilters = sql21.join(conditions, sql21` AND `);
-        const bookingResult = await db.execute(sql21`
+        const bookingFilters = sql22.join(conditions, sql22` AND `);
+        const bookingResult = await db.execute(sql22`
         SELECT 
           COALESCE(SUM(kb.total_price), 0)::bigint as total_revenue,
           COALESCE(SUM(kb.service_fee), 0)::bigint as platform_fee,
@@ -44174,7 +44404,7 @@ var init_admin = __esm({
         if (user.role !== "admin") {
           return res.status(403).json({ error: "Admin access required" });
         }
-        const result = await db.execute(sql21`
+        const result = await db.execute(sql22`
             SELECT 
               u.id, 
               u.username, 
@@ -44325,7 +44555,7 @@ var init_admin = __esm({
           kitchenLicenseCurrentUrl: locations.kitchenLicenseCurrentUrl,
           managerName: users.username
         }).from(locations).leftJoin(users, eq39(locations.managerId, users.id)).where(
-          sql21`${locations.kitchenLicenseStatus} IN ('pending', 'pending_update')`
+          sql22`${locations.kitchenLicenseStatus} IN ('pending', 'pending_update')`
         );
         const formatted = pendingLicenses.map((loc) => ({
           id: loc.id,
@@ -44350,8 +44580,8 @@ var init_admin = __esm({
     });
     router23.get("/locations/pending-licenses-count", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
-        const result = await db.select({ count: sql21`count(*)::int` }).from(locations).where(
-          sql21`${locations.kitchenLicenseStatus} IN ('pending', 'pending_update')`
+        const result = await db.select({ count: sql22`count(*)::int` }).from(locations).where(
+          sql22`${locations.kitchenLicenseStatus} IN ('pending', 'pending_update')`
         );
         const count4 = result[0]?.count || 0;
         res.json({ count: count4 });
@@ -44525,9 +44755,9 @@ var init_admin = __esm({
         let allStorage = [];
         let allAvailability = [];
         if (kitchenIds.length > 0) {
-          allEquipment = await db.select().from(equipmentListings).where(sql21`${equipmentListings.kitchenId} IN (${sql21.join(kitchenIds.map((id) => sql21`${id}`), sql21`, `)})`);
-          allStorage = await db.select().from(storageListings).where(sql21`${storageListings.kitchenId} IN (${sql21.join(kitchenIds.map((id) => sql21`${id}`), sql21`, `)})`);
-          allAvailability = await db.select().from(kitchenAvailability).where(sql21`${kitchenAvailability.kitchenId} IN (${sql21.join(kitchenIds.map((id) => sql21`${id}`), sql21`, `)})`);
+          allEquipment = await db.select().from(equipmentListings).where(sql22`${equipmentListings.kitchenId} IN (${sql22.join(kitchenIds.map((id) => sql22`${id}`), sql22`, `)})`);
+          allStorage = await db.select().from(storageListings).where(sql22`${storageListings.kitchenId} IN (${sql22.join(kitchenIds.map((id) => sql22`${id}`), sql22`, `)})`);
+          allAvailability = await db.select().from(kitchenAvailability).where(sql22`${kitchenAvailability.kitchenId} IN (${sql22.join(kitchenIds.map((id) => sql22`${id}`), sql22`, `)})`);
         }
         const equipmentByKitchen = /* @__PURE__ */ new Map();
         const storageByKitchen = /* @__PURE__ */ new Map();
@@ -44640,8 +44870,8 @@ var init_admin = __esm({
         const equipCounts = {};
         const storageCounts = {};
         if (kitchenIds.length > 0) {
-          const equipRows = await db.select({ kitchenId: equipmentListings.kitchenId, count: sql21`count(*)::int` }).from(equipmentListings).where(sql21`${equipmentListings.kitchenId} IN (${sql21.join(kitchenIds.map((id) => sql21`${id}`), sql21`, `)})`).groupBy(equipmentListings.kitchenId);
-          const storageRows = await db.select({ kitchenId: storageListings.kitchenId, count: sql21`count(*)::int` }).from(storageListings).where(sql21`${storageListings.kitchenId} IN (${sql21.join(kitchenIds.map((id) => sql21`${id}`), sql21`, `)})`).groupBy(storageListings.kitchenId);
+          const equipRows = await db.select({ kitchenId: equipmentListings.kitchenId, count: sql22`count(*)::int` }).from(equipmentListings).where(sql22`${equipmentListings.kitchenId} IN (${sql22.join(kitchenIds.map((id) => sql22`${id}`), sql22`, `)})`).groupBy(equipmentListings.kitchenId);
+          const storageRows = await db.select({ kitchenId: storageListings.kitchenId, count: sql22`count(*)::int` }).from(storageListings).where(sql22`${storageListings.kitchenId} IN (${sql22.join(kitchenIds.map((id) => sql22`${id}`), sql22`, `)})`).groupBy(storageListings.kitchenId);
           for (const row of equipRows) {
             equipCounts[row.kitchenId] = row.count;
           }
@@ -45098,7 +45328,7 @@ var init_admin = __esm({
           promoCode: "TEST123",
           promoCodeLabel: "\u{1F381} Test Promo Code",
           customMessage: "This is a test email to verify the email system is working correctly.",
-          greeting: "Hello! \u{1F44B}",
+          greeting: "Hello! ",
           subject: subject || "Test Email from Local Cooks",
           previewText: previewText || "Test email preview",
           designSystem: customDesign?.designSystem,
@@ -45261,7 +45491,7 @@ var init_admin = __esm({
               promoCode,
               promoCodeLabel: promoCodeLabel || "\u{1F381} Special Offer Code For You",
               customMessage: messageContent,
-              greeting: greeting || "Hi there! \u{1F44B}",
+              greeting: greeting || "Hi there! ",
               subject: subject || "Special Offer from Local Cooks",
               previewText: previewText || "Don't miss out on this exclusive offer",
               designSystem,
@@ -45328,7 +45558,7 @@ var init_admin = __esm({
     router23.get("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const config = await getFeeConfig();
-        const settings = await db.select().from(platformSettings).where(sql21`key IN (
+        const settings = await db.select().from(platformSettings).where(sql22`key IN (
                 'stripe_percentage_fee',
                 'stripe_flat_fee_cents',
                 'platform_commission_rate',
@@ -45765,8 +45995,8 @@ var init_admin = __esm({
       try {
         const statusFilter = req.query.status;
         const { damageEvidence: damageEvidence2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-        const statusCondition = statusFilter && statusFilter !== "all" ? sql21`AND dc.status = ${statusFilter}` : sql21``;
-        const claimsQuery = await db.execute(sql21`
+        const statusCondition = statusFilter && statusFilter !== "all" ? sql22`AND dc.status = ${statusFilter}` : sql22``;
+        const claimsQuery = await db.execute(sql22`
             SELECT 
                 dc.*,
                 chef_user.username as chef_email,
@@ -45991,8 +46221,8 @@ var init_admin = __esm({
     router23.get("/escalated-penalties", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const showAll = req.query.all === "true";
-        const overstayStatusFilter = showAll ? sql21`` : sql21`AND sor.status = 'escalated'`;
-        const overstayResult = await db.execute(sql21`
+        const overstayStatusFilter = showAll ? sql22`` : sql22`AND sor.status = 'escalated'`;
+        const overstayResult = await db.execute(sql22`
             SELECT 
                 sor.id,
                 sor.storage_booking_id as "storageBookingId",
@@ -46019,8 +46249,8 @@ var init_admin = __esm({
             ORDER BY sor.detected_at DESC
         `);
         const allOverstays = overstayResult.rows;
-        const claimStatusFilter = showAll ? sql21`` : sql21`AND dc.status = 'escalated'`;
-        const claimResult = await db.execute(sql21`
+        const claimStatusFilter = showAll ? sql22`` : sql22`AND dc.status = 'escalated'`;
+        const claimResult = await db.execute(sql22`
             SELECT 
                 dc.id,
                 dc.claim_title as "claimTitle",
@@ -46064,7 +46294,7 @@ var init_admin = __esm({
     });
     router23.get("/transactions/locations", requireFirebaseAuthWithUser, requireAdmin, async (_req, res) => {
       try {
-        const result = await db.execute(sql21`
+        const result = await db.execute(sql22`
             SELECT id, name FROM locations ORDER BY name ASC
         `);
         res.json(result.rows);
@@ -46092,15 +46322,15 @@ var init_admin = __esm({
         const parsedOffset = parseInt(offset) || 0;
         const conditions = [];
         if (status && ["pending", "processing", "succeeded", "failed", "canceled", "refunded", "partially_refunded"].includes(status)) {
-          conditions.push(sql21`pt.status = ${status}`);
+          conditions.push(sql22`pt.status = ${status}`);
         }
         if (bookingType && ["kitchen", "storage", "equipment", "bundle"].includes(bookingType)) {
-          conditions.push(sql21`pt.booking_type = ${bookingType}`);
+          conditions.push(sql22`pt.booking_type = ${bookingType}`);
         }
         if (locationId) {
           const parsed = parseInt(locationId);
           if (!isNaN(parsed)) {
-            conditions.push(sql21`(
+            conditions.push(sql22`(
                     (pt.booking_type = 'kitchen' AND k.location_id = ${parsed}) OR
                     (pt.booking_type = 'storage' AND sk.location_id = ${parsed}) OR
                     (pt.booking_type = 'equipment' AND ek.location_id = ${parsed})
@@ -46110,7 +46340,7 @@ var init_admin = __esm({
         if (kitchenId) {
           const parsed = parseInt(kitchenId);
           if (!isNaN(parsed)) {
-            conditions.push(sql21`(
+            conditions.push(sql22`(
                     (pt.booking_type = 'kitchen' AND kb.kitchen_id = ${parsed}) OR
                     (pt.booking_type = 'storage' AND sl.kitchen_id = ${parsed}) OR
                     (pt.booking_type = 'equipment' AND el.kitchen_id = ${parsed})
@@ -46119,24 +46349,24 @@ var init_admin = __esm({
         }
         if (chefId) {
           const parsed = parseInt(chefId);
-          if (!isNaN(parsed)) conditions.push(sql21`pt.chef_id = ${parsed}`);
+          if (!isNaN(parsed)) conditions.push(sql22`pt.chef_id = ${parsed}`);
         }
         if (managerId) {
           const parsed = parseInt(managerId);
-          if (!isNaN(parsed)) conditions.push(sql21`pt.manager_id = ${parsed}`);
+          if (!isNaN(parsed)) conditions.push(sql22`pt.manager_id = ${parsed}`);
         }
         if (startDate) {
-          conditions.push(sql21`pt.created_at >= ${new Date(startDate)}`);
+          conditions.push(sql22`pt.created_at >= ${new Date(startDate)}`);
         }
         if (endDate) {
-          conditions.push(sql21`pt.created_at <= ${new Date(endDate)}`);
+          conditions.push(sql22`pt.created_at <= ${new Date(endDate)}`);
         }
         if (search && typeof search === "string" && search.trim()) {
           const s = search.trim();
           const like2 = "%" + s + "%";
           const numVal = parseInt(s);
           const isNum = !isNaN(numVal);
-          conditions.push(sql21`(
+          conditions.push(sql22`(
                 pt.payment_intent_id ILIKE ${like2}
                 OR pt.charge_id ILIKE ${like2}
                 OR pt.refund_id ILIKE ${like2}
@@ -46152,11 +46382,11 @@ var init_admin = __esm({
                 OR CAST(pt.booking_id AS TEXT) = ${s}
                 OR COALESCE(kb.reference_code, '') ILIKE ${like2}
                 OR COALESCE(sb.reference_code, '') ILIKE ${like2}
-                ${isNum ? sql21`OR pt.chef_id = ${numVal} OR pt.manager_id = ${numVal}` : sql21``}
+                ${isNum ? sql22`OR pt.chef_id = ${numVal} OR pt.manager_id = ${numVal}` : sql22``}
             )`);
         }
-        const whereClause = conditions.length > 0 ? sql21`WHERE ${sql21.join(conditions, sql21` AND `)}` : sql21``;
-        const joinBlock = sql21`
+        const whereClause = conditions.length > 0 ? sql22`WHERE ${sql22.join(conditions, sql22` AND `)}` : sql22``;
+        const joinBlock = sql22`
             FROM payment_transactions pt
             LEFT JOIN kitchen_bookings kb ON pt.booking_type = 'kitchen' AND pt.booking_id = kb.id
             LEFT JOIN kitchens k ON kb.kitchen_id = k.id
@@ -46175,10 +46405,10 @@ var init_admin = __esm({
             LEFT JOIN users manager_user ON pt.manager_id = manager_user.id
             LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = pt.chef_id AND cka.location_id = l.id
         `;
-        const countResult = await db.execute(sql21`SELECT COUNT(*) as total ${joinBlock} ${whereClause}`);
+        const countResult = await db.execute(sql22`SELECT COUNT(*) as total ${joinBlock} ${whereClause}`);
         const total = parseInt(countResult.rows[0].total);
         const atSign = "@";
-        const result = await db.execute(sql21`
+        const result = await db.execute(sql22`
             SELECT
                 pt.id, pt.booking_id, pt.booking_type, pt.chef_id, pt.manager_id,
                 pt.amount, pt.base_amount, pt.service_fee, pt.stripe_processing_fee,
@@ -46310,9 +46540,9 @@ var init_admin = __esm({
         const { status: statusFilter, locationId, limit = "200", offset = "0" } = req.query;
         const parsedLimit = Math.min(parseInt(limit) || 200, 500);
         const parsedOffset = parseInt(offset) || 0;
-        const statusClause = statusFilter ? sql21`AND sor.status = ${statusFilter}` : sql21``;
-        const locationClause = locationId ? sql21`AND loc.id = ${parseInt(locationId)}` : sql21``;
-        const result = await db.execute(sql21`
+        const statusClause = statusFilter ? sql22`AND sor.status = ${statusFilter}` : sql22``;
+        const locationClause = locationId ? sql22`AND loc.id = ${parseInt(locationId)}` : sql22``;
+        const result = await db.execute(sql22`
             SELECT 
                 sor.id,
                 sor.storage_booking_id as "storageBookingId",
@@ -46374,7 +46604,7 @@ var init_admin = __esm({
             ORDER BY sor.detected_at DESC
             LIMIT ${parsedLimit} OFFSET ${parsedOffset}
         `);
-        const countResult = await db.execute(sql21`
+        const countResult = await db.execute(sql22`
             SELECT COUNT(*) as total
             FROM storage_overstay_records sor
             INNER JOIN storage_bookings sb ON sor.storage_booking_id = sb.id
@@ -46394,7 +46624,7 @@ var init_admin = __esm({
       try {
         const overstayId = parseInt(req.params.id);
         if (isNaN(overstayId)) return res.status(400).json({ error: "Invalid ID" });
-        const result = await db.execute(sql21`
+        const result = await db.execute(sql22`
             SELECT 
                 soh.id,
                 soh.overstay_record_id as "overstayRecordId",
@@ -46423,10 +46653,10 @@ var init_admin = __esm({
         const { status: statusFilter, locationId, bookingType, limit = "200", offset = "0" } = req.query;
         const parsedLimit = Math.min(parseInt(limit) || 200, 500);
         const parsedOffset = parseInt(offset) || 0;
-        const statusClause = statusFilter ? sql21`AND dc.status = ${statusFilter}` : sql21``;
-        const locationClause = locationId ? sql21`AND dc.location_id = ${parseInt(locationId)}` : sql21``;
-        const bookingTypeClause = bookingType ? sql21`AND dc.booking_type = ${bookingType}` : sql21``;
-        const result = await db.execute(sql21`
+        const statusClause = statusFilter ? sql22`AND dc.status = ${statusFilter}` : sql22``;
+        const locationClause = locationId ? sql22`AND dc.location_id = ${parseInt(locationId)}` : sql22``;
+        const bookingTypeClause = bookingType ? sql22`AND dc.booking_type = ${bookingType}` : sql22``;
+        const result = await db.execute(sql22`
             SELECT 
                 dc.id,
                 dc.booking_type as "bookingType",
@@ -46482,7 +46712,7 @@ var init_admin = __esm({
             ORDER BY dc.created_at DESC
             LIMIT ${parsedLimit} OFFSET ${parsedOffset}
         `);
-        const countResult = await db.execute(sql21`
+        const countResult = await db.execute(sql22`
             SELECT COUNT(*) as total
             FROM damage_claims dc
             WHERE 1=1 ${statusClause} ${locationClause} ${bookingTypeClause}
@@ -46498,7 +46728,7 @@ var init_admin = __esm({
       try {
         const claimId = parseInt(req.params.id);
         if (isNaN(claimId)) return res.status(400).json({ error: "Invalid ID" });
-        const result = await db.execute(sql21`
+        const result = await db.execute(sql22`
             SELECT 
                 dch.id,
                 dch.damage_claim_id as "damageClaimId",
@@ -46526,7 +46756,7 @@ var init_admin = __esm({
       try {
         const claimId = parseInt(req.params.id);
         if (isNaN(claimId)) return res.status(400).json({ error: "Invalid ID" });
-        const result = await db.execute(sql21`
+        const result = await db.execute(sql22`
             SELECT 
                 de.id,
                 de.damage_claim_id as "damageClaimId",
@@ -46590,7 +46820,7 @@ var init_admin = __esm({
           return res.status(400).json({ error: "No valid settings provided" });
         }
         for (const { key, value } of updates) {
-          await db.execute(sql21`
+          await db.execute(sql22`
                 INSERT INTO platform_settings (key, value) 
                 VALUES (${key}, ${value})
                 ON CONFLICT (key) DO UPDATE SET value = ${value}
@@ -46614,8 +46844,8 @@ var init_admin = __esm({
         const { desc: desc24 } = await import("drizzle-orm");
         const conditions = [
           eq39(kitchenBookings3.status, "confirmed"),
-          sql21`access_code_hash IS NOT NULL`,
-          sql21`access_code_valid_until > NOW()`
+          sql22`access_code_hash IS NOT NULL`,
+          sql22`access_code_valid_until > NOW()`
         ];
         if (kitchenId) {
           conditions.push(eq39(kitchenBookings3.kitchenId, kitchenId));
@@ -46635,7 +46865,7 @@ var init_admin = __esm({
           endTime: kitchenBookings3.endTime,
           checkinStatus: kitchenBookings3.checkinStatus
         }).from(kitchenBookings3).innerJoin(kitchens3, eq39(kitchenBookings3.kitchenId, kitchens3.id)).innerJoin(locations5, eq39(kitchens3.locationId, locations5.id)).leftJoin(users5, eq39(kitchenBookings3.chefId, users5.id)).where(and25(...conditions)).orderBy(desc24(kitchenBookings3.accessCodeValidUntil)).limit(limit).offset(offset);
-        const [{ count: count4 }] = await db.select({ count: sql21`count(*)::int` }).from(kitchenBookings3).where(and25(...conditions));
+        const [{ count: count4 }] = await db.select({ count: sql22`count(*)::int` }).from(kitchenBookings3).where(and25(...conditions));
         res.json({
           codes,
           pagination: { page, limit, total: count4, totalPages: Math.ceil(count4 / limit) }
@@ -46661,11 +46891,11 @@ var init_admin = __esm({
         if (bookingId) conditions.push(eq39(accessCodeAudit2.bookingId, bookingId));
         if (kitchenId) conditions.push(eq39(accessCodeAudit2.kitchenId, kitchenId));
         if (action) conditions.push(eq39(accessCodeAudit2.action, action));
-        if (dateFrom) conditions.push(sql21`${accessCodeAudit2.createdAt} >= ${dateFrom}::timestamp`);
-        if (dateTo) conditions.push(sql21`${accessCodeAudit2.createdAt} <= ${dateTo}::timestamp`);
+        if (dateFrom) conditions.push(sql22`${accessCodeAudit2.createdAt} >= ${dateFrom}::timestamp`);
+        if (dateTo) conditions.push(sql22`${accessCodeAudit2.createdAt} <= ${dateTo}::timestamp`);
         const whereClause = conditions.length > 0 ? and25(...conditions) : void 0;
         const entries = await db.select().from(accessCodeAudit2).where(whereClause).orderBy(desc24(accessCodeAudit2.createdAt)).limit(limit).offset(offset);
-        const [{ count: count4 }] = await db.select({ count: sql21`count(*)::int` }).from(accessCodeAudit2).where(whereClause);
+        const [{ count: count4 }] = await db.select({ count: sql22`count(*)::int` }).from(accessCodeAudit2).where(whereClause);
         res.json({
           entries,
           pagination: { page, limit, total: count4, totalPages: Math.ceil(count4 / limit) }
@@ -46767,14 +46997,14 @@ var init_admin = __esm({
     router23.get("/email-logs/stats", requireFirebaseAuthWithUser, requireAdmin, async (_req, res) => {
       try {
         const [row] = await db.select({
-          total: sql21`count(*)::int`,
-          sent: sql21`count(*) filter (where status = 'sent')::int`,
-          failed: sql21`count(*) filter (where status = 'failed')::int`,
-          skipped: sql21`count(*) filter (where status = 'skipped_duplicate')::int`,
-          last24h: sql21`count(*) filter (where created_at >= now() - interval '24 hours')::int`,
-          failedLast24h: sql21`count(*) filter (where status = 'failed' and created_at >= now() - interval '24 hours')::int`,
-          chefs: sql21`count(*) filter (where recipient_role in ('chef', 'chef_and_manager'))::int`,
-          managers: sql21`count(*) filter (where recipient_role in ('manager', 'chef_and_manager'))::int`
+          total: sql22`count(*)::int`,
+          sent: sql22`count(*) filter (where status = 'sent')::int`,
+          failed: sql22`count(*) filter (where status = 'failed')::int`,
+          skipped: sql22`count(*) filter (where status = 'skipped_duplicate')::int`,
+          last24h: sql22`count(*) filter (where created_at >= now() - interval '24 hours')::int`,
+          failedLast24h: sql22`count(*) filter (where status = 'failed' and created_at >= now() - interval '24 hours')::int`,
+          chefs: sql22`count(*) filter (where recipient_role in ('chef', 'chef_and_manager'))::int`,
+          managers: sql22`count(*) filter (where recipient_role in ('manager', 'chef_and_manager'))::int`
         }).from(emailLogs);
         res.json({
           total: row?.total ?? 0,
@@ -46805,15 +47035,15 @@ var init_admin = __esm({
         const parsedOffset = Math.max(parseInt(offset, 10) || 0, 0);
         const conditions = [];
         if (status && EMAIL_LOG_STATUSES.includes(status)) {
-          conditions.push(sql21`${emailLogs.status} = ${status}`);
+          conditions.push(sql22`${emailLogs.status} = ${status}`);
         }
         const roleFilter = EMAIL_LOG_ROLES.includes(role) ? role : "chefs_and_managers";
         if (roleFilter === "chefs_and_managers") {
-          conditions.push(inArray11(emailLogs.recipientRole, [...CHEF_MANAGER_ROLES]));
+          conditions.push(inArray12(emailLogs.recipientRole, [...CHEF_MANAGER_ROLES]));
         } else if (roleFilter === "chef") {
-          conditions.push(inArray11(emailLogs.recipientRole, ["chef", "chef_and_manager"]));
+          conditions.push(inArray12(emailLogs.recipientRole, ["chef", "chef_and_manager"]));
         } else if (roleFilter === "manager") {
-          conditions.push(inArray11(emailLogs.recipientRole, ["manager", "chef_and_manager"]));
+          conditions.push(inArray12(emailLogs.recipientRole, ["manager", "chef_and_manager"]));
         } else if (roleFilter !== "all") {
           conditions.push(eq39(emailLogs.recipientRole, roleFilter));
         }
@@ -46822,7 +47052,7 @@ var init_admin = __esm({
         }
         if (search && typeof search === "string" && search.trim()) {
           const q = `%${search.trim()}%`;
-          conditions.push(sql21`(
+          conditions.push(sql22`(
                 ${emailLogs.recipientEmail} ILIKE ${q}
                 OR ${emailLogs.subject} ILIKE ${q}
                 OR COALESCE(${emailLogs.trackingId}, '') ILIKE ${q}
@@ -46847,7 +47077,7 @@ var init_admin = __esm({
           retriedAt: emailLogs.retriedAt,
           retryOfId: emailLogs.retryOfId,
           createdAt: emailLogs.createdAt,
-          canRetry: sql21`(
+          canRetry: sql22`(
                     ${emailLogs.status} = 'failed'
                     AND (
                         COALESCE(LENGTH(${emailLogs.htmlBody}), 0) > 0
@@ -46925,7 +47155,7 @@ __export(stripe_checkout_transactions_service_exports, {
   getTransactionBySessionId: () => getTransactionBySessionId,
   updateTransactionBySessionId: () => updateTransactionBySessionId
 });
-import { sql as sql22 } from "drizzle-orm";
+import { sql as sql23 } from "drizzle-orm";
 async function createTransaction(params, db3) {
   const {
     bookingId,
@@ -46939,7 +47169,7 @@ async function createTransaction(params, db3) {
     managerReceivesCents,
     metadata = {}
   } = params;
-  const result = await db3.execute(sql22`
+  const result = await db3.execute(sql23`
     INSERT INTO transactions (
       booking_id,
       stripe_session_id,
@@ -46975,29 +47205,29 @@ async function createTransaction(params, db3) {
 async function updateTransactionBySessionId(sessionId, params, db3) {
   const updates = [];
   if (params.status !== void 0) {
-    updates.push(sql22`status = ${params.status}`);
+    updates.push(sql23`status = ${params.status}`);
   }
   if (params.stripePaymentIntentId !== void 0) {
-    updates.push(sql22`stripe_payment_intent_id = ${params.stripePaymentIntentId}`);
+    updates.push(sql23`stripe_payment_intent_id = ${params.stripePaymentIntentId}`);
   }
   if (params.stripeChargeId !== void 0) {
-    updates.push(sql22`stripe_charge_id = ${params.stripeChargeId}`);
+    updates.push(sql23`stripe_charge_id = ${params.stripeChargeId}`);
   }
   if (params.completedAt !== void 0) {
-    updates.push(sql22`completed_at = ${params.completedAt}`);
+    updates.push(sql23`completed_at = ${params.completedAt}`);
   }
   if (params.refundedAt !== void 0) {
-    updates.push(sql22`refunded_at = ${params.refundedAt}`);
+    updates.push(sql23`refunded_at = ${params.refundedAt}`);
   }
   if (params.metadata !== void 0) {
-    updates.push(sql22`metadata = ${JSON.stringify(params.metadata)}`);
+    updates.push(sql23`metadata = ${JSON.stringify(params.metadata)}`);
   }
   if (updates.length === 0) {
     return getTransactionBySessionId(sessionId, db3);
   }
-  const result = await db3.execute(sql22`
+  const result = await db3.execute(sql23`
     UPDATE transactions
-    SET ${sql22.join(updates, sql22`, `)}
+    SET ${sql23.join(updates, sql23`, `)}
     WHERE stripe_session_id = ${sessionId}
     RETURNING *
   `);
@@ -47007,7 +47237,7 @@ async function updateTransactionBySessionId(sessionId, params, db3) {
   return mapRowToTransaction(result.rows[0]);
 }
 async function getTransactionBySessionId(sessionId, db3) {
-  const result = await db3.execute(sql22`
+  const result = await db3.execute(sql23`
     SELECT * FROM transactions WHERE stripe_session_id = ${sessionId}
   `);
   if (result.rows.length === 0) {
@@ -47049,7 +47279,7 @@ __export(webhooks_exports, {
 });
 import { Router as Router24 } from "express";
 import Stripe7 from "stripe";
-import { eq as eq40, and as and26, ne as ne6, notInArray } from "drizzle-orm";
+import { eq as eq40, and as and26, ne as ne7, notInArray } from "drizzle-orm";
 import * as Sentry5 from "@sentry/node";
 async function handleCheckoutSessionCompleted(session, webhookEventId) {
   if (!pool) {
@@ -48152,7 +48382,7 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
         const [manager] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(
           and26(
             eq40(users.id, transaction.manager_id),
-            ne6(users.stripeConnectAccountId, "")
+            ne7(users.stripeConnectAccountId, "")
           )
         ).limit(1);
         if (manager?.stripeConnectAccountId) {
@@ -48267,7 +48497,7 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
       }).where(
         and26(
           eq40(kitchenBookings.paymentIntentId, paymentIntent.id),
-          ne6(kitchenBookings.paymentStatus, "paid")
+          ne7(kitchenBookings.paymentStatus, "paid")
         )
       );
       await tx.update(storageBookings).set({
@@ -48276,8 +48506,8 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
       }).where(
         and26(
           eq40(storageBookings.paymentIntentId, paymentIntent.id),
-          ne6(storageBookings.paymentStatus, "paid"),
-          ne6(storageBookings.paymentStatus, "failed")
+          ne7(storageBookings.paymentStatus, "paid"),
+          ne7(storageBookings.paymentStatus, "failed")
         )
       );
       await tx.update(equipmentBookings).set({
@@ -48286,8 +48516,8 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
       }).where(
         and26(
           eq40(equipmentBookings.paymentIntentId, paymentIntent.id),
-          ne6(equipmentBookings.paymentStatus, "paid"),
-          ne6(equipmentBookings.paymentStatus, "failed")
+          ne7(equipmentBookings.paymentStatus, "paid"),
+          ne7(equipmentBookings.paymentStatus, "failed")
         )
       );
       await tx.update(pendingStorageExtensions).set({
@@ -48486,12 +48716,14 @@ async function handlePaymentIntentCanceled(paymentIntent, webhookEventId) {
     await db.transaction(async (tx) => {
       const excludedStatuses = ["paid", "refunded", "partially_refunded"];
       await tx.update(kitchenBookings).set({
+        status: "cancelled",
         paymentStatus: "failed",
         // Map cancel to failed for backward compatibility
         updatedAt: /* @__PURE__ */ new Date()
       }).where(
         and26(
           eq40(kitchenBookings.paymentIntentId, paymentIntent.id),
+          eq40(kitchenBookings.status, "pending"),
           notInArray(kitchenBookings.paymentStatus, excludedStatuses)
         )
       );
@@ -49867,10 +50099,10 @@ var init_dev_auth_bypass = __esm({
 });
 
 // server/dev-fixture-manager-location.ts
-import { and as and28, eq as eq42, inArray as inArray12, sql as sql23 } from "drizzle-orm";
+import { and as and28, eq as eq42, inArray as inArray13, sql as sql24 } from "drizzle-orm";
 async function ensureBackupTable() {
-  await db.execute(sql23`
-    CREATE TABLE IF NOT EXISTS ${sql23.raw(BACKUP_TABLE)} (
+  await db.execute(sql24`
+    CREATE TABLE IF NOT EXISTS ${sql24.raw(BACKUP_TABLE)} (
       location_id integer PRIMARY KEY,
       original_manager_id integer,
       fixture_manager_id integer NOT NULL,
@@ -49879,9 +50111,9 @@ async function ensureBackupTable() {
   `);
 }
 async function getBackup(locationId) {
-  const result = await db.execute(sql23`
+  const result = await db.execute(sql24`
     SELECT location_id, original_manager_id, fixture_manager_id
-    FROM ${sql23.raw(BACKUP_TABLE)}
+    FROM ${sql24.raw(BACKUP_TABLE)}
     WHERE location_id = ${locationId}
   `);
   const raw = result;
@@ -49925,7 +50157,7 @@ async function grantFixtureManagerLocation(opts) {
     await db.update(kitchenViewings).set({ managerId: manager.id, updatedAt: /* @__PURE__ */ new Date() }).where(
       and28(
         eq42(kitchenViewings.locationId, locationId),
-        inArray12(kitchenViewings.status, ["pending", "confirmed"])
+        inArray13(kitchenViewings.status, ["pending", "confirmed"])
       )
     );
     return {
@@ -49938,15 +50170,15 @@ async function grantFixtureManagerLocation(opts) {
   }
   const originalManagerId = backupRow?.original_manager_id ?? location.managerId ?? null;
   if (!backupRow) {
-    await db.execute(sql23`
-      INSERT INTO ${sql23.raw(BACKUP_TABLE)}
+    await db.execute(sql24`
+      INSERT INTO ${sql24.raw(BACKUP_TABLE)}
         (location_id, original_manager_id, fixture_manager_id)
       VALUES (${locationId}, ${originalManagerId}, ${manager.id})
       ON CONFLICT (location_id) DO NOTHING
     `);
   } else {
-    await db.execute(sql23`
-      UPDATE ${sql23.raw(BACKUP_TABLE)}
+    await db.execute(sql24`
+      UPDATE ${sql24.raw(BACKUP_TABLE)}
       SET fixture_manager_id = ${manager.id}, granted_at = now()
       WHERE location_id = ${locationId}
     `);
@@ -49955,7 +50187,7 @@ async function grantFixtureManagerLocation(opts) {
   await db.update(kitchenViewings).set({ managerId: manager.id, updatedAt: /* @__PURE__ */ new Date() }).where(
     and28(
       eq42(kitchenViewings.locationId, locationId),
-      inArray12(kitchenViewings.status, ["pending", "confirmed"])
+      inArray13(kitchenViewings.status, ["pending", "confirmed"])
     )
   );
   logger.info(
@@ -49987,13 +50219,13 @@ async function revokeFixtureManagerLocation(opts) {
     await db.update(kitchenViewings).set({ managerId: restored, updatedAt: /* @__PURE__ */ new Date() }).where(
       and28(
         eq42(kitchenViewings.locationId, locationId),
-        inArray12(kitchenViewings.status, ["pending", "confirmed"]),
+        inArray13(kitchenViewings.status, ["pending", "confirmed"]),
         eq42(kitchenViewings.managerId, backupRow.fixture_manager_id)
       )
     );
   }
-  await db.execute(sql23`
-    DELETE FROM ${sql23.raw(BACKUP_TABLE)} WHERE location_id = ${locationId}
+  await db.execute(sql24`
+    DELETE FROM ${sql24.raw(BACKUP_TABLE)} WHERE location_id = ${locationId}
   `);
   logger.info(
     `[dev-fixture] revoked fixture ownership of location ${locationId}; restored manager=${restored}`
@@ -50169,7 +50401,7 @@ var init_dev_journey_full_chunk_state = __esm({
 });
 
 // server/dev-journey-d-ready.ts
-import { and as and29, eq as eq43, inArray as inArray13, isNull as isNull2, like, sql as sql24 } from "drizzle-orm";
+import { and as and29, eq as eq43, inArray as inArray14, isNull as isNull2, like, sql as sql25 } from "drizzle-orm";
 function fail(status, message) {
   throw Object.assign(new Error(message), { status });
 }
@@ -50297,7 +50529,7 @@ async function clearTaggedJourneyDBookings(chefId) {
       eq43(kitchenBookings.chefId, chefId),
       eq43(kitchenBookings.kitchenId, DEV_JOURNEY_D_KITCHEN_ID),
       eq43(kitchenBookings.status, "pending"),
-      inArray13(kitchenBookings.paymentStatus, ["pending", "failed"]),
+      inArray14(kitchenBookings.paymentStatus, ["pending", "failed"]),
       isNull2(kitchenBookings.paymentIntentId),
       like(kitchenBookings.specialNotes, "testsprite-jd-%")
     )
@@ -50305,7 +50537,7 @@ async function clearTaggedJourneyDBookings(chefId) {
   return cleared.length;
 }
 async function clearBlockingOverstays(chefId) {
-  const result = await db.execute(sql24`
+  const result = await db.execute(sql25`
     UPDATE storage_overstay_records sor
     SET status = 'penalty_waived',
         penalty_waived = true,
@@ -50457,7 +50689,7 @@ async function prepareJourneyFullReady() {
       and29(
         eq43(kitchenBookings.chefId, chef.neonUserId),
         eq43(kitchenBookings.kitchenId, DEV_JOURNEY_D_KITCHEN_ID),
-        inArray13(kitchenBookings.status, ["pending", "confirmed"]),
+        inArray14(kitchenBookings.status, ["pending", "confirmed"]),
         like(kitchenBookings.specialNotes, "testsprite-full-%")
       )
     ),
@@ -50533,7 +50765,7 @@ async function clearTaggedFullBookingsSafe(chefId) {
       eq43(kitchenBookings.chefId, chefId),
       eq43(kitchenBookings.kitchenId, DEV_JOURNEY_D_KITCHEN_ID),
       eq43(kitchenBookings.status, "pending"),
-      inArray13(kitchenBookings.paymentStatus, ["pending", "failed"]),
+      inArray14(kitchenBookings.paymentStatus, ["pending", "failed"]),
       isNull2(kitchenBookings.paymentIntentId),
       like(kitchenBookings.specialNotes, "testsprite-full-%")
     )
@@ -51504,7 +51736,7 @@ __export(seller_report_service_exports, {
   generateSingleOrderInvoicePDF: () => generateSingleOrderInvoicePDF,
   processScheduledReports: () => processScheduledReports
 });
-import { isNotNull as isNotNull2, eq as eq46, desc as desc22 } from "drizzle-orm";
+import { isNotNull as isNotNull3, eq as eq46, desc as desc22 } from "drizzle-orm";
 import PDFDocument3 from "pdfkit";
 import { format as format7 } from "date-fns";
 function fmtDollars(value) {
@@ -51854,7 +52086,7 @@ async function processScheduledReports(period) {
     phpShopId: users.phpShopId,
     username: users.username,
     preferredLocale: users.preferredLocale
-  }).from(users).where(isNotNull2(users.phpShopId));
+  }).from(users).where(isNotNull3(users.phpShopId));
   logger.info(`[Seller Reports Cron] Found ${linkedChefs.length} chefs with linked accounts.`);
   let successCount = 0;
   let failCount = 0;
@@ -51894,7 +52126,7 @@ __export(chef_exports, {
   default: () => chef_default
 });
 import { Router as Router29 } from "express";
-import { sql as sql25, eq as eq47, desc as desc23, and as and30 } from "drizzle-orm";
+import { sql as sql26, eq as eq47, desc as desc23, and as and30 } from "drizzle-orm";
 import { format as format8 } from "date-fns";
 async function requireApprovedSeller(req, res, next) {
   try {
@@ -51940,7 +52172,7 @@ var init_chef = __esm({
       logger.info("[Chef Stripe Connect] Create request received for chef:", req.neonUser?.id);
       try {
         const chefId = req.neonUser.id;
-        const userResult = await db.execute(sql25`
+        const userResult = await db.execute(sql26`
             SELECT id, username as email, stripe_connect_account_id 
             FROM users 
             WHERE id = ${chefId} 
@@ -51987,7 +52219,7 @@ var init_chef = __esm({
     router29.get("/stripe-connect/onboarding-link", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
-        const userResult = await db.execute(sql25`
+        const userResult = await db.execute(sql26`
             SELECT stripe_connect_account_id 
             FROM users 
             WHERE id = ${chefId} 
@@ -52011,7 +52243,7 @@ var init_chef = __esm({
     router29.get("/stripe-connect/dashboard-link", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
-        const userResult = await db.execute(sql25`
+        const userResult = await db.execute(sql26`
             SELECT stripe_connect_account_id 
             FROM users 
             WHERE id = ${chefId} 
@@ -52163,7 +52395,7 @@ var init_chef = __esm({
         if (metadata?.storage_extension_id) {
           const extensionId = parseInt(String(metadata.storage_extension_id));
           if (!isNaN(extensionId)) {
-            const extensionResult = await db.execute(sql25`
+            const extensionResult = await db.execute(sql26`
                     SELECT 
                         pse.id,
                         pse.extension_days,
@@ -52186,7 +52418,7 @@ var init_chef = __esm({
           }
         }
         let chef = null;
-        const chefResult = await db.execute(sql25`
+        const chefResult = await db.execute(sql26`
             SELECT u.id, u.username, cka.full_name
             FROM users u
             LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = u.id
@@ -52292,7 +52524,7 @@ var init_chef = __esm({
           return res.status(404).json({ error: "No payment transaction found for this overstay penalty" });
         }
         let chef = null;
-        const chefResult = await db.execute(sql25`
+        const chefResult = await db.execute(sql26`
             SELECT u.id, u.username, cka.full_name
             FROM users u
             LEFT JOIN chef_kitchen_applications cka ON cka.chef_id = u.id
@@ -52996,6 +53228,13 @@ router.post(
     try {
       const userId = req.neonUser.id;
       logger.info(`\u{1F4DD} POST /api/firebase/applications - User ${userId} submitting application`);
+      if (req.firebaseUser?.email_verified !== true) {
+        cleanupUploadedFiles(req);
+        return res.status(403).json({
+          error: "Please verify your email before submitting an application.",
+          code: "EMAIL_NOT_VERIFIED"
+        });
+      }
       const { userId: _clientUserId, ...bodyWithoutUserId } = req.body;
       const parsedData = insertApplicationSchema.safeParse(bodyWithoutUserId);
       if (!parsedData.success) {
@@ -53081,6 +53320,36 @@ router.post(
         } catch (notifyErr) {
           logger.error("\u274C Failed to send intended application notification:", notifyErr);
         }
+      }
+      try {
+        const { users: users5 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        const { eq: eqOp, isNotNull: isNotNull4, ne: ne8, and: andOp } = await import("drizzle-orm");
+        const { db: db3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+        const adminUsers = await db3.select({ username: users5.username }).from(users5).where(
+          andOp(
+            eqOp(users5.role, "admin"),
+            isNotNull4(users5.username),
+            ne8(users5.username, "")
+          )
+        );
+        const hasDocuments = !!(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl);
+        for (const admin2 of adminUsers) {
+          if (admin2.username) {
+            const adminEmail = generateNewSellerApplicationAdminEmail({
+              adminEmail: admin2.username,
+              chefName: application.fullName || "Chef",
+              chefEmail: application.email || "",
+              hasDocuments,
+              submittedAt: /* @__PURE__ */ new Date()
+            });
+            await sendEmail(adminEmail, {
+              trackingId: `seller_app_admin_notify_fb_${admin2.username}_${application.id}_${Date.now()}`
+            });
+          }
+        }
+        logger.info(`\u2705 Sent seller application admin notification to ${adminUsers.length} admin(s)`);
+      } catch (adminEmailError) {
+        logger.error("Error sending admin notification for new seller application:", adminEmailError);
       }
       res.status(201).json(application);
     } catch (error) {
@@ -53355,7 +53624,7 @@ router2.post("/admin/send-company-email", requireFirebaseAuthWithUser, requireAd
           promoCode,
           promoCodeLabel: promoCodeLabel || "\u{1F381} Special Offer Code For You",
           customMessage: messageContent,
-          greeting: greeting || "Hello! \u{1F44B}",
+          greeting: greeting || "Hello! ",
           subject: subject || `\u{1F381} Special Offer: ${promoCode}`,
           previewText,
           header: header || {
@@ -54749,8 +55018,9 @@ init_application_repository();
 init_application_service();
 init_chat_service();
 init_notification_service();
+init_phone_utils();
 init_email();
-import { and as and11, eq as eq19 } from "drizzle-orm";
+import { and as and11, eq as eq19, isNotNull as isNotNull2, ne as ne3 } from "drizzle-orm";
 var router7 = Router7();
 var locationRepository = new LocationRepository();
 var locationService2 = new LocationService(locationRepository);
@@ -54766,6 +55036,12 @@ router7.post(
   async (req, res) => {
     try {
       logger.info(`\u{1F373} POST /api/firebase/chef/kitchen-applications - Chef ${req.neonUser.id} submitting kitchen application`);
+      if (req.firebaseUser?.email_verified !== true) {
+        return res.status(403).json({
+          error: "Please verify your email before submitting an application.",
+          code: "EMAIL_NOT_VERIFIED"
+        });
+      }
       const filesArray = req.files;
       const files = {};
       if (filesArray) {
@@ -54864,7 +55140,15 @@ router7.post(
       }
       const requirements = await locationService2.getLocationRequirementsWithDefaults(locationId);
       let phoneValue = "";
-      const phoneInput = req.body.phone ? req.body.phone.trim() : "";
+      const profileData = req.neonUser?.managerProfileData && typeof req.neonUser.managerProfileData === "object" ? req.neonUser.managerProfileData : {};
+      const applicationPhone = await getChefPhone(req.neonUser.id);
+      const existingKitchenApplicationForPhone = await chefApplicationService.getChefApplication(
+        req.neonUser.id,
+        locationId
+      );
+      const phoneInput = String(
+        profileData.phone || req.body.phone || existingKitchenApplicationForPhone?.phone || applicationPhone || ""
+      ).trim();
       const tierValue = parseInt(req.body.current_tier || "1", 10);
       const isTier1 = !tierValue || tierValue === 1;
       if (requirements.requirePhone) {
@@ -55169,6 +55453,43 @@ router7.post(
       });
       const application = await chefApplicationService.createApplication(applicationData);
       logger.info(`\u2705 Kitchen application created/updated: Chef ${req.neonUser.id} \u2192 Location ${parsedData.data.locationId}, ID: ${application.id}`);
+      if (currentTierValue === 1) {
+        try {
+          const admins = await db.select({ id: users.id, username: users.username }).from(users).where(and11(eq19(users.role, "admin"), isNotNull2(users.username), ne3(users.username, "")));
+          for (const admin2 of admins) {
+            await notificationService.createForManager({
+              managerId: admin2.id,
+              type: "application_new",
+              priority: "high",
+              title: "Kitchen application awaiting review",
+              message: `${formData.fullName || "A chef"} requested to apply to ${location.name || "a kitchen"}.`,
+              metadata: {
+                applicationId: application.id,
+                chefId: req.neonUser.id,
+                locationId: location.id,
+                workflow: "kitchen",
+                step: 1
+              },
+              actionUrl: "/admin?section=kitchen-applications-step1",
+              actionLabel: "Review application"
+            });
+            const adminEmail = generateNewKitchenApplicationManagerEmail({
+              managerEmail: admin2.username,
+              chefName: formData.fullName || "Chef",
+              chefEmail: formData.email || "",
+              locationName: location.name || "Kitchen Location",
+              applicationId: application.id,
+              submittedAt: /* @__PURE__ */ new Date()
+            });
+            await sendEmail(adminEmail, {
+              trackingId: `kitchen_app_admin_${admin2.id}_${application.id}_${Date.now()}`
+            });
+          }
+          logger.info(`\u2705 Notified ${admins.length} admin(s) about kitchen application ${application.id}`);
+        } catch (adminNotificationError) {
+          logger.error("Error notifying admins about kitchen application:", adminNotificationError);
+        }
+      }
       try {
         if (location.managerId) {
           const managerApplicationNotification = {
@@ -55189,19 +55510,24 @@ router7.post(
         logger.error("Error creating application notification:", notifError);
       }
       try {
-        if (currentTierValue === 1 && location.notificationEmail && location.managerId) {
-          const managerEmailContent = generateNewKitchenApplicationManagerEmail({
-            managerEmail: location.notificationEmail,
-            chefName: formData.fullName || "Chef",
-            chefEmail: formData.email || "",
-            locationName: location.name || "Kitchen Location",
-            applicationId: application.id,
-            submittedAt: /* @__PURE__ */ new Date()
-          });
-          await sendEmail(managerEmailContent, {
-            trackingId: `kitchen_app_new_${application.id}_${Date.now()}`
-          });
-          logger.info(`\u2705 Sent new kitchen application email to manager: ${location.notificationEmail}`);
+        if (location.managerId) {
+          const [manager] = await db.select({ username: users.username }).from(users).where(eq19(users.id, location.managerId)).limit(1);
+          const managerEmail = location.notificationEmail || manager?.username;
+          if (managerEmail) {
+            const emailData = {
+              managerEmail,
+              chefName: formData.fullName || "Chef",
+              chefEmail: formData.email || "",
+              locationName: location.name || "Kitchen Location",
+              applicationId: application.id,
+              submittedAt: /* @__PURE__ */ new Date()
+            };
+            const managerEmailContent = currentTierValue === 2 ? generateKitchenCoordinationSubmittedManagerEmail(emailData) : generateNewKitchenApplicationManagerEmail(emailData);
+            await sendEmail(managerEmailContent, {
+              trackingId: `kitchen_app_${currentTierValue === 2 ? "coordination" : "new"}_${application.id}_${Date.now()}`
+            });
+            logger.info(`\u2705 Sent kitchen application phase ${currentTierValue} email to manager: ${managerEmail}`);
+          }
         }
       } catch (emailError) {
         logger.error("Error sending new kitchen application email to manager:", emailError);
@@ -55260,6 +55586,14 @@ router7.get("/firebase/chef/kitchen-applications", requireFirebaseAuthWithUser, 
   try {
     const chefId = req.neonUser.id;
     const applications5 = await chefApplicationService.getChefApplications(chefId);
+    await Promise.all(applications5.filter((application) => application.status === "approved").map(async (application) => {
+      const conversationId = await initializeConversation({
+        id: application.id,
+        chefId: application.chefId,
+        locationId: application.locationId
+      });
+      if (conversationId) application.chat_conversation_id = conversationId;
+    }));
     res.json(applications5);
   } catch (error) {
     logger.error("Error getting chef kitchen applications:", error);
@@ -55280,6 +55614,14 @@ router7.get("/firebase/chef/kitchen-applications/location/:locationId", requireF
         message: "You have not applied to this kitchen yet.",
         application: null
       });
+    }
+    if (application.status === "approved") {
+      const conversationId = await initializeConversation({
+        id: application.id,
+        chefId: application.chefId,
+        locationId: application.locationId
+      });
+      if (conversationId) application.chat_conversation_id = conversationId;
     }
     const location = await locationService2.getLocationById(locationId);
     const currentTier = application.current_tier ?? 1;
@@ -55413,6 +55755,11 @@ router7.patch("/firebase/admin/kitchen-applications/:id/status", requireFirebase
     if (!status || !["approved", "rejected", "inReview"].includes(status)) {
       return res.status(400).json({ error: 'Status must be "approved", "rejected", or "inReview"' });
     }
+    const applicationBeforeUpdate = await chefApplicationService.getApplicationById(applicationId);
+    if (!applicationBeforeUpdate) {
+      return res.status(404).json({ error: "Application not found" });
+    }
+    const previousTier = applicationBeforeUpdate.current_tier ?? 1;
     let updatedApplication = await chefApplicationService.updateApplicationStatus(
       applicationId,
       status,
@@ -55429,6 +55776,117 @@ router7.patch("/firebase/admin/kitchen-applications/:id/status", requireFirebase
       ) || updatedApplication;
     }
     logger.info(`\u2705 Application ${applicationId} ${status} by Admin ${user.id}`);
+    if (status === "approved" && updatedApplication) {
+      const currentTier = updatedApplication.current_tier ?? 1;
+      if (currentTier > previousTier) {
+        try {
+          await notifyTierTransition(applicationId, previousTier, currentTier);
+          logger.info(`\u2705 Chat tier transition notification sent (${previousTier} \u2192 ${currentTier}) for application ${applicationId}`);
+        } catch (chatError) {
+          logger.error("Error sending tier transition chat notification:", chatError);
+        }
+      } else if (currentTier <= 1) {
+        try {
+          await notifyTierTransition(applicationId, 1, 2);
+          logger.info(`\u2705 Kitchen coordination chat opened for application ${applicationId}`);
+        } catch (chatError) {
+          logger.error("Error opening kitchen coordination chat:", chatError);
+        }
+      }
+      try {
+        const location = await locationService2.getLocationById(applicationBeforeUpdate.locationId);
+        if (applicationBeforeUpdate.chefId) {
+          await notificationService.notifyChefApplicationApproved({
+            chefId: applicationBeforeUpdate.chefId,
+            kitchenName: location?.name || "Kitchen",
+            locationName: location?.name || "Kitchen Location",
+            locationId: applicationBeforeUpdate.locationId,
+            applicationId: applicationBeforeUpdate.id,
+            currentTier
+          });
+          logger.info(`\u2705 In-app notification sent to chef ${applicationBeforeUpdate.chefId} for application ${applicationId}`);
+        }
+      } catch (notifError) {
+        logger.error("Error creating chef application approval notification:", notifError);
+      }
+      try {
+        if (applicationBeforeUpdate.email) {
+          const location = await locationService2.getLocationById(applicationBeforeUpdate.locationId);
+          const approvalTier = currentTier;
+          if (approvalTier <= 1) {
+            const step1Email = generateKitchenApplicationSubmittedChefEmail({
+              chefEmail: applicationBeforeUpdate.email,
+              chefName: applicationBeforeUpdate.fullName || "Chef",
+              locationName: location?.name || "Kitchen Location",
+              locationAddress: location?.address || void 0
+            });
+            await sendEmail(step1Email, {
+              trackingId: `kitchen_app_step1_approved_admin_${applicationId}_${Date.now()}`
+            });
+            logger.info(`\u2705 Sent step 1 approval email to chef: ${applicationBeforeUpdate.email} (Tier ${approvalTier})`);
+          } else {
+            const approvalEmail = generateKitchenApplicationApprovedEmail({
+              chefEmail: applicationBeforeUpdate.email,
+              chefName: applicationBeforeUpdate.fullName || "Chef",
+              locationName: location?.name || "Kitchen Location"
+            });
+            await sendEmail(approvalEmail, {
+              trackingId: `kitchen_app_approved_admin_${applicationId}_${Date.now()}`
+            });
+            logger.info(`\u2705 Sent full approval email to chef: ${applicationBeforeUpdate.email} (Tier ${approvalTier})`);
+          }
+        }
+      } catch (emailError) {
+        logger.error("Error sending kitchen application approval email from admin:", emailError);
+      }
+      try {
+        const location = await locationService2.getLocationById(applicationBeforeUpdate.locationId);
+        if (location && location.managerId) {
+          await notificationService.notifyApplicationApproved({
+            managerId: location.managerId,
+            locationId: applicationBeforeUpdate.locationId,
+            applicationId: applicationBeforeUpdate.id,
+            chefName: applicationBeforeUpdate.fullName || "Chef",
+            chefEmail: applicationBeforeUpdate.email || ""
+          });
+          logger.info(`\u2705 In-app notification sent to manager ${location.managerId} for application ${applicationId}`);
+        }
+      } catch (notifError) {
+        logger.error("Error creating manager application approval notification:", notifError);
+      }
+    }
+    if (status === "rejected" && updatedApplication) {
+      try {
+        if (applicationBeforeUpdate.email) {
+          const location = await locationService2.getLocationById(applicationBeforeUpdate.locationId);
+          const rejectionEmail = generateKitchenApplicationRejectedEmail({
+            chefEmail: applicationBeforeUpdate.email,
+            chefName: applicationBeforeUpdate.fullName || "Chef",
+            locationName: location?.name || "Kitchen Location",
+            feedback: feedback || void 0
+          });
+          await sendEmail(rejectionEmail, {
+            trackingId: `kitchen_app_rejected_admin_${applicationId}_${Date.now()}`
+          });
+          logger.info(`\u2705 Sent kitchen application rejection email to chef: ${applicationBeforeUpdate.email}`);
+        }
+      } catch (emailError) {
+        logger.error("Error sending kitchen application rejection email from admin:", emailError);
+      }
+      try {
+        if (applicationBeforeUpdate.chefId) {
+          const location = await locationService2.getLocationById(applicationBeforeUpdate.locationId);
+          await notificationService.notifyChefApplicationRejected({
+            chefId: applicationBeforeUpdate.chefId,
+            kitchenName: location?.name || "Kitchen",
+            locationName: location?.name || "Kitchen Location",
+            reason: feedback || void 0
+          });
+        }
+      } catch (notifError) {
+        logger.error("Error creating chef application rejection notification:", notifError);
+      }
+    }
     res.json(updatedApplication);
   } catch (error) {
     logger.error("Error updating application status:", error);
@@ -55772,6 +56230,7 @@ init_firebase_auth_middleware();
 init_db();
 init_user_repository();
 init_user_service();
+init_policy_config();
 import { createServer } from "http";
 async function registerRoutes(app2) {
   logger.info("[Routes] Registering all routes including chef-kitchen-access and portal user routes...");
@@ -55801,14 +56260,6 @@ async function registerRoutes(app2) {
   app2.use("/api/files", (await Promise.resolve().then(() => (init_files(), files_exports))).default);
   const userRepo2 = new UserRepository();
   const userService3 = new UserService(userRepo2);
-  app2.get("/api/user-exists", async (req, res) => {
-    const username = req.query.username;
-    if (!username) {
-      return res.status(400).json({ error: "Username required" });
-    }
-    const exists = await userService3.checkUsernameExists(username);
-    res.json({ exists });
-  });
   app2.get("/api/firebase/user/me", requireFirebaseAuthWithUser, async (req, res) => {
     try {
       const user = req.neonUser;
@@ -56010,8 +56461,9 @@ async function registerRoutes(app2) {
   });
   app2.post("/api/firebase/send-magic-link-email", async (req, res) => {
     try {
-      const { email, returnUrl } = req.body;
-      if (!email) {
+      const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+      const { returnUrl } = req.body;
+      if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
         return res.status(400).json({ error: "Email is required" });
       }
       const { getAuth: getAuth4 } = await import("firebase-admin/auth");
@@ -56021,7 +56473,17 @@ async function registerRoutes(app2) {
         throw new Error("Firebase Admin not initialized");
       }
       const existingUser = await userService3.getUserByUsername(email);
-      const userRole = existingUser ? existingUser.role || "chef" : "chef";
+      const genericResponse = { success: true, message: "If an account exists, a sign-in link has been sent." };
+      if (!existingUser?.firebaseUid) {
+        logger.warn(`Magic-link request suppressed for an unlinked or unknown account: ${email}`);
+        return res.json(genericResponse);
+      }
+      const firebaseUser = await getAuth4(firebaseApp).getUser(existingUser.firebaseUid).catch(() => null);
+      if (!firebaseUser?.email || firebaseUser.email.trim().toLowerCase() !== email) {
+        logger.error(`Magic-link request suppressed because Firebase/Neon identity linkage is inconsistent for user ${existingUser.id}`);
+        return res.json(genericResponse);
+      }
+      const userRole = existingUser.role === "manager" ? "manager" : existingUser.role === "admin" ? "admin" : "chef";
       const { getEmailLinkOrigin: getEmailLinkOrigin2 } = await Promise.resolve().then(() => (init_email(), email_exports));
       const userType = userRole === "manager" ? "kitchen" : userRole === "admin" ? "admin" : "chef";
       const emailLinkOrigin = getEmailLinkOrigin2(userType);
@@ -56029,16 +56491,16 @@ async function registerRoutes(app2) {
       let redirectPath = postSignInPath;
       if (returnUrl && typeof returnUrl === "string" && returnUrl.startsWith("/")) {
         const blocked = ["/email-action", "/auth", "/login"];
-        if (!blocked.some((p) => returnUrl.startsWith(p))) {
-          redirectPath = returnUrl.split("?")[0] === returnUrl ? returnUrl : returnUrl;
+        const belongsToRole = userRole === "manager" ? returnUrl.startsWith("/manager/") : userRole === "admin" ? returnUrl.startsWith("/admin") : !returnUrl.startsWith("/manager/") && !returnUrl.startsWith("/admin");
+        if (belongsToRole && !blocked.some((p) => returnUrl.startsWith(p))) {
+          redirectPath = returnUrl;
         }
       }
       const { getFirebaseContinueUrl: getFirebaseContinueUrl2 } = await Promise.resolve().then(() => (init_email(), email_exports));
       const continueUrlObj = new URL(getFirebaseContinueUrl2(userType, redirectPath));
-      continueUrlObj.searchParams.set("email", email);
-      const continueUrlWithEmail = continueUrlObj.toString();
+      const continueUrl = continueUrlObj.toString();
       const actionCodeSettings = {
-        url: continueUrlWithEmail,
+        url: continueUrl,
         handleCodeInApp: true
       };
       let signInUrl = await getAuth4(firebaseApp).generateSignInWithEmailLink(email, actionCodeSettings);
@@ -56100,7 +56562,7 @@ async function registerRoutes(app2) {
         throw new Error("Failed to send magic link email");
       }
       logger.info(`\u2705 Custom branded magic link email sent to ${email} (role: ${userRole})`);
-      res.json({ success: true, message: "Sign-in link sent." });
+      res.json(genericResponse);
     } catch (error) {
       logger.error("Error sending magic link email:", error);
       res.status(500).json({ error: "Failed to send sign-in link" });
@@ -56166,55 +56628,73 @@ async function registerRoutes(app2) {
       if (!decodedToken) {
         return res.status(401).json({ error: "Invalid token" });
       }
-      const { email, uid, role, ...otherData } = req.body;
+      const uid = typeof req.body?.uid === "string" ? req.body.uid : "";
+      const tokenEmail = typeof decodedToken.email === "string" ? decodedToken.email.trim().toLowerCase() : "";
+      const accountType = req.body?.accountType;
+      const termsAccepted = req.body?.termsAccepted;
+      const displayName = typeof req.body?.displayName === "string" ? req.body.displayName.trim().slice(0, 120) : "";
       if (decodedToken.uid !== uid) {
         return res.status(403).json({ error: "Token mismatch" });
+      }
+      if (!tokenEmail) {
+        return res.status(400).json({ error: "A Firebase email identity is required" });
+      }
+      if (accountType !== "chef" && accountType !== "manager") {
+        return res.status(403).json({
+          error: "Public registration is available only for chef and kitchen manager accounts",
+          code: "INVALID_REGISTRATION_TYPE"
+        });
       }
       const existingByUid = await userService3.getUserByFirebaseUid(uid);
       if (existingByUid) {
         logger.info(`\u2705 User already exists with Firebase UID ${uid}, returning existing user`);
         return res.json(existingByUid);
       }
-      const existingByUsername = await userService3.getUserByUsername(email);
+      const existingByUsername = await userService3.getUserByUsername(tokenEmail);
       if (existingByUsername) {
-        if (!existingByUsername.firebaseUid) {
-          logger.info(`\u{1F517} Linking Firebase UID ${uid} to existing Neon user ${existingByUsername.id}`);
-          const updatedUser = await userService3.updateUser(existingByUsername.id, {
-            firebaseUid: uid,
-            isVerified: decodedToken.email_verified || existingByUsername.isVerified
-          });
-          return res.json(updatedUser || existingByUsername);
-        } else if (existingByUsername.firebaseUid !== uid) {
-          logger.info(`\u26A0\uFE0F User ${email} exists with different Firebase UID. Old: ${existingByUsername.firebaseUid}, New: ${uid}`);
-          logger.info(`\u{1F504} Updating Firebase UID to new account (user may have re-registered in Firebase)`);
-          const updatedUser = await userService3.updateUser(existingByUsername.id, {
-            firebaseUid: uid,
-            isVerified: decodedToken.email_verified || false
-            // Reset verification for new Firebase account
-          });
-          return res.json(updatedUser || existingByUsername);
-        }
-        return res.json(existingByUsername);
+        logger.info(`\u26A0\uFE0F Registration blocked because ${tokenEmail} already exists in the application database`);
+        return res.status(409).json({
+          error: "Email already registered",
+          code: "EMAIL_EXISTS",
+          message: "An account already exists for this email address. Sign in instead, or use a different email."
+        });
       }
-      logger.info(`\u{1F4DD} Creating new user: ${email} with role: ${role || "chef"}`);
-      const finalRole = role || "chef";
-      const newUser = await userService3.createUser({
-        username: email,
+      const finalRole = accountType;
+      logger.info(`\u{1F4DD} Creating new public ${finalRole} account: ${tokenEmail}`);
+      let newUser = await userService3.createUser({
+        username: tokenEmail,
         firebaseUid: uid,
         role: finalRole,
         isVerified: decodedToken.email_verified || false,
-        ...otherData
+        has_seen_welcome: finalRole === "manager"
       });
+      try {
+        const roleAndConsentUpdate = await userService3.updateUser(newUser.id, {
+          isChef: finalRole === "chef",
+          isManager: finalRole === "manager",
+          termsAccepted: termsAccepted === true,
+          termsAcceptedAt: termsAccepted === true ? /* @__PURE__ */ new Date() : null,
+          termsVersion: termsAccepted === true ? CURRENT_POLICY_VERSION : null
+        });
+        if (!roleAndConsentUpdate) throw new Error("Registration profile update returned no user");
+        newUser = roleAndConsentUpdate;
+      } catch (profileError) {
+        await userService3.deleteUser(newUser.id).catch((cleanupError) => {
+          logger.error(`Failed to remove partial Neon registration ${newUser.id}`, cleanupError);
+        });
+        throw profileError;
+      }
       try {
         const { sendEmail: sendEmail2, generateWelcomeEmail: generateWelcomeEmail2, generateNewUserRegistrationAdminEmail: generateNewUserRegistrationAdminEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
         const { db: db3 } = await Promise.resolve().then(() => (init_db(), db_exports));
         const { users: users5 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
         const { eq: eq48 } = await import("drizzle-orm");
-        const displayName = otherData.displayName || email.split("@")[0];
+        const email = tokenEmail;
+        const recipientName = displayName || email.split("@")[0];
         if (decodedToken.email_verified) {
           logger.info(`\u{1F4E7} Sending welcome email to VERIFIED new ${finalRole}: ${email}`);
           const welcomeEmail = generateWelcomeEmail2({
-            fullName: displayName,
+            fullName: recipientName,
             email,
             role: finalRole
           });
@@ -56235,7 +56715,7 @@ async function registerRoutes(app2) {
           if (admin2.username && admin2.username !== email) {
             const adminEmail = generateNewUserRegistrationAdminEmail2({
               adminEmail: admin2.username,
-              newUserName: displayName,
+              newUserName: recipientName,
               newUserEmail: email,
               userRole: finalRole,
               registrationDate: /* @__PURE__ */ new Date()
@@ -56259,7 +56739,7 @@ async function registerRoutes(app2) {
         return res.status(409).json({
           error: "Email already registered",
           code: "EMAIL_EXISTS",
-          message: "This email is already registered. Please try signing in instead."
+          message: "An account already exists for this email address. Sign in instead, or use a different email."
         });
       }
       res.status(500).json({ error: "Failed to register user" });
