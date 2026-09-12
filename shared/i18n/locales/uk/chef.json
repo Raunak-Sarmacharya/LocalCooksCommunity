@@ -120,6 +120,7 @@
   "apptabDocPending": "Очікує",
   "apptabDocRejected": "Відхилено",
   "apptabDocumentsLabel": "Документи",
+  "apptabDocumentsAfterStep1": "Завантаження документів стане доступним після схвалення кроку 1.",
   "apptabDryStorageAvailable": "Сухе сховище доступне",
   "apptabEmail": "Електронна пошта",
   "apptabEstablishmentCert": "Сертифікат закладу",

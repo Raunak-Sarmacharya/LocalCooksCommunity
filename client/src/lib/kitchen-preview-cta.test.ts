@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolvePreviewPrimaryCta } from "./kitchen-preview-cta";
+import { resolvePreviewApplicationRoute, resolvePreviewPrimaryCta } from "./kitchen-preview-cta";
 
 const t = (_key: string, fallback?: string) => fallback ?? _key;
 
@@ -35,5 +35,32 @@ describe("resolvePreviewPrimaryCta", () => {
       label: "Application in progress",
       kind: "wait",
     });
+  });
+
+  it("offers reapplication for a rejected kitchen request", () => {
+    const display = {
+      label: "Rejected",
+      tone: "danger" as const,
+      step: 1,
+      stepCaption: "Not approved",
+      actionLabel: "Apply again",
+      actionKind: "discover" as const,
+    };
+
+    expect(
+      resolvePreviewPrimaryCta({
+        t,
+        applicationLoading: false,
+        canBook: false,
+        alreadyApplied: true,
+        canAcceptApplications: true,
+        display,
+      })
+    ).toMatchObject({
+      label: "Apply again",
+      kind: "discover",
+      requireDates: true,
+    });
+    expect(resolvePreviewApplicationRoute("42", display)).toBe("/apply-kitchen/42");
   });
 });

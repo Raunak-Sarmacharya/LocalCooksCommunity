@@ -8,9 +8,6 @@ import { Building, CheckCircle, Clock, FileText, MapPin, ArrowRight, User, Mail,
 import { cn } from "@/lib/utils";
 import { Link } from "wouter";
 import { useTranslation } from "react-i18next";
-import type { TFunction } from "i18next";
-
-type ChefTFunction = TFunction<"chef", undefined>;
 import { ChefKitchenApplication } from "@shared/schema";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { parseBusinessInfo, formatExperience, formatExpiryDate } from "@/utils/parseBusinessInfo";
@@ -37,31 +34,14 @@ interface KitchenApplicationCardProps {
   onDiscoverKitchens: () => void;
 }
 
-const getDocStatusBadge = (status: string | null | undefined, t: ChefTFunction) => {
-  if (!status || status === "N/A") return { variant: "outline" as const, label: t("apptabDocNotUploaded", "Not uploaded") };
-  if (status === "approved") return { variant: "success" as const, label: t("apptabDocApproved", "Approved") };
-  if (status === "pending") return { variant: "warning" as const, label: t("apptabDocPending", "Pending") };
-  if (status === "rejected") return { variant: "destructive" as const, label: t("apptabDocRejected", "Rejected") };
-  return { variant: "outline" as const, label: status };
-};
-
-const formatYesNoNotSure = (value: string | undefined, t: ChefTFunction) => {
-  if (value === "yes") return t("apptabYes", "Yes");
-  if (value === "no") return t("apptabNo", "No");
-  if (value === "notSure") return t("apptabNotSure", "Not Sure");
-  return value || t("apptabNotApplicable", "N/A");
-};
-
 function KitchenApplicationDetails({
   app,
   display,
   onBookKitchen,
-  onDiscoverKitchens,
 }: {
   app: KitchenApplicationWithLocation;
   display: ReturnType<typeof getKitchenDisplayStatus>;
   onBookKitchen: KitchenApplicationCardProps["onBookKitchen"];
-  onDiscoverKitchens: KitchenApplicationCardProps["onDiscoverKitchens"];
 }) {
   const { t, i18n } = useTranslation("chef");
   const currentStep = (app as any).current_tier ?? 1;
@@ -249,71 +229,22 @@ function KitchenApplicationDetails({
             );
           })()}
 
-          <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            {t("apptabDocumentsLabel", "Documents")}
-          </p>
-          <div className="grid grid-cols-1 gap-3">
-            <div className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-card p-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <div className="min-w-0">
-                  <span className="text-sm font-medium">{t("apptabFoodSafetyLicense", "Food Safety License")}</span>
-                  <p className="text-xs text-muted-foreground">
-                    {t("apptabHasLicense", { value: formatYesNoNotSure(app.foodSafetyLicense, t), defaultValue: "Has License: {value}" })}
-                  </p>
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                {app.foodSafetyLicenseUrl ? (
-                  <>
-                    <InfoChip variant={getDocStatusBadge(app.foodSafetyLicenseStatus, t).variant}>
-                      {getDocStatusBadge(app.foodSafetyLicenseStatus, t).label}
-                    </InfoChip>
-                    <SecureDocumentLink
-                      url={app.foodSafetyLicenseUrl}
-                      fileName="Food Safety License"
-                      label={t("apptabView", "View")}
-                      showIcon={false}
-                    />
-                  </>
-                ) : (
-                  <InfoChip variant="outline">
-                    {t("apptabNotUploaded", "Not Uploaded")}
-                  </InfoChip>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-card p-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <div className="min-w-0">
-                  <span className="text-sm font-medium">{t("apptabEstablishmentCert", "Establishment Cert")}</span>
-                  <p className="text-xs text-muted-foreground">
-                    {t("apptabHasCert", { value: formatYesNoNotSure(app.foodEstablishmentCert, t), defaultValue: "Has Cert: {value}" })}
-                  </p>
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                {app.foodEstablishmentCertUrl ? (
-                  <>
-                    <InfoChip variant={getDocStatusBadge(app.foodEstablishmentCertStatus, t).variant}>
-                      {getDocStatusBadge(app.foodEstablishmentCertStatus, t).label}
-                    </InfoChip>
-                    <SecureDocumentLink
-                      url={app.foodEstablishmentCertUrl}
-                      fileName="Establishment Certificate"
-                      label={t("apptabView", "View")}
-                      showIcon={false}
-                    />
-                  </>
-                ) : (
-                  <InfoChip variant="outline">
-                    {t("apptabNotUploaded", "Not Uploaded")}
-                  </InfoChip>
-                )}
-              </div>
-            </div>
+          <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+            <p className="text-xs uppercase text-muted-foreground">
+              {t("apptabFoodSafetyLicense", "Food Safety License")}
+            </p>
+            <p className="text-sm font-medium">
+              {app.foodSafetyLicense === "yes"
+                ? t("apptabYes", "Yes")
+                : app.foodSafetyLicense === "no"
+                  ? t("apptabNo", "No")
+                  : t("apptabNotSure", "Not Sure")}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {t("apptabDocumentsAfterStep1", "Document upload becomes available after Step 1 approval.")}
+            </p>
           </div>
+
         </div>
       </div>
 
@@ -498,9 +429,11 @@ function KitchenApplicationDetails({
             </Button>
           ))}
         {(app.status === "rejected" || app.status === "cancelled") && (
-          <Button variant="outline" size="sm" onClick={onDiscoverKitchens}>
-            <Building className="mr-1 h-4 w-4" />
-            {t("apptabApplyAnotherKitchen", "Apply to Another Kitchen")}
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/apply-kitchen/${app.locationId}`}>
+              <ArrowRight className="mr-1 h-4 w-4" />
+              {t("kdApplyAgain", "Apply again")}
+            </Link>
           </Button>
         )}
       </div>
@@ -512,7 +445,6 @@ export default function KitchenApplicationCard({
   application: app,
   kitchenImageUrl,
   onBookKitchen,
-  onDiscoverKitchens,
 }: KitchenApplicationCardProps) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const { t } = useTranslation("chef");
@@ -583,8 +515,10 @@ export default function KitchenApplicationCard({
                 </Button>
               )}
               {display.actionKind === "discover" && (
-                <Button size="sm" variant="outline" onClick={onDiscoverKitchens}>
-                  {t("apptabBrowse")}
+                <Button size="sm" variant="outline" asChild>
+                  <Link href={`/apply-kitchen/${app.locationId}`}>
+                    {t("kdApplyAgain", "Apply again")}
+                  </Link>
                 </Button>
               )}
             </div>
@@ -627,7 +561,6 @@ export default function KitchenApplicationCard({
             app={app}
             display={display}
             onBookKitchen={onBookKitchen}
-            onDiscoverKitchens={onDiscoverKitchens}
           />
         </SheetContent>
       </Sheet>

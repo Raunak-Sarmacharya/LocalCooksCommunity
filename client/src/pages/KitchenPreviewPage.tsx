@@ -47,7 +47,7 @@ import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { kt } from "@/i18n/kitchen-ns";
 import { evaluateTypedKitchenDate, parseLocalDateInput } from "@/lib/kitchen-typed-date";
 import { fitDescriptionPreview } from "@/lib/fit-description-preview";
-import { resolvePreviewPrimaryCta } from "@/lib/kitchen-preview-cta";
+import { resolvePreviewApplicationRoute, resolvePreviewPrimaryCta } from "@/lib/kitchen-preview-cta";
 
 /** Iconify icon used across kitchen preview chrome (MDI, bundled offline). */
 function PreviewIcon({
@@ -1670,28 +1670,6 @@ function KitchenInventoryPair({
   );
 }
 
-function KitchenAmenitiesList({ amenities }: { amenities: string[] }) {
-  return (
-    <motion.div
-      variants={containerVariants}
-      initial="hidden"
-      animate="visible"
-      className="flex flex-wrap gap-2"
-    >
-      {amenities.map((amenity, index) => (
-        <motion.span
-          key={index}
-          variants={itemVariants}
-          className="inline-flex items-center rounded-full border border-[#F51042]/10 bg-[#FFF8F5] px-3 py-1.5 text-sm text-[#2C2C2C]"
-        >
-          <PreviewIcon icon="mdi:check" size={14} className="mr-1.5 text-[#F51042]" />
-          {amenity}
-        </motion.span>
-      ))}
-    </motion.div>
-  );
-}
-
 function KitchenFactChip({
   icon,
   label,
@@ -2664,16 +2642,6 @@ function KitchenDetailsSection({
 
       {isStacked ? (
         <>
-          {kitchen.amenities && kitchen.amenities.length > 0 && (
-            <div id="preview-amenities" className="bg-white rounded-xl border border-gray-200 p-3 scroll-mt-32">
-              <h3 className="text-sm font-semibold text-gray-900 mb-1.5 flex items-center gap-2">
-                <PreviewIcon icon="mdi:format-list-checks" size={16} className="text-[#F51042]" />
-                {t("amenities")}
-              </h3>
-              <KitchenAmenitiesList amenities={kitchen.amenities} />
-            </div>
-          )}
-
           {addonsLoading && (
             <div className="bg-white rounded-xl border border-gray-200 p-3 space-y-2">
               <Skeleton className="h-4 w-32" />
@@ -2781,16 +2749,6 @@ function KitchenDetailsSection({
                     </div>
                   )}
                   
-                  {kitchen.amenities && Array.isArray(kitchen.amenities) && kitchen.amenities.length > 0 && (
-                    <div>
-                      <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                        <PreviewIcon icon="mdi:format-list-checks" size={16} className="text-[#F51042]" />
-                        {t("kitchenAmenities")}
-                      </h3>
-                      <KitchenAmenitiesList amenities={kitchen.amenities} />
-                    </div>
-                  )}
-                  
                   {locationAddress && (
                     <div className="pt-4 border-t border-border/50">
                       <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
@@ -2864,7 +2822,6 @@ function previewSpyOffsetPx(args: {
 
 const PREVIEW_SPY_SECTION_IDS = [
   "preview-overview",
-  "preview-amenities",
   "preview-equipment",
   "preview-storage",
   "preview-location",
@@ -3499,8 +3456,9 @@ export default function KitchenPreviewPage() {
       openBookingPage();
       return;
     }
-    if (kitchenDisplay?.actionKind === "complete-step" && locationId) {
-      navigate(`/kitchen-requirements/${locationId}`);
+    const applicationRoute = resolvePreviewApplicationRoute(locationId, kitchenDisplay);
+    if (applicationRoute) {
+      navigate(applicationRoute);
       return;
     }
     if (alreadyApplied) {
@@ -3788,14 +3746,6 @@ export default function KitchenPreviewPage() {
       </div>
     );
 
-    const amenitiesDockId = selectedKitchen?.amenities?.length
-      ? "preview-amenities"
-      : !isLoadingAddons && (includedCount > 0 || rentalCount > 0)
-        ? "preview-equipment"
-        : !isLoadingAddons && storageCount > 0
-          ? "preview-storage"
-          : null;
-
     return (
       <div className={cn("font-sans space-y-3 sm:space-y-4", "pb-24 lg:pb-0")}>
         <Helmet>
@@ -3870,17 +3820,16 @@ export default function KitchenPreviewPage() {
             links={[
               { id: "preview-photos", label: t("photos", "Photos") },
               { id: "preview-overview", label: t("overviewTab", "Overview") },
-              ...(amenitiesDockId
-                ? [{ id: amenitiesDockId, label: t("amenities", "Amenities") }]
+              ...(!isLoadingAddons && (includedCount > 0 || rentalCount > 0)
+                ? [{ id: "preview-equipment", label: t("equipment", "Equipment") }]
+                : []),
+              ...(!isLoadingAddons && storageCount > 0
+                ? [{ id: "preview-storage", label: t("storage", "Storage") }]
                 : []),
               { id: "preview-location", label: t("whereItIs", "Location") },
               { id: "preview-things-to-know", label: t("thingsToKnowTitle", "Before You Book") },
             ]}
-            activeId={
-              ["preview-amenities", "preview-equipment", "preview-storage"].includes(activeSection)
-                ? amenitiesDockId ?? activeSection
-                : activeSection
-            }
+            activeId={activeSection}
             onNavigate={(id) => {
               if (id === "preview-photos") {
                 setActiveSection("preview-overview");

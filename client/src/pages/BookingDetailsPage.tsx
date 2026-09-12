@@ -284,6 +284,43 @@ export default function BookingDetailsPage() {
     }
   };
 
+  const handleClearCheckout = async () => {
+    if (!booking?.id || booking.checkinStatus !== "checkout_requested") return;
+    if (!window.confirm(mt("acceptCheckoutConfirm", { defaultValue: "Accept this checkout and mark the booking complete?" }))) return;
+
+    setIsUpdatingStatus(true);
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`/api/manager/bookings/${booking.id}/clear-kitchen-checkout`, {
+        method: "POST",
+        headers,
+        credentials: "include",
+        body: JSON.stringify({}),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || mt("failedToAcceptCheckout", { defaultValue: "Failed to accept checkout" }));
+
+      const now = new Date().toISOString();
+      setBooking((current) => current ? {
+        ...current,
+        status: "completed",
+        checkinStatus: "checked_out",
+        checkoutApprovedAt: now,
+        updatedAt: now,
+      } : current);
+      queryClient.invalidateQueries({ queryKey: ["managerBookings"] });
+      toast({ title: tt("checkoutClearedNoIssues") });
+    } catch (err) {
+      toast({
+        title: t("bdErrorTitle"),
+        description: err instanceof Error ? err.message : mt("failedToAcceptCheckout", { defaultValue: "Failed to accept checkout" }),
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
   const formatTime = (timeStr: string) => {
     if (!timeStr) return "";
     const [hours, minutes] = timeStr.split(":").map(Number);
@@ -1041,6 +1078,21 @@ export default function BookingDetailsPage() {
                 )}
               </Button>
             )}
+            {isManagerView && booking.checkinStatus === "checkout_requested" && (
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleClearCheckout}
+                disabled={isUpdatingStatus}
+              >
+                {isUpdatingStatus ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+                )}
+                {mt("clearNoIssues")}
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -1746,4 +1798,3 @@ export default function BookingDetailsPage() {
     </ChefDashboardLayout>
   );
 }
-

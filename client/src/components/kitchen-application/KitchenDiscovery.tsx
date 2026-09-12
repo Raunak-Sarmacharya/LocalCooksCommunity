@@ -575,7 +575,7 @@ export default function KitchenDiscovery({
                               </Button>
                             )}
                             {(app.status === "rejected" || app.status === "cancelled") && (
-                              <Link href={`/kitchen-requirements/${app.locationId}`}>
+                              <Link href={`/apply-kitchen/${app.locationId}`}>
                                 <Button
                                   size="sm"
                                   variant="outline"

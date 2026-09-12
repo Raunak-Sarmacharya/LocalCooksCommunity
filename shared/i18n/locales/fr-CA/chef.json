@@ -120,6 +120,7 @@
   "apptabDocPending": "En attente",
   "apptabDocRejected": "Refusé",
   "apptabDocumentsLabel": "Documents",
+  "apptabDocumentsAfterStep1": "Le téléversement des documents devient accessible après l’approbation de l’étape 1.",
   "apptabDryStorageAvailable": "Rangement sec disponible",
   "apptabEmail": "Courriel",
   "apptabEstablishmentCert": "Certificat d'établissement",

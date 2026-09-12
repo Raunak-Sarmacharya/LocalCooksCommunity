@@ -311,8 +311,10 @@ export default function KitchenComparisonPage() {
     switch (action.kind) {
       case "book":
       case "apply":
-      case "reapply":
         navigate(redirectPreview);
+        break;
+      case "reapply":
+        navigate(`/apply-kitchen/${locationId}`);
         break;
       case "continue":
         navigate(`/kitchen-requirements/${locationId}`);

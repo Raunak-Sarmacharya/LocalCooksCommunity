@@ -2332,5 +2332,7 @@
   "minimumHoursBeforeCancellationAllowed": "Heures minimum avant l’heure de réservation pour pouvoir annuler (0 = aucune restriction). Ne modifie pas les montants de remboursement.",
   "chefsMustBookAtLeastHours": "Les chefs doivent réserver au moins ce nombre d'heures avant l'heure de réservation (0 = aucune restriction)",
   "cancellationRefundPlatformNote": "Les remboursements sont gérés par la plateforme : libération complète du hold avant votre approbation; après, hors frais de traitement Stripe. Vous ne définissez que le délai et le message ci-dessus.",
-  "requiredOnStep2": "Requis à l'étape 2"
+  "requiredOnStep2": "Requis à l'étape 2",
+  "acceptCheckoutConfirm": "Accepter cette sortie et marquer la réservation comme terminée?",
+  "failedToAcceptCheckout": "Impossible d'accepter la sortie"
 }

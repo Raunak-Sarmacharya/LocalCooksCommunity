@@ -120,6 +120,7 @@
   "apptabDocPending": "Pending",
   "apptabDocRejected": "Rejected",
   "apptabDocumentsLabel": "Documents",
+  "apptabDocumentsAfterStep1": "Document upload becomes available after Step 1 approval.",
   "apptabDryStorageAvailable": "Dry storage available",
   "apptabEmail": "Email",
   "apptabEstablishmentCert": "Establishment Cert",

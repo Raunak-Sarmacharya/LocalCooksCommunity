@@ -2332,5 +2332,7 @@
   "minimumHoursBeforeCancellationAllowed": "Minimum hours before booking time that cancellation is allowed (0 = no restrictions). Does not change refund amounts.",
   "chefsMustBookAtLeastHours": "Chefs must book at least this many hours before the booking time (0 = no restrictions)",
   "cancellationRefundPlatformNote": "Refunds are platform-controlled: full hold release if cancelled before you approve; after approval, refunds exclude Stripe’s card processing fee. You only set the cancellation window and message above.",
-  "requiredOnStep2": "Required on Step 2"
+  "requiredOnStep2": "Required on Step 2",
+  "acceptCheckoutConfirm": "Accept this checkout and mark the booking complete?",
+  "failedToAcceptCheckout": "Failed to accept checkout"
 }
