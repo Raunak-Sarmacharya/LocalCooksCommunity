@@ -17,7 +17,7 @@ import { requireChef, requireNoUnpaidPenalties } from "./middleware";
 import { requireFirebaseAuthWithUser } from "../firebase-auth-middleware";
 import { createPaymentIntent } from "../services/stripe-service";
 import { calculateKitchenBookingPrice } from "../services/pricing-service";
-import { calculateKitchenBasePrice } from "@shared/kitchen-booking-rate";
+import { calculateKitchenBasePrice, resolveCapturedKitchenRate } from "@shared/kitchen-booking-rate";
 import { userService } from "../domains/users/user.service";
 import { bookingService } from "../domains/bookings/booking.service";
 import { inventoryService } from "../domains/inventory/inventory.service";
@@ -2224,20 +2224,23 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
             logger.error("Error fetching payment transaction:", err);
         }
 
-        // Calculate correct kitchen price from hourly rate and duration
-        // The totalPrice in DB may include storage/equipment, so we calculate kitchen-only price
         const hourlyRate = booking.hourlyRate ? parseFloat(booking.hourlyRate.toString()) : 0;
         const durationHours = booking.durationHours ? parseFloat(booking.durationHours.toString()) : 0;
-        const calculatedKitchenPrice = Math.round(hourlyRate * durationHours);
-        
-        // Use calculated price if available, otherwise fall back to stored totalPrice
-        const kitchenOnlyPrice = calculatedKitchenPrice > 0 ? calculatedKitchenPrice : (booking.totalPrice || 0);
+        const addonSubtotal =
+            storageBookingsWithDetails.filter((item: any) => item.paymentStatus !== 'failed').reduce((sum: number, item: any) => sum + Number(item.totalPrice || 0), 0)
+            + equipmentBookingsWithDetails.filter((item: any) => item.paymentStatus !== 'failed').reduce((sum: number, item: any) => sum + Number(item.totalPrice || 0), 0);
+        const capturedKitchenRate = resolveCapturedKitchenRate({
+            appliedRateCents: hourlyRate,
+            durationHours,
+            bookingSubtotalCents: Number(booking.totalPrice || 0),
+            addonSubtotalCents: addonSubtotal,
+        });
+        const kitchenOnlyPrice = capturedKitchenRate.kitchenSubtotalCents;
 
         // Historical bookings must use their captured fee, never today's admin setting.
         const capturedSubtotal = Math.max(0,
             kitchenOnlyPrice
-            + storageBookingsWithDetails.filter((item: any) => item.paymentStatus !== 'failed').reduce((sum: number, item: any) => sum + Number(item.totalPrice || 0), 0)
-            + equipmentBookingsWithDetails.filter((item: any) => item.paymentStatus !== 'failed').reduce((sum: number, item: any) => sum + Number(item.totalPrice || 0), 0)
+            + addonSubtotal
         );
         const capturedMetadata: any = paymentTransaction?.metadata || {};
         const metadataTaxRate = capturedMetadata.taxRatePercent ?? capturedMetadata.tax_rate_percent;
@@ -2271,7 +2274,8 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
 
         res.json({
             ...booking,
-            totalPrice: kitchenOnlyPrice, // Override with calculated kitchen-only price
+            totalPrice: kitchenOnlyPrice,
+            pricingMode: capturedKitchenRate.mode,
             serviceFee: reconciledServiceFee,
             platformCommissionRate: historicalCommissionRate,
             kitchen: kitchen ? {

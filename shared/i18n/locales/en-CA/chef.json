@@ -252,6 +252,7 @@
   "bdItemsCancelledToast": "Items Cancelled",
   "bdKitchenBookingFallback": "Kitchen Booking",
   "bdKitchenLine": "Kitchen · {duration}",
+  "bdDailyRate": "daily rate",
   "bdLoading": "Loading booking details...",
   "bdManageBooking": "Manage Booking",
   "bdManagerRevenueNote": "You received {revenue} (includes {tax} tax collected; Stripe fee already deducted). Remit tax to authorities separately.",

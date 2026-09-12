@@ -41,6 +41,7 @@ interface BookingDetails {
   totalPrice?: number;
   hourlyRate?: number;
   durationHours?: number;
+  pricingMode?: "hourly" | "daily";
     serviceFee?: number;
     taxAmount?: number;
   /** Admin-configured service fee rate (fraction, e.g. 0.07) */
@@ -1501,7 +1502,11 @@ export default function BookingDetailsPage() {
               <div className="space-y-2.5">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">
-                    {t("bdKitchenLine", { duration: t("bdHours", { count: calculateDuration() }) })}
+                    {t("bdKitchenLine", {
+                      duration: booking.pricingMode === "daily"
+                        ? t("bdDailyRate")
+                        : t("bdHours", { count: calculateDuration() }),
+                    })}
                   </span>
                   <span className="font-mono">
                     {formatCurrency(totals.kitchen > 0 ? totals.kitchen : booking.totalPrice)}
