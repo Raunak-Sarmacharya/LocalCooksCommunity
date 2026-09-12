@@ -25,6 +25,7 @@ import type {
   PhotoRequirement,
 } from "./shared/ChecklistEditor";
 import { KitchenCheckinCheckoutEditor, itemsToStorage, unifyStorageToItems, validateUnifiedItems, type UnifiedChecklistItem } from "./KitchenCheckinCheckoutEditor";
+import { ChefPageHeader } from "@/components/chef/ui";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -307,15 +308,8 @@ function AccessCodesSection({ locationId }: { locationId: number }) {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center gap-3">
-          <div className="size-9 rounded-lg flex items-center justify-center bg-violet-50">
-            <KeyRound className="size-5 text-violet-600" />
-          </div>
-          <div>
-            <CardTitle className="text-lg">{mt("smartLockAccessCodes")}</CardTitle>
-            <CardDescription>{mt("manageAccessCodesForKitchensWithSmartLocks")}</CardDescription>
-          </div>
-        </div>
+        <CardTitle className="text-lg">{mt("smartLockAccessCodes")}</CardTitle>
+        <CardDescription>{mt("manageAccessCodesForKitchensWithSmartLocks")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {isLoadingKitchens ? (
@@ -755,10 +749,7 @@ export default function CheckinCheckoutSettings({
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">{mt("kitchenCheckInCheckOut")}</h2>
-          <p className="text-muted-foreground">{mt("configureChecklistsAndPhotoRequirementsForYourKitchens")}</p>
-        </div>
+        <ChefPageHeader title={mt("kitchenCheckInCheckOut")} description={mt("configureChecklistsAndPhotoRequirementsForYourKitchens")} />
         <div className="flex items-center justify-center py-16">
           <Loader2 className="size-6 animate-spin text-muted-foreground" />
           <span className="ml-2 text-sm text-muted-foreground">{mt("loadingSettings")}</span>
@@ -770,21 +761,16 @@ export default function CheckinCheckoutSettings({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">{mt("kitchenCheckInCheckOut")}</h2>
-          <p className="text-muted-foreground">
-            Define checklists and photo requirements chefs must complete when
-            using your kitchens.
-          </p>
-        </div>
-        {(isChecklistDirty || isTimeWindowDirty) && (
+      <ChefPageHeader
+        title={mt("kitchenCheckInCheckOut")}
+        description="Define checklists and photo requirements chefs must complete when using your kitchens."
+        actions={(isChecklistDirty || isTimeWindowDirty) ? (
           <Badge
             variant="outline"
             className="text-amber-700 bg-amber-50 border-amber-200"
           >{mt("unsavedChanges")}</Badge>
-        )}
-      </div>
+        ) : undefined}
+      />
 
 
       {/* Unified Tabbed Editor */}
@@ -822,8 +808,7 @@ export default function CheckinCheckoutSettings({
       {/* Time Window Overrides */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Clock className="size-5 text-amber-600" />{mt("timeWindowOverrides")}</CardTitle>
+          <CardTitle className="text-base">{mt("timeWindowOverrides")}</CardTitle>
           <CardDescription>
             {mt("timeWindowOverridesDesc")}
           </CardDescription>

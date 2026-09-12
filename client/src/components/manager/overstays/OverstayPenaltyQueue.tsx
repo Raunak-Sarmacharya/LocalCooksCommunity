@@ -147,10 +147,7 @@ function OverstayCard({
         <CardHeader className="pb-2">
           <div className="flex justify-between items-start">
             <div>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Package className="w-5 h-5 text-muted-foreground" />
-                {overstay.storageName}
-              </CardTitle>
+              <CardTitle className="text-lg">{overstay.storageName}</CardTitle>
               <CardDescription className="flex items-center gap-2 mt-1">
                 <User className="w-4 h-4" />
                 {overstay.chefEmail || mt("unknownChef")}
@@ -714,8 +711,7 @@ export function OverstayPenaltyQueue({ locationId }: { locationId?: number }) {
           {/* Pending review first */}
           {overstays.filter(o => o.status === 'pending_review' || o.status === 'charge_failed').length > 0 && (
             <div className="mb-6">
-              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-orange-500" />{mt("actionRequired")}</h3>
+              <h3 className="mb-3 text-lg font-semibold">{mt("actionRequired")}</h3>
               {overstays
                 .filter(o => o.status === 'pending_review' || o.status === 'charge_failed')
                 .map(overstay => (
@@ -735,8 +731,7 @@ export function OverstayPenaltyQueue({ locationId }: { locationId?: number }) {
           {/* Grace period */}
           {overstays.filter(o => o.status === 'grace_period' || o.status === 'detected').length > 0 && (
             <div className="mb-6">
-              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                <Clock className="w-5 h-5 text-yellow-500" />{mt("inGracePeriod")}</h3>
+              <h3 className="mb-3 text-lg font-semibold">{mt("inGracePeriod")}</h3>
               {overstays
                 .filter(o => o.status === 'grace_period' || o.status === 'detected')
                 .map(overstay => (
@@ -756,8 +751,7 @@ export function OverstayPenaltyQueue({ locationId }: { locationId?: number }) {
           {/* Approved, awaiting charge */}
           {overstays.filter(o => o.status === 'penalty_approved' || o.status === 'charge_pending').length > 0 && (
             <div className="mb-6">
-              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                <CreditCard className="w-5 h-5 text-blue-500" />{mt("readyToCharge")}</h3>
+                <h3 className="mb-3 text-lg font-semibold">{mt("readyToCharge")}</h3>
               {overstays
                 .filter(o => o.status === 'penalty_approved' || o.status === 'charge_pending')
                 .map(overstay => (
@@ -778,8 +772,7 @@ export function OverstayPenaltyQueue({ locationId }: { locationId?: number }) {
           {overstays.filter(o => o.status === 'escalated').length > 0 && (
             <div className="mb-6">
               <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
-                <h3 className="text-lg font-semibold flex items-center gap-2 text-red-700">
-                  <AlertTriangle className="w-5 h-5 text-red-500" />
+                <h3 className="text-lg font-semibold text-red-700">
                   Escalated — Manual Collection Required ({overstays.filter(o => o.status === 'escalated').length})
                 </h3>
                 <p className="text-sm text-red-600 mt-1">
@@ -807,8 +800,7 @@ export function OverstayPenaltyQueue({ locationId }: { locationId?: number }) {
       {/* Past Penalties Section */}
       {showPastPenalties && pastOverstays.length > 0 && (
         <div className="mt-8">
-          <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-            <CheckCircle className="w-5 h-5 text-gray-500" />
+          <h3 className="mb-3 text-lg font-semibold">
             {mt("pastPenaltiesWithCount", { count: pastOverstays.length })}
           </h3>
           <div className="space-y-3 opacity-75">

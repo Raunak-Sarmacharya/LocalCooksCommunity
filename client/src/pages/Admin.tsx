@@ -10,6 +10,7 @@ import { AdminLayout } from "@/components/admin/layout/AdminLayout";
 import type { AdminSection } from "@/components/admin/layout/AdminSidebar";
 import { KitchenLicenseApprovalSection } from "@/components/admin/sections/KitchenLicenseApprovalSection";
 import { AdminKitchenApplicationsStep1Section } from "@/components/admin/sections/AdminKitchenApplicationsStep1Section";
+import { AdminTourRequestsSection } from "@/components/admin/sections/AdminTourRequestsSection";
 import { ApplicationProgressTracker } from "@/components/admin/ApplicationProgressTracker";
 import { PlatformSettingsSection } from "@/components/admin/sections/PlatformSettingsSection";
 import { PlatformRequirementsSection } from "@/components/admin/sections/PlatformRequirementsSection";
@@ -90,7 +91,7 @@ function AdminDashboard() {
   const [showShopPassword, setShowShopPassword] = useState(false);
   
   const validSections: AdminSection[] = useMemo(() => [
-    "applications", "kitchen-licenses", "damage-claims", "escalated-penalties",
+    "applications", "kitchen-applications-step1", "tour-requests", "kitchen-licenses", "damage-claims", "escalated-penalties",
     "chef-kitchen-access", "kitchen-management", "promos", "manager-revenues",
     "platform-overview", "platform-settings", "overstay-settings",
     "damage-claim-settings", "account-settings", "overview", "transactions",
@@ -1129,6 +1130,9 @@ function AdminDashboard() {
 
       case "kitchen-applications-step1":
         return <AdminKitchenApplicationsStep1Section />;
+
+      case "tour-requests":
+        return <AdminTourRequestsSection />;
 
       case "kitchen-licenses":
         return <KitchenLicenseApprovalSection />;

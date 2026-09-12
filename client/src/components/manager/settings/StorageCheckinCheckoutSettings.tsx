@@ -25,6 +25,7 @@ import type {
   PhotoRequirement,
 } from "./shared/ChecklistEditor";
 import { StorageCheckinCheckoutEditor, unifyStorageInspectionItems, storageInspectionItemsToArrays, validateStorageInspectionItems, type UnifiedStorageInspectionItem } from "./StorageCheckinCheckoutEditor";
+import { ChefPageHeader } from "@/components/chef/ui";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -192,13 +193,7 @@ export default function StorageCheckinCheckoutSettings({
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">{mt("navStorageCheckinCheckout")}</h2>
-          <p className="text-muted-foreground">
-            Configure the move-in and move-out inspections chefs complete for
-            storage bookings.
-          </p>
-        </div>
+        <ChefPageHeader title={mt("navStorageCheckinCheckout")} description="Configure the move-in and move-out inspections chefs complete for storage bookings." />
         <div className="flex items-center justify-center py-16">
           <Loader2 className="size-6 animate-spin text-muted-foreground" />
           <span className="ml-2 text-sm text-muted-foreground">{mt("loadingSettings")}</span>
@@ -210,21 +205,16 @@ export default function StorageCheckinCheckoutSettings({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">{mt("navStorageCheckinCheckout")}</h2>
-          <p className="text-muted-foreground">
-            Define the move-in and move-out inspections chefs must document for
-            storage bookings at this location.
-          </p>
-        </div>
-        {isDirty && (
+      <ChefPageHeader
+        title={mt("navStorageCheckinCheckout")}
+        description="Define the move-in and move-out inspections chefs must document for storage bookings at this location."
+        actions={isDirty ? (
           <Badge
             variant="outline"
             className="text-amber-700 bg-amber-50 border-amber-200"
           >{mt("unsavedChanges")}</Badge>
-        )}
-      </div>
+        ) : undefined}
+      />
 
 
       {/* Unified Matrix Editor */}

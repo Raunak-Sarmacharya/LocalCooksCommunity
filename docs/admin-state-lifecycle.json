@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Admin Transactions and Kitchen Tour Lifecycle",
+    "output": "docs/admin-state-lifecycle.html",
+    "viewBox": [900, 720],
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    { "id": "main", "label": "Admin state lifecycle" },
+    { "id": "terminal", "label": "Persistent outcome" }
+  ],
+  "states": [
+    { "id": "all", "type": "start", "label": "Stable Dataset", "sublabel": "complete transactions + counts", "lane": "main", "col": 0, "step": "01" },
+    { "id": "filtered", "type": "active", "label": "Selected Tab", "sublabel": "presentation filter only", "lane": "main", "col": 1, "step": "02" },
+    { "id": "visible", "type": "success", "label": "Visible List", "sublabel": "matching rows rendered", "lane": "main", "col": 2, "step": "03" },
+    { "id": "review", "type": "decision", "label": "Tour Review", "sublabel": "approve or deny", "lane": "main", "col": 3, "step": "04" },
+    { "id": "resolved", "type": "success", "label": "Decision Saved", "sublabel": "review fields persisted", "lane": "main", "col": 4, "step": "05" },
+    { "id": "audit", "type": "neutral", "label": "History Record", "sublabel": "approved and denied retained", "lane": "terminal", "col": 2, "tag": "durable" }
+  ],
+  "transitions": [
+    { "from": "resolved", "to": "audit", "label": "retain for history", "labelDy": 24 }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Stable transaction source", "items": ["Tabs never replace the source collection", "Counts derive from the same complete response", "Only the rendered rows depend on the active tab"] },
+    { "dot": "emerald", "title": "Durable tour history", "items": ["Approval and rejection update status instead of deleting", "Pending and resolved views query the same records", "Resolved decisions remain auditable"] }
+  ]
+}

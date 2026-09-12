@@ -27,6 +27,29 @@ export interface OnboardingStatus {
     // Missing steps for banner
     missingSteps: string[];
     improvementSteps: string[];
+    setupSteps: ManagerSetupStep[];
+}
+
+export interface ManagerSetupStep {
+    id: 'license' | 'kitchen' | 'availability' | 'requirements' | 'payments';
+    labelKey: 'onboardingKitchenLicense' | 'onboardingKitchenSpace' | 'onboardingAvailability' | 'onboardingChefRequirements' | 'onboardingPayments';
+    complete: boolean;
+}
+
+export function buildManagerSetupSteps(status: {
+    hasUploadedLicense: boolean;
+    hasKitchens: boolean;
+    hasAvailability: boolean;
+    hasRequirements: boolean;
+    isStripeComplete: boolean;
+}): ManagerSetupStep[] {
+    return [
+        { id: 'license', labelKey: 'onboardingKitchenLicense', complete: status.hasUploadedLicense },
+        { id: 'kitchen', labelKey: 'onboardingKitchenSpace', complete: status.hasKitchens },
+        { id: 'availability', labelKey: 'onboardingAvailability', complete: status.hasAvailability },
+        { id: 'requirements', labelKey: 'onboardingChefRequirements', complete: status.hasRequirements },
+        { id: 'payments', labelKey: 'onboardingPayments', complete: status.isStripeComplete },
+    ];
 }
 
 export function useOnboardingStatus(locationId?: number): OnboardingStatus {
@@ -191,6 +214,13 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
            stripeConnectStatus?.chargesEnabled && stripeConnectStatus?.payoutsEnabled);
     
     const hasKitchens = (kitchens?.length || 0) > 0;
+    const setupSteps = buildManagerSetupSteps({
+        hasUploadedLicense: shouldSkipDetailedQueries || hasUploadedLicense,
+        hasKitchens: shouldSkipDetailedQueries || hasKitchens,
+        hasAvailability,
+        hasRequirements,
+        isStripeComplete,
+    });
 
     // Onboarding Complete = All steps done with license UPLOADED (not necessarily approved)
     // When DB flag is set, trust it (manager already completed all required steps)
@@ -224,7 +254,6 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
 
     const improvementSteps: string[] = [];
     if (!locationData?.logoUrl && !locationData?.logo_url) improvementSteps.push("Add your location logo");
-    if (!locationData?.description?.trim()) improvementSteps.push("Add a short public location description");
     if (hasKitchens && kitchens?.some((kitchen: any) => !kitchen.imageUrl)) improvementSteps.push("Add a cover photo to every kitchen");
     if (hasKitchens && kitchens?.some((kitchen: any) => !kitchen.description?.trim())) improvementSteps.push("Describe every kitchen");
 
@@ -278,5 +307,6 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
         showLicenseReviewBanner,
         missingSteps,
         improvementSteps,
+        setupSteps,
     };
 }

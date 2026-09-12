@@ -18,6 +18,7 @@ import {
 import { eq, and, desc, asc, lt, not, inArray, gte, lte, or, sql, ne } from "drizzle-orm";
 import { KitchenBooking, StorageBooking, EquipmentBooking, InsertKitchenBooking } from "./booking.types";
 import { calculateRefundBreakdown } from "../../services/stripe-service";
+import { resolveKitchenTransactionTaxAndSubtotal } from "../../services/revenue-transaction-tax";
 
 export class BookingRepository {
 
@@ -102,6 +103,7 @@ export class BookingRepository {
                 // Payment transaction data for accurate payment state display
                 transactionStatus: paymentTransactions.status,
                 transactionAmount: paymentTransactions.amount,
+                transactionBaseAmount: paymentTransactions.baseAmount,
                 transactionRefundAmount: paymentTransactions.refundAmount,
             })
             .from(kitchenBookings)
@@ -172,6 +174,7 @@ export class BookingRepository {
                 // Payment transaction data for accurate display (actual Stripe data)
                 transactionId: paymentTransactions.id,
                 transactionAmount: paymentTransactions.amount,
+                transactionBaseAmount: paymentTransactions.baseAmount,
                 transactionServiceFee: paymentTransactions.serviceFee,
                 transactionTaxAmount: paymentTransactions.taxAmount,
                 transactionMetadata: paymentTransactions.metadata,
@@ -234,7 +237,7 @@ export class BookingRepository {
             // payment_transactions rows sometimes used service_fee for commission +
             // estimated Stripe fees, so only use that field as a legacy fallback.
             const bookingServiceFee = Number(mappedBooking.serviceFee || 0);
-            const serviceFee = isVoidedAuthorization ? 0 : (bookingServiceFee > 0
+            let serviceFee = isVoidedAuthorization ? 0 : (bookingServiceFee > 0
                 ? bookingServiceFee
                 : row.transactionServiceFee
                     ? parseFloat(row.transactionServiceFee as string)
@@ -263,9 +266,19 @@ export class BookingRepository {
                 ?? 0
             );
             const currentTaxRatePercent = row.taxRatePercent ? parseFloat(String(row.taxRatePercent)) : 0;
-            const taxAmount = isVoidedAuthorization ? 0 : (storedTaxAmount > 0
-                ? storedTaxAmount
-                : Math.round((kbTotalPrice * currentTaxRatePercent) / 100));
+            const reconciledFinancials = resolveKitchenTransactionTaxAndSubtotal({
+                isDamageClaim: false,
+                ptAmount: Number(transactionAmount || 0),
+                ptBaseAmount: Number(row.transactionBaseAmount || 0),
+                ptTaxAmount: storedTaxAmount,
+                approvedTaxCents: Number(transactionMetadata.approvedTax ?? transactionMetadata.approved_tax ?? transactionMetadata.tax_cents ?? 0),
+                kbTotalPrice,
+                taxRatePercent: currentTaxRatePercent,
+                ptServiceFee: Number(row.transactionServiceFee || bookingServiceFee || 0),
+                metadata: transactionMetadata,
+            });
+            const taxAmount = isVoidedAuthorization ? 0 : reconciledFinancials.taxCents;
+            if (!isVoidedAuthorization) serviceFee = reconciledFinancials.serviceFeeCents;
             const taxRatePercent = Number(transactionMetadata.taxRatePercent ?? transactionMetadata.tax_rate_percent ?? (
                 kbTotalPrice > 0 && taxAmount > 0
                     ? (taxAmount * 100) / kbTotalPrice
@@ -289,9 +302,15 @@ export class BookingRepository {
                 stripeProcessingFee,
                 serviceFee,
             );
+            const managerAlreadyDebited = Array.isArray(transactionMetadata.refunds)
+                ? transactionMetadata.refunds.reduce(
+                    (sum: number, refund: any) => sum + Math.max(0, Number(refund?.managerDebited || 0)),
+                    0,
+                )
+                : Math.min(refundAmount, managerRevenue ?? 0);
             const managerRemainingBalance = isVoidedAuthorization
                 ? 0
-                : refundBreakdown.remainingManagerBalance;
+                : Math.max(0, (managerRevenue ?? 0) - managerAlreadyDebited);
             const refundableAmount = isVoidedAuthorization
                 ? 0
                 : refundBreakdown.maxRefundableToCustomer;
@@ -304,6 +323,7 @@ export class BookingRepository {
 
             return {
                 ...mappedBooking,
+                totalPrice: isVoidedAuthorization ? 0 : reconciledFinancials.totalPriceCents,
                 kitchen: row.kitchen,
                 location: row.location,
                 chef: row.chef,

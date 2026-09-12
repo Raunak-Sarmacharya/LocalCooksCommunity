@@ -1887,7 +1887,7 @@ export default function KitchenApplicationForm({
                       <div className="bg-muted rounded-lg p-4">
                         <p className="text-sm text-muted-foreground">
                           <strong>{t("whatHappensNext", { defaultValue: "What happens next?" })}</strong><br />
-                          {t("managerWillReviewDocs1", { defaultValue: "The manager will review your submitted documents. They may reach out via chat if additional information is needed." })}
+                          {t("managerWillReviewDocs1", { defaultValue: "The manager will review your submitted documents. They may reach out via messages on Local Cooks if additional information is needed. " })}
                           {t("managerWillReviewDocs2", { defaultValue: "Once approved, you\'ll have full access to book this kitchen." })}
                         </p>
                       </div>

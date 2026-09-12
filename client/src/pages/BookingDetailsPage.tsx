@@ -802,10 +802,11 @@ export default function BookingDetailsPage() {
     managerRevenue: booking.paymentTransaction?.managerRevenue,
     serviceFee: booking.paymentTransaction?.serviceFee || booking.serviceFee || 0,
     taxRatePercent: booking.kitchen?.taxRatePercent ? Number(booking.kitchen.taxRatePercent) : undefined,
-    // Gross pool (manager + service fee); sheet subtracts alreadyRefunded.
-    refundableAmount:
-      (booking.paymentTransaction?.managerRevenue || 0) +
-      (booking.paymentTransaction?.serviceFee || booking.serviceFee || 0),
+    managerRemainingBalance: Math.max(
+      0,
+      (booking.paymentTransaction?.managerRevenue || 0) -
+        (booking.paymentTransaction?.refundAmount || 0),
+    ),
     refundAmount: booking.paymentTransaction?.refundAmount || 0,
     cancellationRequested: booking.status === 'cancellation_requested',
     storageItems: booking.storageBookings?.map((s) => ({
@@ -841,14 +842,22 @@ export default function BookingDetailsPage() {
             method: 'PUT', headers, credentials: "include",
             body: JSON.stringify({
               status: 'cancelled',
-              refundOnCancel: params.action === "cancel-booking-refund",
               storageActions: params.storageActions,
               equipmentActions: params.equipmentActions,
             }),
           });
           if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to cancel'); }
-          const data = await res.json().catch(() => ({}));
-          toast({ title: t("bdBookingCancelledToast"), description: data?.refund ? t("bdRefundProcessedDesc", { amount: `$${(data.refund.amount / 100).toFixed(2)}` }) : t("bdBookingCancelledDesc") });
+          if (params.action === "cancel-booking-refund" && bookingForManagement?.transactionId) {
+            const requestRes = await fetch(`/api/manager/revenue/transactions/${bookingForManagement.transactionId}/full-refund-request`, {
+              method: 'POST', headers, credentials: 'include',
+              body: JSON.stringify({ reason: 'Full refund requested after manager cancellation' }),
+            });
+            if (!requestRes.ok) { const d = await requestRes.json().catch(() => ({})); throw new Error(d.error || 'Booking cancelled, but the full refund request failed'); }
+          }
+          toast({
+            title: t("bdBookingCancelledToast"),
+            description: params.action === "cancel-booking-refund" ? 'Full refund sent to admin for approval.' : t("bdBookingCancelledDesc"),
+          });
           // Reload to get fresh payment status, refund amounts, and item statuses from server
           window.location.reload();
           break;
@@ -917,6 +926,20 @@ export default function BookingDetailsPage() {
             }),
           });
           window.location.reload();
+          break;
+        }
+        case "request-full-refund": {
+          if (!bookingForManagement?.transactionId) throw new Error(t("bdRefundPanelInfo"));
+          const requestRes = await fetch(`/api/manager/revenue/transactions/${bookingForManagement.transactionId}/full-refund-request`, {
+            method: 'POST', headers, credentials: 'include',
+            body: JSON.stringify({ reason: 'Full refund requested by manager' }),
+          });
+          if (!requestRes.ok) {
+            const d = await requestRes.json().catch(() => ({}));
+            throw new Error(d.error || 'Failed to request full refund');
+          }
+          toast({ title: 'Full refund requested', description: 'An admin will review and control the final refund.' });
+          setManagementSheetOpen(false);
           break;
         }
         case "accept-cancellation": {

@@ -8,7 +8,7 @@ import { logger } from "../../logger";
 
 import { db, getDbError } from "../../db";
 import { chefKitchenApplications, locations, users, chefLocationAccess, type ChefKitchenApplication, type InsertChefKitchenApplication } from "@shared/schema";
-import { eq, and, desc, inArray, getTableColumns } from "drizzle-orm";
+import { eq, and, desc, inArray, getTableColumns, isNotNull, gte, or } from "drizzle-orm";
 
 export class ChefApplicationService {
     /**
@@ -28,7 +28,13 @@ export class ChefApplicationService {
                 })
                 .from(chefKitchenApplications)
                 .leftJoin(users, eq(chefKitchenApplications.chefId, users.id))
-                .where(eq(chefKitchenApplications.locationId, locationId))
+                .where(and(
+                    eq(chefKitchenApplications.locationId, locationId),
+                    or(
+                        isNotNull(chefKitchenApplications.tier1_completed_at),
+                        gte(chefKitchenApplications.current_tier, 2)
+                    )
+                ))
                 .orderBy(desc(chefKitchenApplications.createdAt));
         } catch (error) {
             logger.error("[ChefApplicationService] Error fetching applications by location:", error);
@@ -230,7 +236,13 @@ export class ChefApplicationService {
                 .from(chefKitchenApplications)
                 .leftJoin(users, eq(chefKitchenApplications.chefId, users.id))
                 .leftJoin(locations, eq(chefKitchenApplications.locationId, locations.id))
-                .where(inArray(chefKitchenApplications.locationId, locationIds))
+                .where(and(
+                    inArray(chefKitchenApplications.locationId, locationIds),
+                    or(
+                        isNotNull(chefKitchenApplications.tier1_completed_at),
+                        gte(chefKitchenApplications.current_tier, 2)
+                    )
+                ))
                 .orderBy(desc(chefKitchenApplications.createdAt));
         } catch (error) {
             logger.error("[ChefApplicationService] Error fetching manager applications:", error);

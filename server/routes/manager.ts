@@ -14,6 +14,7 @@ import {
 import { format } from "date-fns";
 import { db } from "../db";
 import { resolveCapturedKitchenRate } from "@shared/kitchen-booking-rate";
+import { resolveKitchenTransactionTaxAndSubtotal } from "../services/revenue-transaction-tax";
 
 import {
   requireFirebaseAuthWithUser,
@@ -1484,12 +1485,11 @@ router.put(
 /**
  * ENTERPRISE-GRADE REFUND ENDPOINT
  *
- * Customer refund includes the platform service fee (platform absorbs it).
- * Manager is only debited their share of the refund.
+ * Managers may directly refund only their remaining payout share.
+ * Platform service fees are excluded. A full refund requires admin approval.
  * Stripe processing fees are sunk and never returned.
  *
- * Max refundable ≈ manager remaining + service fee remaining
- *               = totalCharged − stripeFee − alreadyRefunded
+ * Max manager refund = manager revenue − prior manager debits.
  */
 router.post(
   "/revenue/transactions/:transactionId/refund",
@@ -1563,23 +1563,23 @@ router.post(
       const serviceFee =
         parseInt(String(transaction.service_fee || "0")) || 0;
 
-      const { calculateRefundBreakdown, splitCustomerRefund } = await import(
-        "../services/stripe-service"
-      );
-      const refundBreakdown = calculateRefundBreakdown(
-        totalAmount,
-        managerRevenue,
-        currentRefundAmount,
-        stripeProcessingFee,
-        serviceFee,
-      );
+      const currentMetadata = transaction.metadata && typeof transaction.metadata === "object"
+        ? transaction.metadata as Record<string, any>
+        : {};
+      const managerAlreadyDebited = Array.isArray(currentMetadata.refunds)
+        ? currentMetadata.refunds.reduce(
+            (sum: number, item: any) => sum + Math.max(0, Number(item?.managerDebited || 0)),
+            0,
+          )
+        : Math.min(currentRefundAmount, managerRevenue);
+      const managerRefundableBalance = Math.max(0, managerRevenue - managerAlreadyDebited);
 
-      if (amountCents > refundBreakdown.maxRefundableToCustomer) {
+      if (amountCents > managerRefundableBalance) {
         return res.status(400).json({
-          error: `Refund amount exceeds maximum. Max refundable: $${(refundBreakdown.maxRefundableToCustomer / 100).toFixed(2)}`,
-          maxRefundable: refundBreakdown.maxRefundableToCustomer,
-          managerBalance: refundBreakdown.remainingManagerBalance,
-          explanation: refundBreakdown.explanation,
+          error: `Refund amount exceeds your available share. Max refundable: $${(managerRefundableBalance / 100).toFixed(2)}`,
+          maxRefundable: managerRefundableBalance,
+          managerBalance: managerRefundableBalance,
+          explanation: "Platform service fees are excluded from manager-issued refunds. Request a full refund for admin approval.",
         });
       }
 
@@ -1597,13 +1597,8 @@ router.post(
       }
 
       const refundToCustomer = amountCents;
-      const { managerDebitCents: deductFromManager, platformServiceFeeCents } =
-        splitCustomerRefund(
-          refundToCustomer,
-          managerRevenue,
-          serviceFee,
-          currentRefundAmount,
-        );
+      const deductFromManager = amountCents;
+      const platformServiceFeeCents = 0;
 
       const { reverseTransferAndRefund } = await import(
         "../services/stripe-service"
@@ -1635,7 +1630,7 @@ router.post(
             booking_type: String(transaction.booking_type),
             manager_id: String(managerId),
             refund_reason: refundReason ? String(refundReason) : "",
-            refund_model: "service_fee_included",
+            refund_model: "manager_share_only",
             customer_receives: String(refundToCustomer),
             manager_debited: String(deductFromManager),
             platform_service_fee_returned: String(platformServiceFeeCents),
@@ -1660,18 +1655,6 @@ router.post(
         newRefundTotal >= fullRefundThreshold ? "refunded" : "partially_refunded";
 
       // Append refund details to metadata
-      let currentMetadata: any = {};
-      if (transaction.metadata) {
-        if (typeof transaction.metadata === "string") {
-          try {
-            currentMetadata = JSON.parse(transaction.metadata);
-          } catch {
-            currentMetadata = {};
-          }
-        } else {
-          currentMetadata = transaction.metadata;
-        }
-      }
       const existingRefunds = Array.isArray(currentMetadata.refunds)
         ? currentMetadata.refunds
         : [];
@@ -1687,7 +1670,7 @@ router.post(
             createdAt: new Date().toISOString(),
             createdBy: managerId,
             transferReversalId: refund.transferReversalId,
-            model: "unified",
+            model: "manager_share_only",
           },
         ],
         lastRefund: {
@@ -1820,12 +1803,9 @@ router.post(
         logger.error("[Refund] Error sending refund notification to chef:", notifError);
       }
 
-      const newBreakdown = calculateRefundBreakdown(
-        totalAmount,
-        managerRevenue,
-        newRefundTotal,
-        stripeProcessingFee,
-        serviceFee,
+      const platformAlreadyReturned = existingRefunds.reduce(
+        (sum: number, item: any) => sum + Math.max(0, Number(item?.platformServiceFeeReturned || 0)),
+        0,
       );
 
       res.json({
@@ -1837,15 +1817,110 @@ router.post(
         platformServiceFeeReturned: platformServiceFeeCents,
         totalRefunded: newRefundTotal,
         remainingCharged: totalAmount - newRefundTotal,
-        maxRefundable: newBreakdown.maxRefundableToCustomer,
-        managerRemainingBalance: newBreakdown.remainingManagerBalance,
-        remainingServiceFee: newBreakdown.remainingServiceFee,
+        maxRefundable: Math.max(0, managerRefundableBalance - amountCents),
+        managerRemainingBalance: Math.max(0, managerRefundableBalance - amountCents),
+        remainingServiceFee: Math.max(0, serviceFee - platformAlreadyReturned),
         originalStripeFee: stripeProcessingFee,
         originalServiceFee: serviceFee,
         transferReversalId: refund.transferReversalId,
       });
     } catch (error: any) {
       logger.error("[Refund] Error processing refund:", error);
+      return errorResponse(res, error);
+    }
+  },
+);
+
+/**
+ * Request an admin-controlled refund of the full remaining customer balance.
+ * The request is stored on the transaction and mirrored into payment_history.
+ */
+router.post(
+  "/revenue/transactions/:transactionId/full-refund-request",
+  requireFirebaseAuthWithUser,
+  requireManager,
+  async (req: Request, res: Response) => {
+    try {
+      const managerId = req.neonUser!.id;
+      const transactionId = Number(req.params.transactionId);
+      const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+      if (!Number.isInteger(transactionId) || transactionId <= 0) {
+        return res.status(400).json({ error: "Invalid transaction ID" });
+      }
+
+      const {
+        findPaymentTransactionById,
+        updatePaymentTransaction,
+        addPaymentHistory,
+      } = await import("../services/payment-transactions-service");
+      const transaction = await findPaymentTransactionById(transactionId, db);
+      if (!transaction) return res.status(404).json({ error: "Transaction not found" });
+
+      const transactionManagerId = transaction.manager_id ?? await getManagerIdForBooking(
+        transaction.booking_id,
+        transaction.booking_type,
+        db,
+      );
+      if (transactionManagerId !== managerId) {
+        return res.status(403).json({ error: "Access denied to this transaction" });
+      }
+      if (!["succeeded", "partially_refunded"].includes(transaction.status)) {
+        return res.status(400).json({ error: "Only paid transactions can be refunded" });
+      }
+
+      const metadata = transaction.metadata && typeof transaction.metadata === "object"
+        ? transaction.metadata as Record<string, any>
+        : {};
+      if (metadata.fullRefundRequest?.status === "pending") {
+        return res.status(409).json({ error: "A full refund request is already pending admin review" });
+      }
+
+      const totalAmount = Number(transaction.amount || 0);
+      const refundedAmount = Number(transaction.refund_amount || 0);
+      const stripeFee = Number(transaction.stripe_processing_fee || 0);
+      const managerRevenue = Number(transaction.manager_revenue || 0);
+      const serviceFee = Number(transaction.service_fee || 0);
+      const priorRefunds = Array.isArray(metadata.refunds) ? metadata.refunds : [];
+      const managerAlreadyDebited = priorRefunds.reduce(
+        (sum: number, refund: any) => sum + Math.max(0, Number(refund?.managerDebited || 0)),
+        0,
+      );
+      const platformAlreadyReturned = priorRefunds.reduce(
+        (sum: number, refund: any) => sum + Math.max(0, Number(refund?.platformServiceFeeReturned || 0)),
+        0,
+      );
+      const requestedAmount = Math.min(
+        Math.max(0, totalAmount - stripeFee - refundedAmount),
+        Math.max(0, managerRevenue - managerAlreadyDebited) + Math.max(0, serviceFee - platformAlreadyReturned),
+      );
+      if (requestedAmount <= 0) {
+        return res.status(400).json({ error: "No refundable balance remains" });
+      }
+
+      const requestedAt = new Date().toISOString();
+      const fullRefundRequest = {
+        status: "pending",
+        requestedAmount,
+        requestedAt,
+        requestedBy: managerId,
+        reason: reason || null,
+      };
+      await updatePaymentTransaction(transactionId, {
+        metadata: { ...metadata, fullRefundRequest },
+      }, db);
+      await addPaymentHistory(transactionId, {
+        previousStatus: transaction.status,
+        newStatus: transaction.status,
+        eventType: "full_refund_requested",
+        eventSource: "manager",
+        description: `Manager requested full remaining refund of $${(requestedAmount / 100).toFixed(2)}`,
+        metadata: fullRefundRequest,
+        createdBy: managerId,
+      }, db);
+
+      return res.status(201).json({ success: true, request: fullRefundRequest });
+    } catch (error) {
+      logger.error("[Full Refund Request] Error:", error);
       return errorResponse(res, error);
     }
   },
@@ -2558,6 +2633,11 @@ router.get(
           stripeProcessingFee: paymentTransactions.stripeProcessingFee,
           managerRevenue: paymentTransactions.managerRevenue,
           baseAmount: paymentTransactions.baseAmount,
+          taxAmount: paymentTransactions.taxAmount,
+          transactionAmount: paymentTransactions.amount,
+          transactionServiceFee: paymentTransactions.serviceFee,
+          transactionMetadata: paymentTransactions.metadata,
+          taxRatePercent: kitchens.taxRatePercent,
         })
         .from(kitchenBookings)
         .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
@@ -4358,24 +4438,27 @@ router.get(
       const fallbackTaxRatePercent = metadataTaxRate != null
         ? Number(metadataTaxRate)
         : Number(kitchen.taxRatePercent || 0);
-      const storedTaxValue = paymentTransaction?.taxAmount
-        ?? capturedMetadata.approvedTax
-        ?? capturedMetadata.approved_tax
-        ?? capturedMetadata.tax_cents;
-      const storedTaxAmount = storedTaxValue != null ? Number(storedTaxValue) : null;
-      const capturedTaxAmount = storedTaxAmount != null && (storedTaxAmount > 0 || fallbackTaxRatePercent <= 0)
-        ? storedTaxAmount
-        : Math.round(capturedSubtotal * fallbackTaxRatePercent / 100);
+      const reconciledFinancials = resolveKitchenTransactionTaxAndSubtotal({
+        isDamageClaim: false,
+        ptAmount: Number(paymentTransaction?.amount || 0),
+        ptBaseAmount: Number(paymentTransaction?.baseAmount || 0),
+        ptTaxAmount: Number(paymentTransaction?.taxAmount || 0),
+        approvedTaxCents: Number(capturedMetadata.approvedTax ?? capturedMetadata.approved_tax ?? capturedMetadata.tax_cents ?? 0),
+        kbTotalPrice: capturedSubtotal,
+        taxRatePercent: fallbackTaxRatePercent,
+        ptServiceFee: Number(paymentTransaction?.serviceFee || booking.serviceFee || 0),
+        metadata: capturedMetadata,
+      });
+      const capturedTaxAmount = reconciledFinancials.taxCents;
       const historicalTaxRatePercent = metadataTaxRate != null
         ? Number(metadataTaxRate)
         : capturedSubtotal > 0 && capturedTaxAmount > 0
           ? (capturedTaxAmount * 100) / capturedSubtotal
           : fallbackTaxRatePercent;
-      const chargedAmount = Number(paymentTransaction?.amount || 0);
-      const reconciledServiceFee = chargedAmount >= capturedSubtotal + capturedTaxAmount
-        ? chargedAmount - capturedSubtotal - capturedTaxAmount
-        : Number(booking.serviceFee || paymentTransaction?.serviceFee || 0);
-      const historicalCommissionRate = capturedSubtotal > 0 ? reconciledServiceFee / capturedSubtotal : 0;
+      const reconciledSubtotal = reconciledFinancials.totalPriceCents || capturedSubtotal;
+      const reconciledKitchenOnlyPrice = Math.max(0, reconciledSubtotal - addonSubtotal);
+      const reconciledServiceFee = reconciledFinancials.serviceFeeCents;
+      const historicalCommissionRate = reconciledSubtotal > 0 ? reconciledServiceFee / reconciledSubtotal : 0;
       if (paymentTransaction) {
         paymentTransaction.taxAmount = capturedTaxAmount;
         paymentTransaction.serviceFee = reconciledServiceFee;
@@ -4383,7 +4466,7 @@ router.get(
 
       res.json({
         ...booking,
-        totalPrice: kitchenOnlyPrice,
+        totalPrice: reconciledKitchenOnlyPrice,
         pricingMode: capturedKitchenRate.mode,
         serviceFee: reconciledServiceFee,
         platformCommissionRate: historicalCommissionRate,
@@ -4426,14 +4509,15 @@ router.put(
     try {
       const user = req.neonUser!;
       const id = parseInt(req.params.id);
-      const { status, storageActions, equipmentActions, refundOnCancel } = req.body;
+      const { status, storageActions, equipmentActions } = req.body;
 
       // Child logger: every log in this handler automatically includes booking/manager context
       const bLog = logger.child({ bookingId: id, managerId: user.id, targetStatus: status });
       // storageActions is an optional array of { storageBookingId: number, action: 'confirmed' | 'cancelled' }
       // equipmentActions is an optional array of { equipmentBookingId: number, action: 'confirmed' | 'cancelled' }
       // When provided, each booking is handled individually instead of inheriting the kitchen booking status
-      // refundOnCancel: boolean — when true + cancellation of confirmed booking, triggers auto-refund via the unified refund engine
+      // Confirmed-booking refunds are handled separately: manager-share partial
+      // refunds are direct, while full refunds require admin approval.
 
       if (!["confirmed", "cancelled", "pending"].includes(status)) {
         return res
@@ -4650,10 +4734,11 @@ router.put(
           const { findPaymentTransactionByIntentId, updatePaymentTransaction } =
             await import("../services/payment-transactions-service");
 
-          // ── Step 1: Compute kitchen-only price (pre-tax) ────────────────────────
+          // ── Step 1: Read the captured rate snapshot ────────────────────────────
+          // `hourly_rate` is the historical applied rate field. For daily bookings
+          // it contains the daily rate, so it must not be multiplied by hours.
           const bookingHourlyRate = parseFloat(String((booking as any).hourlyRate || "0"));
           const bookingDurationHours = parseFloat(String((booking as any).durationHours || "1"));
-          const kitchenOnlyPriceCents = Math.round(bookingHourlyRate * bookingDurationHours);
 
           // ── Step 2: Determine approved/rejected storage & equipment ─────────────
           const approvedStorageIds = new Set<number>();
@@ -4696,6 +4781,21 @@ router.put(
               approvedEquipmentIds.add(eb.id);
             }
           }
+
+          const originalAddonSubtotalCents = (assocStorage || []).reduce(
+            (sum: number, sb: any) => sum + Math.round(parseFloat(String(sb.totalPrice || "0"))),
+            0,
+          ) + (assocEquip || []).reduce(
+            (sum: number, eb: any) => sum + Math.round(parseFloat(String(eb.totalPrice || "0"))),
+            0,
+          );
+          const capturedKitchenRate = resolveCapturedKitchenRate({
+            appliedRateCents: bookingHourlyRate,
+            durationHours: bookingDurationHours,
+            bookingSubtotalCents: Math.round(parseFloat(String((booking as any).totalPrice || "0"))),
+            addonSubtotalCents: originalAddonSubtotalCents,
+          });
+          const kitchenOnlyPriceCents = capturedKitchenRate.kitchenSubtotalCents;
 
           // ── Step 4: Calculate approved subtotal + proportional tax + commission ─
           // Kitchen is always approved when status === 'confirmed'
@@ -5017,10 +5117,10 @@ router.put(
 
       // Auto-refund for:
       //   1. Transitions FROM pending with CAPTURED payments (rejections/partial approvals)
-      //   2. Cancellations of confirmed bookings when refundOnCancel=true (Cancel & Refund action)
+      // Confirmed-booking full refunds are never automatic: managers submit an
+      // admin-controlled full-refund request through the dedicated endpoint.
       // NOTE: Authorized payments are handled above via cancelPaymentIntent (no refund needed)
-      const shouldAutoRefund = (isFromPending && hasValidPayment && !isCancellation) ||
-        (isCancellation && refundOnCancel && hasValidPayment);
+      const shouldAutoRefund = isFromPending && hasValidPayment && !isCancellation;
       if (shouldAutoRefund) {
         try {
           const { reverseTransferAndRefund } = await import(
@@ -5665,16 +5765,10 @@ router.put(
         responseData.authorizationVoided = true;
         responseData.message =
           "Booking rejected — payment hold released. No charge was made.";
-      } else if (isCancellation && !refundOnCancel) {
-        // Cancellation of confirmed booking without refund - manual refund needed
+      } else if (isCancellation) {
         responseData.requiresManualRefund = true;
         responseData.message =
-          "Booking cancelled. Use 'Issue Refund' to process refund manually.";
-      } else if (isCancellation && refundOnCancel && !refundResult) {
-        // Cancel & Refund was requested but refund failed or wasn't processed
-        responseData.requiresManualRefund = true;
-        responseData.message =
-          "Booking cancelled but refund could not be processed automatically. Use 'Issue Refund' to process manually.";
+          "Booking cancelled. Refund the manager share directly or request admin approval for a full refund.";
       }
 
       res.json(responseData);

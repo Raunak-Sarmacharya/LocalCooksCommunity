@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { NumericInput } from "@/components/ui/numeric-input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ChefPageHeader } from "@/components/chef/ui";
 
 interface Location {
   id: number;
@@ -77,28 +78,20 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-xl font-semibold tracking-tight">{mt("navBookingRules")}</h2>
-        <p className="text-muted-foreground">{mt("configureCancellationPoliciesBookingLimitsAndPenaltiesForYou")}</p>
-      </div>
+      <ChefPageHeader title={mt("navBookingRules")} description={mt("configureCancellationPoliciesBookingLimitsAndPenaltiesForYou")} />
 
       {/* Unified Booking Policies & Limits — Cancellation Policy + Daily Limit + Min Window */}
       <Card>
         <CardHeader className="p-4 pb-3">
-          <div className="flex items-center gap-3">
-            <AlertCircle className="h-5 w-5 text-blue-600" />
-            <div>
-              <CardTitle className="text-lg">{mt("bookingPoliciesLimits")}</CardTitle>
-              <CardDescription>{mt("cancellationPolicyDailyBookingLimitAndMinimumAdvanceNoticeOn")}</CardDescription>
-            </div>
-          </div>
+          <CardTitle className="text-lg">{mt("bookingPoliciesLimits")}</CardTitle>
+          <CardDescription>{mt("cancellationPolicyDailyBookingLimitAndMinimumAdvanceNoticeOn")}</CardDescription>
         </CardHeader>
         <CardContent className="divide-y divide-border p-0">
           {/* Cancellation Policy */}
           <div className="grid gap-4 px-4 pb-4 pt-0 lg:grid-cols-[minmax(220px,0.32fr)_1fr]">
             <div>
               <div className="flex items-center gap-1">
-                <h3 className="text-sm font-semibold flex items-center gap-2"><AlertCircle className="h-4 w-4 text-blue-600" />{mt("cancellationPolicy")}</h3>
+                <h3 className="text-sm font-semibold">{mt("cancellationPolicy")}</h3>
                 <RuleHelp label="Cancellation and refund information">{mt("cancellationRefundPlatformNote")}</RuleHelp>
               </div>
               <p className="text-xs text-muted-foreground mt-1">{mt("configureWhenChefsCanCancelTheirBookings")}</p>
@@ -122,7 +115,7 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
           <div className="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(220px,0.32fr)_1fr]">
             <div>
               <div className="flex items-center gap-1">
-                <h3 className="text-sm font-semibold flex items-center gap-2"><Clock className="h-4 w-4 text-green-600" />{mt("dailyBookingLimit")}</h3>
+                <h3 className="text-sm font-semibold">{mt("dailyBookingLimit")}</h3>
                 <RuleHelp label="Daily booking limit information">{mt("youCanOverrideThisLimitForSpecificDatesInTheAvailabilityCale")}</RuleHelp>
               </div>
               <p className="text-xs text-muted-foreground mt-1">{mt("maximumHoursAChefCanBookPerDay")}</p>
@@ -146,7 +139,7 @@ export default function BookingRulesSettings({ location, onSave }: BookingRulesS
           <div className="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(220px,0.32fr)_1fr]">
             <div>
               <div className="flex items-center gap-1">
-                <h3 className="text-sm font-semibold flex items-center gap-2"><Clock className="h-4 w-4 text-orange-600" />{mt("minimumBookingWindow")}</h3>
+                <h3 className="text-sm font-semibold">{mt("minimumBookingWindow")}</h3>
                 <RuleHelp label="Minimum booking window example">{mt("exampleWith1HourIfItS100PMChefsCanOnlyBookTimesStartingFrom2")}</RuleHelp>
               </div>
               <p className="text-xs text-muted-foreground mt-1">{mt("minimumAdvanceNoticeRequiredForBookings")}</p>

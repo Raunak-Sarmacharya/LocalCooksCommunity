@@ -2108,7 +2108,7 @@ export type EvidenceType = typeof evidenceTypeValues[number];
 // ===== KITCHEN VIEWING / TOUR SCHEDULING SYSTEM =====
 
 // Define enum for viewing status
-export const viewingStatusEnum = pgEnum('viewing_status', ['pending', 'confirmed', 'cancelled', 'completed', 'no_show']);
+export const viewingStatusEnum = pgEnum('viewing_status', ['pending_local_cooks', 'pending', 'confirmed', 'cancelled', 'completed', 'no_show']);
 
 // Define enum for no-show reason (structured tracking for cohort analytics)
 export const noShowReasonEnum = pgEnum('no_show_reason', ['chef_cancelled_late', 'chef_no_response', 'rescheduled_by_manager', 'weather', 'other']);
@@ -2167,6 +2167,10 @@ export const kitchenViewings = pgTable("kitchen_viewings", {
   cancelledBy: text("cancelled_by"), // 'chef' | 'manager'
   cancellationReason: text("cancellation_reason"),
   cancelledAt: timestamp("cancelled_at"),
+  adminReviewDecision: text("admin_review_decision"), // 'approved' | 'denied'
+  adminReviewReason: text("admin_review_reason"),
+  adminReviewerId: integer("admin_reviewer_id").references(() => users.id, { onDelete: "set null" }),
+  adminReviewedAt: timestamp("admin_reviewed_at"),
   // Completion tracking
   completedAt: timestamp("completed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

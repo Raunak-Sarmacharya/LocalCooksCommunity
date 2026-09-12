@@ -1016,10 +1016,12 @@ export async function getTransactionHistory(
           approvedTaxCents,
           kbTotalPrice,
           taxRatePercent,
+          ptServiceFee,
+          metadata: ptMetadata,
         });
         taxCents = resolved.taxCents;
         totalPriceCents = resolved.totalPriceCents;
-        serviceFeeCents = kbServiceFee > 0 ? kbServiceFee : ptServiceFee;
+        serviceFeeCents = resolved.serviceFeeCents;
       } else {
         // Fallback: use kitchen_bookings values
         // kb.total_price is the SUBTOTAL (before tax) - this matches what metric cards use

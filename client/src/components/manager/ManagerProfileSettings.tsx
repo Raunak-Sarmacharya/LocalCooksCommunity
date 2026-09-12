@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Loader2, Mail, Phone, KeyRound, Shield, Camera, CheckCircle2, Building2, Edit3, Lock, MapPin } from "@/components/ui/manager-icons";
+import { Loader2, Mail, Phone, Shield, Camera, Building2, Edit3, Lock } from "@/components/ui/manager-icons";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
 import ChangePassword from "@/components/auth/ChangePassword";
@@ -19,22 +19,32 @@ import { useFileUpload } from "@/hooks/useFileUpload";
 import { cn } from "@/lib/utils";
 import { tt } from "@/i18n/common-ns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users } from "lucide-react";
 import StripeConnectSetup from "@/components/manager/StripeConnectSetup";
 import NotificationsSettings from "@/components/manager/settings/NotificationsSettings";
+import LocationSettings from "@/components/manager/settings/LocationSettings";
 import { InfoChip } from "@/components/chef/info-chip";
 
 interface ManagerProfileSettingsProps {
+    location?: {
+        id: number;
+        name: string;
+        address: string;
+        description?: string | null;
+        logoUrl?: string;
+        timezone?: string;
+    } | null;
+    onSaveLocationSettings?: (updates: any) => Promise<unknown>;
     notificationLocation?: {
         id: number;
         name: string;
         notificationEmail?: string;
-        notificationPhone?: string;
     } | null;
     onSaveNotificationSettings?: (updates: any) => Promise<unknown>;
 }
 
 export default function ManagerProfileSettings({
+    location,
+    onSaveLocationSettings,
     notificationLocation,
     onSaveNotificationSettings,
 }: ManagerProfileSettingsProps = {}) {
@@ -58,16 +68,8 @@ export default function ManagerProfileSettings({
             : legacyView === "notification-settings"
                 ? "notifications"
                 : params.get("tab");
-        return tab === "password" || tab === "payments" || tab === "notifications" ? tab : "account";
+        return tab === "password" || tab === "payments" || tab === "notifications" || tab === "location" ? tab : "account";
     });
-    
-    // Location contact fields state
-    const [locationContactEdits, setLocationContactEdits] = useState<Record<number, {
-        contactEmail: string;
-        contactPhone: string;
-        preferredContactMethod: 'email' | 'phone' | 'both';
-        isEditing: boolean;
-    }>>({});
 
     // Avatar upload hook
     const { uploadFile, isUploading } = useFileUpload({
@@ -171,19 +173,6 @@ export default function ManagerProfileSettings({
             if (managerProfile.profileImageUrl) {
                 setAvatarUrl(managerProfile.profileImageUrl);
             }
-            // Initialize location contact edits
-            if (managerProfile.locations) {
-                const edits: Record<number, any> = {};
-                managerProfile.locations.forEach((loc: any) => {
-                    edits[loc.id] = {
-                        contactEmail: loc.contactEmail || '',
-                        contactPhone: loc.contactPhone || '',
-                        preferredContactMethod: loc.preferredContactMethod || 'email',
-                        isEditing: false,
-                    };
-                });
-                setLocationContactEdits(edits);
-            }
         }
     }, [user, managerProfile, firebaseUser]);
 
@@ -251,91 +240,6 @@ export default function ManagerProfileSettings({
         }, [updateProfileMutation, username, user?.username, displayName, phone]),
     );
 
-    // Update location contact info mutation
-    const updateLocationContactMutation = useMutation({
-        mutationFn: async ({ locationId, contactEmail, contactPhone, preferredContactMethod }: {
-            locationId: number;
-            contactEmail: string;
-            contactPhone: string;
-            preferredContactMethod: 'email' | 'phone' | 'both';
-        }) => {
-            const currentFirebaseUser = auth.currentUser;
-            if (!currentFirebaseUser) throw new Error(tt("notAuthenticated"));
-
-            const token = await currentFirebaseUser.getIdToken();
-            const response = await fetch(`/api/manager/locations/${locationId}`, {
-                method: 'PUT',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                },
-                credentials: 'include',
-                body: JSON.stringify({
-                    contactEmail: contactEmail || null,
-                    contactPhone: contactPhone || null,
-                    preferredContactMethod,
-                }),
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || 'Failed to update contact info');
-            }
-            return response.json();
-        },
-        onSuccess: (_, variables) => {
-            queryClient.invalidateQueries({ queryKey: ["/api/manager/profile"] });
-            queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
-            setLocationContactEdits(prev => ({
-                ...prev,
-                [variables.locationId]: {
-                    ...prev[variables.locationId],
-                    isEditing: false,
-                },
-            }));
-            toast({ title: mt("contactInfoUpdated"),
-                description: mt("yourBusinessContactInformationHasBeenSaved"),
-            });
-        },
-        onError: (error: any) => {
-            toast({ title: mt("updateFailed2"),
-                description: error.message || "Failed to update contact info",
-                variant: "destructive",
-            });
-        },
-    });
-
-    const handleLocationContactEdit = (locationId: number, field: string, value: string) => {
-        setLocationContactEdits(prev => ({
-            ...prev,
-            [locationId]: {
-                ...prev[locationId],
-                [field]: value,
-            },
-        }));
-    };
-
-    const handleSaveLocationContact = (locationId: number) => {
-        const edit = locationContactEdits[locationId];
-        if (edit) {
-            updateLocationContactMutation.mutate({
-                locationId,
-                contactEmail: edit.contactEmail,
-                contactPhone: edit.contactPhone,
-                preferredContactMethod: edit.preferredContactMethod,
-            });
-        }
-    };
-
-    const toggleLocationContactEdit = (locationId: number) => {
-        setLocationContactEdits(prev => ({
-            ...prev,
-            [locationId]: {
-                ...prev[locationId],
-                isEditing: !prev[locationId]?.isEditing,
-            },
-        }));
-    };
 
     const handleAvatarClick = () => {
         fileInputRef.current?.click();
@@ -452,6 +356,7 @@ export default function ManagerProfileSettings({
                 <TabsList className="h-auto w-full justify-start gap-0 rounded-none border-b bg-transparent p-0">
                     {[
                         ["account", mt("personalInformation")],
+                        ["location", mt("navLocation")],
                         ["password", mt("security")],
                         ["payments", mt("paymentsPayouts")],
                         ["notifications", mt("notificationSettings")],
@@ -567,146 +472,29 @@ export default function ManagerProfileSettings({
 
                 </div>
 
-                <div className="space-y-6">
-                    {/* Location Info Card */}
-                    {managerProfile?.locations && managerProfile.locations.length > 0 && (
-                        <div className="overflow-hidden rounded-[1.35rem] border bg-card">
-                            <div className="border-b px-5 py-4">
-                                <div className="flex items-center gap-2">
-                                    <Building2 className="h-4 w-4 text-slate-500" />
-                                    <h3 className="font-semibold text-slate-900">{mt("yourLocations")}</h3>
-                                </div>
-                            </div>
-                            <div className="p-5 space-y-4">
-                                {managerProfile.locations.map((location: any) => {
-                                    const edit = locationContactEdits[location.id];
-                                    const isEditingContact = edit?.isEditing || false;
-                                    
-                                    return (
-                                        <div key={location.id} className="space-y-2">
-                                            <div className="font-medium text-slate-900">{location.name}</div>
-                                            <div className="flex items-start gap-2 text-sm text-slate-600">
-                                                <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0 text-slate-400" />
-                                                <span>{location.address}</span>
-                                            </div>
-                                            
+            </div>
+                </TabsContent>
 
-                                            {/* Editable Contact Info */}
-                                            <div className="pt-2 mt-2 border-t border-slate-100 space-y-2">
-                                                <div className="flex items-center justify-between">
-                                                    <div className="text-xs font-medium text-slate-500 uppercase tracking-wide">{mt("businessContact")}</div>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        onClick={() => toggleLocationContactEdit(location.id)}
-                                                        className="h-6 px-2 text-xs"
-                                                    >
-                                                        <Edit3 className="h-3 w-3 mr-1" />
-                                                        {isEditingContact ? mt("cancel") : mt("edit")}
-                                                    </Button>
-                                                </div>
-                                                
-                                                {isEditingContact ? (
-                                                    <div className="space-y-2">
-                                                        <div className="space-y-1">
-                                                            <Label className="text-xs text-slate-500">{mt("contactEmail")}</Label>
-                                                            <Input
-                                                                type="email"
-                                                                value={edit?.contactEmail || ''}
-                                                                onChange={(e) => handleLocationContactEdit(location.id, 'contactEmail', e.target.value)}
-                                                                placeholder={mt("contactBusinessCom")}
-                                                                className="h-8 text-sm"
-                                                            />
-                                                        </div>
-                                                        <div className="space-y-1">
-                                                            <Label className="text-xs text-slate-500">{mt("contactPhone")}</Label>
-                                                            <Input
-                                                                type="tel"
-                                                                value={edit?.contactPhone || ''}
-                                                                onChange={(e) => handleLocationContactEdit(location.id, 'contactPhone', e.target.value)}
-                                                                placeholder="+1 (555) 000-0000"
-                                                                className="h-8 text-sm"
-                                                            />
-                                                        </div>
-                                                        <div className="space-y-1">
-                                                            <Label className="text-xs text-slate-500">{mt("preferredMethod")}</Label>
-                                                            <select
-                                                                value={edit?.preferredContactMethod || 'email'}
-                                                                onChange={(e) => handleLocationContactEdit(location.id, 'preferredContactMethod', e.target.value)}
-                                                                className="w-full h-8 px-2 text-sm border border-slate-200 rounded-md bg-white"
-                                                            >
-                                                                <option value="email">{mt("email")}</option>
-                                                                <option value="phone">{mt("phone")}</option>
-                                                                <option value="both">{mt("both")}</option>
-                                                            </select>
-                                                        </div>
-                                                        <Button
-                                                            size="sm"
-                                                            onClick={() => handleSaveLocationContact(location.id)}
-                                                            disabled={updateLocationContactMutation.isPending}
-                                                            className="w-full h-8 text-xs"
-                                                        >
-                                                            {updateLocationContactMutation.isPending ? (
-                                                                <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                                                            ) : (
-                                                                <CheckCircle2 className="h-3 w-3 mr-1" />
-                                                            )}
-                                                            Save Contact Info
-                                                        </Button>
-                                                    </div>
-                                                ) : (
-                                                    <div className="space-y-1.5">
-                                                        {(edit?.contactEmail || location.contactEmail) ? (
-                                                            <div className="flex items-center gap-2 text-sm text-slate-600">
-                                                                <Mail className="h-3.5 w-3.5 text-slate-400" />
-                                                                <span>{edit?.contactEmail || location.contactEmail}</span>
-                                                            </div>
-                                                        ) : (
-                                                            <div className="flex items-center gap-2 text-sm text-slate-400 italic">
-                                                                <Mail className="h-3.5 w-3.5" />
-                                                                <span>{mt("noEmailSet")}</span>
-                                                            </div>
-                                                        )}
-                                                        {(edit?.contactPhone || location.contactPhone) ? (
-                                                            <div className="flex items-center gap-2 text-sm text-slate-600">
-                                                                <Phone className="h-3.5 w-3.5 text-slate-400" />
-                                                                <span>{edit?.contactPhone || location.contactPhone}</span>
-                                                            </div>
-                                                        ) : (
-                                                            <div className="flex items-center gap-2 text-sm text-slate-400 italic">
-                                                                <Phone className="h-3.5 w-3.5" />
-                                                                <span>{mt("noPhoneSet")}</span>
-                                                            </div>
-                                                        )}
-                                                        <div className="text-xs text-slate-400">
-                                                            Preferred: {edit?.preferredContactMethod || location.preferredContactMethod || 'email'}
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
+                <TabsContent value="location" className="mt-6 focus-visible:ring-0">
+                    {location && onSaveLocationSettings ? (
+                        <LocationSettings location={location} onSave={onSaveLocationSettings} embedded />
+                    ) : (
+                        <div className="rounded-[1.35rem] border border-dashed bg-card p-10 text-center">
+                            <h3 className="font-semibold text-foreground">{mt("selectALocation")}</h3>
+                            <p className="mt-1 text-sm text-muted-foreground">{mt("chooseALocationToManageLocationSettings")}</p>
                         </div>
                     )}
-
-                </div>
-            </div>
                 </TabsContent>
 
                 <TabsContent value="password" className="mt-6 focus-visible:ring-0">
                     <div className="rounded-xl border bg-card p-6">
-                        <div className="mb-5 flex items-center gap-3">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100">
-                                <KeyRound className="h-5 w-5 text-amber-600" />
-                            </div>
+                        <div className="mb-5">
                             <div>
                                 <h3 className="font-semibold text-foreground">{mt("security")}</h3>
                                 <p className="text-sm text-muted-foreground">{mt("manageYourPasswordAndAccountSecurity")}</p>
                             </div>
                         </div>
-                        <ChangePassword role="manager" />
+                        <ChangePassword role="manager" embedded />
                     </div>
                 </TabsContent>
 
@@ -719,6 +507,7 @@ export default function ManagerProfileSettings({
                         <NotificationsSettings
                             location={notificationLocation}
                             onSave={onSaveNotificationSettings}
+                            embedded
                         />
                     ) : (
                         <div className="rounded-[1.35rem] border border-dashed bg-card p-10 text-center">
@@ -729,10 +518,7 @@ export default function ManagerProfileSettings({
                 </TabsContent>
 
                 <TabsContent value="teams" className="mt-6 focus-visible:ring-0">
-                    <div className="rounded-[1.35rem] border border-dashed border-primary/20 bg-primary/5 p-10 text-center space-y-4">
-                        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-                            <Users className="h-7 w-7 text-primary" />
-                        </div>
+                    <div className="space-y-4 rounded-[1.35rem] border border-dashed bg-card p-10 text-center">
                         <div>
                             <h3 className="text-lg font-semibold text-foreground">{mt("teamsComingSoon")}</h3>
                             <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">

@@ -60,6 +60,33 @@ import {
   assert.equal(payout.kitchenNetPayoutCents, 41585);
 }
 
+// A full customer refund can include Local Cooks' service fee. The manager's
+// displayed payout must still stop at $0 rather than retain the original payout
+// or become negative.
+{
+  const payout = buildKitchenPayoutStatementBreakdown({
+    kitchenBaseSubtotalCents: 24000,
+    kitchenHstRatePercent: 15,
+    platformFeeAmountCents: 1680,
+    paymentProcessorFeeCents: 879,
+    kitchenNetPayoutCents: 26721,
+    refundAmountCents: 28401,
+  });
+  assert.equal(payout.kitchenNetPayoutCents, 0);
+}
+
+// Partial manager-funded refunds reduce the original Stripe-synced payout.
+{
+  const payout = buildKitchenPayoutStatementBreakdown({
+    kitchenBaseSubtotalCents: 24000,
+    kitchenHstRatePercent: 15,
+    paymentProcessorFeeCents: 879,
+    kitchenNetPayoutCents: 26721,
+    refundAmountCents: 5000,
+  });
+  assert.equal(payout.kitchenNetPayoutCents, 21721);
+}
+
 // Historical stored tax wins if the manager changes their tax setting later.
 {
   const chef = buildChefBookingReceiptBreakdown({

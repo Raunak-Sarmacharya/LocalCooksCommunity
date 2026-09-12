@@ -175,13 +175,38 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
         meta: { hidden: true },
     },
     {
-        id: "reference",
-        header: mt("ref"),
+        accessorKey: "chefName",
+        header: mt("chefHeader"),
         cell: ({ row }) => {
             const ref = row.original.referenceCode || row.original.id;
+            const notes = row.original.specialNotes?.trim();
+
             return (
-                <div className="font-mono text-xs text-muted-foreground whitespace-nowrap">
-                    {ref ? `#${ref}` : "—"}
+                <div className="flex flex-col gap-1">
+                    <div className="flex items-center text-sm font-medium">
+                        <User className="h-3 w-3 mr-2 text-muted-foreground" />
+                        {row.getValue("chefName") || mt("chefNumber", { id: row.original.chefId })}
+                    </div>
+                    <div className="flex items-center gap-1.5 pl-5">
+                        <span className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+                            {ref ? `#${ref}` : "—"}
+                        </span>
+                        {notes && (
+                            <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Badge variant="outline" className="h-5 cursor-help gap-1 px-1.5 text-[10px] font-medium">
+                                            <FileText className="h-2.5 w-2.5" />
+                                            {mt("notesHeader")}
+                                        </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-xs">
+                                        <p className="text-sm">{notes}</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
+                        )}
+                    </div>
                 </div>
             );
         },
@@ -217,16 +242,6 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
                 </div>
             );
         },
-    },
-    {
-        accessorKey: "chefName",
-        header: mt("chefHeader"),
-        cell: ({ row }) => (
-            <div className="flex items-center text-sm">
-                <User className="h-3 w-3 mr-2 text-muted-foreground" />
-                {row.getValue("chefName") || mt("chefNumber", { id: row.original.chefId })}
-            </div>
-        ),
     },
     {
         accessorKey: "bookingDate",
@@ -587,7 +602,13 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
 
             // Active bookings with partial refund (e.g., some addons cancelled + refunded, kitchen still confirmed)
             if (!isCancelled && hasRefund && hasTransactionData) {
-                const adjustedNet = netAmount - refundAmount;
+                // refundAmount is the total returned to the chef. It can include the
+                // platform-owned service fee, so never present that portion as money
+                // taken from the manager's payout.
+                const managerRefundAmount = Math.min(refundAmount, netAmount);
+                const platformRefundAmount = Math.max(0, refundAmount - managerRefundAmount);
+                const adjustedNet = Math.max(0, netAmount - managerRefundAmount);
+                const isFullRefund = refundAmount >= Math.max(0, displayAmount - stripeFee);
                 return (
                     <TooltipProvider>
                         <Tooltip>
@@ -599,7 +620,7 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
                             </TooltipTrigger>
                             <TooltipContent className="max-w-xs">
                                 <div className="space-y-1 text-sm">
-                                    <p className="font-medium text-amber-700">{mt("partialRefundIssued")}</p>
+                                    <p className="font-medium text-amber-700">{isFullRefund ? mt("fullRefundIssued") : mt("partialRefundIssued")}</p>
                                     <div className="flex justify-between gap-4">
                                         <span>{mt("totalCharged2")}</span>
                                         <span className="font-medium font-mono">{formatPrice(displayAmount)}</span>
@@ -609,19 +630,24 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
                                         <span>{formatPrice(subtotal)}</span>
                                     </div>
                                     {taxAmount > 0 && <div className="flex justify-between gap-4 text-amber-600"><span>{mt("taxPercentLabel", { percent: taxRatePercent })}</span><span>+{formatPrice(taxAmount)}</span></div>}
-                                    {serviceFee > 0 && <div className="flex justify-between gap-4 text-blue-600"><span>{mt("localCooksServiceFee")}</span><span>-{formatPrice(serviceFee)}</span></div>}
                                     {stripeFee > 0 && (
-                                        <div className="flex justify-between gap-4 text-red-600">
-                                            <span>{mt("stripeFee2")}</span>
-                                            <span>-{formatPrice(stripeFee)}</span>
+                                        <div className="flex justify-between gap-4 text-muted-foreground">
+                                            <span>{mt("stripeFeeNonRefundable")}</span>
+                                            <span>{formatPrice(stripeFee)}</span>
                                         </div>
                                     )}
                                     <div className="flex justify-between gap-4 text-orange-600">
-                                        <span>{mt("refunded2")}</span>
-                                        <span>-{formatPrice(refundAmount)}</span>
+                                        <span>{mt("refundedFromManagerPayout")}</span>
+                                        <span>-{formatPrice(managerRefundAmount)}</span>
                                     </div>
+                                    {platformRefundAmount > 0 && (
+                                        <div className="flex justify-between gap-4 text-blue-600">
+                                            <span>{mt("refundedByLocalCooks")}</span>
+                                            <span>{formatPrice(platformRefundAmount)}</span>
+                                        </div>
+                                    )}
                                     <div className="border-t pt-1 flex justify-between gap-4 font-semibold text-green-600">
-                                        <span>{mt("netRevenue2")}</span>
+                                        <span>{mt("managerRevenueRemaining")}</span>
                                         <span>{formatPrice(adjustedNet)}</span>
                                     </div>
                                 </div>
@@ -815,29 +841,6 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
                 </div>
             )
         },
-    },
-    {
-        accessorKey: "specialNotes",
-        header: mt("notesHeader"),
-        cell: ({ row }) => {
-            const notes = row.getValue("specialNotes") as string;
-            if (!notes) return <span className="text-muted-foreground text-xs italic">{mt("noNotes")}</span>;
-
-            return (
-                <TooltipProvider>
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <div className="flex items-center cursor-help text-muted-foreground hover:text-foreground transition-colors">
-                                <FileText className="h-4 w-4" />
-                            </div>
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
-                            <p className="text-sm">{notes}</p>
-                        </TooltipContent>
-                    </Tooltip>
-                </TooltipProvider>
-            )
-        }
     },
     {
         id: "actions",

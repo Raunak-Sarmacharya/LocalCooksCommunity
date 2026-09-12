@@ -140,8 +140,7 @@ export function FacilityInfoStep({
       {/* Floor Plans Section */}
       <div className="rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
         <div className="px-5 py-4 border-b border-slate-200/80 dark:border-slate-700/80 bg-slate-50/50 dark:bg-slate-800/50">
-          <div className="flex items-center gap-2">
-            <FileText className="h-4 w-4 text-slate-500" />
+          <div>
             <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{mt("floorPlans")}</h4>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{mt("uploadYourKitchenLayoutToHelpChefsNavigateTheSpace")}</p>
@@ -200,8 +199,7 @@ export function FacilityInfoStep({
       {/* Ventilation Specifications Section */}
       <div className="rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
         <div className="px-5 py-4 border-b border-slate-200/80 dark:border-slate-700/80 bg-slate-50/50 dark:bg-slate-800/50">
-          <div className="flex items-center gap-2">
-            <Wind className="h-4 w-4 text-slate-500" />
+          <div>
             <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{mt("ventilationSpecifications")}</h4>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{mt("documentYourVentilationSystemForComplianceAndChefAwareness")}</p>

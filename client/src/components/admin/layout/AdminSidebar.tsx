@@ -1,11 +1,12 @@
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem, SidebarRail, SidebarSeparator } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
-import { Shield, FileText, AlertTriangle, Users, Building2, Gift, DollarSign, Settings, Clock, LogOut, BarChart3, Lock, LayoutDashboard, CreditCard, Package, FileWarning, Key, KeyRound, Mail } from "lucide-react";
+import { Shield, FileText, AlertTriangle, Users, Building2, Gift, DollarSign, Settings, Clock, LogOut, BarChart3, Lock, LayoutDashboard, CreditCard, Package, FileWarning, Key, KeyRound, Mail, CalendarDays } from "lucide-react";
 
 export type AdminSection =
   | "overview"
   | "applications"
   | "kitchen-applications-step1"
+  | "tour-requests"
   | "kitchen-licenses"
   | "damage-claims"
   | "escalated-penalties"
@@ -47,6 +48,7 @@ const NAV_GROUPS = [
     items: [
       { id: "applications" as AdminSection, label: "Seller Applications", icon: Shield, badgeKey: "pendingReview" as const },
       { id: "kitchen-applications-step1" as AdminSection, label: "Kitchen Applications (Step 1)", icon: Shield, badgeKey: "pendingKitchenApps" as const },
+      { id: "tour-requests" as AdminSection, label: "Tour Requests", icon: CalendarDays },
       { id: "kitchen-licenses" as AdminSection, label: "Kitchen Licenses", icon: FileText, badgeKey: "pendingLicenses" as const },
       { id: "damage-claims" as AdminSection, label: "Damage Claims", icon: AlertTriangle },
       { id: "escalated-penalties" as AdminSection, label: "Escalated", icon: AlertTriangle },
@@ -114,8 +116,8 @@ export function AdminSidebar({
                 <Shield className="size-4" />
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">Admin Panel</span>
-                <span className="truncate text-xs text-muted-foreground">LocalCooks</span>
+                <span className="truncate font-semibold">Local Cooks</span>
+                <span className="truncate text-xs text-muted-foreground">Review Portal</span>
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>

@@ -1,10 +1,11 @@
 "use client"
 
 import * as React from "react"
-import { AlertTriangle, Bell, Boxes, Calendar, ChevronsUpDown, ClipboardCheck, Clock, DollarSign, Eye, FileText, LayoutDashboard, LogOut, ArchiveCheck, Package, Send, Settings, Storefront, User as UserIcon, Users } from "@/components/ui/manager-icons"
+import { AlertTriangle, Bell, Boxes, Calendar, ChevronRight, ChevronsUpDown, ClipboardCheck, Clock, DollarSign, Eye, FileText, LayoutDashboard, LogOut, ArchiveCheck, Package, Send, Shield, Storefront, User as UserIcon, Users } from "@/components/ui/manager-icons"
 
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem, SidebarRail, useSidebar } from "@/components/ui/sidebar"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { cn } from "@/lib/utils"
 import Logo from "@/components/ui/logo"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -12,6 +13,8 @@ import { LanguageMenuSection } from "@/components/i18n/LanguageSwitcher";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { mt } from "@/i18n/manager";
 import type { ManagerBreadcrumb } from "@/lib/manager-kitchens-navigation";
+import ManagerGettingStarted from "@/components/manager/ManagerGettingStarted";
+import type { ManagerSetupStep } from "@/hooks/use-onboarding-status";
 
 interface NavItem {
     labelKey: string;
@@ -32,13 +35,21 @@ const navData: { navMain: NavGroup[] } = {
             items: [
                 { labelKey: "navDashboard", url: "overview", icon: LayoutDashboard },
                 { labelKey: "navBookings", url: "bookings", icon: Calendar },
-                { labelKey: "navRequests", url: "applications", icon: Users },
+                {
+                    labelKey: "navRequests",
+                    url: "applications",
+                    icon: Users,
+                    children: [
+                        { labelKey: "navApplicationRequirements", url: "application-requirements", icon: ClipboardCheck },
+                    ],
+                },
                 {
                     labelKey: "navSpaces",
                     url: "kitchens",
                     icon: Storefront,
                     children: [
                         { labelKey: "navAvailability", url: "availability", icon: Clock },
+                        { labelKey: "navBookingRules", url: "settings-booking-rules", icon: Calendar },
                         { labelKey: "navCheckinCheckout", url: "settings-checkin-checkout", icon: ClipboardCheck },
                         { labelKey: "navDamageClaims", url: "damage-claims", icon: FileText },
                     ],
@@ -53,7 +64,7 @@ const navData: { navMain: NavGroup[] } = {
                         { labelKey: "navStorageInspections", url: "storage-checkouts", icon: ArchiveCheck },
                     ],
                 },
-                { labelKey: "navSettings", url: "settings", icon: Settings },
+                { labelKey: "kitchenLicense", url: "settings-license", icon: Shield },
             ],
         },
 
@@ -66,21 +77,19 @@ const navData: { navMain: NavGroup[] } = {
         {
             labelKey: "navInbox",
             items: [
-                { labelKey: "navMessages", url: "messages", icon: Send },
+                {
+                    labelKey: "navMessages",
+                    url: "messages",
+                    icon: Send,
+                    children: [
+                        { labelKey: "facilityDocuments", url: "settings-facility-docs", icon: FileText },
+                    ],
+                },
                 { labelKey: "navNotifications", url: "notifications", icon: Bell },
             ],
         },
     ],
 }
-
-const SETTINGS_VIEWS = new Set([
-    "settings",
-    "settings-license",
-    "settings-booking-rules",
-    "settings-facility-docs",
-    "settings-location",
-    "application-requirements",
-]);
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
     activeView: string;
@@ -90,6 +99,10 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
     onLocationChange: (location: { id: number; name: string } | null) => void;
     onCreateLocation?: () => void;
     breadcrumbs?: ManagerBreadcrumb[];
+    managerSetupSteps?: ManagerSetupStep[];
+    managerImprovementSteps?: string[];
+    onContinueManagerSetup?: () => void;
+    onImproveManagerListing?: (task: string) => void;
 }
 
 export function AppSidebar({
@@ -100,14 +113,42 @@ export function AppSidebar({
     selectedLocation: _selectedLocation,
     onLocationChange: _onLocationChange,
     onCreateLocation: _onCreateLocation,
+    managerSetupSteps = [],
+    managerImprovementSteps = [],
+    onContinueManagerSetup,
+    onImproveManagerListing,
     ...props
 }: AppSidebarProps) {
     const { user, logout } = useFirebaseAuth();
     const { isMobile, state, setOpenMobile } = useSidebar();
+    const [openParent, setOpenParent] = React.useState<string | null>(null);
     const activeChildView = breadcrumbs?.[breadcrumbs.length - 1]?.navId;
 
-    const handleAccountAction = (view: string) => {
+    React.useEffect(() => {
+        if (!openParent) return;
+        const parent = navData.navMain.flatMap((group) => group.items).find((item) => item.url === openParent);
+        if (activeView !== openParent && !parent?.children?.some((child) => child.url === activeView)) {
+            setOpenParent(null);
+        }
+    }, [activeView, openParent]);
+
+    const handleAccountAction = (view: string, keepParentOpen = false) => {
         onViewChange(view);
+        if (!keepParentOpen) setOpenParent(null);
+        if (isMobile) setOpenMobile(false);
+    };
+
+    const handleParentAction = (view: string) => {
+        onViewChange(view);
+    };
+
+    const handleContinueManagerSetup = () => {
+        onContinueManagerSetup?.();
+        if (isMobile) setOpenMobile(false);
+    };
+
+    const handleImproveManagerListing = (task: string) => {
+        onImproveManagerListing?.(task);
         if (isMobile) setOpenMobile(false);
     };
 
@@ -137,39 +178,80 @@ export function AppSidebar({
                     <SidebarGroup key={group.labelKey} className="px-2 py-0.5">
                         <SidebarMenu className="gap-0.5">
                             {group.items.map((item) => {
-                                const isActive = activeView === item.url || (item.url === "settings" && SETTINGS_VIEWS.has(activeView));
+                                const isActive = activeView === item.url || item.children?.some((child) => child.url === activeView);
                                 const label = mt(item.labelKey);
-                                return (
+                                const content = (
                                     <SidebarMenuItem key={item.labelKey}>
-                                        <SidebarMenuButton
-                                            isActive={isActive}
-                                            onClick={() => handleAccountAction(item.url)}
-                                            tooltip={label}
-                                            className={cn(isActive && "text-sidebar-primary-foreground font-medium")}
-                                        >
-                                            {item.icon && <item.icon className="size-4" />}
-                                            <span>{label}</span>
-                                        </SidebarMenuButton>
+                                        {item.children ? (
+                                            <CollapsibleTrigger asChild>
+                                                <SidebarMenuButton
+                                                    isActive={isActive}
+                                                    onClick={() => handleParentAction(item.url)}
+                                                    tooltip={label}
+                                                    className={cn(isActive && "text-sidebar-primary-foreground font-medium")}
+                                                >
+                                                    <item.icon className="size-4" />
+                                                    <span>{label}</span>
+                                                    <ChevronRight className="ml-auto size-4 transition-transform group-data-[state=open]/collapsible:rotate-90" />
+                                                </SidebarMenuButton>
+                                            </CollapsibleTrigger>
+                                        ) : (
+                                            <SidebarMenuButton
+                                                isActive={isActive}
+                                                onClick={() => handleAccountAction(item.url)}
+                                                tooltip={label}
+                                                className={cn(isActive && "text-sidebar-primary-foreground font-medium")}
+                                            >
+                                                <item.icon className="size-4" />
+                                                <span>{label}</span>
+                                            </SidebarMenuButton>
+                                        )}
                                         {item.children && (
-                                            <SidebarMenuSub className="mx-2 mb-0 mt-0 translate-x-0 gap-0 border-l border-sidebar-border/80 px-2 py-0">
-                                                {item.children.map((child) => (
-                                                    <SidebarMenuSubItem key={child.url}>
-                                                        <SidebarMenuSubButton asChild isActive={activeChildView === child.url}>
-                                                            <button onClick={() => handleAccountAction(child.url)} className="w-full cursor-pointer">
-                                                                <child.icon />
-                                                                <span>{mt(child.labelKey)}</span>
-                                                            </button>
-                                                        </SidebarMenuSubButton>
-                                                    </SidebarMenuSubItem>
-                                                ))}
-                                            </SidebarMenuSub>
+                                            <CollapsibleContent>
+                                                <SidebarMenuSub className="mx-2 mb-0 mt-0 translate-x-0 gap-0 border-l border-sidebar-border/80 px-2 py-0">
+                                                    {item.children.map((child) => (
+                                                        <SidebarMenuSubItem key={child.url}>
+                                                            <SidebarMenuSubButton
+                                                                asChild
+                                                                size="sm"
+                                                                isActive={activeChildView === child.url}
+                                                                className="h-auto min-h-7 py-1.5 text-[12px] leading-snug [&>span:last-child]:whitespace-normal [&>span:last-child]:break-words"
+                                                            >
+                                                                <button onClick={() => handleAccountAction(child.url, true)} className="w-full cursor-pointer text-left">
+                                                                    <child.icon />
+                                                                    <span>{mt(child.labelKey)}</span>
+                                                                </button>
+                                                            </SidebarMenuSubButton>
+                                                        </SidebarMenuSubItem>
+                                                    ))}
+                                                </SidebarMenuSub>
+                                            </CollapsibleContent>
                                         )}
                                     </SidebarMenuItem>
                                 );
+                                return item.children ? (
+                                    <Collapsible
+                                        key={item.labelKey}
+                                        asChild
+                                        open={openParent === item.url}
+                                        onOpenChange={(open) => setOpenParent(open ? item.url : null)}
+                                        className="group/collapsible"
+                                    >
+                                        {content}
+                                    </Collapsible>
+                                ) : content;
                             })}
                         </SidebarMenu>
                     </SidebarGroup>
                 ))}
+                {managerSetupSteps.length || managerImprovementSteps.length ? (
+                    <ManagerGettingStarted
+                        steps={managerSetupSteps}
+                        improvementSteps={managerImprovementSteps}
+                        onContinue={handleContinueManagerSetup}
+                        onImprove={handleImproveManagerListing}
+                    />
+                ) : null}
             </SidebarContent>
             <SidebarFooter>
                 <SidebarMenu>

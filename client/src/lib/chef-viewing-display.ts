@@ -24,8 +24,10 @@ export type ChefTourRow = {
 
 export function viewingStatusBadge(status: string): ViewingStatusBadge {
   switch (status) {
+    case "pending_local_cooks":
+      return { variant: "warning", labelKey: "tourStatusLocalCooksReview", defaultLabel: "Local Cooks review" };
     case "pending":
-      return { variant: "warning", labelKey: "tourStatusPending", defaultLabel: "Pending" };
+      return { variant: "warning", labelKey: "tourStatusPending", defaultLabel: "Manager review" };
     case "confirmed":
       return { variant: "success", labelKey: "tourStatusConfirmed", defaultLabel: "Confirmed" };
     case "completed":
@@ -102,6 +104,7 @@ export function chefTourRowHasDetails(row: ChefTourRow): boolean {
       row.managerNotes?.trim() ||
       row.cancellationReason?.trim() ||
       row.intakeEntries.length > 0 ||
+      row.status === "pending_local_cooks" ||
       row.status === "pending" ||
       row.status === "confirmed"
   );
@@ -112,7 +115,7 @@ export function isPendingOrUpcomingTour(
   row: Pick<ChefTourRow, "status" | "scheduledAt" | "durationMinutes">,
   nowMs: number = Date.now()
 ): boolean {
-  if (row.status === "pending") return true;
+  if (row.status === "pending_local_cooks" || row.status === "pending") return true;
   if (row.status !== "confirmed") return false;
   const start = new Date(row.scheduledAt).getTime();
   if (Number.isNaN(start)) return false;

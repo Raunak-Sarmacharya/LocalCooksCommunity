@@ -54,6 +54,7 @@ export interface BookingForManagement {
   serviceFee?: number;
   taxRatePercent?: number;
   refundableAmount?: number;
+  managerRemainingBalance?: number;
   refundAmount?: number;
 
   // Cancellation request info
@@ -75,6 +76,7 @@ export interface ManagementSubmitParams {
     | "partial-cancel"          // Cancel only addons, keep kitchen
     | "partial-cancel-refund"   // Cancel addons + manual refund
     | "refund-only"             // Refund without cancelling
+    | "request-full-refund"     // Request admin approval for full refund
     | "accept-cancellation"     // Accept chef's kitchen cancellation request
     | "decline-cancellation"    // Decline chef's kitchen cancellation request
     | "accept-storage-cancel"   // Accept storage cancellation
@@ -271,7 +273,6 @@ function BookingManagementContent({
     const transactionAmount = booking.transactionAmount || 0;
     const stripeFee = booking.stripeProcessingFee || 0;
     const managerRevenue = booking.managerRevenue || 0;
-    const serviceFee = booking.serviceFee || 0;
     const taxRatePercent = booking.taxRatePercent || 0;
     const alreadyRefunded = booking.refundAmount || 0;
 
@@ -301,11 +302,9 @@ function BookingManagementContent({
 
     const totalCancelledSubtotal = cancelledKitchenCents + cancelledStorageCents + cancelledEquipmentCents;
     const proportionalTax = Math.round((totalCancelledSubtotal * taxRatePercent) / 100);
-    const managerGross = managerRevenue + stripeFee;
-    const proportionalServiceFee = managerGross > 0
-      ? Math.round(serviceFee * ((totalCancelledSubtotal + proportionalTax) / managerGross))
-      : 0;
-    const grossRefund = totalCancelledSubtotal + proportionalTax + proportionalServiceFee;
+    // Managers refund only their own payout share. Platform service fees are
+    // available solely through the admin-approved full-refund flow.
+    const grossRefund = totalCancelledSubtotal + proportionalTax;
 
     // Proportional Stripe fee (sunk)
     const proportionalStripeFee = transactionAmount > 0
@@ -314,10 +313,10 @@ function BookingManagementContent({
 
     const netRefund = Math.max(0, grossRefund - proportionalStripeFee);
 
-    // Cap includes remaining platform service fee
+    // Direct manager refunds are capped at the remaining manager share.
     const availableBalance = Math.max(
       0,
-      (booking.refundableAmount || managerRevenue + serviceFee) - alreadyRefunded,
+      booking.managerRemainingBalance ?? managerRevenue,
     );
     const autoRefundAmount = Math.min(netRefund, availableBalance);
 
@@ -417,6 +416,13 @@ function BookingManagementContent({
       });
     }
   }, [booking, isProcessing, refundMode, refundCalc, effectiveRefundAmount, kitchenDecision, storageDecisions, equipmentDecisions, activeStorageItems, activeEquipmentItems, onSubmit]);
+
+  const handleFullRefundRequest = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!booking.transactionId || isProcessing) return;
+    onSubmit({ bookingId: booking.id, action: "request-full-refund" });
+  }, [booking.id, booking.transactionId, isProcessing, onSubmit]);
 
   // Cancellation request handlers
   const handleCancellationAction = useCallback((action: "accept" | "decline", e: React.MouseEvent) => {
@@ -953,7 +959,7 @@ function BookingManagementContent({
                   type="button"
                   variant={refundMode ? "default" : "outline"}
                   size="sm"
-                  className={cn("h-7 text-xs")}
+                  className={cn("h-8 px-3 text-xs")}
                   onClick={(e) => {
                     e.stopPropagation();
                     setRefundMode(!refundMode);
@@ -998,6 +1004,18 @@ function BookingManagementContent({
                       <span className="font-mono text-green-700">{formatPrice(effectiveRefundAmount)}</span>
                     </div>
                   )}
+                  <div className="flex justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-3 text-xs"
+                      onClick={handleFullRefundRequest}
+                      disabled={isProcessing || !booking.transactionId}
+                    >
+                      Request full refund from admin
+                    </Button>
+                  </div>
                 </div>
               )}
 
@@ -1050,13 +1068,13 @@ function BookingManagementContent({
         </div>
 
         {/* Action buttons */}
-        <div className="flex items-center justify-between w-full gap-3">
+        <div className="flex items-center justify-end w-full gap-2">
           <Button
             type="button"
             variant="outline"
             onClick={(e) => { e.stopPropagation(); onClose(); }}
             disabled={isProcessing}
-            className="flex-1"
+            className="h-9 px-4"
           >
             {refundCalc.hasCancellations || refundMode ? mt("discardChanges") : mt("close")}
           </Button>
@@ -1067,7 +1085,7 @@ function BookingManagementContent({
               type="button"
               onClick={handleSubmit}
               disabled={isProcessing || effectiveRefundAmount <= 0 || !booking.transactionId}
-              className="flex-1 min-w-[160px]"
+              className="h-9 px-4"
             >
               {isProcessing ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -1085,7 +1103,7 @@ function BookingManagementContent({
               onClick={handleSubmit}
               disabled={isProcessing}
               variant="destructive"
-              className="flex-1 min-w-[160px]"
+              className="h-9 px-4"
             >
               {isProcessing ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />

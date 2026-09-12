@@ -348,8 +348,7 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
         <CardHeader>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div>
-              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-                <Eye className="h-5 w-5 text-primary" />{mt("navViewings")}</CardTitle>
+              <CardTitle className="text-base sm:text-lg">{mt("navViewings")}</CardTitle>
               <CardDescription className="text-xs sm:text-sm">{mt("manageViewingBookingsAndTrackChefVisits")}</CardDescription>
             </div>
             <div className="flex items-center gap-2">

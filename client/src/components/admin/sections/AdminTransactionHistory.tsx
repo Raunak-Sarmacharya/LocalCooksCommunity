@@ -8,7 +8,8 @@
  */
 
 import { useState, useMemo, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 import { ColumnDef, ColumnFiltersState, SortingState, VisibilityState, flexRender, getCoreRowModel, getFilteredRowModel, getPaginationRowModel, getSortedRowModel, useReactTable } from "@tanstack/react-table";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,7 +27,7 @@ import { cn } from "@/lib/utils";
 import { formatDate as sharedFormatDate, formatTime as sharedFormatTime, formatCurrency as sharedFormatCurrency, formatPrice, downloadCSV as sharedDownloadCSV } from "@/lib/formatters";
 
 // Types
-interface AdminTransaction {
+export interface AdminTransaction {
   id: number;
   bookingId: number;
   bookingType: "kitchen" | "storage" | "equipment" | "bundle";
@@ -84,7 +85,24 @@ interface LocationOption {
   name: string;
 }
 
-type StatusFilter = "all" | "succeeded" | "refunded" | "pending" | "failed" | "canceled";
+type StatusFilter = "all" | "refund_requests" | "succeeded" | "refunded" | "pending" | "failed" | "canceled";
+
+export function filterTransactionsByStatus(transactions: AdminTransaction[], status: StatusFilter) {
+  if (status === "refund_requests") {
+    return transactions.filter((transaction) => (transaction.metadata as any)?.fullRefundRequest?.status === "pending");
+  }
+  if (status === "refunded") {
+    return transactions.filter((transaction) => transaction.status === "refunded" || transaction.status === "partially_refunded" || transaction.refundAmount > 0);
+  }
+  if (status === "succeeded") {
+    return transactions.filter((transaction) => transaction.status === "succeeded" && transaction.refundAmount === 0);
+  }
+  if (status === "pending") {
+    return transactions.filter((transaction) => ["pending", "processing", "authorized"].includes(transaction.status));
+  }
+  if (status === "all") return transactions;
+  return transactions.filter((transaction) => transaction.status === status);
+}
 
 // Helpers — use shared formatters from @/lib/formatters
 const formatCurrency = sharedFormatCurrency;
@@ -276,10 +294,14 @@ function TransactionDetailSheet({
   transaction,
   open,
   onOpenChange,
+  onRefundDecision,
+  isRefundDecisionPending,
 }: {
   transaction: AdminTransaction | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onRefundDecision: (transactionId: number, decision: 'approve' | 'reject') => void;
+  isRefundDecisionPending: boolean;
 }) {
   if (!transaction) return null;
   const tx = transaction;
@@ -312,6 +334,28 @@ function TransactionDetailSheet({
         </SheetHeader>
 
         <div className="mt-6 space-y-6">
+          {(tx.metadata as any)?.fullRefundRequest?.status === 'pending' && (
+            <div className="rounded-lg border border-orange-200 bg-orange-50 p-4 space-y-3">
+              <div>
+                <h4 className="font-semibold text-orange-900">Full refund approval requested</h4>
+                <p className="text-sm text-orange-800">
+                  Manager requested {(formatCurrency((tx.metadata as any).fullRefundRequest.requestedAmount || 0))}.
+                  You control whether the platform service fee is returned.
+                </p>
+                {(tx.metadata as any).fullRefundRequest.reason && (
+                  <p className="text-xs text-orange-700 mt-1">Reason: {(tx.metadata as any).fullRefundRequest.reason}</p>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Button onClick={() => onRefundDecision(tx.id, 'approve')} disabled={isRefundDecisionPending}>
+                  Approve full refund
+                </Button>
+                <Button variant="outline" onClick={() => onRefundDecision(tx.id, 'reject')} disabled={isRefundDecisionPending}>
+                  Reject request
+                </Button>
+              </div>
+            </div>
+          )}
           {/* Status */}
           <div className="flex items-center gap-3">
             {getStatusBadge(tx.status, tx.refundAmount)}
@@ -727,7 +771,16 @@ function getAdminTransactionColumns(
     {
       accessorKey: "status",
       header: "Status",
-      cell: ({ row }) => getStatusBadge(row.original.status, row.original.refundAmount),
+      cell: ({ row }) => (
+        <div className="flex flex-col items-start gap-1">
+          {getStatusBadge(row.original.status, row.original.refundAmount)}
+          {(row.original.metadata as any)?.fullRefundRequest?.status === 'pending' && (
+            <Badge variant="outline" className="border-orange-300 bg-orange-50 text-orange-800">
+              Refund approval
+            </Badge>
+          )}
+        </div>
+      ),
     },
     {
       accessorKey: "paymentIntentId",
@@ -742,9 +795,10 @@ function getAdminTransactionColumns(
           variant="ghost"
           size="sm"
           onClick={() => onViewDetails(row.original)}
-          className="h-7 w-7 p-0"
+          className={(row.original.metadata as any)?.fullRefundRequest?.status === 'pending' ? "h-8 px-3 text-orange-700" : "h-7 w-7 p-0"}
         >
           <Eye className="h-4 w-4" />
+          {(row.original.metadata as any)?.fullRefundRequest?.status === 'pending' && <span className="ml-1.5">Review</span>}
         </Button>
       ),
     },
@@ -789,6 +843,8 @@ interface AdminTransactionHistoryProps {
 }
 
 export function AdminTransactionHistory({ getFirebaseToken }: AdminTransactionHistoryProps) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
   // Read initial search from URL params (e.g. /admin?section=transactions&search=KB-TAAHAM)
   const initialSearch = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
@@ -831,17 +887,10 @@ export function AdminTransactionHistory({ getFirebaseToken }: AdminTransactionHi
 
   // Fetch transactions
   const { data, isLoading, error, refetch } = useQuery<{ transactions: AdminTransaction[]; total: number }>({
-    queryKey: ["/api/admin/transactions", statusFilter, bookingTypeFilter, locationFilter, debouncedSearch],
+    queryKey: ["/api/admin/transactions", bookingTypeFilter, locationFilter, debouncedSearch],
     queryFn: async () => {
       const params = new URLSearchParams();
       params.append("limit", "500");
-      if (statusFilter !== "all") {
-        if (statusFilter === "refunded") {
-          // Include both refunded and partially_refunded
-        } else {
-          params.append("status", statusFilter);
-        }
-      }
       if (bookingTypeFilter !== "all") params.append("bookingType", bookingTypeFilter);
       if (locationFilter !== "all") params.append("locationId", locationFilter);
       if (debouncedSearch.trim()) params.append("search", debouncedSearch.trim());
@@ -858,25 +907,21 @@ export function AdminTransactionHistory({ getFirebaseToken }: AdminTransactionHi
 
   const transactions = useMemo(() => data?.transactions || [], [data]);
 
-  // Client-side status filtering for "refunded" tab (includes partially_refunded)
-  const filteredTransactions = useMemo(() => {
-    if (statusFilter === "refunded") {
-      return transactions.filter(
-        (t) => t.status === "refunded" || t.status === "partially_refunded" || t.refundAmount > 0
-      );
-    }
-    return transactions;
-  }, [transactions, statusFilter]);
+  const filteredTransactions = useMemo(
+    () => filterTransactionsByStatus(transactions, statusFilter),
+    [transactions, statusFilter]
+  );
 
   // Categorize for tab counts
   const counts = useMemo(() => {
     const all = transactions.length;
+    const refundRequests = transactions.filter((t) => (t.metadata as any)?.fullRefundRequest?.status === 'pending').length;
     const succeeded = transactions.filter((t) => t.status === "succeeded" && t.refundAmount === 0).length;
     const refunded = transactions.filter((t) => t.status === "refunded" || t.status === "partially_refunded" || t.refundAmount > 0).length;
     const pending = transactions.filter((t) => t.status === "pending" || t.status === "processing" || t.status === "authorized").length;
     const failed = transactions.filter((t) => t.status === "failed").length;
     const canceled = transactions.filter((t) => t.status === "canceled").length;
-    return { all, succeeded, refunded, pending, failed, canceled };
+    return { all, refundRequests, succeeded, refunded, pending, failed, canceled };
   }, [transactions]);
 
   // Summary totals
@@ -898,6 +943,29 @@ export function AdminTransactionHistory({ getFirebaseToken }: AdminTransactionHi
     setSelectedTransaction(tx);
     setDetailSheetOpen(true);
   }, []);
+
+  const refundDecisionMutation = useMutation({
+    mutationFn: async ({ transactionId, decision }: { transactionId: number; decision: 'approve' | 'reject' }) => {
+      const token = await getFirebaseToken();
+      const response = await fetch(`/api/admin/transactions/${transactionId}/full-refund-request/decision`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to resolve refund request');
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: data.decision === 'approved' ? 'Refund approved' : 'Refund request rejected' });
+      setDetailSheetOpen(false);
+      setSelectedTransaction(null);
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/transactions'] });
+    },
+    onError: (error: Error) => toast({ title: 'Refund decision failed', description: error.message, variant: 'destructive' }),
+  });
 
   const columns = useMemo(() => getAdminTransactionColumns(handleViewDetails), [handleViewDetails]);
 
@@ -967,6 +1035,17 @@ export function AdminTransactionHistory({ getFirebaseToken }: AdminTransactionHi
           </p>
         </div>
       </div>
+
+      {counts.refundRequests > 0 && (
+        <button
+          type="button"
+          onClick={() => setStatusFilter('refund_requests')}
+          className="w-full rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-left text-sm text-orange-900 hover:bg-orange-100"
+        >
+          <span className="font-semibold">{counts.refundRequests} full refund request{counts.refundRequests === 1 ? '' : 's'} awaiting approval</span>
+          <span className="ml-2 text-orange-700">Review now</span>
+        </button>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1125,6 +1204,9 @@ export function AdminTransactionHistory({ getFirebaseToken }: AdminTransactionHi
               <TabsTrigger value="all" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
                 All <Badge variant="count" className="ml-1">{counts.all}</Badge>
               </TabsTrigger>
+              <TabsTrigger value="refund_requests" className="flex-1 min-w-[90px] text-xs sm:text-sm px-2 py-1.5">
+                Refund Requests <Badge variant="count" className="ml-1">{counts.refundRequests}</Badge>
+              </TabsTrigger>
               <TabsTrigger value="succeeded" className="flex-1 min-w-[60px] text-xs sm:text-sm px-2 py-1.5">
                 Completed <Badge variant="count" className="ml-1">{counts.succeeded}</Badge>
               </TabsTrigger>
@@ -1246,6 +1328,8 @@ export function AdminTransactionHistory({ getFirebaseToken }: AdminTransactionHi
         transaction={selectedTransaction}
         open={detailSheetOpen}
         onOpenChange={setDetailSheetOpen}
+        onRefundDecision={(transactionId, decision) => refundDecisionMutation.mutate({ transactionId, decision })}
+        isRefundDecisionPending={refundDecisionMutation.isPending}
       />
     </div>
   );

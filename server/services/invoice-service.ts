@@ -9,6 +9,7 @@ import {
   buildChefBookingReceiptBreakdown,
   buildKitchenPayoutStatementBreakdown,
 } from "@shared/booking-pricing-breakdown";
+import { resolveCapturedKitchenRate, type KitchenBookingRateMode } from "@shared/kitchen-booking-rate";
 
 /**
  * Generate invoice PDF for a booking
@@ -89,13 +90,25 @@ export async function generateInvoicePDF(
       let kitchenAmount = 0;
       let durationHours = 0;
       let hourlyRate = 0;
+      let rateMode: KitchenBookingRateMode = 'hourly';
+
+      const addonSubtotalCents = [...(storageBookings || []), ...(equipmentBookings || [])]
+        .reduce((sum, item) => sum + Math.max(0, Number(item.total_price || item.totalPrice || 0)), 0);
 
       // USE PREFERABLY: Booking's stored hourly rate and duration
       if ((booking.hourly_rate || booking.hourlyRate) && (booking.duration_hours || booking.durationHours)) {
         const hourlyRateCents = parseFloat(String(booking.hourly_rate || booking.hourlyRate));
         durationHours = parseFloat(String(booking.duration_hours || booking.durationHours));
-        hourlyRate = hourlyRateCents / 100;
-        kitchenAmount = (hourlyRateCents * durationHours) / 100;
+        const capturedRate = resolveCapturedKitchenRate({
+          appliedRateCents: hourlyRateCents,
+          durationHours,
+          bookingSubtotalCents: Number(booking.total_price || booking.totalPrice || 0),
+          addonSubtotalCents,
+          pricingMode: ptMetadata.pricingMode === 'daily' || ptMetadata.pricing_mode === 'daily' ? 'daily' : undefined,
+        });
+        rateMode = capturedRate.mode;
+        kitchenAmount = capturedRate.kitchenSubtotalCents / 100;
+        hourlyRate = rateMode === 'daily' ? kitchenAmount : hourlyRateCents / 100;
       }
       // FALLBACK 1: Use Stripe-synced base_amount
       else if (stripeBaseAmount > 0) {
@@ -167,8 +180,10 @@ export async function generateInvoicePDF(
 
           totalAmount += kitchenAmount;
           items.push({
-            description: tLocale(locale, "kitchenBookingWithHours", { ns: "chef", defaultValue: "Kitchen Booking ({hours} hours)", hours: durationHours.toFixed(1) }),
-            quantity: durationHours,
+            description: rateMode === 'daily'
+              ? tLocale(locale, "kitchenFullDayBooking", { ns: "chef", defaultValue: "Kitchen Booking (full day)" })
+              : tLocale(locale, "kitchenBookingWithHours", { ns: "chef", defaultValue: "Kitchen Booking ({hours} hours)", hours: durationHours.toFixed(1) }),
+            quantity: rateMode === 'daily' ? 1 : durationHours,
             rate: hourlyRate,
             amount: kitchenAmount,
           });

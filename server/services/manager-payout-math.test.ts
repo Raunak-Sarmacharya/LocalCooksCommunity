@@ -79,4 +79,22 @@ import { computeManagerGrossAndCommission } from "./manager-payout-math";
   assert.equal(r.platformCommissionCents, 350);
 }
 
+// Booking 66 regression: a daily rate was multiplied by eight hours in the
+// capture metadata, while Stripe correctly captured the original $292.80 hold.
+{
+  const r = computeManagerGrossAndCommission({
+    chargeAmountCents: 29280,
+    platformCommissionRate: 0.07,
+    approvedSubtotalCents: 192000,
+    approvedTaxCents: 28800,
+    platformCommissionCents: 13440,
+    capturedAmountCents: 234240,
+    originalAuthorizedAmountCents: 29280,
+    storedBaseAmountCents: 220800,
+    storedServiceFeeCents: 13440,
+  });
+  assert.equal(r.managerGrossCents, 27600);
+  assert.equal(r.platformCommissionCents, 1680);
+}
+
 console.log("manager-payout-math: ok");

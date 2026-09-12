@@ -1,0 +1,37 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Manager Booking Row Hierarchy",
+    "quality_profile": "showcase",
+    "output": "docs/manager-booking-row-hierarchy.html"
+  },
+  "lanes": [
+    { "id": "table", "label": "Booking table" }
+  ],
+  "mainPath": ["chef", "kitchen", "date", "rentals", "payment", "status", "actions"],
+  "nodes": [
+    { "id": "chef", "lane": "table", "col": 0, "type": "frontend", "label": "Chef", "sublabel": "name · reference · notes tag", "width": 150 },
+    { "id": "kitchen", "lane": "table", "col": 1, "type": "frontend", "label": "Kitchen", "sublabel": "location + created date", "width": 130 },
+    { "id": "date", "lane": "table", "col": 2, "type": "frontend", "label": "Date & time", "sublabel": "booking schedule", "width": 120 },
+    { "id": "rentals", "lane": "table", "col": 3, "type": "frontend", "label": "Rentals", "sublabel": "storage + equipment", "width": 120 },
+    { "id": "payment", "lane": "table", "col": 4, "type": "frontend", "label": "Payment", "sublabel": "charge + manager net", "width": 130 },
+    { "id": "status", "lane": "table", "col": 5, "type": "frontend", "label": "Status", "sublabel": "booking + check-in", "width": 120 },
+    { "id": "actions", "lane": "table", "col": 5, "type": "frontend", "label": "Actions", "sublabel": "row menu", "width": 100, "yOffset": 100 }
+  ],
+  "edges": [
+    { "from": "chef", "to": "kitchen", "role": "main" },
+    { "from": "kitchen", "to": "date", "role": "main" },
+    { "from": "date", "to": "rentals", "role": "main" },
+    { "from": "rentals", "to": "payment", "role": "main" },
+    { "from": "payment", "to": "status", "role": "main" },
+    { "from": "status", "to": "actions", "role": "main" }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Primary identity",
+      "items": ["Chef is the first visible column", "Reference and notes stay attached to that identity"]
+    }
+  ]
+}

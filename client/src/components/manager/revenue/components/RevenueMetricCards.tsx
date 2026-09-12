@@ -232,10 +232,7 @@ export function RevenueMetricCards({ metrics, isLoading, transactions }: Revenue
             {/* Revenue Breakdown - Enterprise Detail Section */}
             <Card className="border border-gray-200 bg-white">
                 <CardContent className="p-4">
-                    <div className="flex items-center gap-2 mb-4">
-                        <BarChart3 className="h-4 w-4 text-slate-600" />
-                        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">{mt("revenueBreakdown")}</h3>
-                    </div>
+                    <h3 className="mb-4 text-sm font-semibold text-slate-700 dark:text-slate-300">{mt("revenueBreakdown")}</h3>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
                         {/* Tax Collected */}
                         <div className="space-y-1">

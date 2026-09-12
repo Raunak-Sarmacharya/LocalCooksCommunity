@@ -357,8 +357,7 @@ export const ViewingSettingsPanel = forwardRef<ViewingSettingsPanelHandle, Viewi
         <CardHeader className="p-4 pb-3">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div>
-              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-                <Settings className="h-5 w-5" />{mt("viewingSettings")}</CardTitle>
+              <CardTitle className="text-base sm:text-lg">{mt("viewingSettings")}</CardTitle>
               <CardDescription className="text-xs sm:text-sm">
                 Configure how chefs can book viewings of {kitchenName || "this kitchen"}
               </CardDescription>

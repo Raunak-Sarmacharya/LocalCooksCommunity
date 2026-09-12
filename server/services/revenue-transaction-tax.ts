@@ -1,3 +1,5 @@
+import { computeManagerGrossAndCommission } from "./manager-payout-math";
+
 /**
  * Resolve manager-facing tax + subtotal for a kitchen revenue transaction row.
  * Prefer stored payment_transactions.tax_amount (invoice/booking details source of truth).
@@ -11,7 +13,9 @@ export function resolveKitchenTransactionTaxAndSubtotal(input: {
   approvedTaxCents: number;
   kbTotalPrice: number;
   taxRatePercent: number;
-}): { taxCents: number; totalPriceCents: number } {
+  ptServiceFee?: number;
+  metadata?: Record<string, unknown> | null;
+}): { taxCents: number; totalPriceCents: number; serviceFeeCents: number } {
   const {
     isDamageClaim,
     ptAmount,
@@ -23,7 +27,49 @@ export function resolveKitchenTransactionTaxAndSubtotal(input: {
   } = input;
 
   if (isDamageClaim) {
-    return { taxCents: 0, totalPriceCents: ptAmount };
+    return { taxCents: 0, totalPriceCents: ptAmount, serviceFeeCents: 0 };
+  }
+
+  const metadata = input.metadata || {};
+  if (ptAmount > 0) {
+    const metadataRate = Number(metadata.taxRatePercent ?? metadata.tax_rate_percent);
+    const effectiveTaxRate = Number.isFinite(metadataRate) ? metadataRate : taxRatePercent;
+    const split = computeManagerGrossAndCommission({
+      chargeAmountCents: ptAmount,
+      platformCommissionRate: kbTotalPrice > 0
+        ? Math.max(0, Number(input.ptServiceFee || 0)) / kbTotalPrice
+        : 0,
+      approvedSubtotalCents: Number(metadata.approvedSubtotal) || undefined,
+      approvedTaxCents: Number(metadata.approvedTax) || undefined,
+      platformCommissionCents: Number(metadata.platformCommission ?? metadata.applicationFee) || undefined,
+      capturedAmountCents: Number(metadata.capturedAmount) || undefined,
+      originalAuthorizedAmountCents: Number(metadata.originalAuthorizedAmount) || undefined,
+      storedBaseAmountCents: ptBaseAmount,
+      storedServiceFeeCents: input.ptServiceFee,
+    });
+    const managerGross = split.managerGrossCents;
+    const bookingTax = managerGross > kbTotalPrice && kbTotalPrice > 0
+      ? managerGross - kbTotalPrice
+      : -1;
+    const bookingTaxMatchesRate = bookingTax >= 0 && (
+      effectiveTaxRate <= 0
+        ? bookingTax === 0
+        : Math.abs(bookingTax - Math.round(kbTotalPrice * effectiveTaxRate / 100)) <= 1
+    );
+    const storedTaxFitsGross = ptTaxAmount > 0 && ptTaxAmount < managerGross;
+    const reconciledTax = storedTaxFitsGross
+      ? ptTaxAmount
+      : bookingTaxMatchesRate
+        ? bookingTax
+        : effectiveTaxRate > 0
+          ? Math.round(managerGross * effectiveTaxRate / (100 + effectiveTaxRate))
+          : 0;
+
+    return {
+      taxCents: reconciledTax,
+      totalPriceCents: Math.max(0, managerGross - reconciledTax),
+      serviceFeeCents: split.platformCommissionCents,
+    };
   }
 
   let taxCents: number;
@@ -48,5 +94,5 @@ export function resolveKitchenTransactionTaxAndSubtotal(input: {
     totalPriceCents = kbTotalPrice > 0 ? kbTotalPrice : ptAmount;
   }
 
-  return { taxCents, totalPriceCents };
+  return { taxCents, totalPriceCents, serviceFeeCents: Math.max(0, Number(input.ptServiceFee) || 0) };
 }

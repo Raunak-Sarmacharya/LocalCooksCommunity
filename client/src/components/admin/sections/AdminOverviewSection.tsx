@@ -123,11 +123,12 @@ export function AdminOverviewSection({
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Platform Fees
+                      Platform Revenue
                     </p>
                     <p className="text-2xl font-bold mt-1">
                       {formatCurrency(platformFees)}
                     </p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">Collected chef service fees</p>
                   </div>
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-100">
                     <DollarSign className="h-5 w-5 text-violet-600" />

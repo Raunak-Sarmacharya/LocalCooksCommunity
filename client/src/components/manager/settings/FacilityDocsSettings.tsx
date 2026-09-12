@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
 import { SettingsFileUpload } from "./SettingsFileUpload";
+import { ChefPageHeader } from "@/components/chef/ui";
 
 interface Location {
   id: number;
@@ -238,22 +239,12 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-xl font-semibold tracking-tight">{mt("facilityDocuments")}</h2>
-        <p className="text-muted-foreground">
-          Manage floor plans and ventilation specifications for {location.name}. These documents are automatically shared with approved chefs.
-        </p>
-      </div>
+      <ChefPageHeader title={mt("facilityDocuments")} description={`Manage floor plans and ventilation specifications for ${location.name}. These documents are automatically shared with approved chefs.`} />
       <div className="space-y-4">
       <Card>
         <CardHeader className="p-4 pb-3">
-          <div className="flex items-center gap-3">
-            <FileText className="h-5 w-5 text-purple-600" />
-            <div>
-              <CardTitle className="text-lg">{mt("termsConditions")}</CardTitle>
-              <CardDescription>{mt("uploadTermsThatChefsMustAgreeToWhenBooking")}</CardDescription>
-            </div>
-          </div>
+          <CardTitle className="text-lg">{mt("termsConditions")}</CardTitle>
+          <CardDescription>{mt("uploadTermsThatChefsMustAgreeToWhenBooking")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 p-4 pt-0">
           {location.kitchenTermsUrl && (
@@ -276,13 +267,8 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
       {/* Floor Plans */}
       <Card>
         <CardHeader className="p-4 pb-3">
-          <div className="flex items-center gap-3">
-            <FileText className="h-5 w-5 text-slate-500" />
-            <div>
-              <CardTitle className="text-lg">{mt("floorPlans")}</CardTitle>
-              <CardDescription>{mt("uploadYourKitchenLayoutToHelpChefsNavigateTheSpace")}</CardDescription>
-            </div>
-          </div>
+          <CardTitle className="text-lg">{mt("floorPlans")}</CardTitle>
+          <CardDescription>{mt("uploadYourKitchenLayoutToHelpChefsNavigateTheSpace")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 p-4 pt-0">
           {/* Current Floor Plans */}
@@ -338,13 +324,8 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
       {/* Ventilation Specifications */}
       <Card>
         <CardHeader className="p-4 pb-3">
-          <div className="flex items-center gap-3">
-            <Wind className="h-5 w-5 text-slate-500" />
-            <div>
-              <CardTitle className="text-lg">{mt("ventilationSpecifications")}</CardTitle>
-              <CardDescription>{mt("documentYourVentilationSystemForComplianceAndChefAwareness")}</CardDescription>
-            </div>
-          </div>
+          <CardTitle className="text-lg">{mt("ventilationSpecifications")}</CardTitle>
+          <CardDescription>{mt("documentYourVentilationSystemForComplianceAndChefAwareness")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 p-4 pt-0">
           {/* Description */}

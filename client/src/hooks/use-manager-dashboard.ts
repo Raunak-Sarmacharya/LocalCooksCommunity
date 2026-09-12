@@ -26,6 +26,7 @@ interface Location {
   brandImageUrl?: string;
   notificationEmail?: string;
   notificationPhone?: string;
+  description?: string | null;
   timezone?: string;
   cancellationPolicyHours?: number;
   cancellationPolicyMessage?: string;
@@ -278,5 +279,4 @@ export function useManagerDashboard() {
     refetchBookings: bookingsQuery.refetch,
   };
 }
-
 

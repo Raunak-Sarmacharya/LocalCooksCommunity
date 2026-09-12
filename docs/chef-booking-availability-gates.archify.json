@@ -1,0 +1,52 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Chef Booking Availability Gates",
+    "quality_profile": "showcase",
+    "output": "docs/chef-booking-availability-gates.html"
+  },
+  "lanes": [
+    { "id": "chef", "label": "Chef booking flow" },
+    { "id": "server", "label": "Server enforcement" },
+    { "id": "reject", "label": "Rejected requests", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "selection", "label": "Selection", "fromCol": 0, "toCol": 1 },
+    { "id": "validation", "label": "Validation", "fromCol": 2, "toCol": 4, "variant": "emphasis" },
+    { "id": "result", "label": "Result", "fromCol": 5, "toCol": 5 }
+  ],
+  "mainPath": ["selectDate", "chooseRate", "submit", "scheduleGate", "conflictGate", "checkout"],
+  "nodes": [
+    { "id": "selectDate", "lane": "chef", "col": 0, "type": "frontend", "label": "Select date", "sublabel": "month availability says open", "width": 120 },
+    { "id": "chooseRate", "lane": "chef", "col": 1, "type": "frontend", "label": "Choose rate", "sublabel": "hourly or full day" },
+    { "id": "submit", "lane": "server", "col": 2, "type": "backend", "label": "Submit request", "sublabel": "date + selected slots" },
+    { "id": "scheduleGate", "lane": "server", "col": 3, "type": "security", "label": "Schedule gate", "sublabel": "date open and hours valid", "width": 112 },
+    { "id": "conflictGate", "lane": "server", "col": 4, "type": "security", "label": "Conflict gate", "sublabel": "requested slots remain free", "width": 116 },
+    { "id": "checkout", "lane": "server", "col": 5, "type": "backend", "label": "Create checkout", "sublabel": "validated booking intent", "width": 120 },
+    { "id": "dateRejected", "lane": "reject", "col": 4, "type": "security", "label": "Date rejected", "sublabel": "closed or stale selection", "width": 112 },
+    { "id": "slotRejected", "lane": "reject", "col": 5, "type": "security", "label": "Slot rejected", "sublabel": "overlap detected" }
+  ],
+  "edges": [
+    { "id": "dateToRate", "from": "selectDate", "to": "chooseRate", "role": "main" },
+    { "id": "rateToSubmit", "from": "chooseRate", "to": "submit", "role": "main" },
+    { "id": "submitToSchedule", "from": "submit", "to": "scheduleGate", "label": "validate", "role": "main" },
+    { "id": "scheduleToConflict", "from": "scheduleGate", "to": "conflictGate", "label": "date is open", "role": "main" },
+    { "id": "conflictToCheckout", "from": "conflictGate", "to": "checkout", "label": "capacity remains", "role": "main" },
+    { "id": "closedDate", "from": "scheduleGate", "to": "dateRejected", "label": "unavailable date", "variant": "security", "role": "error" },
+    { "id": "hourlyConflict", "from": "conflictGate", "to": "slotRejected", "label": "hourly overlap", "variant": "security", "role": "error" },
+    { "id": "fullDayConflict", "from": "chooseRate", "to": "slotRejected", "label": "full day + any booking", "variant": "security", "role": "error" }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Full-day invariant",
+      "items": ["Any existing non-cancelled booking makes full-day unavailable"]
+    },
+    {
+      "dot": "emerald",
+      "title": "Hourly invariant",
+      "items": ["Only the submitted discrete slots must be conflict-free"]
+    }
+  ]
+}

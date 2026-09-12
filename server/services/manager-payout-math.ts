@@ -13,6 +13,8 @@ export function computeManagerGrossAndCommission(input: {
   approvedSubtotalCents?: number;
   approvedTaxCents?: number;
   platformCommissionCents?: number;
+  capturedAmountCents?: number;
+  originalAuthorizedAmountCents?: number;
   storedBaseAmountCents?: number;
   storedServiceFeeCents?: number;
 }): { managerGrossCents: number; platformCommissionCents: number } {
@@ -24,6 +26,26 @@ export function computeManagerGrossAndCommission(input: {
 
   if (metaGross > 0 && metaCommission > 0 && Math.abs(metaGross + metaCommission - charge) <= 1) {
     return { managerGrossCents: metaGross, platformCommissionCents: metaCommission };
+  }
+
+  // Recovery for legacy daily-rate captures that multiplied a daily rate by
+  // booked hours. The capture metadata components were all inflated by the
+  // same factor while Stripe correctly captured the original authorization.
+  // Only normalize when the audit fields prove that exact failure signature.
+  const metadataTotal = metaGross + metaCommission;
+  const claimedCapture = Math.max(0, Number(input.capturedAmountCents) || 0);
+  const originalAuthorization = Math.max(0, Number(input.originalAuthorizedAmountCents) || 0);
+  if (
+    metadataTotal > charge
+    && charge > 0
+    && Math.abs(claimedCapture - metadataTotal) <= 1
+    && Math.abs(originalAuthorization - charge) <= 1
+  ) {
+    const scaledCommission = Math.round(metaCommission * charge / metadataTotal);
+    return {
+      managerGrossCents: charge - scaledCommission,
+      platformCommissionCents: scaledCommission,
+    };
   }
 
   const storedBase = Math.max(0, Number(input.storedBaseAmountCents) || 0);

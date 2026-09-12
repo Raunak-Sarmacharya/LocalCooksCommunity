@@ -21,6 +21,7 @@ import { getChefPhone } from '../../phone-utils';
 import { 
     sendEmail, 
     generateNewKitchenApplicationManagerEmail,
+    generateKitchenApplicationClearedManagerEmail,
     generateKitchenCoordinationSubmittedManagerEmail,
     generateKitchenApplicationReceivedChefEmail,
     generateKitchenApplicationStep2ReceivedChefEmail,
@@ -648,9 +649,10 @@ router.post('/firebase/chef/kitchen-applications',
                 }
             }
 
-            // Create in-app notification for manager about new application
+            // Managers enter the workflow only after Local Cooks approves Step 1.
+            // Step 2 submission is the first chef-originated manager notification.
             try {
-                if (location.managerId) {
+                if (location.managerId && currentTierValue === 2) {
                     const managerApplicationNotification = {
                         managerId: location.managerId,
                         locationId: location.id,
@@ -660,19 +662,15 @@ router.post('/firebase/chef/kitchen-applications',
                         locationName: location.name || 'Kitchen Location'
                     };
 
-                    if (currentTierValue === 2) {
-                        await notificationService.notifyStep2ApplicationSubmitted(managerApplicationNotification);
-                    } else {
-                        await notificationService.notifyNewApplication(managerApplicationNotification);
-                    }
+                    await notificationService.notifyStep2ApplicationSubmitted(managerApplicationNotification);
                 }
             } catch (notifError) {
                 logger.error("Error creating application notification:", notifError);
             }
 
-            // Send the corresponding manager email for both workflow phases.
+            // Send manager email only for Kitchen Coordination (Step 2).
             try {
-                if (location.managerId) {
+                if (location.managerId && currentTierValue === 2) {
                     const [manager] = await db
                         .select({ username: users.username })
                         .from(users)
@@ -689,11 +687,9 @@ router.post('/firebase/chef/kitchen-applications',
                             applicationId: application.id,
                             submittedAt: new Date(),
                         };
-                        const managerEmailContent = currentTierValue === 2
-                            ? generateKitchenCoordinationSubmittedManagerEmail(emailData)
-                            : generateNewKitchenApplicationManagerEmail(emailData);
+                        const managerEmailContent = generateKitchenCoordinationSubmittedManagerEmail(emailData);
                         await sendEmail(managerEmailContent, {
-                            trackingId: `kitchen_app_${currentTierValue === 2 ? 'coordination' : 'new'}_${application.id}_${Date.now()}`
+                            trackingId: `kitchen_app_coordination_${application.id}_${Date.now()}`
                         });
                         logger.info(`✅ Sent kitchen application phase ${currentTierValue} email to manager: ${managerEmail}`);
                     }
@@ -1113,18 +1109,41 @@ router.patch('/firebase/admin/kitchen-applications/:id/status', requireFirebaseA
                 logger.error('Error sending kitchen application approval email from admin:', emailError);
             }
 
-            // 4. Notify manager that a chef was approved for their location
+            // 4. Release the screened request into the manager queue.
             try {
                 const location = await locationService.getLocationById(applicationBeforeUpdate.locationId);
                 if (location && location.managerId) {
-                    await notificationService.notifyApplicationApproved({
+                    await notificationService.createForManager({
                         managerId: location.managerId,
                         locationId: applicationBeforeUpdate.locationId,
-                        applicationId: applicationBeforeUpdate.id,
-                        chefName: applicationBeforeUpdate.fullName || 'Chef',
-                        chefEmail: applicationBeforeUpdate.email || ''
+                        type: 'application_new',
+                        priority: 'normal',
+                        title: 'Application cleared by Local Cooks',
+                        message: `${applicationBeforeUpdate.fullName || 'A chef'} can now submit Kitchen Coordination documents for ${location.name || 'your kitchen'}.`,
+                        metadata: {
+                            applicationId: applicationBeforeUpdate.id,
+                            chefId: applicationBeforeUpdate.chefId,
+                            step: 1,
+                        },
+                        actionUrl: '/manager/dashboard?view=applications',
+                        actionLabel: 'View application',
                     });
-                    logger.info(`✅ In-app notification sent to manager ${location.managerId} for application ${applicationId}`);
+                    const [manager] = await db.select({ username: users.username })
+                        .from(users)
+                        .where(eq(users.id, location.managerId))
+                        .limit(1);
+                    const managerEmail = location.notificationEmail || manager?.username;
+                    if (managerEmail) {
+                        await sendEmail(generateKitchenApplicationClearedManagerEmail({
+                            managerEmail,
+                            managerName: manager?.username?.split('@')[0] || 'Kitchen Manager',
+                            chefName: applicationBeforeUpdate.fullName || 'Chef',
+                            locationName: location.name || 'Kitchen Location',
+                        }), {
+                            trackingId: `kitchen_app_cleared_manager_${applicationId}_${Date.now()}`,
+                        });
+                    }
+                    logger.info(`✅ Screened application ${applicationId} released to manager ${location.managerId}`);
                 }
             } catch (notifError) {
                 logger.error('Error creating manager application approval notification:', notifError);
@@ -1256,10 +1275,13 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
         if (!location || location.managerId !== user.id) {
             return res.status(403).json({ error: 'Access denied to this application' });
         }
+        if ((application.current_tier ?? 1) < 2) {
+            return res.status(403).json({ error: 'Kitchen Coordination documents are not ready for manager review.' });
+        }
 
         // Only Global Admins can approve Step 1 (current_tier === 1)
         if (application.current_tier === 1) {
-            return res.status(403).json({ error: 'Step 1 applications can only be approved by Global Admins.' });
+            return res.status(403).json({ error: 'Kitchen Coordination must be submitted before the manager can review this application.' });
         }
 
         // Update the status
@@ -1499,6 +1521,9 @@ router.patch('/manager/kitchen-applications/:id/verify-documents', requireFireba
         if (!location || location.managerId !== user.id) {
             return res.status(403).json({ error: 'Access denied to this application' });
         }
+        if ((application.current_tier ?? 1) < 2) {
+            return res.status(403).json({ error: 'Kitchen Coordination is not ready for manager review.' });
+        }
 
         // Update document statuses
         const updateData: any = { id: applicationId };
@@ -1573,6 +1598,10 @@ router.patch('/manager/kitchen-applications/:id/tier', requireFirebaseAuthWithUs
         const location = await locationService.getLocationById(application.locationId);
         if (!location || location.managerId !== user.id) {
             return res.status(403).json({ error: 'Access denied to this application' });
+        }
+
+        if ((application.current_tier ?? 1) < 2) {
+            return res.status(403).json({ error: 'Kitchen Coordination is not ready for manager review.' });
         }
 
         // Update tier

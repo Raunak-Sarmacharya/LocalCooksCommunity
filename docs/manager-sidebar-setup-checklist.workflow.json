@@ -1,0 +1,63 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Manager Sidebar Setup Checklist",
+    "quality_profile": "showcase",
+    "output": "docs/manager-sidebar-setup-checklist.workflow.html"
+  },
+  "lanes": [
+    { "id": "status", "label": "Setup Status" },
+    { "id": "sidebar", "label": "Manager Sidebar" },
+    { "id": "dashboard", "label": "Dashboard Guidance" },
+    { "id": "setup", "label": "Onboarding Flow" },
+    { "id": "listing", "label": "Listing Improvement" }
+  ],
+  "phases": [
+    { "id": "derive", "label": "Derive", "fromCol": 0, "toCol": 1 },
+    { "id": "guide", "label": "Guide", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "finish", "label": "Finish", "fromCol": 4, "toCol": 5 }
+  ],
+  "mainPath": ["status_hook", "required_steps", "sidebar_header", "expanded_timeline", "continue_setup", "listing_editor"],
+  "semanticChecks": {
+    "allowedRoots": ["status_hook"],
+    "allowedTerminals": ["onboarding_wizard", "listing_editor"],
+    "requiredPaths": [
+      { "from": "status_hook", "to": "listing_editor" }
+    ]
+  },
+  "nodes": [
+    { "id": "status_hook", "lane": "status", "col": 0, "type": "backend", "label": "Onboarding Status", "sublabel": "existing query source", "width": 148 },
+    { "id": "required_steps", "lane": "status", "col": 1, "type": "backend", "label": "Checklist Items", "sublabel": "required setup + improvements", "width": 154 },
+    { "id": "sidebar_header", "lane": "sidebar", "col": 2, "type": "frontend", "label": "Getting Started", "sublabel": "sidebar disclosure + progress", "width": 154 },
+    { "id": "expanded_timeline", "lane": "sidebar", "col": 3, "type": "frontend", "label": "Right-side Flyout", "sublabel": "timeline outside sidebar flow", "width": 158 },
+    { "id": "continue_setup", "lane": "sidebar", "col": 4, "type": "frontend", "label": "Next Action", "sublabel": "setup or first improvement", "width": 148 },
+    { "id": "guidance_banner", "lane": "dashboard", "col": 2, "type": "frontend", "label": "Guidance Banner", "sublabel": "retained dashboard entry point", "width": 154 },
+    { "id": "onboarding_wizard", "lane": "setup", "col": 4, "type": "frontend", "label": "Existing Wizard", "sublabel": "resume selected location", "width": 146 },
+    { "id": "listing_editor", "lane": "listing", "col": 4, "type": "frontend", "label": "Listing Editor", "sublabel": "resolve first improvement", "width": 146 }
+  ],
+  "edges": [
+    { "id": "derive_steps", "from": "status_hook", "to": "required_steps", "label": "status booleans", "role": "main" },
+    { "id": "render_header", "from": "required_steps", "to": "sidebar_header", "label": "actionable items", "variant": "emphasis", "role": "main" },
+    { "id": "render_banner", "from": "required_steps", "to": "guidance_banner", "label": "same actionable items", "variant": "dashed" },
+    { "id": "expand_list", "from": "sidebar_header", "to": "expanded_timeline", "label": "open to the right", "variant": "emphasis", "role": "main" },
+    { "id": "collapse_list", "from": "expanded_timeline", "to": "sidebar_header", "label": "dismiss", "variant": "dashed", "role": "return" },
+    { "id": "resume_action", "from": "expanded_timeline", "to": "continue_setup", "role": "main" },
+    { "id": "banner_action", "from": "guidance_banner", "to": "continue_setup", "label": "same destination", "variant": "dashed" },
+    { "id": "open_wizard", "from": "continue_setup", "to": "onboarding_wizard", "label": "required setup open", "variant": "dashed" },
+    { "id": "open_listing", "from": "continue_setup", "to": "listing_editor", "label": "improvement open", "variant": "emphasis", "role": "main" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Actionable manager guidance",
+      "items": [
+        "License, kitchen, availability, requirements, and Stripe",
+        "Outstanding listing improvements stay visible after setup is complete",
+        "Public location description remains editable but is not a checklist requirement",
+        "The dashboard banner remains visible alongside the sidebar entry point",
+        "The checklist opens to the right without changing sidebar height"
+      ]
+    }
+  ]
+}

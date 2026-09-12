@@ -460,8 +460,7 @@ export function TodaysKitchenBookings() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="h-5 w-5 text-orange-600" />{mt("upcomingKitchenBookings")}</CardTitle>
+              <CardTitle>{mt("upcomingKitchenBookings")}</CardTitle>
               <CardDescription>{mt("liveCheckInCheckoutStatusAndUpcomingBookings")}</CardDescription>
             </div>
             <Button
@@ -624,8 +623,7 @@ export function TodaysKitchenBookings() {
       {/* Upcoming Viewings */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-purple-600" />{mt("upcomingKitchenViewings")}</CardTitle>
+          <CardTitle>{mt("upcomingKitchenViewings")}</CardTitle>
           <CardDescription>{mt("scheduledViewingsForYourKitchens")}</CardDescription>
         </CardHeader>
         <CardContent>

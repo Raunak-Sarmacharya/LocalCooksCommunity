@@ -1,0 +1,65 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Kitchen Access and Tour Screening",
+    "quality_profile": "showcase",
+    "output": "docs/local-cooks-screening-workflow.html"
+  },
+  "lanes": [
+    { "id": "chef", "label": "Chef" },
+    { "id": "local_cooks", "label": "Local Cooks" },
+    { "id": "manager", "label": "Kitchen Manager" },
+    { "id": "outcomes", "label": "Outcomes", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "request", "label": "Request", "fromCol": 0, "toCol": 1 },
+    { "id": "screen", "label": "Screen", "fromCol": 2, "toCol": 3, "variant": "security" },
+    { "id": "coordinate", "label": "Coordinate", "fromCol": 4, "toCol": 5, "variant": "emphasis" }
+  ],
+  "mainPath": ["chef_request", "local_review", "manager_queue", "manager_review", "approved"],
+  "semanticChecks": {
+    "allowedRoots": ["chef_request"],
+    "allowedTerminals": ["approved", "local_declined", "manager_declined"],
+    "requiredPaths": [
+      { "from": "chef_request", "to": "manager_queue" },
+      { "from": "local_review", "to": "local_declined" },
+      { "from": "manager_review", "to": "manager_declined" }
+    ]
+  },
+  "nodes": [
+    { "id": "chef_request", "lane": "chef", "col": 0, "type": "frontend", "label": "Submit request", "sublabel": "apply or tour", "width": 140 },
+    { "id": "local_review", "lane": "local_cooks", "col": 2, "type": "security", "label": "Local Cooks review", "sublabel": "first approval gate", "tag": "manager hidden", "width": 156 },
+    { "id": "manager_queue", "lane": "manager", "col": 3, "type": "messagebus", "label": "Manager queue", "sublabel": "visible after approval", "width": 150 },
+    { "id": "manager_review", "lane": "manager", "col": 4, "type": "backend", "label": "Manager review", "sublabel": "approve or deny", "width": 146 },
+    { "id": "approved", "lane": "outcomes", "col": 5, "type": "backend", "label": "Approved", "sublabel": "coordination or confirmed tour", "width": 170 },
+    { "id": "local_declined", "lane": "outcomes", "col": 2, "type": "security", "label": "Declined by Local Cooks", "sublabel": "manager never notified", "width": 176 },
+    { "id": "manager_declined", "lane": "outcomes", "col": 4, "type": "security", "label": "Declined by manager", "sublabel": "chef is notified", "width": 164 }
+  ],
+  "edges": [
+    { "id": "submit_for_screening", "from": "chef_request", "to": "local_review", "label": "submit", "variant": "default" },
+    { "id": "local_approves", "from": "local_review", "to": "manager_queue", "label": "Local Cooks approves", "variant": "emphasis" },
+    { "id": "manager_opens", "from": "manager_queue", "to": "manager_review", "label": "notify + reveal", "variant": "default" },
+    { "id": "manager_approves", "from": "manager_review", "to": "approved", "label": "approve", "variant": "emphasis" },
+    { "id": "local_rejects", "from": "local_review", "to": "local_declined", "label": "deny", "variant": "security", "role": "error" },
+    { "id": "manager_rejects", "from": "manager_review", "to": "manager_declined", "label": "deny", "variant": "security", "role": "error" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Visibility contract",
+      "items": [
+        "Managers cannot list or update requests before Local Cooks approval",
+        "Manager notifications are emitted only when a request enters their queue"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Two request types",
+      "items": [
+        "Applications unlock Kitchen Coordination after Local Cooks approval",
+        "Tours remain pending until the manager approves the scheduled visit"
+      ]
+    }
+  ]
+}

@@ -72,6 +72,7 @@ export interface CreatePendingCheckoutSessionParams {
     taxRatePercent?: number;
     hourlyRateCents: number;
     durationHours: number;
+    pricingMode?: 'hourly' | 'daily';
     platform_fee_cents?: number;
     stripe_fee_cents?: number;
   };
@@ -267,6 +268,7 @@ export async function createPendingCheckoutSession(
       tax_rate_percent: String(bookingData.taxRatePercent ?? 0),
       hourly_rate_cents: bookingData.hourlyRateCents.toString(),
       duration_hours: bookingData.durationHours.toString(),
+      ...(bookingData.pricingMode ? { pricing_mode: bookingData.pricingMode } : {}),
       booking_price_cents: bookingPriceInCents.toString(),
       platform_fee_cents: (bookingData as any).platform_fee_cents 
         ? (bookingData as any).platform_fee_cents.toString() 
@@ -404,7 +406,7 @@ export async function createCheckoutSession(
       lineItems.push({
         price_data: {
           currency: currency.toLowerCase(),
-          product_data: { name: 'Local Cooks service fee' },
+          product_data: { name: 'Service Fee' },
           unit_amount: platformFeeInCents,
         },
         quantity: 1,

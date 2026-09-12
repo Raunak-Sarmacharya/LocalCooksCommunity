@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import NotificationCenter from "@/components/manager/NotificationCenter";
 import { useTranslation } from "react-i18next";
 import type { ManagerBreadcrumb } from "@/lib/manager-kitchens-navigation";
+import type { ManagerSetupStep } from "@/hooks/use-onboarding-status";
 
 interface DashboardLayoutProps {
     children: React.ReactNode;
@@ -19,6 +20,10 @@ interface DashboardLayoutProps {
     onLocationChange: (location: any) => void;
     onCreateLocation?: () => void;
     breadcrumbs?: ManagerBreadcrumb[];
+    managerSetupSteps?: ManagerSetupStep[];
+    managerImprovementSteps?: string[];
+    onContinueManagerSetup?: () => void;
+    onImproveManagerListing?: (task: string) => void;
 }
 
 export default function DashboardLayout({
@@ -29,7 +34,11 @@ export default function DashboardLayout({
     selectedLocation,
     onLocationChange,
     onCreateLocation,
-    breadcrumbs
+    breadcrumbs,
+    managerSetupSteps,
+    managerImprovementSteps,
+    onContinueManagerSetup,
+    onImproveManagerListing,
 }: DashboardLayoutProps) {
     const { t } = useTranslation("manager");
     const displayBreadcrumbs = breadcrumbs ?? [];
@@ -48,6 +57,10 @@ export default function DashboardLayout({
                 onLocationChange={onLocationChange}
                 onCreateLocation={onCreateLocation}
                 breadcrumbs={displayBreadcrumbs}
+                managerSetupSteps={managerSetupSteps}
+                managerImprovementSteps={managerImprovementSteps}
+                onContinueManagerSetup={onContinueManagerSetup}
+                onImproveManagerListing={onImproveManagerListing}
             />
             <SidebarInset className="min-w-0 overflow-x-hidden">
                 <header className="flex h-16 shrink-0 items-center justify-between gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 border-b px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 min-w-0">

@@ -12,9 +12,9 @@
  */
 
 import { Router, Request, Response } from "express";
-import { eq, and, sql, desc, gte, lte, or } from "drizzle-orm";
+import { eq, and, sql, desc, gte, lte, or, ne } from "drizzle-orm";
 import { db } from "../db";
-import { requireFirebaseAuthWithUser, requireManager } from "../firebase-auth-middleware";
+import { requireFirebaseAuthWithUser, requireManager, requireAdmin } from "../firebase-auth-middleware";
 import { requireChef } from "./middleware";
 import { logger } from "../logger";
 import { errorResponse } from "../api-response";
@@ -24,7 +24,9 @@ import { notificationService } from "../services/notification.service";
 
 import {
   generateTourRequestedChefEmail,
+  generateTourRequestedLocalCooksEmail,
   generateTourRequestedManagerEmail,
+  generateTourDeclinedByLocalCooksEmail,
   generateTourConfirmedEmail,
   generateTourRejectedChefEmail,
   sendEmail
@@ -796,6 +798,10 @@ router.post(
         return res.status(400).json({ error: "Kitchen does not belong to this location" });
       }
 
+      if (!kitchen.managerId) {
+        return res.status(409).json({ error: "Tours are unavailable until a kitchen manager is assigned" });
+      }
+
       const timezone = kitchen.timezone || "America/St_Johns";
 
       // Get settings
@@ -819,7 +825,7 @@ router.post(
           and(
             eq(kitchenViewings.chefId, chefId),
             eq(kitchenViewings.targetedKitchenId, targetedKitchenId),
-            sql`${kitchenViewings.status} IN ('pending', 'confirmed')`
+            sql`${kitchenViewings.status} IN ('pending_local_cooks', 'pending', 'confirmed')`
           )
         )
         .limit(1);
@@ -877,7 +883,7 @@ router.post(
             targetedKitchenId,
             chefId,
             managerId: kitchen.managerId,
-            status: "pending", // Viewings require manager confirmation now
+            status: "pending_local_cooks",
             scheduledAt: scheduledDate,
             durationMinutes: tourDuration,
             chefNotes: chefNotes || null,
@@ -889,54 +895,36 @@ router.post(
       // Get chef name for notifications
       const chefName = await getUserDisplayName(chefId, 'chef');
 
-      // Notify manager
-      let managerName = "Manager";
-      let managerEmail = null;
-      if (kitchen.managerId) {
-        try {
-          const [manager] = await db
-            .select({ username: users.username })
-            .from(users)
-            .where(eq(users.id, kitchen.managerId))
-            .limit(1);
-            
-          managerEmail = manager?.username;
-          managerName = await getUserDisplayName(kitchen.managerId, 'manager');
-
+      // Local Cooks screens every request before the manager can see or act on it.
+      try {
+        const admins = await db.select({ id: users.id, username: users.username })
+          .from(users)
+          .where(eq(users.role, "admin"));
+        for (const admin of admins) {
           await notificationService.createForManager({
-            managerId: kitchen.managerId,
+            managerId: admin.id,
             locationId,
             type: "booking_new",
             priority: "high",
-            title: "New Kitchen Viewing Request",
-            message: `${chefName} has requested a viewing of ${kitchen.name} at ${kitchen.locationName} on ${format(scheduledDate, "MMM d, yyyy")} at ${format(scheduledDate, "h:mm a")}.`,
-            metadata: {
-              viewingId: newViewing.id,
-              kitchenId: targetedKitchenId,
-              chefId,
-              chefName,
-              scheduledAt: scheduledDate.toISOString(),
-            },
-            actionUrl: `/manager/dashboard?view=viewings`,
-            actionLabel: "Review Request",
+            title: "Tour request awaiting Local Cooks review",
+            message: `${chefName} requested a tour of ${kitchen.name} at ${kitchen.locationName}.`,
+            metadata: { viewingId: newViewing.id, kitchenId: targetedKitchenId, chefId },
+            actionUrl: "/admin?section=tour-requests",
+            actionLabel: "Review tour request",
           });
-          
-          if (managerEmail) {
-            const emailContent = generateTourRequestedManagerEmail({
-              managerEmail,
-              managerName,
+          if (admin.username) {
+            await sendEmail(generateTourRequestedLocalCooksEmail({
+              recipientEmail: admin.username,
               chefName,
               kitchenName: kitchen.name,
               tourDate: scheduledDate,
               startTime: format(scheduledDate, "h:mm a"),
-              chefNotes: chefNotes || undefined,
-              timezone
-            });
-            await sendEmail(emailContent).catch(err => logger.error("Failed to send viewing requested manager email", err));
+              timezone,
+            })).catch(err => logger.error("Failed to send Local Cooks tour review email", err));
           }
-        } catch (e) {
-          logger.error("[Viewings] Failed to notify manager:", e);
         }
+      } catch (e) {
+        logger.error("[Viewings] Failed to notify Local Cooks:", e);
       }
 
       // Notify chef (pending)
@@ -946,7 +934,7 @@ router.post(
           type: "booking_confirmed", // Reusing this type, but logically it's a request receipt
           priority: "normal",
           title: "Kitchen Viewing Request Received",
-          message: `Your viewing request for ${kitchen.name} at ${kitchen.locationName} on ${format(scheduledDate, "MMM d, yyyy")} at ${format(scheduledDate, "h:mm a")} has been sent to the manager for approval.`,
+          message: `Your viewing request for ${kitchen.name} at ${kitchen.locationName} on ${format(scheduledDate, "MMM d, yyyy")} at ${format(scheduledDate, "h:mm a")} has been sent to Local Cooks for review.`,
           metadata: {
             viewingId: newViewing.id,
             locationId,
@@ -1078,6 +1066,7 @@ router.get(
         .where(
           and(
             eq(kitchenViewings.managerId, managerId),
+            ne(kitchenViewings.status, "pending_local_cooks"),
             locationId ? eq(kitchenViewings.locationId, locationId) : undefined
           )
         )
@@ -1098,6 +1087,182 @@ router.get(
       res.json(withNames);
     } catch (error) {
       logger.error("Error fetching manager viewings:", error);
+      return errorResponse(res, error);
+    }
+  }
+);
+
+/**
+ * GET /api/viewings/admin
+ * Local Cooks review queue. These requests are never exposed by the manager route.
+ */
+router.get(
+  "/admin",
+  requireFirebaseAuthWithUser,
+  requireAdmin,
+  async (_req: Request, res: Response) => {
+    try {
+      const results = await db
+        .select({
+          viewing: kitchenViewings,
+          locationName: locations.name,
+          locationAddress: locations.address,
+          kitchenName: kitchens.name,
+          chefUsername: users.username,
+        })
+        .from(kitchenViewings)
+        .leftJoin(locations, eq(kitchenViewings.locationId, locations.id))
+        .leftJoin(kitchens, eq(kitchenViewings.targetedKitchenId, kitchens.id))
+        .leftJoin(users, eq(kitchenViewings.chefId, users.id))
+        .where(or(
+          eq(kitchenViewings.status, "pending_local_cooks"),
+          sql`${kitchenViewings.adminReviewedAt} IS NOT NULL`
+        ))
+        .orderBy(desc(kitchenViewings.createdAt));
+
+      res.json(await Promise.all(results.map(async (result) => ({
+        ...result,
+        chefName: await getUserDisplayName(result.viewing.chefId, "chef"),
+      }))));
+    } catch (error) {
+      logger.error("Error fetching Local Cooks tour review queue:", error);
+      return errorResponse(res, error);
+    }
+  }
+);
+
+/**
+ * PATCH /api/viewings/admin/:id/review
+ * Local Cooks either releases a request to the manager or declines it.
+ */
+router.patch(
+  "/admin/:id/review",
+  requireFirebaseAuthWithUser,
+  requireAdmin,
+  async (req: Request, res: Response) => {
+    try {
+      const viewingId = Number(req.params.id);
+      const decision = req.body?.decision;
+      const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+      if (!Number.isInteger(viewingId) || !["approved", "denied"].includes(decision)) {
+        return res.status(400).json({ error: "A valid viewing and decision are required" });
+      }
+      if (decision === "denied" && !reason) {
+        return res.status(400).json({ error: "A reason is required when declining a tour request" });
+      }
+
+      const [record] = await db
+        .select({
+          viewing: kitchenViewings,
+          locationName: locations.name,
+          kitchenName: kitchens.name,
+          timezone: locations.timezone,
+          chefEmail: users.username,
+        })
+        .from(kitchenViewings)
+        .leftJoin(locations, eq(kitchenViewings.locationId, locations.id))
+        .leftJoin(kitchens, eq(kitchenViewings.targetedKitchenId, kitchens.id))
+        .leftJoin(users, eq(kitchenViewings.chefId, users.id))
+        .where(eq(kitchenViewings.id, viewingId))
+        .limit(1);
+
+      if (!record) return res.status(404).json({ error: "Tour request not found" });
+      if (record.viewing.status !== "pending_local_cooks") {
+        return res.status(409).json({ error: "This tour request has already been reviewed" });
+      }
+      if (decision === "approved" && record.viewing.scheduledAt.getTime() <= Date.now()) {
+        return res.status(409).json({ error: "The requested tour time has already passed" });
+      }
+
+      const nextStatus = decision === "approved" ? "pending" : "cancelled";
+      const [updated] = await db.update(kitchenViewings).set({
+        status: nextStatus,
+        adminReviewDecision: decision,
+        adminReviewReason: reason || null,
+        adminReviewerId: req.neonUser!.id,
+        adminReviewedAt: new Date(),
+        ...(decision === "denied" ? {
+          cancelledBy: "local_cooks",
+          cancellationReason: reason,
+          cancelledAt: new Date(),
+        } : {}),
+        updatedAt: new Date(),
+      }).where(and(
+        eq(kitchenViewings.id, viewingId),
+        eq(kitchenViewings.status, "pending_local_cooks")
+      )).returning();
+
+      if (!updated) return res.status(409).json({ error: "This tour request has already been reviewed" });
+
+      const chefName = await getUserDisplayName(record.viewing.chefId, "chef");
+      const locationName = record.locationName || "the kitchen";
+      const kitchenName = record.kitchenName || locationName;
+      const scheduledDate = record.viewing.scheduledAt;
+      const timezone = record.timezone || "America/St_Johns";
+
+      if (decision === "approved") {
+        if (record.viewing.managerId) {
+          const [manager] = await db.select({ username: users.username })
+            .from(users).where(eq(users.id, record.viewing.managerId)).limit(1);
+          const managerName = await getUserDisplayName(record.viewing.managerId, "manager");
+          await notificationService.createForManager({
+            managerId: record.viewing.managerId,
+            locationId: record.viewing.locationId,
+            type: "booking_new",
+            priority: "high",
+            title: "New Kitchen Viewing Request",
+            message: `${chefName} requested a viewing of ${kitchenName} at ${locationName} on ${format(scheduledDate, "MMM d, yyyy")} at ${format(scheduledDate, "h:mm a")}.`,
+            metadata: { viewingId, kitchenId: record.viewing.targetedKitchenId, chefId: record.viewing.chefId },
+            actionUrl: "/manager/dashboard?view=viewings",
+            actionLabel: "Review Request",
+          });
+          if (manager?.username) {
+            await sendEmail(generateTourRequestedManagerEmail({
+              managerEmail: manager.username,
+              managerName,
+              chefName,
+              kitchenName,
+              tourDate: scheduledDate,
+              startTime: format(scheduledDate, "h:mm a"),
+              chefNotes: record.viewing.chefNotes || undefined,
+              timezone,
+            })).catch(err => logger.error("Failed to send manager tour request email", err));
+          }
+        }
+        await notificationService.createForChef({
+          chefId: record.viewing.chefId,
+          type: "booking_confirmed",
+          priority: "normal",
+          title: "Tour request sent to the kitchen manager",
+          message: `Local Cooks approved your request for ${kitchenName}. The kitchen manager will make the final decision.`,
+          metadata: { viewingId, locationId: record.viewing.locationId },
+          actionUrl: "/dashboard?view=viewings",
+          actionLabel: "View Details",
+        });
+      } else {
+        await notificationService.createForChef({
+          chefId: record.viewing.chefId,
+          type: "booking_cancelled",
+          priority: "high",
+          title: "Tour request update",
+          message: `Local Cooks could not approve your request for ${kitchenName}. Reason: ${reason}`,
+          metadata: { viewingId, locationId: record.viewing.locationId },
+          actionUrl: "/dashboard?view=viewings",
+          actionLabel: "View Details",
+        });
+        if (record.chefEmail) {
+          await sendEmail(generateTourDeclinedByLocalCooksEmail({
+            chefEmail: record.chefEmail,
+            chefName,
+            kitchenName,
+            reason,
+          })).catch(err => logger.error("Failed to send Local Cooks tour decline email", err));
+        }
+      }
+
+      res.json(updated);
+    } catch (error) {
+      logger.error("Error reviewing tour request for Local Cooks:", error);
       return errorResponse(res, error);
     }
   }
@@ -1147,6 +1312,27 @@ router.patch(
       if (isChef && parsed.data.status !== "cancelled") {
         return res.status(403).json({ error: "Chefs can only cancel viewings" });
       }
+      if (isChef && !["pending_local_cooks", "pending", "confirmed"].includes(viewing.status)) {
+        return res.status(409).json({ error: "This viewing can no longer be cancelled" });
+      }
+
+      if (isManager && viewing.status === "pending_local_cooks") {
+        return res.status(403).json({ error: "This request is still under Local Cooks review" });
+      }
+
+      if (isAdmin && viewing.status === "pending_local_cooks") {
+        return res.status(403).json({ error: "Use the Local Cooks review action for this request" });
+      }
+
+      if (!isChef) {
+        const allowedTransitions: Record<string, string[]> = {
+          pending: ["confirmed", "cancelled"],
+          confirmed: ["cancelled", "completed", "no_show"],
+        };
+        if (!allowedTransitions[viewing.status]?.includes(parsed.data.status)) {
+          return res.status(409).json({ error: `Cannot change a ${viewing.status} viewing to ${parsed.data.status}` });
+        }
+      }
 
       // Build update data
       const updateData: any = {
@@ -1194,7 +1380,7 @@ router.patch(
 
       // Send notifications based on status change
       if (parsed.data.status === "cancelled") {
-        if (isChef && viewing.managerId) {
+        if (isChef && viewing.managerId && viewing.status !== "pending_local_cooks") {
           // Notify manager that chef cancelled
           const [chef] = await db.select({ username: users.username }).from(users).where(eq(users.id, userId)).limit(1);
           await notificationService.createForManager({

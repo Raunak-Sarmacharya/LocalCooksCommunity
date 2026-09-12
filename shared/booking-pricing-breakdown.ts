@@ -135,15 +135,22 @@ export function buildKitchenPayoutStatementBreakdown(
   const kitchenGrossCollectedCents =
     receipt.kitchenBaseSubtotalCents + receipt.kitchenHstAmountCents;
 
-  const computedNet = Math.max(
-    0,
-    kitchenGrossCollectedCents - paymentProcessorFeeCents - refundAmountCents
-  );
-
-  const kitchenNetPayoutCents =
+  const originalKitchenNetPayoutCents =
     input.kitchenNetPayoutCents != null && input.kitchenNetPayoutCents >= 0
       ? Math.round(input.kitchenNetPayoutCents)
-      : computedNet;
+      : Math.max(0, kitchenGrossCollectedCents - paymentProcessorFeeCents);
+
+  // The stored Stripe-synced payout is the original transfer amount. Refunds
+  // can also contain the platform-owned service fee, so only subtract up to
+  // the kitchen's original payout and never show a negative manager payout.
+  const managerFundedRefundCents = Math.min(
+    refundAmountCents,
+    originalKitchenNetPayoutCents
+  );
+  const kitchenNetPayoutCents = Math.max(
+    0,
+    originalKitchenNetPayoutCents - managerFundedRefundCents
+  );
 
   return {
     hourlyRateCents: input.hourlyRateCents,

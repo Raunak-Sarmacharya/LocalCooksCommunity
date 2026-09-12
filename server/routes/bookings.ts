@@ -18,6 +18,7 @@ import { requireFirebaseAuthWithUser } from "../firebase-auth-middleware";
 import { createPaymentIntent } from "../services/stripe-service";
 import { calculateKitchenBookingPrice } from "../services/pricing-service";
 import { calculateKitchenBasePrice, resolveCapturedKitchenRate } from "@shared/kitchen-booking-rate";
+import { resolveKitchenTransactionTaxAndSubtotal } from "../services/revenue-transaction-tax";
 import { userService } from "../domains/users/user.service";
 import { bookingService } from "../domains/bookings/booking.service";
 import { inventoryService } from "../domains/inventory/inventory.service";
@@ -2182,6 +2183,7 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
             const [txn] = await db
                 .select({
                     amount: paymentTransactions.amount,
+                    baseAmount: paymentTransactions.baseAmount,
                     serviceFee: paymentTransactions.serviceFee,
                     taxAmount: paymentTransactions.taxAmount,
                     managerRevenue: paymentTransactions.managerRevenue,
@@ -2209,6 +2211,7 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
                 paymentTransaction = {
                     ...txn,
                     amount: txn.amount ? parseFloat(txn.amount) : null,
+                    baseAmount: txn.baseAmount ? parseFloat(txn.baseAmount) : null,
                     serviceFee: txn.serviceFee ? parseFloat(txn.serviceFee) : null,
                     taxAmount: txn.taxAmount != null ? parseFloat(txn.taxAmount) : null,
                     managerRevenue: txn.managerRevenue ? parseFloat(txn.managerRevenue) : null,
@@ -2247,26 +2250,27 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
         const fallbackTaxRatePercent = metadataTaxRate != null
             ? Number(metadataTaxRate)
             : Number(kitchen?.taxRatePercent || 0);
-        const storedTaxValue = paymentTransaction?.taxAmount
-            ?? capturedMetadata.approvedTax
-            ?? capturedMetadata.approved_tax
-            ?? capturedMetadata.tax_cents;
-        // Authorized legacy transactions may not have tax_amount populated yet.
-        // Reconstruct the hold's tax instead of passing an explicit zero to the UI.
-        const storedTaxAmount = storedTaxValue != null ? Number(storedTaxValue) : null;
-        const capturedTaxAmount = storedTaxAmount != null && (storedTaxAmount > 0 || fallbackTaxRatePercent <= 0)
-            ? storedTaxAmount
-            : Math.round(capturedSubtotal * fallbackTaxRatePercent / 100);
+        const reconciledFinancials = resolveKitchenTransactionTaxAndSubtotal({
+            isDamageClaim: false,
+            ptAmount: Number(paymentTransaction?.amount || 0),
+            ptBaseAmount: Number(paymentTransaction?.baseAmount || 0),
+            ptTaxAmount: Number(paymentTransaction?.taxAmount || 0),
+            approvedTaxCents: Number(capturedMetadata.approvedTax ?? capturedMetadata.approved_tax ?? capturedMetadata.tax_cents ?? 0),
+            kbTotalPrice: capturedSubtotal,
+            taxRatePercent: fallbackTaxRatePercent,
+            ptServiceFee: Number(paymentTransaction?.serviceFee || booking.serviceFee || 0),
+            metadata: capturedMetadata,
+        });
+        const capturedTaxAmount = reconciledFinancials.taxCents;
         const historicalTaxRatePercent = metadataTaxRate != null
             ? Number(metadataTaxRate)
             : capturedSubtotal > 0 && capturedTaxAmount > 0
                 ? (capturedTaxAmount * 100) / capturedSubtotal
                 : fallbackTaxRatePercent;
-        const chargedAmount = Number(paymentTransaction?.amount || 0);
-        const reconciledServiceFee = chargedAmount >= capturedSubtotal + capturedTaxAmount
-            ? chargedAmount - capturedSubtotal - capturedTaxAmount
-            : Number(booking.serviceFee || paymentTransaction?.serviceFee || 0);
-        const historicalCommissionRate = capturedSubtotal > 0 ? reconciledServiceFee / capturedSubtotal : 0;
+        const reconciledSubtotal = reconciledFinancials.totalPriceCents || capturedSubtotal;
+        const reconciledKitchenOnlyPrice = Math.max(0, reconciledSubtotal - addonSubtotal);
+        const reconciledServiceFee = reconciledFinancials.serviceFeeCents;
+        const historicalCommissionRate = reconciledSubtotal > 0 ? reconciledServiceFee / reconciledSubtotal : 0;
         if (paymentTransaction) {
             paymentTransaction.taxAmount = capturedTaxAmount;
             paymentTransaction.serviceFee = reconciledServiceFee;
@@ -2274,7 +2278,7 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
 
         res.json({
             ...booking,
-            totalPrice: kitchenOnlyPrice,
+            totalPrice: reconciledKitchenOnlyPrice,
             pricingMode: capturedKitchenRate.mode,
             serviceFee: reconciledServiceFee,
             platformCommissionRate: historicalCommissionRate,
@@ -3400,7 +3404,11 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
             kitchenId,
             bookingDateObj,
             startTime,
-            endTime
+            endTime,
+            {
+                selectedSlots: Array.isArray(selectedSlots) ? selectedSlots : undefined,
+                fullDay: selectedPricingMode === 'daily',
+            }
         );
 
         if (!availabilityCheck.valid) {
@@ -3592,6 +3600,7 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
                 taxRatePercent,
                 hourlyRateCents: appliedRateCents,
                 durationHours: effectiveDurationHours,
+                pricingMode: selectedPricingMode,
                 platform_fee_cents: feeCalculation.platformCommissionInCents,
                 stripe_fee_cents: feeCalculation.stripeProcessingFeeInCents,
             },
@@ -3668,7 +3677,8 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
             kitchenId,
             bookingDateObj,
             startTime,
-            endTime
+            endTime,
+            { selectedSlots: Array.isArray(selectedSlots) ? selectedSlots : undefined }
         );
 
         if (!availabilityCheck.valid) {

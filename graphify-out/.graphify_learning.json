@@ -1,5 +1,86 @@
 {
-  "generated_at": "2026-09-12T06:45:02.422680+00:00",
-  "nodes": {},
+  "generated_at": "2026-09-12T17:53:11.329089+00:00",
+  "nodes": {
+    "client_src_components_admin_sections_adminkitchenapplicationsstep1section": {
+      "code_fingerprint": "6c801f6ec5d4172d21e84a3947808cc5b887a665fa05460c18b5a6550721aba3",
+      "label": "AdminKitchenApplicationsStep1Section.tsx",
+      "last": "2026-09-12T06:59:35.772104+00:00",
+      "provenance": [
+        {
+          "date": "2026-09-12T06:59:35.772104+00:00",
+          "outcome": "useful",
+          "q": "Verify and fix the five reported chef application and kitchen-manager booking and checkout confusions."
+        }
+      ],
+      "score": 0.989567855,
+      "source_file": "client/src/components/admin/sections/AdminKitchenApplicationsStep1Section.tsx",
+      "status": "tentative",
+      "uses": 1
+    },
+    "client_src_components_chef_applications_kitchenapplicationcard": {
+      "code_fingerprint": "cd5b9f19ccbc4dc10fcc1c2f1d39c2c5884a69f7bcdd7a816b0936d588cf6e9b",
+      "label": "KitchenApplicationCard.tsx",
+      "last": "2026-09-12T06:59:35.772104+00:00",
+      "provenance": [
+        {
+          "date": "2026-09-12T06:59:35.772104+00:00",
+          "outcome": "useful",
+          "q": "Verify and fix the five reported chef application and kitchen-manager booking and checkout confusions."
+        }
+      ],
+      "score": 0.989567855,
+      "source_file": "client/src/components/chef/applications/KitchenApplicationCard.tsx",
+      "status": "tentative",
+      "uses": 1
+    },
+    "client_src_pages_applytokitchen": {
+      "code_fingerprint": "0c35c69d07d7a34023036addd381f095bb3fa9fa3334eeb2b4fbf3174f2bc9a7",
+      "label": "ApplyToKitchen.tsx",
+      "last": "2026-09-12T06:59:35.772104+00:00",
+      "provenance": [
+        {
+          "date": "2026-09-12T06:59:35.772104+00:00",
+          "outcome": "useful",
+          "q": "Verify and fix the five reported chef application and kitchen-manager booking and checkout confusions."
+        }
+      ],
+      "score": 0.989567855,
+      "source_file": "client/src/pages/ApplyToKitchen.tsx",
+      "status": "tentative",
+      "uses": 1
+    },
+    "client_src_pages_bookingdetailspage": {
+      "code_fingerprint": "749a99037eda65105ea0972a73bf22afbcbbce18f8e2acc0de2f96f26e7b8daf",
+      "label": "BookingDetailsPage.tsx",
+      "last": "2026-09-12T06:59:35.772104+00:00",
+      "provenance": [
+        {
+          "date": "2026-09-12T06:59:35.772104+00:00",
+          "outcome": "useful",
+          "q": "Verify and fix the five reported chef application and kitchen-manager booking and checkout confusions."
+        }
+      ],
+      "score": 0.989567855,
+      "source_file": "client/src/pages/BookingDetailsPage.tsx",
+      "status": "tentative",
+      "uses": 1
+    },
+    "client_src_pages_managerbookingspanel": {
+      "code_fingerprint": "3439feeb8a497c290b43cfe6b026da9cd9478bc2e43aef956b8e25c790fed4c0",
+      "label": "ManagerBookingsPanel.tsx",
+      "last": "2026-09-12T06:59:35.772104+00:00",
+      "provenance": [
+        {
+          "date": "2026-09-12T06:59:35.772104+00:00",
+          "outcome": "useful",
+          "q": "Verify and fix the five reported chef application and kitchen-manager booking and checkout confusions."
+        }
+      ],
+      "score": 0.989567855,
+      "source_file": "client/src/pages/ManagerBookingsPanel.tsx",
+      "status": "tentative",
+      "uses": 1
+    }
+  },
   "version": 1
 }

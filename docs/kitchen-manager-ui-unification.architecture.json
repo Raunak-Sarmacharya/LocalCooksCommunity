@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Kitchen Manager UI Unification",
+    "quality_profile": "showcase",
+    "viewBox": [1120, 700]
+  },
+  "components": [
+    { "id": "sidebar", "type": "frontend", "label": "Manager Sidebar", "sublabel": "Single-open accordion", "pos": [50, 150], "size": [190, 76] },
+    { "id": "dashboard", "type": "frontend", "label": "Dashboard Shell", "sublabel": "Hosts navigation and active content", "pos": [330, 150], "size": [190, 76] },
+    { "id": "page", "type": "frontend", "label": "Active Page", "sublabel": "Owns exactly one shared header", "pos": [610, 150], "size": [190, 76] },
+    { "id": "visuals", "type": "frontend", "label": "Shared Visual Contract", "sublabel": "Monochrome icons and borders", "pos": [890, 150], "size": [190, 76] },
+    { "id": "parent", "type": "frontend", "label": "Expanded Parent", "sublabel": "Exactly one at a time", "pos": [50, 330], "size": [190, 76] },
+    { "id": "children", "type": "frontend", "label": "Child Links", "sublabel": "Chef typography; no clipping", "pos": [330, 330], "size": [190, 76] },
+    { "id": "sections", "type": "frontend", "label": "Page Sections", "sublabel": "Begin below the shared header", "pos": [610, 330], "size": [190, 76] }
+  ],
+  "connections": [
+    { "id": "sidebarParent", "from": "sidebar", "to": "parent" },
+    { "id": "parentChildren", "from": "parent", "to": "children" },
+    { "id": "sidebarDashboard", "from": "sidebar", "to": "dashboard" },
+    { "id": "dashboardPage", "from": "dashboard", "to": "page" },
+    { "id": "pageSections", "from": "page", "to": "sections" },
+    { "id": "pageVisuals", "from": "page", "to": "visuals" }
+  ],
+  "cards": [
+    { "dot": "slate", "title": "Header ownership", "items": ["Each active page renders one shared page header", "Embedded sections begin directly with content"] },
+    { "dot": "cyan", "title": "Interaction contract", "items": ["All parents start closed", "Opening one parent closes the previous parent"] }
+  ]
+}

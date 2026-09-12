@@ -92,7 +92,7 @@ interface Location {
   kitchenLicensePreviousUrl?: string;
   kitchenTermsUrl?: string;
   kitchenTermsUploadedAt?: string;
-  description?: string;
+  description?: string | null;
   customOnboardingLink?: string;
 }
 
@@ -236,6 +236,7 @@ export default function ManagerBookingDashboard() {
     isReadyForBookings,
     missingSteps,
     improvementSteps,
+    setupSteps,
   } = useOnboardingStatus(selectedLocation?.id);
 
   // Sync activeView with URL parameters. Listens to popstate so back/forward
@@ -330,8 +331,15 @@ export default function ManagerBookingDashboard() {
 
   const kitchenChildLabel: Partial<Record<ViewType, string>> = {
     availability: mt("navAvailability"),
+    "settings-booking-rules": mt("navBookingRules"),
     "settings-checkin-checkout": mt("navCheckinCheckout"),
     "damage-claims": mt("navDamageClaims"),
+  };
+  const applicationChildLabel: Partial<Record<ViewType, string>> = {
+    "application-requirements": mt("navApplicationRequirements"),
+  };
+  const messageChildLabel: Partial<Record<ViewType, string>> = {
+    "settings-facility-docs": mt("facilityDocuments"),
   };
   const storageChildLabel: Partial<Record<ViewType, string>> = {
     "settings-storage-checkin-checkout": mt("navStorageCheckinCheckout"),
@@ -340,7 +348,9 @@ export default function ManagerBookingDashboard() {
   };
   const isKitchenChild = Boolean(kitchenChildLabel[activeView]);
   const isStorageChild = Boolean(storageChildLabel[activeView]);
-  const shellActiveView = isKitchenChild ? 'kitchens' : isStorageChild ? 'storage-bookings' : activeView;
+  const isApplicationChild = Boolean(applicationChildLabel[activeView]);
+  const isMessageChild = Boolean(messageChildLabel[activeView]);
+  const shellActiveView = isKitchenChild ? 'kitchens' : isStorageChild ? 'storage-bookings' : isApplicationChild ? 'applications' : isMessageChild ? 'messages' : activeView;
   const breadcrumbs: ManagerBreadcrumb[] = activeView === 'kitchens'
     ? [{ label: mt("navSpaces"), navId: "kitchens" }]
     : isKitchenChild
@@ -355,6 +365,16 @@ export default function ManagerBookingDashboard() {
               { label: mt("navStorageBookings"), navId: "storage-bookings", onClick: () => handleViewChange('storage-bookings') },
               { label: storageChildLabel[activeView]!, navId: activeView },
             ]
+          : isApplicationChild
+            ? [
+                { label: mt("navRequests"), navId: "applications", onClick: () => handleViewChange('applications') },
+                { label: applicationChildLabel[activeView]!, navId: activeView },
+              ]
+            : isMessageChild
+              ? [
+                  { label: mt("navMessages"), navId: "messages", onClick: () => handleViewChange('messages') },
+                  { label: messageChildLabel[activeView]!, navId: activeView },
+                ]
           : [];
 
   // Handle Stripe Connect Return
@@ -613,13 +633,18 @@ export default function ManagerBookingDashboard() {
       }
 
       // Update the location details cache with the returned data
-      if (selectedLocation?.id && result) {
-        queryClient.setQueryData(['locationDetails', selectedLocation.id], (oldData: Location | null) => {
+      if (result) {
+        queryClient.setQueryData(['locationDetails', variables.locationId], (oldData: Location | null) => {
           if (oldData) {
             return { ...oldData, ...result };
           }
           return result;
         });
+        queryClient.setQueryData<Location[]>(['/api/manager/locations'], (oldData = []) =>
+          oldData.map((location) =>
+            location.id === variables.locationId ? { ...location, ...result } : location,
+          ),
+        );
       }
 
       // Update selected location state
@@ -633,7 +658,7 @@ export default function ManagerBookingDashboard() {
       }
 
       // Invalidate queries to ensure fresh data
-      queryClient.invalidateQueries({ queryKey: ['locationDetails', selectedLocation?.id] });
+      queryClient.invalidateQueries({ queryKey: ['locationDetails', variables.locationId] });
       queryClient.invalidateQueries({ queryKey: ['/api/manager/locations'] });
 
       toast({ title: mt("success"),
@@ -658,10 +683,10 @@ export default function ManagerBookingDashboard() {
 
   const handleImprovementTask = (task: string) => {
     const destination = getManagerImprovementDestination(task);
-    const view: ViewType = destination.view;
+    const view: ViewType = destination.view === "settings" ? "profile" : destination.view;
     const url = new URL(window.location.href);
     url.searchParams.set("view", view);
-    if (view === "settings") {
+    if (destination.view === "settings") {
       url.searchParams.set("tab", "location");
       url.searchParams.delete("section");
     } else {
@@ -674,6 +699,10 @@ export default function ManagerBookingDashboard() {
     window.dispatchEvent(new PopStateEvent("popstate"));
   };
 
+  const showSidebarGuidance = !isLoadingOnboardingStatus
+    && !!selectedLocation
+    && (showSetupBanner || improvementSteps.length > 0);
+
   return (
     <DashboardLayout
       activeView={shellActiveView}
@@ -683,6 +712,10 @@ export default function ManagerBookingDashboard() {
       onLocationChange={(loc) => setSelectedLocation(loc as Location)}
       onCreateLocation={startNewLocation}
       breadcrumbs={breadcrumbs}
+      managerSetupSteps={showSidebarGuidance ? setupSteps : []}
+      managerImprovementSteps={showSidebarGuidance ? improvementSteps : []}
+      onContinueManagerSetup={showSidebarGuidance ? handleContinueSetup : undefined}
+      onImproveManagerListing={showSidebarGuidance ? handleImprovementTask : undefined}
     >
       {/* Onboarding Status Banners */}
       <OnboardingStatusBanner
@@ -698,6 +731,8 @@ export default function ManagerBookingDashboard() {
 
       {activeView === 'profile' && (
         <ManagerProfileSettings
+          location={locationDetails || selectedLocation}
+          onSaveLocationSettings={(updates) => updateLocationSettings.mutateAsync(updates)}
           notificationLocation={locationDetails || selectedLocation}
           onSaveNotificationSettings={(updates) => updateLocationSettings.mutateAsync(updates)}
         />
@@ -817,25 +852,21 @@ export default function ManagerBookingDashboard() {
 
       {activeView === 'payments' && (
         <ManagerProfileSettings
+          location={locationDetails || selectedLocation}
+          onSaveLocationSettings={(updates) => updateLocationSettings.mutateAsync(updates)}
           notificationLocation={locationDetails || selectedLocation}
           onSaveNotificationSettings={(updates) => updateLocationSettings.mutateAsync(updates)}
         />
       )}
 
       {activeView === 'overstays' && (
-        <div className="space-y-6 animate-fade-in">
-          <ChefPageHeader
-            title={mt("navOverstayPenalties")}
-          />
+        <div className="animate-fade-in">
           <OverstayPenaltyQueue locationId={selectedLocation?.id} />
         </div>
       )}
 
       {activeView === 'damage-claims' && (
-        <div className="space-y-6 animate-fade-in">
-          <ChefPageHeader
-            title={mt("navDamageClaims")}
-          />
+        <div className="animate-fade-in">
           <DamageClaimQueue />
         </div>
       )}
@@ -857,7 +888,11 @@ export default function ManagerBookingDashboard() {
           onCreateLocation={startNewLocation}
           onSelectLocation={(loc) => {
             setSelectedLocation(loc as Location);
-            handleViewChange('settings');
+            handleViewChange('profile');
+            const url = new URL(window.location.href);
+            url.searchParams.set('tab', 'location');
+            window.history.replaceState({}, '', url);
+            window.dispatchEvent(new PopStateEvent('popstate'));
           }}
         />
       )}
@@ -867,14 +902,7 @@ export default function ManagerBookingDashboard() {
         <KitchensManagement
           location={locationDetails || selectedLocation}
           onNavigate={handleViewChange}
-          onConfigureRequirements={() => {
-            handleViewChange('settings');
-            const url = new URL(window.location.href);
-            url.searchParams.set('view', 'settings');
-            url.searchParams.set('tab', 'requirements');
-            window.history.replaceState({}, '', url);
-            window.dispatchEvent(new PopStateEvent('popstate'));
-          }}
+          onConfigureRequirements={() => handleViewChange('application-requirements')}
         />
       )}
 
@@ -950,10 +978,7 @@ export default function ManagerBookingDashboard() {
 
       {activeView === 'application-requirements' && selectedLocation && (
         <div className="space-y-6">
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight">{mt("navApplicationRequirements")}</h2>
-            <p className="text-muted-foreground">{mt("configureWhatInformationChefsNeedToProvideWhenApplyingToYour")}</p>
-          </div>
+          <ChefPageHeader title={mt("navApplicationRequirements")} description={mt("configureWhatInformationChefsNeedToProvideWhenApplyingToYour")} />
           <LocationRequirementsSettings
             locationId={selectedLocation.id}
           />
@@ -974,6 +999,8 @@ export default function ManagerBookingDashboard() {
 
       {activeView === 'notification-settings' && (
         <ManagerProfileSettings
+          location={locationDetails || selectedLocation}
+          onSaveLocationSettings={(updates) => updateLocationSettings.mutateAsync(updates)}
           notificationLocation={locationDetails || selectedLocation}
           onSaveNotificationSettings={(updates) => updateLocationSettings.mutateAsync(updates)}
         />
@@ -1548,7 +1575,6 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
   const [isLoadingPenaltyDefaults, setIsLoadingPenaltyDefaults] = useState(true);
   
   const [notificationEmail, setNotificationEmail] = useState(location.notificationEmail || '');
-  const [notificationPhone, setNotificationPhone] = useState(location.notificationPhone || '');
   const [logoUrl, setLogoUrl] = useState(location.logoUrl || '');
   const [description, setDescription] = useState(location.description || '');
   const [customOnboardingLink, setCustomOnboardingLink] = useState(location.customOnboardingLink || '');
@@ -1721,15 +1747,12 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     // Show the actual notificationEmail from the database, not the username
     // notificationEmail should be what's saved in notification_email column
     const savedEmail = location.notificationEmail || '';
-    const savedPhone = location.notificationPhone || '';
-    logger.info('SettingsView: Loading notificationEmail and notificationPhone from location:', {
+    logger.info('SettingsView: Loading notificationEmail from location:', {
       locationId: location.id,
       notificationEmail: savedEmail,
-      notificationPhone: savedPhone,
       fullLocation: location
     });
     setNotificationEmail(savedEmail);
-    setNotificationPhone(savedPhone);
     setDescription(location.description || '');
     setCustomOnboardingLink(location.customOnboardingLink || '');
     
@@ -1804,7 +1827,6 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       defaultDailyBookingLimit: dailyBookingLimit,
       minimumBookingWindowHours: minimumBookingWindowHours,
       notificationEmail: notificationEmail || undefined,
-      notificationPhone: notificationPhone || undefined,
       logoUrl: overrideLogoUrl !== undefined ? overrideLogoUrl : (logoUrl || undefined),
       description: description || undefined,
       customOnboardingLink: customOnboardingLink || undefined,
@@ -3017,18 +3039,6 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                       className="w-full max-w-md border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                     />
                     <p className="text-xs text-gray-600 mt-1">{mt("allBookingNotificationsForThisLocationWillBeSentToThisEmailA")}</p>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-900 mb-2">{mt("phoneNumberForSMSNotifications")}</label>
-                    <input
-                      type="tel"
-                      value={notificationPhone}
-                      onChange={(e) => setNotificationPhone(e.target.value)}
-                      placeholder="+1 (555) 123-4567"
-                      className="w-full max-w-md border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                    />
-                    <p className="text-xs text-gray-600 mt-1">{mt("sMSNotificationsForBookingsAndCancellationsWillBeSentToThisP")}</p>
                   </div>
 
                   <div className="flex gap-3 pt-2">

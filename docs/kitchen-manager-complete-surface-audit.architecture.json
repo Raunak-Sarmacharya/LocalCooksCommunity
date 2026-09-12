@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Kitchen Manager Complete Surface Audit",
+    "quality_profile": "showcase",
+    "viewBox": [1120, 720]
+  },
+  "components": [
+    { "id": "shell", "type": "frontend", "label": "Manager Shell", "sublabel": "Sidebar and active destination", "pos": [45, 150], "size": [180, 72] },
+    { "id": "parents", "type": "frontend", "label": "Parent Pages", "sublabel": "Single-open accordion", "pos": [310, 150], "size": [180, 72] },
+    { "id": "children", "type": "frontend", "label": "Child Routes", "sublabel": "All manager destinations", "pos": [575, 150], "size": [180, 72] },
+    { "id": "content", "type": "frontend", "label": "Page Content", "sublabel": "One page header", "pos": [840, 150], "size": [180, 72] },
+    { "id": "profile", "type": "frontend", "label": "Profile Tabs", "sublabel": "Account · Location · Password", "pos": [160, 345], "size": [220, 76] },
+    { "id": "profileMore", "type": "frontend", "label": "Profile Tabs", "sublabel": "Payments · Notifications · Teams", "pos": [450, 345], "size": [220, 76] },
+    { "id": "requirements", "type": "frontend", "label": "Application Requirements", "sublabel": "Built-ins and custom questions", "pos": [740, 345], "size": [220, 76] },
+    { "id": "contract", "type": "frontend", "label": "Shared UI Contract", "sublabel": "Plain headings · semantic color only", "pos": [450, 535], "size": [220, 76] }
+  ],
+  "connections": [
+    { "id": "shellParents", "from": "shell", "to": "parents" },
+    { "id": "parentsChildren", "from": "parents", "to": "children" },
+    { "id": "childrenContent", "from": "children", "to": "content" },
+    { "id": "contentProfile", "from": "content", "to": "profile", "fromSide": "bottom", "toSide": "top" },
+    { "id": "profileMoreLink", "from": "profile", "to": "profileMore" },
+    { "id": "contentRequirements", "from": "content", "to": "requirements", "fromSide": "bottom", "toSide": "top" },
+    { "id": "profileContract", "from": "profile", "to": "contract" },
+    { "id": "moreContract", "from": "profileMore", "to": "contract" },
+    { "id": "requirementsContract", "from": "requirements", "to": "contract" }
+  ],
+  "cards": [
+    { "dot": "slate", "title": "Complete traversal", "items": ["Every sidebar route is followed into nested tabs and sections", "Embedded components suppress standalone page headers"] },
+    { "dot": "emerald", "title": "Visual rule", "items": ["Headings do not carry decorative icons", "Color remains only for real status or warning meaning"] }
+  ]
+}

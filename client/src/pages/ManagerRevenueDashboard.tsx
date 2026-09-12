@@ -279,8 +279,7 @@ export default function ManagerRevenueDashboard({
       {invoices.length > 0 && (
         <Card>
           <CardHeader>
-            <div className="flex items-center gap-2">
-              <FileText className="h-4 w-4 text-violet-600" />
+            <div>
               <div>
                 <CardTitle className="text-base">{mt("recentInvoices")}</CardTitle>
                 <p className="text-xs text-muted-foreground">{mt("latestBookingInvoices")}</p>
@@ -295,8 +294,8 @@ export default function ManagerRevenueDashboard({
                   className="flex items-center justify-between p-4 rounded-xl bg-muted/30 hover:bg-muted/50 transition-colors"
                 >
                   <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center">
-                      <FileText className="h-5 w-5 text-violet-600" />
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border bg-muted/40">
+                      <FileText className="h-5 w-5 text-muted-foreground" />
                     </div>
                     <div>
                       <p className="font-medium">
@@ -412,8 +411,8 @@ export default function ManagerRevenueDashboard({
                   className="flex items-center justify-between p-4 rounded-xl bg-muted/30 hover:bg-muted/50 transition-colors"
                 >
                   <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
-                      <CreditCard className="h-5 w-5 text-emerald-600" />
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border bg-muted/40">
+                      <CreditCard className="h-5 w-5 text-muted-foreground" />
                     </div>
                     <div>
                       <p className="font-medium">

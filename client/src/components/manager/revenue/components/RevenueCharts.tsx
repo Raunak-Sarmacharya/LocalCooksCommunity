@@ -106,8 +106,7 @@ export function RevenueTrendChart({ data, isLoading }: RevenueTrendChartProps) {
         return (
             <Card>
                 <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <TrendingUp className="h-5 w-5 text-muted-foreground" />{mt("revenueTrend")}</CardTitle>
+                    <CardTitle>{mt("revenueTrend")}</CardTitle>
                     <CardDescription>{mt("dailyRevenueOverTime")}</CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -124,8 +123,7 @@ export function RevenueTrendChart({ data, isLoading }: RevenueTrendChartProps) {
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                    <TrendingUp className="h-5 w-5 text-emerald-600" />{mt("revenueTrend")}</CardTitle>
+                <CardTitle>{mt("revenueTrend")}</CardTitle>
                 <CardDescription>{mt("dailyRevenueOverTime")}</CardDescription>
             </CardHeader>
             <CardContent>
@@ -208,8 +206,7 @@ export function RevenueByLocationChart({ data, isLoading }: RevenueByLocationCha
         return (
             <Card>
                 <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <Building2 className="h-5 w-5 text-muted-foreground" />{mt("revenueByLocation")}</CardTitle>
+                    <CardTitle>{mt("revenueByLocation")}</CardTitle>
                     <CardDescription>{mt("breakdownByLocation")}</CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -225,8 +222,7 @@ export function RevenueByLocationChart({ data, isLoading }: RevenueByLocationCha
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                    <Building2 className="h-5 w-5 text-violet-600" />{mt("revenueByLocation")}</CardTitle>
+                <CardTitle>{mt("revenueByLocation")}</CardTitle>
                 <CardDescription>{mt("breakdownByLocation")}</CardDescription>
             </CardHeader>
             <CardContent>
@@ -324,8 +320,7 @@ export function PaymentStatusChart({ data, isLoading }: PaymentStatusChartProps)
         return (
             <Card>
                 <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <CircleDollarSign className="h-5 w-5 text-muted-foreground" />{mt("paymentStatus")}</CardTitle>
+                    <CardTitle>{mt("paymentStatus")}</CardTitle>
                     <CardDescription>{mt("distributionByStatus")}</CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -343,8 +338,7 @@ export function PaymentStatusChart({ data, isLoading }: PaymentStatusChartProps)
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                    <CircleDollarSign className="h-5 w-5 text-amber-600" />{mt("paymentStatus")}</CardTitle>
+                <CardTitle>{mt("paymentStatus")}</CardTitle>
                 <CardDescription>{mt("distributionByStatus")}</CardDescription>
             </CardHeader>
             <CardContent>

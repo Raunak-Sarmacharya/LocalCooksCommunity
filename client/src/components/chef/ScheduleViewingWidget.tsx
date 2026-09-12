@@ -843,12 +843,12 @@ export function ScheduleViewingWidget({
           <h3 className="text-lg font-semibold">
             {t("kitchenTourRequested", "Kitchen Tour Requested")}
           </h3>
-          <InfoChip variant="success">{t("confirmed", "Confirmed")}</InfoChip>
+          <InfoChip variant="warning">{t("underReview", "Under review")}</InfoChip>
         </div>
         <p className="text-sm text-muted-foreground">
           {t("kitchenTourRequestedAwaitingApproval", {
             defaultValue:
-              "Your kitchen tour at {locationName} has been requested and is awaiting manager approval.",
+              "Your kitchen tour at {locationName} has been sent to Local Cooks for review. If approved, it will then go to the kitchen manager.",
             locationName: locationName || t("theKitchen", "the kitchen"),
           })}
         </p>
