@@ -19,6 +19,8 @@ type KitchenGridCardProps = {
   imageUrl?: string | null;
   /** Hourly rate in cents. */
   hourlyRateCents?: number | null;
+  /** Daily rate in cents. */
+  dailyRateCents?: number | null;
   /** @deprecated Prefer equipmentSummary for included/rental counts. */
   equipment?: string[];
   equipmentSummary?: KitchenGridEquipmentSummary | null;
@@ -36,9 +38,11 @@ type KitchenGridCardProps = {
   className?: string;
 };
 
-function rateBadge(cents: number | null | undefined): string | null {
-  if (cents == null || Number.isNaN(Number(cents)) || Number(cents) <= 0) return null;
-  return `$${Math.round(Number(cents) / 100)}/hr`;
+function rateBadge(hourlyCents: number | null | undefined, dailyCents: number | null | undefined): string | null {
+  const rates = [];
+  if (Number(hourlyCents) > 0) rates.push(`$${Math.round(Number(hourlyCents) / 100)}/hr`);
+  if (Number(dailyCents) > 0) rates.push(`$${Math.round(Number(dailyCents) / 100)} per day`);
+  return rates.length ? rates.join(" · ") : null;
 }
 
 /** h-11 row + gap-2 between rows */
@@ -51,6 +55,7 @@ export function KitchenGridCard({
   address,
   imageUrl,
   hourlyRateCents,
+  dailyRateCents,
   equipmentSummary,
   storageSummary,
   overlayChip,
@@ -61,7 +66,7 @@ export function KitchenGridCard({
 }: KitchenGridCardProps) {
   const { t } = useTranslation("kitchen");
   const hasImage = !!imageUrl?.trim();
-  const price = rateBadge(hourlyRateCents);
+  const price = rateBadge(hourlyRateCents, dailyRateCents);
 
   const storageLine = formatStorageLine(
     storageSummary,

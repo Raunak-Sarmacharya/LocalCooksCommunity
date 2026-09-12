@@ -1113,7 +1113,7 @@ export default function ApplicantDashboard() {
 
       {/* Global Modals for Chat */}
       <Dialog open={showChatDialog} onOpenChange={setShowChatDialog}>
-        <DialogContent className="max-w-5xl h-[85vh] p-0 overflow-hidden border-border/50 shadow-2xl">
+        <DialogContent showCloseButton={false} className="max-w-5xl h-[85vh] p-0 overflow-hidden border-border/50 shadow-2xl">
           {chatApplication && chatConversationId && chefId && (
             <div className="h-full flex flex-col">
               <div className="p-4 border-b flex items-center justify-between bg-muted/5">

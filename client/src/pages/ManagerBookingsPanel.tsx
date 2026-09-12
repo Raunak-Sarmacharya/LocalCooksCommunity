@@ -996,13 +996,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
               })}
               data={filteredBookings}
               onRowClick={(booking) => {
-                if (booking.status === "pending") {
-                  handleTakeAction(booking);
-                } else if (booking.status === "confirmed" || booking.status === "cancellation_requested") {
-                  handleManageBooking(booking);
-                } else {
-                  window.location.href = `/manager/booking/${booking.id}`;
-                }
+                window.location.href = `/manager/booking/${booking.id}`;
               }}
               defaultSorting={[{ id: 'createdAt', desc: true }]}
               initialColumnVisibility={{ createdAt: false }}

@@ -156,6 +156,19 @@ export default function MyKitchensTabContent({
                   {t("apptabInReviewBadge", "In review")}
                 </Badge>
               );
+            } else if (app.status === "rejected" || app.status === "cancelled") {
+              primary = (
+                <Button
+                  variant="outline"
+                  className={outlineActionClass}
+                  onClick={() => {
+                    window.location.href = `/apply-kitchen/${app.locationId}`;
+                  }}
+                >
+                  <ArrowRight className="mr-1.5 h-4 w-4" />
+                  {t("kdApplyAgain", "Apply again")}
+                </Button>
+              );
             }
 
             return (
@@ -168,6 +181,7 @@ export default function MyKitchensTabContent({
                 }
                 imageUrl={imageUrl}
                 hourlyRateCents={kitchenData?.hourlyRate}
+                dailyRateCents={kitchenData?.dailyRate}
                 equipmentSummary={equipmentSummary}
                 storageSummary={storageSummary}
                 overlayChip={

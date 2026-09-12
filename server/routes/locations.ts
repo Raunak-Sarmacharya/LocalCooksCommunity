@@ -282,6 +282,9 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
             const hourlyRateCents = kitchen.hourlyRate !== null && kitchen.hourlyRate !== undefined
                 ? (typeof kitchen.hourlyRate === 'string' ? parseFloat(kitchen.hourlyRate) : kitchen.hourlyRate)
                 : null;
+            const dailyRateCents = kitchen.dailyRate !== null && kitchen.dailyRate !== undefined
+                ? (typeof kitchen.dailyRate === 'string' ? parseFloat(kitchen.dailyRate) : kitchen.dailyRate)
+                : null;
             
             // Fetch availability for this kitchen
             const availability = await db.select().from(kitchenAvailability).where(eq(kitchenAvailability.kitchenId, kitchen.id));
@@ -297,6 +300,8 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
                 amenities: kitchen.amenities || [],
                 hourlyRate: hourlyRateCents,
                 hourly_rate: hourlyRateCents,
+                dailyRate: dailyRateCents,
+                daily_rate: dailyRateCents,
                 pricingModel: kitchen.pricingModel || 'hourly',
                 currency: kitchen.currency || 'CAD',
                 availability,

@@ -45,6 +45,7 @@ interface PublicKitchen {
   equipment?: string[];
   equipmentSummary?: EquipmentSummary;
   hourlyRate?: number | null;
+  dailyRate?: number | null;
   currency?: string;
   minimumBookingHours?: number | null;
   locationId: number;
@@ -450,6 +451,7 @@ export default function KitchenDiscovery({
                       address={card.address}
                       imageUrl={kitchen.imageUrl}
                       hourlyRateCents={card.hourlyRate}
+                      dailyRateCents={card.dailyRate}
                       equipmentSummary={card.equipmentSummary}
                       storageSummary={card.storageSummary}
                       overlayChip={overlayChip}
@@ -573,7 +575,7 @@ export default function KitchenDiscovery({
                               </Button>
                             )}
                             {(app.status === "rejected" || app.status === "cancelled") && (
-                              <Link href={`/kitchen-requirements/${app.locationId}`}>
+                              <Link href={`/apply-kitchen/${app.locationId}`}>
                                 <Button
                                   size="sm"
                                   variant="outline"

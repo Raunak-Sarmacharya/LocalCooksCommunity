@@ -41,6 +41,7 @@ interface BookingDetails {
   totalPrice?: number;
   hourlyRate?: number;
   durationHours?: number;
+  pricingMode?: "hourly" | "daily";
     serviceFee?: number;
     taxAmount?: number;
   /** Admin-configured service fee rate (fraction, e.g. 0.07) */
@@ -281,6 +282,43 @@ export default function BookingDetailsPage() {
       });
     } finally {
       setIsDownloading(false);
+    }
+  };
+
+  const handleClearCheckout = async () => {
+    if (!booking?.id || booking.checkinStatus !== "checkout_requested") return;
+    if (!window.confirm(mt("acceptCheckoutConfirm", { defaultValue: "Accept this checkout and mark the booking complete?" }))) return;
+
+    setIsUpdatingStatus(true);
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`/api/manager/bookings/${booking.id}/clear-kitchen-checkout`, {
+        method: "POST",
+        headers,
+        credentials: "include",
+        body: JSON.stringify({}),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || mt("failedToAcceptCheckout", { defaultValue: "Failed to accept checkout" }));
+
+      const now = new Date().toISOString();
+      setBooking((current) => current ? {
+        ...current,
+        status: "completed",
+        checkinStatus: "checked_out",
+        checkoutApprovedAt: now,
+        updatedAt: now,
+      } : current);
+      queryClient.invalidateQueries({ queryKey: ["managerBookings"] });
+      toast({ title: tt("checkoutClearedNoIssues") });
+    } catch (err) {
+      toast({
+        title: t("bdErrorTitle"),
+        description: err instanceof Error ? err.message : mt("failedToAcceptCheckout", { defaultValue: "Failed to accept checkout" }),
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdatingStatus(false);
     }
   };
 
@@ -1041,6 +1079,21 @@ export default function BookingDetailsPage() {
                 )}
               </Button>
             )}
+            {isManagerView && booking.checkinStatus === "checkout_requested" && (
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleClearCheckout}
+                disabled={isUpdatingStatus}
+              >
+                {isUpdatingStatus ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+                )}
+                {mt("clearNoIssues")}
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -1449,7 +1502,11 @@ export default function BookingDetailsPage() {
               <div className="space-y-2.5">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">
-                    {t("bdKitchenLine", { duration: t("bdHours", { count: calculateDuration() }) })}
+                    {t("bdKitchenLine", {
+                      duration: booking.pricingMode === "daily"
+                        ? t("bdDailyRate")
+                        : t("bdHours", { count: calculateDuration() }),
+                    })}
                   </span>
                   <span className="font-mono">
                     {formatCurrency(totals.kitchen > 0 ? totals.kitchen : booking.totalPrice)}
@@ -1746,4 +1803,3 @@ export default function BookingDetailsPage() {
     </ChefDashboardLayout>
   );
 }
-

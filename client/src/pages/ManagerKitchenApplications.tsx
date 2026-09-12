@@ -1020,7 +1020,7 @@ function ManagerKitchenApplicationsContentLegacy({
 
       {/* Chat Dialog - Enterprise Grade UnifiedChatView */}
       <Dialog open={showChatDialog} onOpenChange={setShowChatDialog}>
-        <DialogContent className="max-w-6xl h-[85vh] flex flex-col p-0 overflow-hidden border-none shadow-2xl">
+        <DialogContent showCloseButton={false} className="max-w-6xl h-[85vh] flex flex-col p-0 overflow-hidden border-none shadow-2xl">
           {managerId && (
             <UnifiedChatView
               userId={managerId}

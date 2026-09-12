@@ -11,6 +11,16 @@ export type PreviewPrimaryCta = {
   variant: "default" | "outline";
 };
 
+export function resolvePreviewApplicationRoute(
+  locationId: string | number | undefined,
+  display: KitchenDisplayStatus | null,
+): string | null {
+  if (!locationId) return null;
+  if (display?.actionKind === "discover") return `/apply-kitchen/${locationId}`;
+  if (display?.actionKind === "complete-step") return `/kitchen-requirements/${locationId}`;
+  return null;
+}
+
 /**
  * Resolves the selected kitchen's CTA using only selected-kitchen application
  * state. Seller marketplace applications are deliberately not an input.

@@ -1,7 +1,7 @@
 import { logger } from "@/lib/logger";
 import { useAdminKitchenApplications } from "@/hooks/use-admin-kitchen-applications";
 import { useToast } from "@/hooks/use-toast";
-import { ExternalLink, Loader2, Shield } from "lucide-react";
+import { Loader2, Shield } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import ChatPanel from "@/components/chat/ChatPanel";
@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { SecureDocumentLink } from "@/components/common/SecureDocumentLink";
 
 // New Modular Imports
 import { ApplicationsTable } from "../../manager/applications";
@@ -271,7 +272,7 @@ export function AdminKitchenApplicationsStep1Section({
 
       {/* Chat Dialog */}
       <Dialog open={showChatDialog} onOpenChange={setShowChatDialog}>
-        <DialogContent className="max-w-4xl h-[80vh] flex flex-col p-0">
+        <DialogContent showCloseButton={false} className="max-w-4xl h-[80vh] flex flex-col p-0">
           {chatApplication && chatConversationId && (
             <ChatPanel
               conversationId={chatConversationId}
@@ -317,6 +318,20 @@ export function AdminKitchenApplicationsStep1Section({
                 <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Email</p><p className="mt-1 break-all text-sm font-medium">{selectedApplication.email}</p></div>
                 <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Phone</p><p className="mt-1 text-sm font-medium">{selectedApplication.phone || "On chef profile"}</p></div>
                 <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Kitchen type</p><p className="mt-1 text-sm font-medium capitalize">{selectedApplication.kitchenPreference}</p></div>
+              </div>
+
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Food safety licence</p>
+                <p className="mt-1 text-sm font-medium">
+                  {selectedApplication.foodSafetyLicense === "yes"
+                    ? "Chef says they have a licence"
+                    : selectedApplication.foodSafetyLicense === "no"
+                      ? "Chef does not have a licence"
+                      : "Chef is not sure"}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  The licence document is collected after Step 1 approval.
+                </p>
               </div>
 
               {selectedApplication.businessDescription && (
@@ -393,18 +408,11 @@ export function AdminKitchenApplicationsStep1Section({
                     </div>
                     {getDocStatusBadge(documentsApplication.foodSafetyLicenseStatus)}
                   </div>
-                  <div className="flex gap-2">
-                    <a
-                      href={documentsApplication.foodSafetyLicenseUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      <Button variant="outline" size="sm">
-                        <ExternalLink className="h-4 w-4 mr-1" />
-                        View
-                      </Button>
-                    </a>
-                  </div>
+                  <SecureDocumentLink
+                    url={documentsApplication.foodSafetyLicenseUrl}
+                    label="View"
+                    showIcon={false}
+                  />
                 </div>
               )}
               {documentsApplication.foodEstablishmentCertUrl && (
@@ -416,18 +424,11 @@ export function AdminKitchenApplicationsStep1Section({
                     </div>
                     {getDocStatusBadge(documentsApplication.foodEstablishmentCertStatus)}
                   </div>
-                  <div className="flex gap-2">
-                    <a
-                      href={documentsApplication.foodEstablishmentCertUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      <Button variant="outline" size="sm">
-                        <ExternalLink className="h-4 w-4 mr-1" />
-                        View
-                      </Button>
-                    </a>
-                  </div>
+                  <SecureDocumentLink
+                    url={documentsApplication.foodEstablishmentCertUrl}
+                    label="View"
+                    showIcon={false}
+                  />
                 </div>
               )}
             </div>

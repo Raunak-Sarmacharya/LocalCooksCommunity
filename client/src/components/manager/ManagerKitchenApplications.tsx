@@ -253,7 +253,7 @@ export default function ManagerKitchenApplications({
 
       {/* Chat Dialog */}
       <Dialog open={showChatDialog} onOpenChange={setShowChatDialog}>
-        <DialogContent className="max-w-4xl h-[80vh] flex flex-col p-0">
+        <DialogContent showCloseButton={false} className="max-w-4xl h-[80vh] flex flex-col p-0">
           {chatApplication && chatConversationId && (
             <ChatPanel
               conversationId={chatConversationId}

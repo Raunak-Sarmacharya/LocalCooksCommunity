@@ -17,6 +17,7 @@ import { requireChef, requireNoUnpaidPenalties } from "./middleware";
 import { requireFirebaseAuthWithUser } from "../firebase-auth-middleware";
 import { createPaymentIntent } from "../services/stripe-service";
 import { calculateKitchenBookingPrice } from "../services/pricing-service";
+import { calculateKitchenBasePrice, resolveCapturedKitchenRate } from "@shared/kitchen-booking-rate";
 import { userService } from "../domains/users/user.service";
 import { bookingService } from "../domains/bookings/booking.service";
 import { inventoryService } from "../domains/inventory/inventory.service";
@@ -2223,20 +2224,23 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
             logger.error("Error fetching payment transaction:", err);
         }
 
-        // Calculate correct kitchen price from hourly rate and duration
-        // The totalPrice in DB may include storage/equipment, so we calculate kitchen-only price
         const hourlyRate = booking.hourlyRate ? parseFloat(booking.hourlyRate.toString()) : 0;
         const durationHours = booking.durationHours ? parseFloat(booking.durationHours.toString()) : 0;
-        const calculatedKitchenPrice = Math.round(hourlyRate * durationHours);
-        
-        // Use calculated price if available, otherwise fall back to stored totalPrice
-        const kitchenOnlyPrice = calculatedKitchenPrice > 0 ? calculatedKitchenPrice : (booking.totalPrice || 0);
+        const addonSubtotal =
+            storageBookingsWithDetails.filter((item: any) => item.paymentStatus !== 'failed').reduce((sum: number, item: any) => sum + Number(item.totalPrice || 0), 0)
+            + equipmentBookingsWithDetails.filter((item: any) => item.paymentStatus !== 'failed').reduce((sum: number, item: any) => sum + Number(item.totalPrice || 0), 0);
+        const capturedKitchenRate = resolveCapturedKitchenRate({
+            appliedRateCents: hourlyRate,
+            durationHours,
+            bookingSubtotalCents: Number(booking.totalPrice || 0),
+            addonSubtotalCents: addonSubtotal,
+        });
+        const kitchenOnlyPrice = capturedKitchenRate.kitchenSubtotalCents;
 
         // Historical bookings must use their captured fee, never today's admin setting.
         const capturedSubtotal = Math.max(0,
             kitchenOnlyPrice
-            + storageBookingsWithDetails.filter((item: any) => item.paymentStatus !== 'failed').reduce((sum: number, item: any) => sum + Number(item.totalPrice || 0), 0)
-            + equipmentBookingsWithDetails.filter((item: any) => item.paymentStatus !== 'failed').reduce((sum: number, item: any) => sum + Number(item.totalPrice || 0), 0)
+            + addonSubtotal
         );
         const capturedMetadata: any = paymentTransaction?.metadata || {};
         const metadataTaxRate = capturedMetadata.taxRatePercent ?? capturedMetadata.tax_rate_percent;
@@ -2270,7 +2274,8 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
 
         res.json({
             ...booking,
-            totalPrice: kitchenOnlyPrice, // Override with calculated kitchen-only price
+            totalPrice: kitchenOnlyPrice,
+            pricingMode: capturedKitchenRate.mode,
             serviceFee: reconciledServiceFee,
             platformCommissionRate: historicalCommissionRate,
             kitchen: kitchen ? {
@@ -3350,7 +3355,7 @@ router.post("/payments/cancel", requireChef, async (req: Request, res: Response)
 // Create booking and redirect to Stripe Checkout (new flow - replaces embedded payment)
 router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, async (req: Request, res: Response) => {
     try {
-        const { kitchenId, bookingDate, startTime, endTime, selectedSlots, specialNotes, selectedStorage, selectedEquipmentIds } = req.body;
+        const { kitchenId, bookingDate, startTime, endTime, selectedSlots, pricingMode, specialNotes, selectedStorage, selectedEquipmentIds } = req.body;
         const chefId = req.neonUser!.id;
 
         if (!kitchenId || !bookingDate || !startTime || !endTime) {
@@ -3361,6 +3366,17 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
         const kitchenDetails = await kitchenService.getKitchenById(kitchenId);
         if (!kitchenDetails) {
             return res.status(404).json({ error: "Kitchen not found" });
+        }
+
+        if (pricingMode !== undefined && !['hourly', 'daily'].includes(pricingMode)) {
+            return res.status(400).json({ error: "Pricing mode must be 'hourly' or 'daily'" });
+        }
+
+        const selectedPricingMode = pricingMode || kitchenDetails.pricingModel || 'hourly';
+        const dailyRateCents = Number(kitchenDetails.dailyRate || 0);
+        const hourlyRateCents = Number(kitchenDetails.hourlyRate || 0);
+        if (selectedPricingMode === 'daily' ? dailyRateCents <= 0 : hourlyRateCents <= 0) {
+            return res.status(400).json({ error: `This kitchen does not offer ${selectedPricingMode} booking` });
         }
 
         const kitchenLocationId = kitchenDetails.locationId;
@@ -3440,7 +3456,7 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
 
         // Enforce minimum booking hours (0 = no restriction)
         const minimumBookingHours = kitchenDetails.minimumBookingHours ?? 0;
-        if (minimumBookingHours > 0 && selectedSlots && Array.isArray(selectedSlots) && selectedSlots.length > 0 && selectedSlots.length < minimumBookingHours) {
+        if (selectedPricingMode === 'hourly' && minimumBookingHours > 0 && selectedSlots && Array.isArray(selectedSlots) && selectedSlots.length > 0 && selectedSlots.length < minimumBookingHours) {
             return res.status(400).json({
                 error: `This kitchen requires a minimum of ${minimumBookingHours} hour${minimumBookingHours > 1 ? 's' : ''} per booking. You selected ${selectedSlots.length}.`
             });
@@ -3454,10 +3470,14 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
         let totalPriceCents: number;
         let effectiveDurationHours: number;
         
-        if (selectedSlots && Array.isArray(selectedSlots) && selectedSlots.length > 0) {
+        if (selectedPricingMode === 'daily') {
+            effectiveDurationHours = selectedSlots?.length || kitchenPricing.durationHours;
+            totalPriceCents = calculateKitchenBasePrice('daily', hourlyRateCents, dailyRateCents, effectiveDurationHours);
+            logger.info(`[Checkout] Daily pricing: $${(totalPriceCents / 100).toFixed(2)}`);
+        } else if (selectedSlots && Array.isArray(selectedSlots) && selectedSlots.length > 0) {
             // Staggered slots: price based on number of slots (each slot = 1 hour)
             effectiveDurationHours = Math.max(selectedSlots.length, minimumBookingHours);
-            totalPriceCents = Math.round(kitchenPricing.hourlyRateCents * effectiveDurationHours);
+            totalPriceCents = calculateKitchenBasePrice('hourly', kitchenPricing.hourlyRateCents, dailyRateCents, effectiveDurationHours);
             logger.info(`[Checkout] Staggered slots pricing: ${selectedSlots.length} slots, effective ${effectiveDurationHours} hours, $${(totalPriceCents / 100).toFixed(2)}`);
         } else {
             // Contiguous booking: use standard duration calculation
@@ -3540,8 +3560,13 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
         // Booking will be created from this metadata in the webhook
         const { createPendingCheckoutSession } = await import('../services/stripe-checkout-service');
         // Build kitchen-only price for line item breakdown
-        const kitchenOnlyPriceCents = Math.round(kitchenPricing.hourlyRateCents * effectiveDurationHours);
-        const kitchenLabel = `Kitchen Session (${effectiveDurationHours} hr${effectiveDurationHours !== 1 ? 's' : ''})`;
+        const appliedRateCents = selectedPricingMode === 'daily' ? dailyRateCents : kitchenPricing.hourlyRateCents;
+        const kitchenOnlyPriceCents = selectedPricingMode === 'daily'
+            ? calculateKitchenBasePrice('daily', kitchenPricing.hourlyRateCents, dailyRateCents, effectiveDurationHours)
+            : calculateKitchenBasePrice('hourly', kitchenPricing.hourlyRateCents, dailyRateCents, effectiveDurationHours);
+        const kitchenLabel = selectedPricingMode === 'daily'
+            ? 'Kitchen Session (full day)'
+            : `Kitchen Session (${effectiveDurationHours} hr${effectiveDurationHours !== 1 ? 's' : ''})`;
         const taxLabel = taxRatePercent > 0 ? `Tax (${taxRatePercent}%)` : 'Tax';
 
         const checkoutSession = await createPendingCheckoutSession({
@@ -3565,7 +3590,7 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
                 totalPriceCents,
                 taxCents,
                 taxRatePercent,
-                hourlyRateCents: kitchenPricing.hourlyRateCents,
+                hourlyRateCents: appliedRateCents,
                 durationHours: effectiveDurationHours,
                 platform_fee_cents: feeCalculation.platformCommissionInCents,
                 stripe_fee_cents: feeCalculation.stripeProcessingFeeInCents,

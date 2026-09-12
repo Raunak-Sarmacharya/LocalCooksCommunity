@@ -47,7 +47,7 @@ import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { kt } from "@/i18n/kitchen-ns";
 import { evaluateTypedKitchenDate, parseLocalDateInput } from "@/lib/kitchen-typed-date";
 import { fitDescriptionPreview } from "@/lib/fit-description-preview";
-import { resolvePreviewPrimaryCta } from "@/lib/kitchen-preview-cta";
+import { resolvePreviewApplicationRoute, resolvePreviewPrimaryCta } from "@/lib/kitchen-preview-cta";
 
 /** Iconify icon used across kitchen preview chrome (MDI, bundled offline). */
 function PreviewIcon({
@@ -386,6 +386,7 @@ interface PublicKitchen {
   locationSlug?: string | null;
   locationAddress?: string | null;
   hourlyRate?: number | null;
+  dailyRate?: number | null;
   pricingModel?: string | null;
   currency?: string | null;
   equipment?: {
@@ -418,22 +419,23 @@ function getKitchenImages(kitchen: PublicKitchen): string[] {
 }
 
 function formatKitchenRate(kitchen: PublicKitchen): string | null {
-  if (kitchen.hourlyRate == null || kitchen.hourlyRate <= 0) return null;
-  const amount = formatCurrency(kitchen.hourlyRate, kitchen.currency || "CAD");
-  const model = kitchen.pricingModel || "hourly";
-  if (model === "daily") {
-    return `${amount}${String(i18n.t("perDaySuffix", { ns: "kitchen", defaultValue: "/day" }))}`;
+  const rates = [];
+  if (kitchen.hourlyRate != null && kitchen.hourlyRate > 0) {
+    rates.push(`${formatCurrency(kitchen.hourlyRate, kitchen.currency || "CAD")} ${String(i18n.t("perHour", { ns: "kitchen", defaultValue: "per hour" }))}`);
   }
-  if (model === "hourly") {
-    return `${amount} ${String(i18n.t("perHour", { ns: "kitchen", defaultValue: "per hour" }))}`;
+  if (kitchen.dailyRate != null && kitchen.dailyRate > 0) {
+    rates.push(`${formatCurrency(kitchen.dailyRate, kitchen.currency || "CAD")}${String(i18n.t("perDaySuffix", { ns: "kitchen", defaultValue: "/day" }))}`);
   }
-  return amount;
+  return rates.length ? rates.join(" · ") : null;
 }
 
 /** Rate + at least one operating day — otherwise date booking UX is Coming Soon. */
 function kitchenReadyForDateBooking(kitchen: PublicKitchen | null | undefined): boolean {
   if (!kitchen) return false;
-  if (kitchen.hourlyRate == null || Number(kitchen.hourlyRate) <= 0) return false;
+  if (
+    Number(kitchen.hourlyRate || 0) <= 0 &&
+    Number(kitchen.dailyRate || 0) <= 0
+  ) return false;
   const availability = kitchen.availability;
   if (!availability?.length) return false;
   return availability.some((day) => {
@@ -1668,28 +1670,6 @@ function KitchenInventoryPair({
   );
 }
 
-function KitchenAmenitiesList({ amenities }: { amenities: string[] }) {
-  return (
-    <motion.div
-      variants={containerVariants}
-      initial="hidden"
-      animate="visible"
-      className="flex flex-wrap gap-2"
-    >
-      {amenities.map((amenity, index) => (
-        <motion.span
-          key={index}
-          variants={itemVariants}
-          className="inline-flex items-center rounded-full border border-[#F51042]/10 bg-[#FFF8F5] px-3 py-1.5 text-sm text-[#2C2C2C]"
-        >
-          <PreviewIcon icon="mdi:check" size={14} className="mr-1.5 text-[#F51042]" />
-          {amenity}
-        </motion.span>
-      ))}
-    </motion.div>
-  );
-}
-
 function KitchenFactChip({
   icon,
   label,
@@ -2168,7 +2148,8 @@ function GuestHoursCard({
       return;
     }
 
-    const status = evaluateTypedKitchenDate(dateStr, dateAvailability, todayStr);
+    const dateKey = toLocalDateString(next);
+    const status = evaluateTypedKitchenDate(dateKey, dateAvailability, todayStr);
     if (status === "pending") {
       // Month fetch finished without this day → unavailable.
       setSelectedDate(undefined);
@@ -2255,6 +2236,12 @@ function GuestHoursCard({
         sessionStorage.removeItem(`kitchen_booking_prefs_${kitchenId}`);
         notifyBookingPrefsChanged(kitchenId);
       }
+      return;
+    }
+    if (value.length < 10) {
+      setSelectedDate(undefined);
+      setDateNotAvailable(false);
+      pendingTypedDateRef.current = null;
       return;
     }
     queueTypedDate(value);
@@ -2476,24 +2463,18 @@ function GuestHoursCard({
                 {t("selectYourDate", "Choose your date")}
               </span>
               <input
-                type="date"
+                type="text"
                 value={dateInputValue}
-                min={todayStr}
-                onChange={(e) => handleDateInputChange(e.target.value)}
-                onFocus={() => setCalendarOpen(true)}
+                inputMode="numeric"
+                maxLength={10}
+                onChange={(event) => handleDateInputChange(event.target.value)}
+                placeholder={t("datePlaceholder", "DD/MM/YYYY")}
                 aria-invalid={dateNotAvailable}
                 aria-describedby={dateNotAvailable ? "preview-date-unavailable" : undefined}
-                className={cn(
-                  "mt-0.5 w-full min-w-0 border-0 bg-transparent p-0 text-sm outline-none",
-                  "text-gray-900 [color-scheme:light]",
-                  "focus-visible:ring-0"
-                )}
+                className="mt-0.5 w-full min-w-0 border-0 bg-transparent p-0 text-sm text-gray-900 outline-none focus-visible:ring-0"
               />
               {dateNotAvailable ? (
-                <span
-                  id="preview-date-unavailable"
-                  className="mt-0.5 block text-xs font-medium text-[#F51042]"
-                >
+                <span id="preview-date-unavailable" className="mt-0.5 block text-xs font-medium text-[#F51042]">
                   {t("dateNotAvailable", "Date is not available")}
                 </span>
               ) : null}
@@ -2503,16 +2484,9 @@ function GuestHoursCard({
               onClick={() => setCalendarOpen(!calendarOpen)}
               className="shrink-0 rounded-md p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
               aria-expanded={calendarOpen}
-              aria-label={
-                calendarOpen
-                  ? t("hideCalendar", "Hide calendar")
-                  : t("showCalendar", "Show calendar")
-              }
+              aria-label={calendarOpen ? t("hideCalendar", "Hide calendar") : t("showCalendar", "Show calendar")}
             >
-              <PreviewIcon
-                icon={calendarOpen ? "mdi:chevron-up" : "mdi:chevron-down"}
-                size={18}
-              />
+              <PreviewIcon icon={calendarOpen ? "mdi:chevron-up" : "mdi:chevron-down"} size={18} />
             </button>
           </div>
           {hasSelection && (
@@ -2668,16 +2642,6 @@ function KitchenDetailsSection({
 
       {isStacked ? (
         <>
-          {kitchen.amenities && kitchen.amenities.length > 0 && (
-            <div id="preview-amenities" className="bg-white rounded-xl border border-gray-200 p-3 scroll-mt-32">
-              <h3 className="text-sm font-semibold text-gray-900 mb-1.5 flex items-center gap-2">
-                <PreviewIcon icon="mdi:format-list-checks" size={16} className="text-[#F51042]" />
-                {t("amenities")}
-              </h3>
-              <KitchenAmenitiesList amenities={kitchen.amenities} />
-            </div>
-          )}
-
           {addonsLoading && (
             <div className="bg-white rounded-xl border border-gray-200 p-3 space-y-2">
               <Skeleton className="h-4 w-32" />
@@ -2785,16 +2749,6 @@ function KitchenDetailsSection({
                     </div>
                   )}
                   
-                  {kitchen.amenities && Array.isArray(kitchen.amenities) && kitchen.amenities.length > 0 && (
-                    <div>
-                      <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                        <PreviewIcon icon="mdi:format-list-checks" size={16} className="text-[#F51042]" />
-                        {t("kitchenAmenities")}
-                      </h3>
-                      <KitchenAmenitiesList amenities={kitchen.amenities} />
-                    </div>
-                  )}
-                  
                   {locationAddress && (
                     <div className="pt-4 border-t border-border/50">
                       <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
@@ -2868,7 +2822,6 @@ function previewSpyOffsetPx(args: {
 
 const PREVIEW_SPY_SECTION_IDS = [
   "preview-overview",
-  "preview-amenities",
   "preview-equipment",
   "preview-storage",
   "preview-location",
@@ -3503,8 +3456,9 @@ export default function KitchenPreviewPage() {
       openBookingPage();
       return;
     }
-    if (kitchenDisplay?.actionKind === "complete-step" && locationId) {
-      navigate(`/kitchen-requirements/${locationId}`);
+    const applicationRoute = resolvePreviewApplicationRoute(locationId, kitchenDisplay);
+    if (applicationRoute) {
+      navigate(applicationRoute);
       return;
     }
     if (alreadyApplied) {
@@ -3595,7 +3549,6 @@ export default function KitchenPreviewPage() {
     const includedCount = kitchenEquipment?.included?.length ?? 0;
     const rentalCount = kitchenEquipment?.rental?.length ?? 0;
     const storageCount = kitchenStorage?.length ?? 0;
-    const amenityCount = selectedKitchen?.amenities?.length ?? 0;
 
     // Ready-to-book chip beside sticky CTA rate — only when chef can book.
     const bookingAccessChip: BookingAccessChip | null =
@@ -3793,14 +3746,6 @@ export default function KitchenPreviewPage() {
       </div>
     );
 
-    const amenitiesDockId = selectedKitchen?.amenities?.length
-      ? "preview-amenities"
-      : !isLoadingAddons && (includedCount > 0 || rentalCount > 0)
-        ? "preview-equipment"
-        : !isLoadingAddons && storageCount > 0
-          ? "preview-storage"
-          : null;
-
     return (
       <div className={cn("font-sans space-y-3 sm:space-y-4", "pb-24 lg:pb-0")}>
         <Helmet>
@@ -3875,17 +3820,16 @@ export default function KitchenPreviewPage() {
             links={[
               { id: "preview-photos", label: t("photos", "Photos") },
               { id: "preview-overview", label: t("overviewTab", "Overview") },
-              ...(amenitiesDockId
-                ? [{ id: amenitiesDockId, label: t("amenities", "Amenities") }]
+              ...(!isLoadingAddons && (includedCount > 0 || rentalCount > 0)
+                ? [{ id: "preview-equipment", label: t("equipment", "Equipment") }]
+                : []),
+              ...(!isLoadingAddons && storageCount > 0
+                ? [{ id: "preview-storage", label: t("storage", "Storage") }]
                 : []),
               { id: "preview-location", label: t("whereItIs", "Location") },
               { id: "preview-things-to-know", label: t("thingsToKnowTitle", "Before You Book") },
             ]}
-            activeId={
-              ["preview-amenities", "preview-equipment", "preview-storage"].includes(activeSection)
-                ? amenitiesDockId ?? activeSection
-                : activeSection
-            }
+            activeId={activeSection}
             onNavigate={(id) => {
               if (id === "preview-photos") {
                 setActiveSection("preview-overview");
@@ -3967,7 +3911,7 @@ export default function KitchenPreviewPage() {
         {/* Airbnb-style: left listing content + sticky date/CTA card on the right */}
         <div className="flex flex-col lg:grid lg:grid-cols-12 gap-x-6 gap-y-3 sm:gap-x-8 sm:gap-y-3 lg:items-start">
           <div className="order-1 lg:col-span-7 xl:col-span-8 space-y-2 min-w-0">
-            {(hoursSummary || amenityCount > 0 || tourFactCard) && (
+            {(hoursSummary || tourFactCard) && (
               <div className="space-y-1.5">
                 <RateHoursFacts
                   hoursSummary={hoursSummary}
@@ -3979,17 +3923,6 @@ export default function KitchenPreviewPage() {
                     ) : undefined
                   }
                 />
-                {amenityCount > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    <KitchenFactChip
-                      icon="mdi:format-list-checks"
-                      label={t("amenitiesCount", {
-                        count: amenityCount,
-                        defaultValue: `${amenityCount} ${amenityCount === 1 ? "amenity" : "amenities"}`,
-                      })}
-                    />
-                  </div>
-                )}
               </div>
             )}
 
@@ -4052,7 +3985,7 @@ export default function KitchenPreviewPage() {
             id="preview-dates"
             className={cn(
               "order-2 lg:col-span-5 xl:col-span-4 lg:row-span-2 lg:col-start-8 xl:col-start-9 w-full min-w-0 max-w-md lg:max-w-none mx-auto lg:mx-0 self-start scroll-mt-32",
-              "sticky",
+              "lg:sticky",
               useChefChrome
                 ? "top-20"
                 : isAuthenticated

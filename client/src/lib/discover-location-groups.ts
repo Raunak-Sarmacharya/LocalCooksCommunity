@@ -14,6 +14,7 @@ export type DiscoverKitchenLike = {
   equipment?: string[];
   equipmentSummary?: KitchenGridEquipmentSummary | null;
   hourlyRate?: number | null;
+  dailyRate?: number | null;
   currency?: string;
   minimumBookingHours?: number | null;
   description?: string | null;
@@ -35,6 +36,8 @@ export type DiscoverLocationCard = {
   canAcceptBookings: boolean;
   /** Lowest positive hourly rate among kitchens, else display kitchen's rate. */
   hourlyRate: number | null;
+  /** Lowest positive daily rate among kitchens, else display kitchen's rate. */
+  dailyRate: number | null;
   /** Aggregated across all kitchens at this location. */
   equipment: string[];
   equipmentSummary: KitchenGridEquipmentSummary;
@@ -74,6 +77,11 @@ export function groupKitchensByLocation(
       .filter((rate): rate is number => rate != null && rate > 0);
     const hourlyRate =
       rates.length > 0 ? Math.min(...rates) : displayKitchen.hourlyRate ?? null;
+    const dailyRates = group
+      .map((k) => k.dailyRate)
+      .filter((rate): rate is number => rate != null && rate > 0);
+    const dailyRate =
+      dailyRates.length > 0 ? Math.min(...dailyRates) : displayKitchen.dailyRate ?? null;
 
     return {
       locationId,
@@ -85,6 +93,7 @@ export function groupKitchensByLocation(
       kitchenCount: group.length,
       canAcceptBookings: group.some((k) => k.canAcceptBookings),
       hourlyRate,
+      dailyRate,
       equipment: mergeEquipmentLists(group.map((k) => k.equipment)),
       equipmentSummary: mergeEquipmentSummaries(group.map((k) => k.equipmentSummary)),
       storageSummary: mergeStorageSummaries(group.map((k) => k.storageSummary)),

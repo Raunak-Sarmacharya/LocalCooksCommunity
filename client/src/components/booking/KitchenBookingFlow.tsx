@@ -26,6 +26,7 @@ import { Icon } from "@iconify/react";
 import { InfoChip } from "@/components/chef/info-chip";
 import { tt } from "@/i18n/common-ns";
 import { bt } from "@/i18n/booking-ns";
+import { calculateKitchenBasePrice, type KitchenBookingRateMode } from "@shared/kitchen-booking-rate";
 
 /** Inline storage cards before "Show all" — 12 fills a 2-col grid (6 rows). */
 const STORAGE_PREVIEW_COUNT = 12;
@@ -295,6 +296,7 @@ export interface KitchenBookingFlowProps {
 }
 
 type BookingStep = "calendar" | "slots" | "equipment" | "storage" | "confirm";
+type BookingRateMode = KitchenBookingRateMode;
 
 type StepMeta = { key: BookingStep; label: string; subtext: string };
 
@@ -396,10 +398,12 @@ export default function KitchenBookingFlow({
   // Pricing state
   const [kitchenPricing, setKitchenPricing] = useState<{
     hourlyRate: number | null;
+    dailyRate: number | null;
     currency: string;
     minimumBookingHours: number;
     platformCommissionRate: number;
   } | null>(null);
+  const [bookingRateMode, setBookingRateMode] = useState<BookingRateMode>("hourly");
   const [estimatedPrice, setEstimatedPrice] = useState<{
     basePrice: number;
     tax: number;
@@ -624,9 +628,17 @@ export default function KitchenBookingFlow({
     }
 
     const durationHours = Math.max(selectedSlots.length, kitchenPricing.minimumBookingHours ?? 0);
+    const selectedRate = bookingRateMode === "daily"
+      ? kitchenPricing.dailyRate
+      : kitchenPricing.hourlyRate;
 
-    if (kitchenPricing.hourlyRate && kitchenPricing.hourlyRate > 0) {
-      const basePrice = kitchenPricing.hourlyRate * durationHours;
+    if (selectedRate && selectedRate > 0) {
+      const basePrice = calculateKitchenBasePrice(
+        bookingRateMode,
+        kitchenPricing.hourlyRate || 0,
+        kitchenPricing.dailyRate || 0,
+        durationHours,
+      );
       const taxRatePercent = selectedKitchen?.taxRatePercent || 0;
       const taxAmount = Math.round((basePrice * taxRatePercent) / 100);
       const totalPrice = basePrice + taxAmount;
@@ -635,7 +647,12 @@ export default function KitchenBookingFlow({
     } else {
       setEstimatedPrice({ basePrice: 0, tax: 0, totalPrice: 0, durationHours: 0 });
     }
-  }, [selectedSlots, selectedKitchen, kitchenPricing]);
+  }, [selectedSlots, selectedKitchen, kitchenPricing, bookingRateMode]);
+
+  useEffect(() => {
+    if (bookingRateMode !== "daily" || isLoadingSlots) return;
+    setSelectedSlots(allSlots.filter((slot) => !slot.isFullyBooked).map((slot) => slot.time).sort());
+  }, [allSlots, bookingRateMode, isLoadingSlots]);
 
   const loadAvailableSlots = async (kitchenId: number, date: string) => {
     setIsLoadingSlots(true);
@@ -848,17 +865,29 @@ export default function KitchenBookingFlow({
       if (response.ok) {
         const pricing = await response.json();
         let hourlyRateCents = pricing.hourlyRate;
+        let dailyRateCents = pricing.dailyRate;
         if (typeof hourlyRateCents === 'string') {
           hourlyRateCents = parseFloat(hourlyRateCents);
         }
+        if (typeof dailyRateCents === 'string') {
+          dailyRateCents = parseFloat(dailyRateCents);
+        }
+        const defaultRateMode: BookingRateMode =
+          pricing.pricingModel === "daily" && dailyRateCents > 0
+            ? "daily"
+            : hourlyRateCents > 0
+              ? "hourly"
+              : "daily";
+        setBookingRateMode(defaultRateMode);
         setKitchenPricing({
           hourlyRate: hourlyRateCents,
+          dailyRate: dailyRateCents,
           currency: pricing.currency || 'CAD',
           minimumBookingHours: pricing.minimumBookingHours ?? 0,
           platformCommissionRate: Math.max(0, Number(pricing.platformCommissionRate) || 0),
         });
       } else {
-        setKitchenPricing({ hourlyRate: null, currency: 'CAD', minimumBookingHours: 0, platformCommissionRate: 0 });
+        setKitchenPricing({ hourlyRate: null, dailyRate: null, currency: 'CAD', minimumBookingHours: 0, platformCommissionRate: 0 });
       }
 
       // Fetch addons
@@ -886,7 +915,7 @@ export default function KitchenBookingFlow({
       }
     } catch (error) {
       logger.error('Error fetching kitchen data:', error);
-      setKitchenPricing({ hourlyRate: null, currency: 'CAD', minimumBookingHours: 0, platformCommissionRate: 0 });
+      setKitchenPricing({ hourlyRate: null, dailyRate: null, currency: 'CAD', minimumBookingHours: 0, platformCommissionRate: 0 });
       setHideDateStep(false);
       setCurrentStep("calendar");
     } finally {
@@ -1147,6 +1176,7 @@ export default function KitchenBookingFlow({
               endTime: `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`
             };
           }),
+          pricingMode: bookingRateMode,
           specialNotes: notes,
           selectedStorage: selectedStorage.length > 0 ? selectedStorage.map((s: any) => ({
             storageListingId: s.storageListingId,
@@ -1381,6 +1411,8 @@ export default function KitchenBookingFlow({
 
     // Step: Time Slots
     if (currentStep === 'slots' && selectedKitchen && selectedDate) {
+      const hasHourlyRate = Number(kitchenPricing?.hourlyRate || 0) > 0;
+      const hasDailyRate = Number(kitchenPricing?.dailyRate || 0) > 0;
       return (
         <div className="flex h-full min-h-[16rem] flex-col gap-4">
           <div className="flex shrink-0 items-start justify-between gap-3">
@@ -1408,6 +1440,50 @@ export default function KitchenBookingFlow({
               {t("sheetChangeDate", "Change date")}
             </button>
           </div>
+
+          {hasHourlyRate && hasDailyRate ? (
+            <div className="grid grid-cols-2 gap-2" role="group" aria-label={t("sheetRateTypeLabel", "Booking rate")}>
+              {(["hourly", "daily"] as const).map((mode) => {
+                const selected = bookingRateMode === mode;
+                const rate = mode === "hourly" ? kitchenPricing?.hourlyRate : kitchenPricing?.dailyRate;
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => {
+                      setBookingRateMode(mode);
+                      setSelectedSlots(mode === "daily"
+                        ? allSlots.filter((slot) => !slot.isFullyBooked).map((slot) => slot.time).sort()
+                        : []);
+                    }}
+                    className={cn(
+                      "rounded-xl border px-3 py-2.5 text-left transition-colors",
+                      selected
+                        ? "border-[#F51042] bg-[#FFF3F5] text-[#F51042]"
+                        : "border-gray-200 bg-white text-gray-700 hover:border-[#F51042]/40"
+                    )}
+                  >
+                    <span className="block text-sm font-semibold">
+                      {mode === "hourly" ? t("sheetHourlyRate", "Hourly") : t("sheetDailyRate", "Full day")}
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      {formatCurrency(rate || 0)}{mode === "hourly" ? t("sheetPerHour", "/hour") : t("sheetPerDay", "/day")}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+
+          {bookingRateMode === "daily" ? (
+            <div className="rounded-xl border border-[#F51042]/20 bg-[#FFF8F9] px-3 py-3">
+              <p className="text-sm font-semibold text-gray-900">{t("sheetFullDaySelected", "Full-day booking")}</p>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                {t("sheetFullDaySelectedDesc", "All available operating hours for this date are included.")}
+              </p>
+            </div>
+          ) : null}
 
           {isLoadingSlots ? (
             <div
@@ -1437,7 +1513,7 @@ export default function KitchenBookingFlow({
                   </p>
                 </div>
               )}
-              <div className="grid flex-1 content-center grid-cols-2 gap-2.5 sm:grid-cols-3">
+              <div className={cn("grid flex-1 content-center grid-cols-2 gap-2.5 sm:grid-cols-3", bookingRateMode === "daily" && "pointer-events-none opacity-70")}>
                 {allSlots.map((slot) => {
                   const isSelected = selectedSlots.includes(slot.time);
                   const isFullyBooked = slot.isFullyBooked;
@@ -1874,9 +1950,10 @@ export default function KitchenBookingFlow({
             <Icon icon="mdi:receipt-text-outline" className="h-4 w-4 text-[#F51042]" aria-hidden />
             {t("sheetOrderSummaryLabel", "Booking Summary")}
           </span>
-          {selectedKitchen && kitchenPricing?.hourlyRate != null ? (
+          {selectedKitchen && (bookingRateMode === "daily" ? kitchenPricing?.dailyRate : kitchenPricing?.hourlyRate) != null ? (
             <InfoChip variant="count" icon={<Icon icon="mdi:cash-clock" className="!text-black" />}>
-              {formatCurrency(kitchenPricing.hourlyRate)}{t("sheetPerHour", "/hour")}
+              {formatCurrency((bookingRateMode === "daily" ? kitchenPricing?.dailyRate : kitchenPricing?.hourlyRate) || 0)}
+              {bookingRateMode === "daily" ? t("sheetPerDay", "/day") : t("sheetPerHour", "/hour")}
             </InfoChip>
           ) : null}
         </div>
@@ -1921,13 +1998,15 @@ export default function KitchenBookingFlow({
                 )}
               </div>
             )}
-            {selectedSlots.length > 0 && kitchenPricing?.hourlyRate && estimatedPrice && (
+            {selectedSlots.length > 0 && estimatedPrice && (
               <div className="flex items-baseline justify-between gap-3 text-sm">
                 <span className="text-muted-foreground">
-                  {t("sheetKitchenTimeItem", {
-                    count: estimatedPrice.durationHours,
-                    defaultValue: `${estimatedPrice.durationHours} hour${estimatedPrice.durationHours > 1 ? "s" : ""} kitchen time`,
-                  })}
+                  {bookingRateMode === "daily"
+                    ? t("sheetFullDayKitchenItem", "Full-day kitchen booking")
+                    : t("sheetKitchenTimeItem", {
+                        count: estimatedPrice.durationHours,
+                        defaultValue: `${estimatedPrice.durationHours} hour${estimatedPrice.durationHours > 1 ? "s" : ""} kitchen time`,
+                      })}
                 </span>
                 <span className="font-medium shrink-0 tabular-nums">{formatCurrency(estimatedPrice.basePrice)}</span>
               </div>
