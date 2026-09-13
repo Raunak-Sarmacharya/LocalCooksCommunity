@@ -3510,6 +3510,18 @@ router.put(
           .json({ error: "Daily rate must be a positive number or null" });
       }
 
+      const effectiveHourlyRate = hourlyRate !== undefined
+        ? hourlyRate
+        : kitchen.hourlyRate;
+      const effectiveDailyRate = dailyRate !== undefined
+        ? dailyRate
+        : kitchen.dailyRate;
+      if (Number(effectiveHourlyRate || 0) <= 0 && Number(effectiveDailyRate || 0) <= 0) {
+        return res.status(400).json({
+          error: "At least one hourly or daily rate must be greater than zero",
+        });
+      }
+
       if (currency !== undefined && typeof currency !== "string") {
         return res.status(400).json({ error: "Currency must be a string" });
       }

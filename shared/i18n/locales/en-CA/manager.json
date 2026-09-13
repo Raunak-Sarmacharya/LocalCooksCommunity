@@ -2299,6 +2299,7 @@
   "noShowGraceMinutesAfterLabel": "No-show grace (minutes after start)",
   "defaultValue": "(default: {value})",
   "amountChargedPerHour": "Amount charged per hour",
+  "atLeastOneKitchenRateRequired": "Enter an hourly rate or a daily rate greater than zero.",
   "amountChargedPerDay": "Amount charged per day",
   "amountChargedPerWeek": "Amount charged per week",
   "refundAmountWithCurrency": "Refund amount ({currency})",

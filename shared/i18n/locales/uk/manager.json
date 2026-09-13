@@ -2299,6 +2299,7 @@
   "noShowGraceMinutesAfterLabel": "Пільговий час неявки (хвилин після початку)",
   "defaultValue": "(за замовчуванням: {value})",
   "amountChargedPerHour": "Сума за годину",
+  "atLeastOneKitchenRateRequired": "Введіть погодинну або денну ставку, більшу за нуль.",
   "amountChargedPerDay": "Сума за день",
   "amountChargedPerWeek": "Сума за тиждень",
   "refundAmountWithCurrency": "Сума відшкодування ({currency})",

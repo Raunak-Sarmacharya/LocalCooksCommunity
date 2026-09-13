@@ -2299,6 +2299,7 @@
   "noShowGraceMinutesAfterLabel": "Délai de grâce d'absence (minutes après le début)",
   "defaultValue": "(défaut : {value})",
   "amountChargedPerHour": "Montant facturé par heure",
+  "atLeastOneKitchenRateRequired": "Saisissez un tarif horaire ou journalier supérieur à zéro.",
   "amountChargedPerDay": "Montant facturé par jour",
   "amountChargedPerWeek": "Montant facturé par semaine",
   "refundAmountWithCurrency": "Montant du remboursement ({currency})",
