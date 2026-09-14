@@ -651,7 +651,9 @@ export default function KitchenBookingFlow({
 
   useEffect(() => {
     if (bookingRateMode !== "daily" || isLoadingSlots) return;
-    setSelectedSlots(allSlots.filter((slot) => !slot.isFullyBooked).map((slot) => slot.time).sort());
+    setSelectedSlots(allSlots.length > 0 && allSlots.every((slot) => !slot.isFullyBooked)
+      ? allSlots.map((slot) => slot.time).sort()
+      : []);
   }, [allSlots, bookingRateMode, isLoadingSlots]);
 
   const loadAvailableSlots = async (kitchenId: number, date: string) => {
@@ -1413,6 +1415,7 @@ export default function KitchenBookingFlow({
     if (currentStep === 'slots' && selectedKitchen && selectedDate) {
       const hasHourlyRate = Number(kitchenPricing?.hourlyRate || 0) > 0;
       const hasDailyRate = Number(kitchenPricing?.dailyRate || 0) > 0;
+      const isFullDayAvailable = allSlots.length > 0 && allSlots.every((slot) => !slot.isFullyBooked);
       return (
         <div className="flex h-full min-h-[16rem] flex-col gap-4">
           <div className="flex shrink-0 items-start justify-between gap-3">
@@ -1446,22 +1449,25 @@ export default function KitchenBookingFlow({
               {(["hourly", "daily"] as const).map((mode) => {
                 const selected = bookingRateMode === mode;
                 const rate = mode === "hourly" ? kitchenPricing?.hourlyRate : kitchenPricing?.dailyRate;
+                const disabled = mode === "daily" && !isFullDayAvailable;
                 return (
                   <button
                     key={mode}
                     type="button"
                     aria-pressed={selected}
+                    disabled={disabled}
                     onClick={() => {
                       setBookingRateMode(mode);
                       setSelectedSlots(mode === "daily"
-                        ? allSlots.filter((slot) => !slot.isFullyBooked).map((slot) => slot.time).sort()
+                        ? allSlots.map((slot) => slot.time).sort()
                         : []);
                     }}
                     className={cn(
                       "rounded-xl border px-3 py-2.5 text-left transition-colors",
                       selected
                         ? "border-[#F51042] bg-[#FFF3F5] text-[#F51042]"
-                        : "border-gray-200 bg-white text-gray-700 hover:border-[#F51042]/40"
+                        : "border-gray-200 bg-white text-gray-700 hover:border-[#F51042]/40",
+                      disabled && "cursor-not-allowed opacity-50"
                     )}
                   >
                     <span className="block text-sm font-semibold">
@@ -2163,7 +2169,7 @@ export default function KitchenBookingFlow({
   };
 
   const continueDisabled =
-    (currentStep === "calendar" && !selectedDate) ||
+    (currentStep === "calendar" && (!selectedDate || !isDayAvailable(selectedDate))) ||
     (currentStep === "slots" && selectedSlots.length === 0) ||
     ((currentStep === "equipment" || currentStep === "storage") && isLoadingAddons);
 

@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Kitchen Manager Navigation",
+    "quality_profile": "showcase",
+    "viewBox": [1180, 760]
+  },
+  "components": [
+    { "id": "profile", "type": "frontend", "label": "Profile", "sublabel": "Parent page", "pos": [70, 120], "size": [180, 72] },
+    { "id": "location", "type": "frontend", "label": "Location Settings", "sublabel": "Profile tab", "pos": [70, 280], "size": [180, 72] },
+    { "id": "kitchens", "type": "frontend", "label": "My Kitchens", "sublabel": "Parent page", "pos": [300, 120], "size": [180, 72] },
+    { "id": "bookingRules", "type": "frontend", "label": "Booking Rules", "sublabel": "Child page", "pos": [300, 280], "size": [180, 72] },
+    { "id": "chefApplication", "type": "frontend", "label": "Chef Application", "sublabel": "Parent page", "pos": [530, 120], "size": [180, 72] },
+    { "id": "requirements", "type": "frontend", "label": "Requirements", "sublabel": "Child page", "pos": [530, 280], "size": [180, 72] },
+    { "id": "kitchenLicense", "type": "frontend", "label": "Kitchen License", "sublabel": "Standalone page", "pos": [750, 280], "size": [180, 72] },
+    { "id": "messages", "type": "frontend", "label": "Messages", "sublabel": "Parent page", "pos": [970, 120], "size": [180, 72] },
+    { "id": "facilityDocuments", "type": "frontend", "label": "Facility Documents", "sublabel": "Child page", "pos": [970, 280], "size": [180, 72] }
+  ],
+  "connections": [
+    { "id": "profileLocation", "from": "profile", "to": "location" },
+    { "id": "kitchensBookingRules", "from": "kitchens", "to": "bookingRules" },
+    { "id": "applicationRequirements", "from": "chefApplication", "to": "requirements" },
+    { "id": "messagesDocuments", "from": "messages", "to": "facilityDocuments" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Removed", "items": ["Settings navigation entry", "Duplicate location fields in Personal Info"] },
+    { "dot": "emerald", "title": "Standalone", "items": ["Kitchen License remains a top-level destination"] }
+  ]
+}

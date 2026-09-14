@@ -201,6 +201,14 @@ const TIDIO_CSP = {
   mediaSrc: ["https://code.tidio.co", "https://widget-v4.tidiochat.com"],
 } as const;
 
+// Google reCAPTCHA CSP origins required by Firebase Phone Authentication.
+// https://developers.google.com/recaptcha/docs/faq#im_using_content_security_policy_csp_on_my_website_how_can_i_configure_it_to_work_with_recaptcha
+const RECAPTCHA_CSP = {
+  scriptSrc: ["https://www.google.com/recaptcha/"],
+  connectSrc: ["https://www.google.com/recaptcha/"],
+  frameSrc: ["https://www.google.com/recaptcha/", "https://recaptcha.google.com/recaptcha/"],
+} as const;
+
 export function registerSecurityMiddleware(app: Express): void {
   const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
 
@@ -219,6 +227,7 @@ export function registerSecurityMiddleware(app: Express): void {
           "https://apis.google.com",
           "https://accounts.google.com",
           "https://www.gstatic.com",
+          ...RECAPTCHA_CSP.scriptSrc,
           ...(isProduction ? [] : ["http://localhost:*"]),
         ],
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
@@ -231,6 +240,7 @@ export function registerSecurityMiddleware(app: Express): void {
           "https://*.firebaseio.com",
           "https://*.googleapis.com",
           "https://*.cloudfunctions.net",
+          ...RECAPTCHA_CSP.connectSrc,
           ...TIDIO_CSP.connectSrc,
           "https://files.localcooks.ca",
           "https://*.ingest.us.sentry.io",
@@ -244,7 +254,7 @@ export function registerSecurityMiddleware(app: Express): void {
           "https://accounts.google.com",
           "https://*.firebaseapp.com",
           "https://maps.google.com",
-          "https://www.google.com",
+          ...RECAPTCHA_CSP.frameSrc,
         ],
         mediaSrc: [
           "'self'",
@@ -330,6 +340,7 @@ export function registerSecurityMiddleware(app: Express): void {
   app.use('/api/firebase-register-user', authLimiter);
   app.use('/api/firebase-sync-user', authLimiter);
   app.use('/api/firebase/send-magic-link-email', authLimiter);
+  app.use('/api/firebase/auth-method-hints', authLimiter);
   app.use('/api/firebase/send-verification-email', authLimiter);
   app.use('/api/firebase/forgot-password', authLimiter);
   app.use('/api/manager/forgot-password', authLimiter);

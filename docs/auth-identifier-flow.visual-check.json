@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "visual-check",
+  "evidenceKind": "automated-browser",
+  "status": "fail",
+  "visualReview": "pending",
+  "artifact": {
+    "path": "/Users/satyajitdebnath/LocalCooksCommunity/docs/auth-identifier-flow.html",
+    "sha256": "9c4d7517c8d9f00cfd01da701f99c7637021d94edb79738966a84c5c368cb169",
+    "bytes": 815385
+  },
+  "state": {
+    "detail": "read",
+    "motion": "still"
+  },
+  "chrome": {
+    "status": "available",
+    "executable": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+  },
+  "diagnostics": [
+    {
+      "code": "viewer/visual-check-runtime",
+      "severity": "error",
+      "message": "visual-check could not complete its Chrome inspection.",
+      "subject": {
+        "artifact": "/Users/satyajitdebnath/LocalCooksCommunity/docs/auth-identifier-flow.html"
+      },
+      "evidence": {
+        "reason": "Chrome DevTools process exit failed: Chrome closed with signal SIGTRAP\nChrome process: signal SIGTRAP.\nChrome stderr:\nsandbox initialization failed: Operation not permitted\nFailed to initialize sandbox.sandbox initialization failed: Operation not permitted\nFailed to initialize sandbox.[0914/224803.488148:ERROR:third_party/crashpad/crashpad/util/file/directory_reader_posix.cc:43] opendir /Users/satyajitdebnath/Library/Application Support/Google/Chrome/Crashpad/attachments/387aeff6-5284-416d-8b51-450e1f54784a: No such file or directory (2)\nFailed to initialize sandbox.Failed to initialize sandbox.Failed to initialize sandbox.Failed to initialize sandbox.Trying to load the allocator multiple times. This is *not* supported.\n[19859:1001132:0914/224804.066272:ERROR:content/browser/network_service_instance_impl.cc:655] Network service crashed or was terminated, restarting service.\n[19859:1001132:0914/224804.067193:ERROR:content/browser/gpu/gpu_process_host.cc:1054] GPU process exited unexpectedly: exit_code=6\nFailed to initialize sandbox.Failed to initialize sandbox.sandbox initialization failed: Operation not permitted\nFailed to initialize sandbox.Failed to initialize sandbox.sandbox initialization failed: Operation not permitted\nFailed to initialize sandbox.[19859:1001132:0914/224804.148267:ERROR:content/browser/network_service_instance_impl.cc:655] Network service crashed or was terminated, restarting service.\nFailed to initialize sandbox.sandbox initialization failed: Operation not permitted\nFailed to initialize sandbox.[19859:1001132:0914/224804.161066:ERROR:content/browser/gpu/gpu_process_host.cc:1054] GPU process exited unexpectedly: exit_code=6\nsandbox initialization failed: Operation not permitted\nFailed to initialize sandbox.[19859:1001132:0914/224804.186161:ERROR:content/browser/network_service_instance_impl.cc:655] Network service crashed or was terminated, restarting service.\nFailed to initialize sandbox.[19859:1001132:0914/224804.196947:ERROR:content/browser/gpu/gpu_process_host.cc:1054] GPU process exited unexpectedly: exit_code=6\n[19859:1001132:0914/224804.197724:FATAL:content/browser/gpu/gpu_data_manager_impl_private.cc:417] GPU process isn't usable. Goodbye.\nsandbox initialization failed: Operation not permitted\nFailed to initialize sandbox.Failed to initialize sandbox."
+      },
+      "supportedFixes": [
+        "resolve the reported Chrome inspection error, then rerun visual-check"
+      ]
+    }
+  ],
+  "containment": {
+    "status": "fail",
+    "viewports": []
+  },
+  "readability": {
+    "status": "fail",
+    "minimumProjectedNodeTextPx": 6,
+    "viewports": []
+  },
+  "viewerChrome": {
+    "status": "fail",
+    "viewports": []
+  },
+  "captures": {
+    "status": "fail",
+    "screenshots": [],
+    "contactSheet": null
+  },
+  "sidecars": {
+    "receipt": "auth-identifier-flow.visual-check.json",
+    "contactSheet": "auth-identifier-flow.visual-check.html"
+  },
+  "error": "Chrome DevTools process exit failed: Chrome closed with signal SIGTRAP\nChrome process: signal SIGTRAP.\nChrome stderr:\nsandbox initialization failed: Operation not permitted\nFailed to initialize sandbox.sandbox initialization failed: Operation not permitted\nFailed to initialize sandbox.[0914/224803.488148:ERROR:third_party/crashpad/crashpad/util/file/directory_reader_posix.cc:43] opendir /Users/satyajitdebnath/Library/Application Support/Google/Chrome/Crashpad/attachments/387aeff6-5284-416d-8b51-450e1f54784a: No such file or directory (2)\nFailed to initialize sandbox.Failed to initialize sandbox.Failed to initialize sandbox.Failed to initialize sandbox.Trying to load the allocator multiple times. This is *not* supported.\n[19859:1001132:0914/224804.066272:ERROR:content/browser/network_service_instance_impl.cc:655] Network service crashed or was terminated, restarting service.\n[19859:1001132:0914/224804.067193:ERROR:content/browser/gpu/gpu_process_host.cc:1054] GPU process exited unexpectedly: exit_code=6\nFailed to initialize sandbox.Failed to initialize sandbox.sandbox initialization failed: Operation not permitted\nFailed to initialize sandbox.Failed to initialize sandbox.sandbox initialization failed: Operation not permitted\nFailed to initialize sandbox.[19859:1001132:0914/224804.148267:ERROR:content/browser/network_service_instance_impl.cc:655] Network service crashed or was terminated, restarting service.\nFailed to initialize sandbox.sandbox initialization failed: Operation not permitted\nFailed to initialize sandbox.[19859:1001132:0914/224804.161066:ERROR:content/browser/gpu/gpu_process_host.cc:1054] GPU process exited unexpectedly: exit_code=6\nsandbox initialization failed: Operation not permitted\nFailed to initialize sandbox.[19859:1001132:0914/224804.186161:ERROR:content/browser/network_service_instance_impl.cc:655] Network service crashed or was terminated, restarting service.\nFailed to initialize sandbox.[19859:1001132:0914/224804.196947:ERROR:content/browser/gpu/gpu_process_host.cc:1054] GPU process exited unexpectedly: exit_code=6\n[19859:1001132:0914/224804.197724:FATAL:content/browser/gpu/gpu_data_manager_impl_private.cc:417] GPU process isn't usable. Goodbye.\nsandbox initialization failed: Operation not permitted\nFailed to initialize sandbox.Failed to initialize sandbox."
+}

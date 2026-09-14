@@ -50,15 +50,9 @@ export function RequirementsStepTwo({
   return (
     <div className="space-y-6">
       {/* Step Explanation Card */}
-      <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-emerald-50 via-teal-50 to-emerald-50 dark:from-emerald-950/40 dark:via-teal-950/30 dark:to-emerald-950/40 border border-emerald-200/60 dark:border-emerald-800/40 p-5">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-200/30 dark:bg-emerald-700/20 rounded-full -translate-y-1/2 translate-x-1/2" />
-        <div className="absolute bottom-0 left-0 w-24 h-24 bg-teal-200/30 dark:bg-teal-700/20 rounded-full translate-y-1/2 -translate-x-1/2" />
-        
-        <div className="relative">
+      <div className="rounded-xl border bg-card p-5">
+        <div>
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 h-10 w-10 rounded-lg bg-emerald-600 dark:bg-emerald-500 flex items-center justify-center text-white shadow-lg shadow-emerald-500/30">
-              <FileCheck className="h-5 w-5" />
-            </div>
             <div className="flex-1">
               <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{mt("kitchenSpecificRequirements")}</h3>
               <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
@@ -168,9 +162,8 @@ export function RequirementsStepTwo({
 
       {/* Custom Fields Section */}
       <div className="rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
-        <div className="px-5 py-4 border-b border-slate-200/80 dark:border-slate-700/80 bg-gradient-to-r from-emerald-50/50 to-teal-50/50 dark:from-emerald-950/30 dark:to-teal-950/30">
-          <div className="flex items-center gap-2">
-            <ClipboardList className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+        <div className="border-b border-slate-200/80 bg-slate-50/50 px-5 py-4 dark:border-slate-700/80 dark:bg-slate-800/50">
+          <div>
             <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{mt("customQuestionsForKitchenApplications")}</h4>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{mt("addAdditionalDocumentationOrInformationRequirements")}</p>

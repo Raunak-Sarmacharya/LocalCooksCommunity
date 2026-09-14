@@ -22,6 +22,21 @@ import { eq, and, ne } from "drizzle-orm";
 import { sendEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateBookingCancellationNotificationEmail } from "../../email";
 import { kitchenService } from "../kitchens/kitchen.service";
 
+type BookingInterval = { startTime: string; endTime: string };
+
+export function hasBookingConflict(
+    existingBookings: BookingInterval[],
+    requestedIntervals: BookingInterval[],
+    fullDay = false
+): boolean {
+    if (fullDay) return existingBookings.length > 0;
+    return requestedIntervals.some((requested) =>
+        existingBookings.some((existing) =>
+            existing.startTime < requested.endTime && existing.endTime > requested.startTime
+        )
+    );
+}
+
 export class BookingService {
     private repo: BookingRepository;
 
@@ -432,7 +447,16 @@ export class BookingService {
 
     // ===== AVAILABILITY LOGIC =====
 
-    async validateBookingAvailability(kitchenId: number, bookingDate: Date, startTime: string, endTime: string): Promise<{ valid: boolean; error?: string }> {
+    async validateBookingAvailability(
+        kitchenId: number,
+        bookingDate: Date,
+        startTime: string,
+        endTime: string,
+        options: {
+            selectedSlots?: Array<{ startTime: string; endTime: string }>;
+            fullDay?: boolean;
+        } = {}
+    ): Promise<{ valid: boolean; error?: string }> {
         try {
             // Check if start time is before end time
             if (startTime >= endTime) {
@@ -486,6 +510,25 @@ export class BookingService {
 
             if (startHour < availabilityStartHour || startHour >= availabilityEndHour) {
                 return { valid: false, error: "Start time must be within manager-set available slot times" };
+            }
+
+            const dateStr = bookingDate.toISOString().split('T')[0];
+            const dayBookings = (await this.getBookingsByKitchen(kitchenId)).filter((booking) =>
+                booking.status !== 'cancelled' &&
+                new Date(booking.bookingDate).toISOString().split('T')[0] === dateStr
+            );
+
+            // A full-day booking requires the entire day to be free. Hourly bookings only
+            // conflict with the discrete slots submitted by the client.
+            if (options.fullDay && dayBookings.length > 0) {
+                return { valid: false, error: "Full-day booking is unavailable because this date already has a booking" };
+            }
+
+            const requestedIntervals = options.selectedSlots?.length
+                ? options.selectedSlots
+                : [{ startTime, endTime }];
+            if (hasBookingConflict(dayBookings, requestedIntervals, options.fullDay)) {
+                return { valid: false, error: "One or more selected time slots are no longer available" };
             }
 
             return { valid: true };

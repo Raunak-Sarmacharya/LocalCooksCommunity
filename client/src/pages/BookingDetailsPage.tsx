@@ -802,10 +802,11 @@ export default function BookingDetailsPage() {
     managerRevenue: booking.paymentTransaction?.managerRevenue,
     serviceFee: booking.paymentTransaction?.serviceFee || booking.serviceFee || 0,
     taxRatePercent: booking.kitchen?.taxRatePercent ? Number(booking.kitchen.taxRatePercent) : undefined,
-    // Gross pool (manager + service fee); sheet subtracts alreadyRefunded.
-    refundableAmount:
-      (booking.paymentTransaction?.managerRevenue || 0) +
-      (booking.paymentTransaction?.serviceFee || booking.serviceFee || 0),
+    managerRemainingBalance: Math.max(
+      0,
+      (booking.paymentTransaction?.managerRevenue || 0) -
+        (booking.paymentTransaction?.refundAmount || 0),
+    ),
     refundAmount: booking.paymentTransaction?.refundAmount || 0,
     cancellationRequested: booking.status === 'cancellation_requested',
     storageItems: booking.storageBookings?.map((s) => ({
@@ -841,14 +842,22 @@ export default function BookingDetailsPage() {
             method: 'PUT', headers, credentials: "include",
             body: JSON.stringify({
               status: 'cancelled',
-              refundOnCancel: params.action === "cancel-booking-refund",
               storageActions: params.storageActions,
               equipmentActions: params.equipmentActions,
             }),
           });
           if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to cancel'); }
-          const data = await res.json().catch(() => ({}));
-          toast({ title: t("bdBookingCancelledToast"), description: data?.refund ? t("bdRefundProcessedDesc", { amount: `$${(data.refund.amount / 100).toFixed(2)}` }) : t("bdBookingCancelledDesc") });
+          if (params.action === "cancel-booking-refund" && bookingForManagement?.transactionId) {
+            const requestRes = await fetch(`/api/manager/revenue/transactions/${bookingForManagement.transactionId}/full-refund-request`, {
+              method: 'POST', headers, credentials: 'include',
+              body: JSON.stringify({ reason: 'Full refund requested after manager cancellation' }),
+            });
+            if (!requestRes.ok) { const d = await requestRes.json().catch(() => ({})); throw new Error(d.error || 'Booking cancelled, but the full refund request failed'); }
+          }
+          toast({
+            title: t("bdBookingCancelledToast"),
+            description: params.action === "cancel-booking-refund" ? 'Full refund sent to admin for approval.' : t("bdBookingCancelledDesc"),
+          });
           // Reload to get fresh payment status, refund amounts, and item statuses from server
           window.location.reload();
           break;
@@ -917,6 +926,20 @@ export default function BookingDetailsPage() {
             }),
           });
           window.location.reload();
+          break;
+        }
+        case "request-full-refund": {
+          if (!bookingForManagement?.transactionId) throw new Error(t("bdRefundPanelInfo"));
+          const requestRes = await fetch(`/api/manager/revenue/transactions/${bookingForManagement.transactionId}/full-refund-request`, {
+            method: 'POST', headers, credentials: 'include',
+            body: JSON.stringify({ reason: 'Full refund requested by manager' }),
+          });
+          if (!requestRes.ok) {
+            const d = await requestRes.json().catch(() => ({}));
+            throw new Error(d.error || 'Failed to request full refund');
+          }
+          toast({ title: 'Full refund requested', description: 'An admin will review and control the final refund.' });
+          setManagementSheetOpen(false);
           break;
         }
         case "accept-cancellation": {
@@ -1045,6 +1068,7 @@ export default function BookingDetailsPage() {
           <div className="flex items-center gap-2 flex-wrap">
             {getStatusBadge(booking.status)}
             {(booking.status === 'confirmed' || booking.status === 'completed') &&
+              (booking.checkinEnabled !== false || booking.checkoutEnabled !== false) &&
               getCheckinStatusBadge(booking.checkinStatus)}
             {getPaymentStatusBadge(booking.paymentStatus)}
             {isManagerView && booking.status === 'pending' && (
@@ -1122,39 +1146,41 @@ export default function BookingDetailsPage() {
           </section>
 
           {/* ── Check-In / Check-Out CTA (Chef View — confirmed bookings) ── */}
-          {!isManagerView && booking.status === 'confirmed' && (
-            (!booking.checkinStatus || booking.checkinStatus === 'not_checked_in' || booking.checkinStatus === 'checked_in') && (
-            <section className="rounded-lg border p-4">
-              <div className="flex items-start gap-3">
-                <LogIn className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-sm font-semibold">
-                    {!booking.checkinStatus || booking.checkinStatus === 'not_checked_in'
-                      ? t("bdCheckInRequired")
-                      : t("bdReadyToCheckOut")}
-                  </h3>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {!booking.checkinStatus || booking.checkinStatus === 'not_checked_in'
-                      ? t("bdCheckInBody")
-                      : t("bdCheckOutBody")}
-                  </p>
-                  <Button
-                    size="sm"
-                    className="mt-3"
-                    onClick={() => setCheckinTrackerOpen(true)}
-                  >
-                    {!booking.checkinStatus || booking.checkinStatus === 'not_checked_in'
-                      ? (<><LogIn className="h-3.5 w-3.5 mr-1.5" />{t("bdCheckInNow")}</>)
-                      : (<><LogOut className="h-3.5 w-3.5 mr-1.5" />{t("bdCheckOutNow")}</>)}
-                  </Button>
+          {!isManagerView && booking.status === 'confirmed' && (() => {
+            const showCheckin = booking.checkinEnabled !== false && (!booking.checkinStatus || booking.checkinStatus === 'not_checked_in');
+            const showCheckout = booking.checkoutEnabled !== false && booking.checkinStatus === 'checked_in';
+            
+            if (!showCheckin && !showCheckout) return null;
+            
+            return (
+              <section className="rounded-lg border p-4">
+                <div className="flex items-start gap-3">
+                  <LogIn className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-sm font-semibold">
+                      {showCheckin ? t("bdCheckInRequired") : t("bdReadyToCheckOut")}
+                    </h3>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {showCheckin ? t("bdCheckInBody") : t("bdCheckOutBody")}
+                    </p>
+                    <Button
+                      size="sm"
+                      className="mt-3"
+                      onClick={() => setCheckinTrackerOpen(true)}
+                    >
+                      {showCheckin 
+                        ? (<><LogIn className="h-3.5 w-3.5 mr-1.5" />{t("bdCheckInNow")}</>)
+                        : (<><LogOut className="h-3.5 w-3.5 mr-1.5" />{t("bdCheckOutNow")}</>)}
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            </section>
-          )
-          )}
+              </section>
+            );
+          })()}
 
           {/* ── Check-In / Check-Out Timeline (only for confirmed or completed bookings) ── */}
           {(booking.status === 'confirmed' || booking.status === 'completed') &&
+            (booking.checkinEnabled !== false || booking.checkoutEnabled !== false) &&
             (booking.checkinStatus || booking.checkedInAt || booking.checkoutRequestedAt) && (
             <section>
               <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-1.5">

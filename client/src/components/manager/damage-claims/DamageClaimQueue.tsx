@@ -1220,11 +1220,11 @@ export function DamageClaimQueue() {
       ) : (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg flex items-center gap-2">
-              {activeTab === "action" && <><AlertTriangle className="w-5 h-5 text-orange-500" />{mt("actionRequired")}</>}
-              {activeTab === "drafts" && <><FileText className="w-5 h-5 text-gray-500" />{mt("drafts")}</>}
-              {activeTab === "pending" && <><Clock className="w-5 h-5 text-yellow-500" />{mt("pendingResponse")}</>}
-              {activeTab === "resolved" && <><CheckCircle className="w-5 h-5 text-green-500" />{mt("resolved")}</>}
+            <CardTitle className="text-lg">
+              {activeTab === "action" && mt("actionRequired")}
+              {activeTab === "drafts" && mt("drafts")}
+              {activeTab === "pending" && mt("pendingResponse")}
+              {activeTab === "resolved" && mt("resolved")}
               {activeTab === "all" && <>{mt("allClaims")}</>}
               <Badge variant="count" className="ml-2">{filteredClaims.length}</Badge>
             </CardTitle>

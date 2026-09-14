@@ -41,6 +41,8 @@ export type ChefBookingReceiptBreakdown = {
   platformHstRatePercent: number;
   platformHstAmountCents: number;
   totalPaidCents: number;
+  refundAmountCents: number;
+  netPaidCents: number;
 };
 
 export type KitchenPayoutStatementBreakdown = {
@@ -109,6 +111,16 @@ export function buildChefBookingReceiptBreakdown(
       ? computeKitchenHstAmountCents(platformFeeAmountCents, platformHstRatePercent)
       : 0;
 
+  const totalPaidCents =
+    kitchenBaseSubtotalCents +
+    kitchenHstAmountCents +
+    platformFeeAmountCents +
+    platformHstAmountCents;
+  const refundAmountCents = Math.min(
+    totalPaidCents,
+    Math.max(0, Number(input.refundAmountCents) || 0),
+  );
+
   return {
     kitchenBaseSubtotalCents,
     kitchenHstRegistered,
@@ -118,11 +130,9 @@ export function buildChefBookingReceiptBreakdown(
     platformFeeAmountCents,
     platformHstRatePercent,
     platformHstAmountCents,
-    totalPaidCents:
-      kitchenBaseSubtotalCents +
-      kitchenHstAmountCents +
-      platformFeeAmountCents +
-      platformHstAmountCents,
+    totalPaidCents,
+    refundAmountCents,
+    netPaidCents: totalPaidCents - refundAmountCents,
   };
 }
 
@@ -135,15 +145,22 @@ export function buildKitchenPayoutStatementBreakdown(
   const kitchenGrossCollectedCents =
     receipt.kitchenBaseSubtotalCents + receipt.kitchenHstAmountCents;
 
-  const computedNet = Math.max(
-    0,
-    kitchenGrossCollectedCents - paymentProcessorFeeCents - refundAmountCents
-  );
-
-  const kitchenNetPayoutCents =
+  const originalKitchenNetPayoutCents =
     input.kitchenNetPayoutCents != null && input.kitchenNetPayoutCents >= 0
       ? Math.round(input.kitchenNetPayoutCents)
-      : computedNet;
+      : Math.max(0, kitchenGrossCollectedCents - paymentProcessorFeeCents);
+
+  // The stored Stripe-synced payout is the original transfer amount. Refunds
+  // can also contain the platform-owned service fee, so only subtract up to
+  // the kitchen's original payout and never show a negative manager payout.
+  const managerFundedRefundCents = Math.min(
+    refundAmountCents,
+    originalKitchenNetPayoutCents
+  );
+  const kitchenNetPayoutCents = Math.max(
+    0,
+    originalKitchenNetPayoutCents - managerFundedRefundCents
+  );
 
   return {
     hourlyRateCents: input.hourlyRateCents,

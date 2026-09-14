@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Manager Location Description Round Trip",
+    "subtitle": "The database response updates both React Query views before reconciliation",
+    "output": "docs/manager-location-description.sequence.html",
+    "viewBox": [900, 680],
+    "column_fit": "spread",
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "form", "type": "frontend", "label": "Location form", "sublabel": "React state" },
+    { "id": "mutation", "type": "frontend", "label": "Save mutation", "sublabel": "React Query" },
+    { "id": "api", "type": "backend", "label": "Manager API", "sublabel": "owned location" },
+    { "id": "db", "type": "database", "label": "Locations table", "sublabel": "source of truth" },
+    { "id": "cache", "type": "frontend", "label": "Location caches", "sublabel": "detail + list" }
+  ],
+  "segments": [
+    { "from": 150, "to": 390, "label": "Persist" },
+    { "from": 406, "to": 590, "label": "Reflect" }
+  ],
+  "messages": [
+    { "from": "form", "to": "mutation", "y": 180, "label": "save trimmed description", "variant": "emphasis", "note": "Empty string is sent explicitly so an existing value can be cleared." },
+    { "from": "mutation", "to": "api", "y": 230, "label": "PUT location settings", "variant": "security" },
+    { "from": "api", "to": "db", "y": 280, "label": "update description", "variant": "emphasis" },
+    { "from": "db", "to": "api", "y": 330, "label": "return updated row", "variant": "return" },
+    { "from": "api", "to": "mutation", "y": 380, "label": "200 persisted location", "variant": "return" },
+    { "from": "mutation", "to": "cache", "y": 440, "label": "replace detail and list entries", "variant": "emphasis" },
+    { "from": "cache", "to": "form", "y": 490, "label": "render persisted props", "variant": "return" },
+    { "from": "mutation", "to": "api", "y": 540, "label": "background refetch", "variant": "dashed" },
+    { "from": "api", "to": "cache", "y": 580, "label": "reconcile from database", "variant": "dashed" }
+  ],
+  "activations": [
+    { "participant": "mutation", "from": 174, "to": 548, "type": "frontend" },
+    { "participant": "api", "from": 224, "to": 388, "type": "backend" },
+    { "participant": "db", "from": 274, "to": 338, "type": "database" },
+    { "participant": "cache", "from": 434, "to": 588, "type": "frontend" }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "No skipped clears", "items": ["Non-empty text is trimmed", "Empty text persists as null", "Undefined remains reserved for no change"] },
+    { "dot": "cyan", "title": "One authoritative result", "items": ["The API returns the updated database row", "Detail and list caches receive the same row", "Refetch verifies eventual consistency"] }
+  ]
+}

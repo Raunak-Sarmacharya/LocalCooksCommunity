@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Manager Full Refund Approval Lifecycle",
+    "output": "docs/architecture/manager-full-refund-lifecycle.html",
+    "viewBox": [900, 700],
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    { "id": "main", "label": "Full refund approval" },
+    { "id": "terminal", "label": "Outcomes" }
+  ],
+  "states": [
+    { "id": "eligible", "type": "start", "label": "Paid booking", "sublabel": "refundable balance remains", "lane": "main", "col": 0, "step": "01" },
+    { "id": "requested", "type": "waiting", "label": "Refund requested", "sublabel": "awaiting admin review", "lane": "main", "col": 1, "step": "02" },
+    { "id": "review", "type": "decision", "label": "Admin review", "sublabel": "approve or reject", "lane": "main", "col": 2, "step": "03", "tag": "admin controls amount" },
+    { "id": "approved", "type": "success", "label": "Full refund approved", "sublabel": "manager + service fee returned", "lane": "main", "col": 3, "step": "04", "tag": "Stripe refund" },
+    { "id": "rejected", "type": "failure", "label": "Request rejected", "sublabel": "transaction remains open", "lane": "terminal", "col": 1, "tag": "terminal" }
+  ],
+  "transitions": [
+    { "id": "manager-request", "from": "eligible", "to": "requested", "variant": "emphasis" },
+    { "id": "request-review", "from": "requested", "to": "review", "variant": "security" },
+    { "id": "review-approve", "from": "review", "to": "approved", "variant": "emphasis", "route": "straight" },
+    { "id": "review-reject", "from": "review", "to": "rejected", "variant": "security" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Manager boundary",
+      "items": ["Direct refunds cannot exceed the manager's remaining share", "Platform service fee is never exposed as manager-refundable"]
+    },
+    {
+      "dot": "violet",
+      "title": "Admin authority",
+      "items": ["Full refunds remain pending until an admin decides", "Approval and rejection are retained in the payment audit trail"]
+    }
+  ]
+}

@@ -182,11 +182,11 @@ function TourDetailPanel({
         </div>
       )}
 
-      {tour.status === "pending" && (
+      {(tour.status === "pending_local_cooks" || tour.status === "pending") && (
         <p className="text-amber-900 bg-amber-50 border border-amber-200/80 rounded-xl px-2.5 py-1.5 text-xs sm:text-sm">
           {t(
             "tourListPendingNext",
-            "Waiting for the kitchen to confirm. You’ll get an email when they approve this tour."
+            "Your request is moving through Local Cooks and kitchen manager approval. You’ll get an email after the final decision."
           )}
         </p>
       )}
@@ -335,7 +335,7 @@ export default function ChefViewingsList({ onExploreKitchens }: { onExploreKitch
                   className={cn(
                     "hover:bg-muted/40",
                     chefTourRowHasDetails(row.original) && "cursor-pointer",
-                    row.original.status === "pending" && "bg-amber-50/40",
+                    (row.original.status === "pending_local_cooks" || row.original.status === "pending") && "bg-amber-50/40",
                     row.original.status === "confirmed" && "bg-emerald-50/30"
                   )}
                   onClick={() => {

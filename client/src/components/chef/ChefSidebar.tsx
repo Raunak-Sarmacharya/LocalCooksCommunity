@@ -13,6 +13,7 @@ import { LanguageMenuSection } from "@/components/i18n/LanguageSwitcher"
 import { Icon } from "@iconify/react"
 import "@/lib/kitchen-inventory-icons"
 import { chefNavSections, sidebarBranchForView, type ChefBreadcrumb, type ChefNavItem } from "@/lib/chef-nav-sections"
+import ProfileGettingStarted from "@/components/auth/ProfileGettingStarted"
 
 function sectionHasHeader(title: string | undefined, itemCount: number) {
     return Boolean(title) && itemCount > 1
@@ -222,6 +223,13 @@ export function ChefSidebar({
                     </SidebarGroup>
                 ))}
             </SidebarContent>
+
+            <ProfileGettingStarted
+                displayName={user?.displayName}
+                email={user?.email}
+                phoneNumber={user?.phoneNumber}
+                onComplete={() => handleViewChange("profile")}
+            />
 
             {/* Footer with account menu */}
             <SidebarFooter>

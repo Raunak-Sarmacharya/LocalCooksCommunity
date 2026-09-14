@@ -9,6 +9,9 @@ import { createContext, ReactNode, useContext, useEffect, useState, useRef, useC
 import { getSubdomainFromHostname, getRoleLoginOrigin } from "@shared/subdomain-utils";
 import { User, UserWithFlags } from "@shared/schema";
 import { createDuplicateAccountError, isDuplicateAccountError } from "@/lib/registration-error";
+import { isPhoneAuthInProgress } from "@/lib/phone-registration";
+import { createMissingProfileError, rememberAuthMethod } from "@/lib/login-challenge";
+import { normalizePhoneNumber } from "@shared/phone-validation";
 
 // ENTERPRISE: Auth Phase State Machine
 // Separates Firebase Auth State from Sync State to prevent timing issues
@@ -25,6 +28,7 @@ interface AuthUser extends Partial<AuthUserLegacyFields> {
   displayName: string | null;
   photoURL: string | null;
   emailVerified: boolean;
+  phoneNumber?: string | null;
   providers: string[];
   role?: string;
   isChef?: boolean;
@@ -55,9 +59,9 @@ interface AuthContextType {
   error: string | null;
   authPhase: AuthPhase; // ENTERPRISE: Explicit auth phase for state machine
   login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string, displayName?: string, accountType?: PublicRegistrationRole, termsAccepted?: boolean) => Promise<void>;
+  signup: (email: string, password: string, displayName?: string, accountType?: PublicRegistrationRole, termsAccepted?: boolean, phoneNumber?: string) => Promise<void>;
   logout: () => Promise<void>;
-  signInWithGoogle: (isRegistration?: boolean, accountType?: PublicRegistrationRole, termsAccepted?: boolean) => Promise<void>;
+  signInWithGoogle: (isRegistration?: boolean, accountType?: PublicRegistrationRole, termsAccepted?: boolean, profile?: { displayName: string; phoneNumber: string }) => Promise<'existing' | 'registered' | 'phone-verification-required'>;
   sendEmailLink: (email: string) => Promise<void>;
   handleEmailLinkSignIn: () => Promise<void>;
   isUserVerified: (user: AuthUser | null) => boolean;
@@ -66,7 +70,7 @@ interface AuthContextType {
   resendFirebaseVerification: () => Promise<boolean>;
   resendEmailVerification: (email: string, password: string) => Promise<boolean>;
   refreshUserData: () => Promise<void>;
-  syncUserWithBackend: (firebaseUser: any, accountType?: PublicRegistrationRole, isRegistration?: boolean, termsAccepted?: boolean) => Promise<boolean>;
+  syncUserWithBackend: (firebaseUser: any, accountType?: PublicRegistrationRole, isRegistration?: boolean, termsAccepted?: boolean, phoneNumber?: string) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -103,11 +107,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isInitializingRef.current = isInitializing;
   }, [isInitializing]);
 
-  const syncUserWithBackend = async (firebaseUser: any, accountType?: PublicRegistrationRole, isRegistration = false, termsAccepted = false) => {
+  const syncUserWithBackend = async (firebaseUser: any, accountType?: PublicRegistrationRole, isRegistration = false, termsAccepted = false, phoneNumber?: string) => {
     try {
       logger.info('🔥 SYNC DEBUG - Starting backend sync for:', firebaseUser.uid, isRegistration ? '(REGISTRATION)' : '(SIGN-IN)');
 
-      const token = await firebaseUser.getIdToken();
+      // Registration may have just linked a phone credential. Force-refresh so
+      // the backend validates current provider claims rather than a cached token.
+      const token = await firebaseUser.getIdToken(isRegistration);
 
       // Use different endpoints based on whether this is registration or sign-in
       const endpoint = isRegistration ? "/api/firebase-register-user" : "/api/firebase-sync-user";
@@ -125,6 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           emailVerified: firebaseUser.emailVerified,
           accountType: isRegistration ? accountType : undefined,
           termsAccepted: isRegistration ? termsAccepted : undefined,
+          phoneNumber: isRegistration ? phoneNumber : undefined,
           isRegistration: isRegistration,
         })
       });
@@ -225,6 +232,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 isManager: userData.isManager || userData.is_manager || false,
                 isPortalUser: userData.isPortalUser || userData.is_portal_user || false,
                 chefOnboardingCompleted: userData.chefOnboardingCompleted || userData.chef_onboarding_completed || false,
+                phoneNumber: userData.phoneNumber || userData.managerProfileData?.phone || null,
               };
               logger.info('🔥 BACKEND USER DATA:', {
                 role,
@@ -249,6 +257,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // the selected public account type and consent evidence travel in the
           // same request. The auth-state listener must not race that request.
           const shouldSync = !pendingRegistrationRef.current &&
+            !isPhoneAuthInProgress() &&
             (isInitializingRef.current || pendingSyncRef.current || isVerificationRedirect);
 
           if (shouldSync && !hasSyncedThisSession.current) {
@@ -300,6 +309,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     isManager: userData.isManager || userData.is_manager || false,
                     isPortalUser: userData.isPortalUser || userData.is_portal_user || false,
                     chefOnboardingCompleted: userData.chefOnboardingCompleted || userData.chef_onboarding_completed || false,
+                    phoneNumber: userData.phoneNumber || userData.managerProfileData?.phone || null,
                   };
                   logger.info('🔥 RE-FETCHED BACKEND USER DATA AFTER SYNC');
                 }
@@ -325,6 +335,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             displayName: firebaseUser.displayName,
             photoURL: firebaseUser.photoURL,
             emailVerified: firebaseUser.emailVerified,
+            phoneNumber: applicationData?.phoneNumber,
             providers,
             role,
             application_type: applicationData?.application_type, // DEPRECATED: kept for backward compatibility
@@ -341,10 +352,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             chefOnboardingCompleted: applicationData?.chefOnboardingCompleted,
           });
 
-          if (pendingRegistrationRef.current) {
+          if (pendingRegistrationRef.current || isPhoneAuthInProgress()) {
             // signup()/Google registration is still performing the authoritative
-            // Neon provisioning request. It will mark the phase ready only after
-            // that request succeeds.
+            // Neon provisioning request, or a phone registration is waiting for
+            // its required verified email. Neither state is application-authorized.
             setAuthPhase('syncing');
             return;
           }
@@ -439,7 +450,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signup = async (email: string, password: string, displayName?: string, accountType: PublicRegistrationRole = 'chef', termsAccepted = false) => {
+  const signup = async (email: string, password: string, displayName?: string, accountType: PublicRegistrationRole = 'chef', termsAccepted = false, phoneNumber?: string) => {
     setError(null);
     setLoading(true);
     setAuthPhase('authenticating'); // ENTERPRISE: Set auth phase to authenticating
@@ -470,7 +481,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       let syncSuccess = false;
       try {
-        syncSuccess = await syncUserWithBackend(updatedUser, accountType, true, termsAccepted);
+        syncSuccess = await syncUserWithBackend(updatedUser, accountType, true, termsAccepted, phoneNumber);
       } catch (syncError) {
         if (isDuplicateAccountError(syncError)) {
           try {
@@ -579,6 +590,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Keep uid-scoped kitchen preview walkthrough so the same account is not toured again.
       const walkthroughFlags: [string, string][] = [];
+      const authMethodHint = localStorage.getItem('localcooks-auth-method-hint');
       try {
         for (let i = 0; i < localStorage.length; i++) {
           const key = localStorage.key(i);
@@ -592,6 +604,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.clear();
       try {
         for (const [key, val] of walkthroughFlags) localStorage.setItem(key, val);
+        if (authMethodHint) localStorage.setItem('localcooks-auth-method-hint', authMethodHint);
       } catch {
         // ignore
       }
@@ -625,7 +638,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signInWithGoogle = async (isRegistration = false, accountType: PublicRegistrationRole = 'chef', termsAccepted = false) => {
+  const signInWithGoogle = async (isRegistration = false, accountType: PublicRegistrationRole = 'chef', termsAccepted = false, profile?: { displayName: string; phoneNumber: string }) => {
     setError(null);
     setLoading(true);
     setAuthPhase('authenticating'); // ENTERPRISE: Set auth phase to authenticating
@@ -670,8 +683,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setPendingSync(false);
           setPendingRegistration(false);
           await refreshUserData();
+          await rememberAuthMethod(result.user.email, 'google');
           setAuthPhase('ready');
-          return;
+          return 'existing';
         }
 
         if (profileResponse.status !== 404) {
@@ -679,10 +693,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw new Error('Unable to verify your account. Please try again.');
         }
 
+        if (!profile?.displayName?.trim() || !profile.phoneNumber?.trim()) {
+          await auth.signOut();
+          throw new Error('Full name and phone number are required to create an account.');
+        }
+
+        await updateProfile(result.user, { displayName: profile.displayName.trim() });
+        await result.user.reload();
+        const googleUser = auth.currentUser || result.user;
+
+        const normalizedProfilePhone = normalizePhoneNumber(profile.phoneNumber);
+        if (!normalizedProfilePhone || googleUser.phoneNumber !== normalizedProfilePhone) {
+          // Keep the verified Google session alive while the registration form
+          // proves and links the mandatory phone credential. No application
+          // profile is written until that second proof succeeds.
+          setAuthPhase('authenticating');
+          return 'phone-verification-required';
+        }
+
         // Manually trigger sync for registration with detected role
         let syncSuccess = false;
         try {
-          syncSuccess = await syncUserWithBackend(result.user, accountType, true, termsAccepted);
+          syncSuccess = await syncUserWithBackend(googleUser, accountType, true, termsAccepted, normalizedProfilePhone);
         } catch (syncError) {
           if (isNewGoogleUser) {
             try {
@@ -702,7 +734,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const userDocRef = doc(db, "users", result.user.uid);
           await setDoc(userDocRef, {
             email: result.user.email,
-            displayName: result.user.displayName,
+            displayName: googleUser.displayName,
             createdAt: serverTimestamp(),
             lastLoginAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
@@ -720,7 +752,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setPendingSync(false);
           setPendingRegistration(false);
           await refreshUserData();
+          await rememberAuthMethod(googleUser.email, 'google');
           setAuthPhase('ready');
+          return 'registered';
         } else {
           logger.error('❌ Google registration sync failed');
           if (isNewGoogleUser) {
@@ -760,11 +794,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // User exists in backend - sign in successful
           logger.info('✅ GOOGLE SIGN-IN - User exists, completing sign-in');
           setPendingSync(true);
+          await rememberAuthMethod(user.email, 'google');
+          return 'existing';
         } else if (response.status === 404) {
           // User doesn't exist in backend - they need to register
           logger.info('❌ User does not exist in backend - needs to register');
           await auth.signOut();
-          throw new Error('This Google account is not registered with Local Cooks. Please create an account first.');
+          throw createMissingProfileError(user.email);
         } else {
           // Some other error
           logger.error('❌ Error checking user existence:', response.status);
@@ -790,7 +826,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const sendEmailLink = async (email: string) => {
     setError(null);
-    setLoading(true);
     try {
       // Try custom branded email endpoint first (uses server-side Firebase Admin + custom template)
       logger.info(`📧 Sending custom magic link email to: ${email}`);
@@ -817,8 +852,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logger.error('❌ Error sending magic link email:', e);
       setError(e.message);
       throw e;
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -836,6 +869,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
         await signInWithEmailLink(auth, email, window.location.href);
+        await rememberAuthMethod(email, 'email-link');
         window.localStorage.removeItem('emailForSignIn');
       }
     } catch (e: any) {
@@ -992,6 +1026,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           displayName: currentUser.displayName,
           photoURL: currentUser.photoURL,
           emailVerified: currentUser.emailVerified,
+          phoneNumber: userData.phoneNumber || userData.managerProfileData?.phone || null,
           providers: currentUser.providerData.map((p: any) => p.providerId),
           role: userData.role,
           isChef: userData.isChef || userData.is_chef || false,
@@ -1098,6 +1133,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           displayName: firebaseUser.displayName,
           photoURL: firebaseUser.photoURL,
           emailVerified: firebaseUser.emailVerified,
+          phoneNumber: userData.phoneNumber || userData.managerProfileData?.phone || null,
           providers: firebaseUser.providerData.map((p: any) => p.providerId),
           role: userData.role, // Don't set default role - let it be null if no role selected
           application_type: userData.application_type, // DEPRECATED: kept for backward compatibility

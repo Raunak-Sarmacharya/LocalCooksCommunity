@@ -1,9 +1,6 @@
 import { logger } from "@/lib/logger";
 import { useTranslation } from "react-i18next";
-import EnhancedLoginForm from "@/components/auth/EnhancedLoginForm";
-import EnhancedRegisterForm from "@/components/auth/EnhancedRegisterForm";
-import { Button } from "@/components/ui/button";
-
+import AuthFlow, { type AuthFlowStep } from "@/components/auth/AuthFlow";
 import Logo from "@/components/ui/logo";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
@@ -20,15 +17,16 @@ import ChefAuthShowcase from "@/components/auth/ChefAuthShowcase";
 import { getSellerJourneyDraft } from "@/lib/seller-journey";
 import { addCollection, Icon } from "@iconify/react";
 import { icons as mdiIcons } from "@iconify-json/mdi";
+import { isPhoneAuthInProgress } from "@/lib/phone-registration";
 
 addCollection(mdiIcons);
 
 export default function EnhancedAuthPage() {
   const { t } = useTranslation("auth");
   const [location, setLocation] = useLocation();
-  const { user, loading, logout, refreshUserData, handleEmailLinkSignIn } = useFirebaseAuth();
-  const [activeTab, setActiveTab] = useState<"login" | "register">(() =>
-    new URLSearchParams(window.location.search).get("tab") === "register" ? "register" : "login"
+  const { user, loading, logout, refreshUserData, handleEmailLinkSignIn, signInWithGoogle } = useFirebaseAuth();
+  const [authStep, setAuthStep] = useState<AuthFlowStep>(() =>
+    new URLSearchParams(window.location.search).get("tab") === "register" ? "register" : "identifier"
   );
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
@@ -64,10 +62,11 @@ export default function EnhancedAuthPage() {
     new URLSearchParams(window.location.search).get("journey") === "seller"
       ? getSellerJourneyDraft()
       : null;
+  const completingPhoneSignup = authStep === "register" && isPhoneAuthInProgress();
 
   useLayoutEffect(() => {
     authCardRef.current?.scrollTo({ top: 0, behavior: "instant" });
-  }, [activeTab]);
+  }, [authStep]);
 
   // Check for success messages from URL parameters
   useEffect(() => {
@@ -78,7 +77,7 @@ export default function EnhancedAuthPage() {
     if (message === 'password-reset-success') {
       setSuccessMessageType('password-reset');
       setShowSuccessMessage(true);
-      setActiveTab('login'); // Switch to login tab
+      setAuthStep('login'); // Switch to login tab
       
       // Clear the URL parameter
       window.history.replaceState({}, document.title, window.location.pathname);
@@ -91,7 +90,7 @@ export default function EnhancedAuthPage() {
       logger.info('📧 EMAIL VERIFICATION SUCCESS detected in URL');
       setSuccessMessageType('email-verified');
       setShowSuccessMessage(true);
-      setActiveTab('login'); // Switch to login tab so they can sign in
+      setAuthStep('login'); // Switch to login tab so they can sign in
       
       // Clear the URL parameter
       window.history.replaceState({}, document.title, window.location.pathname);
@@ -517,22 +516,27 @@ export default function EnhancedAuthPage() {
             </motion.div>
 
             <motion.div
-              key={activeTab}
               initial={reduceMotion ? false : { opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: reduceMotion ? 0 : 0.2, ease: "easeOut" }}
               className="w-full"
             >
-              <div className="mb-6">
+              {authStep !== "phone-otp" && authStep !== "google-hint" && authStep !== "methods" && <div className="mb-6">
               <h1 className="text-3xl font-bold tracking-[-0.03em] text-gray-950">
-                {activeTab === "login" ? t("welcomeBack", "Welcome back") : t("createYourAccount", "Create your account")}
+                {authStep === "register"
+                  ? completingPhoneSignup
+                    ? t("finishSigningUp", "Finish signing up")
+                    : t("createYourAccount", "Create your account")
+                  : t("loginOrSignUp", "Log in or sign up")}
               </h1>
               <p className="mt-2.5 max-w-sm text-sm leading-relaxed text-gray-600">
-                {activeTab === "login"
-                  ? t("loginSubtitle", "Sign in to manage your storefront and kitchen bookings")
-                  : t("registerSubtitle", "Create an account to sell on our marketplace or book kitchen")}
+                {authStep === "register"
+                  ? t("registerSubtitle", "Create an account to sell on our marketplace or book kitchen")
+                  : authStep === "identifier"
+                    ? t("identifierSubtitle", "Enter your email or phone number to continue")
+                    : t("loginSubtitle", "Sign in to manage your storefront and kitchen bookings")}
               </p>
-              </div>
+              </div>}
 
             {/* Success Message for Password Reset */}
             {showSuccessMessage && (
@@ -561,7 +565,7 @@ export default function EnhancedAuthPage() {
                   </div>
                   <button
                     onClick={() => setShowSuccessMessage(false)}
-                    className="flex-shrink-0 text-green-400 hover:text-green-600 transition-colors"
+                    className="flex-shrink-0 text-primary hover:text-primary/80 transition-colors"
                   >
                     <Icon icon="mdi:close" className="h-4 w-4" aria-hidden />
                   </button>
@@ -569,36 +573,29 @@ export default function EnhancedAuthPage() {
               </motion.div>
             )}
 
-            {activeTab === "login" ? (
-                <EnhancedLoginForm
-                  onSuccess={handleSuccess}
-                  setHasAttemptedLogin={setHasAttemptedLogin}
-                  animateEntrance={false}
-                />
-              ) : (
-                <EnhancedRegisterForm
-                  onSuccess={handleSuccess}
-                  setHasAttemptedLogin={setHasAttemptedLogin}
-                  hideApplyingToggle
-                  initialTermsAccepted={sellerJourneyDraft?.termsAccepted === true}
-                  onSwitchToLogin={() => setActiveTab("login")}
-                  animateEntrance={false}
-                />
-              )}
+            <AuthFlow
+              step={authStep}
+              onStepChange={setAuthStep}
+              loginProps={{
+                onSuccess: handleSuccess,
+                setHasAttemptedLogin: setHasAttemptedLogin,
+                animateEntrance: false,
+              }}
+              registerProps={{
+                onSuccess: handleSuccess,
+                setHasAttemptedLogin: setHasAttemptedLogin,
+                hideApplyingToggle: true,
+                initialTermsAccepted: sellerJourneyDraft?.termsAccepted === true,
+                animateEntrance: false,
+              }}
+              onGoogleSignIn={async () => {
+                await signInWithGoogle();
+                setHasAttemptedLogin(true);
+                await refreshUserData();
+              }}
+              onPhoneExistingUser={handleSuccess}
+            />
 
-            {/* Footer Links */}
-            {activeTab === "login" && <div className="mt-8 text-center">
-              <p className="text-sm text-gray-500">
-                {t("noAccount", "Don't have an account?")}{" "}
-                <Button
-                  variant="link"
-                  className="h-auto p-0 font-semibold text-[#F51042] hover:text-[#D90E3A]"
-                  onClick={() => setActiveTab("register")}
-                >
-                  {t("registerTab", "Register")}
-                </Button>
-              </p>
-            </div>}
             </motion.div>
             </div>
           </motion.div>

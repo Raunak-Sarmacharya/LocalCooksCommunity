@@ -382,10 +382,7 @@ export default function StripeConnectSetup() {
     return (
       <div className="space-y-5">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-              <CreditCard className="h-5 w-5 text-slate-600 dark:text-slate-400" />
-            </div>
+          <div>
             <div>
               <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{mt("connectPayments")}</h3>
               <p className="text-sm text-slate-500 dark:text-slate-400">{mt("receivePaymentsDirectlyToYourBank")}</p>
@@ -423,10 +420,7 @@ export default function StripeConnectSetup() {
       return (
         <div className="space-y-5">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-950/30 flex items-center justify-center">
-                <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-              </div>
+            <div>
               <div>
                 <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{mt("paymentsConnected")}</h3>
                 <p className="text-sm text-slate-500 dark:text-slate-400">{mt("readyToReceivePayments")}</p>
@@ -458,9 +452,6 @@ export default function StripeConnectSetup() {
       
       // Dynamic UI config based on verification stage
       const stageConfig: Record<string, {
-        icon: typeof AlertCircle;
-        iconBg: string;
-        iconColor: string;
         title: string;
         subtitle: string;
         buttonLabel: string;
@@ -470,9 +461,6 @@ export default function StripeConnectSetup() {
         isActionable: boolean;
       }> = {
         details_needed: {
-          icon: CreditCard,
-          iconBg: 'bg-blue-100 dark:bg-blue-950/30',
-          iconColor: 'text-blue-600 dark:text-blue-400',
           title: mt("startStripeSetup"),
           subtitle: mt("enterYourBusinessAndBankDetails"),
           buttonLabel: mt("startStripeSetup"),
@@ -482,9 +470,6 @@ export default function StripeConnectSetup() {
           isActionable: true,
         },
         requires_additional_info: {
-          icon: AlertCircle,
-          iconBg: 'bg-amber-100 dark:bg-amber-950/30',
-          iconColor: 'text-amber-600 dark:text-amber-400',
           title: mt("additionalInfoNeeded"),
           subtitle: mt("additionalInfoNeededDesc"),
           buttonLabel: mt("provideAdditionalInformation"),
@@ -494,9 +479,6 @@ export default function StripeConnectSetup() {
           isActionable: true,
         },
         pending_verification: {
-          icon: Clock,
-          iconBg: 'bg-blue-100 dark:bg-blue-950/30',
-          iconColor: 'text-blue-600 dark:text-blue-400',
           title: mt("verificationInProgress"),
           subtitle: mt("verificationInProgressDesc"),
           buttonLabel: mt("checkVerificationStatus"),
@@ -506,9 +488,6 @@ export default function StripeConnectSetup() {
           isActionable: true,
         },
         past_due: {
-          icon: ShieldAlert,
-          iconBg: 'bg-red-100 dark:bg-red-950/30',
-          iconColor: 'text-red-600 dark:text-red-400',
           title: mt("actionRequired"),
           subtitle: mt("overdueRequirementsUpdateNow"),
           buttonLabel: mt("updateRequiredInformation"),
@@ -518,9 +497,6 @@ export default function StripeConnectSetup() {
           isActionable: true,
         },
         payouts_disabled: {
-          icon: AlertCircle,
-          iconBg: 'bg-amber-100 dark:bg-amber-950/30',
-          iconColor: 'text-amber-600 dark:text-amber-400',
           title: mt("addBankAccount"),
           subtitle: mt("chargesEnabledAddBankForPayouts"),
           buttonLabel: mt("addBankAccount"),
@@ -530,9 +506,6 @@ export default function StripeConnectSetup() {
           isActionable: true,
         },
         charges_disabled: {
-          icon: AlertCircle,
-          iconBg: 'bg-amber-100 dark:bg-amber-950/30',
-          iconColor: 'text-amber-600 dark:text-amber-400',
           title: mt("chargesNotEnabled"),
           subtitle: mt("completeSetupToAcceptPayments"),
           buttonLabel: mt("completePaymentSetup"),
@@ -542,9 +515,6 @@ export default function StripeConnectSetup() {
           isActionable: true,
         },
         rejected: {
-          icon: Ban,
-          iconBg: 'bg-red-100 dark:bg-red-950/30',
-          iconColor: 'text-red-600 dark:text-red-400',
           title: mt("accountRejected"),
           subtitle: mt("stripeCouldNotVerifyYourAccount"),
           buttonLabel: mt("contactSupport"),
@@ -554,9 +524,6 @@ export default function StripeConnectSetup() {
           isActionable: true,
         },
         incomplete: {
-          icon: CreditCard,
-          iconBg: 'bg-amber-100 dark:bg-amber-950/30',
-          iconColor: 'text-amber-600 dark:text-amber-400',
           title: mt("completeSetup"),
           subtitle: mt("finishOnboardingToReceivePayments"),
           buttonLabel: mt("continueStripeSetup"),
@@ -568,16 +535,12 @@ export default function StripeConnectSetup() {
       };
 
       const config = stageConfig[stage] || stageConfig.incomplete;
-      const IconComponent = config.icon;
       const ButtonIcon = config.buttonIcon;
 
       return (
         <div className="space-y-5">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-lg ${config.iconBg} flex items-center justify-center`}>
-                <IconComponent className={`h-5 w-5 ${config.iconColor}`} />
-              </div>
+            <div>
               <div>
                 <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{config.title}</h3>
                 <p className="text-sm text-slate-500 dark:text-slate-400">{config.subtitle}</p>

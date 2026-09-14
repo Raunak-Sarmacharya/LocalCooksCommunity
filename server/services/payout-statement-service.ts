@@ -2,6 +2,7 @@ import { logger } from "../logger";
 import PDFDocument from 'pdfkit';
 import type { Pool } from 'pg';
 import Stripe from 'stripe';
+import { resolveKitchenTransactionTaxAndSubtotal } from './revenue-transaction-tax';
 
 /**
  * Generate payout statement PDF for a manager
@@ -21,6 +22,7 @@ export async function generatePayoutStatementPDF(
   let totalStripeProcessingFees = 0;
   let totalNetEarnings = 0;
   const totalBookings = bookings.length;
+  const resolvedAmounts = new Map<any, { subtotal: number; tax: number; managerRevenue: number }>();
 
   // Get service fee rate
   let serviceFeeRate = 0.05; // Default
@@ -33,15 +35,36 @@ export async function generatePayoutStatementPDF(
 
   // Calculate from bookings
   bookings.forEach((booking: any) => {
-    const totalPrice = (booking.totalPrice || booking.total_price || 0) / 100; // Convert cents to dollars
-    const serviceFee = (booking.serviceFee || booking.service_fee || 0) / 100;
+    const bookingSubtotalCents = Number(booking.totalPrice || booking.total_price || 0);
+    const transactionAmountCents = Number(booking.transactionAmount || booking.transaction_amount || 0);
+    const transactionServiceFeeCents = Number(booking.transactionServiceFee || booking.transaction_service_fee || booking.serviceFee || booking.service_fee || 0);
     const stripeProcessingFee = booking.stripeProcessingFee ? parseFloat(booking.stripeProcessingFee) / 100 : 0;
-    const taxAmount = parseFloat(String(booking.taxAmount || booking.tax_amount || 0)) / 100;
-    const managerRevenue = booking.managerRevenue
-      ? parseFloat(booking.managerRevenue) / 100
-      : (totalPrice + taxAmount - stripeProcessingFee);
+    const storedBaseAmount = parseFloat(String(booking.baseAmount || booking.base_amount || 0));
+    const storedTaxAmount = parseFloat(String(booking.taxAmount || booking.tax_amount || 0));
+    const transactionMetadata = booking.transactionMetadata || booking.transaction_metadata || {};
+    const financials = resolveKitchenTransactionTaxAndSubtotal({
+      isDamageClaim: false,
+      ptAmount: transactionAmountCents,
+      ptBaseAmount: storedBaseAmount,
+      ptTaxAmount: storedTaxAmount,
+      approvedTaxCents: Number(transactionMetadata.approvedTax ?? transactionMetadata.approved_tax ?? 0),
+      kbTotalPrice: bookingSubtotalCents,
+      taxRatePercent: Number(booking.taxRatePercent || booking.tax_rate_percent || 0),
+      ptServiceFee: transactionServiceFeeCents,
+      metadata: transactionMetadata,
+    });
+    const totalPrice = financials.totalPriceCents / 100;
+    const serviceFee = financials.serviceFeeCents / 100;
+    const taxAmount = financials.taxCents / 100;
+    const reconciledGross = totalPrice + taxAmount;
+    const storedManagerRevenue = Number(booking.managerRevenue || 0) / 100;
+    const managerRevenue = storedManagerRevenue > 0 && storedManagerRevenue <= reconciledGross
+      ? storedManagerRevenue
+      : reconciledGross - stripeProcessingFee;
 
-    totalEarnings += totalPrice; // Total Revenue should be the GROSS amount
+    resolvedAmounts.set(booking.id, { subtotal: totalPrice, tax: taxAmount, managerRevenue });
+
+    totalEarnings += totalPrice;
     totalPlatformFees += serviceFee;
     totalStripeProcessingFees += stripeProcessingFee;
     totalNetEarnings += managerRevenue;
@@ -219,13 +242,7 @@ export async function generatePayoutStatementPDF(
           const kitchenName = (booking.kitchenName || booking.kitchen_name || 'Kitchen').substring(0, 20);
           const chefName = (booking.chefName || booking.chef_name || 'Guest').substring(0, 20);
           
-          const totalPrice = (booking.totalPrice || booking.total_price || 0) / 100;
-          const serviceFee = (booking.serviceFee || booking.service_fee || 0) / 100;
-          const stripeProcessingFee = booking.stripeProcessingFee ? parseFloat(booking.stripeProcessingFee) / 100 : 0;
-          const taxAmount = parseFloat(String(booking.taxAmount || booking.tax_amount || 0)) / 100;
-          const amount = booking.managerRevenue
-            ? parseFloat(booking.managerRevenue) / 100
-            : (totalPrice + taxAmount - stripeProcessingFee);
+          const amount = resolvedAmounts.get(booking.id)?.managerRevenue ?? 0;
 
           doc.text(dateStr, 50, leftY);
           doc.text(kitchenName, 120, leftY, { width: 120 });

@@ -5,6 +5,12 @@ import { userService } from './domains/users/user.service';
 import { UserWithFlags } from "@shared/schema";
 import * as Sentry from '@sentry/node';
 
+export async function resolveNeonUser(decodedToken: { uid: string }) {
+  // A Firebase UID is the account boundary. Email, phone, and Google may all
+  // authenticate the same UID, but contact fields must never select a user.
+  return userService.getUserByFirebaseUid(decodedToken.uid);
+}
+
 // Extend Express Request to include Firebase user data
 declare global {
   namespace Express {
@@ -15,6 +21,7 @@ declare global {
         email_verified?: boolean;
         name?: string;
         picture?: string;
+        phone_number?: string;
       };
       neonUser?: UserWithFlags;
     }
@@ -58,6 +65,7 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
       email_verified: decodedToken.email_verified,
       name: decodedToken.name,
       picture: decodedToken.picture,
+      phone_number: decodedToken.phone_number,
     };
 
     next();
@@ -115,10 +123,11 @@ export async function requireFirebaseAuthWithUser(req: Request, res: Response, n
       email_verified: decodedToken.email_verified,
       name: decodedToken.name,
       picture: decodedToken.picture,
+      phone_number: decodedToken.phone_number,
     };
 
     // Now translate Firebase UID to Neon user (NO SESSIONS)
-    let neonUser = await userService.getUserByFirebaseUid(req.firebaseUser.uid);
+    let neonUser = await resolveNeonUser(decodedToken);
 
     if (!neonUser) {
       return res.status(404).json({
@@ -192,10 +201,11 @@ export async function optionalFirebaseAuth(req: Request, res: Response, next: Ne
         email_verified: decodedToken.email_verified,
         name: decodedToken.name,
         picture: decodedToken.picture,
+        phone_number: decodedToken.phone_number,
       };
 
       // Try to load Neon user (NO SESSIONS)
-      const neonUser = await userService.getUserByFirebaseUid(decodedToken.uid);
+      const neonUser = await resolveNeonUser(decodedToken);
       if (neonUser) {
         req.neonUser = {
           ...neonUser,

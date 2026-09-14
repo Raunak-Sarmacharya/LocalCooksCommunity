@@ -3079,7 +3079,7 @@ export default function KitchenPreviewPage() {
   });
   const toursAvailable = tourStatus?.toursAvailable ?? tourStatus?.isActive ?? false;
 
-  // Existing tour request for this kitchen (pending / confirmed).
+  // Existing tour request for this kitchen (Local Cooks review / manager review / confirmed).
   type ChefViewingRow = {
     viewing?: { id: number; locationId: number; targetedKitchenId?: number | null; status: string; scheduledAt: string };
     id?: number;
@@ -3103,7 +3103,7 @@ export default function KitchenPreviewPage() {
   });
   const activeKitchenTour = useMemo(() => {
     if (!selectedKitchen?.id || !chefViewings.length) return null;
-    const ACTIVE = new Set(["pending", "confirmed"]);
+    const ACTIVE = new Set(["pending_local_cooks", "pending", "confirmed"]);
     const rows = chefViewings
       .map((r) => r.viewing ?? r)
       .filter(
@@ -3127,7 +3127,7 @@ export default function KitchenPreviewPage() {
       : "pending";
 
   // Resume an in-progress tour draft after login. Never reopen once a tour
-  // is already pending/confirmed — leftover sessionStorage used to pop the dialog
+  // is already in review or confirmed — leftover sessionStorage used to pop the dialog
   // on every preview visit.
   useEffect(() => {
     if (!selectedKitchen?.id) return;
@@ -3565,7 +3565,7 @@ export default function KitchenPreviewPage() {
     const tourCta = (() => {
       if (alreadyApplied) return null;
       // Wait for availability + existing tours so we don't flash "Request a tour"
-      // over a pending/confirmed visit.
+      // over a review-in-progress or confirmed visit.
       if (tourStatusLoading) return null;
       if (isAuthenticated && !chefViewingsFetched) return null;
       if (activeTourKind) return { kind: activeTourKind };

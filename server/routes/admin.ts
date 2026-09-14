@@ -16,6 +16,9 @@ import {
     equipmentListings,
     locationRequirements,
     emailLogs,
+    kitchenBookings,
+    storageBookings,
+    equipmentBookings,
 } from "@shared/schema";
 import { eq, sql, desc, ilike, and, inArray, count, type SQL } from "drizzle-orm";
 import { resolveChefChargedAmountCents, resolvePlatformCommissionCents } from "../services/stripe-checkout-fee-service";
@@ -178,7 +181,7 @@ router.get("/revenue/all-managers", requireFirebaseAuthWithUser, requireAdmin, a
 
         // Query payment_transactions grouped by manager - this is the same source
         // of truth that the manager revenue dashboard uses
-        const conditions = [sql`pt.status = 'succeeded'`];
+        const conditions = [sql`pt.status IN ('succeeded', 'partially_refunded')`];
 
         if (startDate) {
             conditions.push(sql`DATE(pt.paid_at) >= ${startDate}::date`);
@@ -196,7 +199,18 @@ router.get("/revenue/all-managers", requireFirebaseAuthWithUser, requireAdmin, a
           u.username as manager_name,
           u.username as manager_email,
           COALESCE(SUM(pt.amount::numeric), 0)::bigint as total_revenue,
-          COALESCE(SUM(pt.service_fee::numeric), 0)::bigint as platform_fee,
+          COALESCE(SUM(
+            GREATEST(pt.amount::numeric - pt.base_amount::numeric, 0) - LEAST(
+              GREATEST(pt.amount::numeric - pt.base_amount::numeric, 0),
+              COALESCE((
+                SELECT SUM(GREATEST(
+                  COALESCE((refund->>'platformServiceFeeReturned')::numeric, 0),
+                  COALESCE((refund->>'customerReceived')::numeric, 0) - COALESCE((refund->>'managerDebited')::numeric, 0)
+                ))
+                FROM jsonb_array_elements(COALESCE(pt.metadata->'refunds', '[]'::jsonb)) refund
+              ), 0)
+            )
+          ), 0)::bigint as platform_fee,
           COALESCE(SUM(pt.manager_revenue::numeric), 0)::bigint as manager_revenue,
           COUNT(pt.id)::int as booking_count,
           COALESCE(SUM(pt.refund_amount::numeric), 0)::bigint as total_refunds
@@ -243,29 +257,39 @@ router.get("/revenue/platform-overview", requireFirebaseAuthWithUser, requireAdm
             .where(eq(users.role, 'manager'));
         const totalManagers = managerCountResult[0]?.count || 0;
 
-        // Build booking filters for complex aggregation query
-        const conditions = [sql`kb.status != 'cancelled'`];
+        // Captured payment transactions are the source of truth. Platform
+        // revenue is the chef-paid service fee less any fee refunded by admin.
+        const conditions = [sql`pt.status IN ('succeeded', 'partially_refunded')`];
 
         if (startDate) {
-            conditions.push(sql`kb.booking_date >= ${startDate}::date`);
+            conditions.push(sql`DATE(pt.paid_at) >= ${startDate}::date`);
         }
         if (endDate) {
-            conditions.push(sql`kb.booking_date <= ${endDate}::date`);
+            conditions.push(sql`DATE(pt.paid_at) <= ${endDate}::date`);
         }
         
-        const bookingFilters = sql.join(conditions, sql` AND `);
+        const transactionFilters = sql.join(conditions, sql` AND `);
 
         const bookingResult = await db.execute(sql`
         SELECT 
-          COALESCE(SUM(kb.total_price), 0)::bigint as total_revenue,
-          COALESCE(SUM(kb.service_fee), 0)::bigint as platform_fee,
+          COALESCE(SUM(pt.amount::numeric - pt.refund_amount::numeric), 0)::bigint as total_revenue,
+          COALESCE(SUM(
+            GREATEST(pt.amount::numeric - pt.base_amount::numeric, 0) - LEAST(
+              GREATEST(pt.amount::numeric - pt.base_amount::numeric, 0),
+              COALESCE((
+                SELECT SUM(GREATEST(
+                  COALESCE((refund->>'platformServiceFeeReturned')::numeric, 0),
+                  COALESCE((refund->>'customerReceived')::numeric, 0) - COALESCE((refund->>'managerDebited')::numeric, 0)
+                ))
+                FROM jsonb_array_elements(COALESCE(pt.metadata->'refunds', '[]'::jsonb)) refund
+              ), 0)
+            )
+          ), 0)::bigint as platform_fee,
           COUNT(*)::int as booking_count,
-          COUNT(CASE WHEN kb.payment_status = 'paid' THEN 1 END)::int as paid_count,
-          COUNT(CASE WHEN kb.payment_status = 'pending' THEN 1 END)::int as pending_count
-        FROM kitchen_bookings kb
-        JOIN kitchens k ON kb.kitchen_id = k.id
-        JOIN locations l ON k.location_id = l.id
-        WHERE ${bookingFilters}
+          COUNT(*)::int as paid_count,
+          0::int as pending_count
+        FROM payment_transactions pt
+        WHERE ${transactionFilters}
       `);
 
         const row = (bookingResult.rows as any[])[0] || {};
@@ -3388,6 +3412,162 @@ router.get("/transactions", requireFirebaseAuthWithUser, requireAdmin, async (re
         logger.error('[Admin Transactions] Error:', error?.message || error);
         if (error?.stack) logger.error('[Admin Transactions] Stack:', error.stack);
         res.status(500).json({ error: "Failed to fetch transactions", detail: error?.message || String(error) });
+    }
+});
+
+/**
+ * Resolve a manager's full-refund request. Admins may approve any positive
+ * amount up to the full remaining refundable balance, or reject the request.
+ */
+router.post("/transactions/:transactionId/full-refund-request/decision", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const adminId = req.neonUser!.id;
+        const transactionId = Number(req.params.transactionId);
+        const decision = req.body?.decision;
+        const note = typeof req.body?.note === "string" ? req.body.note.trim() : "";
+        if (!Number.isInteger(transactionId) || transactionId <= 0) {
+            return res.status(400).json({ error: "Invalid transaction ID" });
+        }
+        if (!['approve', 'reject'].includes(decision)) {
+            return res.status(400).json({ error: "Decision must be approve or reject" });
+        }
+
+        const { findPaymentTransactionById, updatePaymentTransaction, addPaymentHistory } = await import("../services/payment-transactions-service");
+        const transaction = await findPaymentTransactionById(transactionId, db);
+        if (!transaction) return res.status(404).json({ error: "Transaction not found" });
+        const metadata = transaction.metadata && typeof transaction.metadata === 'object'
+            ? transaction.metadata as Record<string, any>
+            : {};
+        const request = metadata.fullRefundRequest;
+        if (!request || request.status !== 'pending') {
+            return res.status(409).json({ error: "No pending full refund request exists for this transaction" });
+        }
+
+        const decidedAt = new Date().toISOString();
+        if (decision === 'reject') {
+            const resolvedRequest = { ...request, status: 'rejected', decidedAt, decidedBy: adminId, note: note || null };
+            await updatePaymentTransaction(transactionId, { metadata: { ...metadata, fullRefundRequest: resolvedRequest } }, db);
+            await addPaymentHistory(transactionId, {
+                previousStatus: transaction.status,
+                newStatus: transaction.status,
+                eventType: 'full_refund_rejected',
+                eventSource: 'admin',
+                description: 'Admin rejected the manager full refund request',
+                metadata: resolvedRequest,
+                createdBy: adminId,
+            }, db);
+            return res.json({ success: true, decision: 'rejected' });
+        }
+
+        if (!transaction.payment_intent_id) {
+            return res.status(400).json({ error: "No payment intent linked to this transaction" });
+        }
+        if (!["succeeded", "partially_refunded"].includes(transaction.status)) {
+            return res.status(400).json({ error: "Only paid transactions can be refunded" });
+        }
+
+        const totalAmount = Number(transaction.amount || 0);
+        const alreadyRefunded = Number(transaction.refund_amount || 0);
+        const managerRevenue = Number(transaction.manager_revenue || 0);
+        const serviceFee = Number(transaction.service_fee || 0);
+        const stripeFee = Number(transaction.stripe_processing_fee || 0);
+        const priorRefunds = Array.isArray(metadata.refunds) ? metadata.refunds : [];
+        const managerAlreadyDebited = priorRefunds.reduce(
+            (sum: number, refund: any) => sum + Math.max(0, Number(refund?.managerDebited || 0)),
+            0,
+        );
+        const platformAlreadyReturned = priorRefunds.reduce(
+            (sum: number, refund: any) => sum + Math.max(0, Number(refund?.platformServiceFeeReturned || 0)),
+            0,
+        );
+        const remainingManagerShare = Math.max(0, managerRevenue - managerAlreadyDebited);
+        const remainingServiceFee = Math.max(0, serviceFee - platformAlreadyReturned);
+        const maxRefundable = Math.min(
+            Math.max(0, totalAmount - stripeFee - alreadyRefunded),
+            remainingManagerShare + remainingServiceFee,
+        );
+        const requestedAdminAmount = req.body?.amount == null ? maxRefundable : Math.round(Number(req.body.amount));
+        if (!Number.isFinite(requestedAdminAmount) || requestedAdminAmount <= 0 || requestedAdminAmount > maxRefundable) {
+            return res.status(400).json({ error: `Refund amount must be between $0.01 and $${(maxRefundable / 100).toFixed(2)}`, maxRefundable });
+        }
+
+        const { reverseTransferAndRefund } = await import("../services/stripe-service");
+        const managerDebitCents = Math.min(requestedAdminAmount, remainingManagerShare);
+        const platformServiceFeeCents = requestedAdminAmount - managerDebitCents;
+        const stripeResult = await reverseTransferAndRefund(
+            transaction.payment_intent_id,
+            requestedAdminAmount,
+            'requested_by_customer',
+            {
+                reverseTransferAmount: managerDebitCents,
+                refundApplicationFee: false,
+                metadata: {
+                    transaction_id: String(transactionId),
+                    approved_by: String(adminId),
+                    refund_model: 'admin_controlled',
+                },
+            },
+        );
+
+        const newRefundTotal = alreadyRefunded + requestedAdminAmount;
+        const newStatus = newRefundTotal >= totalAmount - stripeFee ? 'refunded' : 'partially_refunded';
+        const refundEntry = {
+            id: stripeResult.refundId,
+            customerReceived: requestedAdminAmount,
+            managerDebited: managerDebitCents,
+            platformServiceFeeReturned: platformServiceFeeCents,
+            reason: note || request.reason || null,
+            createdAt: decidedAt,
+            createdBy: adminId,
+            transferReversalId: stripeResult.transferReversalId,
+            model: 'admin_controlled',
+        };
+        const resolvedRequest = {
+            ...request,
+            status: 'approved',
+            approvedAmount: requestedAdminAmount,
+            decidedAt,
+            decidedBy: adminId,
+            note: note || null,
+        };
+        await updatePaymentTransaction(transactionId, {
+            status: newStatus,
+            stripeStatus: newStatus,
+            refundAmount: newRefundTotal,
+            refundId: stripeResult.refundId,
+            refundReason: note || request.reason || 'Full refund approved by admin',
+            refundedAt: new Date(),
+            lastSyncedAt: new Date(),
+            metadata: {
+                ...metadata,
+                fullRefundRequest: resolvedRequest,
+                refunds: [...(Array.isArray(metadata.refunds) ? metadata.refunds : []), refundEntry],
+                lastRefund: refundEntry,
+            },
+        }, db);
+
+        const paymentStatus = newStatus === 'refunded' ? 'refunded' : 'partially_refunded';
+        if (transaction.booking_type === 'kitchen' || transaction.booking_type === 'bundle') {
+            await db.update(kitchenBookings).set({ paymentStatus, updatedAt: new Date() }).where(eq(kitchenBookings.id, transaction.booking_id));
+        } else if (transaction.booking_type === 'storage') {
+            await db.update(storageBookings).set({ paymentStatus, updatedAt: new Date() }).where(eq(storageBookings.id, transaction.booking_id));
+        } else if (transaction.booking_type === 'equipment') {
+            await db.update(equipmentBookings).set({ paymentStatus, updatedAt: new Date() }).where(eq(equipmentBookings.id, transaction.booking_id));
+        }
+        await addPaymentHistory(transactionId, {
+            previousStatus: transaction.status,
+            newStatus,
+            eventType: 'full_refund_approved',
+            eventSource: 'admin',
+            description: `Admin approved refund of $${(requestedAdminAmount / 100).toFixed(2)}`,
+            metadata: resolvedRequest,
+            createdBy: adminId,
+        }, db);
+
+        return res.json({ success: true, decision: 'approved', refund: refundEntry, status: newStatus });
+    } catch (error: any) {
+        logger.error('[Admin Full Refund Decision] Error:', error);
+        return res.status(500).json({ error: error?.message || 'Failed to resolve refund request' });
     }
 });
 

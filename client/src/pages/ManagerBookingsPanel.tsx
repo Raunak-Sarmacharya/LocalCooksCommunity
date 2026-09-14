@@ -176,13 +176,13 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
 
   // Update booking status mutation
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ bookingId, status, storageActions, equipmentActions, refundOnCancel }: { bookingId: number; status: string; storageActions?: Array<{ storageBookingId: number; action: string }>; equipmentActions?: Array<{ equipmentBookingId: number; action: string }>; refundOnCancel?: boolean }) => {
+    mutationFn: async ({ bookingId, status, storageActions, equipmentActions }: { bookingId: number; status: string; storageActions?: Array<{ storageBookingId: number; action: string }>; equipmentActions?: Array<{ equipmentBookingId: number; action: string }> }) => {
       const headers = await getAuthHeaders();
       const response = await fetch(`/api/manager/bookings/${bookingId}/status`, {
         method: 'PUT',
         headers,
         credentials: "include",
-        body: JSON.stringify({ status, storageActions, equipmentActions, refundOnCancel }),
+        body: JSON.stringify({ status, storageActions, equipmentActions }),
       });
       if (!response.ok) {
         let errorMessage = mt("failedToUpdateBookingStatus");
@@ -362,8 +362,13 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
   const handleCancelAndRefundConfirm = () => {
     if (bookingToCancelAndRefund) {
       updateStatusMutation.mutate(
-        { bookingId: bookingToCancelAndRefund.id, status: 'cancelled', refundOnCancel: true },
+        { bookingId: bookingToCancelAndRefund.id, status: 'cancelled' },
         {
+          onSuccess: () => {
+            if (bookingToCancelAndRefund.transactionId) {
+              fullRefundRequestMutation.mutate(bookingToCancelAndRefund.transactionId);
+            }
+          },
           onSettled: () => {
             setCancelAndRefundDialogOpen(false);
             setBookingToCancelAndRefund(null);
@@ -417,12 +422,39 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
     },
   });
 
+  const fullRefundRequestMutation = useMutation({
+    mutationFn: async (transactionId: number) => {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`/api/manager/revenue/transactions/${transactionId}/full-refund-request`, {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({ reason: 'Full refund requested by manager' }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to request full refund');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: 'Full refund requested', description: 'An admin will review and control the final refund.' });
+      handleRefundDialogClose();
+    },
+    onError: (error: Error) => toast({ title: 'Request failed', description: error.message, variant: 'destructive' }),
+  });
+
   const handleRefundClick = (booking: Booking) => {
     setBookingToRefund(booking);
-    // Default to full refund amount
-    const refundableAmount = (booking as any).refundableAmount || (booking as any).totalPrice || 0;
+    // Managers can directly refund only their remaining payout share.
+    const refundableAmount = (booking as any).managerRemainingBalance || 0;
     setRefundAmount((refundableAmount / 100).toFixed(2));
     setRefundDialogOpen(true);
+  };
+
+  const handleFullRefundRequest = () => {
+    const transactionId = (bookingToRefund as any)?.transactionId;
+    if (transactionId) fullRefundRequestMutation.mutate(transactionId);
   };
 
   const handleRefundConfirm = () => {
@@ -629,16 +661,19 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
           break;
         }
         case "cancel-booking-refund": {
-          // Cancel entire booking + auto-refund
+          // Cancel the booking, then route the full refund to admin approval.
           const res = await fetch(`/api/manager/bookings/${params.bookingId}/status`, {
             method: 'PUT', headers, credentials: "include",
-            body: JSON.stringify({ status: 'cancelled', refundOnCancel: true, storageActions: params.storageActions, equipmentActions: params.equipmentActions }),
+            body: JSON.stringify({ status: 'cancelled', storageActions: params.storageActions, equipmentActions: params.equipmentActions }),
           });
           if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || mt("failedToCancelBooking")); }
-          const data = await res.json().catch(() => ({}));
-          toast({ title: t("bookingCancelledRefunded"),
-            description: data?.refund ? mt("refundProcessedAmount", { amount: (data.refund.amount / 100).toFixed(2) }) : mt("bookingCancelledWithRefund"),
+          if (!bookingForManagement?.transactionId) throw new Error(mt("noTransactionForRefund"));
+          const requestRes = await fetch(`/api/manager/revenue/transactions/${bookingForManagement.transactionId}/full-refund-request`, {
+            method: 'POST', headers, credentials: 'include',
+            body: JSON.stringify({ reason: 'Full refund requested after manager cancellation' }),
           });
+          if (!requestRes.ok) { const d = await requestRes.json().catch(() => ({})); throw new Error(d.error || 'Booking cancelled, but the full refund request failed'); }
+          toast({ title: 'Booking cancelled', description: 'Full refund sent to admin for approval.' });
           break;
         }
         case "partial-cancel":
@@ -673,6 +708,16 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
           });
           if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || mt("failedToProcessRefund")); }
           toast({ title: t("refundProcessed"), description: `$${(params.refundAmountCents / 100).toFixed(2)} refunded to chef.` });
+          break;
+        }
+        case "request-full-refund": {
+          if (!bookingForManagement?.transactionId) throw new Error(mt("noTransactionForRefund"));
+          const res = await fetch(`/api/manager/revenue/transactions/${bookingForManagement.transactionId}/full-refund-request`, {
+            method: 'POST', headers, credentials: 'include',
+            body: JSON.stringify({ reason: 'Full refund requested by manager' }),
+          });
+          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to request full refund'); }
+          toast({ title: 'Full refund requested', description: 'An admin will review and control the final refund.' });
           break;
         }
         case "accept-cancellation": {
@@ -1161,7 +1206,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                         <span>${((bookingToRefund.refundAmount || 0) / 100).toFixed(2)}</span>
                       </div>
                     )}
-                    {/* Max refundable includes platform service fee; Stripe fee is sunk */}
+                    {/* Managers may refund only their share; platform fees require admin approval. */}
                     <div className="border-t pt-3 mt-3 space-y-2">
                       {(bookingToRefund.stripeProcessingFee || 0) > 0 && (
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -1170,9 +1215,10 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                         </div>
                       )}
                       <div className="flex items-center justify-between font-semibold text-green-600 bg-green-50 p-2 rounded-md">
-                        <span>{t("availableToRefund")}</span>
-                        <span>${((bookingToRefund.refundableAmount || 0) / 100).toFixed(2)}</span>
+                        <span>Your refundable share</span>
+                        <span>${((bookingToRefund.managerRemainingBalance || 0) / 100).toFixed(2)}</span>
                       </div>
+                      <p className="text-xs text-muted-foreground">Service fee excluded. Request a full refund below if the platform share must also be returned.</p>
                     </div>
                   </div>
                 )}
@@ -1218,10 +1264,23 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={handleRefundDialogClose}>{t("cancel")}</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleFullRefundRequest}
+              disabled={fullRefundRequestMutation.isPending || !(bookingToRefund as any)?.transactionId}
+            >
+              {fullRefundRequestMutation.isPending ? 'Requesting…' : 'Request full refund'}
+            </Button>
             <AlertDialogAction
               onClick={handleRefundConfirm}
               className="bg-orange-600 hover:bg-orange-700 focus:ring-orange-500"
-              disabled={refundMutation.isPending || !refundAmount || parseFloat(refundAmount) <= 0}
+              disabled={
+                refundMutation.isPending ||
+                !refundAmount ||
+                parseFloat(refundAmount) <= 0 ||
+                Math.round(parseFloat(refundAmount) * 100) > ((bookingToRefund as any)?.managerRemainingBalance || 0)
+              }
             >
               {refundMutation.isPending ? mt("processingEllipsis") : mt("processRefund")}
             </AlertDialogAction>
@@ -1288,7 +1347,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                 <Separator />
                 <div className="flex items-center justify-between font-semibold text-green-700 bg-green-50 p-2 rounded-md">
                   <span>{t("maxRefundYourAvailableBalance")}</span>
-                  <span>${((bookingToCancelAndRefund.refundableAmount || bookingToCancelAndRefund.managerRemainingBalance || 0) / 100).toFixed(2)}</span>
+                  <span>${((bookingToCancelAndRefund.managerRemainingBalance || 0) / 100).toFixed(2)}</span>
                 </div>
                 <p className="text-xs text-muted-foreground">{t("youCanOnlyRefundUpToWhatYouReceivedStripeProcessingFeesAreAS")}</p>
               </div>

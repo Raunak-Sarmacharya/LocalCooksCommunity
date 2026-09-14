@@ -16,6 +16,7 @@ type CapturedKitchenRateInput = {
   durationHours: number;
   bookingSubtotalCents: number;
   addonSubtotalCents?: number;
+  pricingMode?: KitchenBookingRateMode;
 };
 
 /** Resolve legacy bookings where `hourly_rate` stores an hourly or daily rate. */
@@ -24,6 +25,7 @@ export function resolveCapturedKitchenRate({
   durationHours,
   bookingSubtotalCents,
   addonSubtotalCents = 0,
+  pricingMode,
 }: CapturedKitchenRateInput): {
   mode: KitchenBookingRateMode;
   kitchenSubtotalCents: number;
@@ -40,19 +42,20 @@ export function resolveCapturedKitchenRate({
   }
 
   const hourlySubtotal = Math.round(rate * hours);
-  const mode: KitchenBookingRateMode =
+  const mode: KitchenBookingRateMode = pricingMode || (
     hours > 1 &&
     Math.abs(capturedKitchenSubtotal - rate) < Math.abs(capturedKitchenSubtotal - hourlySubtotal)
       ? "daily"
-      : "hourly";
+      : "hourly"
+  );
 
   return {
     mode,
     kitchenSubtotalCents:
-      capturedKitchenSubtotal > 0
+      mode === "daily"
+        ? rate
+        : capturedKitchenSubtotal > 0
         ? capturedKitchenSubtotal
-        : mode === "daily"
-          ? rate
-          : hourlySubtotal,
+        : hourlySubtotal,
   };
 }

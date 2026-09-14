@@ -1,4 +1,11 @@
 {
+  "gettingStarted": "Початок роботи",
+  "gettingStartedProgress": "Виконано {completed} з {total}",
+  "gettingStartedFullName": "Додайте повне ім’я",
+  "gettingStartedEmail": "Додайте електронну адресу",
+  "gettingStartedPhone": "Додайте номер телефону",
+  "completeYourProfile": "Заповніть профіль",
+  "completeProfile": "Заповнити профіль",
   "accessCommercialKitchens": "Орендуйте сертифіковані комерційні кухні погодинно. Починайте з малого, масштабуйтесь по мірі зростання.",
   "actionMenuPrices": "Меню та ціни",
   "actionMenuPricesDesc": "Додавайте страви, налаштовуйте доступність і оновлюйте те, що можуть замовити клієнти.",
@@ -1998,9 +2005,11 @@
   "tourListIntakeTitle": "Що ви надіслали",
   "tourListIntroBody": "Відстежуйте підтвердження й те, що ви повідомили кухні. Розгорніть рядок для деталей.",
   "tourListManagerMessage": "Повідомлення від {name}",
-  "tourListPendingNext": "Очікуємо підтвердження кухні. Ви отримаєте лист, коли вони схвалить цей тур.",
+  "tourListPendingNext": "Ваш запит проходить схвалення Local Cooks і менеджера кухні. Ви отримаєте лист після остаточного рішення.",
   "tourListViewKitchen": "Переглянути кухню",
   "tourListYourNotes": "Ваші нотатки",
+  "tourStatusLocalCooksReview": "Розгляд Local Cooks",
+  "tourStatusPending": "Розгляд менеджера",
   "trAllCompletedBody": "Підтвердіть, щоб зберегти сертифікат про завершення LocalCooks (неофіційний)",
   "trAllCompletedTitle": "Усі відео завершено",
   "trAppRequiredTitle": "Для повного доступу потрібна заявка",
@@ -2304,5 +2313,6 @@
   "revDownloadDataCsv": "Завантажити дані (CSV)",
   "dcMoreCharsRequired": "Потрібно ще {count} символів",
   "revExportCurrentTableCsv": "Експортувати поточний вигляд таблиці (CSV)",
-  "revLinkAccountToViewRevenue": "Прив’яжіть обліковий запис продавця вище, щоб переглядати дохід від замовлень їжі."
+  "revLinkAccountToViewRevenue": "Прив’яжіть обліковий запис продавця вище, щоб переглядати дохід від замовлень їжі.",
+  "profileTabPhoneSignIn": "Вхід за номером телефону"
 }

@@ -496,7 +496,7 @@ function ManagerKitchenApplicationsContentLegacy({
             variant="outline"
             onClick={() => {
               // Navigate to settings with application requirements tab
-              setLocation('/manager/dashboard?view=settings&tab=application-requirements');
+              setLocation('/manager/dashboard?view=application-requirements');
             }}
             className="flex items-center gap-2"
           >
@@ -700,8 +700,7 @@ function ManagerKitchenApplicationsContentLegacy({
 
               {/* Personal Info */}
               <div>
-                <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                  <User className="h-4 w-4" />{mt("personalInformation")}</h3>
+                <h3 className="mb-3 font-semibold text-gray-900">{mt("personalInformation")}</h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="p-3 bg-gray-50 rounded-lg">
                     <div className="text-xs text-gray-500 mb-1">{mt("fullName")}</div>
@@ -734,8 +733,7 @@ function ManagerKitchenApplicationsContentLegacy({
               {/* Business Info */}
               {selectedApplication.businessDescription && (
                 <div>
-                  <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                    <Briefcase className="h-4 w-4" />{mt("businessInformation")}</h3>
+                  <h3 className="mb-3 font-semibold text-gray-900">{mt("businessInformation")}</h3>
                   <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
                     {(() => {
                       const info = parseBusinessInfo(selectedApplication.businessDescription);
@@ -799,8 +797,7 @@ function ManagerKitchenApplicationsContentLegacy({
 
                 {/* Step 1 Documents */}
                 <div className="mb-4">
-                  <h4 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
-                    <Shield className="h-4 w-4" />{mt("foodSafetyDocuments")}</h4>
+                  <h4 className="mb-2 font-medium text-gray-800">{mt("foodSafetyDocuments")}</h4>
                   <div className="space-y-2">
                     {/* Food Safety License */}
                     <div className={`flex items-center justify-between p-3 rounded-lg border ${selectedApplication.foodSafetyLicenseUrl
@@ -832,8 +829,7 @@ function ManagerKitchenApplicationsContentLegacy({
                   Array.isArray(locationRequirements.tier1_custom_fields) &&
                   locationRequirements.tier1_custom_fields.length > 0 && (
                     <div>
-                      <h4 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
-                        <FileText className="h-4 w-4" />{mt("additionalStep1Information")}</h4>
+                      <h4 className="mb-2 font-medium text-gray-800">{mt("additionalStep1Information")}</h4>
                       <div className="grid grid-cols-2 gap-3">
                         {locationRequirements.tier1_custom_fields.map((field: any) => {
                           const customData = selectedApplication.customFieldsData || {};
@@ -868,8 +864,7 @@ function ManagerKitchenApplicationsContentLegacy({
 
                   {/* Step 2 Documents */}
                   <div className="mb-4">
-                    <h4 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
-                      <Shield className="h-4 w-4" />{mt("step2Documents")}</h4>
+                    <h4 className="mb-2 font-medium text-gray-800">{mt("step2Documents")}</h4>
                     <div className="space-y-2">
                       {/* Insurance Document */}
                       {(() => {
@@ -932,8 +927,7 @@ function ManagerKitchenApplicationsContentLegacy({
                     Array.isArray(locationRequirements.tier2_custom_fields) &&
                     locationRequirements.tier2_custom_fields.length > 0 && (
                       <div>
-                        <h4 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
-                          <FileText className="h-4 w-4" />{mt("additionalStep2Information")}</h4>
+                        <h4 className="mb-2 font-medium text-gray-800">{mt("additionalStep2Information")}</h4>
                         <div className="grid grid-cols-2 gap-3">
                           {locationRequirements.tier2_custom_fields.map((field: any) => {
                             // Step 2 custom fields are stored in tier_data.tier2_custom_fields_data
@@ -1190,4 +1184,3 @@ function ApplicationCard({
     </Card>
   );
 }
-

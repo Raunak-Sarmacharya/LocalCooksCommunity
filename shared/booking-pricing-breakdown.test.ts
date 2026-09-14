@@ -7,6 +7,19 @@ import {
   isKitchenHstRegistered,
 } from "./booking-pricing-breakdown";
 
+// Refunded chef receipts show the retained amount, not the original charge.
+{
+  const chef = buildChefBookingReceiptBreakdown({
+    kitchenBaseSubtotalCents: 10000,
+    kitchenHstAmountCents: 1500,
+    platformFeeAmountCents: 500,
+    refundAmountCents: 12000,
+  });
+  assert.equal(chef.totalPaidCents, 12000);
+  assert.equal(chef.refundAmountCents, 12000);
+  assert.equal(chef.netPaidCents, 0);
+}
+
 // $100/hr × 4h = $400; 15% HST = $60; 7% LC fee on $400 = $28 → chef pays $488
 {
   const chef = buildChefBookingReceiptBreakdown({
@@ -58,6 +71,33 @@ import {
     kitchenNetPayoutCents: 41585,
   });
   assert.equal(payout.kitchenNetPayoutCents, 41585);
+}
+
+// A full customer refund can include Local Cooks' service fee. The manager's
+// displayed payout must still stop at $0 rather than retain the original payout
+// or become negative.
+{
+  const payout = buildKitchenPayoutStatementBreakdown({
+    kitchenBaseSubtotalCents: 24000,
+    kitchenHstRatePercent: 15,
+    platformFeeAmountCents: 1680,
+    paymentProcessorFeeCents: 879,
+    kitchenNetPayoutCents: 26721,
+    refundAmountCents: 28401,
+  });
+  assert.equal(payout.kitchenNetPayoutCents, 0);
+}
+
+// Partial manager-funded refunds reduce the original Stripe-synced payout.
+{
+  const payout = buildKitchenPayoutStatementBreakdown({
+    kitchenBaseSubtotalCents: 24000,
+    kitchenHstRatePercent: 15,
+    paymentProcessorFeeCents: 879,
+    kitchenNetPayoutCents: 26721,
+    refundAmountCents: 5000,
+  });
+  assert.equal(payout.kitchenNetPayoutCents, 21721);
 }
 
 // Historical stored tax wins if the manager changes their tax setting later.

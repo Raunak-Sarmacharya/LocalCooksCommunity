@@ -13,7 +13,6 @@
 
 import { useState, useMemo, useCallback } from "react"
 import { mt } from "@/i18n/manager"
-import { useQueryClient } from "@tanstack/react-query"
 import { useFirebaseAuth } from "@/hooks/use-auth"
 import { Info, CreditCard, ExternalLink, AlertCircle, FileText, Download } from "@/components/ui/manager-icons"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -24,7 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ChefPageHeader } from "@/components/chef/ui"
 
 // Import from our revenue module
-import { useRevenueMetrics, useRevenueByLocation, useRevenueChartData, useTransactions, useInvoices, usePayouts, useStripeConnectStatus, downloadInvoice, downloadPayoutStatement, refundTransaction, getDefaultDateRange, type DateRange, type LocationOption, type PaymentStatus, type Transaction } from "@/components/manager/revenue"
+import { useRevenueMetrics, useRevenueByLocation, useRevenueChartData, useTransactions, useInvoices, usePayouts, useStripeConnectStatus, downloadInvoice, downloadPayoutStatement, getDefaultDateRange, type DateRange, type LocationOption, type PaymentStatus } from "@/components/manager/revenue"
 
 import { RevenueMetricCards } from "@/components/manager/revenue/components/RevenueMetricCards"
 import { TransactionTable } from "@/components/manager/revenue/components/TransactionTable"
@@ -54,7 +53,6 @@ export default function ManagerRevenueDashboard({
 }: ManagerRevenueDashboardProps) {
   const { user: firebaseUser } = useFirebaseAuth()
   const { toast } = useToast()
-  const queryClient = useQueryClient()
   const isEnabled = !!firebaseUser
 
   // Filter State
@@ -157,39 +155,6 @@ export default function ManagerRevenueDashboard({
     }
   }, [toast])
 
-  const handleRefundTransaction = useCallback(async (transaction: Transaction, amountCents: number, reason?: string) => {
-    if (!transaction?.transactionId) {
-      toast({ title: mt("refundFailed"),
-        description: mt("missingTransactionIDForThisBooking"),
-        variant: "destructive",
-      })
-      throw new Error(mt("missingTransactionIdForBooking"))
-    }
-
-    try {
-      await refundTransaction({
-        transactionId: transaction.transactionId,
-        amountCents,
-        reason,
-      })
-
-      toast({ title: mt("refundInitiated"),
-        description: mt("theRefundWasSubmittedSuccessfully"),
-      })
-
-      // Refresh revenue data after refund
-      queryClient.invalidateQueries({ queryKey: ['/api/manager/revenue/transactions'] })
-      queryClient.invalidateQueries({ queryKey: ['/api/manager/revenue/overview'] })
-      queryClient.invalidateQueries({ queryKey: ['/api/manager/revenue/charts'] })
-    } catch (error: any) {
-      toast({ title: mt("refundFailed"),
-        description: error?.message || mt("unableToProcessRefundTryAgain"),
-        variant: "destructive",
-      })
-      throw error
-    }
-  }, [queryClient, toast])
-
   const handleNavigateToPayments = useCallback(() => {
     if (onNavigate) {
       onNavigate("payments")
@@ -272,15 +237,13 @@ export default function ManagerRevenueDashboard({
         transactions={transactionsData?.transactions || []}
         isLoading={isLoadingTransactions}
         onDownloadInvoice={handleDownloadInvoice}
-        onRefundTransaction={handleRefundTransaction}
       />
 
       {/* Recent Invoices */}
       {invoices.length > 0 && (
         <Card>
           <CardHeader>
-            <div className="flex items-center gap-2">
-              <FileText className="h-4 w-4 text-violet-600" />
+            <div>
               <div>
                 <CardTitle className="text-base">{mt("recentInvoices")}</CardTitle>
                 <p className="text-xs text-muted-foreground">{mt("latestBookingInvoices")}</p>
@@ -295,8 +258,8 @@ export default function ManagerRevenueDashboard({
                   className="flex items-center justify-between p-4 rounded-xl bg-muted/30 hover:bg-muted/50 transition-colors"
                 >
                   <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center">
-                      <FileText className="h-5 w-5 text-violet-600" />
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border bg-muted/40">
+                      <FileText className="h-5 w-5 text-muted-foreground" />
                     </div>
                     <div>
                       <p className="font-medium">
@@ -412,8 +375,8 @@ export default function ManagerRevenueDashboard({
                   className="flex items-center justify-between p-4 rounded-xl bg-muted/30 hover:bg-muted/50 transition-colors"
                 >
                   <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
-                      <CreditCard className="h-5 w-5 text-emerald-600" />
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border bg-muted/40">
+                      <CreditCard className="h-5 w-5 text-muted-foreground" />
                     </div>
                     <div>
                       <p className="font-medium">

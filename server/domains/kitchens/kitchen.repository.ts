@@ -180,8 +180,16 @@ export class KitchenRepository {
           galleryImages: dto.galleryImages,
           amenities: dto.amenities,
           isActive: dto.isActive,
-          hourlyRate: dto.hourlyRate ? dto.hourlyRate.toString() : undefined, // Convert number to string
-          dailyRate: dto.dailyRate ? dto.dailyRate.toString() : (dto.dailyRate === null ? null : undefined),
+          hourlyRate: dto.hourlyRate === null
+            ? null
+            : dto.hourlyRate !== undefined
+              ? dto.hourlyRate.toString()
+              : undefined,
+          dailyRate: dto.dailyRate === null
+            ? null
+            : dto.dailyRate !== undefined
+              ? dto.dailyRate.toString()
+              : undefined,
           currency: dto.currency,
           minimumBookingHours: dto.minimumBookingHours,
           pricingModel: dto.pricingModel,

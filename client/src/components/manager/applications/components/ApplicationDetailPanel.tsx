@@ -273,8 +273,7 @@ export function ApplicationDetailPanel({
                             {/* Business Information */}
                             {businessInfo && (
                                 <div className="space-y-3">
-                                    <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                        <Briefcase className="h-4 w-4 text-[#208D80]" />{mt("businessInformation")}</h3>
+                                    <h3 className="text-sm font-semibold text-gray-900">{mt("businessInformation")}</h3>
                                     <div className="grid grid-cols-2 gap-3">
                                         {businessInfo.businessName && (
                                             <InfoCard label={mt("businessName")} value={businessInfo.businessName} />
@@ -305,8 +304,7 @@ export function ApplicationDetailPanel({
 
                             {/* Food Safety Documents */}
                             <div className="space-y-3">
-                                <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                    <Shield className="h-4 w-4 text-[#208D80]" />{mt("foodSafetyDocuments")}</h3>
+                                <h3 className="text-sm font-semibold text-gray-900">{mt("foodSafetyDocuments")}</h3>
                                 <DocumentCard
                                     title={mt("foodSafetyLicense")}
                                     subtitle={application.foodSafetyLicense === 'yes' ? 'License provided' : 'No license'}
@@ -322,8 +320,7 @@ export function ApplicationDetailPanel({
                                     <>
                                         <Separator />
                                         <div className="space-y-3">
-                                            <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                                <FileText className="h-4 w-4 text-[#208D80]" />{mt("additionalInformation")}</h3>
+                                            <h3 className="text-sm font-semibold text-gray-900">{mt("additionalInformation")}</h3>
                                             <div className="grid grid-cols-2 gap-3">
                                                 {locationRequirements.tier1_custom_fields.map((field) => {
                                                     const customData = (application.customFieldsData || {}) as Record<string, any>;
@@ -372,8 +369,7 @@ export function ApplicationDetailPanel({
 
                                     {/* Step 2 Documents */}
                                     <div className="space-y-3">
-                                        <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                            <Shield className="h-4 w-4 text-[#208D80]" />{mt("step2Documents")}</h3>
+                                        <h3 className="text-sm font-semibold text-gray-900">{mt("step2Documents")}</h3>
 
                                         {/* Food Safety License (uploaded on Step 2) */}
                                         <DocumentCard
@@ -422,8 +418,7 @@ export function ApplicationDetailPanel({
                                             <>
                                                 <Separator />
                                                 <div className="space-y-3">
-                                                    <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                                        <FileText className="h-4 w-4 text-[#208D80]" />{mt("additionalStep2Information")}</h3>
+                                                    <h3 className="text-sm font-semibold text-gray-900">{mt("additionalStep2Information")}</h3>
                                                     <div className="grid grid-cols-2 gap-3">
                                                         {locationRequirements.tier2_custom_fields.map((field) => {
                                                             const tierData = (application.tier_data || {}) as Record<string, any>;
@@ -475,7 +470,7 @@ export function ApplicationDetailPanel({
                         <div className="flex-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                             {mt("awaitingAdminStep1Review", {
                                 defaultValue:
-                                    "Awaiting LocalCooks admin review of this request to apply. You can approve application once the chef submits kitchen documents.",
+                                    "Awaiting Local Cooks review of this request to apply. You can review the application once the chef submits Kitchen Coordination documents.",
                             })}
                         </div>
                     )}

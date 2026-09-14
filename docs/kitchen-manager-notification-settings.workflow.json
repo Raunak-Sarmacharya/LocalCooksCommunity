@@ -1,0 +1,51 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Kitchen Manager Notification Settings",
+    "quality_profile": "showcase",
+    "output": "docs/kitchen-manager-notification-settings.workflow.html"
+  },
+  "lanes": [
+    { "id": "manager", "label": "Kitchen Manager" },
+    { "id": "profile_ui", "label": "Profile UI" },
+    { "id": "location_api", "label": "Location Settings API" }
+  ],
+  "phases": [
+    { "id": "configure", "label": "Configure", "fromCol": 0, "toCol": 2 },
+    { "id": "save", "label": "Save", "fromCol": 3, "toCol": 5, "variant": "emphasis" }
+  ],
+  "mainPath": ["open_profile", "open_notifications", "edit_email", "submit_email", "update_location", "saved_state"],
+  "semanticChecks": {
+    "allowedRoots": ["open_profile"],
+    "allowedTerminals": ["saved_state"],
+    "requiredPaths": [
+      { "from": "open_profile", "to": "saved_state" }
+    ]
+  },
+  "nodes": [
+    { "id": "open_profile", "lane": "manager", "col": 0, "type": "external", "label": "Open Profile", "width": 132 },
+    { "id": "open_notifications", "lane": "profile_ui", "col": 1, "type": "frontend", "label": "Notifications Tab", "sublabel": "selected location", "width": 142 },
+    { "id": "edit_email", "lane": "profile_ui", "col": 2, "type": "frontend", "label": "Notification Email", "sublabel": "email only", "width": 146 },
+    { "id": "submit_email", "lane": "profile_ui", "col": 3, "type": "frontend", "label": "Save Settings", "sublabel": "locationId + email", "width": 142 },
+    { "id": "update_location", "lane": "location_api", "col": 4, "type": "backend", "label": "Update Location", "sublabel": "authenticated PUT", "width": 142 },
+    { "id": "saved_state", "lane": "location_api", "col": 5, "type": "database", "label": "Email Saved", "sublabel": "refresh location cache", "width": 132 }
+  ],
+  "edges": [
+    { "id": "profile_to_tab", "from": "open_profile", "to": "open_notifications", "role": "main" },
+    { "id": "tab_to_email", "from": "open_notifications", "to": "edit_email", "role": "main" },
+    { "id": "email_to_save", "from": "edit_email", "to": "submit_email", "label": "valid email or empty", "role": "main" },
+    { "id": "save_to_api", "from": "submit_email", "to": "update_location", "label": "notificationEmail", "variant": "emphasis", "role": "main" },
+    { "id": "api_to_saved", "from": "update_location", "to": "saved_state", "label": "success", "variant": "emphasis", "role": "main" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Truthful channel contract",
+      "items": [
+        "The profile exposes email notifications only",
+        "No SMS promise, phone field, or phone payload is present"
+      ]
+    }
+  ]
+}

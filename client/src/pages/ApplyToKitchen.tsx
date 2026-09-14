@@ -131,7 +131,7 @@ export default function ApplyToKitchen() {
   const { application: locationApplication, hasApplication: hasKitchenApp } =
     useChefKitchenApplicationForLocation(user && locationId ? locationId : null);
 
-  // Only block the form while Step 1 is awaiting LocalCooks admin review.
+  // Only block the form while Step 1 is awaiting Local Cooks review.
   // After approval, chefs must reach KitchenApplicationForm for Step 2 docs.
   const isAwaitingStep1Review =
     hasKitchenApp &&
@@ -336,4 +336,3 @@ export default function ApplyToKitchen() {
     </div>
   );
 }
-

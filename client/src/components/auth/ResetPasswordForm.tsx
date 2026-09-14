@@ -372,7 +372,7 @@ export default function ResetPasswordForm({ oobCode, token, email, onSuccess, on
             <div className="mt-4 pt-3 border-t border-green-200">
               <button
                 onClick={onGoBack}
-                className="text-sm text-green-700 hover:text-green-800 hover:underline transition-colors"
+                className="text-sm text-primary hover:text-primary/80 hover:underline transition-colors"
               >
                 Continue to login →
               </button>
@@ -382,4 +382,4 @@ export default function ResetPasswordForm({ oobCode, token, email, onSuccess, on
       )}
     </motion.div>
   );
-} 
+}

@@ -16,15 +16,25 @@ import EmailVerificationScreen from "./EmailVerificationScreen";
 import LoadingOverlay from "./LoadingOverlay";
 import { getEmailContinueMessage } from "./EmailContinueHint";
 import { Icon } from "@iconify/react";
+import GoogleIcon from "./GoogleIcon";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { phoneNumberSchema } from "@shared/phone-validation";
 import { hasVerifiedEmail } from "@/lib/auth-verification";
 import { saveRegistrationName } from "@/lib/registration-identity";
 import { sendVerificationEmailWithFallback } from "@/lib/send-verification-email";
-import { updateProfile } from "firebase/auth";
+import { deleteUser, signOut, updateProfile, verifyBeforeUpdateEmail } from "firebase/auth";
 import { isDuplicateAccountError } from "@/lib/registration-error";
+import { rememberAuthMethod } from "@/lib/login-challenge";
 import type { PublicRegistrationRole } from "@/hooks/use-auth";
+import PhoneOtpChallenge from "./PhoneOtpChallenge";
 import { getSellerJourneyDraft } from "@/lib/seller-journey";
+import {
+  clearPendingPhoneRegistration,
+  didPhoneAuthCreateNewIdentity,
+  isPhoneAuthInProgress,
+  provisionPendingPhoneRegistration,
+  savePendingPhoneRegistration,
+} from "@/lib/phone-registration";
 
 const registerSchema = z.object({
   displayName: z.string().min(2, "Name must be at least 2 characters"),
@@ -81,6 +91,7 @@ interface EnhancedRegisterFormProps {
   /** Consent already captured by a preceding first-party registration step. */
   initialTermsAccepted?: boolean;
   animateEntrance?: boolean;
+  initialEmail?: string;
 }
 
 type AuthState = 'idle' | 'loading' | 'success' | 'error' | 'email-verification';
@@ -110,10 +121,10 @@ const itemVariants = {
   }
 };
 
-export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, onRegistrationStart, onRegistrationComplete, onRegistrationError, onSwitchToLogin, forceApplying, hideApplyingToggle, reviewAfterRegistration, onPreviousStep, accountType = 'chef', showTermsInline = false, initialTermsAccepted = false, animateEntrance = true }: EnhancedRegisterFormProps) {
+export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, onRegistrationStart, onRegistrationComplete, onRegistrationError, onSwitchToLogin, forceApplying, hideApplyingToggle, reviewAfterRegistration, onPreviousStep, accountType = 'chef', showTermsInline = false, initialTermsAccepted = false, animateEntrance = true, initialEmail }: EnhancedRegisterFormProps) {
   const { t } = useTranslation("auth");
   const registerSchema = useRegisterSchema();
-  const { signup, signInWithGoogle, loading, error, updateUserVerification } = useFirebaseAuth();
+  const { user: authUser, signup, signInWithGoogle, loading, error, updateUserVerification, syncUserWithBackend, refreshUserData } = useFirebaseAuth();
   const [authState, setAuthState] = useState<AuthState>('idle');
   const [formError, setFormError] = useState<string | null>(null);
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
@@ -122,6 +133,15 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
   const [step, setStep] = useState(1);
   const [isApplying, setIsApplying] = useState(!!forceApplying);
   const [acceptedTerms, setAcceptedTerms] = useState(initialTermsAccepted);
+  const [phoneVerifiedUid, setPhoneVerifiedUid] = useState<string | null>(() => {
+    const currentUser = auth.currentUser;
+    return isPhoneAuthInProgress() && currentUser?.phoneNumber ? currentUser.uid : null;
+  });
+  const [googlePhonePending, setGooglePhonePending] = useState<{
+    displayName: string;
+    phoneNumber: string;
+    termsAccepted: boolean;
+  } | null>(null);
 
   // Sync isApplying if forceApplying prop changes
   useEffect(() => {
@@ -129,6 +149,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       setIsApplying(forceApplying);
     }
   }, [forceApplying]);
+
   const { showAlert } = useCustomAlerts();
 
   // Mobile-friendly nudge: tapping a disabled button shows an alert (tooltips are hover-only)
@@ -145,12 +166,29 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
     }
   };
 
+  const returnToLogin = async () => {
+    if (phoneVerifiedUid) {
+      const deleteTemporaryIdentity = didPhoneAuthCreateNewIdentity();
+      clearPendingPhoneRegistration();
+      if (auth.currentUser?.uid === phoneVerifiedUid) {
+        if (deleteTemporaryIdentity) {
+          await deleteUser(auth.currentUser).catch(async () => {
+            await signOut(auth).catch(() => undefined);
+          });
+        } else {
+          await signOut(auth).catch(() => undefined);
+        }
+      }
+    }
+    onSwitchToLogin?.();
+  };
+
   const journeyDraft = getSellerJourneyDraft();
   const form = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
     defaultValues: { 
       displayName: journeyDraft?.fullName || "",
-      email: journeyDraft?.email || "",
+      email: initialEmail || journeyDraft?.email || "",
       phone: journeyDraft?.phone || "",
       shopName: "", 
       shopAddress: "",
@@ -163,6 +201,15 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       usageFrequency: "",
     },
   });
+
+  // Continue seamlessly when a new phone identity was started from the sign-in tab.
+  useEffect(() => {
+    const currentUser = auth.currentUser;
+    if (isPhoneAuthInProgress() && currentUser?.phoneNumber) {
+      setPhoneVerifiedUid(currentUser.uid);
+      form.setValue("phone", currentUser.phoneNumber, { shouldValidate: true });
+    }
+  }, [form, authUser?.uid]);
 
   // Applying to a commercial kitchen — don't ask preference; lock to commercial.
   useEffect(() => {
@@ -223,6 +270,69 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
         window.localStorage.setItem('pendingRegistrationData', JSON.stringify(cleanData));
       }
 
+      if (phoneVerifiedUid) {
+        const phoneUser = auth.currentUser;
+        if (!phoneUser || phoneUser.uid !== phoneVerifiedUid || !phoneUser.phoneNumber) {
+          clearPendingPhoneRegistration();
+          throw new Error("Your verified phone session expired. Please verify your phone again.");
+        }
+        if (data.phone !== phoneUser.phoneNumber) {
+          form.setError("phone", { message: "Use the phone number you just verified." });
+          throw new Error("The phone number does not match the verified number.");
+        }
+
+        await updateProfile(phoneUser, { displayName: data.displayName });
+        saveRegistrationName(data.email, data.displayName);
+        savePendingPhoneRegistration({
+          uid: phoneUser.uid,
+          phoneNumber: phoneUser.phoneNumber,
+          email: data.email.trim().toLowerCase(),
+          displayName: data.displayName.trim(),
+          accountType,
+          termsAccepted: initialTermsAccepted || (showTermsInline && acceptedTerms),
+          createdAt: Date.now(),
+        });
+
+        // A returning interrupted phone registration may already have completed
+        // this email action. In that case provision immediately and idempotently.
+        await phoneUser.reload();
+        if (phoneUser.emailVerified && phoneUser.email?.toLowerCase() === data.email.trim().toLowerCase()) {
+          const provisioned = await provisionPendingPhoneRegistration();
+          if (!provisioned.completed) throw new Error("Could not finish the verified registration.");
+          setAuthState("success");
+          setShowLoadingOverlay(false);
+          onRegistrationComplete?.(data.email, data);
+          onSuccess?.();
+          return;
+        }
+
+        const continueUrl = new URL(window.location.href);
+        continueUrl.searchParams.set("completePhoneRegistration", "1");
+        await verifyBeforeUpdateEmail(phoneUser, data.email.trim().toLowerCase(), {
+          url: continueUrl.toString(),
+          handleCodeInApp: true,
+        });
+
+        setAuthState("success");
+        setShowLoadingOverlay(false);
+
+        // Persist the parent journey before the verification link leaves this
+        // page. Apply and tour flows use this callback to save their current
+        // step, so phone-first registration resumes exactly like email signup.
+        if (reviewAfterRegistration && onRegistrationComplete) {
+          onRegistrationComplete(data.email, data);
+          window.location.reload();
+          return;
+        } else if (onRegistrationComplete) {
+          onRegistrationComplete(data.email, data);
+          return;
+        }
+
+        setEmailForVerification(data.email.trim().toLowerCase());
+        setShowEmailVerification(true);
+        return;
+      }
+
       logger.info(`✅ Proceeding with registration: ${data.email}`);
 
       // Auto-generate a secure password since we are doing passwordless signup
@@ -232,7 +342,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       logger.info('🔐 Auto-generated secure password for passwordless flow');
 
       await Promise.all([
-        signup(data.email, generatedPassword, data.displayName, accountType, initialTermsAccepted || (showTermsInline && acceptedTerms)),
+        signup(data.email, generatedPassword, data.displayName, accountType, initialTermsAccepted || (showTermsInline && acceptedTerms), data.phone),
         new Promise(resolve => setTimeout(resolve, 1200)) // Minimum loading time for UX
       ]);
 
@@ -271,7 +381,12 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
         : t("registrationFailedTitle", "Registration Failed");
       let errorMessage = "";
 
-      if (duplicateAccount) {
+      if (duplicateAccount && phoneVerifiedUid) {
+        errorMessage = t(
+          "errPhoneEmailExists",
+          "This email already has a Local Cooks account. Sign in with your usual method instead."
+        );
+      } else if (duplicateAccount) {
         errorMessage = t(
           "errEmailExists",
           "An account already exists for this email address. Sign in instead, or use a different email."
@@ -291,7 +406,8 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       });
 
       if (duplicateAccount && onSwitchToLogin) {
-        setTimeout(onSwitchToLogin, 350);
+        if (phoneVerifiedUid) await returnToLogin();
+        else setTimeout(onSwitchToLogin, 350);
       }
 
       setTimeout(() => setAuthState('idle'), 2000);
@@ -311,25 +427,50 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
     // via onSuccess() callback. Calling it here causes the useEffect in EnhancedAuthPage to
     // run before the user profile exists, setting hasCheckedUser.current = true prematurely.
     setFormError(null);
+
+    const hasRequiredProfile = await form.trigger(["displayName", "phone"]);
+    if (!hasRequiredProfile) {
+      const firstInvalid = form.formState.errors.displayName ? "displayName" : "phone";
+      form.setFocus(firstInvalid);
+      showAlert({
+        title: t("googleProfileRequiredTitle", "Add your details first"),
+        description: t("googleProfileRequiredDescription", "Enter your full name and phone number, then continue with Google. Your email comes from Google."),
+        type: "warning",
+      });
+      return;
+    }
+
     setAuthState('loading');
     setShowLoadingOverlay(true);
 
     try {
       // Start Google registration
-      await signInWithGoogle(true, accountType, initialTermsAccepted || (showTermsInline && acceptedTerms));
-
-      // Explicit form input wins over the name supplied by the Google account.
       const enteredName = form.getValues("displayName").trim();
-      const googleUser = auth.currentUser;
-      if (googleUser?.email && enteredName.length >= 2) {
-        saveRegistrationName(googleUser.email, enteredName);
-        try {
-          await updateProfile(googleUser, { displayName: enteredName });
-        } catch (profileError) {
-          // Account creation succeeded; the saved registration name still
-          // gives the seller form the correct explicit value.
-          logger.warn("Could not update the Google profile display name:", profileError);
+      const enteredPhone = form.getValues("phone").trim();
+      const googleOutcome = await signInWithGoogle(
+        true,
+        accountType,
+        initialTermsAccepted || (showTermsInline && acceptedTerms),
+        { displayName: enteredName, phoneNumber: enteredPhone },
+      );
+
+      if (googleOutcome === "phone-verification-required") {
+        if (auth.currentUser?.email) {
+          form.setValue("email", auth.currentUser.email, { shouldValidate: true });
         }
+        setGooglePhonePending({
+          displayName: enteredName,
+          phoneNumber: enteredPhone,
+          termsAccepted: initialTermsAccepted || (showTermsInline && acceptedTerms),
+        });
+        setAuthState("idle");
+        setShowLoadingOverlay(false);
+        return;
+      }
+
+      const googleUser = auth.currentUser;
+      if (googleOutcome === 'registered' && googleUser?.email) {
+        saveRegistrationName(googleUser.email, enteredName);
       }
 
       // Wait for sync to complete - poll for user profile to be available
@@ -443,6 +584,16 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       const currentUser = auth.currentUser;
 
       if (currentUser) {
+        if (phoneVerifiedUid && currentUser.uid === phoneVerifiedUid) {
+          const email = form.getValues("email").trim().toLowerCase();
+          const continueUrl = new URL(window.location.href);
+          continueUrl.searchParams.set("completePhoneRegistration", "1");
+          await verifyBeforeUpdateEmail(currentUser, email, {
+            url: continueUrl.toString(),
+            handleCodeInApp: true,
+          });
+          return;
+        }
         // User is still signed in, send verification directly
         await sendVerificationEmailWithFallback({
           email: currentUser.email!,
@@ -478,6 +629,48 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
     return 'idle';
   };
 
+  if (googlePhonePending) {
+    return (
+      <PhoneOtpChallenge
+        purpose="link"
+        initialPhone={googlePhonePending.phoneNumber}
+        autoSend
+        onCancel={async () => {
+          await signOut(auth).catch(() => undefined);
+          setGooglePhonePending(null);
+          setAuthState("idle");
+        }}
+        onExistingUser={() => undefined}
+        onNewUser={() => undefined}
+        onLinkedPhone={async (googleUser) => {
+          setAuthState("loading");
+          setShowLoadingOverlay(true);
+          try {
+            const synced = await syncUserWithBackend(
+              googleUser,
+              accountType,
+              true,
+              googlePhonePending.termsAccepted,
+              googleUser.phoneNumber || googlePhonePending.phoneNumber,
+            );
+            if (!synced) throw new Error("Could not finish your account setup.");
+            await refreshUserData();
+            await rememberAuthMethod(googleUser.email, "google");
+            setGooglePhonePending(null);
+            setAuthState("success");
+            setShowLoadingOverlay(false);
+            onRegistrationComplete?.(googleUser.email || form.getValues("email"), form.getValues());
+            onSuccess?.();
+          } catch (verificationError) {
+            setShowLoadingOverlay(false);
+            setAuthState("error");
+            throw verificationError;
+          }
+        }}
+      />
+    );
+  }
+
   if (showEmailVerification) {
     return (
       <>
@@ -499,6 +692,14 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
           }}
           onCheckVerified={async () => {
             try {
+              if (phoneVerifiedUid) {
+                const result = await provisionPendingPhoneRegistration();
+                if (result.completed) {
+                  sessionStorage.setItem('localcooks:completing-verification', 'true');
+                  window.location.reload();
+                  return;
+                }
+              }
               const updatedUser = await updateUserVerification();
               const verified = hasVerifiedEmail(auth.currentUser, updatedUser);
               if (verified) {
@@ -540,8 +741,6 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
         initial={animateEntrance ? "hidden" : false}
         animate="visible"
       >
-
-        {/* Google Sign Up Button */}
         <motion.div variants={itemVariants} className="mb-6">
           <TooltipProvider delayDuration={0}>
             <Tooltip open={showTermsInline && !acceptedTerms ? undefined : false}>
@@ -549,39 +748,38 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
                 <span className="block" tabIndex={showTermsInline && !acceptedTerms ? 0 : undefined} onClick={handleTermsNudge}>
                   <AnimatedButton
                     state={authState === 'loading' ? 'loading' : 'idle'}
-                    loadingText="Creating account with Google..."
+                    loadingText={t("btnCreatingWithGoogle", "Creating account with Google...")}
                     onClick={handleGoogleSignIn}
                     variant="google"
                     disabled={authState === 'loading' || (showTermsInline && !acceptedTerms)}
                   >
                     <div className="flex items-center gap-3">
-                      <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
-                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-                      </svg>
-                      <span>Continue with Google</span>
+                      <GoogleIcon className="h-5 w-5" aria-hidden />
+                      <span>{t("continueWithGoogle", "Continue with Google")}</span>
                     </div>
                   </AnimatedButton>
                 </span>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="max-w-[260px] text-center">
-                <p>{t("termsTooltip", "Please accept the Terms & Conditions and Privacy Policy to continue")}</p>
+                <p>{t("googleProfileRequiredDescription", "Enter your full name and phone number, then continue with Google.")}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         </motion.div>
 
-        {/* Divider */}
-        <motion.div variants={itemVariants} className="flex items-center my-6">
-          <div className="flex-1 h-px bg-gray-200" />
-          <span className="mx-3 text-gray-400 text-xs uppercase tracking-wider">or</span>
-          <div className="flex-1 h-px bg-gray-200" />
-        </motion.div>
-
-        {/* Form */}
+        {/* Once phone ownership is proven, progressively disclose only the required profile fields. */}
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-5">
+          {phoneVerifiedUid && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+              <p className="font-medium">{t("phoneVerifiedTitle", "Phone verified")}</p>
+              <p className="mt-1 text-emerald-800">
+                {t("phoneVerifiedFinish", "Add your full name and email to finish signing up.")}
+              </p>
+              <p className="mt-2 text-xs text-emerald-700">
+                {t("phoneExistingAccountHint", "Already have an account? Use Log in below and continue with your usual sign-in method.")}
+              </p>
+            </div>
+          )}
           {step === 1 && (
             <motion.div 
               initial={animateEntrance ? { opacity: 0, x: -20 } : false}
@@ -633,6 +831,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
                     if (authState === 'error') setAuthState('idle');
                   }
                 })}
+                disabled={!!phoneVerifiedUid}
               />
 
               {!forceApplying && !hideApplyingToggle && (
@@ -872,18 +1071,6 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
             </motion.div>
           )}
 
-          {onSwitchToLogin && (
-            <motion.div variants={itemVariants} className="mt-6 text-center text-sm">
-              <span className="text-gray-500">{t("alreadyHaveAccount", "Already have an account?")}</span>{' '}
-              <button
-                type="button"
-                onClick={onSwitchToLogin}
-                className="text-[#F51042] hover:underline font-medium"
-              >
-                {t("loginLink", "Log in")}
-              </button>
-            </motion.div>
-          )}
         </form>
       </motion.div>
     </>

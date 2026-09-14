@@ -18,6 +18,7 @@ import * as Sentry from '@sentry/node';
 import { errorResponse } from "../api-response";
 import { notificationService } from "../services/notification.service";
 import { generateReferenceCode } from "../reference-code";
+import { parseCheckoutSlots } from "../services/checkout-metadata";
 
 const router = Router();
 
@@ -555,7 +556,7 @@ async function handleCheckoutSessionCompleted(
         const hourlyRateCents = parseInt(metadata.hourly_rate_cents || "0");
         const durationHours = parseFloat(metadata.duration_hours || "1");
         const specialNotes = metadata.special_notes || null;
-        const selectedSlots = metadata.selected_slots ? JSON.parse(metadata.selected_slots) : [];
+        const selectedSlots = parseCheckoutSlots(metadata.selected_slots, startTime, endTime);
         const selectedStorage = metadata.selected_storage ? JSON.parse(metadata.selected_storage) : [];
         const selectedEquipmentIds = metadata.selected_equipment_ids ? JSON.parse(metadata.selected_equipment_ids) : [];
 
@@ -887,6 +888,7 @@ async function handleCheckoutSessionCompleted(
                 metadata: {
                   checkout_session_id: session.id,
                   booking_id: booking.id.toString(),
+                  ...(metadata.pricing_mode ? { pricingMode: metadata.pricing_mode } : {}),
                   // ENTERPRISE STANDARD: Include storage_items in PT metadata
                   // This enables the View Details endpoint to identify which storage bookings
                   // belong to this kitchen booking payment (vs. extensions paid separately)
@@ -3223,8 +3225,7 @@ async function handleChargeUpdated(
     // Check if we already have the Stripe fee synced
     const existingFee = parseInt(String(paymentTransaction.stripe_processing_fee || '0')) || 0;
     if (existingFee > 0) {
-      logger.info(`[Webhook] charge.updated: Stripe fee already synced for ${paymentIntentId}: ${existingFee} cents`);
-      return;
+      logger.info(`[Webhook] charge.updated: Stripe fee already synced for ${paymentIntentId}: ${existingFee} cents; validating captured amount and transfer split`);
     }
 
     // Get the balance transaction to retrieve actual fee
@@ -3250,7 +3251,12 @@ async function handleChargeUpdated(
     const balanceTransaction = await stripe.balanceTransactions.retrieve(balanceTransactionId);
 
     // Calculate actual fees from balance transaction
-    const stripeAmount = charge.amount;
+    // `charge.amount` may remain the original authorization after a manual or
+    // adjusted capture. All downstream money fields must use what Stripe
+    // actually captured.
+    const stripeAmount = charge.amount_captured > 0
+      ? charge.amount_captured
+      : charge.amount;
     let stripeNetAmount = balanceTransaction.net;
     const stripeProcessingFee = balanceTransaction.fee;
 
@@ -3264,7 +3270,8 @@ async function handleChargeUpdated(
     //   If payment_intent.succeeded ran before balance_transaction was available
     //   (so transfer was skipped), this is the first chance to compute the manager's
     //   share using the actual Stripe fee and create the transfer.
-    //   Idempotent: skipped if metadata.transfer.transferred is already true.
+    //   Idempotent: existing transfers are retrieved and their split is validated;
+    //   underpayments are reversed/replaced with deterministic idempotency keys.
     const updateParams: Parameters<typeof updatePaymentTransaction>[1] = {
       stripeAmount,
       stripeNetAmount,
@@ -3279,9 +3286,7 @@ async function handleChargeUpdated(
             ? JSON.parse(paymentTransaction.metadata)
             : paymentTransaction.metadata)
         : {};
-      const alreadyTransferred = existingMetadata?.transfer?.transferred === true;
-
-      if (!alreadyTransferred && stripeProcessingFee > 0 && paymentTransaction.manager_id) {
+      if (stripeProcessingFee > 0 && paymentTransaction.manager_id) {
         const { transferToManagerForBooking } = await import(
           "../services/stripe-transfer-service"
         );

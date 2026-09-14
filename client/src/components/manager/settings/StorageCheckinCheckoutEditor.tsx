@@ -976,15 +976,7 @@ export function StorageCheckinCheckoutEditor({
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center gap-3">
-          <div className="size-9 rounded-lg flex items-center justify-center bg-amber-50">
-            <Boxes className="size-5 text-amber-600" />
-          </div>
-          <div className="min-w-0">
-            <CardTitle className="text-lg">{mt("storageCheckInCheckOutChecklists")}</CardTitle>
-
-          </div>
-        </div>
+        <CardTitle className="text-lg">{mt("storageCheckInCheckOutChecklists")}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

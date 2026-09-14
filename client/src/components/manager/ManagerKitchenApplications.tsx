@@ -345,7 +345,7 @@ export default function ManagerKitchenApplications({
                   {updateApplicationStatus.isPending ? "Processing..." : "Reject"}
                 </Button>
                 <Button
-                  variant="success"
+                  variant="default"
                   onClick={handleApprove}
                   disabled={updateApplicationStatus.isPending}
                 >

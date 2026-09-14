@@ -1,12 +1,11 @@
 import { logger } from "@/lib/logger";
 import { useTranslation } from "react-i18next";
-import EnhancedLoginForm from "@/components/auth/EnhancedLoginForm";
-import EnhancedRegisterForm from "@/components/auth/EnhancedRegisterForm";
+import AuthFlow, { type AuthFlowStep } from "@/components/auth/AuthFlow";
+import { isPhoneAuthInProgress } from "@/lib/phone-registration";
 import { hasVerifiedEmail } from "@/lib/auth-verification";
 import EmailVerificationScreen from "@/components/auth/EmailVerificationScreen";
 import LoadingOverlay from "@/components/auth/LoadingOverlay";
 import Logo from "@/components/ui/logo";
-import { Button } from "@/components/ui/button";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 // Removed sendEmailVerification from firebase/auth
@@ -19,14 +18,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import KitchenAuthShowcase from "@/components/auth/KitchenAuthShowcase";
 
 export default function ManagerLogin() {
-  const { t } = useTranslation("manager");
+  const { t } = useTranslation(["manager", "auth"]);
 
   // Managers now use Firebase authentication (like chefs)
   const [location, setLocation] = useLocation();
-  const { user, loading, authPhase, refreshUserData } = useFirebaseAuth();
+  const { user, loading, authPhase, refreshUserData, signInWithGoogle } = useFirebaseAuth();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<"login" | "register">(() =>
-    new URLSearchParams(window.location.search).get("tab") === "register" ? "register" : "login"
+  const [authStep, setAuthStep] = useState<AuthFlowStep>(() =>
+    new URLSearchParams(window.location.search).get("tab") === "register" ? "register" : "identifier"
   );
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
@@ -55,11 +54,11 @@ export default function ManagerLogin() {
     const observer = new ResizeObserver(measure);
     observer.observe(content);
     return () => observer.disconnect();
-  }, [activeTab, showEmailVerification, showSuccessMessage]);
+  }, [authStep, showEmailVerification, showSuccessMessage]);
 
   useLayoutEffect(() => {
     authCardRef.current?.scrollTo({ top: 0, behavior: "instant" });
-  }, [activeTab, showEmailVerification]);
+  }, [authStep, showEmailVerification]);
   
   // Handle resend verification email
   const handleResendVerification = async () => {
@@ -125,7 +124,7 @@ export default function ManagerLogin() {
     if (message === 'password-reset-success') {
       setSuccessMessageType('password-reset');
       setShowSuccessMessage(true);
-      setActiveTab('login');
+      setAuthStep('login');
       
       window.history.replaceState({}, document.title, window.location.pathname);
       
@@ -136,7 +135,7 @@ export default function ManagerLogin() {
       logger.info('📧 EMAIL VERIFICATION SUCCESS detected in URL');
       setSuccessMessageType('email-verified');
       setShowSuccessMessage(true);
-      setActiveTab('login');
+      setAuthStep('login');
       
       window.history.replaceState({}, document.title, window.location.pathname);
       
@@ -317,21 +316,26 @@ export default function ManagerLogin() {
               </motion.div>
 
               <motion.div
-                key={showEmailVerification ? "verification" : activeTab}
                 initial={reduceMotion ? false : { opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: reduceMotion ? 0 : 0.2, ease: "easeOut" }}
                 className="w-full"
               >
-                {!showEmailVerification && (
+                {!showEmailVerification && authStep !== "phone-otp" && authStep !== "google-hint" && authStep !== "methods" && (
                   <div className="mb-6">
                     <h1 className="text-3xl font-bold tracking-[-0.03em] text-gray-950">
-                      {activeTab === "login" ? t("welcomeBack", "Welcome back") : t("createYourAccount", "Create your account")}
+                      {authStep === "register"
+                        ? isPhoneAuthInProgress()
+                          ? t("finishSigningUp", { ns: "auth", defaultValue: "Finish signing up" })
+                          : t("createYourAccount", "Create your account")
+                        : t("loginOrSignUp", { ns: "auth", defaultValue: "Log in or sign up" })}
                     </h1>
                     <p className="mt-2.5 max-w-sm text-sm leading-relaxed text-gray-600">
-                      {activeTab === "login"
-                        ? t("kitchenLoginSubtitle", "Sign in to manage your kitchen, bookings, and availability")
-                        : t("kitchenRegisterSubtitle", "Create an account to list and manage your commercial kitchen")}
+                      {authStep === "register"
+                        ? t("kitchenRegisterSubtitle", "Create an account to list and manage your commercial kitchen")
+                        : authStep === "identifier"
+                          ? t("kitchenIdentifierSubtitle", "Enter your email or phone number to continue")
+                          : t("kitchenLoginSubtitle", "Sign in to manage your kitchen, bookings, and availability")}
                     </p>
                   </div>
                 )}
@@ -359,7 +363,7 @@ export default function ManagerLogin() {
                       <button
                         type="button"
                         onClick={() => setShowSuccessMessage(false)}
-                        className="flex-shrink-0 text-green-400 transition-colors hover:text-green-600"
+                        className="flex-shrink-0 text-primary transition-colors hover:text-primary/80"
                         aria-label="Dismiss message"
                       >
                         <X className="h-4 w-4" aria-hidden />
@@ -374,53 +378,52 @@ export default function ManagerLogin() {
                     onResend={handleResendVerification}
                     onGoBack={() => {
                       setShowEmailVerification(false);
-                      setActiveTab("login");
+                      setAuthStep("login");
                     }}
-                  />
-                ) : activeTab === "login" ? (
-                  <EnhancedLoginForm
-                    onSuccess={async () => {
-                      setHasAttemptedLogin(true);
-                      await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
-                      await refreshUserData();
-                    }}
-                    setHasAttemptedLogin={setHasAttemptedLogin}
-                    animateEntrance={false}
                   />
                 ) : (
-                  <EnhancedRegisterForm
-                    accountType="manager"
-                    hideApplyingToggle
-                    onSuccess={async () => {
-                      logger.info("🎯 GOOGLE REGISTRATION SUCCESS - Invalidating cache and refreshing data");
-                      await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
-                      setHasAttemptedLogin(true);
-                      await refreshUserData();
-                      queryClient.refetchQueries({ queryKey: ["/api/user/profile", user?.uid] });
+                  <AuthFlow
+                    step={authStep}
+                    onStepChange={setAuthStep}
+                    loginProps={{
+                      onSuccess: async () => {
+                        setHasAttemptedLogin(true);
+                        await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
+                        await refreshUserData();
+                      },
+                      setHasAttemptedLogin: setHasAttemptedLogin,
+                      animateEntrance: false,
                     }}
-                    setHasAttemptedLogin={setHasAttemptedLogin}
-                    onRegistrationStart={handleRegistrationStart}
-                    onRegistrationComplete={handleRegistrationSuccess}
-                    onRegistrationError={handleRegistrationError}
-                    onSwitchToLogin={() => setActiveTab("login")}
-                    animateEntrance={false}
+                    registerProps={{
+                      accountType: "manager",
+                      hideApplyingToggle: true,
+                      onSuccess: async () => {
+                        logger.info("🎯 GOOGLE REGISTRATION SUCCESS - Invalidating cache and refreshing data");
+                        await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
+                        setHasAttemptedLogin(true);
+                        await refreshUserData();
+                        queryClient.refetchQueries({ queryKey: ["/api/user/profile", user?.uid] });
+                      },
+                      setHasAttemptedLogin: setHasAttemptedLogin,
+                      onRegistrationStart: handleRegistrationStart,
+                      onRegistrationComplete: handleRegistrationSuccess,
+                      onRegistrationError: handleRegistrationError,
+                      animateEntrance: false,
+                    }}
+                    onGoogleSignIn={async () => {
+                      await signInWithGoogle();
+                      setHasAttemptedLogin(true);
+                      await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
+                      await refreshUserData();
+                    }}
+                    onPhoneExistingUser={async () => {
+                      setHasAttemptedLogin(true);
+                      await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
+                      await refreshUserData();
+                    }}
                   />
                 )}
 
-                {!showEmailVerification && activeTab === "login" && (
-                  <div className="mt-8 text-center">
-                    <p className="text-sm text-gray-500">
-                      {t("noKitchenAccount", "Don't have a kitchen account?")} {" "}
-                      <Button
-                        variant="link"
-                        className="h-auto p-0 font-semibold text-[#F51042] hover:text-[#D90E3A]"
-                        onClick={() => setActiveTab("register")}
-                      >
-                        {t("register", "Register")}
-                      </Button>
-                    </p>
-                  </div>
-                )}
               </motion.div>
             </div>
           </motion.div>

@@ -1,8 +1,7 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import EnhancedLoginForm from "./EnhancedLoginForm";
-import EnhancedRegisterForm from "./EnhancedRegisterForm";
+import AuthFlow, { type AuthFlowStep } from "./AuthFlow";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -235,12 +234,12 @@ export function useAuthModal() {
 
 export function AuthModalProvider({ children }: { children: ReactNode }) {
   const { t } = useTranslation(["kitchen", "auth"]);
-  const { user, updateUserVerification, loading: authLoading } = useFirebaseAuth();
+  const { user, updateUserVerification, loading: authLoading, signInWithGoogle } = useFirebaseAuth();
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   const [options, setOptions] = useState<AuthModalOptions>({});
-  const [activeTab, setActiveTab] = useState<"login" | "register">("register");
+  const [activeTab, setActiveTab] = useState<AuthFlowStep>("identifier");
   const [showVerificationSuccess, setShowVerificationSuccess] = useState(false);
   const [showPreAuth, setShowPreAuth] = useState(false);
   const [registrationReview, setRegistrationReview] = useState<RegistrationReviewData | null>(null);
@@ -611,7 +610,9 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
       fullName: auth.currentUser?.displayName || "",
     });
     setOptions(newOptions || {});
-    setActiveTab(newOptions?.defaultTab || "register");
+    // The identifier gate is the front door; application flows still deep-link
+    // straight into registration because they already collected an email.
+    setActiveTab(newOptions?.defaultTab || (newOptions?.requireApplication ? "register" : "identifier"));
     setShowPreAuth(!!newOptions?.preAuthComponent);
     setBookingPrefsValid(!newOptions?.bookingContext);
     setStepValid(false);
@@ -1269,65 +1270,63 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
                       </div>
                     </div>
                   ) : (
-                  <div className={cn("min-h-0 flex flex-1 flex-col overflow-hidden", !bookingPrefsValid && showBookingPrefs && collectingSteps && "opacity-50 pointer-events-none")}>
-                  {activeTab === "login" ? (
-                <>
-                <div className="min-h-0 flex-1 overflow-hidden">
-                <EnhancedLoginForm 
-                  onSuccess={() => {
-                    if (options.requireApplication) {
-                      setRegisteredInFlow(false);
-                      setApplyUiStep((s) => (s === "request" ? "request" : "details"));
-                      return;
+                  <div className={cn("min-h-0 flex flex-1 flex-col overflow-hidden px-6", !bookingPrefsValid && showBookingPrefs && collectingSteps && "opacity-50 pointer-events-none")}>
+                  <AuthFlow
+                    step={activeTab}
+                    onStepChange={setActiveTab}
+                    allowBack={!options.requireApplication}
+                    loginProps={{
+                      onSuccess: () => {
+                        if (options.requireApplication) {
+                          setRegisteredInFlow(false);
+                          setApplyUiStep((s) => (s === "request" ? "request" : "details"));
+                          return;
+                        }
+                        closeAuthModal();
+                      },
+                      showVerificationSuccess: showVerificationSuccess,
+                    }}
+                    registerProps={{
+                      showTermsInline: !!options.requireApplication,
+                      onSuccess: () => {
+                        if (!options.requireApplication) closeAuthModal();
+                      },
+                      onRegistrationComplete: (email, data) => {
+                        if (options.requireApplication && data) {
+                          const review = reviewFromFormData(data as unknown as Record<string, unknown>, email);
+                          setRegisteredInFlow(true);
+                          setRegistrationReview(review);
+                          setApplicationPhase("awaiting_verification");
+                          const intent = getAuthIntent();
+                          savePendingApplicationModal({
+                            phase: "awaiting_verification",
+                            review,
+                            returnPath: window.location.pathname + window.location.search,
+                            title: typeof options.title === "string" ? options.title : undefined,
+                            modalType: intent?.type || "book",
+                            registeredInFlow: true,
+                          });
+                        }
+                      },
+                      reviewAfterRegistration: options.requireApplication,
+                      forceApplying: options.requireApplication,
+                      onPreviousStep: canStepBack ? goApplyBack : undefined,
+                    }}
+                    onGoogleSignIn={async () => {
+                      await signInWithGoogle(false);
+                      if (!options.requireApplication) closeAuthModal();
+                    }}
+                    onPhoneExistingUser={() => {
+                      if (!options.requireApplication) closeAuthModal();
+                    }}
+                    footer={
+                      activeTab === "login" && canStepBack ? (
+                        <Button type="button" variant="outline" className="w-full" onClick={goApplyBack}>
+                          {t("modalPrevious", "Previous")}
+                        </Button>
+                      ) : undefined
                     }
-                    closeAuthModal();
-                  }}
-                  onSwitchToRegister={() => setActiveTab("register")}
-                  showVerificationSuccess={showVerificationSuccess} 
-                />
-                </div>
-                {canStepBack ? (
-                  <div className="mt-4 flex shrink-0">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full"
-                      onClick={goApplyBack}
-                    >
-                      {t("modalPrevious", "Previous")}
-                    </Button>
-                  </div>
-                ) : null}
-                </>
-              ) : (
-                <EnhancedRegisterForm 
-                  showTermsInline={!!options.requireApplication}
-                  onSuccess={() => {
-                    if (!options.requireApplication) closeAuthModal();
-                  }}
-                  onRegistrationComplete={(email, data) => {
-                    if (options.requireApplication && data) {
-                      const review = reviewFromFormData(data as unknown as Record<string, unknown>, email);
-                      setRegisteredInFlow(true);
-                      setRegistrationReview(review);
-                      setApplicationPhase("awaiting_verification");
-                      const intent = getAuthIntent();
-                      savePendingApplicationModal({
-                        phase: "awaiting_verification",
-                        review,
-                        returnPath: window.location.pathname + window.location.search,
-                        title: typeof options.title === "string" ? options.title : undefined,
-                        modalType: intent?.type || "book",
-                        registeredInFlow: true,
-                      });
-                    }
-                  }}
-                  reviewAfterRegistration={options.requireApplication}
-                  onSwitchToLogin={() => setActiveTab("login")} 
-                  forceApplying={options.requireApplication}
-                  onPreviousStep={canStepBack ? goApplyBack : undefined}
-                />
-              )}
+                  />
                   </div>
                   )}
                 </div>

@@ -7,6 +7,7 @@ import { logger } from "../logger";
  */
 
 import { sql, type SQL } from "drizzle-orm";
+import { computeManagerGrossAndCommission } from "./manager-payout-math";
 
 export type BookingType = 'kitchen' | 'storage' | 'equipment' | 'bundle';
 export type TransactionStatus = 'pending' | 'authorized' | 'processing' | 'succeeded' | 'failed' | 'canceled' | 'refunded' | 'partially_refunded';
@@ -502,6 +503,18 @@ export async function syncStripeAmountsToBookings(
       logger.info(`[Stripe Sync] Skipping booking table sync for partially captured PaymentIntent ${paymentIntentId} — capture engine already set correct values`);
       return;
     }
+    const canonicalSplit = computeManagerGrossAndCommission({
+      chargeAmountCents: stripeAmounts.stripeAmount,
+      platformCommissionRate: 0,
+      approvedSubtotalCents: Number(ptMetadata.approvedSubtotal) || undefined,
+      approvedTaxCents: Number(ptMetadata.approvedTax) || undefined,
+      platformCommissionCents: Number(ptMetadata.platformCommission ?? ptMetadata.applicationFee) || undefined,
+      capturedAmountCents: Number(ptMetadata.capturedAmount) || undefined,
+      originalAuthorizedAmountCents: Number(ptMetadata.originalAuthorizedAmount) || undefined,
+      storedBaseAmountCents: Number(transaction.base_amount) || undefined,
+      storedServiceFeeCents: Number(transaction.service_fee) || undefined,
+    });
+    const canonicalPlatformFee = canonicalSplit.platformCommissionCents;
 
     // For bundle bookings, we need to get all related bookings
     if (bookingType === 'bundle') {
@@ -545,14 +558,13 @@ export async function syncStripeAmountsToBookings(
 
         // Calculate service fee: platform fee portion for this booking
         // For bundle, distribute platform fee proportionally
-        const kbServiceFee = stripeAmounts.stripePlatformFee > 0
-          ? Math.round(stripeAmounts.stripePlatformFee * kbProportion)
+        const kbServiceFee = canonicalPlatformFee > 0
+          ? Math.round(canonicalPlatformFee * kbProportion)
           : Math.round((kbStripeAmount - kbStripeNet) * 0.5); // Estimate if no platform fee
 
         await db.execute(sql`
           UPDATE kitchen_bookings
           SET 
-            total_price = ${kbStripeAmount.toString()},
             service_fee = ${kbServiceFee.toString()},
             updated_at = NOW()
           WHERE id = ${bookingId}
@@ -568,14 +580,13 @@ export async function syncStripeAmountsToBookings(
           const sbStripeNet = Math.round(stripeAmounts.stripeNetAmount * sbProportion);
 
           // Calculate service fee proportionally
-          const sbServiceFee = stripeAmounts.stripePlatformFee > 0
-            ? Math.round(stripeAmounts.stripePlatformFee * sbProportion)
+          const sbServiceFee = canonicalPlatformFee > 0
+            ? Math.round(canonicalPlatformFee * sbProportion)
             : Math.round((sbStripeAmount - sbStripeNet) * 0.5);
 
           await db.execute(sql`
             UPDATE storage_bookings
             SET 
-              total_price = ${sbStripeAmount.toString()},
               service_fee = ${sbServiceFee.toString()},
               updated_at = NOW()
             WHERE id = ${(sb as any).id}
@@ -592,14 +603,13 @@ export async function syncStripeAmountsToBookings(
           const ebStripeNet = Math.round(stripeAmounts.stripeNetAmount * ebProportion);
 
           // Calculate service fee proportionally
-          const ebServiceFee = stripeAmounts.stripePlatformFee > 0
-            ? Math.round(stripeAmounts.stripePlatformFee * ebProportion)
+          const ebServiceFee = canonicalPlatformFee > 0
+            ? Math.round(canonicalPlatformFee * ebProportion)
             : Math.round((ebStripeAmount - ebStripeNet) * 0.5);
 
           await db.execute(sql`
             UPDATE equipment_bookings
             SET 
-              total_price = ${ebStripeAmount.toString()},
               service_fee = ${ebServiceFee.toString()},
               updated_at = NOW()
             WHERE id = ${(eb as any).id}
@@ -610,15 +620,14 @@ export async function syncStripeAmountsToBookings(
       // Single booking (kitchen, storage, or equipment)
       // Update the booking directly with Stripe amounts
       // Service fee = platform fee (not including Stripe processing fee)
-      const serviceFee = stripeAmounts.stripePlatformFee > 0
-        ? stripeAmounts.stripePlatformFee
+      const serviceFee = canonicalPlatformFee > 0
+        ? canonicalPlatformFee
         : Math.max(0, stripeAmounts.stripeAmount - stripeAmounts.stripeNetAmount - stripeAmounts.stripeProcessingFee);
 
       if (bookingType === 'kitchen') {
         await db.execute(sql`
           UPDATE kitchen_bookings
           SET 
-            total_price = ${stripeAmounts.stripeAmount.toString()},
             service_fee = ${serviceFee.toString()},
             updated_at = NOW()
           WHERE id = ${bookingId}
@@ -627,7 +636,6 @@ export async function syncStripeAmountsToBookings(
         await db.execute(sql`
           UPDATE storage_bookings
           SET 
-            total_price = ${stripeAmounts.stripeAmount.toString()},
             service_fee = ${serviceFee.toString()},
             updated_at = NOW()
           WHERE id = ${bookingId}
@@ -636,7 +644,6 @@ export async function syncStripeAmountsToBookings(
         await db.execute(sql`
           UPDATE equipment_bookings
           SET 
-            total_price = ${stripeAmounts.stripeAmount.toString()},
             service_fee = ${serviceFee.toString()},
             updated_at = NOW()
           WHERE id = ${bookingId}
@@ -720,6 +727,7 @@ export async function syncExistingPaymentTransactionsFromStripe(
         pt.booking_type,
         pt.amount as current_amount,
         pt.manager_revenue as current_manager_revenue,
+        pt.metadata,
         pt.last_synced_at
       FROM payment_transactions pt
       WHERE pt.payment_intent_id IS NOT NULL
@@ -783,6 +791,45 @@ export async function syncExistingPaymentTransactionsFromStripe(
           stripeProcessingFee: stripeAmounts.stripeProcessingFee,
           lastSyncedAt: new Date(),
         };
+        const transactionMetadata = transaction.metadata
+          ? (typeof transaction.metadata === 'string' ? JSON.parse(transaction.metadata) : transaction.metadata)
+          : {};
+
+        // A sync is also an idempotent payout-integrity pass. This repairs an
+        // existing underpaid transfer when legacy pricing metadata disagrees
+        // with Stripe's captured charge (transfer service reverses/replaces it
+        // under deterministic idempotency keys).
+        if (stripeAmounts.stripeProcessingFee > 0 && stripeAmounts.chargeId) {
+          const { transferToManagerForBooking } = await import('./stripe-transfer-service');
+          const transferResult = await transferToManagerForBooking({
+            paymentIntentId,
+            paymentTransactionId: transaction.id,
+            chargeAmountCents: stripeAmounts.stripeAmount,
+            actualStripeFeeCents: stripeAmounts.stripeProcessingFee,
+            chargeId: stripeAmounts.chargeId,
+            transferGroup: `pi_${paymentIntentId}`,
+            existingMetadata: transactionMetadata,
+          });
+          if (transferResult.transferred) {
+            updateParams.serviceFee = transferResult.platformCommissionCents;
+            updateParams.managerRevenue = transferResult.transferredCents;
+            updateParams.stripeNetAmount = transferResult.transferredCents;
+            updateParams.stripePlatformFee = transferResult.platformCommissionCents;
+            updateParams.metadata = {
+              ...transactionMetadata,
+              transfer: {
+                transferred: true,
+                transferredAt: new Date().toISOString(),
+                transferId: transferResult.transferId,
+                actualStripeFeeCents: transferResult.actualStripeFeeCents,
+                platformCommissionCents: transferResult.platformCommissionCents,
+                feeWithheldCents: transferResult.feeWithheldCents,
+                transferredCents: transferResult.transferredCents,
+                source: 'manual_stripe_sync',
+              },
+            };
+          }
+        }
 
         // If stripePlatformFee > 0, it means the old flow (application_fee_amount) was used
         // and we should sync net amounts.

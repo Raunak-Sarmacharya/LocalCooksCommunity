@@ -26,4 +26,13 @@ describe("resolveCapturedKitchenRate", () => {
       addonSubtotalCents: 4000,
     })).toEqual({ mode: "hourly", kitchenSubtotalCents: 16000 });
   });
+
+  it("uses one daily rate even when a legacy subtotal was multiplied by hours", () => {
+    expect(resolveCapturedKitchenRate({
+      appliedRateCents: 24000,
+      durationHours: 8,
+      bookingSubtotalCents: 192000,
+      pricingMode: "daily",
+    })).toEqual({ mode: "daily", kitchenSubtotalCents: 24000 });
+  });
 });

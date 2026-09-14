@@ -156,6 +156,14 @@ export function KitchenPricingContent({
       return;
     }
 
+    if ((hourlyRateNum ?? 0) <= 0 && (dailyRateNum ?? 0) <= 0) {
+      toast({ title: mt("validationError"),
+        description: mt("atLeastOneKitchenRateRequired"),
+        variant: "destructive",
+      });
+      return;
+    }
+
     // Validate tax rate
     if (taxRateNum !== null && (isNaN(taxRateNum) || taxRateNum < 0)) {
       toast({ title: mt("validationError"),

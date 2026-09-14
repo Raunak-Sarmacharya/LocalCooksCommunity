@@ -13,11 +13,13 @@ import {
     pendingStorageExtensions,
     paymentTransactions,
     chefKitchenApplications,
-    storageOverstayRecords
+    storageOverstayRecords,
+    checkinCheckoutChecklists
 } from "@shared/schema";
 import { eq, and, desc, asc, lt, not, inArray, gte, lte, or, sql, ne } from "drizzle-orm";
 import { KitchenBooking, StorageBooking, EquipmentBooking, InsertKitchenBooking } from "./booking.types";
 import { calculateRefundBreakdown } from "../../services/stripe-service";
+import { resolveKitchenTransactionTaxAndSubtotal } from "../../services/revenue-transaction-tax";
 
 export class BookingRepository {
 
@@ -102,11 +104,15 @@ export class BookingRepository {
                 // Payment transaction data for accurate payment state display
                 transactionStatus: paymentTransactions.status,
                 transactionAmount: paymentTransactions.amount,
+                transactionBaseAmount: paymentTransactions.baseAmount,
                 transactionRefundAmount: paymentTransactions.refundAmount,
+                // Check-in enabled status
+                checkinEnabled: checkinCheckoutChecklists.checkinEnabled,
             })
             .from(kitchenBookings)
             .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
             .innerJoin(locations, eq(kitchens.locationId, locations.id))
+            .leftJoin(checkinCheckoutChecklists, eq(checkinCheckoutChecklists.locationId, locations.id))
             .leftJoin(paymentTransactions, and(
                 eq(paymentTransactions.bookingId, kitchenBookings.id),
                 eq(paymentTransactions.paymentIntentId, kitchenBookings.paymentIntentId),
@@ -154,6 +160,7 @@ export class BookingRepository {
                 // ── Tax-inclusive amount from PT (what chef actually paid/authorized) ──
                 // kb.total_price is pre-tax subtotal; PT.amount is the tax-inclusive charge
                 chargedAmount: rawTransactionAmount, // null if no PT record
+                checkinEnabled: row.checkinEnabled ?? false,
             };
         });
     }
@@ -172,6 +179,7 @@ export class BookingRepository {
                 // Payment transaction data for accurate display (actual Stripe data)
                 transactionId: paymentTransactions.id,
                 transactionAmount: paymentTransactions.amount,
+                transactionBaseAmount: paymentTransactions.baseAmount,
                 transactionServiceFee: paymentTransactions.serviceFee,
                 transactionTaxAmount: paymentTransactions.taxAmount,
                 transactionMetadata: paymentTransactions.metadata,
@@ -179,10 +187,12 @@ export class BookingRepository {
                 transactionStatus: paymentTransactions.status,
                 transactionRefundAmount: paymentTransactions.refundAmount,
                 transactionStripeProcessingFee: paymentTransactions.stripeProcessingFee,
+                checkinEnabled: checkinCheckoutChecklists.checkinEnabled,
             })
             .from(kitchenBookings)
             .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
             .innerJoin(locations, eq(kitchens.locationId, locations.id))
+            .leftJoin(checkinCheckoutChecklists, eq(checkinCheckoutChecklists.locationId, locations.id))
             .leftJoin(users, eq(kitchenBookings.chefId, users.id))
             .leftJoin(chefKitchenApplications, and(
                 eq(chefKitchenApplications.chefId, kitchenBookings.chefId),
@@ -234,7 +244,7 @@ export class BookingRepository {
             // payment_transactions rows sometimes used service_fee for commission +
             // estimated Stripe fees, so only use that field as a legacy fallback.
             const bookingServiceFee = Number(mappedBooking.serviceFee || 0);
-            const serviceFee = isVoidedAuthorization ? 0 : (bookingServiceFee > 0
+            let serviceFee = isVoidedAuthorization ? 0 : (bookingServiceFee > 0
                 ? bookingServiceFee
                 : row.transactionServiceFee
                     ? parseFloat(row.transactionServiceFee as string)
@@ -263,9 +273,19 @@ export class BookingRepository {
                 ?? 0
             );
             const currentTaxRatePercent = row.taxRatePercent ? parseFloat(String(row.taxRatePercent)) : 0;
-            const taxAmount = isVoidedAuthorization ? 0 : (storedTaxAmount > 0
-                ? storedTaxAmount
-                : Math.round((kbTotalPrice * currentTaxRatePercent) / 100));
+            const reconciledFinancials = resolveKitchenTransactionTaxAndSubtotal({
+                isDamageClaim: false,
+                ptAmount: Number(transactionAmount || 0),
+                ptBaseAmount: Number(row.transactionBaseAmount || 0),
+                ptTaxAmount: storedTaxAmount,
+                approvedTaxCents: Number(transactionMetadata.approvedTax ?? transactionMetadata.approved_tax ?? transactionMetadata.tax_cents ?? 0),
+                kbTotalPrice,
+                taxRatePercent: currentTaxRatePercent,
+                ptServiceFee: Number(row.transactionServiceFee || bookingServiceFee || 0),
+                metadata: transactionMetadata,
+            });
+            const taxAmount = isVoidedAuthorization ? 0 : reconciledFinancials.taxCents;
+            if (!isVoidedAuthorization) serviceFee = reconciledFinancials.serviceFeeCents;
             const taxRatePercent = Number(transactionMetadata.taxRatePercent ?? transactionMetadata.tax_rate_percent ?? (
                 kbTotalPrice > 0 && taxAmount > 0
                     ? (taxAmount * 100) / kbTotalPrice
@@ -289,9 +309,15 @@ export class BookingRepository {
                 stripeProcessingFee,
                 serviceFee,
             );
+            const managerAlreadyDebited = Array.isArray(transactionMetadata.refunds)
+                ? transactionMetadata.refunds.reduce(
+                    (sum: number, refund: any) => sum + Math.max(0, Number(refund?.managerDebited || 0)),
+                    0,
+                )
+                : Math.min(refundAmount, managerRevenue ?? 0);
             const managerRemainingBalance = isVoidedAuthorization
                 ? 0
-                : refundBreakdown.remainingManagerBalance;
+                : Math.max(0, (managerRevenue ?? 0) - managerAlreadyDebited);
             const refundableAmount = isVoidedAuthorization
                 ? 0
                 : refundBreakdown.maxRefundableToCustomer;
@@ -304,6 +330,7 @@ export class BookingRepository {
 
             return {
                 ...mappedBooking,
+                totalPrice: isVoidedAuthorization ? 0 : reconciledFinancials.totalPriceCents,
                 kitchen: row.kitchen,
                 location: row.location,
                 chef: row.chef,
@@ -324,6 +351,7 @@ export class BookingRepository {
                     .map((item: any) => item.status === 'cancelled' && !item.rejected ? { ...item, rejected: true } : item),
                 // Kitchen's tax rate for revenue calculations (consistent with transaction history)
                 taxRatePercent,
+                checkinEnabled: row.checkinEnabled ?? false,
                 // Use actual Stripe transaction data for accurate payment display
                 transactionId,     // Payment transaction ID (for refunds)
                 transactionAmount, // Actual amount charged (0 for voided auths, captured amount otherwise)
@@ -413,11 +441,15 @@ export class BookingRepository {
                 locationId: locations.id,
                 locationName: locations.name,
                 locationAddress: locations.address,
+                // Check-in enabled status (using storage-specific flags)
+                storageCheckinEnabled: checkinCheckoutChecklists.storageCheckinEnabled,
+                storageCheckoutEnabled: checkinCheckoutChecklists.storageCheckoutEnabled,
             })
             .from(storageBookings)
             .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
             .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
             .innerJoin(locations, eq(kitchens.locationId, locations.id))
+            .leftJoin(checkinCheckoutChecklists, eq(checkinCheckoutChecklists.locationId, locations.id))
             .where(eq(storageBookings.chefId, chefId))
             .orderBy(desc(storageBookings.createdAt));
 

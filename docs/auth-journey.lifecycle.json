@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "LocalCooks Unified Authentication Journey",
+    "subtitle": "Account-aware routing and verified registration",
+    "output": "docs/auth-journey.html",
+    "viewBox": [1030, 700],
+    "animation": "trace",
+    "quality_profile": "standard",
+    "views": [
+      { "id": "returning", "label": "Returning user", "focus": ["identifier", "resolve", "route", "challenge", "signedIn"], "note": "Resolve linked providers once, recommend one, and exclude the active method from fallback." },
+      { "id": "newAccount", "label": "New account", "focus": ["identifier", "resolve", "registration", "phoneVerify", "signedIn"], "note": "Unknown emails enter registration directly; Google profiles link a verified phone before provisioning." },
+      { "id": "recovery", "label": "Recovery", "focus": ["challenge", "methods", "retry", "repair"], "note": "A linked alternative dispatches immediately, waits visibly, retains resend/escape controls, and never asks for the same identifier again." }
+    ]
+  },
+  "lanes": [
+    { "id": "main", "label": "Primary journey" },
+    { "id": "alternatives", "label": "Registration and alternatives" },
+    { "id": "terminal", "label": "Recovery outcomes" }
+  ],
+  "states": [
+    { "id": "identifier", "type": "start", "label": "Email or phone", "sublabel": "one front door", "lane": "main", "col": 0, "step": "01" },
+    { "id": "resolve", "type": "decision", "label": "Resolve account", "sublabel": "Firebase + profile", "lane": "main", "col": 1, "step": "02" },
+    { "id": "route", "type": "decision", "label": "Route intent", "sublabel": "new or returning", "lane": "main", "col": 2, "step": "03" },
+    { "id": "challenge", "type": "waiting", "label": "Verify credential", "sublabel": "linked method", "lane": "main", "col": 3, "step": "04" },
+    { "id": "signedIn", "type": "success", "label": "Signed in", "sublabel": "resume destination", "lane": "main", "col": 4, "step": "05" },
+    { "id": "methods", "type": "active", "label": "Try another way", "sublabel": "linked alternatives", "lane": "alternatives", "col": 0, "tag": "returning" },
+    { "id": "registration", "type": "active", "label": "Create profile", "sublabel": "required details", "lane": "alternatives", "col": 1, "tag": "new" },
+    { "id": "phoneVerify", "type": "waiting", "label": "Verify phone", "sublabel": "link SMS proof", "lane": "alternatives", "col": 2, "tag": "Google" },
+    { "id": "retry", "type": "failure", "label": "Retry in place", "sublabel": "resend or retry", "lane": "terminal", "col": 2, "tag": "recoverable" },
+    { "id": "repair", "type": "failure", "label": "Identity repair", "sublabel": "prevent duplicate", "lane": "terminal", "col": 1, "tag": "guardrail" },
+    { "id": "cancelled", "type": "neutral", "label": "Change identity", "sublabel": "safe escape", "lane": "terminal", "col": 0, "tag": "exit" }
+  ],
+  "transitions": [
+    { "from": "identifier", "to": "resolve", "variant": "emphasis" },
+    { "from": "resolve", "to": "route" },
+    { "from": "route", "to": "challenge" },
+    { "from": "challenge", "to": "signedIn", "variant": "emphasis" },
+    { "from": "challenge", "to": "methods", "variant": "default", "route": "drop" },
+    { "from": "methods", "to": "challenge", "variant": "emphasis", "fromSide": "top", "toSide": "bottom", "via": [[402, 230], [556, 230]], "label": "dispatch immediately" },
+    { "from": "route", "to": "registration", "variant": "default", "route": "drop" },
+    { "from": "registration", "to": "phoneVerify", "variant": "security", "fromSide": "bottom", "toSide": "bottom", "via": [[556, 370], [710, 370]] },
+    { "from": "phoneVerify", "to": "signedIn", "variant": "security", "route": "right-channel" },
+    { "from": "challenge", "to": "retry", "variant": "security", "fromSide": "bottom", "toSide": "right", "via": [[556, 220], [820, 220], [820, 479]] },
+    { "from": "resolve", "to": "repair", "variant": "security", "fromSide": "bottom", "toSide": "top", "via": [[248, 220], [248, 435], [556, 435]] },
+    { "from": "methods", "to": "cancelled", "variant": "dashed", "fromSide": "left", "toSide": "left", "via": [[320, 307], [320, 479]] }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "Routing invariants", "items": ["New users never enter returning-user recovery", "Existing recovery never includes Create account", "Provider choices come from one server resolution"] },
+    { "dot": "violet", "title": "Verification invariants", "items": ["The active method is excluded from alternatives", "Selecting SMS or email link sends immediately without repeated input", "Code and link waits retain resolved context, resend, and escape controls"] }
+  ]
+}

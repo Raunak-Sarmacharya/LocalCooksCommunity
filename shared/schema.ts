@@ -73,6 +73,8 @@ export const users = pgTable("users", {
   googleId: text("google_id").unique(),
   facebookId: text("facebook_id").unique(),
   firebaseUid: text("firebase_uid").unique(),
+  // Optional contact number. Authentication providers remain authoritative in Firebase.
+  phoneNumber: text("phone_number"),
   isVerified: boolean("is_verified").default(false).notNull(),
   has_seen_welcome: boolean("has_seen_welcome").default(false).notNull(),
   welcomeEmailSentAt: timestamp("welcome_email_sent_at"), // Track when welcome email was sent (null = not sent, prevents duplicates)
@@ -557,25 +559,25 @@ export const checkinCheckoutChecklists = pgTable("checkin_checkout_checklists", 
   locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull().unique(),
 
   // Check-in configuration
-  checkinEnabled: boolean("checkin_enabled").default(true).notNull(),
+  checkinEnabled: boolean("checkin_enabled").default(false).notNull(),
   checkinItems: jsonb("checkin_items").default([]).notNull(),
   checkinPhotoRequirements: jsonb("checkin_photo_requirements").default([]).notNull(),
   checkinInstructions: text("checkin_instructions"),
 
   // Check-out configuration
-  checkoutEnabled: boolean("checkout_enabled").default(true).notNull(),
+  checkoutEnabled: boolean("checkout_enabled").default(false).notNull(),
   checkoutItems: jsonb("checkout_items").default([]).notNull(),
   checkoutPhotoRequirements: jsonb("checkout_photo_requirements").default([]).notNull(),
   checkoutInstructions: text("checkout_instructions"),
 
   // Storage check-out configuration
-  storageCheckoutEnabled: boolean("storage_checkout_enabled").default(true).notNull(),
+  storageCheckoutEnabled: boolean("storage_checkout_enabled").default(false).notNull(),
   storageCheckoutItems: jsonb("storage_checkout_items").default([]).notNull(),
   storageCheckoutPhotoRequirements: jsonb("storage_checkout_photo_requirements").default([]).notNull(),
   storageCheckoutInstructions: text("storage_checkout_instructions"),
 
   // Storage check-in configuration (move-in inspection)
-  storageCheckinEnabled: boolean("storage_checkin_enabled").default(true).notNull(),
+  storageCheckinEnabled: boolean("storage_checkin_enabled").default(false).notNull(),
   storageCheckinItems: jsonb("storage_checkin_items").default([]).notNull(),
   storageCheckinPhotoRequirements: jsonb("storage_checkin_photo_requirements").default([]).notNull(),
   storageCheckinInstructions: text("storage_checkin_instructions"),
@@ -833,8 +835,8 @@ export const updateKitchenSchema = z.object({
   name: z.string().min(1).optional(),
   description: z.string().optional(),
   isActive: z.boolean().optional(),
-  hourlyRate: z.number().int().positive("Hourly rate must be positive").optional(),
-  dailyRate: z.number().int().positive("Daily rate must be positive").nullable().optional(),
+  hourlyRate: z.number().int().min(0, "Hourly rate cannot be negative").nullable().optional(),
+  dailyRate: z.number().int().min(0, "Daily rate cannot be negative").nullable().optional(),
   currency: z.string().min(3).max(3).optional(),
   minimumBookingHours: z.number().int().min(0, "Minimum booking hours cannot be negative").max(24, "Minimum booking hours cannot exceed 24").optional(),
   pricingModel: z.enum(["hourly", "daily", "weekly"]).optional(),
@@ -2108,7 +2110,7 @@ export type EvidenceType = typeof evidenceTypeValues[number];
 // ===== KITCHEN VIEWING / TOUR SCHEDULING SYSTEM =====
 
 // Define enum for viewing status
-export const viewingStatusEnum = pgEnum('viewing_status', ['pending', 'confirmed', 'cancelled', 'completed', 'no_show']);
+export const viewingStatusEnum = pgEnum('viewing_status', ['pending_local_cooks', 'pending', 'confirmed', 'cancelled', 'completed', 'no_show']);
 
 // Define enum for no-show reason (structured tracking for cohort analytics)
 export const noShowReasonEnum = pgEnum('no_show_reason', ['chef_cancelled_late', 'chef_no_response', 'rescheduled_by_manager', 'weather', 'other']);
@@ -2167,6 +2169,10 @@ export const kitchenViewings = pgTable("kitchen_viewings", {
   cancelledBy: text("cancelled_by"), // 'chef' | 'manager'
   cancellationReason: text("cancellation_reason"),
   cancelledAt: timestamp("cancelled_at"),
+  adminReviewDecision: text("admin_review_decision"), // 'approved' | 'denied'
+  adminReviewReason: text("admin_review_reason"),
+  adminReviewerId: integer("admin_reviewer_id").references(() => users.id, { onDelete: "set null" }),
+  adminReviewedAt: timestamp("admin_reviewed_at"),
   // Completion tracking
   completedAt: timestamp("completed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

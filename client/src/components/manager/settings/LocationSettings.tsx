@@ -12,14 +12,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { SettingsFileUpload } from "./SettingsFileUpload";
+import { ChefPageHeader } from "@/components/chef/ui";
 
 interface Location {
   id: number;
   name: string;
   address: string;
+  description?: string | null;
   logoUrl?: string;
   timezone?: string;
 }
@@ -27,25 +30,28 @@ interface Location {
 interface LocationSettingsProps {
   location: Location;
   onSave: (updates: any) => Promise<unknown>;
+  embedded?: boolean;
 }
 
-export default function LocationSettings({ location, onSave }: LocationSettingsProps) {
+export default function LocationSettings({ location, onSave, embedded = false }: LocationSettingsProps) {
   const [name, setName] = useState(location.name);
   const [address, setAddress] = useState(location.address || '');
+  const [description, setDescription] = useState(location.description || '');
   const [logoUrl, setLogoUrl] = useState(location.logoUrl || '');
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const timezone = DEFAULT_TIMEZONE;
   const { uploadFile, isUploading } = useSessionFileUpload({
     allowedTypes: ['image/jpeg', 'image/png', 'image/webp'],
   });
-  const isDirty = name.trim() !== location.name || address.trim() !== (location.address || '') || !!logoFile;
+  const isDirty = name.trim() !== location.name || address.trim() !== (location.address || '') || description.trim() !== (location.description || '') || !!logoFile;
 
   useEffect(() => {
     setName(location.name);
     setAddress(location.address || '');
+    setDescription(location.description || '');
     setLogoUrl(location.logoUrl || '');
     setLogoFile(null);
-  }, [location.id, location.name, location.address, location.logoUrl]);
+  }, [location.id, location.name, location.address, location.description, location.logoUrl]);
 
   const saveAction = useStatusButton(
     useCallback(async () => {
@@ -55,6 +61,9 @@ export default function LocationSettings({ location, onSave }: LocationSettingsP
         locationId: location.id,
         name: name.trim(),
         address: address.trim(),
+        // Send an empty string so the backend can clear an existing description.
+        // `undefined` is intentionally ignored by the update route.
+        description: description.trim(),
         logoUrl: uploaded?.url || logoUrl || undefined,
         timezone: DEFAULT_TIMEZONE,
       });
@@ -62,28 +71,18 @@ export default function LocationSettings({ location, onSave }: LocationSettingsP
         setLogoUrl(uploaded.url);
         setLogoFile(null);
       }
-    }, [onSave, location.id, name, address, logoFile, logoUrl, uploadFile]),
+    }, [onSave, location.id, name, address, description, logoFile, logoUrl, uploadFile]),
   );
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-xl font-semibold tracking-tight">{mt("locationSettings")}</h2>
-        <p className="text-muted-foreground">
-          Configure location-specific settings for {location.name}.
-        </p>
-      </div>
+      {!embedded && <ChefPageHeader title={mt("locationSettings")} description={`Configure location-specific settings for ${location.name}.`} />}
 
       {/* Location Info */}
       <Card>
         <CardHeader className="p-4 pb-3">
-          <div className="flex items-center gap-3">
-            <Globe className="h-5 w-5 text-cyan-600" />
-            <div>
-              <CardTitle className="text-lg">{mt("locationDetails")}</CardTitle>
-              <CardDescription>{mt("basicInformationAboutThisLocation")}</CardDescription>
-            </div>
-          </div>
+          <CardTitle className="text-lg">{mt("locationDetails")}</CardTitle>
+          <CardDescription>{mt("basicInformationAboutThisLocation")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 p-4 pt-0">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -94,6 +93,10 @@ export default function LocationSettings({ location, onSave }: LocationSettingsP
             <div className="space-y-1.5">
               <Label htmlFor="location-address">{mt("address")}</Label>
               <Input id="location-address" value={address} onChange={(event) => setAddress(event.target.value)} placeholder="Street, city, province, postal code" />
+            </div>
+            <div className="space-y-1.5 md:col-span-2">
+              <Label htmlFor="location-description">Location Description</Label>
+              <Textarea id="location-description" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Provide a description of this location to display publicly" rows={4} />
             </div>
             <div className="space-y-1.5 md:col-span-2">
               <Label htmlFor="location-logo">Location logo</Label>

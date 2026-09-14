@@ -49,7 +49,7 @@ export function OnboardingStatusBanner({
               {tasks.length > 1 ? <p className="mt-1 text-xs text-muted-foreground">{tasks.length - 1} more item{tasks.length > 2 ? "s" : ""} after this</p> : null}
             </div>
           </div>
-          <Button size="sm" onClick={() => isSetup ? onContinueSetup() : onImproveListing?.(tasks[0])} className="shrink-0">
+          <Button size="sm" variant="outline" onClick={() => isSetup ? onContinueSetup() : onImproveListing?.(tasks[0])} className="shrink-0">
             {isSetup ? mt("continueSetup") : mt("completeListing")}<ArrowRight className="ml-1.5 size-4" />
           </Button>
         </div>

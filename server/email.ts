@@ -5434,6 +5434,18 @@ The Local Cooks Team
   };
 };
 
+export const generateKitchenApplicationClearedManagerEmail = (data: {
+  managerEmail: string;
+  managerName: string;
+  chefName: string;
+  locationName: string;
+}): EmailContent => ({
+  to: data.managerEmail,
+  subject: `Application cleared by Local Cooks - ${data.chefName}`,
+  text: `Hi ${data.managerName},\n\nLocal Cooks approved ${data.chefName}'s request to apply for ${data.locationName}. The application is now visible in your dashboard. You will be notified when the chef submits Kitchen Coordination documents for your review.\n\n${getSubdomainUrl('kitchen')}/manager/dashboard?view=applications\n\nThe Local Cooks Team`,
+  html: `<p>Hi ${data.managerName},</p><p>Local Cooks approved <strong>${data.chefName}</strong>'s request to apply for <strong>${data.locationName}</strong>.</p><p>The application is now visible in your dashboard. You will be notified when the chef submits Kitchen Coordination documents for your review.</p><p><a href="${getSubdomainUrl('kitchen')}/manager/dashboard?view=applications">View application</a></p>${getUniformEmailFooter()}`,
+});
+
 // Notify the kitchen manager when an admin-approved chef submits the
 // kitchen-specific coordination documents for review.
 export const generateKitchenCoordinationSubmittedManagerEmail = (data: {
@@ -7590,7 +7602,7 @@ export const generateTourRequestedChefEmail = (data: { chefEmail: string; chefNa
             <p><strong>Time:</strong> ${data.startTime} ${data.timezone ? `(${data.timezone})` : ''}</p>
           </div>
           
-          <p class="message">The kitchen manager will review your request shortly. You will receive an email once your viewing is confirmed or if they need to reschedule.</p>
+          <p class="message">Local Cooks will review your request first. If approved, it will be sent to the kitchen manager for final confirmation.</p>
         ${getUniformEmailFooter()}
       </div>
     </body>
@@ -7603,6 +7615,23 @@ export const generateTourRequestedChefEmail = (data: { chefEmail: string; chefNa
     html,
   };
 };
+
+export const generateTourRequestedLocalCooksEmail = (data: { recipientEmail: string; chefName: string; kitchenName: string; tourDate: string | Date; startTime: string; timezone?: string }): EmailContent => {
+  const dateStr = data.tourDate instanceof Date ? data.tourDate.toLocaleDateString() : new Date(data.tourDate).toLocaleDateString();
+  return {
+    to: data.recipientEmail,
+    subject: `Kitchen tour request awaiting Local Cooks review - ${data.chefName}`,
+    text: `${data.chefName} requested a tour of ${data.kitchenName} on ${dateStr} at ${data.startTime}${data.timezone ? ` (${data.timezone})` : ''}. Review the request: ${getSubdomainUrl('admin')}/admin?section=tour-requests`,
+    html: `<p><strong>${data.chefName}</strong> requested a tour of <strong>${data.kitchenName}</strong>.</p><p>${dateStr} at ${data.startTime}${data.timezone ? ` (${data.timezone})` : ''}</p><p><a href="${getSubdomainUrl('admin')}/admin?section=tour-requests">Review tour request</a></p>${getUniformEmailFooter()}`,
+  };
+};
+
+export const generateTourDeclinedByLocalCooksEmail = (data: { chefEmail: string; chefName: string; kitchenName: string; reason?: string }): EmailContent => ({
+  to: data.chefEmail,
+  subject: `Kitchen tour request update - ${data.kitchenName}`,
+  text: `Hi ${data.chefName.split(' ')[0]},\n\nLocal Cooks could not approve your tour request for ${data.kitchenName}.${data.reason ? `\n\nReason: ${data.reason}` : ''}\n\nThe Local Cooks Team`,
+  html: `<p>Hi ${data.chefName.split(' ')[0]},</p><p>Local Cooks could not approve your tour request for <strong>${data.kitchenName}</strong>.</p>${data.reason ? `<p><strong>Reason:</strong> ${data.reason}</p>` : ''}${getUniformEmailFooter()}`,
+});
 
 export const generateTourRequestedManagerEmail = (data: { managerEmail: string; managerName: string; chefName: string; kitchenName: string; tourDate: string | Date; startTime: string; chefNotes?: string; timezone?: string }): EmailContent => {
   const styles = getUniformEmailStyles();

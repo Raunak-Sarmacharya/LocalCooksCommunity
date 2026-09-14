@@ -57,6 +57,10 @@ import { normalizeImageUrl } from "./routes/utils";
 import { UserRepository } from "./domains/users/user.repository";
 import { UserService } from "./domains/users/user.service";
 import { CURRENT_POLICY_VERSION } from "@shared/policy-config";
+import { normalizePhoneNumber } from "@shared/phone-validation";
+import { validateNewRegistrationProfile } from "./registration-profile";
+import type { AuthAccountResolution, AuthMethod } from "@shared/auth-resolution";
+import { maskRecoveryEmail, maskRecoveryPhone, resolveAuthAccountState, resolveAuthMethods } from "./auth-account-resolution";
 
 // Note: Express Request.user type is already defined by @types/passport
 // We use type assertions where needed for isChef properties
@@ -434,6 +438,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Send Magic Link Email (Firebase Backend Custom Email)
   // Custom branded passwordless sign-in email with CTA button instead of raw Firebase template
+  app.post("/api/firebase/auth-method-hints", async (req, res) => {
+    res.set("Cache-Control", "no-store");
+    const rawIdentifier = typeof req.body?.identifier === "string"
+      ? req.body.identifier.trim().toLowerCase()
+      : typeof req.body?.email === "string"
+        ? req.body.email.trim().toLowerCase()
+        : "";
+    const email = /^\S+@\S+\.\S+$/.test(rawIdentifier) ? rawIdentifier : null;
+    const phone = email ? null : normalizePhoneNumber(rawIdentifier);
+    if (!email && !phone) {
+      return res.status(400).json({ state: "unavailable", methods: [], maskedEmail: null, maskedPhone: null, linkedEmail: null, linkedPhone: null });
+    }
+
+    try {
+      const { getAuth } = await import("firebase-admin/auth");
+      const { initializeFirebaseAdmin } = await import("./firebase-setup");
+      const firebaseApp = initializeFirebaseAdmin();
+      if (!firebaseApp) return res.json({ state: "unavailable", methods: [], maskedEmail: null, maskedPhone: null, linkedEmail: null, linkedPhone: null });
+
+      const firebaseUser = email
+        ? await getAuth(firebaseApp).getUserByEmail(email).catch(() => null)
+        : await getAuth(firebaseApp).getUserByPhoneNumber(phone!).catch(() => null);
+      const neonUser = email
+        ? await userService.getUserByUsername(email)
+        : firebaseUser
+          ? await userService.getUserByFirebaseUid(firebaseUser.uid)
+          : null;
+
+      const state = resolveAuthAccountState(firebaseUser?.uid || null, neonUser?.firebaseUid || null);
+      const methods: AuthMethod[] = state === "existing" || state === "profile-incomplete"
+        ? resolveAuthMethods({
+            email: firebaseUser?.email,
+            phoneNumber: firebaseUser?.phoneNumber,
+            providerIds: firebaseUser?.providerData.map((provider) => provider.providerId),
+          })
+        : [];
+
+      const resolvedEmail = firebaseUser?.email || (email ? neonUser?.username : null) || null;
+      const resolution: AuthAccountResolution = {
+        state,
+        methods,
+        maskedEmail: maskRecoveryEmail(resolvedEmail),
+        maskedPhone: maskRecoveryPhone(firebaseUser?.phoneNumber),
+        // These targets let the client execute a linked fallback immediately.
+        // The endpoint is no-store and auth-rate-limited; the chooser renders
+        // only the masked variants above.
+        linkedEmail: state === "existing" || state === "profile-incomplete" ? resolvedEmail : null,
+        linkedPhone: state === "existing" || state === "profile-incomplete" ? firebaseUser?.phoneNumber || null : null,
+      };
+      return res.json(resolution);
+    } catch (error) {
+      logger.warn("Unable to resolve Firebase recovery method hints", error);
+      return res.json({ state: "unavailable", methods: [], maskedEmail: null, maskedPhone: null, linkedEmail: null, linkedPhone: null });
+    }
+  });
+
   app.post("/api/firebase/send-magic-link-email", async (req, res) => {
     try {
       const email = typeof req.body?.email === 'string'
@@ -715,7 +775,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const token = authHeader.split("Bearer ")[1];
-      const decodedToken = await verifyFirebaseToken(token);
+      // Registration creates the durable application identity, so reject a
+      // session that an administrator or account-recovery flow has revoked.
+      const decodedToken = await verifyFirebaseToken(token, true);
 
       if (!decodedToken) {
         return res.status(401).json({ error: "Invalid token" });
@@ -727,15 +789,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
         : '';
       const accountType = req.body?.accountType;
       const termsAccepted = req.body?.termsAccepted;
+      const registrationMethod = decodedToken.firebase?.sign_in_provider === 'phone' ? 'phone' : 'email';
       const displayName = typeof req.body?.displayName === 'string'
         ? req.body.displayName.trim().slice(0, 120)
         : '';
+      const tokenPhone = typeof decodedToken.phone_number === 'string'
+        ? normalizePhoneNumber(decodedToken.phone_number)
+        : null;
+      const submittedPhone = typeof req.body?.phoneNumber === 'string'
+        ? normalizePhoneNumber(req.body.phoneNumber)
+        : null;
 
       if (decodedToken.uid !== uid) {
         return res.status(403).json({ error: "Token mismatch" });
       }
+
+      // Existing accounts are never held behind newer profile requirements.
+      // Missing legacy details are surfaced later as non-blocking setup tasks.
+      const existingByUid = await userService.getUserByFirebaseUid(uid);
+      if (existingByUid) {
+        logger.info(`✅ User already exists with Firebase UID ${uid}, returning existing user`);
+        return res.json(existingByUid);
+      }
+
       if (!tokenEmail) {
         return res.status(400).json({ error: "A Firebase email identity is required" });
+      }
+      if (registrationMethod === 'phone' && (!tokenPhone || decodedToken.email_verified !== true)) {
+        return res.status(400).json({
+          error: "Phone registration requires a verified phone number and verified email address",
+          code: "INCOMPLETE_PHONE_REGISTRATION",
+        });
+      }
+      const googleIdentity = (decodedToken.firebase as any)?.identities?.['google.com'];
+      if (Array.isArray(googleIdentity) && googleIdentity.length > 0 && (!tokenPhone || tokenPhone !== submittedPhone)) {
+        return res.status(400).json({
+          error: "Google registration requires a verified phone number",
+          code: "PHONE_VERIFICATION_REQUIRED",
+        });
       }
       if (accountType !== 'chef' && accountType !== 'manager') {
         return res.status(403).json({
@@ -743,15 +834,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
           code: "INVALID_REGISTRATION_TYPE",
         });
       }
+      const registrationProfile = validateNewRegistrationProfile({
+        displayName,
+        provider: registrationMethod,
+        tokenPhone,
+        submittedPhone,
+      });
+      if (!registrationProfile.ok) {
+        return res.status(400).json({
+          error: registrationProfile.error,
+          code: "PROFILE_DETAILS_REQUIRED",
+        });
+      }
       // Standalone signup may defer consent to /accept-terms. Inline flows
       // send true; never record acceptance merely because an account was created.
-
-      // Check if user already exists by Firebase UID
-      const existingByUid = await userService.getUserByFirebaseUid(uid);
-      if (existingByUid) {
-        logger.info(`✅ User already exists with Firebase UID ${uid}, returning existing user`);
-        return res.json(existingByUid);
-      }
 
       // ENTERPRISE FIX: Also check if user exists by email/username
       // This handles the case where user was deleted from Firebase but not Neon, or vice versa
@@ -768,32 +864,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create new user - no existing user found
       const finalRole: 'chef' | 'manager' = accountType;
       logger.info(`📝 Creating new public ${finalRole} account: ${tokenEmail}`);
-      let newUser = await userService.createUser({
+      const newUser = await userService.createPublicFirebaseUser({
         username: tokenEmail,
         firebaseUid: uid,
+        phoneNumber: registrationProfile.phoneNumber,
         role: finalRole,
         isVerified: decodedToken.email_verified || false,
-        has_seen_welcome: finalRole === 'manager',
+        termsAccepted: termsAccepted === true,
+        termsVersion: termsAccepted === true ? CURRENT_POLICY_VERSION : null,
       });
-
-      try {
-        const roleAndConsentUpdate = await userService.updateUser(newUser.id, {
-          isChef: finalRole === 'chef',
-          isManager: finalRole === 'manager',
-          termsAccepted: termsAccepted === true,
-          termsAcceptedAt: termsAccepted === true ? new Date() : null,
-          termsVersion: termsAccepted === true ? CURRENT_POLICY_VERSION : null,
-        });
-        if (!roleAndConsentUpdate) throw new Error('Registration profile update returned no user');
-        newUser = roleAndConsentUpdate;
-      } catch (profileError) {
-        // Compensate the first insert so the client can safely roll back the
-        // Firebase identity without leaving another split-brain account.
-        await userService.deleteUser(newUser.id).catch((cleanupError) => {
-          logger.error(`Failed to remove partial Neon registration ${newUser.id}`, cleanupError);
-        });
-        throw profileError;
-      }
 
       // Send registration emails
       try {
@@ -803,7 +882,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const { eq } = await import('drizzle-orm');
 
         const email = tokenEmail;
-        const recipientName = displayName || email.split('@')[0];
+        const recipientName = registrationProfile.displayName;
 
         // ENTERPRISE: Only send welcome email if the user is verified (e.g. Google Auth)
         // For email/password users, they will get this email after they verify via /api/sync-verification-status

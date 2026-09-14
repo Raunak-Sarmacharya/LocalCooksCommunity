@@ -1,0 +1,88 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Unified Identifier-First Auth Flow",
+    "quality_profile": "showcase",
+    "output": "docs/auth-identifier-flow.html",
+    "views": [
+      {
+        "id": "happy-path",
+        "label": "Identify to challenge",
+        "focus": ["entry", "gate", "classify", "lookup", "login"],
+        "note": "One front door, then Firebase decides which challenge the account can actually satisfy."
+      },
+      {
+        "id": "branches",
+        "label": "Branch coverage",
+        "focus": ["classify", "otp", "lookup", "register", "googlehint", "login"],
+        "note": "Every identifier resolves to exactly one destination step."
+      },
+      {
+        "id": "escape",
+        "label": "Escape hatches",
+        "focus": ["back", "login", "register", "gate"],
+        "note": "No dead ends: back to the gate, or auto-switch on a duplicate account."
+      }
+    ]
+  },
+  "lanes": [
+    { "id": "entry", "label": "Entry Surfaces" },
+    { "id": "gate", "label": "Identifier Gate" },
+    { "id": "phone", "label": "Phone Branch" },
+    { "id": "fresh", "label": "New Email" },
+    { "id": "known", "label": "Known Email" },
+    { "id": "google", "label": "Google Only" },
+    { "id": "escape", "label": "Recovery", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "intake", "label": "Identify", "fromCol": 0, "toCol": 1 },
+    { "id": "classify", "label": "Classify + look up", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "outcome", "label": "Destination step", "fromCol": 4, "toCol": 4 }
+  ],
+  "mainPath": ["entry", "gate", "classify", "lookup", "login"],
+  "nodes": [
+    { "id": "entry", "lane": "entry", "col": 0, "type": "frontend", "label": "Entry Surfaces", "sublabel": "AuthModal · Manager · Chef · Tour", "width": 150 },
+    { "id": "gate", "lane": "gate", "col": 1, "type": "frontend", "label": "IdentifierGate", "sublabel": "Log in or sign up", "tag": "step: identifier", "width": 150 },
+    { "id": "classify", "lane": "gate", "col": 2, "type": "backend", "label": "Classify identifier", "sublabel": "contains @ ?", "width": 150 },
+    { "id": "otp", "lane": "phone", "col": 3, "type": "messagebus", "label": "PhoneOtpChallenge", "sublabel": "consent + 6-digit code", "tag": "step: phone-otp", "width": 150 },
+    { "id": "lookup", "lane": "known", "col": 3, "type": "backend", "label": "fetchSignInMethods", "sublabel": "Firebase provider hint", "width": 170 },
+    { "id": "login", "lane": "known", "col": 4, "type": "backend", "label": "Login step", "sublabel": "password or email link", "tag": "step: login", "width": 150 },
+    { "id": "googlehint", "lane": "google", "col": 4, "type": "cloud", "label": "GoogleAuthHint", "sublabel": "google.com only", "tag": "step: google-hint", "width": 150 },
+    { "id": "register", "lane": "fresh", "col": 4, "type": "backend", "label": "Register step", "sublabel": "no account yet", "tag": "step: register", "width": 150 },
+    { "id": "back", "lane": "escape", "col": 2, "type": "security", "label": "Try another way", "sublabel": "back to identifier", "width": 150 }
+  ],
+  "edges": [
+    { "id": "e-entry-gate", "from": "entry", "to": "gate", "label": "open", "variant": "default" },
+    { "id": "e-gate-classify", "from": "gate", "to": "classify", "label": "submit", "variant": "emphasis" },
+    { "id": "e-classify-otp", "from": "classify", "to": "otp", "label": "no @", "variant": "default", "role": "branch" },
+    { "id": "e-classify-lookup", "from": "classify", "to": "lookup", "label": "has @", "variant": "emphasis", "role": "branch" },
+    { "id": "e-lookup-login", "from": "lookup", "to": "login", "label": "password / emailLink", "variant": "emphasis", "role": "branch" },
+    { "id": "e-lookup-google", "from": "lookup", "to": "googlehint", "label": "google.com only", "variant": "default", "role": "branch" },
+    { "id": "e-lookup-register", "from": "lookup", "to": "register", "label": "no methods", "variant": "default", "role": "branch" },
+    { "id": "e-otp-register", "from": "otp", "to": "register", "label": "new number", "variant": "default", "role": "branch" },
+    { "id": "e-google-login", "from": "googlehint", "to": "login", "label": "try another way", "variant": "dashed", "role": "branch" },
+    { "id": "e-register-login", "from": "register", "to": "login", "label": "duplicate account", "variant": "dashed", "role": "return" },
+    { "id": "e-login-back", "from": "login", "to": "back", "variant": "dashed", "role": "branch" },
+    { "id": "e-register-back", "from": "register", "to": "back", "variant": "dashed", "role": "branch" },
+    { "id": "e-back-gate", "from": "back", "to": "gate", "label": "re-enter identifier", "variant": "dashed", "role": "return" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "One Machine, Four Surfaces",
+      "items": [
+        "AuthFlow owns the step state for the modal, manager, chef and tour widget",
+        "An identifier is classified by the presence of @, never by a digit regex"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "No Dead Ends",
+      "items": [
+        "Password and email-link providers are checked before google.com",
+        "A duplicate account on register auto-switches to the login step"
+      ]
+    }
+  ]
+}

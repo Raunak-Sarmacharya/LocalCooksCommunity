@@ -1,4 +1,11 @@
 {
+  "gettingStarted": "Getting started",
+  "gettingStartedProgress": "{completed} of {total} complete",
+  "gettingStartedFullName": "Add your full name",
+  "gettingStartedEmail": "Add your email address",
+  "gettingStartedPhone": "Add your phone number",
+  "completeYourProfile": "Complete your profile",
+  "completeProfile": "Complete profile",
   "accessCommercialKitchens": "Access certified  or by the day. Start small, scale as you grow.",
   "actionMenuPrices": "Menu and prices",
   "actionMenuPricesDesc": "Add dishes, set availability, and update what customers can order.",
@@ -2005,9 +2012,11 @@
   "tourListIntakeTitle": "What you shared",
   "tourListIntroBody": "Track confirmation and what you told the kitchen. Expand a row for details.",
   "tourListManagerMessage": "Message from {name}",
-  "tourListPendingNext": "Waiting for the kitchen to confirm. You’ll get an email when they approve this tour.",
+  "tourListPendingNext": "Your request is moving through Local Cooks and kitchen manager approval. You’ll get an email after the final decision.",
   "tourListViewKitchen": "View Kitchen",
   "tourListYourNotes": "Your notes",
+  "tourStatusLocalCooksReview": "Local Cooks review",
+  "tourStatusPending": "Manager review",
   "trAllCompletedBody": "Confirm to save a LocalCooks completion certificate (not official)",
   "trAllCompletedTitle": "All videos completed",
   "trAppRequiredTitle": "Application required for full access",
@@ -2304,5 +2313,6 @@
   "revDownloadDataCsv": "Download Data (CSV)",
   "dcMoreCharsRequired": "{count} more characters required",
   "revExportCurrentTableCsv": "Export Current Table View (CSV)",
-  "revLinkAccountToViewRevenue": "Link your seller account above to view your food order revenue."
+  "revLinkAccountToViewRevenue": "Link your seller account above to view your food order revenue.",
+  "profileTabPhoneSignIn": "Phone Number"
 }

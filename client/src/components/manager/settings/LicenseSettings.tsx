@@ -21,6 +21,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { SettingsFileUpload } from "./SettingsFileUpload";
+import { ChefPageHeader } from "@/components/chef/ui";
 
 interface Location {
   id: number;
@@ -219,45 +220,16 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
     }
   };
 
-  const getStatusIcon = () => {
-    const status = location.kitchenLicenseStatus;
-    if (!status || !location.kitchenLicenseUrl) {
-      return <AlertCircle className="h-5 w-5 text-gray-400" />;
-    }
-    
-    switch (status) {
-      case 'approved':
-        if (isLicenseExpired) {
-          return <XCircle className="h-5 w-5 text-red-500" />;
-        }
-        return <CheckCircle className="h-5 w-5 text-green-500" />;
-      case 'pending':
-        return <Clock className="h-5 w-5 text-amber-500" />;
-      case 'pending_update':
-        return <Clock className="h-5 w-5 text-amber-500" />;
-      case 'rejected':
-        return <XCircle className="h-5 w-5 text-red-500" />;
-      default:
-        return <AlertCircle className="h-5 w-5 text-gray-400" />;
-    }
-  };
-
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight">{mt("kitchenLicense")}</h2>
-        <p className="text-muted-foreground">{mt("uploadAndManageYourKitchenLicenseDocumentAValidLicenseIsRequ")}</p>
-      </div>
+      <ChefPageHeader title={mt("kitchenLicense")} description={mt("uploadAndManageYourKitchenLicenseDocumentAValidLicenseIsRequ")} />
 
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {getStatusIcon()}
-              <div>
-                <CardTitle className="text-lg">{mt("licenseStatus")}</CardTitle>
-                <CardDescription>{mt("currentStatusOfYourKitchenLicense")}</CardDescription>
-              </div>
+            <div>
+              <CardTitle className="text-lg">{mt("licenseStatus")}</CardTitle>
+              <CardDescription>{mt("currentStatusOfYourKitchenLicense")}</CardDescription>
             </div>
             {getStatusBadge()}
           </div>

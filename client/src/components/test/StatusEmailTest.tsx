@@ -418,7 +418,7 @@ export default function StatusEmailTest() {
 
             <Button
               type="submit"
-              className="w-full bg-green-600 hover:bg-green-700"
+              className="w-full"
               disabled={testVerificationEmailMutation.isPending}
             >
               {testVerificationEmailMutation.isPending ? (

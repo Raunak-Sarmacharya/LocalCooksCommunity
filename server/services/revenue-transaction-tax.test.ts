@@ -64,3 +64,31 @@ import { resolveKitchenTransactionTaxAndSubtotal } from "./revenue-transaction-t
 }
 
 console.log("revenue-transaction-tax: ok");
+
+// Booking 66: Stripe's $292.80 capture is authoritative; all capture metadata
+// components were accidentally inflated 8x by treating a daily rate as hourly.
+{
+  const r = resolveKitchenTransactionTaxAndSubtotal({
+    isDamageClaim: false,
+    ptAmount: 29280,
+    ptBaseAmount: 220800,
+    ptTaxAmount: 28800,
+    approvedTaxCents: 28800,
+    kbTotalPrice: 29280,
+    taxRatePercent: 15,
+    ptServiceFee: 13440,
+    metadata: {
+      approvedSubtotal: 192000,
+      approvedTax: 28800,
+      platformCommission: 13440,
+      capturedAmount: 234240,
+      originalAuthorizedAmount: 29280,
+      taxRatePercent: 15,
+    },
+  });
+  assert.deepEqual(r, {
+    totalPriceCents: 24000,
+    taxCents: 3600,
+    serviceFeeCents: 1680,
+  });
+}

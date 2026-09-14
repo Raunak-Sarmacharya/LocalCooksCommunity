@@ -325,7 +325,7 @@ export function PendingCancellationRequests({
               disabled={isProcessing}
               className={
                 confirmDialog.action === "accept"
-                  ? "bg-success text-success-foreground hover:bg-success/90"
+                  ? "bg-primary text-primary-foreground hover:bg-primary/90"
                   : "bg-destructive text-destructive-foreground hover:bg-destructive/90"
               }
             >

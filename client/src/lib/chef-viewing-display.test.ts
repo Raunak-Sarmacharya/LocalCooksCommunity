@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import { chefTourRowHasDetails, countPendingOrUpcomingTours, formatTourWhen, isPendingOrUpcomingTour, normalizeChefTourRow, viewingStatusBadge } from "./chef-viewing-display";
 
 describe("viewingStatusBadge", () => {
-  it("maps pending to warning and confirmed to success", () => {
+  it("maps both review gates to warning and confirmed to success", () => {
+    expect(viewingStatusBadge("pending_local_cooks")).toEqual({
+      variant: "warning",
+      labelKey: "tourStatusLocalCooksReview",
+      defaultLabel: "Local Cooks review",
+    });
     expect(viewingStatusBadge("pending").variant).toBe("warning");
     expect(viewingStatusBadge("confirmed").variant).toBe("success");
   });
@@ -62,6 +67,12 @@ describe("isPendingOrUpcomingTour", () => {
     expect(
       isPendingOrUpcomingTour(
         { status: "pending", scheduledAt: "2026-01-01T00:00:00.000Z", durationMinutes: 30 },
+        now
+      )
+    ).toBe(true);
+    expect(
+      isPendingOrUpcomingTour(
+        { status: "pending_local_cooks", scheduledAt: "2026-01-01T00:00:00.000Z", durationMinutes: 30 },
         now
       )
     ).toBe(true);

@@ -611,7 +611,7 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
               {kitchens.filter((kitchen) => kitchen.id === activeKitchenId).map((kitchen) => (
                 <Card key={kitchen.id}>
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2"><Images className="h-5 w-5" />{mt("photos")}</CardTitle>
+                    <CardTitle>{mt("photos")}</CardTitle>
                     <p className="text-sm text-muted-foreground">Choose a clear cover photo, then add more angles to the gallery.</p>
                   </CardHeader>
                   <CardContent className="space-y-6">
@@ -710,8 +710,8 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
                     <div className="px-5 py-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-md bg-blue-50 flex items-center justify-center">
-                            <KeyRound className="h-4 w-4 text-blue-600" />
+                          <div className="flex h-8 w-8 items-center justify-center rounded-md border bg-muted/40">
+                            <KeyRound className="h-4 w-4 text-muted-foreground" />
                           </div>
                           <div>
                             <Label className="text-sm font-medium">{mt("smartDoorLock")}</Label>
@@ -774,9 +774,7 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
                 {kitchens.filter((kitchen) => kitchen.id === activeKitchenId).map((kitchen) => (
                   <Card key={`minimum-${kitchen.id}`} className="mb-5">
                     <CardHeader className="p-4 pb-3">
-                      <CardTitle className="flex items-center gap-2 text-lg">
-                        <Clock className="h-5 w-5 text-violet-600" />{mt("minimumBookingDuration")}
-                      </CardTitle>
+                      <CardTitle className="text-lg">{mt("minimumBookingDuration")}</CardTitle>
                       <p className="text-sm text-muted-foreground">{mt("setTheMinimumHoursRequiredPerBookingForEachKitchen")}</p>
                     </CardHeader>
                     <CardContent className="p-4 pt-0">

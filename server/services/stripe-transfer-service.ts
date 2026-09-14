@@ -433,6 +433,8 @@ async function resolveManagerGrossAndCommission(params: {
     approvedTaxCents: Number(meta.approvedTax) || undefined,
     platformCommissionCents:
       Number(meta.platformCommission ?? meta.applicationFee) || undefined,
+    capturedAmountCents: Number(meta.capturedAmount) || undefined,
+    originalAuthorizedAmountCents: Number(meta.originalAuthorizedAmount) || undefined,
     storedBaseAmountCents,
     storedServiceFeeCents,
   });

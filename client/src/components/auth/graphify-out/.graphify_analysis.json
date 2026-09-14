@@ -1,0 +1,256 @@
+{
+  "communities": {
+    "0": [
+      "animatedbutton",
+      "animatedbutton_animatedbutton",
+      "animatedbutton_animatedbuttonprops",
+      "animatedbutton_buttonstate",
+      "animatedinput",
+      "animatedinput_animatedinput",
+      "animatedinput_animatedinputprops",
+      "animatedinput_passwordstrengthindicator",
+      "animatedinput_test",
+      "resetpasswordform",
+      "resetpasswordform_containervariants",
+      "resetpasswordform_itemvariants",
+      "resetpasswordform_resetpasswordform",
+      "resetpasswordform_resetpasswordformdata",
+      "resetpasswordform_resetpasswordformprops",
+      "resetpasswordform_resetpasswordschema"
+    ],
+    "1": [
+      "emailcontinuehint_getemailcontinuemessage",
+      "enhancedregisterform",
+      "enhancedregisterform_authstate",
+      "enhancedregisterform_containervariants",
+      "enhancedregisterform_enhancedregisterform",
+      "enhancedregisterform_enhancedregisterformprops",
+      "enhancedregisterform_itemvariants",
+      "enhancedregisterform_rationale_420",
+      "enhancedregisterform_registerformdata",
+      "enhancedregisterform_registerschema",
+      "enhancedregisterform_useregisterschema",
+      "phoneotpchallenge",
+      "phoneotpchallenge_getphonesenderrormessage",
+      "phoneotpchallenge_phone_send_error_messages",
+      "phoneotpchallenge_phoneotpchallenge",
+      "phoneotpchallenge_phoneotpchallengeprops"
+    ],
+    "2": [
+      "emailverificationscreen",
+      "emailverificationscreen_containervariants",
+      "emailverificationscreen_emailiconvariants",
+      "emailverificationscreen_emailverificationscreen",
+      "emailverificationscreen_emailverificationscreenprops",
+      "emailverificationscreen_itemvariants",
+      "loginform",
+      "loginform_loginform",
+      "loginform_loginformdata",
+      "loginform_loginformprops",
+      "loginform_loginschema",
+      "registerform",
+      "registerform_registerform",
+      "registerform_registerformdata",
+      "registerform_registerformprops",
+      "registerform_registerschema"
+    ],
+    "3": [
+      "authmodalprovider",
+      "authmodalprovider_applybookingpricefooter",
+      "authmodalprovider_applydraft",
+      "authmodalprovider_applyguiderail",
+      "authmodalprovider_applystepfromphase",
+      "authmodalprovider_applyuistep",
+      "authmodalprovider_authbookingcontext",
+      "authmodalprovider_authmodalcontext",
+      "authmodalprovider_authmodalcontexttype",
+      "authmodalprovider_authmodaloptions",
+      "authmodalprovider_authmodalprovider",
+      "authmodalprovider_isuserverified",
+      "authmodalprovider_registrationreviewdata",
+      "authmodalprovider_reviewfromformdata",
+      "authmodalprovider_useauthmodal"
+    ],
+    "4": [
+      "changepassword",
+      "changepassword_changepassword",
+      "changepassword_changepasswordform",
+      "changepassword_changepasswordformdata",
+      "changepassword_changepasswordprops",
+      "changepassword_changepasswordschema",
+      "changepassword_setpasswordform",
+      "changepassword_setpasswordformdata",
+      "changepassword_setpasswordschema",
+      "changepassword_syncpasswordtoneon",
+      "password_form_mode",
+      "password_form_mode_passwordformmode",
+      "password_form_mode_resolvepasswordformmode",
+      "password_form_mode_test"
+    ],
+    "5": [
+      "enhancedloginform",
+      "enhancedloginform_authstate",
+      "enhancedloginform_containervariants",
+      "enhancedloginform_enhancedloginform",
+      "enhancedloginform_enhancedloginformprops",
+      "enhancedloginform_itemvariants",
+      "enhancedloginform_loginformdata",
+      "enhancedloginform_pendingmethod",
+      "enhancedloginform_useloginschema",
+      "loadingoverlay",
+      "loadingoverlay_contentvariants",
+      "loadingoverlay_loadingoverlay",
+      "loadingoverlay_loadingoverlayprops",
+      "loadingoverlay_overlayvariants"
+    ],
+    "6": [
+      "emailcontinuehint",
+      "emailcontinuehint_action_copy",
+      "emailcontinuehint_emailcontinuehint",
+      "emailcontinuehint_emailcontinuehintprops",
+      "emailcontinuehint_emailcontinuevariant",
+      "forgotpasswordform",
+      "forgotpasswordform_containervariants",
+      "forgotpasswordform_forgotpasswordform",
+      "forgotpasswordform_forgotpasswordformdata",
+      "forgotpasswordform_forgotpasswordformprops",
+      "forgotpasswordform_forgotpasswordschema",
+      "forgotpasswordform_itemvariants"
+    ],
+    "7": [
+      "phonesigninsettings",
+      "phonesigninsettings_maskphone",
+      "phonesigninsettings_phonesigninsettings",
+      "phonesigninsettings_phonesigninsettingsprops"
+    ],
+    "8": [
+      "chefauthshowcase",
+      "chefauthshowcase_chefauthshowcase",
+      "chefauthshowcase_products"
+    ],
+    "9": [
+      "kitchenauthshowcase",
+      "kitchenauthshowcase_bookingrows",
+      "kitchenauthshowcase_kitchenauthshowcase"
+    ],
+    "10": [
+      "termsacceptanceinline",
+      "termsacceptanceinline_termsacceptanceinline",
+      "termsacceptanceinline_termsacceptanceinlineprops"
+    ],
+    "11": [
+      "profilegettingstarted",
+      "profilegettingstarted_profilegettingstarted"
+    ],
+    "12": [
+      "verificationdebug",
+      "verificationdebug_verificationdebug"
+    ]
+  },
+  "cohesion": {
+    "0": 0.15,
+    "1": 0.15833333333333333,
+    "2": 0.14166666666666666,
+    "3": 0.1619047619047619,
+    "4": 0.21978021978021978,
+    "5": 0.16483516483516483,
+    "6": 0.18181818181818182,
+    "7": 0.5,
+    "8": 0.6666666666666666,
+    "9": 0.6666666666666666,
+    "10": 0.6666666666666666,
+    "11": 1.0,
+    "12": 1.0
+  },
+  "gods": [
+    {
+      "id": "animatedbutton_animatedbutton",
+      "label": "AnimatedButton()",
+      "degree": 6
+    },
+    {
+      "id": "animatedinput_animatedinput",
+      "label": "AnimatedInput",
+      "degree": 6
+    },
+    {
+      "id": "emailverificationscreen_emailverificationscreen",
+      "label": "EmailVerificationScreen()",
+      "degree": 5
+    },
+    {
+      "id": "authmodalprovider_authmodalprovider",
+      "label": "AuthModalProvider()",
+      "degree": 4
+    },
+    {
+      "id": "emailcontinuehint_getemailcontinuemessage",
+      "label": "getEmailContinueMessage()",
+      "degree": 4
+    },
+    {
+      "id": "enhancedregisterform_enhancedregisterform",
+      "label": "EnhancedRegisterForm()",
+      "degree": 4
+    },
+    {
+      "id": "phoneotpchallenge_phoneotpchallenge",
+      "label": "PhoneOtpChallenge()",
+      "degree": 4
+    },
+    {
+      "id": "password_form_mode_resolvepasswordformmode",
+      "label": "resolvePasswordFormMode()",
+      "degree": 4
+    },
+    {
+      "id": "changepassword_syncpasswordtoneon",
+      "label": "syncPasswordToNeon()",
+      "degree": 3
+    },
+    {
+      "id": "emailcontinuehint_emailcontinuehint",
+      "label": "EmailContinueHint()",
+      "degree": 3
+    }
+  ],
+  "surprises": [
+    {
+      "source": "ChangePasswordProps",
+      "target": "PasswordFormMode",
+      "source_files": [
+        "ChangePassword.tsx",
+        "password-form-mode.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "references",
+      "why": "connects across different repos/directories"
+    },
+    {
+      "source": "ChangePassword()",
+      "target": "resolvePasswordFormMode()",
+      "source_files": [
+        "ChangePassword.tsx",
+        "password-form-mode.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "connects across different repos/directories"
+    },
+    {
+      "source": "EnhancedRegisterForm()",
+      "target": "getEmailContinueMessage()",
+      "source_files": [
+        "EnhancedRegisterForm.tsx",
+        "EmailContinueHint.tsx"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "connects across different repos/directories"
+    }
+  ],
+  "tokens": {
+    "input": 0,
+    "output": 0
+  }
+}
