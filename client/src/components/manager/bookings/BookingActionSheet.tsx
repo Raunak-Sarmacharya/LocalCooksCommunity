@@ -1127,7 +1127,7 @@ function BookingActionSheetContent({
           <Button
             onClick={handleSubmit}
             disabled={isLoading}
-            variant={allRejected ? "destructive" : allApproved ? "success" : "default"}
+            variant={allRejected ? "destructive" : "default"}
             className="flex-1 min-w-[160px]"
           >
             {isLoading ? (

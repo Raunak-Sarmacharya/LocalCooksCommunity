@@ -139,7 +139,7 @@ export function getApplicationColumns({
                                             <ExternalLink className="mr-2 h-4 w-4" />{mt("reviewApplication")}</DropdownMenuItem>
                                     )}
                                     {onApprove && (
-                                        <DropdownMenuItem onClick={() => onApprove(app)} className="text-green-600">
+                                        <DropdownMenuItem onClick={() => onApprove(app)} className="text-primary focus:text-primary">
                                             <Check className="mr-2 h-4 w-4" />{mt("approve")}</DropdownMenuItem>
                                     )}
                                     {onReject && (

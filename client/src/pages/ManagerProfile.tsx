@@ -10,8 +10,12 @@ import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
 import { User, Mail, Phone, Loader2, KeyRound } from "@/components/ui/manager-icons";
+import { Phone as PhoneIcon } from "lucide-react";
 import ManagerHeader from "@/components/layout/ManagerHeader";
 import ChangePassword from "@/components/auth/ChangePassword";
+import PhoneSignInSettings from "@/components/auth/PhoneSignInSettings";
+import { PHONE_AUTH_ENABLED } from "@/lib/feature-flags";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { tt } from "@/i18n/common-ns";
 import { Edit3 } from "lucide-react";
 import { InfoChip } from "@/components/chef/info-chip";
@@ -181,9 +185,8 @@ export default function ManagerProfile() {
       await updateProfileMutation.mutateAsync({
         username: username !== user?.username ? username : undefined,
         displayName: displayName || undefined,
-        phone: phone || undefined,
       });
-    }, [updateProfileMutation, username, user?.username, displayName, phone]),
+    }, [updateProfileMutation, username, user?.username, displayName]),
   );
 
   if (isLoadingProfile || isLoadingDetails) {
@@ -231,7 +234,14 @@ export default function ManagerProfile() {
             </Button>
           </div>
 
-          <div className="p-6 space-y-6">
+          <Tabs defaultValue="profile" className="w-full">
+            <TabsList className="h-auto w-full justify-start gap-0 overflow-x-auto rounded-none border-b bg-transparent px-6 py-0">
+              <TabsTrigger value="profile" className="rounded-none border-b-2 border-transparent px-4 py-3 shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
+                {t("profileTabAccount", "Account & security")}
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="profile" className="m-0 space-y-6 p-6 focus-visible:ring-0">
             {/* Personal Information Section */}
             <div className="space-y-4">
               <div className="flex items-start gap-3">
@@ -279,18 +289,31 @@ export default function ManagerProfile() {
                   <p className="text-xs text-gray-600 mt-1">{t("emailIsManagedThroughYourFirebaseAccountAndCannotBeChangedHe")}</p>
                 </div>
 
+                {PHONE_AUTH_ENABLED && (
                 <div>
                   <label className="block text-sm font-medium text-gray-900 mb-2">
-                    <Phone className="h-4 w-4 inline mr-1" />{t("phoneNumber")}</label>
-                  <input
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    className="w-full max-w-md border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                    placeholder="+1 (555) 123-4567"
+                    <PhoneIcon className="h-4 w-4 inline mr-1" />{t("phoneNumber")}</label>
+                  <p className="text-xs text-gray-600 mb-3">{t("phoneVerificationRequired", "Phone numbers require OTP verification to link with your account.")}</p>
+                  <PhoneSignInSettings
+                    embedded
+                    initialPhone={phone}
+                    onPhoneLinked={async (verifiedPhone) => {
+                      try {
+                        await updateProfileMutation.mutateAsync({ phone: verifiedPhone });
+                      } catch {
+                        // mutation handles its own toast errors
+                      }
+                    }}
+                    onPhoneUnlinked={async () => {
+                      try {
+                        await updateProfileMutation.mutateAsync({ phone: "" });
+                      } catch {
+                        // mutation handles its own toast errors
+                      }
+                    }}
                   />
-                  <p className="text-xs text-gray-600 mt-1">{t("optionalPhoneNumberForAccountRecoveryAndNotifications")}</p>
                 </div>
+                )}
 
                 <div className="flex gap-3 pt-2">
                   <StatusButton
@@ -304,7 +327,6 @@ export default function ManagerProfile() {
                       // Reset to Firebase Auth displayName first, then fallback
                       const firebaseDisplayName = auth.currentUser?.displayName;
                       setDisplayName(firebaseDisplayName || managerProfile?.displayName || user.displayName || user.fullName || "");
-                      setPhone(managerProfile?.phone || "");
                     }}
                     variant="outline"
                     className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
@@ -327,7 +349,10 @@ export default function ManagerProfile() {
                 <ChangePassword role="manager" />
               </div>
             </div>
-          </div>
+            </TabsContent>
+
+
+          </Tabs>
         </div>
       </div>
     </div>

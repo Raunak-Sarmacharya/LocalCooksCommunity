@@ -73,6 +73,8 @@ export const users = pgTable("users", {
   googleId: text("google_id").unique(),
   facebookId: text("facebook_id").unique(),
   firebaseUid: text("firebase_uid").unique(),
+  // Optional contact number. Authentication providers remain authoritative in Firebase.
+  phoneNumber: text("phone_number"),
   isVerified: boolean("is_verified").default(false).notNull(),
   has_seen_welcome: boolean("has_seen_welcome").default(false).notNull(),
   welcomeEmailSentAt: timestamp("welcome_email_sent_at"), // Track when welcome email was sent (null = not sent, prevents duplicates)

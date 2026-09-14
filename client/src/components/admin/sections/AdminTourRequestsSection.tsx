@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { CalendarDays, Check, Loader2, MapPin, X } from "lucide-react";
+import { CalendarDays, Check, Loader2, Mail, MapPin, Phone, X } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +25,8 @@ type TourRequest = {
   };
   chefName: string;
   chefUsername: string | null;
+  chefEmail: string | null;
+  chefPhone: string | null;
   kitchenName: string | null;
   locationName: string | null;
   locationAddress: string | null;
@@ -128,6 +130,8 @@ export function AdminTourRequestsSection() {
               <CardContent className="space-y-3 text-sm">
                 <div className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-muted-foreground" />{format(new Date(request.viewing.scheduledAt), "EEE, MMM d, yyyy 'at' h:mm a")} · {request.viewing.durationMinutes} min</div>
                 <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-muted-foreground" />{request.locationName || "Kitchen"}{request.locationAddress ? ` · ${request.locationAddress}` : ""}</div>
+                {request.chefEmail && <div className="flex items-center gap-2"><Mail className="h-4 w-4 text-muted-foreground" /><a className="text-primary hover:underline" href={`mailto:${request.chefEmail}`}>{request.chefEmail}</a></div>}
+                {request.chefPhone && <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-muted-foreground" /><a className="text-primary hover:underline" href={`tel:${request.chefPhone}`}>{request.chefPhone}</a></div>}
                 {request.viewing.chefNotes && <p className="rounded-md bg-muted p-3"><span className="font-medium">Chef notes:</span> {request.viewing.chefNotes}</p>}
                 {request.viewing.adminReviewReason && <p className="rounded-md bg-muted p-3"><span className="font-medium">Review reason:</span> {request.viewing.adminReviewReason}</p>}
                 {request.viewing.intakeData && Object.keys(request.viewing.intakeData).length > 0 && (

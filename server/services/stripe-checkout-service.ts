@@ -13,6 +13,7 @@ import { logger } from "../logger";
  */
 
 import Stripe from 'stripe';
+import { serializeCheckoutSlots } from './checkout-metadata';
 
 // Initialize Stripe client
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
@@ -280,9 +281,13 @@ export async function createPendingCheckoutSession(
     if (bookingData.specialNotes) {
       sessionMetadata.special_notes = bookingData.specialNotes;
     }
-    if (bookingData.selectedSlots && bookingData.selectedSlots.length > 0) {
-      sessionMetadata.selected_slots = JSON.stringify(bookingData.selectedSlots);
-    }
+    const selectedSlots = serializeCheckoutSlots(
+      bookingData.selectedSlots,
+      bookingData.startTime,
+      bookingData.endTime,
+      bookingData.pricingMode,
+    );
+    if (selectedSlots) sessionMetadata.selected_slots = selectedSlots;
     if (bookingData.selectedStorage && bookingData.selectedStorage.length > 0) {
       sessionMetadata.selected_storage = JSON.stringify(bookingData.selectedStorage);
     }

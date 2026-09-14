@@ -799,7 +799,7 @@ function AdminDashboard() {
         <Button
           size="sm"
           onClick={() => handleStatusChange(app.id, "approved")}
-          className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1.5 h-auto"
+          className="text-xs px-3 py-1.5 h-auto"
         >
           <CheckCircle className="h-3 w-3 mr-1" />
           Quick Approve
@@ -1518,7 +1518,7 @@ function AdminDashboard() {
                                 href={presignedUrls[app.foodEstablishmentCertUrl] || app.foodEstablishmentCertUrl || '#'}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="flex items-center gap-1 px-2 py-1 text-xs bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors"
+                                className="flex items-center gap-1 px-2 py-1 text-xs bg-primary/5 text-primary rounded-lg hover:bg-primary/10 transition-colors"
                                 title="View Food Establishment Certificate Document"
                                 onClick={async (e) => {
                                   e.stopPropagation();
@@ -1616,15 +1616,15 @@ function AdminDashboard() {
                         <h5 className="text-xs font-medium text-blue-800">Food Safety License</h5>
                         <p className="text-sm font-semibold text-blue-900">{formatCertificationStatus(selectedApplication.foodSafetyLicense)}</p>
                       </div>
-                      <div className="p-3 bg-green-50 rounded-lg border border-green-200">
-                        <h5 className="text-xs font-medium text-green-800">Food Establishment Cert</h5>
+                      <div className="p-3 bg-muted/40 rounded-lg border">
+                        <h5 className="text-xs font-medium text-foreground">Food Establishment Cert</h5>
                         <div className="flex flex-col gap-2 mt-1">
-                          <p className="text-sm font-semibold text-green-900">{formatCertificationStatus(selectedApplication.foodEstablishmentCert)}</p>
+                          <p className="text-sm font-semibold">{formatCertificationStatus(selectedApplication.foodEstablishmentCert)}</p>
                           {selectedApplication.foodEstablishmentCert !== 'yes' && (
                             <Button 
                               size="sm" 
                               variant="outline" 
-                              className="w-full text-xs bg-white hover:bg-green-100 text-green-700 border-green-300"
+                              className="w-full text-xs"
                               onClick={() => {
                                 updateDocumentStatusMutation.mutate({
                                   id: selectedApplication.id,
@@ -1685,7 +1685,7 @@ function AdminDashboard() {
                               {getDocumentStatusBadge(selectedApplication.foodSafetyLicenseStatus)}
                               {selectedApplication.foodSafetyLicenseStatus === "pending" && (
                                 <div className="flex gap-2">
-                                  <Button size="sm" onClick={() => { handleDocumentStatusUpdate(selectedApplication.id, 'foodSafetyLicenseStatus', 'approved'); setSelectedApplication(null); }} className="text-xs h-7 bg-emerald-600 hover:bg-emerald-700">
+                                  <Button size="sm" onClick={() => { handleDocumentStatusUpdate(selectedApplication.id, 'foodSafetyLicenseStatus', 'approved'); setSelectedApplication(null); }} className="text-xs h-7">
                                     <CheckCircle className="h-3 w-3 mr-1" /> Approve
                                   </Button>
                                   <Button size="sm" variant="outline" onClick={() => { handleDocumentStatusUpdate(selectedApplication.id, 'foodSafetyLicenseStatus', 'rejected'); setSelectedApplication(null); }} className="text-xs h-7 text-red-600 border-red-200">
@@ -1724,7 +1724,7 @@ function AdminDashboard() {
                               {getDocumentStatusBadge(selectedApplication.foodEstablishmentCertStatus)}
                               {selectedApplication.foodEstablishmentCertStatus === "pending" && (
                                 <div className="flex gap-2">
-                                  <Button size="sm" onClick={() => { handleDocumentStatusUpdate(selectedApplication.id, 'foodEstablishmentCertStatus', 'approved'); setSelectedApplication(null); }} className="text-xs h-7 bg-emerald-600 hover:bg-emerald-700">
+                                  <Button size="sm" onClick={() => { handleDocumentStatusUpdate(selectedApplication.id, 'foodEstablishmentCertStatus', 'approved'); setSelectedApplication(null); }} className="text-xs h-7">
                                     <CheckCircle className="h-3 w-3 mr-1" /> Approve
                                   </Button>
                                   <Button size="sm" variant="outline" onClick={() => { handleDocumentStatusUpdate(selectedApplication.id, 'foodEstablishmentCertStatus', 'rejected'); setSelectedApplication(null); }} className="text-xs h-7 text-red-600 border-red-200">
@@ -1795,7 +1795,7 @@ function AdminDashboard() {
                               </div>
                               <Button 
                                 size="sm" 
-                                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                                className="w-full"
                                 onClick={() => { createShopMutation.mutate(selectedApplication.id); setSelectedApplication(null); }}
                                 disabled={createShopMutation.isPending || !(shopDetails[selectedApplication.id]?.shopName?.trim()) || !(shopDetails[selectedApplication.id]?.shopAddress?.trim())}
                               >

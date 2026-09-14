@@ -31,12 +31,13 @@ export interface OnboardingStatus {
 }
 
 export interface ManagerSetupStep {
-    id: 'license' | 'kitchen' | 'availability' | 'requirements' | 'payments';
-    labelKey: 'onboardingKitchenLicense' | 'onboardingKitchenSpace' | 'onboardingAvailability' | 'onboardingChefRequirements' | 'onboardingPayments';
+    id: 'profile' | 'license' | 'kitchen' | 'availability' | 'requirements' | 'payments';
+    labelKey: 'onboardingProfileDetails' | 'onboardingKitchenLicense' | 'onboardingKitchenSpace' | 'onboardingAvailability' | 'onboardingChefRequirements' | 'onboardingPayments';
     complete: boolean;
 }
 
 export function buildManagerSetupSteps(status: {
+    isProfileComplete?: boolean;
     hasUploadedLicense: boolean;
     hasKitchens: boolean;
     hasAvailability: boolean;
@@ -44,6 +45,7 @@ export function buildManagerSetupSteps(status: {
     isStripeComplete: boolean;
 }): ManagerSetupStep[] {
     return [
+        { id: 'profile', labelKey: 'onboardingProfileDetails', complete: status.isProfileComplete ?? true },
         { id: 'license', labelKey: 'onboardingKitchenLicense', complete: status.hasUploadedLicense },
         { id: 'kitchen', labelKey: 'onboardingKitchenSpace', complete: status.hasKitchens },
         { id: 'availability', labelKey: 'onboardingAvailability', complete: status.hasAvailability },
@@ -215,6 +217,11 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
     
     const hasKitchens = (kitchens?.length || 0) > 0;
     const setupSteps = buildManagerSetupSteps({
+        isProfileComplete: !!(
+            firebaseUser?.displayName?.trim() &&
+            firebaseUser.email?.trim() &&
+            (userData?.phoneNumber || userData?.managerProfileData?.phone)
+        ),
         hasUploadedLicense: shouldSkipDetailedQueries || hasUploadedLicense,
         hasKitchens: shouldSkipDetailedQueries || hasKitchens,
         hasAvailability,

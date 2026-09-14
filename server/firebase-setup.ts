@@ -55,7 +55,7 @@ export function initializeFirebaseAdmin() {
   }
 }
 
-export async function verifyFirebaseToken(token: string): Promise<DecodedIdToken | null> {
+export async function verifyFirebaseToken(token: string, checkRevoked = false): Promise<DecodedIdToken | null> {
   try {
     const app = initializeFirebaseAdmin();
     if (!app) {
@@ -63,7 +63,7 @@ export async function verifyFirebaseToken(token: string): Promise<DecodedIdToken
       return null;
     }
 
-    const decodedToken = await getAuth(app).verifyIdToken(token);
+    const decodedToken = await getAuth(app).verifyIdToken(token, checkRevoked);
     return decodedToken;
   } catch (error) {
     logger.error('Error verifying Firebase token:', error);

@@ -84,6 +84,7 @@ export class MemStorage implements IStorage {
       googleId: null,
       facebookId: null,
       firebaseUid: null,
+      phoneNumber: null,
       isVerified: true,
       has_seen_welcome: true,
       managerOnboardingCompleted: false,
@@ -172,6 +173,7 @@ export class MemStorage implements IStorage {
       googleId: insertUser.googleId || null,
       facebookId: insertUser.facebookId || null,
       firebaseUid: insertUser.firebaseUid || null,
+      phoneNumber: (insertUser as any).phoneNumber || null,
       isVerified: (insertUser as any).isVerified !== undefined ? (insertUser as any).isVerified : false,
       has_seen_welcome: (insertUser as any).has_seen_welcome !== undefined ? (insertUser as any).has_seen_welcome : false,
       isChef: insertUser.isChef || false,
@@ -837,5 +839,3 @@ export class DatabaseStorage implements IStorage {
 export const storage = process.env.DATABASE_URL
   ? new DatabaseStorage()
   : new MemStorage();
-
-

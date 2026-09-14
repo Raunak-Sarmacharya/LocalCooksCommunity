@@ -609,7 +609,7 @@ function StreamablePlayer({
             {hasStarted && !videoCompleted && (
               <Button
                 size="sm"
-                variant="success"
+                variant="default"
                 onClick={() => {
                   completedRef.current = true;
                   setLocalCompleted(true);

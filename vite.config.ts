@@ -13,7 +13,10 @@ export default defineConfig({
   },
   plugins: [
     react(),
-    runtimeErrorOverlay(),
+    // The Replit overlay promotes a known, non-fatal Google reCAPTCHA/Safari
+    // exception into a full-screen app failure. Keep it where it is useful,
+    // without breaking local phone-auth testing outside Replit.
+    ...(process.env.REPL_ID !== undefined ? [runtimeErrorOverlay()] : []),
     ...(process.env.NODE_ENV !== "production" &&
     process.env.REPL_ID !== undefined
       ? [

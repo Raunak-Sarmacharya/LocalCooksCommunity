@@ -911,7 +911,7 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
                                 <DropdownMenuItem
                                     onClick={() => onConfirm(booking.id)}
                                     disabled={!hasApprovedLicense}
-                                    className="text-green-600 focus:text-green-700 focus:bg-green-50"
+                                    className="text-primary focus:text-primary focus:bg-primary/5"
                                 >
                                     <CheckCircle className="mr-2 h-4 w-4" />{mt("confirmBooking")}</DropdownMenuItem>
                                 <DropdownMenuItem
@@ -951,7 +951,7 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
                         {isCancellationRequested && !onManageBooking && onAcceptCancellation && (
                             <DropdownMenuItem
                                 onClick={() => onAcceptCancellation(booking)}
-                                className="text-green-600 focus:text-green-700 focus:bg-green-50"
+                                className="text-primary focus:text-primary focus:bg-primary/5"
                             >
                                 <CheckCircle className="mr-2 h-4 w-4" />{mt("acceptCancellation")}</DropdownMenuItem>
                         )}
@@ -978,7 +978,7 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
                                         {onAcceptStorageCancellation && (
                                             <DropdownMenuItem
                                                 onClick={() => onAcceptStorageCancellation(sbId)}
-                                                className="text-green-600 focus:text-green-700 focus:bg-green-50"
+                                                className="text-primary focus:text-primary focus:bg-primary/5"
                                             >
                                                 <CheckCircle className="mr-2 h-4 w-4" />{mt("acceptStorageCancel")}</DropdownMenuItem>
                                         )}

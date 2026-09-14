@@ -405,7 +405,7 @@ router.get("/chef/my-profile", requireChef, async (req: Request, res: Response) 
 
         // Priority: profileData > Firebase displayName (sent from client) > application > username
         res.json({
-            phone: profileData.phone || latestApp?.phone || null,
+            phone: userData.phoneNumber || profileData.phone || latestApp?.phone || null,
             displayName: profileData.displayName || latestApp?.fullName || null,
             profileImageUrl: profileData.profileImageUrl || null,
             applicationStatus: latestApp?.status || null,
@@ -431,6 +431,14 @@ router.put("/chef/my-profile", requireChef, async (req: Request, res: Response) 
             if (phone && phone.trim() !== "") {
                 const normalized = normalizePhoneForStorage(phone);
                 if (!normalized) return res.status(400).json({ error: "Invalid phone number format" });
+                // Enterprise guard: phone must be verified via Firebase OTP — the decoded
+                // token carries phone_number only after linkWithPhoneNumber + OTP confirmation.
+                const tokenPhone = req.firebaseUser?.phone_number;
+                if (!tokenPhone || tokenPhone !== normalized) {
+                    return res.status(403).json({
+                        error: "Phone must be verified via OTP before saving. Please complete the verification flow.",
+                    });
+                }
                 profileUpdates.phone = normalized;
             } else {
                 profileUpdates.phone = null;
@@ -460,7 +468,10 @@ router.put("/chef/my-profile", requireChef, async (req: Request, res: Response) 
 
             await db
                 .update(users)
-                .set({ managerProfileData: newData })
+                .set({
+                    managerProfileData: newData,
+                    ...(phone !== undefined ? { phoneNumber: profileUpdates.phone } : {}),
+                })
                 .where(eq(users.id, user.id));
         }
 

@@ -6,6 +6,7 @@ import { db } from "../../db";
 import { eq } from "drizzle-orm";
 import { hashPassword } from "../../passwordUtils";
 import { DomainError, UserErrorCodes } from "../../shared/errors/domain-error";
+import { randomBytes } from "node:crypto";
 
 export class UserService {
   private repo: UserRepository;
@@ -29,6 +30,40 @@ export class UserService {
 
   async getUserByFirebaseUid(uid: string): Promise<User | null> {
     return this.repo.findByFirebaseUid(uid);
+  }
+
+  /**
+   * Atomically creates the application-side half of a Firebase registration.
+   * The caller must validate all Firebase claims before invoking this method.
+   */
+  async createPublicFirebaseUser(data: {
+    username: string;
+    firebaseUid: string;
+    phoneNumber?: string;
+    role: 'chef' | 'manager';
+    isVerified: boolean;
+    termsAccepted: boolean;
+    termsVersion: string | null;
+  }): Promise<User> {
+    return db.transaction(async (tx) => {
+      const [created] = await tx.insert(users).values({
+        username: data.username,
+        password: `firebase_auth_${randomBytes(24).toString('hex')}`,
+        firebaseUid: data.firebaseUid,
+        phoneNumber: data.phoneNumber,
+        role: data.role,
+        isVerified: data.isVerified,
+        isChef: data.role === 'chef',
+        isManager: data.role === 'manager',
+        has_seen_welcome: data.role === 'manager',
+        termsAccepted: data.termsAccepted,
+        termsAcceptedAt: data.termsAccepted ? new Date() : null,
+        termsVersion: data.termsAccepted ? data.termsVersion : null,
+      }).returning();
+
+      if (!created) throw new Error('Registration transaction returned no user');
+      return created;
+    });
   }
 
 

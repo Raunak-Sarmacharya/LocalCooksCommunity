@@ -524,7 +524,7 @@ function BookingManagementContent({
               <Button
                 type="button"
                 size="sm"
-                variant="success"
+                variant="default"
                 disabled={isProcessing}
                 onClick={(e) => handleCancellationAction("accept", e)}
               >
@@ -631,7 +631,7 @@ function BookingManagementContent({
                           <Button
                             type="button"
                             size="sm"
-                            variant="success"
+                            variant="default"
                             className="h-6 px-2 text-[10px]"
                             disabled={isProcessing}
                             onClick={(e) => handleStorageCancellationAction(item.storageBookingId, "accept", e)}

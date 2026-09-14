@@ -7,6 +7,19 @@ import {
   isKitchenHstRegistered,
 } from "./booking-pricing-breakdown";
 
+// Refunded chef receipts show the retained amount, not the original charge.
+{
+  const chef = buildChefBookingReceiptBreakdown({
+    kitchenBaseSubtotalCents: 10000,
+    kitchenHstAmountCents: 1500,
+    platformFeeAmountCents: 500,
+    refundAmountCents: 12000,
+  });
+  assert.equal(chef.totalPaidCents, 12000);
+  assert.equal(chef.refundAmountCents, 12000);
+  assert.equal(chef.netPaidCents, 0);
+}
+
 // $100/hr × 4h = $400; 15% HST = $60; 7% LC fee on $400 = $28 → chef pays $488
 {
   const chef = buildChefBookingReceiptBreakdown({

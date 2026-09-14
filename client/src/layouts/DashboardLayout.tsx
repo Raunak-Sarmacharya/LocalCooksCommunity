@@ -22,7 +22,6 @@ interface DashboardLayoutProps {
     breadcrumbs?: ManagerBreadcrumb[];
     managerSetupSteps?: ManagerSetupStep[];
     managerImprovementSteps?: string[];
-    onContinueManagerSetup?: () => void;
     onImproveManagerListing?: (task: string) => void;
 }
 
@@ -37,7 +36,6 @@ export default function DashboardLayout({
     breadcrumbs,
     managerSetupSteps,
     managerImprovementSteps,
-    onContinueManagerSetup,
     onImproveManagerListing,
 }: DashboardLayoutProps) {
     const { t } = useTranslation("manager");
@@ -59,7 +57,6 @@ export default function DashboardLayout({
                 breadcrumbs={displayBreadcrumbs}
                 managerSetupSteps={managerSetupSteps}
                 managerImprovementSteps={managerImprovementSteps}
-                onContinueManagerSetup={onContinueManagerSetup}
                 onImproveManagerListing={onImproveManagerListing}
             />
             <SidebarInset className="min-w-0 overflow-x-hidden">

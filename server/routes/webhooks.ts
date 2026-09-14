@@ -18,6 +18,7 @@ import * as Sentry from '@sentry/node';
 import { errorResponse } from "../api-response";
 import { notificationService } from "../services/notification.service";
 import { generateReferenceCode } from "../reference-code";
+import { parseCheckoutSlots } from "../services/checkout-metadata";
 
 const router = Router();
 
@@ -555,7 +556,7 @@ async function handleCheckoutSessionCompleted(
         const hourlyRateCents = parseInt(metadata.hourly_rate_cents || "0");
         const durationHours = parseFloat(metadata.duration_hours || "1");
         const specialNotes = metadata.special_notes || null;
-        const selectedSlots = metadata.selected_slots ? JSON.parse(metadata.selected_slots) : [];
+        const selectedSlots = parseCheckoutSlots(metadata.selected_slots, startTime, endTime);
         const selectedStorage = metadata.selected_storage ? JSON.parse(metadata.selected_storage) : [];
         const selectedEquipmentIds = metadata.selected_equipment_ids ? JSON.parse(metadata.selected_equipment_ids) : [];
 

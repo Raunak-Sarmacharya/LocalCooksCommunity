@@ -480,7 +480,7 @@ function BookingApprovalDialogContent({
             <Button
               onClick={handleSubmit}
               disabled={isLoading}
-              variant={isConfirmMode ? "success" : "destructive"}
+              variant={isConfirmMode ? "default" : "destructive"}
               className="flex-1 sm:flex-none min-w-[140px]"
             >
               {isLoading ? (

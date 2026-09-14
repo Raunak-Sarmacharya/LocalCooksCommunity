@@ -1,4 +1,11 @@
 {
+  "gettingStarted": "Getting started",
+  "gettingStartedProgress": "{completed} of {total} complete",
+  "gettingStartedFullName": "Add your full name",
+  "gettingStartedEmail": "Add your email address",
+  "gettingStartedPhone": "Add your phone number",
+  "completeYourProfile": "Complete your profile",
+  "completeProfile": "Complete profile",
   "accessCommercialKitchens": "Access certified  or by the day. Start small, scale as you grow.",
   "actionMenuPrices": "Menu and prices",
   "actionMenuPricesDesc": "Add dishes, set availability, and update what customers can order.",
@@ -2306,5 +2313,6 @@
   "revDownloadDataCsv": "Download Data (CSV)",
   "dcMoreCharsRequired": "{count} more characters required",
   "revExportCurrentTableCsv": "Export Current Table View (CSV)",
-  "revLinkAccountToViewRevenue": "Link your seller account above to view your food order revenue."
+  "revLinkAccountToViewRevenue": "Link your seller account above to view your food order revenue.",
+  "profileTabPhoneSignIn": "Phone Number"
 }

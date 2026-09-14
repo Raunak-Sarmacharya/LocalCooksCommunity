@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import { buildManagerSetupSteps } from "./use-onboarding-status";
 
 describe("buildManagerSetupSteps", () => {
-  it("returns only the five required manager setup steps with accurate progress", () => {
+  it("includes non-blocking profile completion with the five manager setup steps", () => {
     const steps = buildManagerSetupSteps({
+      isProfileComplete: false,
       hasUploadedLicense: true,
       hasKitchens: true,
       hasAvailability: false,
@@ -12,6 +13,7 @@ describe("buildManagerSetupSteps", () => {
     });
 
     expect(steps.map((step) => step.id)).toEqual([
+      "profile",
       "license",
       "kitchen",
       "availability",

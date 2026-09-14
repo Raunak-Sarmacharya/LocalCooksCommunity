@@ -1687,7 +1687,7 @@ export default function KitchenBookingCalendar() {
                                   <button
                                     type="button"
                                     onClick={() => setSelectedSlots([])}
-                                    className="text-green-700 hover:text-green-900 font-medium underline mobile-touch-target"
+                                    className="text-primary hover:text-primary/80 font-medium underline mobile-touch-target"
                                   >
                                     Clear
                                   </button>

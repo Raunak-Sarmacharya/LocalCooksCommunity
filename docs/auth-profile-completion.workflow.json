@@ -1,0 +1,56 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Local Cooks Registration and Profile Completion",
+    "subtitle": "Mandatory details for new accounts; non-blocking guidance for existing accounts",
+    "animation": "none",
+    "visual_preset": "editorial",
+    "quality_profile": "showcase",
+    "output": "docs/auth-profile-completion.workflow.html"
+  },
+  "lanes": [
+    { "id": "user", "label": "User experience" },
+    { "id": "firebase", "label": "Firebase identity" },
+    { "id": "backend", "label": "Local Cooks profile" },
+    { "id": "guidance", "label": "Existing-user guidance", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "authenticate", "label": "Authenticate", "fromCol": 0, "toCol": 1 },
+    { "id": "complete", "label": "Complete identity", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "provision", "label": "Provision or guide", "fromCol": 4, "toCol": 5, "variant": "security" }
+  ],
+  "mainPath": ["choose", "provider", "existing", "details", "validate", "create", "dashboard"],
+  "semanticChecks": {
+    "allowedRoots": ["choose"],
+    "allowedTerminals": ["dashboard", "checklist"],
+    "requiredPaths": [
+      { "from": "choose", "to": "create" },
+      { "from": "existing", "to": "dashboard" },
+      { "from": "dashboard", "to": "checklist" }
+    ]
+  },
+  "nodes": [
+    { "id": "choose", "lane": "user", "col": 0, "type": "frontend", "label": "Choose method", "sublabel": "Email · Google · Phone", "width": 150 },
+    { "id": "provider", "lane": "firebase", "col": 1, "type": "cloud", "label": "Authenticate provider", "sublabel": "Firebase assigns one UID", "width": 160 },
+    { "id": "existing", "lane": "backend", "col": 2, "type": "database", "label": "Resolve by UID", "sublabel": "Existing profile?", "tag": "sole join key", "width": 150 },
+    { "id": "details", "lane": "user", "col": 3, "type": "frontend", "label": "Collect missing details", "sublabel": "Full name · Email · Phone", "width": 165 },
+    { "id": "verifyemail", "lane": "firebase", "col": 3, "type": "security", "label": "Verify email", "sublabel": "Required for phone-first", "width": 150 },
+    { "id": "validate", "lane": "backend", "col": 4, "type": "security", "label": "Validate new profile", "sublabel": "All three fields required", "width": 160 },
+    { "id": "create", "lane": "backend", "col": 5, "type": "database", "label": "Provision atomically", "sublabel": "Role · terms · contact phone", "width": 165 },
+    { "id": "dashboard", "lane": "user", "col": 5, "type": "frontend", "label": "Open dashboard", "sublabel": "Login is never profile-blocked", "width": 165 },
+    { "id": "checklist", "lane": "guidance", "col": 4, "type": "frontend", "label": "Getting started", "sublabel": "Prompt for legacy gaps", "tag": "non-blocking", "width": 155 }
+  ],
+  "edges": [
+    { "id": "choose-provider", "from": "choose", "to": "provider", "variant": "default" },
+    { "id": "provider-resolve", "from": "provider", "to": "existing", "variant": "emphasis" },
+    { "id": "new-details", "from": "existing", "to": "details", "label": "new UID", "variant": "default", "route": "up-channel" },
+    { "id": "phone-email", "from": "details", "to": "verifyemail", "label": "phone-first", "variant": "security", "role": "branch" },
+    { "id": "details-validate", "from": "details", "to": "validate", "label": "email / Google", "variant": "default" },
+    { "id": "verified-validate", "from": "verifyemail", "to": "validate", "variant": "security" },
+    { "id": "validate-create", "from": "validate", "to": "create", "variant": "emphasis" },
+    { "id": "create-dashboard", "from": "create", "to": "dashboard", "variant": "emphasis" },
+    { "id": "existing-dashboard", "from": "existing", "to": "dashboard", "label": "existing UID", "variant": "emphasis", "role": "branch", "route": "up-channel" },
+    { "id": "dashboard-checklist", "from": "dashboard", "to": "checklist", "label": "details missing", "variant": "dashed", "role": "branch" }
+  ]
+}

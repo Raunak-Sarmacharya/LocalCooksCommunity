@@ -33,6 +33,13 @@
   "managerSetupGuidance": "Підказки з налаштування для менеджера",
   "managerGettingStarted": "Початок роботи",
   "managerSetupProgress": "Виконано {completed} з {total}",
+  "managerSetupStepAvailability": "Налаштуйте доступність",
+  "managerSetupStepKitchen": "Додайте кухню",
+  "managerSetupStepLicense": "Завантажте ліцензію",
+  "managerSetupStepPayments": "Підключіть платежі",
+  "managerSetupStepProfile": "Заповніть профіль",
+  "managerSetupStepRequirements": "Налаштуйте вимоги до кухарів",
+  "onboardingProfileDetails": "Заповніть профіль (ім’я, електронна адреса й телефон)",
   "yourNextSetupStep": "Наступний крок налаштування",
   "improveYourListing": "Покращте оголошення",
   "completeListing": "Завершити оголошення",
@@ -2339,5 +2346,7 @@
   "cancellationRefundPlatformNote": "Повернення керує платформа: повне звільнення холду до схвалення; після схвалення — без комісії Stripe за картку. Ви задаєте лише вікно та повідомлення вище.",
   "requiredOnStep2": "Обов'язково на кроці 2",
   "acceptCheckoutConfirm": "Підтвердити виїзд і позначити бронювання завершеним?",
-  "failedToAcceptCheckout": "Не вдалося підтвердити виїзд"
+  "failedToAcceptCheckout": "Не вдалося підтвердити виїзд",
+  "phoneSignIn": "Вхід за номером телефону",
+  "profileTabAccount": "Обліковий запис і безпека"
 }

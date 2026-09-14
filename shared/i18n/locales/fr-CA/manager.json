@@ -33,6 +33,13 @@
   "managerSetupGuidance": "Guide de configuration du gestionnaire",
   "managerGettingStarted": "Bien démarrer",
   "managerSetupProgress": "{completed} sur {total} terminées",
+  "managerSetupStepAvailability": "Définissez vos disponibilités",
+  "managerSetupStepKitchen": "Ajoutez une cuisine",
+  "managerSetupStepLicense": "Téléversez votre licence",
+  "managerSetupStepPayments": "Connectez les paiements",
+  "managerSetupStepProfile": "Complétez votre profil",
+  "managerSetupStepRequirements": "Définissez les exigences pour les chefs",
+  "onboardingProfileDetails": "Complétez votre profil (nom, courriel et téléphone)",
   "yourNextSetupStep": "Votre prochaine étape de configuration",
   "improveYourListing": "Améliorez votre annonce",
   "completeListing": "Compléter l’annonce",
@@ -2339,5 +2346,7 @@
   "cancellationRefundPlatformNote": "Les remboursements sont gérés par la plateforme : libération complète du hold avant votre approbation; après, hors frais de traitement Stripe. Vous ne définissez que le délai et le message ci-dessus.",
   "requiredOnStep2": "Requis à l'étape 2",
   "acceptCheckoutConfirm": "Accepter cette sortie et marquer la réservation comme terminée?",
-  "failedToAcceptCheckout": "Impossible d'accepter la sortie"
+  "failedToAcceptCheckout": "Impossible d'accepter la sortie",
+  "phoneSignIn": "Connexion par téléphone",
+  "profileTabAccount": "Compte et sécurité"
 }

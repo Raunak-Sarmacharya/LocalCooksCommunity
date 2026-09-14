@@ -677,6 +677,14 @@ export default function ManagerBookingDashboard() {
 
   /* New Setup Handler — pass selected locationId so setup opens the correct location */
   const handleContinueSetup = () => {
+    if (setupSteps.find((step) => !step.complete)?.id === 'profile') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('view', 'profile');
+      url.searchParams.delete('tab');
+      window.history.pushState({}, '', url);
+      setActiveView('profile');
+      return;
+    }
     const locId = selectedLocation?.id;
     setLocation(locId ? `/manager/setup?locationId=${locId}` : '/manager/setup');
   };
@@ -700,8 +708,10 @@ export default function ManagerBookingDashboard() {
   };
 
   const showSidebarGuidance = !isLoadingOnboardingStatus
-    && !!selectedLocation
-    && (showSetupBanner || improvementSteps.length > 0);
+    && (
+      setupSteps.some((step) => step.id === 'profile' && !step.complete) ||
+      (!!selectedLocation && (showSetupBanner || improvementSteps.length > 0))
+    );
 
   return (
     <DashboardLayout
@@ -714,7 +724,6 @@ export default function ManagerBookingDashboard() {
       breadcrumbs={breadcrumbs}
       managerSetupSteps={showSidebarGuidance ? setupSteps : []}
       managerImprovementSteps={showSidebarGuidance ? improvementSteps : []}
-      onContinueManagerSetup={showSidebarGuidance ? handleContinueSetup : undefined}
       onImproveManagerListing={showSidebarGuidance ? handleImprovementTask : undefined}
     >
       {/* Onboarding Status Banners */}

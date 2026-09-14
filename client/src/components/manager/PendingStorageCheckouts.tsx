@@ -310,7 +310,7 @@ const getCheckoutColumns = ({
               <DropdownMenuItem
                 onClick={() => onClear(checkout)}
                 disabled={isClearing}
-                className="text-green-600 focus:text-green-600"
+                className="text-primary focus:text-primary"
               >
                 <ShieldCheck className="h-4 w-4 mr-2" />
                 {mt("clearStorageNoIssues")}

@@ -9,7 +9,7 @@
 import { useState } from "react"
 import { mt } from "@/i18n/manager"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { Eye, Clock, User, Loader2, MoreHorizontal, CheckCircle, XCircle, AlertTriangle, Calendar, MapPin, RefreshCw, Briefcase, FileText } from "@/components/ui/manager-icons"
+import { Eye, Clock, User, Loader2, MoreHorizontal, CheckCircle, XCircle, AlertTriangle, Calendar, MapPin, RefreshCw, Briefcase, FileText, Mail, Phone } from "@/components/ui/manager-icons"
 import { toast } from "sonner"
 import { auth } from "@/lib/firebase"
 import { Button } from "@/components/ui/button"
@@ -67,6 +67,8 @@ interface ViewingRecord {
   locationAddress: string | null
   kitchenName: string | null
   chefUsername: string | null
+  chefEmail: string | null
+  chefPhone: string | null
   chefName?: string | null
 }
 
@@ -176,7 +178,12 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
       }
       return response.json()
     },
-    onSuccess: () => {
+    onSuccess: (updated) => {
+      queryClient.setQueryData<ViewingRecord[]>([queryUrl], (current = []) =>
+        current.map((record) => record.viewing.id === updated.id
+          ? { ...record, viewing: { ...record.viewing, ...updated } }
+          : record)
+      )
       queryClient.invalidateQueries({ queryKey: [queryUrl] })
       closeSheet()
       toast.success(mt("viewingStatusUpdated"))
@@ -278,7 +285,7 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={() => handleStatusAction(record, "confirm")}
-                    className="text-green-600"
+                    className="text-primary"
                   >
                     <CheckCircle className="h-4 w-4 mr-2" />{mt("confirmViewing")}</DropdownMenuItem>
                   <DropdownMenuItem
@@ -439,6 +446,18 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
                     <span className="text-muted-foreground">{mt("navLocation")}</span>
                     <span>{selectedViewing.locationName || "—"}</span>
                   </div>
+                  {selectedViewing.chefEmail && (
+                    <div className="flex justify-between gap-4">
+                      <span className="flex items-center gap-1 text-muted-foreground"><Mail className="h-3.5 w-3.5" />Email</span>
+                      <a className="truncate text-primary hover:underline" href={`mailto:${selectedViewing.chefEmail}`}>{selectedViewing.chefEmail}</a>
+                    </div>
+                  )}
+                  {selectedViewing.chefPhone && (
+                    <div className="flex justify-between gap-4">
+                      <span className="flex items-center gap-1 text-muted-foreground"><Phone className="h-3.5 w-3.5" />Phone</span>
+                      <a className="text-primary hover:underline" href={`tel:${selectedViewing.chefPhone}`}>{selectedViewing.chefPhone}</a>
+                    </div>
+                  )}
                   {selectedViewing.kitchenName && (
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{mt("kitchenInterest")}</span>
@@ -604,8 +623,13 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
                     onClick={() => setStatusAction("cancel")}
                   >{mt("declineRequest")}</Button>
                   <Button
-                    className="w-full sm:w-auto bg-green-600 hover:bg-green-700"
-                    onClick={() => setStatusAction("confirm")}
+                    className="w-full sm:w-auto"
+                    disabled={updateStatusMutation.isPending}
+                    onClick={() => updateStatusMutation.mutate({
+                      viewingId: selectedViewing.viewing.id,
+                      status: "confirmed",
+                      notes: managerNotes,
+                    })}
                   >{mt("acceptViewing")}</Button>
                 </SheetFooter>
               )}

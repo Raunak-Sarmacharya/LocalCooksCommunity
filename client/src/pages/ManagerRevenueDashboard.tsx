@@ -13,7 +13,6 @@
 
 import { useState, useMemo, useCallback } from "react"
 import { mt } from "@/i18n/manager"
-import { useQueryClient } from "@tanstack/react-query"
 import { useFirebaseAuth } from "@/hooks/use-auth"
 import { Info, CreditCard, ExternalLink, AlertCircle, FileText, Download } from "@/components/ui/manager-icons"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -24,7 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ChefPageHeader } from "@/components/chef/ui"
 
 // Import from our revenue module
-import { useRevenueMetrics, useRevenueByLocation, useRevenueChartData, useTransactions, useInvoices, usePayouts, useStripeConnectStatus, downloadInvoice, downloadPayoutStatement, refundTransaction, getDefaultDateRange, type DateRange, type LocationOption, type PaymentStatus, type Transaction } from "@/components/manager/revenue"
+import { useRevenueMetrics, useRevenueByLocation, useRevenueChartData, useTransactions, useInvoices, usePayouts, useStripeConnectStatus, downloadInvoice, downloadPayoutStatement, getDefaultDateRange, type DateRange, type LocationOption, type PaymentStatus } from "@/components/manager/revenue"
 
 import { RevenueMetricCards } from "@/components/manager/revenue/components/RevenueMetricCards"
 import { TransactionTable } from "@/components/manager/revenue/components/TransactionTable"
@@ -54,7 +53,6 @@ export default function ManagerRevenueDashboard({
 }: ManagerRevenueDashboardProps) {
   const { user: firebaseUser } = useFirebaseAuth()
   const { toast } = useToast()
-  const queryClient = useQueryClient()
   const isEnabled = !!firebaseUser
 
   // Filter State
@@ -157,39 +155,6 @@ export default function ManagerRevenueDashboard({
     }
   }, [toast])
 
-  const handleRefundTransaction = useCallback(async (transaction: Transaction, amountCents: number, reason?: string) => {
-    if (!transaction?.transactionId) {
-      toast({ title: mt("refundFailed"),
-        description: mt("missingTransactionIDForThisBooking"),
-        variant: "destructive",
-      })
-      throw new Error(mt("missingTransactionIdForBooking"))
-    }
-
-    try {
-      await refundTransaction({
-        transactionId: transaction.transactionId,
-        amountCents,
-        reason,
-      })
-
-      toast({ title: mt("refundInitiated"),
-        description: mt("theRefundWasSubmittedSuccessfully"),
-      })
-
-      // Refresh revenue data after refund
-      queryClient.invalidateQueries({ queryKey: ['/api/manager/revenue/transactions'] })
-      queryClient.invalidateQueries({ queryKey: ['/api/manager/revenue/overview'] })
-      queryClient.invalidateQueries({ queryKey: ['/api/manager/revenue/charts'] })
-    } catch (error: any) {
-      toast({ title: mt("refundFailed"),
-        description: error?.message || mt("unableToProcessRefundTryAgain"),
-        variant: "destructive",
-      })
-      throw error
-    }
-  }, [queryClient, toast])
-
   const handleNavigateToPayments = useCallback(() => {
     if (onNavigate) {
       onNavigate("payments")
@@ -272,7 +237,6 @@ export default function ManagerRevenueDashboard({
         transactions={transactionsData?.transactions || []}
         isLoading={isLoadingTransactions}
         onDownloadInvoice={handleDownloadInvoice}
-        onRefundTransaction={handleRefundTransaction}
       />
 
       {/* Recent Invoices */}

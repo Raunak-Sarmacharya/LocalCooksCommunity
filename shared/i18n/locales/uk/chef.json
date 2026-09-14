@@ -1,4 +1,11 @@
 {
+  "gettingStarted": "Початок роботи",
+  "gettingStartedProgress": "Виконано {completed} з {total}",
+  "gettingStartedFullName": "Додайте повне ім’я",
+  "gettingStartedEmail": "Додайте електронну адресу",
+  "gettingStartedPhone": "Додайте номер телефону",
+  "completeYourProfile": "Заповніть профіль",
+  "completeProfile": "Заповнити профіль",
   "accessCommercialKitchens": "Орендуйте сертифіковані комерційні кухні погодинно. Починайте з малого, масштабуйтесь по мірі зростання.",
   "actionMenuPrices": "Меню та ціни",
   "actionMenuPricesDesc": "Додавайте страви, налаштовуйте доступність і оновлюйте те, що можуть замовити клієнти.",
@@ -2306,5 +2313,6 @@
   "revDownloadDataCsv": "Завантажити дані (CSV)",
   "dcMoreCharsRequired": "Потрібно ще {count} символів",
   "revExportCurrentTableCsv": "Експортувати поточний вигляд таблиці (CSV)",
-  "revLinkAccountToViewRevenue": "Прив’яжіть обліковий запис продавця вище, щоб переглядати дохід від замовлень їжі."
+  "revLinkAccountToViewRevenue": "Прив’яжіть обліковий запис продавця вище, щоб переглядати дохід від замовлень їжі.",
+  "profileTabPhoneSignIn": "Вхід за номером телефону"
 }

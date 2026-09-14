@@ -34,6 +34,7 @@ export async function generateInvoicePDF(
   let stripeProcessingFeeCents = 0;
   let managerRevenueCents = 0;
   let storedTaxAmountCents = 0;
+  let refundAmountCents = 0;
   let ptMetadata: Record<string, unknown> = {};
   let transactionStatus = String(booking.paymentStatus || booking.payment_status || 'paid');
 
@@ -54,6 +55,7 @@ export async function generateInvoicePDF(
         stripeProcessingFeeCents = parseInt(String(paymentTransaction.stripeProcessingFee || "0")) || 0;
         managerRevenueCents = parseInt(String(paymentTransaction.managerRevenue || "0")) || 0;
         storedTaxAmountCents = parseInt(String((paymentTransaction as any).taxAmount || (paymentTransaction as any).tax_amount || "0")) || 0;
+        refundAmountCents = parseInt(String(paymentTransaction.refundAmount || "0")) || 0;
         ptMetadata = paymentTransaction.metadata
           ? (typeof paymentTransaction.metadata === "string"
             ? JSON.parse(paymentTransaction.metadata)
@@ -332,7 +334,7 @@ export async function generateInvoicePDF(
     ? (managerRevenueCents > 0
       ? managerRevenueCents / 100
       : (subtotalCents + taxCents - stripeProcessingFeeCents) / 100)
-    : chefTotalCents / 100;
+    : Math.max(0, chefTotalCents - refundAmountCents) / 100;
 
   // PARTIAL CAPTURE VERIFICATION: Cross-check invoice total with actual Stripe captured amount
   if (stripeTotalAmount > 0 && invoiceViewer === 'chef') {
@@ -580,6 +582,7 @@ export async function generateInvoicePDF(
           kitchenHstRatePercent: taxRatePercent,
           platformFeeRate: subtotalCents > 0 ? platformFeeCents / subtotalCents : 0,
           platformFeeAmountCents: platformFeeCents,
+          refundAmountCents,
         });
 
         addRow('Subtotal', totalAmount);
@@ -588,6 +591,9 @@ export async function generateInvoicePDF(
         }
         if (platformFeeDollars > 0) {
           addRow(`Service fee (${feePercent}%)`, platformFeeDollars);
+        }
+        if (receipt.refundAmountCents > 0) {
+          addRow('Refund', receipt.refundAmountCents / 100, { negative: true, color: '#c2410c' });
         }
 
         doc.rect(labelCol, yPos, 230, 1).fill('#000000');

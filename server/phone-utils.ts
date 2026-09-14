@@ -1,7 +1,7 @@
 import { logger } from "./logger";
 import { validateAndNormalizePhone } from '@shared/phone-validation';
 import { db } from './db';
-import { applications, portalUserApplications } from '@shared/schema';
+import { applications, portalUserApplications, users } from '@shared/schema';
 import { eq, and, desc } from 'drizzle-orm';
 
 /**
@@ -56,7 +56,7 @@ export async function getManagerPhone(
 }
 
 /**
- * Gets a chef's phone number from their application
+ * Gets a chef's phone number from their profile, falling back to their latest application.
  */
 export async function getChefPhone(
   chefId: number,
@@ -65,6 +65,16 @@ export async function getChefPhone(
   if (!chefId) return null;
 
   try {
+    const [user] = await db.select({ phone: users.phoneNumber })
+      .from(users)
+      .where(eq(users.id, chefId))
+      .limit(1);
+
+    if (user?.phone) {
+      const normalized = validateAndNormalizePhone(user.phone);
+      if (normalized) return normalized;
+    }
+
     const result = await db.select({ phone: applications.phone })
       .from(applications)
       .where(eq(applications.userId, chefId))
@@ -176,4 +186,3 @@ export function stripCountryCode(phone: string | null | undefined): string {
   }
   return clean;
 }
-

@@ -377,7 +377,7 @@ export function AdminKitchenApplicationsStep1Section({
               {updateApplicationStatus.isPending ? "Processing..." : "Reject"}
             </Button>
             <Button
-              variant="success"
+              variant="default"
               onClick={handleApprove}
               disabled={updateApplicationStatus.isPending}
             >

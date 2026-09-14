@@ -3793,7 +3793,7 @@ router.get(
 
       res.json({
         profileImageUrl: profile.profileImageUrl || null,
-        phone: profile.phone || null,
+        phone: userData.phoneNumber || profile.phone || null,
         displayName: profile.displayName || null,
         stripeConnectStatus: stripeStatus,
         locations: managerLocations.map((loc) => ({
@@ -3835,6 +3835,14 @@ router.put(
           const normalized = normalizePhoneForStorage(phone);
           if (!normalized)
             return res.status(400).json({ error: "Invalid phone" });
+          // Enterprise guard: phone must be verified via Firebase OTP — the decoded
+          // token carries phone_number only after linkWithPhoneNumber + OTP confirmation.
+          const tokenPhone = req.firebaseUser?.phone_number;
+          if (!tokenPhone || tokenPhone !== normalized) {
+            return res.status(403).json({
+              error: "Phone must be verified via OTP before saving. Please complete the verification flow.",
+            });
+          }
           profileUpdates.phone = normalized;
         } else {
           profileUpdates.phone = null;
@@ -3864,7 +3872,10 @@ router.put(
 
         await db
           .update(users)
-          .set({ managerProfileData: newData })
+          .set({
+            managerProfileData: newData,
+            ...(phone !== undefined ? { phoneNumber: profileUpdates.phone } : {}),
+          })
           .where(eq(users.id, user.id));
       }
 

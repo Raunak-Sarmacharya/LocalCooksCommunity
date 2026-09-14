@@ -15,7 +15,7 @@ interface AnimatedButtonProps {
   disabled?: boolean;
   onClick?: () => void;
   type?: 'button' | 'submit';
-  variant?: 'primary' | 'secondary' | 'google';
+  variant?: 'primary' | 'secondary' | 'google' | 'outline';
 }
 
 export default function AnimatedButton({
@@ -33,7 +33,7 @@ export default function AnimatedButton({
   const getVariant = () => {
     if (state === 'success') return 'default';
     if (state === 'error') return 'destructive';
-    if (variant === 'google') return 'outline';
+    if (variant === 'google' || variant === 'outline') return 'outline';
     if (variant === 'secondary') return 'secondary';
     return 'default';
   };
@@ -73,7 +73,7 @@ export default function AnimatedButton({
       className={cn(
         "w-full h-12 rounded-full text-base font-semibold transition-all duration-300",
         variant === 'primary' && state === 'idle' && "bg-[#F51042] text-white shadow-lg hover:bg-[#D90E3A] hover:shadow-xl",
-        state === 'success' && "bg-green-500 hover:bg-green-600",
+        state === 'success' && "bg-primary hover:bg-primary/90",
         variant === 'google' && "bg-white border border-gray-200 text-gray-900 shadow-sm hover:bg-gray-50 hover:shadow-md",
         className
       )}

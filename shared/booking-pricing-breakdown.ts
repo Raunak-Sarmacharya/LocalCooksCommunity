@@ -41,6 +41,8 @@ export type ChefBookingReceiptBreakdown = {
   platformHstRatePercent: number;
   platformHstAmountCents: number;
   totalPaidCents: number;
+  refundAmountCents: number;
+  netPaidCents: number;
 };
 
 export type KitchenPayoutStatementBreakdown = {
@@ -109,6 +111,16 @@ export function buildChefBookingReceiptBreakdown(
       ? computeKitchenHstAmountCents(platformFeeAmountCents, platformHstRatePercent)
       : 0;
 
+  const totalPaidCents =
+    kitchenBaseSubtotalCents +
+    kitchenHstAmountCents +
+    platformFeeAmountCents +
+    platformHstAmountCents;
+  const refundAmountCents = Math.min(
+    totalPaidCents,
+    Math.max(0, Number(input.refundAmountCents) || 0),
+  );
+
   return {
     kitchenBaseSubtotalCents,
     kitchenHstRegistered,
@@ -118,11 +130,9 @@ export function buildChefBookingReceiptBreakdown(
     platformFeeAmountCents,
     platformHstRatePercent,
     platformHstAmountCents,
-    totalPaidCents:
-      kitchenBaseSubtotalCents +
-      kitchenHstAmountCents +
-      platformFeeAmountCents +
-      platformHstAmountCents,
+    totalPaidCents,
+    refundAmountCents,
+    netPaidCents: totalPaidCents - refundAmountCents,
   };
 }
 

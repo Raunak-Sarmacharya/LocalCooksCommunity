@@ -25,6 +25,7 @@ import { inventoryService } from "../domains/inventory/inventory.service";
 import { kitchenService } from "../domains/kitchens/kitchen.service";
 import { locationService } from "../domains/locations/location.service";
 import { chefService } from "../domains/users/chef.service";
+import { parseCheckoutSlots } from "../services/checkout-metadata";
 
 /**
  * Get base URL for Stripe redirect URLs
@@ -3973,7 +3974,7 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
             const startTime = metadata.start_time;
             const endTime = metadata.end_time;
             const specialNotes = metadata.special_notes || null;
-            const selectedSlots = metadata.selected_slots ? JSON.parse(metadata.selected_slots) : [];
+            const selectedSlots = parseCheckoutSlots(metadata.selected_slots, startTime, endTime);
             const selectedStorage = metadata.selected_storage ? JSON.parse(metadata.selected_storage) : [];
             const selectedEquipmentIds = metadata.selected_equipment_ids ? JSON.parse(metadata.selected_equipment_ids) : [];
             

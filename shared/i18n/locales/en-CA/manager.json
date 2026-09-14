@@ -33,6 +33,13 @@
   "managerSetupGuidance": "Manager setup guidance",
   "managerGettingStarted": "Getting started",
   "managerSetupProgress": "{completed} of {total} complete",
+  "managerSetupStepAvailability": "Set your availability",
+  "managerSetupStepKitchen": "Add a kitchen",
+  "managerSetupStepLicense": "Upload your license",
+  "managerSetupStepPayments": "Connect Stripe",
+  "managerSetupStepProfile": "Complete your profile",
+  "managerSetupStepRequirements": "Set chef requirements",
+  "onboardingProfileDetails": "Complete your profile (name, email and phone)",
   "yourNextSetupStep": "Your next setup step",
   "improveYourListing": "Improve your listing",
   "completeListing": "Complete listing",
@@ -453,7 +460,7 @@
   "confirmYourNewPassword": "Confirm your new password",
   "confirmed": "Confirmed",
   "confirmedBooking": "Confirmed Booking",
-  "connectPayments": "Connect Payments",
+  "connectPayments": "Connect Stripe",
   "connectWithStripe": "Connect with Stripe",
   "contactEmail": "Contact Email",
   "contactPhone": "Contact Phone",
@@ -2339,5 +2346,7 @@
   "cancellationRefundPlatformNote": "Refunds are platform-controlled: full hold release if cancelled before you approve; after approval, refunds exclude Stripe’s card processing fee. You only set the cancellation window and message above.",
   "requiredOnStep2": "Required on Step 2",
   "acceptCheckoutConfirm": "Accept this checkout and mark the booking complete?",
-  "failedToAcceptCheckout": "Failed to accept checkout"
+  "failedToAcceptCheckout": "Failed to accept checkout",
+  "phoneSignIn": "Phone Number",
+  "profileTabAccount": "Account & security"
 }

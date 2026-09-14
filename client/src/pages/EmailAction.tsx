@@ -29,13 +29,14 @@ import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import Logo from "@/components/ui/logo";
+import { provisionPendingPhoneRegistration } from "@/lib/phone-registration";
 
 // ============================================================================
 // TYPES & CONSTANTS
 // ============================================================================
 
 type ActionStatus = 'loading' | 'awaiting-email' | 'success' | 'error';
-type ActionMode = 'verifyEmail' | 'resetPassword' | 'recoverEmail' | 'signIn';
+type ActionMode = 'verifyEmail' | 'verifyAndChangeEmail' | 'resetPassword' | 'recoverEmail' | 'signIn';
 
 /**
  * Detects if the current hostname is a staging/dev environment
@@ -158,6 +159,7 @@ function normalizeActionMode(mode: string | null): ActionMode | null {
 
   // --- Exact lower-alpha match (primary, handles 99.9% of cases including canonical camelCase) ---
   if (lower === 'verifyemail') return 'verifyEmail';
+  if (lower === 'verifyandchangeemail') return 'verifyAndChangeEmail';
   if (lower === 'resetpassword') return 'resetPassword';
   if (lower === 'recoveremail') return 'recoverEmail';
   if (lower === 'signin') return 'signIn';
@@ -165,6 +167,7 @@ function normalizeActionMode(mode: string | null): ActionMode | null {
   // --- Substring fallback: catches sign-in / sign_in / signInWithEmailLink etc ---
   //    (order matters — most specific first)
   if (lower.includes('resetpassword') || lower.includes('passwordreset')) return 'resetPassword';
+  if (lower.includes('verifyandchangeemail')) return 'verifyAndChangeEmail';
   if (lower.includes('verifyemail')    || lower.includes('emailverify'))    return 'verifyEmail';
   if (lower.includes('recoveremail')   || lower.includes('emailrecover'))   return 'recoverEmail';
   if (lower.includes('signin') || lower.includes('signintwithemail') || lower.includes('emaillink') || lower.includes('magiclink')) {
@@ -173,7 +176,7 @@ function normalizeActionMode(mode: string | null): ActionMode | null {
   }
 
   // --- Exact canonical fallback ---
-  const CANONICAL: ActionMode[] = ['verifyEmail', 'resetPassword', 'recoverEmail', 'signIn'];
+  const CANONICAL: ActionMode[] = ['verifyEmail', 'verifyAndChangeEmail', 'resetPassword', 'recoverEmail', 'signIn'];
   for (const c of CANONICAL) {
     if (cleaned === c) {
       logger.info(`✅ Matched canonical mode via exact cleaned string: "${c}"`);
@@ -508,8 +511,8 @@ export default function EmailAction() {
           return match;
         };
 
-        if (modeIs('verifyEmail')) {
-          await handleEmailVerification(oobCode, continueUrl);
+        if (modeIs('verifyEmail') || modeIs('verifyAndChangeEmail')) {
+          await handleEmailVerification(oobCode, continueUrl, mode === 'verifyAndChangeEmail');
         } else if (modeIs('resetPassword')) {
           handlePasswordReset(oobCode, email, continueUrl);
         } else if (modeIs('recoverEmail')) {
@@ -578,7 +581,11 @@ export default function EmailAction() {
      * ENTERPRISE-GRADE: Uses public endpoint to sync verification status
      * because user is NOT signed in when clicking the verification link
      */
-    const handleEmailVerification = async (oobCode: string, continueUrl: string | null) => {
+    const handleEmailVerification = async (
+      oobCode: string,
+      continueUrl: string | null,
+      completesPhoneRegistration = false,
+    ) => {
       try {
         logger.info('🔍 Applying email verification action code...');
         
@@ -601,6 +608,15 @@ export default function EmailAction() {
         // and sends the welcome email. It doesn't require authentication because
         // the user is NOT signed in when clicking the verification link.
         let databaseRole: 'manager' | 'chef' | 'admin' | null = null;
+        if (completesPhoneRegistration) {
+          const provisioned = await provisionPendingPhoneRegistration();
+          if (provisioned.completed) {
+            databaseRole = provisioned.role || null;
+            logger.info('✅ Phone registration provisioned after verified email change');
+          } else {
+            logger.info('ℹ️ Email was verified, but phone registration must be resumed by signing in with phone');
+          }
+        }
         if (email) {
           logger.info('🔄 Calling public verify-email-complete endpoint...');
           try {
@@ -637,7 +653,11 @@ export default function EmailAction() {
         }
 
         setStatus('success');
-        setMessage('Your email has been verified! You can now log in. If you were expecting another email, check your spam folder.');
+        setMessage(completesPhoneRegistration
+          ? (databaseRole
+            ? 'Your phone and email are verified. Your account is ready.'
+            : 'Your email is verified. Sign in with your phone once more to finish account setup.')
+          : 'Your email has been verified! You can now log in. If you were expecting another email, check your spam folder.');
 
         // Build the redirect URL based on continueUrl or detected role
         const finalRedirectUrl = buildRedirectUrl(continueUrl, databaseRole);
@@ -838,6 +858,8 @@ export default function EmailAction() {
         const { signInWithEmailLink } = await import('firebase/auth');
 
         await signInWithEmailLink(auth, email, signInHref);
+        const { rememberAuthMethod } = await import('@/lib/login-challenge');
+        await rememberAuthMethod(email, 'email-link');
         window.localStorage.removeItem('emailForSignIn');
         logger.info('✅ Magic link sign-in successful (email verified implicitly)');
 
@@ -1010,6 +1032,7 @@ export default function EmailAction() {
                   <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-[#F51042]">LocalCooks account access</p>
                   <h1 className="text-3xl font-bold tracking-[-0.035em] text-slate-950 sm:text-4xl">
                     {actionType === 'verifyEmail' && 'Verifying your email...'}
+                    {actionType === 'verifyAndChangeEmail' && 'Finishing your account...'}
                     {actionType === 'resetPassword' && 'Processing...'}
                     {actionType === 'recoverEmail' && 'Recovering email...'}
                     {actionType === 'signIn' && 'Signing you in...'}
@@ -1117,6 +1140,7 @@ export default function EmailAction() {
                 >
                   <h1 className="text-2xl font-bold text-gray-900 mb-2">
                     {actionType === 'verifyEmail' && 'Email Verified!'}
+                    {actionType === 'verifyAndChangeEmail' && 'Account Ready!'}
                     {actionType === 'recoverEmail' && 'Email Restored!'}
                     {actionType === 'signIn' && 'Signed In!'}
                     {!actionType && 'Success!'}

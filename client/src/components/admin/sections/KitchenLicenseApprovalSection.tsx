@@ -363,7 +363,6 @@ export function KitchenLicenseApprovalSection() {
                                   size="sm"
                                   onClick={() => handleApprove(license.id)}
                                   disabled={approveLicenseMutation.isPending}
-                                  className="bg-green-600 hover:bg-green-700 text-white"
                                 >
                                   <Check className="h-4 w-4 mr-2" />
                                   {approveLicenseMutation.isPending && expandedLicense === license.id ? 'Approving...' : 'Approve'}

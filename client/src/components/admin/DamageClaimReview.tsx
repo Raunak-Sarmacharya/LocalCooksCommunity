@@ -316,7 +316,7 @@ function DecisionDialog({
                   className="h-auto py-4 flex flex-col items-center gap-2"
                   onClick={() => setDecision('approve')}
                 >
-                  <CheckCircle className="w-6 h-6 text-green-600" />
+                  <CheckCircle className="w-6 h-6 text-primary" />
                   <span className="font-semibold">Approve</span>
                   <span className="text-xs text-muted-foreground">
                     Full amount

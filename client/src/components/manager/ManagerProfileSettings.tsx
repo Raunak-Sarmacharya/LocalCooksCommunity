@@ -15,6 +15,8 @@ import { Loader2, Mail, Phone, Shield, Camera, Building2, Edit3, Lock } from "@/
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
 import ChangePassword from "@/components/auth/ChangePassword";
+import PhoneSignInSettings from "@/components/auth/PhoneSignInSettings";
+import { PHONE_AUTH_ENABLED } from "@/lib/feature-flags";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { cn } from "@/lib/utils";
 import { tt } from "@/i18n/common-ns";
@@ -51,7 +53,7 @@ export default function ManagerProfileSettings({
   
     const { toast } = useToast();
     const queryClient = useQueryClient();
-    const { user: firebaseUser } = useFirebaseAuth();
+    const { user: firebaseUser, refreshUserData } = useFirebaseAuth();
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const [username, setUsername] = useState("");
@@ -218,6 +220,7 @@ export default function ManagerProfileSettings({
             queryClient.invalidateQueries({ queryKey: ["/api/manager/profile"] });
             queryClient.invalidateQueries({ queryKey: ["/api/user/profile", firebaseUser?.uid] });
             setIsEditingProfile(false);
+            void refreshUserData();
             toast({ title: mt("profileUpdated"),
                 description: mt("yourChangesHaveBeenSavedSuccessfully"),
             });
@@ -235,9 +238,8 @@ export default function ManagerProfileSettings({
             await updateProfileMutation.mutateAsync({
                 username: username !== user?.username ? username : undefined,
                 displayName: displayName || undefined,
-                phone: phone || undefined,
             });
-        }, [updateProfileMutation, username, user?.username, displayName, phone]),
+        }, [updateProfileMutation, username, user?.username, displayName]),
     );
 
 
@@ -353,11 +355,12 @@ export default function ManagerProfileSettings({
             </div>
 
             <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-                <TabsList className="h-auto w-full justify-start gap-0 rounded-none border-b bg-transparent p-0">
+                <TabsList className="h-auto w-full justify-start gap-0 overflow-x-auto rounded-none border-b bg-transparent p-0">
                     {[
                         ["account", mt("personalInformation")],
                         ["location", mt("navLocation")],
                         ["password", mt("security")],
+
                         ["payments", mt("paymentsPayouts")],
                         ["notifications", mt("notificationSettings")],
                         ["teams", mt("navTeams")],
@@ -438,24 +441,33 @@ export default function ManagerProfileSettings({
                             </div>
 
                             {/* Phone */}
-                            <div className="space-y-2">
-                                <Label htmlFor="phone" className="text-sm font-medium text-slate-700">{mt("phoneNumber")}</Label>
-                                <div className="relative">
-                                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                                    <Input
-                                        id="phone"
-                                        type="tel"
-                                        value={phone}
-                                        onChange={(e) => setPhone(e.target.value)}
-                                        className={cn(
-                                            "h-11 pl-10 transition-colors",
-                                            !isEditingProfile && "bg-slate-50 border-slate-200"
-                                        )}
-                                        placeholder="+1 (555) 000-0000"
-                                        disabled={!isEditingProfile}
-                                    />
+                            {PHONE_AUTH_ENABLED && (
+                            <div className="space-y-2 sm:col-span-2 rounded-xl border bg-slate-50/50 p-4">
+                                <div className="space-y-1 mb-3">
+                                    <Label className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
+                                        <Phone className="h-4 w-4 text-slate-400" />
+                                        {mt("phoneNumber")}
+                                    </Label>
+                                    <p className="text-xs text-slate-500">
+                                        {tt("phoneVerificationRequired", { defaultValue: "Phone numbers require OTP verification to link with your account." })}
+                                    </p>
                                 </div>
+                                <PhoneSignInSettings
+                                    embedded
+                                    initialPhone={phone}
+                                    onPhoneLinked={async (verifiedPhone) => {
+                                        try {
+                                            await updateProfileMutation.mutateAsync({ phone: verifiedPhone });
+                                        } catch {}
+                                    }}
+                                    onPhoneUnlinked={async () => {
+                                        try {
+                                            await updateProfileMutation.mutateAsync({ phone: "" });
+                                        } catch {}
+                                    }}
+                                />
                             </div>
+                            )}
 
                             {/* Save Button */}
                             {isEditingProfile && (
@@ -497,6 +509,7 @@ export default function ManagerProfileSettings({
                         <ChangePassword role="manager" embedded />
                     </div>
                 </TabsContent>
+
 
                 <TabsContent value="payments" className="mt-6 focus-visible:ring-0">
                     <StripeConnectSetup />

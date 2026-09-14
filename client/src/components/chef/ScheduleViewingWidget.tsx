@@ -12,8 +12,7 @@ import { CalendarDays, Clock, MapPin, Loader2, CheckCircle, ArrowLeft, Building2
 import { toast } from "sonner";
 import { auth } from "@/lib/firebase";
 import { useFirebaseAuth } from "@/hooks/use-auth";
-import EnhancedRegisterForm from "@/components/auth/EnhancedRegisterForm";
-import EnhancedLoginForm from "@/components/auth/EnhancedLoginForm";
+import AuthFlow, { type AuthFlowStep } from "@/components/auth/AuthFlow";
 import { useLocation } from "wouter";
 import { chefDashboardHref } from "@/lib/chef-dashboard-nav";
 import { saveAuthIntentFromCurrentPage, getAuthIntent, resolveVerificationReturnPath, kitchenActor, nextTourStepAfterSlot, coerceTourStepForActor, skipKitchenVerify } from "@/lib/auth-intent";
@@ -93,7 +92,7 @@ export function ScheduleViewingWidget({
 }: ScheduleViewingWidgetProps) {
   const queryClient = useQueryClient();
   const { t } = useTranslation("kitchen");
-  const { user, refreshUserData } = useFirebaseAuth();
+  const { user, refreshUserData, signInWithGoogle } = useFirebaseAuth();
   const [, setLocation] = useLocation();
   const isAuthenticated = !!user;
   const [registeredInFlow, setRegisteredInFlow] = useState(false);
@@ -102,7 +101,7 @@ export function ScheduleViewingWidget({
   const skipVerify = skipKitchenVerify(actor, emailVerified);
 
   const [step, setStep] = useState<TourStep>("date");
-  const [authTab, setAuthTab] = useState<"register" | "login">("register");
+  const [authTab, setAuthTab] = useState<AuthFlowStep>("identifier");
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
   const [chefNotes, setChefNotes] = useState("");
@@ -601,28 +600,27 @@ export function ScheduleViewingWidget({
         <ArrowLeft className="h-4 w-4 mr-1" />
         {t("modalBack")}
       </Button>
-      {authTab === "login" ? (
-        <EnhancedLoginForm
-          onSuccess={async () => {
+      <AuthFlow
+        step={authTab}
+        onStepChange={setAuthTab}
+        loginProps={{
+          onSuccess: async () => {
             await refreshUserData();
             setRegisteredInFlow(false);
             setStep("confirm");
             persistProgress({ step: "confirm", registeredInFlow: false });
-          }}
-          onSwitchToRegister={() => setAuthTab("register")}
-        />
-      ) : (
-        <EnhancedRegisterForm
-          showTermsInline={true}
-          hideApplyingToggle
-          onSwitchToLogin={() => setAuthTab("login")}
-          onRegistrationComplete={() => {
+          },
+        }}
+        registerProps={{
+          showTermsInline: true,
+          hideApplyingToggle: true,
+          onRegistrationComplete: () => {
             // signup() already sends verification — avoid a second send (rate limits).
             setRegisteredInFlow(true);
             setStep("verify");
             persistProgress({ step: "verify", registeredInFlow: true });
-          }}
-          onSuccess={async () => {
+          },
+          onSuccess: async () => {
             await refreshUserData();
             if (auth.currentUser?.emailVerified) {
               setRegisteredInFlow(false);
@@ -656,9 +654,22 @@ export function ScheduleViewingWidget({
                 }
               }
             }
-          }}
-        />
-      )}
+          },
+        }}
+        onGoogleSignIn={async () => {
+          await signInWithGoogle();
+          await refreshUserData();
+          setRegisteredInFlow(false);
+          setStep("confirm");
+          persistProgress({ step: "confirm", registeredInFlow: false });
+        }}
+        onPhoneExistingUser={async () => {
+          await refreshUserData();
+          setRegisteredInFlow(false);
+          setStep("confirm");
+          persistProgress({ step: "confirm", registeredInFlow: false });
+        }}
+      />
     </div>
   );
 

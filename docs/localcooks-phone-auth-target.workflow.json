@@ -1,0 +1,75 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Local Cooks Unified Phone Authentication",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/localcooks-phone-auth-target.html"
+  },
+  "lanes": [
+    { "id": "experience", "label": "Customer Experience" },
+    { "id": "firebase", "label": "Firebase Identity" },
+    { "id": "application", "label": "Local Cooks Account" },
+    { "id": "recovery", "label": "Collision & Recovery", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "identify", "label": "Identify", "fromCol": 0, "toCol": 1 },
+    { "id": "classify", "label": "Classify", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "complete", "label": "Complete account", "fromCol": 4, "toCol": 5, "variant": "security" }
+  ],
+  "mainPath": ["identifier", "otp", "phoneIdentity", "profileLookup", "details", "emailVerify", "emailAttached", "provision", "ready"],
+  "semanticChecks": {
+    "allowedRoots": ["identifier"],
+    "allowedTerminals": ["ready", "recoveryStop"],
+    "requiredPaths": [
+      { "from": "identifier", "to": "ready" },
+      { "from": "profileLookup", "to": "details" },
+      { "from": "details", "to": "provision" }
+    ]
+  },
+  "nodes": [
+    { "id": "identifier", "lane": "experience", "col": 0, "type": "frontend", "label": "Log in or sign up", "sublabel": "phone or email", "width": 148 },
+    { "id": "otp", "lane": "experience", "col": 1, "type": "security", "label": "Enter OTP", "sublabel": "6-digit SMS code", "width": 136 },
+    { "id": "details", "lane": "experience", "col": 3, "type": "frontend", "label": "Finish signing up", "sublabel": "full name + email + terms", "width": 158 },
+    { "id": "emailVerify", "lane": "experience", "col": 4, "type": "security", "label": "Verify email", "sublabel": "redeem secure link", "width": 140 },
+    { "id": "ready", "lane": "experience", "col": 5, "type": "frontend", "label": "Continue journey", "sublabel": "restore original intent", "width": 148 },
+    { "id": "phoneIdentity", "lane": "firebase", "col": 1, "type": "cloud", "label": "Phone identity", "sublabel": "one Firebase UID", "brand": "firebase", "width": 142 },
+    { "id": "emailAttached", "lane": "firebase", "col": 4, "type": "cloud", "label": "Verified email attached", "sublabel": "same Firebase UID", "brand": "firebase", "width": 178 },
+    { "id": "profileLookup", "lane": "application", "col": 2, "type": "backend", "label": "Find account by UID", "sublabel": "Neon profile lookup", "width": 150 },
+    { "id": "provision", "lane": "application", "col": 5, "type": "database", "label": "Provision profile", "sublabel": "role + consent + identities", "width": 154 },
+    { "id": "collision", "lane": "recovery", "col": 4, "type": "security", "label": "Identity collision", "sublabel": "email or phone belongs elsewhere", "width": 170 },
+    { "id": "recoveryStop", "lane": "recovery", "col": 5, "type": "external", "label": "Account recovery", "sublabel": "prove both identities; no auto-merge", "width": 176 }
+  ],
+  "edges": [
+    { "id": "identifierOtp", "from": "identifier", "to": "otp", "label": "send code", "variant": "default", "role": "main" },
+    { "id": "otpIdentity", "from": "otp", "to": "phoneIdentity", "label": "confirm", "variant": "security", "role": "main" },
+    { "id": "identityLookup", "from": "phoneIdentity", "to": "profileLookup", "label": "verified UID", "variant": "emphasis", "role": "main" },
+    { "id": "existingReady", "from": "profileLookup", "to": "ready", "label": "existing profile", "variant": "emphasis", "role": "branch" },
+    { "id": "newDetails", "from": "profileLookup", "to": "details", "label": "profile missing", "variant": "default", "role": "main" },
+    { "id": "detailsVerify", "from": "details", "to": "emailVerify", "label": "send link", "variant": "default", "role": "main" },
+    { "id": "verifyAttach", "from": "emailVerify", "to": "emailAttached", "label": "verify before update", "variant": "security", "role": "main" },
+    { "id": "attachProvision", "from": "emailAttached", "to": "provision", "label": "fresh ID token", "variant": "emphasis", "role": "main" },
+    { "id": "provisionReady", "from": "provision", "to": "ready", "label": "account ready", "variant": "emphasis", "role": "main" },
+    { "id": "detailsCollision", "from": "emailAttached", "to": "collision", "label": "identifier already used", "variant": "security", "role": "error", "fromSide": "left", "toSide": "left", "route": "return-left" },
+    { "id": "collisionRecovery", "from": "collision", "to": "recoveryStop", "label": "stop and recover", "variant": "security", "role": "error" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Airbnb-style experience",
+      "items": [
+        "One entry point decides login versus signup after identity proof",
+        "Only new users see the missing profile fields"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Non-negotiable trust boundary",
+      "items": [
+        "Firebase UID is the account key; contact data never auto-links identities",
+        "No marketplace authorization before the Neon profile transaction"
+      ]
+    }
+  ]
+}

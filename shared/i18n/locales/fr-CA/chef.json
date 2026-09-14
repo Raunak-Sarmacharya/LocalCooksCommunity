@@ -1,4 +1,11 @@
 {
+  "gettingStarted": "Bien démarrer",
+  "gettingStartedProgress": "{completed} sur {total} terminés",
+  "gettingStartedFullName": "Ajoutez votre nom complet",
+  "gettingStartedEmail": "Ajoutez votre adresse courriel",
+  "gettingStartedPhone": "Ajoutez votre numéro de téléphone",
+  "completeYourProfile": "Complétez votre profil",
+  "completeProfile": "Compléter le profil",
   "accessCommercialKitchens": "Accédez à des cuisines commerciales certifiées à l'heure. Commencez petit, développez-vous au fur et à mesure.",
   "actionMenuPrices": "Menu et prix",
   "actionMenuPricesDesc": "Ajoutez des plats, définissez la disponibilité et mettez à jour ce que les clients peuvent commander.",
@@ -2306,5 +2313,6 @@
   "revDownloadDataCsv": "Télécharger les données (CSV)",
   "dcMoreCharsRequired": "{count} caractères supplémentaires requis",
   "revExportCurrentTableCsv": "Exporter la vue actuelle du tableau (CSV)",
-  "revLinkAccountToViewRevenue": "Liez votre compte vendeur ci-dessus pour voir vos revenus de commandes alimentaires."
+  "revLinkAccountToViewRevenue": "Liez votre compte vendeur ci-dessus pour voir vos revenus de commandes alimentaires.",
+  "profileTabPhoneSignIn": "Connexion par téléphone"
 }

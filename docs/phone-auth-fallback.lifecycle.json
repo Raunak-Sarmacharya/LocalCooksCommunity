@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Local Cooks Phone Authentication",
+    "locale": "en",
+    "output": "docs/phone-auth-fallback.html",
+    "viewBox": [1200, 630],
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    { "id": "main", "label": "Continue with phone" },
+    { "id": "security", "label": "Identity and provisioning" },
+    { "id": "terminal", "label": "Recovery" }
+  ],
+  "states": [
+    { "id": "phoneEntry", "type": "start", "label": "Enter phone", "lane": "main", "col": 0, "step": "01" },
+    { "id": "sendCode", "type": "active", "label": "Send code", "lane": "main", "col": 1, "step": "02" },
+    { "id": "verifyCode", "type": "active", "label": "Verify code", "lane": "main", "col": 2, "step": "03" },
+    { "id": "classifyUser", "type": "decision", "label": "Existing or new?", "lane": "main", "col": 3, "step": "04" },
+    { "id": "accountReady", "type": "success", "label": "Account ready", "lane": "main", "col": 4, "step": "05" },
+    { "id": "abuseGate", "type": "external", "label": "Abuse controls", "lane": "security", "col": 0, "tag": "reCAPTCHA" },
+    { "id": "newProvision", "type": "active", "label": "Provision account", "lane": "security", "col": 1, "tag": "role + terms" },
+    { "id": "existingProfile", "type": "active", "label": "Load profile", "lane": "security", "col": 2, "tag": "same UID" },
+    { "id": "smsBlocked", "type": "failure", "label": "SMS blocked", "lane": "terminal", "col": 0, "tag": "retry or alternate" },
+    { "id": "provisionFailed", "type": "failure", "label": "Provision failed", "lane": "terminal", "col": 1, "tag": "rollback" }
+  ],
+  "transitions": [
+    { "id": "continue", "from": "phoneEntry", "to": "sendCode", "variant": "default" },
+    { "id": "applyControls", "from": "sendCode", "to": "abuseGate", "label": "send SMS", "variant": "security" },
+    { "id": "deliverCode", "from": "abuseGate", "to": "verifyCode", "label": "challenge passes", "variant": "security" },
+    { "id": "rejectSend", "from": "abuseGate", "to": "smsBlocked", "label": "risk or quota", "variant": "security", "fromSide": "bottom", "toSide": "top", "route": "straight", "labelAt": [402, 399] },
+    { "id": "confirmOtp", "from": "verifyCode", "to": "classifyUser", "variant": "emphasis" },
+    { "id": "newUser", "from": "classifyUser", "to": "newProvision", "label": "isNewUser", "variant": "security", "labelAt": [556, 202] },
+    { "id": "existingUser", "from": "classifyUser", "to": "existingProfile", "variant": "default" },
+    { "id": "newReady", "from": "newProvision", "to": "accountReady", "variant": "emphasis" },
+    { "id": "existingReady", "from": "existingProfile", "to": "accountReady", "label": "profile resolved", "variant": "emphasis" },
+    { "id": "rollbackNew", "from": "newProvision", "to": "provisionFailed", "label": "transaction fails", "variant": "security", "fromSide": "bottom", "toSide": "top", "route": "straight", "labelAt": [556, 399] }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "Direct path", "items": ["Continue sends the SMS without a duplicate consent screen", "Resend remains available while the verification code is pending"] },
+    { "dot": "cyan", "title": "Try another way", "items": ["The active phone method is excluded", "Email link, email/password, and Google remain available"] },
+    { "dot": "amber", "title": "Privacy boundary", "items": ["Email alternatives ask for the account email", "Client-side provider enumeration remains disabled"] }
+  ]
+}

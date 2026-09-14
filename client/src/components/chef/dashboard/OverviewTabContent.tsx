@@ -27,6 +27,7 @@ import { KitchenPathEmptyCard, SellerPathEmptyCard } from "./GetStartedPathCards
 import { TruncatedText } from "@/components/common/TruncatedText";
 import { tt } from "@/i18n/common-ns";
 import { Icon } from "@iconify/react";
+import { useLocation } from "wouter";
 
 interface OverviewTabContentProps {
   user: {
@@ -181,6 +182,7 @@ export default function OverviewTabContent({
   const { data: shopStatus } = useShopStatus();
   const dashboardLinkMutation = useStripeDashboardLink();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
 
   const { user: authUser } = useFirebaseAuth();
   const { data: viewings = [] } = useQuery({
@@ -213,6 +215,10 @@ export default function OverviewTabContent({
     () => kitchenApplications.map((app) => ({ app, display: getKitchenDisplayStatus(app, t) })),
     [kitchenApplications, t]
   );
+  const firstBookableKitchen = kitchenApplications.find(
+    (app) => app.status === "approved" && (app.current_tier ?? 1) >= 3
+  );
+  const openKitchenPreview = (locationId: number) => navigate(`/kitchen-preview/${locationId}`);
 
   const upcomingBookings = useMemo(() => {
     return (enrichedBookings || [])
@@ -381,11 +387,9 @@ export default function OverviewTabContent({
           value={kitchenSummary.label}
           hint={kitchenHint}
           tone={kitchenSummaryTone(kitchenSummary)}
-          onClick={() =>
-            onSetActiveTab(
-              kitchenApplications.length > 0 ? "kitchen-applications" : "discover-kitchens"
-            )
-          }
+          onClick={() => firstBookableKitchen
+            ? openKitchenPreview(firstBookableKitchen.locationId)
+            : onSetActiveTab(kitchenApplications.length > 0 ? "kitchen-applications" : "discover-kitchens")}
         />
         <StatCard
           label={t("ovStatKitchenTours", "Kitchen Tours")}
@@ -597,25 +601,33 @@ export default function OverviewTabContent({
             <CardContent className="flex-1 pt-0">
               <div className="max-h-[11.5rem] overflow-y-auto overflow-x-hidden divide-y border-y">
                 {kitchenDisplays.map(({ app, display }) => (
-                  <div key={app.id} className="flex items-center justify-between gap-3 py-2">
+                  <button
+                    type="button"
+                    key={app.id}
+                    className="flex w-full items-center justify-between gap-3 py-2 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => display.actionKind === "book"
+                      ? openKitchenPreview(app.locationId)
+                      : display.actionKind === "complete-step"
+                        ? navigate(`/kitchen-requirements/${app.locationId}`)
+                        : onSetActiveTab("kitchen-applications")}
+                  >
                     <div className="min-w-0 flex-1">
                       <TruncatedText as="p" className="truncate text-sm font-medium">
                         {app.location?.name || t("ovKitchenFallback")}
                       </TruncatedText>
                       {display.actionKind === "complete-step" ? (
-                        <a 
-                          href={`/kitchen-requirements/${app.locationId}`}
+                        <span
                           className="text-xs text-primary underline hover:text-primary/80 transition-colors flex items-center gap-1 mt-0.5"
                         >
                           {t("ovContinueCta", "Continue")}
                           <ArrowRight className="h-3 w-3" />
-                        </a>
+                        </span>
                       ) : (
                         <TruncatedText as="p" className="truncate text-xs text-muted-foreground">{display.stepCaption}</TruncatedText>
                       )}
                     </div>
                     <KitchenStatusChip display={display} className="shrink-0" />
-                  </div>
+                  </button>
                 ))}
               </div>
             </CardContent>

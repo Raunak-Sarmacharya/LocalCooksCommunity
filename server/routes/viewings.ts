@@ -47,6 +47,7 @@ import {
 } from "@shared/schema";
 
 import { getUserDisplayName } from "../utils/user-display";
+import { getChefPhone } from "../phone-utils";
 import { TZDate } from "@date-fns/tz";
 import { format, addMinutes, addDays, startOfDay, endOfDay, isBefore, isAfter, differenceInHours } from "date-fns";
 
@@ -1058,6 +1059,7 @@ router.get(
           locationAddress: locations.address,
           kitchenName: kitchens.name,
           chefUsername: users.username,
+          chefEmail: users.username,
         })
         .from(kitchenViewings)
         .leftJoin(locations, eq(kitchenViewings.locationId, locations.id))
@@ -1080,7 +1082,8 @@ router.get(
       const withNames = await Promise.all(
         filtered.map(async (r) => ({
           ...r,
-          chefName: r.viewing.chefId ? await getUserDisplayName(r.viewing.chefId, 'chef') : 'A chef'
+          chefName: r.viewing.chefId ? await getUserDisplayName(r.viewing.chefId, 'chef') : 'A chef',
+          chefPhone: r.viewing.chefId ? await getChefPhone(r.viewing.chefId) : null,
         }))
       );
 
@@ -1109,6 +1112,7 @@ router.get(
           locationAddress: locations.address,
           kitchenName: kitchens.name,
           chefUsername: users.username,
+          chefEmail: users.username,
         })
         .from(kitchenViewings)
         .leftJoin(locations, eq(kitchenViewings.locationId, locations.id))
@@ -1123,6 +1127,7 @@ router.get(
       res.json(await Promise.all(results.map(async (result) => ({
         ...result,
         chefName: await getUserDisplayName(result.viewing.chefId, "chef"),
+        chefPhone: await getChefPhone(result.viewing.chefId),
       }))));
     } catch (error) {
       logger.error("Error fetching Local Cooks tour review queue:", error);

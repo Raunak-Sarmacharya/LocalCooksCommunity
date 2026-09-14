@@ -16,6 +16,7 @@ export interface CreateUserDTO {
   password?: string; // Optional — Firebase Auth users don't have passwords in Neon
   role?: 'admin' | 'chef' | 'manager';
   firebaseUid?: string;
+  phoneNumber?: string;
   email?: string;
   displayName?: string;
   isVerified?: boolean;
@@ -32,6 +33,7 @@ export interface UpdateUserDTO {
   id?: number;
   username?: string;
   firebaseUid?: string;
+  phoneNumber?: string | null;
   password?: string;
   role?: 'admin' | 'chef' | 'manager';
   isChef?: boolean;
@@ -69,6 +71,7 @@ export interface UserDTO {
   googleId: string | null;
   facebookId: string | null;
   firebaseUid: string | null;
+  phoneNumber: string | null;
   isVerified: boolean;
   has_seen_welcome: boolean;
   isChef: boolean;

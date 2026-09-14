@@ -91,6 +91,16 @@ const navData: { navMain: NavGroup[] } = {
     ],
 }
 
+/** Where each "Getting started" checklist row navigates to. */
+const SETUP_STEP_VIEWS: Record<ManagerSetupStep["id"], string> = {
+    profile: "profile",
+    license: "settings-license",
+    kitchen: "kitchens",
+    availability: "availability",
+    requirements: "application-requirements",
+    payments: "payments",
+};
+
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
     activeView: string;
     onViewChange: (view: string) => void;
@@ -101,7 +111,6 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
     breadcrumbs?: ManagerBreadcrumb[];
     managerSetupSteps?: ManagerSetupStep[];
     managerImprovementSteps?: string[];
-    onContinueManagerSetup?: () => void;
     onImproveManagerListing?: (task: string) => void;
 }
 
@@ -115,7 +124,6 @@ export function AppSidebar({
     onCreateLocation: _onCreateLocation,
     managerSetupSteps = [],
     managerImprovementSteps = [],
-    onContinueManagerSetup,
     onImproveManagerListing,
     ...props
 }: AppSidebarProps) {
@@ -142,9 +150,9 @@ export function AppSidebar({
         onViewChange(view);
     };
 
-    const handleContinueManagerSetup = () => {
-        onContinueManagerSetup?.();
-        if (isMobile) setOpenMobile(false);
+    /** "Getting started" rows deep-link into the page that completes them. */
+    const handleManagerSetupStep = (stepId: ManagerSetupStep["id"]) => {
+        handleAccountAction(SETUP_STEP_VIEWS[stepId]);
     };
 
     const handleImproveManagerListing = (task: string) => {
@@ -248,7 +256,7 @@ export function AppSidebar({
                     <ManagerGettingStarted
                         steps={managerSetupSteps}
                         improvementSteps={managerImprovementSteps}
-                        onContinue={handleContinueManagerSetup}
+                        onSelectStep={handleManagerSetupStep}
                         onImprove={handleImproveManagerListing}
                     />
                 ) : null}

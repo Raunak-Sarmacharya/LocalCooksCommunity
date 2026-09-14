@@ -8,10 +8,12 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Edit3, Lock, X, Info } from "lucide-react";
+import { Edit3, Lock, X, Info, Phone as PhoneIcon } from "lucide-react";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
 import ChangePassword from "@/components/auth/ChangePassword";
+import PhoneSignInSettings from "@/components/auth/PhoneSignInSettings";
+import { PHONE_AUTH_ENABLED } from "@/lib/feature-flags";
 import { useTranslation } from "react-i18next";
 import { tt } from "@/i18n/common-ns";
 import type { PasswordFormMode } from "@/components/auth/password-form-mode";
@@ -21,13 +23,13 @@ import { motion } from "framer-motion";
 import { StatusDot } from "@/components/chef/ui";
 import { InfoChip } from "@/components/chef/info-chip";
 
-type EditableField = "displayName" | "username" | "phone";
+type EditableField = "displayName" | "username";
 
 export default function ChefProfileSettings() {
   const { t } = useTranslation("chef");
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { user: firebaseUser } = useFirebaseAuth();
+  const { user: firebaseUser, refreshUserData } = useFirebaseAuth();
 
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -196,6 +198,7 @@ export default function ChefProfileSettings() {
       if (variables.displayName !== undefined) setDisplayName(variables.displayName);
       if (variables.username !== undefined) setUsername(variables.username);
       if (variables.phone !== undefined) setPhone(variables.phone);
+      void refreshUserData();
       setEditingField(null);
       setDraft("");
       toast({
@@ -234,23 +237,18 @@ export default function ChefProfileSettings() {
       const original =
         editingField === "displayName"
           ? displayName
-          : editingField === "username"
-            ? username
-            : phone;
+          : username;
       if (trimmed === original.trim()) return;
       if (editingField === "displayName") {
         await updateProfileMutation.mutateAsync({ displayName: trimmed });
       } else if (editingField === "username") {
         await updateProfileMutation.mutateAsync({ username: trimmed });
-      } else {
-        await updateProfileMutation.mutateAsync({ phone: trimmed });
       }
     }, [
       editingField,
       draft,
       displayName,
       username,
-      phone,
       updateProfileMutation,
     ])
   );
@@ -387,7 +385,7 @@ export default function ChefProfileSettings() {
       </motion.section>
 
       <Tabs defaultValue="account" className="w-full">
-        <TabsList className="h-auto w-full justify-start gap-0 rounded-none border-b bg-transparent p-0">
+        <TabsList className="h-auto w-full justify-start gap-0 overflow-x-auto rounded-none border-b bg-transparent p-0">
           <TabsTrigger
             value="account"
             className="rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
@@ -453,28 +451,37 @@ export default function ChefProfileSettings() {
                 cancelLabel={t("profileCancel", "Cancel")}
                 editLabel={t("profileEdit", "Edit")}
               />
-              <FieldRow
-                label={t("profilePhoneNumber", "Phone Number")}
-                value={phone || "—"}
-                original={phone}
-                editing={editingField === "phone"}
-                draft={draft}
-                onDraftChange={setDraft}
-                onEdit={() => startEdit("phone", phone)}
-                onCancel={cancelEdit}
-                onSave={saveFieldAction.execute}
-                saveStatus={saveFieldAction.status}
-                inputId="phone"
-                inputType="tel"
-                placeholder={t("profilePhonePlaceholder", "+1 (555) 000-0000")}
-                saveLabels={{
-                  idle: t("profileSaveChanges", "Save"),
-                  loading: t("profileSaving", "Saving"),
-                  success: t("profileSaved", "Saved"),
-                }}
-                cancelLabel={t("profileCancel", "Cancel")}
-                editLabel={t("profileEdit", "Edit")}
-              />
+              {PHONE_AUTH_ENABLED && (
+                <div className="rounded-xl border bg-muted/30 px-4 py-3 sm:col-span-2">
+                  <div className="space-y-1 mb-3">
+                    <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                      <PhoneIcon className="h-3.5 w-3.5" />
+                      {t("profilePhoneNumber", "Phone Number")}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {t("profilePhoneVerificationRequired", "Phone numbers require OTP verification to link with your account.")}
+                    </p>
+                  </div>
+                  <PhoneSignInSettings
+                    embedded
+                    initialPhone={phone}
+                    onPhoneLinked={async (verifiedPhone) => {
+                      try {
+                        await updateProfileMutation.mutateAsync({ phone: verifiedPhone });
+                      } catch {
+                        // mutation handles its own toast errors
+                      }
+                    }}
+                    onPhoneUnlinked={async () => {
+                      try {
+                        await updateProfileMutation.mutateAsync({ phone: "" });
+                      } catch {
+                        // mutation handles its own toast errors
+                      }
+                    }}
+                  />
+                </div>
+              )}
               <div className="rounded-xl border bg-muted/30 px-4 py-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1 space-y-1">
@@ -530,6 +537,8 @@ export default function ChefProfileSettings() {
             />
           </Section>
         </TabsContent>
+
+
       </Tabs>
     </div>
   );
