@@ -1,0 +1,48 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "First Point Booking Diagnosis",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    { "id": "availability", "label": "Kitchen availability" },
+    { "id": "application", "label": "Effie booking access" },
+    { "id": "manager", "label": "Jennifer document review" }
+  ],
+  "phases": [
+    { "id": "stored", "label": "Stored state", "fromCol": 0, "toCol": 1 },
+    { "id": "computed", "label": "API computation", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "presented", "label": "User-visible result", "fromCol": 4, "toCol": 5 }
+  ],
+  "mainPath": ["weekly_rows", "slot_generator", "empty_slots", "monthly_false"],
+  "nodes": [
+    { "id": "weekly_rows", "lane": "availability", "col": 0, "type": "database", "label": "Weekly rows", "sublabel": "open · 08:00 → 01:00" },
+    { "id": "details_api", "lane": "availability", "col": 1, "type": "backend", "label": "Details API", "sublabel": "returns stored rows" },
+    { "id": "slot_generator", "lane": "availability", "col": 2, "type": "backend", "label": "Slot generator", "sublabel": "loops while hour < 01" },
+    { "id": "empty_slots", "lane": "availability", "col": 3, "type": "security", "label": "Zero slots", "sublabel": "overnight range unsupported", "width": 112 },
+    { "id": "monthly_false", "lane": "availability", "col": 5, "type": "frontend", "label": "Calendar all false", "sublabel": "no selectable dates", "width": 132 },
+    { "id": "effie_app", "lane": "application", "col": 0, "type": "database", "label": "Application 65", "sublabel": "approved · tier 2" },
+    { "id": "access_gate", "lane": "application", "col": 2, "type": "backend", "label": "Access-status gate", "sublabel": "requires tier ≥ 3", "width": 132 },
+    { "id": "booking_blocked", "lane": "application", "col": 5, "type": "frontend", "label": "Booking blocked", "sublabel": "no access row", "width": 112 },
+    { "id": "manager_api", "lane": "manager", "col": 1, "type": "backend", "label": "Manager API", "sublabel": "includes Effie + URLs" },
+    { "id": "document_panel", "lane": "manager", "col": 3, "type": "frontend", "label": "Step 2 panel", "sublabel": "three submitted files" },
+    { "id": "document_links", "lane": "manager", "col": 5, "type": "cloud", "label": "Presigned links", "sublabel": "runtime unverified", "width": 112 }
+  ],
+  "edges": [
+    { "from": "weekly_rows", "to": "details_api", "label": "raw availability", "role": "branch" },
+    { "from": "weekly_rows", "to": "slot_generator", "label": "08:00 → 01:00", "role": "main", "variant": "emphasis" },
+    { "from": "slot_generator", "to": "empty_slots", "label": "8 < 1 is false", "role": "main", "variant": "security" },
+    { "from": "empty_slots", "to": "monthly_false", "label": "no bookable slot", "role": "main", "variant": "security" },
+    { "from": "effie_app", "to": "access_gate", "label": "current_tier = 2" },
+    { "from": "access_gate", "to": "booking_blocked", "label": "canBook = false", "variant": "security" },
+    { "from": "effie_app", "to": "manager_api", "label": "location 94 · manager 363" },
+    { "from": "manager_api", "to": "document_panel", "label": "camel-cased document URLs" },
+    { "from": "document_panel", "to": "document_links", "label": "request presigned URL", "variant": "dashed" }
+  ],
+  "cards": [
+    { "dot": "rose", "title": "Confirmed root cause", "items": ["All seven production days use an overnight range", "The shared generator produces no slots for end times earlier than start times", "Monthly and per-day availability fail together"] },
+    { "dot": "amber", "title": "Application state", "items": ["Status approved but current tier remains 2", "Tier 2 submission exists; tier 1 timestamp is missing", "No location or kitchen access record exists"] },
+    { "dot": "cyan", "title": "Document evidence", "items": ["Food safety, establishment, and insurance URLs exist", "Manager query includes application 65", "A runtime presigned-link failure needs browser or log evidence"] }
+  ]
+}

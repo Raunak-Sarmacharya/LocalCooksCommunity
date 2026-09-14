@@ -468,13 +468,21 @@ export class ChefApplicationService {
     /**
      * Update application documents
      */
-    async updateApplicationDocuments(data: { id: number, foodSafetyLicenseUrl?: string, foodEstablishmentCertUrl?: string }): Promise<ChefKitchenApplication> {
+    async updateApplicationDocuments(data: {
+        id: number;
+        foodSafetyLicenseUrl?: string;
+        foodEstablishmentCertUrl?: string;
+        foodSafetyLicenseStatus?: "pending" | "approved" | "rejected";
+        foodEstablishmentCertStatus?: "pending" | "approved" | "rejected";
+    }): Promise<ChefKitchenApplication> {
         try {
             const [updated] = await db
                 .update(chefKitchenApplications)
                 .set({
                     ...((data.foodSafetyLicenseUrl) && { foodSafetyLicenseUrl: data.foodSafetyLicenseUrl }),
                     ...((data.foodEstablishmentCertUrl) && { foodEstablishmentCertUrl: data.foodEstablishmentCertUrl }),
+                    ...(data.foodSafetyLicenseStatus && { foodSafetyLicenseStatus: data.foodSafetyLicenseStatus }),
+                    ...(data.foodEstablishmentCertStatus && { foodEstablishmentCertStatus: data.foodEstablishmentCertStatus }),
                     updatedAt: new Date()
                 })
                 .where(eq(chefKitchenApplications.id, data.id))

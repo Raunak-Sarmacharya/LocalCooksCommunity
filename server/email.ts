@@ -5811,10 +5811,11 @@ export const generateKitchenApplicationApprovedEmail = (data: {
   locationName: string;
   kitchenName?: string;
 }): EmailContent => {
-  const subject = `Congratulations! Your kitchen application for ${data.locationName} is approved — Start booking`;
-  const dashboardUrl = getDashboardUrl();
+  const locationDisplay = data.locationName.trim();
+  const subject = `Congratulations! Your kitchen application for ${locationDisplay} is approved — Start booking`;
+  const dashboardUrl = `${getEmailLinkOrigin('chef')}/dashboard`;
   const firstName = data.chefName.split(' ')[0];
-  const kitchenDisplay = data.kitchenName || data.locationName;
+  const kitchenDisplay = data.kitchenName?.trim() || locationDisplay;
   
   const html = `
 <!DOCTYPE html>
@@ -5832,7 +5833,7 @@ export const generateKitchenApplicationApprovedEmail = (data: {
     </div>
     <div class="content">
       <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
-      <p class="message" style="margin-bottom: 20px;">Your Kitchen Coordination application for ${data.locationName} has been reviewed and approved.</p>
+      <p class="message" style="margin-bottom: 20px;">Your Kitchen Coordination application for ${locationDisplay} has been reviewed and approved.</p>
       <p class="message" style="margin-bottom: 24px;">You now have access to this kitchen through Local Cooks and can begin submitting booking requests based on the kitchen&#8217;s availability.</p>
       <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">What you can do now:</p>
       <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 24px 4px;">
@@ -5873,7 +5874,7 @@ export const generateKitchenApplicationApprovedEmail = (data: {
   const text = `
 Hi ${firstName},
 
-Your Kitchen Coordination application for ${data.locationName} has been reviewed and approved.
+Your Kitchen Coordination application for ${locationDisplay} has been reviewed and approved.
 
 You now have access to this kitchen through Local Cooks and can begin submitting booking requests based on the kitchen's availability.
 

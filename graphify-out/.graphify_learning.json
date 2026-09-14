@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-09-14T13:06:42.981965+00:00",
+  "generated_at": "2026-09-14T23:22:14.408949+00:00",
   "nodes": {
     "client_src_components_admin_sections_adminkitchenapplicationsstep1section": {
-      "code_fingerprint": "6c801f6ec5d4172d21e84a3947808cc5b887a665fa05460c18b5a6550721aba3",
+      "code_fingerprint": "74e30c1697e4a8e42b6b155aed52a53597587f4a89da126c84f67f94cb3d001e",
       "label": "AdminKitchenApplicationsStep1Section.tsx",
       "last": "2026-09-12T06:59:35.772104+00:00",
       "provenance": [
@@ -12,7 +12,7 @@
           "q": "Verify and fix the five reported chef application and kitchen-manager booking and checkout confusions."
         }
       ],
-      "score": 0.949233671,
+      "score": 0.939905062,
       "source_file": "client/src/components/admin/sections/AdminKitchenApplicationsStep1Section.tsx",
       "status": "tentative",
       "uses": 1
@@ -28,8 +28,56 @@
           "q": "Verify and fix the five reported chef application and kitchen-manager booking and checkout confusions."
         }
       ],
-      "score": 0.949233671,
+      "score": 0.939905062,
       "source_file": "client/src/components/chef/applications/KitchenApplicationCard.tsx",
+      "status": "tentative",
+      "uses": 1
+    },
+    "client_src_components_chef_dashboard_overviewtabcontent": {
+      "code_fingerprint": "f5a6d23f7968420f48826cc898d38798a27e2125e0b9ec20aac3233cf2cfd9e6",
+      "label": "OverviewTabContent.tsx",
+      "last": "2026-09-14T13:24:27.533746+00:00",
+      "provenance": [
+        {
+          "date": "2026-09-14T13:24:27.533746+00:00",
+          "outcome": "useful",
+          "q": "Fix applicant phone resubmission, kitchen tour contact/status, kitchen access navigation, full-day checkout, refund invoice/action consistency, and green control styling."
+        }
+      ],
+      "score": 0.990454407,
+      "source_file": "client/src/components/chef/dashboard/OverviewTabContent.tsx",
+      "status": "tentative",
+      "uses": 1
+    },
+    "client_src_components_kitchen_application_kitchenapplicationform": {
+      "code_fingerprint": "c70de5181244e94e93cfef6fe61bf2d57b27f145bc39e29aa60e641735998e7a",
+      "label": "KitchenApplicationForm.tsx",
+      "last": "2026-09-14T13:24:27.533746+00:00",
+      "provenance": [
+        {
+          "date": "2026-09-14T13:24:27.533746+00:00",
+          "outcome": "useful",
+          "q": "Fix applicant phone resubmission, kitchen tour contact/status, kitchen access navigation, full-day checkout, refund invoice/action consistency, and green control styling."
+        }
+      ],
+      "score": 0.990454407,
+      "source_file": "client/src/components/kitchen-application/KitchenApplicationForm.tsx",
+      "status": "tentative",
+      "uses": 1
+    },
+    "client_src_components_manager_applications_components_applicationdetailpanel": {
+      "code_fingerprint": "f6eacbb0a1c381aefc62926371e7bff97d1ad528862c9952d907dfbb8645e000",
+      "label": "ApplicationDetailPanel.tsx",
+      "last": "2026-09-14T23:12:02.976571+00:00",
+      "provenance": [
+        {
+          "date": "2026-09-14T23:12:02.976571+00:00",
+          "outcome": "useful",
+          "q": "Why does First Point Commercial Kitchen show no available dates, what blocks Effie's approval, and why can Jennifer not review the submitted documents?"
+        }
+      ],
+      "score": 0.999836505,
+      "source_file": "client/src/components/manager/applications/components/ApplicationDetailPanel.tsx",
       "status": "tentative",
       "uses": 1
     },
@@ -44,8 +92,24 @@
           "q": "where is this data coming from? on manager revenue page?"
         }
       ],
-      "score": 0.964670059,
+      "score": 0.955189749,
       "source_file": "client/src/components/manager/revenue/components/RevenueMetricCards.tsx",
+      "status": "tentative",
+      "uses": 1
+    },
+    "client_src_components_manager_viewingsdashboard": {
+      "code_fingerprint": "b5ae32d0cd1903c29fa431fb27c816f2c0780b75f3919e0d434cec5275fb62bc",
+      "label": "ViewingsDashboard.tsx",
+      "last": "2026-09-14T13:24:27.533746+00:00",
+      "provenance": [
+        {
+          "date": "2026-09-14T13:24:27.533746+00:00",
+          "outcome": "useful",
+          "q": "Fix applicant phone resubmission, kitchen tour contact/status, kitchen access navigation, full-day checkout, refund invoice/action consistency, and green control styling."
+        }
+      ],
+      "score": 0.990454407,
+      "source_file": "client/src/components/manager/ViewingsDashboard.tsx",
       "status": "tentative",
       "uses": 1
     },
@@ -60,13 +124,13 @@
           "q": "Verify and fix the five reported chef application and kitchen-manager booking and checkout confusions."
         }
       ],
-      "score": 0.949233671,
+      "score": 0.939905062,
       "source_file": "client/src/pages/ApplyToKitchen.tsx",
       "status": "tentative",
       "uses": 1
     },
     "client_src_pages_bookingdetailspage": {
-      "code_fingerprint": "1f25913719c17d3943dfec9f86439d55fce94fdf30049623c50c19fbefc950bb",
+      "code_fingerprint": "cdb263325c32d368c501363d8c86d7a4b5485c4ba8c2525e5d8cf8be6a9fcc2c",
       "label": "BookingDetailsPage.tsx",
       "last": "2026-09-12T06:59:35.772104+00:00",
       "provenance": [
@@ -76,7 +140,7 @@
           "q": "Verify and fix the five reported chef application and kitchen-manager booking and checkout confusions."
         }
       ],
-      "score": 0.949233671,
+      "score": 0.939905062,
       "source_file": "client/src/pages/BookingDetailsPage.tsx",
       "status": "tentative",
       "uses": 1
@@ -92,7 +156,7 @@
           "q": "On manager side, changing hourly rate to 0 does not work; managers may want only daily or only hourly pricing."
         }
       ],
-      "score": 0.964972657,
+      "score": 0.955489373,
       "source_file": "client/src/pages/KitchenPricingManagement.tsx",
       "status": "tentative",
       "uses": 1
@@ -108,24 +172,45 @@
           "q": "Verify and fix the five reported chef application and kitchen-manager booking and checkout confusions."
         }
       ],
-      "score": 0.949233671,
+      "score": 0.939905062,
       "source_file": "client/src/pages/ManagerBookingsPanel.tsx",
       "status": "tentative",
       "uses": 1
     },
     "client_src_pages_managerrevenuedashboard": {
-      "code_fingerprint": "0022a8b70c89cc9f96541c3f53e52b4b20c2053738de245fa8bdea2539a0d3c2",
+      "code_fingerprint": "d8a3f26f57cfed7f1e5d6f92945a65ed11227a9a02cbd5934b2532052192ce9d",
       "label": "ManagerRevenueDashboard.tsx",
-      "last": "2026-09-12T23:44:57.608373+00:00",
+      "last": "2026-09-14T13:24:27.533746+00:00",
       "provenance": [
+        {
+          "date": "2026-09-14T13:24:27.533746+00:00",
+          "outcome": "useful",
+          "q": "Fix applicant phone resubmission, kitchen tour contact/status, kitchen access navigation, full-day checkout, refund invoice/action consistency, and green control styling."
+        },
         {
           "date": "2026-09-12T23:44:57.608373+00:00",
           "outcome": "useful",
           "q": "where is this data coming from? on manager revenue page?"
         }
       ],
-      "score": 0.964670059,
+      "score": 1.945644156,
       "source_file": "client/src/pages/ManagerRevenueDashboard.tsx",
+      "status": "preferred",
+      "uses": 2
+    },
+    "server_domains_applications_chef_application_service_chefapplicationservice": {
+      "code_fingerprint": "89cd2efc664c022fc1bcd7857582ec4fb652007d1bc9c8d17b7f3e69e4e4851d",
+      "label": "ChefApplicationService",
+      "last": "2026-09-14T23:12:02.976571+00:00",
+      "provenance": [
+        {
+          "date": "2026-09-14T23:12:02.976571+00:00",
+          "outcome": "useful",
+          "q": "Why does First Point Commercial Kitchen show no available dates, what blocks Effie's approval, and why can Jennifer not review the submitted documents?"
+        }
+      ],
+      "score": 0.999836505,
+      "source_file": "server/domains/applications/chef-application.service.ts",
       "status": "tentative",
       "uses": 1
     },
@@ -140,8 +225,24 @@
           "q": "On manager side, changing hourly rate to 0 does not work; managers may want only daily or only hourly pricing."
         }
       ],
-      "score": 0.964972657,
+      "score": 0.955489373,
       "source_file": "server/domains/kitchens/kitchen.repository.ts",
+      "status": "tentative",
+      "uses": 1
+    },
+    "server_services_invoice_service": {
+      "code_fingerprint": "820f93d7caa66cfdf5ee5e5a7bc0e520cdcca05d4f2f8bf6e836f1e37ac4b9e7",
+      "label": "invoice-service.ts",
+      "last": "2026-09-14T13:24:27.533746+00:00",
+      "provenance": [
+        {
+          "date": "2026-09-14T13:24:27.533746+00:00",
+          "outcome": "useful",
+          "q": "Fix applicant phone resubmission, kitchen tour contact/status, kitchen access navigation, full-day checkout, refund invoice/action consistency, and green control styling."
+        }
+      ],
+      "score": 0.990454407,
+      "source_file": "server/services/invoice-service.ts",
       "status": "tentative",
       "uses": 1
     },
@@ -156,13 +257,29 @@
           "q": "where is this data coming from? on manager revenue page?"
         }
       ],
-      "score": 0.964670059,
+      "score": 0.955189749,
       "source_file": "server/services/revenue-service-v2.ts",
       "status": "tentative",
       "uses": 1
     },
+    "server_services_stripe_checkout_service": {
+      "code_fingerprint": "510df173ec02fee13aac210f6b74cb8c95e06949c74ec45c187dee338826bb40",
+      "label": "stripe-checkout-service.ts",
+      "last": "2026-09-14T13:24:27.533746+00:00",
+      "provenance": [
+        {
+          "date": "2026-09-14T13:24:27.533746+00:00",
+          "outcome": "useful",
+          "q": "Fix applicant phone resubmission, kitchen tour contact/status, kitchen access navigation, full-day checkout, refund invoice/action consistency, and green control styling."
+        }
+      ],
+      "score": 0.990454407,
+      "source_file": "server/services/stripe-checkout-service.ts",
+      "status": "tentative",
+      "uses": 1
+    },
     "shared_schema": {
-      "code_fingerprint": "bfd401315d42f4bdc126e5a73b47d9b3529107c5c48d43f0f2d47c8b48995e28",
+      "code_fingerprint": "b3ed1e65f0cc17b671527f9737055739bfffac6f57ad42b1053d60ef72599175",
       "label": "schema.ts",
       "last": "2026-09-13T00:04:30.421751+00:00",
       "provenance": [
@@ -172,7 +289,7 @@
           "q": "On manager side, changing hourly rate to 0 does not work; managers may want only daily or only hourly pricing."
         }
       ],
-      "score": 0.964972657,
+      "score": 0.955489373,
       "source_file": "shared/schema.ts",
       "status": "tentative",
       "uses": 1
