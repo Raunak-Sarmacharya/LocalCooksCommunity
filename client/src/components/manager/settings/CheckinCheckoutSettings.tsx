@@ -580,8 +580,8 @@ export default function CheckinCheckoutSettings({
   // Kitchen check-in/out local state.
   // Items are held in a single unified list; split into server-side
   // checkinItems / checkoutItems arrays on save.
-  const [checkinEnabled, setCheckinEnabled] = useState(true);
-  const [checkoutEnabled, setCheckoutEnabled] = useState(true);
+  const [checkinEnabled, setCheckinEnabled] = useState(false);
+  const [checkoutEnabled, setCheckoutEnabled] = useState(false);
   const [items, setItems] = useState<UnifiedChecklistItem[]>([]);
   const [checkinInstructions, setCheckinInstructions] = useState<string | null>(
     null,

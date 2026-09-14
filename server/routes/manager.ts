@@ -3167,19 +3167,19 @@ router.get(
       const checklistSettings = existing || {
         id: null,
         locationId,
-        checkinEnabled: true,
+        checkinEnabled: false,
         checkinItems: [],
         checkinPhotoRequirements: [],
         checkinInstructions: null,
-        checkoutEnabled: true,
+        checkoutEnabled: false,
         checkoutItems: [],
         checkoutPhotoRequirements: [],
         checkoutInstructions: null,
-        storageCheckoutEnabled: true,
+        storageCheckoutEnabled: false,
         storageCheckoutItems: [],
         storageCheckoutPhotoRequirements: [],
         storageCheckoutInstructions: null,
-        storageCheckinEnabled: true,
+        storageCheckinEnabled: false,
         storageCheckinItems: [],
         storageCheckinPhotoRequirements: [],
         storageCheckinInstructions: null,
@@ -4261,6 +4261,18 @@ router.get(
       if (!location || location.managerId !== user.id) {
         return res.status(403).json({ error: "Access denied" });
       }
+
+      const [checklist] = await db
+        .select({
+          checkinEnabled: checkinCheckoutChecklists.checkinEnabled,
+          checkoutEnabled: checkinCheckoutChecklists.checkoutEnabled,
+        })
+        .from(checkinCheckoutChecklists)
+        .where(eq(checkinCheckoutChecklists.locationId, location.id))
+        .limit(1);
+
+      (booking as any).checkinEnabled = checklist?.checkinEnabled ?? false;
+      (booking as any).checkoutEnabled = checklist?.checkoutEnabled ?? false;
 
       // Get chef details
       let chef = null;

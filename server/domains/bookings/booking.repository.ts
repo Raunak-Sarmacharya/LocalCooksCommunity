@@ -13,7 +13,8 @@ import {
     pendingStorageExtensions,
     paymentTransactions,
     chefKitchenApplications,
-    storageOverstayRecords
+    storageOverstayRecords,
+    checkinCheckoutChecklists
 } from "@shared/schema";
 import { eq, and, desc, asc, lt, not, inArray, gte, lte, or, sql, ne } from "drizzle-orm";
 import { KitchenBooking, StorageBooking, EquipmentBooking, InsertKitchenBooking } from "./booking.types";
@@ -105,10 +106,13 @@ export class BookingRepository {
                 transactionAmount: paymentTransactions.amount,
                 transactionBaseAmount: paymentTransactions.baseAmount,
                 transactionRefundAmount: paymentTransactions.refundAmount,
+                // Check-in enabled status
+                checkinEnabled: checkinCheckoutChecklists.checkinEnabled,
             })
             .from(kitchenBookings)
             .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
             .innerJoin(locations, eq(kitchens.locationId, locations.id))
+            .leftJoin(checkinCheckoutChecklists, eq(checkinCheckoutChecklists.locationId, locations.id))
             .leftJoin(paymentTransactions, and(
                 eq(paymentTransactions.bookingId, kitchenBookings.id),
                 eq(paymentTransactions.paymentIntentId, kitchenBookings.paymentIntentId),
@@ -156,6 +160,7 @@ export class BookingRepository {
                 // ── Tax-inclusive amount from PT (what chef actually paid/authorized) ──
                 // kb.total_price is pre-tax subtotal; PT.amount is the tax-inclusive charge
                 chargedAmount: rawTransactionAmount, // null if no PT record
+                checkinEnabled: row.checkinEnabled ?? false,
             };
         });
     }
@@ -182,10 +187,12 @@ export class BookingRepository {
                 transactionStatus: paymentTransactions.status,
                 transactionRefundAmount: paymentTransactions.refundAmount,
                 transactionStripeProcessingFee: paymentTransactions.stripeProcessingFee,
+                checkinEnabled: checkinCheckoutChecklists.checkinEnabled,
             })
             .from(kitchenBookings)
             .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
             .innerJoin(locations, eq(kitchens.locationId, locations.id))
+            .leftJoin(checkinCheckoutChecklists, eq(checkinCheckoutChecklists.locationId, locations.id))
             .leftJoin(users, eq(kitchenBookings.chefId, users.id))
             .leftJoin(chefKitchenApplications, and(
                 eq(chefKitchenApplications.chefId, kitchenBookings.chefId),
@@ -344,6 +351,7 @@ export class BookingRepository {
                     .map((item: any) => item.status === 'cancelled' && !item.rejected ? { ...item, rejected: true } : item),
                 // Kitchen's tax rate for revenue calculations (consistent with transaction history)
                 taxRatePercent,
+                checkinEnabled: row.checkinEnabled ?? false,
                 // Use actual Stripe transaction data for accurate payment display
                 transactionId,     // Payment transaction ID (for refunds)
                 transactionAmount, // Actual amount charged (0 for voided auths, captured amount otherwise)
@@ -433,11 +441,15 @@ export class BookingRepository {
                 locationId: locations.id,
                 locationName: locations.name,
                 locationAddress: locations.address,
+                // Check-in enabled status (using storage-specific flags)
+                storageCheckinEnabled: checkinCheckoutChecklists.storageCheckinEnabled,
+                storageCheckoutEnabled: checkinCheckoutChecklists.storageCheckoutEnabled,
             })
             .from(storageBookings)
             .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
             .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
             .innerJoin(locations, eq(kitchens.locationId, locations.id))
+            .leftJoin(checkinCheckoutChecklists, eq(checkinCheckoutChecklists.locationId, locations.id))
             .where(eq(storageBookings.chefId, chefId))
             .orderBy(desc(storageBookings.createdAt));
 

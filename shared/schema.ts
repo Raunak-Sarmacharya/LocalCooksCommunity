@@ -559,25 +559,25 @@ export const checkinCheckoutChecklists = pgTable("checkin_checkout_checklists", 
   locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull().unique(),
 
   // Check-in configuration
-  checkinEnabled: boolean("checkin_enabled").default(true).notNull(),
+  checkinEnabled: boolean("checkin_enabled").default(false).notNull(),
   checkinItems: jsonb("checkin_items").default([]).notNull(),
   checkinPhotoRequirements: jsonb("checkin_photo_requirements").default([]).notNull(),
   checkinInstructions: text("checkin_instructions"),
 
   // Check-out configuration
-  checkoutEnabled: boolean("checkout_enabled").default(true).notNull(),
+  checkoutEnabled: boolean("checkout_enabled").default(false).notNull(),
   checkoutItems: jsonb("checkout_items").default([]).notNull(),
   checkoutPhotoRequirements: jsonb("checkout_photo_requirements").default([]).notNull(),
   checkoutInstructions: text("checkout_instructions"),
 
   // Storage check-out configuration
-  storageCheckoutEnabled: boolean("storage_checkout_enabled").default(true).notNull(),
+  storageCheckoutEnabled: boolean("storage_checkout_enabled").default(false).notNull(),
   storageCheckoutItems: jsonb("storage_checkout_items").default([]).notNull(),
   storageCheckoutPhotoRequirements: jsonb("storage_checkout_photo_requirements").default([]).notNull(),
   storageCheckoutInstructions: text("storage_checkout_instructions"),
 
   // Storage check-in configuration (move-in inspection)
-  storageCheckinEnabled: boolean("storage_checkin_enabled").default(true).notNull(),
+  storageCheckinEnabled: boolean("storage_checkin_enabled").default(false).notNull(),
   storageCheckinItems: jsonb("storage_checkin_items").default([]).notNull(),
   storageCheckinPhotoRequirements: jsonb("storage_checkin_photo_requirements").default([]).notNull(),
   storageCheckinInstructions: text("storage_checkin_instructions"),

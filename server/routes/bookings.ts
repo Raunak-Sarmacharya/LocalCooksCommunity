@@ -2054,12 +2054,18 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
                     name: locations.name,
                     address: locations.address,
                     timezone: locations.timezone,
+                    checkinEnabled: checkinCheckoutChecklists.checkinEnabled,
+                    checkoutEnabled: checkinCheckoutChecklists.checkoutEnabled,
                 })
                 .from(locations)
+                .leftJoin(checkinCheckoutChecklists, eq(checkinCheckoutChecklists.locationId, locations.id))
                 .where(eq(locations.id, locationId))
                 .limit(1);
             if (locationData) {
                 location = locationData;
+                // Add the checkin flags directly to the booking object for the frontend to consume
+                (booking as any).checkinEnabled = locationData.checkinEnabled ?? false;
+                (booking as any).checkoutEnabled = locationData.checkoutEnabled ?? false;
             }
         }
 
@@ -2895,19 +2901,19 @@ router.get("/chef/locations/:locationId/checklist", requireChef, async (req: Req
             // No checklist configured — return empty defaults
             return res.json({
                 locationId,
-                checkinEnabled: true,
+                checkinEnabled: false,
                 checkinItems: [],
                 checkinPhotoRequirements: [],
                 checkinInstructions: null,
-                checkoutEnabled: true,
+                checkoutEnabled: false,
                 checkoutItems: [],
                 checkoutPhotoRequirements: [],
                 checkoutInstructions: null,
-                storageCheckoutEnabled: true,
+                storageCheckoutEnabled: false,
                 storageCheckoutItems: [],
                 storageCheckoutPhotoRequirements: [],
                 storageCheckoutInstructions: null,
-                storageCheckinEnabled: true,
+                storageCheckinEnabled: false,
                 storageCheckinItems: [],
                 storageCheckinPhotoRequirements: [],
                 storageCheckinInstructions: null,

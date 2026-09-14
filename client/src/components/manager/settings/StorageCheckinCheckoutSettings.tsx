@@ -71,8 +71,8 @@ export default function StorageCheckinCheckoutSettings({
 
   // Local state — single unified list for the editor plus per-stage
   // enable flags & instructions.
-  const [checkinEnabled, setCheckinEnabled] = useState(true);
-  const [checkoutEnabled, setCheckoutEnabled] = useState(true);
+  const [checkinEnabled, setCheckinEnabled] = useState(false);
+  const [checkoutEnabled, setCheckoutEnabled] = useState(false);
   const [items, setItems] = useState<UnifiedStorageInspectionItem[]>([]);
   const [checkinInstructions, setCheckinInstructions] = useState<string | null>(
     null,

@@ -1068,6 +1068,7 @@ export default function BookingDetailsPage() {
           <div className="flex items-center gap-2 flex-wrap">
             {getStatusBadge(booking.status)}
             {(booking.status === 'confirmed' || booking.status === 'completed') &&
+              (booking.checkinEnabled !== false || booking.checkoutEnabled !== false) &&
               getCheckinStatusBadge(booking.checkinStatus)}
             {getPaymentStatusBadge(booking.paymentStatus)}
             {isManagerView && booking.status === 'pending' && (
@@ -1145,39 +1146,41 @@ export default function BookingDetailsPage() {
           </section>
 
           {/* ── Check-In / Check-Out CTA (Chef View — confirmed bookings) ── */}
-          {!isManagerView && booking.status === 'confirmed' && (
-            (!booking.checkinStatus || booking.checkinStatus === 'not_checked_in' || booking.checkinStatus === 'checked_in') && (
-            <section className="rounded-lg border p-4">
-              <div className="flex items-start gap-3">
-                <LogIn className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-sm font-semibold">
-                    {!booking.checkinStatus || booking.checkinStatus === 'not_checked_in'
-                      ? t("bdCheckInRequired")
-                      : t("bdReadyToCheckOut")}
-                  </h3>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {!booking.checkinStatus || booking.checkinStatus === 'not_checked_in'
-                      ? t("bdCheckInBody")
-                      : t("bdCheckOutBody")}
-                  </p>
-                  <Button
-                    size="sm"
-                    className="mt-3"
-                    onClick={() => setCheckinTrackerOpen(true)}
-                  >
-                    {!booking.checkinStatus || booking.checkinStatus === 'not_checked_in'
-                      ? (<><LogIn className="h-3.5 w-3.5 mr-1.5" />{t("bdCheckInNow")}</>)
-                      : (<><LogOut className="h-3.5 w-3.5 mr-1.5" />{t("bdCheckOutNow")}</>)}
-                  </Button>
+          {!isManagerView && booking.status === 'confirmed' && (() => {
+            const showCheckin = booking.checkinEnabled !== false && (!booking.checkinStatus || booking.checkinStatus === 'not_checked_in');
+            const showCheckout = booking.checkoutEnabled !== false && booking.checkinStatus === 'checked_in';
+            
+            if (!showCheckin && !showCheckout) return null;
+            
+            return (
+              <section className="rounded-lg border p-4">
+                <div className="flex items-start gap-3">
+                  <LogIn className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-sm font-semibold">
+                      {showCheckin ? t("bdCheckInRequired") : t("bdReadyToCheckOut")}
+                    </h3>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {showCheckin ? t("bdCheckInBody") : t("bdCheckOutBody")}
+                    </p>
+                    <Button
+                      size="sm"
+                      className="mt-3"
+                      onClick={() => setCheckinTrackerOpen(true)}
+                    >
+                      {showCheckin 
+                        ? (<><LogIn className="h-3.5 w-3.5 mr-1.5" />{t("bdCheckInNow")}</>)
+                        : (<><LogOut className="h-3.5 w-3.5 mr-1.5" />{t("bdCheckOutNow")}</>)}
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            </section>
-          )
-          )}
+              </section>
+            );
+          })()}
 
           {/* ── Check-In / Check-Out Timeline (only for confirmed or completed bookings) ── */}
           {(booking.status === 'confirmed' || booking.status === 'completed') &&
+            (booking.checkinEnabled !== false || booking.checkoutEnabled !== false) &&
             (booking.checkinStatus || booking.checkedInAt || booking.checkoutRequestedAt) && (
             <section>
               <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-1.5">
