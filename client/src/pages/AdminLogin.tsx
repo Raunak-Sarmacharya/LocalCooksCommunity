@@ -228,7 +228,7 @@ export default function AdminLogin() {
   }
   
   // Redirect non-admin users
-  if (!loading && user && !isAdmin) {
+  if (!loading && user?.role && !isAdmin) {
     logger.info('Non-admin user detected, redirecting to appropriate dashboard');
     if (user.role === 'manager') {
       return <Redirect to="/manager/dashboard" />;

@@ -1,8 +1,20 @@
 import { logger } from "./logger";
-import { initializeApp, cert, type App } from 'firebase-admin/app';
+import { initializeApp, cert, getApps, type App } from 'firebase-admin/app';
 import { getAuth, type DecodedIdToken } from 'firebase-admin/auth';
 
 let firebaseAdmin: App | null = null;
+let firebaseTokenVerifier: App | null = null;
+
+function initializeFirebaseTokenVerifier() {
+  if (firebaseTokenVerifier) return firebaseTokenVerifier;
+
+  const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
+  if (!projectId) return null;
+
+  firebaseTokenVerifier = getApps().find((app) => app.name === 'firebase-token-verifier')
+    || initializeApp({ projectId }, 'firebase-token-verifier');
+  return firebaseTokenVerifier;
+}
 
 export function initializeFirebaseAdmin() {
   if (firebaseAdmin) {
@@ -57,9 +69,13 @@ export function initializeFirebaseAdmin() {
 
 export async function verifyFirebaseToken(token: string, checkRevoked = false): Promise<DecodedIdToken | null> {
   try {
-    const app = initializeFirebaseAdmin();
+    // ID-token verification only needs the Firebase project ID and public
+    // signing keys. Keep it independent from service-account credentials,
+    // which are required for privileged Admin API operations but can be
+    // misconfigured without breaking every authenticated request.
+    const app = initializeFirebaseTokenVerifier();
     if (!app) {
-      logger.warn('Firebase Admin not initialized - cannot verify token');
+      logger.warn('Firebase token verifier not initialized - missing project ID');
       return null;
     }
 
