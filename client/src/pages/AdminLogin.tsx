@@ -5,8 +5,6 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { queryClient } from "@/lib/queryClient";
-import { auth } from "@/lib/firebase";
-import { signInWithCustomToken } from "firebase/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Calendar, Loader2 } from "lucide-react";
 import { useState } from "react";
@@ -15,7 +13,7 @@ import { Redirect, useLocation } from "wouter";
 import { z } from "zod";
 
 const loginSchema = z.object({
-  username: z.string().min(1, "Username is required"),
+  email: z.string().email("Valid email required"),
   password: z.string().min(1, "Password is required"),
 });
 
@@ -30,7 +28,7 @@ export default function AdminLogin() {
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      username: "",
+      email: "",
       password: "",
     },
   });
@@ -62,175 +60,17 @@ export default function AdminLogin() {
   const onSubmit = async (data: LoginFormData) => {
     setIsSubmitting(true);
     setErrorMessage(null);
-    
-    const loginIdentifier = data.username.trim();
-    const isEmailFormat = loginIdentifier.includes('@');
 
-    // If it's not an email format (likely a username), try migration login first
-    if (!isEmailFormat) {
-      logger.info('🔄 Username detected, trying migration login for old admin...');
-      
-      try {
-        const migrateResponse = await fetch('/api/admin-migrate-login', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            username: loginIdentifier,
-            password: data.password
-          })
-        });
-
-        if (migrateResponse.ok) {
-          const migrateData = await migrateResponse.json();
-          
-          if (migrateData.customToken) {
-            // Sign in with custom token
-            const userCredential = await signInWithCustomToken(auth, migrateData.customToken);
-            logger.info('✅ Migration login successful');
-            
-            // Force token refresh and sync user data
-            if (userCredential.user) {
-              await userCredential.user.getIdToken(true);
-              
-              // Trigger user sync with backend
-              try {
-                const token = await userCredential.user.getIdToken();
-                const syncResponse = await fetch('/api/user/profile', {
-                  headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                  }
-                });
-                
-                if (syncResponse.ok) {
-                  logger.info('✅ User profile synced after migration login');
-                }
-              } catch (syncError) {
-                logger.error('❌ Error syncing user profile after migration:', syncError);
-              }
-            }
-            
-            // Clear all cached data
-            queryClient.clear();
-            
-            // Wait a bit for auth state to update
-            setTimeout(() => {
-              setIsSubmitting(false);
-            }, 2000);
-            return;
-          }
-        } else {
-          // Migration login failed - try Firebase as fallback if it's an email
-          const errorData = await migrateResponse.json().catch(() => ({}));
-          logger.info('Migration login failed:', errorData);
-        }
-      } catch (migrateError) {
-        logger.info('Migration login error, trying Firebase as fallback:', migrateError);
-      }
-    }
-
-    // Try Firebase login (for email-based accounts or as fallback)
     try {
-      // Only try Firebase if it looks like an email, otherwise skip
-      if (isEmailFormat) {
-        logger.info('Attempting admin login with Firebase Auth:', loginIdentifier);
-        
-        // Use Firebase Auth login (email/password)
-        await login(loginIdentifier, data.password);
-        
-        logger.info('Firebase login successful, checking admin role...');
-        
-        // Clear all cached data
-        queryClient.clear();
-      } else {
-        // Username format and migration failed - show error
-        setErrorMessage('Incorrect username or password. Please check your credentials and try again.');
-        setIsSubmitting(false);
-        return;
-      }
-      
+      await login(data.email.trim(), data.password);
+      queryClient.clear();
     } catch (error: any) {
       logger.error('Admin login error:', error);
-      
-      // If Firebase login fails, try migration login for old admins (if we haven't already)
-      if (isEmailFormat && (error.message?.includes('invalid-credential') || error.message?.includes('wrong-password') || error.message?.includes('user-not-found'))) {
-        logger.info('🔄 Firebase login failed, trying migration login for old admin...');
-        
-        try {
-          // Try migration login (for old admins with username/password in Neon DB)
-          // First try the email as username, then try without @ if it's an email
-          const usernameAttempts = [loginIdentifier];
-          if (loginIdentifier.includes('@')) {
-            // Try the part before @ as username
-            usernameAttempts.push(loginIdentifier.split('@')[0]);
-          }
-          
-          for (const usernameAttempt of usernameAttempts) {
-            const migrateResponse = await fetch('/api/admin-migrate-login', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                username: usernameAttempt,
-                password: data.password
-              })
-            });
-
-            if (migrateResponse.ok) {
-              const migrateData = await migrateResponse.json();
-              
-              if (migrateData.customToken) {
-                // Sign in with custom token
-                const userCredential = await signInWithCustomToken(auth, migrateData.customToken);
-                logger.info('✅ Migration login successful');
-                
-                // Force token refresh and sync user data
-                if (userCredential.user) {
-                  await userCredential.user.getIdToken(true);
-                  
-                  // Trigger user sync with backend
-                  try {
-                    const token = await userCredential.user.getIdToken();
-                    const syncResponse = await fetch('/api/user/profile', {
-                      headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                      }
-                    });
-                    
-                    if (syncResponse.ok) {
-                      logger.info('✅ User profile synced after migration login');
-                    }
-                  } catch (syncError) {
-                    logger.error('❌ Error syncing user profile after migration:', syncError);
-                  }
-                }
-                
-                // Clear all cached data
-                queryClient.clear();
-                
-                // Wait a bit for auth state to update
-                setTimeout(() => {
-                  setIsSubmitting(false);
-                }, 2000);
-                return;
-              }
-            }
-          }
-        } catch (migrateError) {
-          logger.info('Migration login also failed, continuing with Firebase error handling');
-        }
-      }
-      
-      // Provide user-friendly error messages
-      let errorMsg = 'Failed to login';
+      let errorMsg = 'Failed to sign in';
       if (error.message?.includes('invalid-credential') || error.message?.includes('wrong-password')) {
-        errorMsg = 'Incorrect username or password. Please check your credentials and try again.';
+        errorMsg = 'Incorrect email or password. Please check your credentials and try again.';
       } else if (error.message?.includes('user-not-found')) {
-        errorMsg = 'No account found with this username/email';
+        errorMsg = 'No account found with this email address.';
       } else if (error.message?.includes('too-many-requests')) {
         errorMsg = 'Too many failed attempts. Please wait a few minutes.';
       } else {
@@ -267,7 +107,7 @@ export default function AdminLogin() {
           </div>
           <CardTitle className="text-2xl font-bold">Admin Login</CardTitle>
           <CardDescription>
-            Enter your credentials to access the admin dashboard
+            Sign in with an existing administrator account
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -289,7 +129,7 @@ export default function AdminLogin() {
 
           <div className="relative mb-4 flex items-center" aria-hidden="true">
             <div className="flex-grow border-t border-border" />
-            <span className="mx-3 flex-shrink text-xs uppercase tracking-wider text-muted-foreground">Or use legacy credentials</span>
+            <span className="mx-3 flex-shrink text-xs uppercase tracking-wider text-muted-foreground">Or continue with email</span>
             <div className="flex-grow border-t border-border" />
           </div>
 
@@ -307,13 +147,15 @@ export default function AdminLogin() {
               
               <FormField
                 control={form.control}
-                name="username"
+                name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Username</FormLabel>
+                    <FormLabel>Email</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="admin"
+                        type="email"
+                        placeholder="admin@example.com"
+                        autoComplete="email"
                         {...field}
                         disabled={isSubmitting}
                       />
@@ -348,10 +190,10 @@ export default function AdminLogin() {
                 {isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Logging in...
+                    Signing in...
                   </>
                 ) : (
-                  "Login"
+                  "Sign in"
                 )}
               </Button>
             </form>
