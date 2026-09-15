@@ -603,6 +603,11 @@ export default function EmailAction() {
      * by the server (which writes the address to Firebase and mirrors it to the
      * database). Works signed-out, because the token in the link is the proof of
      * ownership — the link is often opened on a different device.
+     *
+     * The one thing it must NOT do is sign the user out. Changing an email invalidates
+     * every Firebase session for the account, so this captures the caller's ID token
+     * *before* the change lands and hands it to the server, which returns a custom token
+     * that restores the same uid. See the confirm endpoint for why the proof is required.
      */
     const handleTokenEmailVerification = async (
       token: string,
@@ -611,9 +616,17 @@ export default function EmailAction() {
       try {
         logger.info('🔍 Confirming branded email verification token...');
 
+        // Read before confirming: once the email changes, this token is dead.
+        const sessionProof = await auth.currentUser
+          ?.getIdToken()
+          .catch(() => null) ?? null;
+
         const response = await fetch('/api/user/email/verification/confirm', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(sessionProof ? { Authorization: `Bearer ${sessionProof}` } : {}),
+          },
           body: JSON.stringify({ token }),
         });
 
@@ -628,9 +641,22 @@ export default function EmailAction() {
             ? (body.role as 'manager' | 'chef' | 'admin')
             : null;
 
-        // Reload + force-refresh the ID token when the link was opened on the
-        // signed-in device: `email_verified` is cached in the token for up to an
-        // hour, so without this the app would keep behaving as if unverified.
+        // Restore the session on the same uid. Without this the user is signed out of
+        // every tab, because the email change invalidated their refresh token.
+        if (body.sessionToken) {
+          try {
+            const { signInWithCustomToken } = await import('firebase/auth');
+            await signInWithCustomToken(auth, body.sessionToken);
+            logger.info('✅ Session restored on the same uid after the email change');
+          } catch (reauthError) {
+            // Verification succeeded; a failed re-auth only means they sign in again.
+            logger.error('❌ Could not restore the session after the email change:', reauthError);
+          }
+        }
+
+        // Reload + force-refresh the ID token: `email_verified` is cached in the token
+        // for up to an hour, so without this the app would keep behaving as if
+        // unverified. Must run AFTER the re-auth or it operates on a dead session.
         try {
           await updateUserVerification();
           logger.info('✅ Auth context updated');

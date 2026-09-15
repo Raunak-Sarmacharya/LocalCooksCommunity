@@ -4,7 +4,7 @@ import { getAuth } from "firebase-admin/auth";
 import { logger } from "../logger";
 import { requireFirebaseAuthWithUser } from "../firebase-auth-middleware";
 import { userService } from "../domains/users/user.service";
-import { getFirebaseUserByEmail, initializeFirebaseAdmin } from "../firebase-setup";
+import { getFirebaseUserByEmail, initializeFirebaseAdmin, verifyFirebaseToken } from "../firebase-setup";
 import { generateEmailVerificationEmail, generateWelcomeEmail, getEmailLinkOrigin, sendEmail } from "../email";
 import {
   buildEmailVerificationStatus,
@@ -28,6 +28,24 @@ function friendlyName(req: Request, email: string): string {
   const claimed = req.firebaseUser?.name?.trim();
   if (claimed) return claimed;
   return email.split("@")[0];
+}
+
+/**
+ * Resolves the uid from an optional bearer token.
+ *
+ * Used to tell apart "the browser that owned this session clicked the link" from "the
+ * link was opened somewhere else". Returns null for absent or invalid tokens, which is
+ * the normal case on a different device and must not be treated as an error.
+ */
+async function resolveCallerUid(req: Request): Promise<string | null> {
+  const header = req.headers.authorization;
+  if (!header?.startsWith("Bearer ")) return null;
+  try {
+    const decoded = await verifyFirebaseToken(header.slice("Bearer ".length));
+    return decoded?.uid ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -237,6 +255,29 @@ router.post("/confirm", async (req: Request, res: Response) => {
       });
     }
 
+    // Changing an email invalidates every Firebase session for the account — this is
+    // Firebase's design, not a side effect of using the Admin SDK (its own
+    // verifyAndChangeEmail flow behaves identically). So the browser that held the
+    // session proves it here, by presenting its still-valid ID token *before* the
+    // change lands, and receives a custom token to restore the SAME uid afterwards.
+    //
+    // Requiring proof is what keeps this safe: it means a link opened on an unrelated
+    // device (or by whoever happens to own the address that was mistyped) cannot mint
+    // a session. It gets no token, and the caller simply signs in normally.
+    const callerUid = await resolveCallerUid(req);
+    const mayRestoreSession = callerUid !== null && callerUid === user.firebaseUid;
+
+    const mintSessionToken = async (): Promise<string | null> => {
+      if (!mayRestoreSession) return null;
+      try {
+        return await getAuth(app).createCustomToken(user.firebaseUid!);
+      } catch (mintError) {
+        // The address is verified either way; the user can sign in again if this fails.
+        logger.error(`Could not mint a session token after email change for user ${user.id}:`, mintError);
+        return null;
+      }
+    };
+
     // Firebase is authoritative: only once it accepts the address do we treat the
     // account as verified.
     try {
@@ -288,7 +329,13 @@ router.post("/confirm", async (req: Request, res: Response) => {
       // address the outcome is identical, so answer as a success.
       const current = await userService.getUserByFirebaseUid(user.firebaseUid);
       if (current?.username.trim().toLowerCase() === email) {
-        return res.json({ success: true, email, alreadyConfirmed: true });
+        return res.json({
+          success: true,
+          email,
+          alreadyConfirmed: true,
+          uid: user.firebaseUid,
+          sessionToken: await mintSessionToken(),
+        });
       }
       return res.status(410).json({
         error: "This link has already been used or replaced. Request a new one from your profile.",
@@ -324,6 +371,11 @@ router.post("/confirm", async (req: Request, res: Response) => {
       email,
       role: consumed.role,
       emailVerifiedAt: verifiedAt.toISOString(),
+      // Lets the browser that owned the session sign straight back in on the same uid,
+      // so verifying an address never signs the user out. Null when the link was opened
+      // elsewhere — the address is still verified, they just are not signed in here.
+      uid: user.firebaseUid,
+      sessionToken: await mintSessionToken(),
     });
   } catch (error) {
     logger.error("Error confirming email verification:", error);
