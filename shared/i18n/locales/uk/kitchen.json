@@ -1409,5 +1409,7 @@
   "gridCardVisualsTitle": "Візуали готуються",
   "thingsToKnowViewPlatformTerms": "Переглянути умови платформи",
   "gridCardEquipmentIncluded": "включено",
-  "gridCardEquipmentRental": "оренда"
+  "gridCardEquipmentRental": "оренда",
+  "applyEmailUnverifiedTitle": "Підтвердьте пошту перед поданням",
+  "applyEmailUnverifiedBody": "Ви можете заповнити форму зараз, але заявку не можна подати, доки адресу електронної пошти не буде підтверджено."
 }

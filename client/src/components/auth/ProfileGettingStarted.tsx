@@ -5,23 +5,36 @@ import { SidebarGroup, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 
+/** Rows that still need attention, so the caller can deep-link to the right section. */
+export type ProfileGettingStartedField = "displayName" | "email" | "phone";
+
 export default function ProfileGettingStarted({
   displayName,
   email,
+  emailVerified = false,
   phoneNumber,
   onComplete,
 }: {
   displayName?: string | null;
   email?: string | null;
+  /** Ownership of the address, not merely its presence. */
+  emailVerified?: boolean;
   phoneNumber?: string | null;
-  onComplete: () => void;
+  onComplete: (field: ProfileGettingStartedField) => void;
 }) {
   const { t } = useTranslation("chef");
   const [open, setOpen] = useState(false);
-  const fields = [
-    { label: t("gettingStartedFullName", "Add your full name"), complete: !!displayName?.trim(), Icon: User },
-    { label: t("gettingStartedEmail", "Add your email address"), complete: !!email?.trim(), Icon: Mail },
-    { label: t("gettingStartedPhone", "Add your phone number"), complete: !!phoneNumber?.trim(), Icon: Phone },
+  const fields: Array<{
+    id: ProfileGettingStartedField;
+    label: string;
+    complete: boolean;
+    Icon: typeof User;
+  }> = [
+    { id: "displayName", label: t("gettingStartedFullName", "Add your full name"), complete: !!displayName?.trim(), Icon: User },
+    // An address that is merely typed in is not enough: an unverified email blocks
+    // every action, so this row tracks verification rather than presence.
+    { id: "email", label: t("gettingStartedEmail", "Verify your email address"), complete: emailVerified, Icon: Mail },
+    { id: "phone", label: t("gettingStartedPhone", "Add your phone number"), complete: !!phoneNumber?.trim(), Icon: Phone },
   ];
   const completed = fields.filter((field) => field.complete).length;
   if (completed === fields.length) return null;
@@ -73,7 +86,7 @@ export default function ProfileGettingStarted({
                     </>
                   );
                   return (
-                    <li key={field.label} className="relative">
+                    <li key={field.id} className="relative">
                       {/* Checkbox rule: done = brand tick, open = empty outline. */}
                       <span
                         className="absolute -left-[27px] top-1/2 flex size-3.5 -translate-y-1/2 items-center justify-center bg-popover"
@@ -92,7 +105,7 @@ export default function ProfileGettingStarted({
                           type="button"
                           onClick={() => {
                             setOpen(false);
-                            onComplete();
+                            onComplete(field.id);
                           }}
                           className={rowClass}
                         >

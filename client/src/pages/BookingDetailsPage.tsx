@@ -126,6 +126,8 @@ interface BookingDetails {
   checkoutNotes?: string | null;
   checkinChecklistItems?: Array<{ id: string; label: string; checked: boolean }> | null;
   checkoutChecklistItems?: Array<{ id: string; label: string; checked: boolean }> | null;
+  checkinEnabled?: boolean;
+  checkoutEnabled?: boolean;
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {

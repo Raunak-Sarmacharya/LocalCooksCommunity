@@ -1,5 +1,17 @@
 # LocalCooksCommunity — project notes
 
+## Identity & verification (email is the primary identifier)
+- **`users` has no `email` column.** `users.username` **is** the confirmed email (`NOT NULL UNIQUE`), written by `createPublicFirebaseUser({ username: registrationEmail })`. Any email change must rewrite `username` atomically or the two stores disagree.
+- `GET /api/user/profile` returns explicit `email`, `emailVerified`, `emailVerifiedAt`, `pendingEmail`, `pendingEmailSentAt`, `pendingEmailExpiresAt`, `resendAvailableInSeconds` (built by `server/email-verification.ts` → `buildEmailVerificationStatus`). Prefer these over guessing at `username` client-side.
+- **The gate is email-only.** `requiresEmailVerification(authUser, profile)` (client) / `hasVerifiedEmailClaim(req)` (server). A missing phone **never** blocks an action — phone is collected at registration and verified optionally from the profile. Admins are exempt from the gate.
+- `hasVerifiedEmail` requires **both** Firebase `emailVerified` **and** the DB mirror (`is_verified`), so protected state cannot get ahead of the server sync. `hasCompleteContactVerification` still exists but is **no longer a gate** — only for completeness reporting.
+- Server error code for the gate: `EMAIL_VERIFICATION_REQUIRED` (replaced `CONTACT_VERIFICATION_REQUIRED`). Apply/tour routes additionally return `EMAIL_NOT_VERIFIED`.
+- **Branded verification links are server-owned**: `POST /api/user/email/verification/start` → `/email-verify?token=…` → `POST …/confirm`. Reason: Firebase Admin's `generateEmailVerificationLink` **requires the email to already be on a Firebase user** (phone-first accounts have none), and client `verifyBeforeUpdateEmail` needs a *recent sign-in* they don't have. Only a SHA-256 digest is stored.
+- The confirmed address is only replaced **after** the new one is proven, so an account is never left without a working email. A change in flight is a distinct state (`verified-changing`), not a transient unverified window.
+- **Firebase caches `email_verified` in the ID token for up to an hour.** Anything that reads verification status must `reload()` + `getIdToken(true)` first — `fetchEmailVerificationStatus()` does this.
+- Email-card state machine lives in `client/src/lib/email-verification-state.ts` (pure, tested) — extend it there rather than adding conditionals to the component.
+- Deep-link contract for the email section: `?view=profile&focus=email` (+ `&tab=account` for managers). `focus=email` forces the account tab and is cleared on consume.
+
 ## Design tokens (`client/src/index.css`)
 - Brand / primary red: `--primary` and `--sidebar-primary` = `hsl(348 85% 59%)`. Use `text-primary` for brand-coloured UI.
 - **Gotcha:** `--accent` is `0 0% 100%` (pure white) — identical to `--popover` in *both* light and dark themes. `hover:bg-accent` is therefore invisible. Use `hover:bg-muted` for hover states.

@@ -9,6 +9,8 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
 import ManagerOnboardingWizard from "./ManagerOnboardingWizard";
+import { requiresEmailVerification } from "@/lib/auth-verification";
+import EmailVerificationGate from "@/components/auth/EmailVerificationGate";
 
 interface ManagerProtectedRouteProps {
   children: React.ReactNode;
@@ -85,7 +87,13 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
         return [];
       }
     },
-    enabled: !!firebaseUser && !!firebaseUserData,
+    // Only worth asking once the account can actually use the response: manager
+    // routes are refused server-side while the email is unconfirmed, so fetching
+    // earlier just burns a guaranteed 403.
+    enabled:
+      !!firebaseUser &&
+      !!firebaseUserData &&
+      !requiresEmailVerification(firebaseUser, firebaseUserData),
     staleTime: 30 * 1000,
   });
 
@@ -152,6 +160,11 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
     return <Redirect to="/" />;
   }
 
+  // An unverified email is no longer a redirect. Sending the manager back to the
+  // login screen left them with no route to the profile page that can fix it, so
+  // the session is kept and the gate is rendered over the dashboard instead.
+  const emailUnverified = requiresEmailVerification(firebaseUser, user);
+
   // Terms acceptance gate
   // ENTERPRISE FIX: Cross-check with auth context user as well.
   // After terms acceptance, refreshUserData() updates the auth context user synchronously
@@ -162,7 +175,9 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
     firebaseUser?.termsVersion === CURRENT_POLICY_VERSION;
   const needsAcceptance = !queryTermsAccepted && !authContextTermsAccepted;
 
-  if (needsAcceptance && location !== '/accept-terms') {
+  // Verification comes first: it is the harder block, and bouncing to terms would
+  // hide the one screen that tells the manager why nothing works.
+  if (needsAcceptance && !emailUnverified && location !== '/accept-terms') {
     logger.info('ManagerProtectedRoute - Terms not accepted, redirecting to /accept-terms');
     const redirectParam = encodeURIComponent(location);
     return <Redirect to={`/accept-terms?redirect=${redirectParam}`} />;
@@ -182,7 +197,13 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
   const hasStartedOnboarding = user?.managerOnboardingStepsCompleted && 
                                 typeof user.managerOnboardingStepsCompleted === 'object' &&
                                 Object.keys(user.managerOnboardingStepsCompleted).length > 0;
-  const needsOnboarding = !user?.managerOnboardingCompleted && 
+  // `!emailUnverified` matters: every onboarding save is refused server-side while the
+  // email is unconfirmed, so funneling an unverified manager into setup walks them into
+  // a flow that cannot complete — and hides the dashboard, the sidebar and the
+  // "Getting started" checklist behind a full-screen wizard. Show the gate first; the
+  // redirect happens on the next navigation once the address is confirmed.
+  const needsOnboarding = !emailUnverified &&
+                          !user?.managerOnboardingCompleted && 
                           !hasStartedOnboarding &&
                           Array.isArray(managerLocations) && 
                           managerLocations.length === 0;
@@ -195,9 +216,11 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
 
   // Managers go to dashboard - ManagerOnboardingWizard wraps for context
   return (
-    <ManagerOnboardingWizard>
-      {children}
-    </ManagerOnboardingWizard>
+    <>
+      <EmailVerificationGate open={emailUnverified} role="manager" />
+      <ManagerOnboardingWizard>
+        {children}
+      </ManagerOnboardingWizard>
+    </>
   );
 }
-

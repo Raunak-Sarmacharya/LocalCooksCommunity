@@ -1410,5 +1410,7 @@
   "gridCardStorageFreezer": "Freezer",
   "gridCardStorageLabel": "Storage",
   "gridCardVisualsSubtitle": "High-quality photos coming soon",
-  "gridCardVisualsTitle": "Visuals in the Oven"
+  "gridCardVisualsTitle": "Visuals in the Oven",
+  "applyEmailUnverifiedTitle": "Verify your email before submitting",
+  "applyEmailUnverifiedBody": "You can fill this in now, but the application cannot be submitted until your email address is confirmed."
 }

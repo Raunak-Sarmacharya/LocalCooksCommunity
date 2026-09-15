@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
-import { ArrowLeft, Clock, Mail, RefreshCw, CheckCircle2, Loader2 } from "lucide-react";
+import { ArrowLeft, Clock, Mail, Phone, RefreshCw, CheckCircle2, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import AnimatedButton from "./AnimatedButton";
 import { EmailContinueHint, getEmailContinueMessage } from "./EmailContinueHint";
@@ -10,6 +10,7 @@ interface EmailVerificationScreenProps {
   onResend: () => Promise<void>;
   onGoBack: () => void;
   onCheckVerified?: () => Promise<boolean | void>;
+  onVerifyPhone?: () => void;
   resendLoading?: boolean;
   mode?: "verification" | "magic-link";
 }
@@ -48,6 +49,7 @@ export default function EmailVerificationScreen({
   onResend,
   onGoBack,
   onCheckVerified,
+  onVerifyPhone,
   resendLoading = false,
   mode = "verification"
 }: EmailVerificationScreenProps) {
@@ -209,6 +211,18 @@ export default function EmailVerificationScreen({
             </>
           )}
         </AnimatedButton>
+
+        {mode !== "magic-link" && onVerifyPhone && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onVerifyPhone}
+            className="h-12 w-full gap-2"
+          >
+            <Phone className="h-4 w-4" />
+            Verify phone instead
+          </Button>
+        )}
       </motion.div>
 
       {/* Error Message */}

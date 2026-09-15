@@ -17,7 +17,10 @@ export default function PendingSellerJourneySubmitter() {
     if (loading || !user || submitting.current) return;
     const draft = getSellerJourneyDraft();
     if (!draft || draft.email.toLowerCase() !== user.email?.toLowerCase()) return;
-    if (!hasVerifiedEmail(user, user) && !auth.currentUser?.emailVerified) return;
+    // Only the email is required to submit. A missing phone must not hold a
+    // completed seller journey hostage, since the server accepts it on an
+    // unverified-email check alone.
+    if (!hasVerifiedEmail(user, user)) return;
 
     const submit = async () => {
       submitting.current = true;

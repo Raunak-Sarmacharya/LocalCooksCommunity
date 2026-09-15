@@ -109,6 +109,68 @@ async function getAuthenticatedUser(req: Request): Promise<{ id: number; usernam
 // ADMIN USERS ENDPOINT
 // ===================================
 
+
+// Completely delete a user (admin)
+router.delete("/users/:id/complete", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const userId = parseInt(req.params.id);
+        if (isNaN(userId) || userId <= 0) {
+            return res.status(400).json({ error: "Invalid user ID" });
+        }
+
+        const user = await userService.getUser(userId);
+        if (!user) {
+            return res.status(404).json({ error: "User not found" });
+        }
+
+        // 1. Delete associated data to prevent foreign key constraint failures
+        await db.transaction(async (tx) => {
+            // Delete applications
+            try {
+                // Not importing schema dynamically since this is an admin route, we assume schema is available
+                // To avoid import errors, we will just execute raw sql or use existing imports if we can.
+                // It's safer to use tx.execute to delete from tables that might have fks to users.id
+                await tx.execute(sql`DELETE FROM applications WHERE user_id = ${userId}`);
+                await tx.execute(sql`DELETE FROM portal_user_applications WHERE user_id = ${userId}`);
+                await tx.execute(sql`DELETE FROM microlearning_completions WHERE user_id = ${userId}`);
+                await tx.execute(sql`DELETE FROM video_progress WHERE user_id = ${userId}`);
+                // Delete user from db using existing userService
+                // Wait, userService.deleteUser does its own tx. So we should just run the deletes before calling it.
+            } catch (e) {
+                console.error("Error cleaning up user foreign keys:", e);
+            }
+        });
+
+        // 2. Delete the user from postgres
+        await userService.deleteUser(userId);
+        // 3. Delete from Firebase Auth
+        if (user.firebaseUid) {
+            try {
+                const { getAuth } = await import('firebase-admin/auth');
+                const app = initializeFirebaseAdmin();
+                if (app) {
+                    await getAuth(app).deleteUser(user.firebaseUid);
+                    // 4. Delete from Firestore
+                    const { getFirestore } = await import('firebase-admin/firestore');
+                    const firestore = getFirestore(app);
+                    await firestore.collection('users').doc(user.firebaseUid).delete();
+                } else {
+                    console.error("Firebase app is null, could not delete firebase auth user.");
+                    throw new Error("Firebase app is null");
+                }
+            } catch (fbError: any) {
+                console.error("Error deleting user from Firebase:", fbError);
+                return res.status(500).json({ error: `Postgres user deleted, but failed to delete from Firebase: ${fbError.message}` });
+            }
+        }
+
+        res.json({ success: true, message: "User completely deleted" });
+    } catch (error: any) {
+        logger.error("Error completely deleting user:", error);
+        res.status(500).json({ error: error.message || "Failed to delete user" });
+    }
+});
+
 // Get all users (with optional search)
 router.get("/users", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
@@ -1510,6 +1572,48 @@ router.put("/locations/:id", async (req: Request, res: Response) => {
 });
 
 // Delete location (admin)
+
+// Toggle location visibility (admin)
+router.patch("/locations/:id/toggle-visibility", async (req: Request, res: Response) => {
+    try {
+        const sessionUser = await getAuthenticatedUser(req);
+        const isFirebaseAuth = req.neonUser;
+
+        if (!sessionUser && !isFirebaseAuth) {
+            return res.status(401).json({ error: "Not authenticated" });
+        }
+
+        const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+        if (user.role !== "admin") {
+            return res.status(403).json({ error: "Admin access required" });
+        }
+
+        const locationId = parseInt(req.params.id);
+        if (isNaN(locationId) || locationId <= 0) {
+            return res.status(400).json({ error: "Invalid location ID" });
+        }
+
+        const { isActive } = req.body;
+        if (typeof isActive !== 'boolean') {
+            return res.status(400).json({ error: "isActive boolean is required" });
+        }
+
+        const [updatedLocation] = await db.update(locations)
+            .set({ isActive })
+            .where(eq(locations.id, locationId))
+            .returning();
+
+        if (!updatedLocation) {
+            return res.status(404).json({ error: "Location not found" });
+        }
+
+        res.json({ success: true, location: updatedLocation });
+    } catch (error) {
+        logger.error(`Error toggling location visibility for ${req.params.id}:`, error);
+        res.status(500).json({ error: "Failed to toggle location visibility" });
+    }
+});
+
 router.delete("/locations/:id", async (req: Request, res: Response) => {
     try {
         const sessionUser = await getAuthenticatedUser(req);
@@ -1689,6 +1793,48 @@ router.put("/kitchens/:id", async (req: Request, res: Response) => {
 });
 
 // Delete kitchen (admin)
+
+// Toggle kitchen visibility (admin)
+router.patch("/kitchens/:id/toggle-visibility", async (req: Request, res: Response) => {
+    try {
+        const sessionUser = await getAuthenticatedUser(req);
+        const isFirebaseAuth = req.neonUser;
+
+        if (!sessionUser && !isFirebaseAuth) {
+            return res.status(401).json({ error: "Not authenticated" });
+        }
+
+        const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+        if (user.role !== "admin") {
+            return res.status(403).json({ error: "Admin access required" });
+        }
+
+        const kitchenId = parseInt(req.params.id);
+        if (isNaN(kitchenId) || kitchenId <= 0) {
+            return res.status(400).json({ error: "Invalid kitchen ID" });
+        }
+
+        const { isActive } = req.body;
+        if (typeof isActive !== 'boolean') {
+            return res.status(400).json({ error: "isActive boolean is required" });
+        }
+
+        const [updatedKitchen] = await db.update(kitchens)
+            .set({ isActive, updatedAt: new Date() })
+            .where(eq(kitchens.id, kitchenId))
+            .returning();
+
+        if (!updatedKitchen) {
+            return res.status(404).json({ error: "Kitchen not found" });
+        }
+
+        res.json({ success: true, kitchen: updatedKitchen });
+    } catch (error) {
+        logger.error(`Error toggling kitchen visibility for ${req.params.id}:`, error);
+        res.status(500).json({ error: "Failed to toggle kitchen visibility" });
+    }
+});
+
 router.delete("/kitchens/:id", async (req: Request, res: Response) => {
     try {
         const sessionUser = await getAuthenticatedUser(req);

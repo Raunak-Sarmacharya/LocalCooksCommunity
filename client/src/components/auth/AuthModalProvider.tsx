@@ -12,8 +12,10 @@ import { normalizePhoneNumber, isValidNorthAmericanPhone } from "@shared/phone-v
 import { KitchenNextStepsDescription } from "@/components/common/KitchenNextStepsDescription";
 import { getPendingApplicationModal, savePendingApplicationModal, clearPendingApplicationModal, clearAbandonedApplicationSession, getAuthIntent, resolveVerificationReturnPath, kitchenActor, skipKitchenVerify, resolvePendingApplyPhase, type KitchenActor, type PendingApplicationPhase, type PendingApplicationReview } from "@/lib/auth-intent";
 import { sendVerificationEmailWithFallback } from "@/lib/send-verification-email";
+import { hasVerifiedEmail } from "@/lib/auth-verification";
+import { useEmailVerificationGuard } from "@/hooks/use-email-verification-guard";
 import { resolveChefDashboardNavigation } from "@shared/subdomain-utils";
-import { CheckCircle2, Loader2, Clock, RefreshCw, Mail } from "lucide-react";
+import { CheckCircle2, Loader2, Clock, RefreshCw, Mail, Phone } from "lucide-react";
 import { KitchenBookingPreferencesPanel, type EquipmentListingOption, type StorageListingOption } from "@/components/kitchen-application/KitchenBookingPreferencesPanel";
 import { BookingPriceSummary } from "@/components/kitchen-application/BookingPriceSummary";
 import { RequestToApplyFields, EMPTY_REQUEST_TO_APPLY_DRAFT, type RequestToApplyDraft } from "@/components/kitchen-application/request-to-apply-fields";
@@ -116,12 +118,19 @@ interface AuthModalOptions {
 
 interface RegistrationReviewData extends PendingApplicationReview {}
 
+/**
+ * Email is the gate. A missing phone never blocks an action, so this deliberately
+ * does NOT require `phoneVerified` — the server refuses apply/tour/book on an
+ * unverified email alone, and the client must not be stricter than the server or
+ * users hit a wall the API would have let them through.
+ */
 function isUserVerified(
-  user: { is_verified?: boolean; isVerified?: boolean; emailVerified?: boolean } | null | undefined
+  user: { is_verified?: boolean; isVerified?: boolean; emailVerified?: boolean; phoneVerified?: boolean } | null | undefined
 ): boolean {
-  const firebaseVerified = !!auth.currentUser?.emailVerified;
-  const dbVerified = !!(user?.is_verified || user?.isVerified || user?.emailVerified);
-  return firebaseVerified || dbVerified;
+  return hasVerifiedEmail(
+    { emailVerified: Boolean(auth.currentUser?.emailVerified || user?.emailVerified) },
+    { is_verified: user?.is_verified, isVerified: user?.isVerified }
+  );
 }
 
 function reviewFromFormData(data: Record<string, unknown>, email: string): RegistrationReviewData {
@@ -263,6 +272,9 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
   const actor: KitchenActor = kitchenActor(!!user, registeredInFlow);
   const emailVerified = isUserVerified(user);
   const skipVerify = skipKitchenVerify(actor, emailVerified);
+  // Rendered as a sibling of the auth dialog, never nested inside it: two
+  // stacked Radix dialogs fight over the focus trap.
+  const { openGate, gate } = useEmailVerificationGuard();
   const showBookingPrefs = !!options.bookingContext;
   const { preview: bookingPricePreview, isLoading: bookingPriceLoading } =
     usePersistedBookingPricePreview(
@@ -449,7 +461,10 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (!isUserVerified(user)) {
-      setSubmitError("Please verify your email first, then click Submit.");
+      // Open the platform gate rather than a bare inline string: it explains why
+      // the action is refused and offers a way forward, and it is the same surface
+      // tour and booking use.
+      openGate();
       return;
     }
 
@@ -693,14 +708,13 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
       const updatedUser = await updateUserVerification();
       const verified =
         isUserVerified(updatedUser) ||
-        isUserVerified(user) ||
-        !!auth.currentUser?.emailVerified;
+        isUserVerified(user);
 
       if (!verified) {
         setVerifyError(
           t(
             "notVerifiedYet",
-            "We haven't detected your verification yet. Click the link in your email, wait a few seconds, and try again."
+            "We haven't detected both contact verifications yet. Verify your email and phone, then try again."
           )
         );
         return;
@@ -1069,6 +1083,28 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
                     <>
                       {applicationPhase === "awaiting_verification" && !skipVerify ? (
                         <div className="space-y-4">
+                          {auth.currentUser?.emailVerified && !auth.currentUser?.phoneNumber ? (
+                            <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-5 text-center space-y-3">
+                              <Phone className="mx-auto h-8 w-8 text-amber-700" aria-hidden />
+                              <p className="text-lg font-bold text-gray-900">Verify your phone to continue</p>
+                              <p className="text-sm text-gray-700">
+                                Your application is saved. Verify your phone by OTP from your profile, then return here.
+                              </p>
+                              <Button onClick={() => {
+                                const destination = resolveChefDashboardNavigation(
+                                  "profile",
+                                  window.location.hostname,
+                                  window.location.port,
+                                  import.meta.env.VITE_VERCEL_ENV,
+                                );
+                                if (destination.sameOrigin) navigate(destination.path);
+                                else window.location.href = destination.href;
+                              }}>
+                                Open profile
+                              </Button>
+                            </div>
+                          ) : (
+                          <>
                           <div className="rounded-xl border-2 border-[#F51042]/30 bg-[#F51042]/5 p-5 text-center space-y-3">
                             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#F51042] text-white">
                               <Mail className="h-6 w-6" aria-hidden />
@@ -1169,6 +1205,8 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
                           </button>
                           {resendError && (
                             <p className="text-sm text-red-600 text-center">{resendError}</p>
+                          )}
+                          </>
                           )}
                         </div>
                       ) : (
@@ -1368,6 +1406,8 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {gate}
     </AuthModalContext.Provider>
   );
 }

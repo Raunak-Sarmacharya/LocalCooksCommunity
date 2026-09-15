@@ -32,6 +32,18 @@ export class UserService {
     return this.repo.findByFirebaseUid(uid);
   }
 
+  async getUserByPendingEmailTokenHash(tokenHash: string): Promise<User | null> {
+    return this.repo.findByPendingEmailTokenHash(tokenHash);
+  }
+
+  async consumePendingEmailToken(
+    userId: number,
+    tokenHash: string,
+    data: UpdateUserDTO
+  ): Promise<User | null> {
+    return this.repo.consumePendingEmailToken(userId, tokenHash, data);
+  }
+
   /**
    * Atomically creates the application-side half of a Firebase registration.
    * The caller must validate all Firebase claims before invoking this method.

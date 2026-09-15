@@ -11,6 +11,32 @@ export async function resolveNeonUser(decodedToken: { uid: string }) {
   return userService.getUserByFirebaseUid(decodedToken.uid);
 }
 
+/** Email is the primary identifier and the notification channel, so it gates. */
+export function hasVerifiedEmailClaim(req: Request): boolean {
+  return req.firebaseUser?.email_verified === true;
+}
+
+/**
+ * Both contacts proven. No longer a gate: a missing phone never blocks an
+ * action, because email is what carries booking and payout notifications.
+ * Kept as a predicate for surfaces that report overall account completeness.
+ */
+export function hasCompleteFirebaseContactVerification(req: Request): boolean {
+  return req.firebaseUser?.email_verified === true && Boolean(req.firebaseUser?.phone_number);
+}
+
+function isContactVerificationRecoveryRoute(req: Request): boolean {
+  const path = req.originalUrl.split('?')[0];
+  return [
+    '/api/user/',
+    '/api/manager/profile',
+    '/api/chef/my-profile',
+    '/api/sync-verification-status',
+    '/api/firebase/user/me',
+    '/api/firebase-sync-user',
+  ].some((allowed) => path === allowed.replace(/\/$/, '') || path.startsWith(allowed));
+}
+
 // Extend Express Request to include Firebase user data
 declare global {
   namespace Express {
@@ -140,7 +166,13 @@ export async function requireFirebaseAuthWithUser(req: Request, res: Response, n
     // mirror during any authenticated request so verified users are never
     // blocked while waiting for a separate profile-sync call.
     if (req.firebaseUser.email_verified === true && neonUser.isVerified !== true) {
-      const syncedUser = await userService.updateUser(neonUser.id, { isVerified: true });
+      const syncedUser = await userService.updateUser(neonUser.id, {
+        isVerified: true,
+        // Record the first time we learn the address is confirmed, so the profile
+        // card can show a date however the user verified — our token loop or
+        // Firebase's own action code. Never moves an existing date.
+        emailVerifiedAt: neonUser.emailVerifiedAt ?? new Date(),
+      });
       if (syncedUser) neonUser = syncedUser;
     }
 
@@ -150,6 +182,21 @@ export async function requireFirebaseAuthWithUser(req: Request, res: Response, n
       ...neonUser,
       uid: neonUser.firebaseUid || undefined, // Support legacy code that uses .uid
     } as UserWithFlags;
+
+    const isChefOrManager =
+      neonUser.role === 'chef' || neonUser.role === 'manager' ||
+      neonUser.isChef === true || neonUser.isManager === true;
+    if (
+      isChefOrManager &&
+      !hasVerifiedEmailClaim(req) &&
+      !isContactVerificationRecoveryRoute(req)
+    ) {
+      return res.status(403).json({
+        error: 'Email verification required',
+        code: 'EMAIL_VERIFICATION_REQUIRED',
+        message: 'Verify your email address before using operational features.',
+      });
+    }
 
     // Enrich Sentry with authenticated user context for error attribution
     Sentry.setUser({
@@ -272,6 +319,16 @@ export function requireManager(req: Request, res: Response, next: NextFunction) 
     return res.status(403).json({
       error: 'Forbidden',
       message: 'Manager access required'
+    });
+  }
+
+  // Email gates operational access; a missing phone never does. Admins never
+  // reach here (role check above), so a broken mailbox cannot lock the platform.
+  if (!hasVerifiedEmailClaim(req) && !req.originalUrl.startsWith('/api/manager/profile')) {
+    return res.status(403).json({
+      error: 'Email verification required',
+      code: 'EMAIL_VERIFICATION_REQUIRED',
+      message: 'Verify your email address before using manager operations.',
     });
   }
 

@@ -58,7 +58,7 @@ import { UserRepository } from "./domains/users/user.repository";
 import { UserService } from "./domains/users/user.service";
 import { CURRENT_POLICY_VERSION } from "@shared/policy-config";
 import { normalizePhoneNumber } from "@shared/phone-validation";
-import { validateNewRegistrationProfile } from "./registration-profile";
+import { resolveRegistrationEmail, validateNewRegistrationProfile } from "./registration-profile";
 import type { AuthAccountResolution, AuthMethod } from "@shared/auth-resolution";
 import { maskRecoveryEmail, maskRecoveryPhone, resolveAuthAccountState, resolveAuthMethods } from "./auth-account-resolution";
 
@@ -107,6 +107,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Mount Auth Router (Legacy - removed in favor of Firebase Auth)
   // app.use("/api/auth", (await import("./routes/auth")).default);
+
+  // Mount the email verification loop ahead of the user router so its nested
+  // paths win the match. Public confirmation lives here because the link is
+  // routinely opened on a different device from the one that requested it.
+  app.use("/api/user/email/verification", (await import("./routes/user-email-verification")).default);
 
   // Mount User Router (profile, onboarding)
   app.use("/api/user", (await import("./routes/user")).default);
@@ -176,7 +181,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const firebaseEmailVerified = req.firebaseUser?.email_verified;
       if (firebaseEmailVerified && !user.isVerified) {
         logger.info(`📧 Updating is_verified for user ${user.id} - Firebase email verified`);
-        const updatedUser = await userService.updateUser(user.id, { isVerified: true });
+        const updatedUser = await userService.updateUser(user.id, {
+          isVerified: true,
+          emailVerifiedAt: user.emailVerifiedAt ?? new Date(),
+        });
         if (updatedUser) {
           user = updatedUser;
         }
@@ -787,9 +795,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const tokenEmail = typeof decodedToken.email === 'string'
         ? decodedToken.email.trim().toLowerCase()
         : '';
+      const submittedEmail = typeof req.body?.email === 'string'
+        ? req.body.email.trim().toLowerCase()
+        : '';
       const accountType = req.body?.accountType;
       const termsAccepted = req.body?.termsAccepted;
-      const registrationMethod = decodedToken.firebase?.sign_in_provider === 'phone' ? 'phone' : 'email';
+      const signInProvider = decodedToken.firebase?.sign_in_provider;
+      const registrationMethod = signInProvider === 'phone'
+        ? 'phone'
+        : signInProvider === 'google.com'
+          ? 'google'
+          : 'email';
       const displayName = typeof req.body?.displayName === 'string'
         ? req.body.displayName.trim().slice(0, 120)
         : '';
@@ -799,6 +815,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const submittedPhone = typeof req.body?.phoneNumber === 'string'
         ? normalizePhoneNumber(req.body.phoneNumber)
         : null;
+      const registrationEmail = resolveRegistrationEmail({
+        provider: registrationMethod,
+        tokenEmail,
+        submittedEmail,
+      });
 
       if (decodedToken.uid !== uid) {
         return res.status(403).json({ error: "Token mismatch" });
@@ -812,20 +833,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(existingByUid);
       }
 
-      if (!tokenEmail) {
-        return res.status(400).json({ error: "A Firebase email identity is required" });
+      if (!registrationEmail) {
+        return res.status(400).json({ error: "A valid email address is required" });
       }
-      if (registrationMethod === 'phone' && (!tokenPhone || decodedToken.email_verified !== true)) {
+      if (registrationMethod === 'phone' && !tokenPhone) {
         return res.status(400).json({
-          error: "Phone registration requires a verified phone number and verified email address",
+          error: "Phone registration requires a verified phone number",
           code: "INCOMPLETE_PHONE_REGISTRATION",
-        });
-      }
-      const googleIdentity = (decodedToken.firebase as any)?.identities?.['google.com'];
-      if (Array.isArray(googleIdentity) && googleIdentity.length > 0 && (!tokenPhone || tokenPhone !== submittedPhone)) {
-        return res.status(400).json({
-          error: "Google registration requires a verified phone number",
-          code: "PHONE_VERIFICATION_REQUIRED",
         });
       }
       if (accountType !== 'chef' && accountType !== 'manager') {
@@ -851,9 +865,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // ENTERPRISE FIX: Also check if user exists by email/username
       // This handles the case where user was deleted from Firebase but not Neon, or vice versa
-      const existingByUsername = await userService.getUserByUsername(tokenEmail);
+      const existingByUsername = await userService.getUserByUsername(registrationEmail);
       if (existingByUsername) {
-        logger.info(`⚠️ Registration blocked because ${tokenEmail} already exists in the application database`);
+        logger.info(`⚠️ Registration blocked because ${registrationEmail} already exists in the application database`);
         return res.status(409).json({
           error: "Email already registered",
           code: "EMAIL_EXISTS",
@@ -863,11 +877,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Create new user - no existing user found
       const finalRole: 'chef' | 'manager' = accountType;
-      logger.info(`📝 Creating new public ${finalRole} account: ${tokenEmail}`);
+      logger.info(`📝 Creating new public ${finalRole} account: ${registrationEmail}`);
       const newUser = await userService.createPublicFirebaseUser({
-        username: tokenEmail,
+        username: registrationEmail,
         firebaseUid: uid,
-        phoneNumber: registrationProfile.phoneNumber,
+        phoneNumber: registrationProfile.phoneNumber || undefined,
         role: finalRole,
         isVerified: decodedToken.email_verified || false,
         termsAccepted: termsAccepted === true,
@@ -881,7 +895,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const { users } = await import('@shared/schema');
         const { eq } = await import('drizzle-orm');
 
-        const email = tokenEmail;
+        const email = registrationEmail;
         const recipientName = registrationProfile.displayName;
 
         // ENTERPRISE: Only send welcome email if the user is verified (e.g. Google Auth)

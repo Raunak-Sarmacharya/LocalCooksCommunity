@@ -17,4 +17,6 @@
   "TERMS_NOT_ACCEPTED": "Please accept the terms to continue.",
   "ACCOUNT_NOT_REGISTERED": "This account is not registered with LocalCooks.",
   "INVALID_LOCALE": "That language is not supported."
+,
+  "EMAIL_VERIFICATION_REQUIRED": "Verify your email address before continuing."
 }

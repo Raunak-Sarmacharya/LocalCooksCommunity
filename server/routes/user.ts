@@ -5,6 +5,7 @@ import { requireFirebaseAuthWithUser } from "../firebase-auth-middleware";
 import { sendEmail, generateWelcomeEmail } from "../email";
 import { getFirebaseUserByEmail } from "../firebase-setup";
 import { CURRENT_POLICY_VERSION } from "@shared/policy-config";
+import { buildEmailVerificationStatus } from "../email-verification";
 
 
 const router = Router();
@@ -26,15 +27,26 @@ router.get("/profile", requireFirebaseAuthWithUser, async (req: Request, res: Re
     const firebaseEmailVerified = req.firebaseUser?.email_verified;
     if (firebaseEmailVerified && !user.isVerified) {
       logger.info(`📧 Updating is_verified for user ${user.id} - Firebase email verified (profile fetch)`);
-      const updatedUser = await userService.updateUser(user.id, { isVerified: true });
+      const updatedUser = await userService.updateUser(user.id, { isVerified: true, emailVerifiedAt: user.emailVerifiedAt ?? new Date() });
       if (updatedUser) {
         user = updatedUser;
       }
     }
 
+    // The row carries secrets that must never reach a client: the password hash
+    // and the digest of any in-flight email confirmation token.
+    const { password: _password, pendingEmailTokenHash: _pendingEmailTokenHash, ...safeUser } = user;
+
     const responseUser = {
-      ...user,
-      is_verified: user.isVerified
+      ...safeUser,
+      is_verified: user.isVerified,
+      phoneVerified: typeof req.firebaseUser?.phone_number === "string" && req.firebaseUser.phone_number.length > 0,
+      // Email is the primary identifier, so surface it as a first-class field
+      // instead of leaving every client to guess at `username`. The registration
+      // address is carried here even before it is verified, which is what lets
+      // the profile page show a pending address instead of a blank field.
+      // Also carries `emailVerified`, so it is not set separately above.
+      ...buildEmailVerificationStatus(user, firebaseEmailVerified === true),
     };
     res.json(responseUser);
   } catch (error) {
@@ -112,7 +124,7 @@ router.post("/sync", requireFirebaseAuthWithUser, async (req: Request, res: Resp
     const firebaseEmailVerified = req.firebaseUser?.email_verified;
     if (firebaseEmailVerified && !user.isVerified) {
       logger.info(`📧 Updating is_verified for user ${user.id} - Firebase email verified`);
-      const updatedUser = await userService.updateUser(user.id, { isVerified: true });
+      const updatedUser = await userService.updateUser(user.id, { isVerified: true, emailVerifiedAt: user.emailVerifiedAt ?? new Date() });
       if (updatedUser) {
         user = updatedUser;
       }
@@ -217,7 +229,7 @@ router.post("/sync-verification-status", requireFirebaseAuthWithUser, async (req
       // Check if we need to update verification status in database
       if (!user.isVerified) {
         logger.info(`📧 Updating is_verified for user ${user.id} - Firebase email verified`);
-        const updatedUser = await userService.updateUser(user.id, { isVerified: true });
+        const updatedUser = await userService.updateUser(user.id, { isVerified: true, emailVerifiedAt: user.emailVerifiedAt ?? new Date() });
         if (updatedUser) {
           user = updatedUser;
           verificationUpdated = true;
@@ -355,7 +367,7 @@ router.post("/verify-email-complete", async (req: Request, res: Response) => {
     // Update verification status if not already verified
     if (!user.isVerified) {
       logger.info(`📧 Updating is_verified for user ${user.id}`);
-      await userService.updateUser(user.id, { isVerified: true });
+      await userService.updateUser(user.id, { isVerified: true, emailVerifiedAt: user.emailVerifiedAt ?? new Date() });
       verificationUpdated = true;
     }
     

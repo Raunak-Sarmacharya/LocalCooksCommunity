@@ -20,6 +20,7 @@ const SECTION_META: Record<AdminSection, { category: string; title: string }> = 
   "kitchen-licenses": { category: "Applications", title: "Kitchen Licenses" },
   "damage-claims": { category: "Applications", title: "Damage Claims" },
   "escalated-penalties": { category: "Applications", title: "Escalated Penalties" },
+  "user-management": { category: "Management", title: "User Management" },
   "chef-kitchen-access": { category: "Management", title: "Chef Kitchen Access" },
   "kitchen-management": { category: "Management", title: "Manage Kitchens" },
   promos: { category: "Communications", title: "Send Promo Codes" },

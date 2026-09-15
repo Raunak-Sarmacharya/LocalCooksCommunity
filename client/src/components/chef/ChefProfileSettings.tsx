@@ -8,7 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Edit3, Lock, X, Info, Phone as PhoneIcon } from "lucide-react";
+import { Edit3, X, Info, Phone as PhoneIcon } from "lucide-react";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
 import ChangePassword from "@/components/auth/ChangePassword";
@@ -22,6 +22,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { motion } from "framer-motion";
 import { StatusDot } from "@/components/chef/ui";
 import { InfoChip } from "@/components/chef/info-chip";
+import EmailVerificationCard from "@/components/auth/EmailVerificationCard";
+import { useEmailSectionFocus } from "@/hooks/use-email-section-focus";
 
 type EditableField = "displayName" | "username";
 
@@ -30,6 +32,7 @@ export default function ChefProfileSettings() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user: firebaseUser, refreshUserData } = useFirebaseAuth();
+  const emailSectionHighlighted = useEmailSectionFocus();
 
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -116,7 +119,7 @@ export default function ChefProfileSettings() {
   useEffect(() => {
     if (user) {
       setUsername(user.username || "");
-      setEmail(user.email || firebaseUser?.email || "");
+      setEmail(user.email || user.username || firebaseUser?.email || "");
     }
     const firebaseDisplayName = auth.currentUser?.displayName;
     if (firebaseDisplayName) {
@@ -127,7 +130,7 @@ export default function ChefProfileSettings() {
       setDisplayName(user.displayName || user.fullName || "");
     }
     if (chefProfile) {
-      setPhone(chefProfile.phone || "");
+      setPhone(chefProfile.phone || user?.phoneNumber || "");
       if (chefProfile.profileImageUrl) {
         setAvatarUrl(chefProfile.profileImageUrl);
       }
@@ -468,6 +471,7 @@ export default function ChefProfileSettings() {
                     onPhoneLinked={async (verifiedPhone) => {
                       try {
                         await updateProfileMutation.mutateAsync({ phone: verifiedPhone });
+                        await refreshUserData();
                       } catch {
                         // mutation handles its own toast errors
                       }
@@ -475,6 +479,7 @@ export default function ChefProfileSettings() {
                     onPhoneUnlinked={async () => {
                       try {
                         await updateProfileMutation.mutateAsync({ phone: "" });
+                        await refreshUserData();
                       } catch {
                         // mutation handles its own toast errors
                       }
@@ -482,45 +487,10 @@ export default function ChefProfileSettings() {
                   />
                 </div>
               )}
-              <div className="rounded-xl border bg-muted/30 px-4 py-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <p className="text-xs font-medium text-muted-foreground">
-                      {t("profileEmailAddress", "Email Address")}
-                    </p>
-                    <p className="truncate text-sm font-medium text-foreground">
-                      {email || "—"}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-0.5">
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <button
-                          type="button"
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground/70 transition hover:bg-background hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          aria-label={t(
-                            "profileEmailLinkedNotice",
-                            "Email is linked to your authentication and cannot be changed here"
-                          )}
-                        >
-                          <Info className="h-3.5 w-3.5" />
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent align="end" className="w-72 p-3">
-                        <p className="text-xs leading-relaxed text-muted-foreground">
-                          {t(
-                            "profileEmailLinkedNotice",
-                            "Email is linked to your authentication and cannot be changed here"
-                          )}
-                        </p>
-                      </PopoverContent>
-                    </Popover>
-                    <span className="inline-flex h-7 w-7 items-center justify-center text-muted-foreground/50">
-                      <Lock className="h-3.5 w-3.5" aria-hidden />
-                    </span>
-                  </div>
-                </div>
-              </div>
+              <EmailVerificationCard
+                highlighted={emailSectionHighlighted}
+                onVerified={() => void refreshUserData()}
+              />
             </div>
           </Section>
         </TabsContent>

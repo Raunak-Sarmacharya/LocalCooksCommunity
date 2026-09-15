@@ -13,11 +13,13 @@ import { useStoragePricing } from "@/hooks/use-storage-pricing";
 import { useQuery } from "@tanstack/react-query";
 import { SmartImage } from "@/components/ui/smart-image";
 import { tt } from "@/i18n/common-ns";
+import { useEmailVerificationGuard } from "@/hooks/use-email-verification-guard";
 
 export default function BookingConfirmationPage() {
   const { t } = useTranslation("booking");
   const [location, setLocation] = useLocation();
   const { kitchens, createBooking } = useKitchenBookings();
+  const { guard, gate } = useEmailVerificationGuard();
   const { toast } = useToast();
 
 
@@ -810,7 +812,13 @@ export default function BookingConfirmationPage() {
                   Back
                 </button>
                 <button
-                  onClick={grandTotal > 0 ? redirectToStripeCheckout : handleBookingSubmit}
+                  // Guarded rather than disabled, so an unverified chef learns why
+                  // the booking is refused and how to unblock it.
+                  onClick={() =>
+                    guard(() =>
+                      grandTotal > 0 ? redirectToStripeCheckout() : handleBookingSubmit()
+                    )
+                  }
                   disabled={createBooking.isPending || isRedirectingToCheckout}
                   data-testid="booking-submit"
                   className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium transition-colors flex items-center justify-center gap-2"
@@ -835,6 +843,7 @@ export default function BookingConfirmationPage() {
         </div>
       </main>
       <Footer />
+      {gate}
     </div>
   );
 }

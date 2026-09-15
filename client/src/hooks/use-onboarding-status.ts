@@ -2,6 +2,7 @@ import { logger } from "@/lib/logger";
 
 import { useQuery } from "@tanstack/react-query";
 import { useFirebaseAuth } from "@/hooks/use-auth";
+import { hasVerifiedEmail } from "@/lib/auth-verification";
 import { auth } from "@/lib/firebase"; // Keep direct auth import for token if needed, or rely on useFirebaseAuth
 
 export interface OnboardingStatus {
@@ -217,11 +218,10 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
     
     const hasKitchens = (kitchens?.length || 0) > 0;
     const setupSteps = buildManagerSetupSteps({
-        isProfileComplete: !!(
-            firebaseUser?.displayName?.trim() &&
-            firebaseUser.email?.trim() &&
-            (userData?.phoneNumber || userData?.managerProfileData?.phone)
-        ),
+        // This row is specifically about the email address, because an unverified
+        // address blocks every operational action. Name and phone are handled by
+        // their own surfaces and never gate anything.
+        isProfileComplete: hasVerifiedEmail(firebaseUser, userData),
         hasUploadedLicense: shouldSkipDetailedQueries || hasUploadedLicense,
         hasKitchens: shouldSkipDetailedQueries || hasKitchens,
         hasAvailability,

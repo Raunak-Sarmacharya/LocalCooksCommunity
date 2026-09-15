@@ -11,8 +11,7 @@ import { useLocation, Redirect } from "wouter";
 import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
 import SEOHead from "@/components/SEO/SEOHead";
 import { getChefPostAuthPath } from "@/config/chef-onboarding-steps";
-import { hasVerifiedEmail } from "@/lib/auth-verification";
-import LoadingOverlay from "@/components/auth/LoadingOverlay";
+import { hasVerifiedContact } from "@/lib/auth-verification";
 import ChefAuthShowcase from "@/components/auth/ChefAuthShowcase";
 import { getSellerJourneyDraft } from "@/lib/seller-journey";
 import { addCollection, Icon } from "@iconify/react";
@@ -34,11 +33,6 @@ export default function EnhancedAuthPage() {
   const [userMetaLoading, setUserMetaLoading] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [successMessageType, setSuccessMessageType] = useState<'password-reset' | 'email-verified'>('password-reset');
-  const [isCompletingVerification, setIsCompletingVerification] = useState(() =>
-    typeof window !== 'undefined' &&
-    sessionStorage.getItem('localcooks:completing-verification') === 'true'
-  );
-
   const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasCheckedUser = useRef(false);
   const hasUserMetaRef = useRef(false); // Track if userMeta was successfully fetched (avoids stale closure)
@@ -55,7 +49,7 @@ export default function EnhancedAuthPage() {
     const observer = new ResizeObserver(measure);
     observer.observe(content);
     return () => observer.disconnect();
-  }, [isCompletingVerification, loading, userMetaLoading, user, userMeta]);
+  }, [loading, userMetaLoading, user, userMeta]);
 
   const [retryCount, setRetryCount] = useState(0);
   const sellerJourneyDraft =
@@ -134,25 +128,6 @@ export default function EnhancedAuthPage() {
     }
   }, [loading]);
 
-  // A hard refresh is needed to rebuild auth/profile state after Firebase email
-  // verification. Keep the transition covered until the verified profile is
-  // ready, so the login form never flashes between verification and welcome.
-  useEffect(() => {
-    if (
-      isCompletingVerification &&
-      !loading &&
-      !userMetaLoading &&
-      user &&
-      userMeta &&
-      hasVerifiedEmail(user, userMeta)
-    ) {
-      sessionStorage.removeItem('localcooks:completing-verification');
-      setIsCompletingVerification(false);
-    }
-  }, [isCompletingVerification, loading, userMetaLoading, user, userMeta]);
-
-
-
   // Fetch user metadata to check welcome screen status
   useEffect(() => {
     if (!loading && user && !hasCheckedUser.current) {
@@ -193,13 +168,13 @@ export default function EnhancedAuthPage() {
             
             // **CRITICAL WELCOME SCREEN LOGIC**
             // Show welcome screen if user is verified but hasn't seen welcome
-            if (hasVerifiedEmail(user, userData) && !userData.has_seen_welcome) {
+            if (hasVerifiedContact(user, userData) && !userData.has_seen_welcome) {
               logger.info('🎉 WELCOME SCREEN REQUIRED - User needs onboarding');
               return; // Don't proceed with redirect, let the render logic handle welcome screen
             }
             
             // Check if user needs email verification (for email/password users)
-            if (!hasVerifiedEmail(user, userData)) {
+            if (!hasVerifiedContact(user, userData)) {
               logger.info('📧 EMAIL VERIFICATION REQUIRED');
               return; // MUST RETURN HERE so it doesn't execute the redirect logic below which bounces unverified users back to login
             }
@@ -342,7 +317,7 @@ export default function EnhancedAuthPage() {
       // Email ownership is the first gate. In particular, an authenticated
       // Firebase session exists immediately after registration; that must not
       // be mistaken for a verified session and allowed into onboarding.
-      if (!hasVerifiedEmail(user, userMeta)) {
+      if (!hasVerifiedContact(user, userMeta)) {
         logger.info('📧 EMAIL VERIFICATION REQUIRED - holding on auth page');
         return;
       }
@@ -426,34 +401,45 @@ export default function EnhancedAuthPage() {
     };
   }, []);
 
-  const handleSuccess = () => {
+  const handleSuccess = async () => {
     logger.info('🎯 AUTH SUCCESS - Setting hasAttemptedLogin to true, hasUserMetaRef:', hasUserMetaRef.current);
-    // Only reset hasCheckedUser if userMeta was NOT successfully fetched
-    // Use ref instead of state to avoid stale closure issues
-    if (!hasUserMetaRef.current) {
-      logger.info('🔄 Resetting hasCheckedUser for retry (userMeta not fetched yet)');
-      hasCheckedUser.current = false;
-      setRetryCount(c => c + 1); // Force a re-render to trigger fetchUserMeta again
-    }
     setHasAttemptedLogin(true);
-  };
 
-  if (isCompletingVerification) {
-    return (
-      <LoadingOverlay
-        isVisible
-        message={t("overlayFinishingAccount", "Finishing your account setup...")}
-        submessage={t("overlayPreparingWelcome", "Your email is verified. We're preparing your welcome experience.")}
-        type="loading"
-      />
-    );
-  }
+    // Registration completion is authoritative. Consume the freshly returned
+    // profile instead of waiting for the earlier page-local request/cache.
+    const refreshedUser = await refreshUserData();
+    if (refreshedUser) {
+      setUserMeta(refreshedUser);
+      hasUserMetaRef.current = true;
+      hasCheckedUser.current = true;
+
+      if (
+        hasVerifiedContact(refreshedUser, refreshedUser) &&
+        (!refreshedUser.termsAccepted || refreshedUser.termsVersion !== CURRENT_POLICY_VERSION)
+      ) {
+        const requestedPath = getRedirectPath();
+        const targetPath = requestedPath !== "/"
+          ? requestedPath
+          : refreshedUser.role === "admin"
+            ? "/admin"
+            : refreshedUser.role === "manager"
+              ? "/manager/dashboard"
+              : "/dashboard";
+        setLocation(`/accept-terms?redirect=${encodeURIComponent(targetPath)}`, { replace: true });
+      }
+      return;
+    }
+
+    logger.info('🔄 Fresh profile unavailable - scheduling one bounded retry');
+    hasCheckedUser.current = false;
+    setRetryCount(c => c + 1);
+  };
 
   // Skip welcome screen for admins and managers
   // Admins: Go straight to admin dashboard
   // Managers: Go to dashboard where ManagerOnboardingWizard will show
   // Only show welcome screen for chefs
-  if (!loading && !userMetaLoading && user && userMeta && hasVerifiedEmail(user, userMeta) && !userMeta.has_seen_welcome) {
+  if (!loading && !userMetaLoading && user && userMeta && hasVerifiedContact(user, userMeta) && !userMeta.has_seen_welcome) {
     if (userMeta.role === 'admin') {
       return <Redirect to="/admin" replace />;
     } else if (userMeta.role === 'manager') {
@@ -589,9 +575,10 @@ export default function EnhancedAuthPage() {
                 animateEntrance: false,
               }}
               onGoogleSignIn={async () => {
-                await signInWithGoogle();
-                setHasAttemptedLogin(true);
-                await refreshUserData();
+                // Public Google entry is idempotent: existing users sign in;
+                // Firebase-only users are provisioned immediately as chefs.
+                await signInWithGoogle(true, "chef", sellerJourneyDraft?.termsAccepted === true);
+                await handleSuccess();
               }}
               onPhoneExistingUser={handleSuccess}
             />

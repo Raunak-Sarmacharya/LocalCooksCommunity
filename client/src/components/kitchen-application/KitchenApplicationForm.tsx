@@ -1,5 +1,6 @@
 import { logger } from "@/lib/logger";
 import { useFirebaseAuth } from "@/hooks/use-auth";
+import { useEmailVerificationGuard } from "@/hooks/use-email-verification-guard";
 import { useChefKitchenApplications, useChefKitchenApplicationForLocation } from "@/hooks/use-chef-kitchen-applications";
 import { useToast } from "@/hooks/use-toast";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -208,6 +209,9 @@ export default function KitchenApplicationForm({
   const { t } = useTranslation("kitchen");
   const { toast } = useToast();
   const [, navigate] = useLocation();
+  // A refusal at submit time would waste a long, multi-step form. The guard blocks
+  // the submission; `blocked` drives an early notice so the chef knows up front.
+  const { blocked: emailUnverified, guard, gate } = useEmailVerificationGuard();
   const { createApplication, refetch } = useChefKitchenApplications();
   const { application, hasApplication, refetch: refetchLocationApp } = useChefKitchenApplicationForLocation(location.id);
   const { data: chefProfile, isLoading: isLoadingChefProfile } = useQuery<{ phone?: string | null }>({
@@ -1163,6 +1167,30 @@ export default function KitchenApplicationForm({
 
   return (
     <div className="relative mx-auto max-w-3xl space-y-4 pb-12">
+      {/* Early notice so an unverified chef does not fill a long, multi-step form
+          only to be refused at submit. Non-blocking: the form stays usable. */}
+      {emailUnverified && (
+        <div
+          role="status"
+          className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/[0.06] p-4"
+        >
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400" aria-hidden />
+          <div className="min-w-0 flex-1 space-y-1">
+            <p className="text-sm font-medium text-foreground">
+              {t("applyEmailUnverifiedTitle", {
+                defaultValue: "Verify your email before submitting",
+              })}
+            </p>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              {t("applyEmailUnverifiedBody", {
+                defaultValue:
+                  "You can fill this in now, but the application cannot be submitted until your email address is confirmed.",
+              })}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Re-application notice if previously rejected or cancelled */}
       {showReapplicationNotice && reapplicationConfig && (
         <div className="mb-6">
@@ -1228,7 +1256,12 @@ export default function KitchenApplicationForm({
       )}
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit, handleInvalidSubmit)} className="space-y-6">
+        <form
+          onSubmit={form.handleSubmit(async (data) => {
+            await guard(() => onSubmit(data));
+          }, handleInvalidSubmit)}
+          className="space-y-6"
+        >
           {/* TIER 1 SECTIONS - Only show when on Tier 1 */}
           {currentTier === 1 && (
             <>
@@ -2485,6 +2518,8 @@ export default function KitchenApplicationForm({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {gate}
     </div>
   );
 }

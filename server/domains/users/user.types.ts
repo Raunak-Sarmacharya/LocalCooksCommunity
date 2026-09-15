@@ -40,6 +40,12 @@ export interface UpdateUserDTO {
   isManager?: boolean;
   isPortalUser?: boolean;
   isVerified?: boolean;
+  // Email verification loop — see migrations/0034_add_email_verification_flow.sql
+  pendingEmail?: string | null;
+  pendingEmailTokenHash?: string | null;
+  pendingEmailExpiresAt?: Date | null;
+  pendingEmailSentAt?: Date | null;
+  emailVerifiedAt?: Date | null;
   has_seen_welcome?: boolean;
   welcomeEmailSentAt?: Date; // Track when welcome email was sent (idempotency)
   managerOnboardingCompleted?: boolean;
@@ -73,6 +79,10 @@ export interface UserDTO {
   firebaseUid: string | null;
   phoneNumber: string | null;
   isVerified: boolean;
+  pendingEmail: string | null;
+  pendingEmailSentAt: Date | null;
+  pendingEmailExpiresAt: Date | null;
+  emailVerifiedAt: Date | null;
   has_seen_welcome: boolean;
   isChef: boolean;
   isManager: boolean;

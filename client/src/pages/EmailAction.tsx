@@ -473,6 +473,10 @@ export default function EmailAction() {
         const rawMode = urlParams.get('mode');
         const mode = normalizeActionMode(rawMode) as ActionMode | null;
         const oobCode = urlParams.get('oobCode');
+        // Our own branded loop passes a single-use token instead of a Firebase
+        // action code. It exists because a phone-first account has no email on its
+        // Firebase user, so `generateEmailVerificationLink` cannot serve it.
+        const verificationToken = urlParams.get('token');
         const email = urlParams.get('email');
         const continueUrl = urlParams.get('continueUrl');
         const lang = urlParams.get('lang') || 'en';
@@ -498,11 +502,23 @@ export default function EmailAction() {
           return;
         }
 
-        if (!mode || !oobCode) {
+        if (!mode) {
           throw new Error('Invalid email action link');
         }
 
         setActionType(mode);
+
+        // Branded token link takes precedence: it needs no Firebase action code.
+        // Returning here is also what narrows `oobCode` to a string for every
+        // Firebase-driven mode below.
+        if (mode === 'verifyEmail' && verificationToken) {
+          await handleTokenEmailVerification(verificationToken, continueUrl);
+          return;
+        }
+
+        if (!oobCode) {
+          throw new Error('Invalid email action link');
+        }
 
         // Explicit handler map with exact canonical keys (avoids switch fallthrough bugs)
         const modeIs = (candidate: ActionMode) => {
@@ -581,6 +597,66 @@ export default function EmailAction() {
      * ENTERPRISE-GRADE: Uses public endpoint to sync verification status
      * because user is NOT signed in when clicking the verification link
      */
+    /**
+     * Completes the branded verification loop: our own single-use token, consumed
+     * by the server (which writes the address to Firebase and mirrors it to the
+     * database). Works signed-out, because the token in the link is the proof of
+     * ownership — the link is often opened on a different device.
+     */
+    const handleTokenEmailVerification = async (
+      token: string,
+      continueUrl: string | null,
+    ) => {
+      try {
+        logger.info('🔍 Confirming branded email verification token...');
+
+        const response = await fetch('/api/user/email/verification/confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token }),
+        });
+
+        const body = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(body.error || 'This verification link is no longer valid.');
+        }
+
+        const databaseRole =
+          body.role === 'manager' || body.role === 'chef' || body.role === 'admin'
+            ? (body.role as 'manager' | 'chef' | 'admin')
+            : null;
+
+        // Reload + force-refresh the ID token when the link was opened on the
+        // signed-in device: `email_verified` is cached in the token for up to an
+        // hour, so without this the app would keep behaving as if unverified.
+        try {
+          await updateUserVerification();
+          logger.info('✅ Auth context updated');
+        } catch (updateError) {
+          logger.info('ℹ️ Auth context update skipped (user not signed in)');
+        }
+
+        // A signed-in user must land on their role dashboard. The default
+        // verification map only knows how to send people to a login page, which is
+        // wrong when a session already exists — and our flow is almost always
+        // signed-in, since the link is requested from the profile or the gate.
+        const signedIn = Boolean(auth.currentUser);
+
+        setStatus('success');
+        setMessage(
+          'Your email has been verified! You can now book, apply and receive notifications.'
+        );
+        setRedirectUrl(buildRedirectUrl(continueUrl, databaseRole, signedIn));
+      } catch (verifyError: any) {
+        logger.error('❌ Branded email verification failed:', verifyError);
+        throw new Error(
+          verifyError.message ||
+            'Failed to verify email. Please try again or request a new verification link.'
+        );
+      }
+    };
+
     const handleEmailVerification = async (
       oobCode: string,
       continueUrl: string | null,
@@ -659,8 +735,13 @@ export default function EmailAction() {
             : 'Your email is verified. Sign in with your phone once more to finish account setup.')
           : 'Your email has been verified! You can now log in. If you were expecting another email, check your spam folder.');
 
-        // Build the redirect URL based on continueUrl or detected role
-        const finalRedirectUrl = buildRedirectUrl(continueUrl, databaseRole);
+        // Build the redirect URL based on continueUrl or detected role. Signed-in
+        // users go to their dashboard; signed-out users to the login page.
+        const finalRedirectUrl = buildRedirectUrl(
+          continueUrl,
+          databaseRole,
+          Boolean(auth.currentUser)
+        );
         setRedirectUrl(finalRedirectUrl);
 
         logger.info('🎯 Will redirect to:', finalRedirectUrl);

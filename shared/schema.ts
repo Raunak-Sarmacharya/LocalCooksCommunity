@@ -76,6 +76,18 @@ export const users = pgTable("users", {
   // Optional contact number. Authentication providers remain authoritative in Firebase.
   phoneNumber: text("phone_number"),
   isVerified: boolean("is_verified").default(false).notNull(),
+  // Email verification loop. Firebase Auth stays authoritative for ownership of
+  // the address; these columns mirror the in-flight request so the server can
+  // drive a branded, single-use-token loop for accounts that registered by phone
+  // and therefore have no email attached to the Firebase user yet.
+  // `username` remains the confirmed-email mirror — it is rewritten atomically
+  // when a pending address is confirmed.
+  pendingEmail: text("pending_email"),
+  pendingEmailTokenHash: text("pending_email_token_hash"),
+  pendingEmailExpiresAt: timestamp("pending_email_expires_at"),
+  pendingEmailSentAt: timestamp("pending_email_sent_at"),
+  // Audit trail for the confirmed address (null while never verified).
+  emailVerifiedAt: timestamp("email_verified_at"),
   has_seen_welcome: boolean("has_seen_welcome").default(false).notNull(),
   welcomeEmailSentAt: timestamp("welcome_email_sent_at"), // Track when welcome email was sent (null = not sent, prevents duplicates)
   // Support dual roles - users can be both chef and manager
@@ -314,6 +326,7 @@ export const locations = pgTable("locations", {
   slug: text("slug").unique(),
   address: text("address").notNull(),
   managerId: integer("manager_id").references(() => users.id),
+  isActive: boolean("is_active").default(true).notNull(),
   notificationEmail: text("notification_email"), // Email where notifications will be sent
   notificationPhone: text("notification_phone"), // Phone number where SMS notifications will be sent
   contactEmail: text("contact_email"), // Primary business contact email

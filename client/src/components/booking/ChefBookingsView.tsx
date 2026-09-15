@@ -77,6 +77,8 @@ interface Booking {
   noShowDetectedAt?: string | null
   accessCodeValidFrom?: string | null
   accessCodeValidUntil?: string | null
+  checkinEnabled?: boolean
+  checkoutEnabled?: boolean
 }
 
 interface StorageBooking {
@@ -104,6 +106,8 @@ interface StorageBooking {
   serviceFee?: number
   basePrice?: number
   minimumBookingDuration?: number
+  storageCheckinEnabled?: boolean
+  storageCheckoutEnabled?: boolean
 }
 
 interface EquipmentBooking {

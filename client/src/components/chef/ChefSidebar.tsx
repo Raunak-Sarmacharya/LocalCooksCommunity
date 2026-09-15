@@ -14,6 +14,8 @@ import { Icon } from "@iconify/react"
 import "@/lib/kitchen-inventory-icons"
 import { chefNavSections, sidebarBranchForView, type ChefBreadcrumb, type ChefNavItem } from "@/lib/chef-nav-sections"
 import ProfileGettingStarted from "@/components/auth/ProfileGettingStarted"
+import { hasVerifiedEmail } from "@/lib/auth-verification"
+import { EMAIL_FOCUS_PARAM, EMAIL_FOCUS_VALUE } from "@/lib/email-verification-nav"
 
 function sectionHasHeader(title: string | undefined, itemCount: number) {
     return Boolean(title) && itemCount > 1
@@ -226,9 +228,20 @@ export function ChefSidebar({
 
             <ProfileGettingStarted
                 displayName={user?.displayName}
-                email={user?.email}
+                // `username` carries the registration address for phone-first accounts,
+                // where the Firebase user has no email attached yet.
+                email={user?.email || user?.username}
+                emailVerified={hasVerifiedEmail(user, user)}
                 phoneNumber={user?.phoneNumber}
-                onComplete={() => handleViewChange("profile")}
+                onComplete={(field) => {
+                    if (field === "email") {
+                        // Land on the email card itself, not the top of the profile.
+                        const url = new URL(window.location.href);
+                        url.searchParams.set(EMAIL_FOCUS_PARAM, EMAIL_FOCUS_VALUE);
+                        window.history.replaceState({}, "", url);
+                    }
+                    handleViewChange("profile");
+                }}
             />
 
             {/* Footer with account menu */}

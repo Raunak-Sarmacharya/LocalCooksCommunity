@@ -1,5 +1,5 @@
 import { logger } from "@/lib/logger";
-import { Plus, Users, Edit, Trash2, Loader2, MapPin, Calendar, Building2, Mail, MoreHorizontal, Eye, Wrench, Package, KeyRound } from "lucide-react";
+import { Plus, Users, Edit, Trash2, Loader2, MapPin, Calendar, Building2, Mail, MoreHorizontal, Eye, EyeOff, Wrench, Package, KeyRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "@/hooks/use-toast";
@@ -420,6 +420,47 @@ export default function AdminManageLocations() {
       toast.error("Error", { description: "Failed to delete location" });
     } finally {
       setLoading(false);
+    }
+  };
+
+
+  const handleToggleLocationVisibility = async (location: any) => {
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`/api/admin/locations/${location.id}/toggle-visibility`, {
+        method: "PATCH",
+        credentials: "include",
+        headers,
+        body: JSON.stringify({ isActive: !location.isActive })
+      });
+      if (response.ok) {
+        toast.success("Success", { description: "Location visibility toggled" });
+        loadLocations();
+      } else {
+        toast.error("Error", { description: "Failed to toggle location visibility" });
+      }
+    } catch (error) {
+      toast.error("Error", { description: "Failed to toggle location visibility" });
+    }
+  };
+
+  const handleToggleKitchenVisibility = async (kitchen: any) => {
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`/api/admin/kitchens/${kitchen.id}/toggle-visibility`, {
+        method: "PATCH",
+        credentials: "include",
+        headers,
+        body: JSON.stringify({ isActive: !kitchen.isActive })
+      });
+      if (response.ok) {
+        toast.success("Success", { description: "Kitchen visibility toggled" });
+        loadKitchens(selectedLocationId);
+      } else {
+        toast.error("Error", { description: "Failed to toggle kitchen visibility" });
+      }
+    } catch (error) {
+      toast.error("Error", { description: "Failed to toggle kitchen visibility" });
     }
   };
 
@@ -900,7 +941,11 @@ export default function AdminManageLocations() {
                                   <DropdownMenuItem onClick={() => { setDetailLocationId(location.id); setShowDetailSheet(true); }}>
                                     <Eye className="h-4 w-4 mr-2" /> View Details
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => handleEditLocation(location)}>
+                                  
+                                  <DropdownMenuItem onClick={() => handleToggleLocationVisibility(location)}>
+                                    {location.isActive ? <><EyeOff className="h-4 w-4 mr-2" /> Hide</> : <><Eye className="h-4 w-4 mr-2" /> Show</>}
+                                  </DropdownMenuItem>
+<DropdownMenuItem onClick={() => handleEditLocation(location)}>
                                     <Edit className="h-4 w-4 mr-2" /> Edit
                                   </DropdownMenuItem>
                                   <DropdownMenuItem className="text-destructive" onClick={() => setDeletingItem({ type: 'location', id: location.id, name: location.name })}>
@@ -1065,7 +1110,11 @@ export default function AdminManageLocations() {
                                   }}>
                                     <Eye className="h-4 w-4 mr-2" /> View Location Details
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => handleEditKitchen(kitchen)}>
+                                  
+                                  <DropdownMenuItem onClick={() => handleToggleKitchenVisibility(kitchen)}>
+                                    {kitchen.isActive ? <><EyeOff className="h-4 w-4 mr-2" /> Hide</> : <><Eye className="h-4 w-4 mr-2" /> Show</>}
+                                  </DropdownMenuItem>
+<DropdownMenuItem onClick={() => handleEditKitchen(kitchen)}>
                                     <Edit className="h-4 w-4 mr-2" /> Edit
                                   </DropdownMenuItem>
                                   <DropdownMenuItem className="text-destructive" onClick={() => setDeletingItem({ type: 'kitchen', id: kitchen.id, name: kitchen.name })}>

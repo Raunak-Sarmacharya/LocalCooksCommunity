@@ -345,6 +345,9 @@ export function registerSecurityMiddleware(app: Express): void {
   app.use('/api/firebase/forgot-password', authLimiter);
   app.use('/api/manager/forgot-password', authLimiter);
   app.use('/api/user/verify-email-complete', authLimiter);
+  // The confirmation endpoint is unauthenticated by design (the emailed token is
+  // the proof), so it needs the same brute-force ceiling as the other auth paths.
+  app.use('/api/user/email/verification/confirm', authLimiter);
 
   // Webhook-specific rate limit (higher ceiling for Stripe event bursts)
   const webhookLimiter = rateLimit({

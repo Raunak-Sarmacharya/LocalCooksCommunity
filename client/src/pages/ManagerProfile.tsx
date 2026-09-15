@@ -9,11 +9,13 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
-import { User, Mail, Phone, Loader2, KeyRound } from "@/components/ui/manager-icons";
+import { User, Phone, Loader2, KeyRound } from "@/components/ui/manager-icons";
 import { Phone as PhoneIcon } from "lucide-react";
 import ManagerHeader from "@/components/layout/ManagerHeader";
 import ChangePassword from "@/components/auth/ChangePassword";
 import PhoneSignInSettings from "@/components/auth/PhoneSignInSettings";
+import EmailVerificationCard from "@/components/auth/EmailVerificationCard";
+import { useEmailSectionFocus } from "@/hooks/use-email-section-focus";
 import { PHONE_AUTH_ENABLED } from "@/lib/feature-flags";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { tt } from "@/i18n/common-ns";
@@ -25,7 +27,8 @@ export default function ManagerProfile() {
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { user: firebaseUser } = useFirebaseAuth();
+  const { user: firebaseUser, refreshUserData } = useFirebaseAuth();
+  const emailSectionHighlighted = useEmailSectionFocus();
   
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -106,7 +109,7 @@ export default function ManagerProfile() {
   useEffect(() => {
     if (user) {
       setUsername(user.username || "");
-      setEmail(user.email || firebaseUser?.email || "");
+      setEmail(user.email || user.username || firebaseUser?.email || "");
     }
     // Set displayName with priority: Firebase Auth displayName first
     const firebaseDisplayName = auth.currentUser?.displayName;
@@ -118,7 +121,7 @@ export default function ManagerProfile() {
       setDisplayName(user.displayName || user.fullName || "");
     }
     if (managerProfile) {
-      setPhone(managerProfile.phone || "");
+      setPhone(managerProfile.phone || user?.phoneNumber || "");
     }
   }, [user, managerProfile, firebaseUser]);
 
@@ -217,6 +220,12 @@ export default function ManagerProfile() {
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-blue-50">
       <ManagerHeader />
       <div className="pt-24 pb-12 container mx-auto px-4 max-w-4xl">
+        <div className="mb-6">
+          <EmailVerificationCard
+            highlighted={emailSectionHighlighted}
+            onVerified={() => void refreshUserData()}
+          />
+        </div>
         <div className="bg-white rounded-lg shadow-sm border border-gray-200">
           <div className="p-6 border-b border-gray-200 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
             <div>
@@ -277,16 +286,8 @@ export default function ManagerProfile() {
                   <p className="text-xs text-gray-600 mt-1">{t("yourNameAsItAppearsToOthers")}</p>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-900 mb-2">
-                    <Mail className="h-4 w-4 inline mr-1" />{t("emailAddress")}</label>
-                  <input
-                    type="email"
-                    value={email}
-                    disabled
-                    className="w-full max-w-md border border-gray-300 rounded-lg px-4 py-2 bg-gray-100 text-gray-600 cursor-not-allowed"
-                  />
-                  <p className="text-xs text-gray-600 mt-1">{t("emailIsManagedThroughYourFirebaseAccountAndCannotBeChangedHe")}</p>
+                <div className="max-w-md">
+                  <EmailVerificationCard highlighted={emailSectionHighlighted} />
                 </div>
 
                 {PHONE_AUTH_ENABLED && (
@@ -300,6 +301,7 @@ export default function ManagerProfile() {
                     onPhoneLinked={async (verifiedPhone) => {
                       try {
                         await updateProfileMutation.mutateAsync({ phone: verifiedPhone });
+                        await refreshUserData();
                       } catch {
                         // mutation handles its own toast errors
                       }
@@ -307,6 +309,7 @@ export default function ManagerProfile() {
                     onPhoneUnlinked={async () => {
                       try {
                         await updateProfileMutation.mutateAsync({ phone: "" });
+                        await refreshUserData();
                       } catch {
                         // mutation handles its own toast errors
                       }

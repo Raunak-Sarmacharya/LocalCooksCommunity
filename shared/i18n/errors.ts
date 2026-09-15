@@ -19,6 +19,8 @@ export const API_ERROR_CODES = [
   "PAYMENT_REQUIRED",
   "PAYMENT_FAILED",
   "EMAIL_NOT_VERIFIED",
+  /** Email is the platform gate: no mutating action until the address is confirmed. */
+  "EMAIL_VERIFICATION_REQUIRED",
   "TERMS_NOT_ACCEPTED",
   "ACCOUNT_NOT_REGISTERED",
   "INVALID_LOCALE",

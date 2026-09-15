@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { users } from "@shared/schema";
 import { User, CreateUserDTO, UpdateUserDTO } from "./user.types";
@@ -17,6 +17,19 @@ export class UserRepository {
 
   async findByFirebaseUid(firebaseUid: string): Promise<User | null> {
     const [user] = await db.select().from(users).where(eq(users.firebaseUid, firebaseUid));
+    return user || null;
+  }
+
+  /**
+   * Resolves the account that owns an in-flight email confirmation token.
+   * The raw token never reaches the database — only its SHA-256 digest does.
+   */
+  async findByPendingEmailTokenHash(tokenHash: string): Promise<User | null> {
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.pendingEmailTokenHash, tokenHash))
+      .limit(1);
     return user || null;
   }
 
@@ -44,6 +57,25 @@ export class UserRepository {
       .update(users)
       .set(data as any)
       .where(eq(users.id, id))
+      .returning();
+    return updated || null;
+  }
+
+  /**
+   * Atomically consumes an email confirmation token: the row is only updated
+   * while the digest still matches, so a double-click on a link (or a replayed
+   * request) cannot run the email change twice. Returns null when another
+   * request already claimed it.
+   */
+  async consumePendingEmailToken(
+    userId: number,
+    tokenHash: string,
+    data: UpdateUserDTO
+  ): Promise<User | null> {
+    const [updated] = await db
+      .update(users)
+      .set(data as any)
+      .where(and(eq(users.id, userId), eq(users.pendingEmailTokenHash, tokenHash)))
       .returning();
     return updated || null;
   }

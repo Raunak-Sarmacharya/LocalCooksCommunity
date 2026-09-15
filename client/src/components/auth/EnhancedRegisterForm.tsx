@@ -22,9 +22,9 @@ import { phoneNumberSchema } from "@shared/phone-validation";
 import { hasVerifiedEmail } from "@/lib/auth-verification";
 import { saveRegistrationName } from "@/lib/registration-identity";
 import { sendVerificationEmailWithFallback } from "@/lib/send-verification-email";
-import { deleteUser, signOut, updateProfile, verifyBeforeUpdateEmail } from "firebase/auth";
+import { startEmailVerification } from "@/lib/email-verification-api";
+import { deleteUser, signOut, updateProfile } from "firebase/auth";
 import { isDuplicateAccountError } from "@/lib/registration-error";
-import { rememberAuthMethod } from "@/lib/login-challenge";
 import type { PublicRegistrationRole } from "@/hooks/use-auth";
 import PhoneOtpChallenge from "./PhoneOtpChallenge";
 import { getSellerJourneyDraft } from "@/lib/seller-journey";
@@ -72,10 +72,10 @@ function useRegisterSchema() {
 type RegisterFormData = z.infer<ReturnType<typeof useRegisterSchema>>;
 
 interface EnhancedRegisterFormProps {
-  onSuccess?: () => void;
+  onSuccess?: () => void | Promise<void>;
   setHasAttemptedLogin?: (v: boolean) => void;
   onRegistrationStart?: () => void; // Called when registration starts, parent shows loading overlay
-  onRegistrationComplete?: (email: string, data?: RegisterFormData) => void; // Called when registration succeeds
+  onRegistrationComplete?: (email: string, data?: RegisterFormData) => void | Promise<void>; // Called when registration succeeds
   onRegistrationError?: () => void; // Called when registration fails, parent hides loading overlay
   onSwitchToLogin?: () => void; // Switch to login tab
   forceApplying?: boolean;
@@ -124,12 +124,13 @@ const itemVariants = {
 export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, onRegistrationStart, onRegistrationComplete, onRegistrationError, onSwitchToLogin, forceApplying, hideApplyingToggle, reviewAfterRegistration, onPreviousStep, accountType = 'chef', showTermsInline = false, initialTermsAccepted = false, animateEntrance = true, initialEmail }: EnhancedRegisterFormProps) {
   const { t } = useTranslation("auth");
   const registerSchema = useRegisterSchema();
-  const { user: authUser, signup, signInWithGoogle, loading, error, updateUserVerification, syncUserWithBackend, refreshUserData } = useFirebaseAuth();
+  const { user: authUser, signup, signInWithGoogle, loading, error, updateUserVerification, refreshUserData } = useFirebaseAuth();
   const [authState, setAuthState] = useState<AuthState>('idle');
   const [formError, setFormError] = useState<string | null>(null);
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
   const [showEmailVerification, setShowEmailVerification] = useState(false);
   const [emailForVerification, setEmailForVerification] = useState("");
+  const [showPhoneFallback, setShowPhoneFallback] = useState(false);
   const [step, setStep] = useState(1);
   const [isApplying, setIsApplying] = useState(!!forceApplying);
   const [acceptedTerms, setAcceptedTerms] = useState(initialTermsAccepted);
@@ -137,11 +138,6 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
     const currentUser = auth.currentUser;
     return isPhoneAuthInProgress() && currentUser?.phoneNumber ? currentUser.uid : null;
   });
-  const [googlePhonePending, setGooglePhonePending] = useState<{
-    displayName: string;
-    phoneNumber: string;
-    termsAccepted: boolean;
-  } | null>(null);
 
   // Sync isApplying if forceApplying prop changes
   useEffect(() => {
@@ -293,43 +289,25 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
           createdAt: Date.now(),
         });
 
-        // A returning interrupted phone registration may already have completed
-        // this email action. In that case provision immediately and idempotently.
-        await phoneUser.reload();
-        if (phoneUser.emailVerified && phoneUser.email?.toLowerCase() === data.email.trim().toLowerCase()) {
-          const provisioned = await provisionPendingPhoneRegistration();
-          if (!provisioned.completed) throw new Error("Could not finish the verified registration.");
-          setAuthState("success");
-          setShowLoadingOverlay(false);
-          onRegistrationComplete?.(data.email, data);
-          onSuccess?.();
-          return;
-        }
+        // The phone OTP is already sufficient identity proof. Provision now so
+        // an unavailable email provider can never strand a valid registration.
+        const provisioned = await provisionPendingPhoneRegistration();
+        if (!provisioned.completed) throw new Error("Could not finish the verified registration.");
 
-        const continueUrl = new URL(window.location.href);
-        continueUrl.searchParams.set("completePhoneRegistration", "1");
-        await verifyBeforeUpdateEmail(phoneUser, data.email.trim().toLowerCase(), {
-          url: continueUrl.toString(),
-          handleCodeInApp: true,
-        });
+        // Send the branded verification link now so it is already waiting in the
+        // inbox by the time the dashboard gate appears. The profile card owns
+        // retries, so a delivery failure here is not fatal to the registration.
+        try {
+          await startEmailVerification(data.email.trim().toLowerCase());
+        } catch (emailError) {
+          logger.warn("Phone registration completed, but the verification link could not be sent", emailError);
+        }
 
         setAuthState("success");
         setShowLoadingOverlay(false);
 
-        // Persist the parent journey before the verification link leaves this
-        // page. Apply and tour flows use this callback to save their current
-        // step, so phone-first registration resumes exactly like email signup.
-        if (reviewAfterRegistration && onRegistrationComplete) {
-          onRegistrationComplete(data.email, data);
-          window.location.reload();
-          return;
-        } else if (onRegistrationComplete) {
-          onRegistrationComplete(data.email, data);
-          return;
-        }
-
-        setEmailForVerification(data.email.trim().toLowerCase());
-        setShowEmailVerification(true);
+        await onRegistrationComplete?.(data.email, data);
+        await onSuccess?.();
         return;
       }
 
@@ -354,12 +332,10 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       setShowLoadingOverlay(false);
 
       if (reviewAfterRegistration && onRegistrationComplete) {
-        onRegistrationComplete(data.email, data);
-        // Hard refresh clears stale auth/modal state; pending flow restores from storage.
-        window.location.reload();
+        await onRegistrationComplete(data.email, data);
         return;
       } else if (onRegistrationComplete) {
-        onRegistrationComplete(data.email, data);
+        await onRegistrationComplete(data.email, data);
       } else {
         setEmailForVerification(data.email);
         setShowEmailVerification(true);
@@ -428,49 +404,20 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
     // run before the user profile exists, setting hasCheckedUser.current = true prematurely.
     setFormError(null);
 
-    const hasRequiredProfile = await form.trigger(["displayName", "phone"]);
-    if (!hasRequiredProfile) {
-      const firstInvalid = form.formState.errors.displayName ? "displayName" : "phone";
-      form.setFocus(firstInvalid);
-      showAlert({
-        title: t("googleProfileRequiredTitle", "Add your details first"),
-        description: t("googleProfileRequiredDescription", "Enter your full name and phone number, then continue with Google. Your email comes from Google."),
-        type: "warning",
-      });
-      return;
-    }
-
     setAuthState('loading');
     setShowLoadingOverlay(true);
 
     try {
       // Start Google registration
-      const enteredName = form.getValues("displayName").trim();
-      const enteredPhone = form.getValues("phone").trim();
       const googleOutcome = await signInWithGoogle(
         true,
         accountType,
         initialTermsAccepted || (showTermsInline && acceptedTerms),
-        { displayName: enteredName, phoneNumber: enteredPhone },
       );
-
-      if (googleOutcome === "phone-verification-required") {
-        if (auth.currentUser?.email) {
-          form.setValue("email", auth.currentUser.email, { shouldValidate: true });
-        }
-        setGooglePhonePending({
-          displayName: enteredName,
-          phoneNumber: enteredPhone,
-          termsAccepted: initialTermsAccepted || (showTermsInline && acceptedTerms),
-        });
-        setAuthState("idle");
-        setShowLoadingOverlay(false);
-        return;
-      }
 
       const googleUser = auth.currentUser;
       if (googleOutcome === 'registered' && googleUser?.email) {
-        saveRegistrationName(googleUser.email, enteredName);
+        saveRegistrationName(googleUser.email, googleUser.displayName || googleUser.email.split('@')[0]);
       }
 
       setAuthState('success');
@@ -489,7 +436,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       // 2. Refresh user data via React Query
       // 3. The useEffect will detect the authenticated manager and redirect
       logger.info('🎯 Google registration complete - calling onSuccess to trigger parent redirect');
-      if (onSuccess) onSuccess();
+      await onSuccess?.();
 
     } catch (e: any) {
       setShowLoadingOverlay(false);
@@ -538,13 +485,11 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
 
       if (currentUser) {
         if (phoneVerifiedUid && currentUser.uid === phoneVerifiedUid) {
-          const email = form.getValues("email").trim().toLowerCase();
-          const continueUrl = new URL(window.location.href);
-          continueUrl.searchParams.set("completePhoneRegistration", "1");
-          await verifyBeforeUpdateEmail(currentUser, email, {
-            url: continueUrl.toString(),
-            handleCodeInApp: true,
-          });
+          // Phone-first accounts have no email attached to their Firebase user yet,
+          // so the branded server loop owns delivery rather than
+          // verifyBeforeUpdateEmail (which needs a recent sign-in and sends
+          // Firebase's own template).
+          await startEmailVerification(form.getValues("email").trim().toLowerCase());
           return;
         }
         // User is still signed in, send verification directly
@@ -582,53 +527,27 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
     return 'idle';
   };
 
-  if (googlePhonePending) {
+  if (showPhoneFallback) {
     return (
       <PhoneOtpChallenge
         purpose="link"
-        initialPhone={googlePhonePending.phoneNumber}
+        initialPhone={form.getValues("phone")}
         autoSend
-        onCancel={async () => {
-          const currentUser = auth.currentUser;
-          if (currentUser && didPhoneAuthCreateNewIdentity()) {
-            await deleteUser(currentUser).catch(() => signOut(auth));
-          } else {
-            await signOut(auth).catch(() => undefined);
-          }
-          clearPendingPhoneRegistration();
-          setGooglePhonePending(null);
-          setAuthState("idle");
-        }}
+        onCancel={() => setShowPhoneFallback(false)}
         onExistingUser={() => undefined}
         onNewUser={() => undefined}
-        onLinkedPhone={async (googleUser) => {
+        onLinkedPhone={async () => {
           setAuthState("loading");
           setShowLoadingOverlay(true);
           try {
-            const synced = await syncUserWithBackend(
-              googleUser,
-              accountType,
-              true,
-              googlePhonePending.termsAccepted,
-              googleUser.phoneNumber || googlePhonePending.phoneNumber,
-            );
-            if (!synced) throw new Error("Could not finish your account setup.");
-            clearPendingPhoneRegistration();
+            await updateUserVerification();
             await refreshUserData();
-            await rememberAuthMethod(googleUser.email, "google");
-            setGooglePhonePending(null);
+            setShowPhoneFallback(false);
+            setShowEmailVerification(false);
             setAuthState("success");
             setShowLoadingOverlay(false);
-            onRegistrationComplete?.(googleUser.email || form.getValues("email"), form.getValues());
-            onSuccess?.();
+            await onSuccess?.();
           } catch (verificationError) {
-            const currentUser = auth.currentUser;
-            if (currentUser && didPhoneAuthCreateNewIdentity()) {
-              await deleteUser(currentUser).catch(() => signOut(auth));
-            } else {
-              await signOut(auth).catch(() => undefined);
-            }
-            clearPendingPhoneRegistration();
             setShowLoadingOverlay(false);
             setAuthState("error");
             throw verificationError;
@@ -662,9 +581,12 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
               if (phoneVerifiedUid) {
                 const result = await provisionPendingPhoneRegistration();
                 if (result.completed) {
-                  sessionStorage.setItem('localcooks:completing-verification', 'true');
-                  window.location.reload();
-                  return;
+                  await updateUserVerification();
+                  await refreshUserData();
+                  setShowEmailVerification(false);
+                  setAuthState('success');
+                  await onSuccess?.();
+                  return true;
                 }
               }
               const updatedUser = await updateUserVerification();
@@ -672,10 +594,12 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
               if (verified) {
                 setAuthState('loading');
                 setShowLoadingOverlay(true);
-                sessionStorage.setItem('localcooks:completing-verification', 'true');
-                // Allow the full-screen loader to paint before rebuilding auth/profile state.
-                requestAnimationFrame(() => requestAnimationFrame(() => window.location.reload()));
-                return;
+                await refreshUserData();
+                setShowEmailVerification(false);
+                setShowLoadingOverlay(false);
+                setAuthState('success');
+                await onSuccess?.();
+                return true;
               }
               showAlert({
                 title: "Not verified yet",
@@ -687,6 +611,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
               logger.error("Error checking verification status:", err);
             }
           }}
+          onVerifyPhone={() => setShowPhoneFallback(true)}
         />
       </>
     );
@@ -728,7 +653,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
                 </span>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="max-w-[260px] text-center">
-                <p>{t("googleProfileRequiredDescription", "Enter your full name and phone number, then continue with Google.")}</p>
+                <p>{t("termsRequiredDescription", "Accept the Terms & Conditions and Privacy Policy to continue with Google.")}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

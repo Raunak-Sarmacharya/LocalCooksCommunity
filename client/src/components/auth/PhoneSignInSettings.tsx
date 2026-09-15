@@ -27,9 +27,9 @@ interface PhoneSignInSettingsProps {
   /** Pre-fill the phone input (e.g. from DB profile) */
   initialPhone?: string;
   /** Called after OTP verification succeeds and phone is linked to Firebase UID */
-  onPhoneLinked?: (phone: string) => void;
+  onPhoneLinked?: (phone: string) => void | Promise<void>;
   /** Called after phone is unlinked from Firebase UID */
-  onPhoneUnlinked?: () => void;
+  onPhoneUnlinked?: () => void | Promise<void>;
 }
 
 export default function PhoneSignInSettings({
@@ -153,7 +153,7 @@ export default function PhoneSignInSettings({
       setCode("");
       clearVerifier();
       // Notify parent so it can sync verified phone to DB
-      onPhoneLinked?.(verifiedPhone);
+      await onPhoneLinked?.(verifiedPhone);
     } catch (verifyError: any) {
       setError(verifyError?.code === "auth/invalid-verification-code"
         ? "That code is incorrect. Check the text message and try again."
@@ -173,13 +173,13 @@ export default function PhoneSignInSettings({
       await user.reload();
       setLinkedPhone("");
       setPhone("");
-      onPhoneUnlinked?.();
+      await onPhoneUnlinked?.();
     } catch (err: any) {
       if (err?.code === "auth/no-such-provider") {
         // Already unlinked — sync state
         setLinkedPhone("");
         setPhone("");
-        onPhoneUnlinked?.();
+        await onPhoneUnlinked?.();
       } else {
         setError("Could not remove phone number. Try again.");
       }

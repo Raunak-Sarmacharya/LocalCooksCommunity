@@ -239,6 +239,8 @@ function Router() {
         {localePublicRoutes("/auth", EnhancedAuthPage)}
         <Route path="/dev-login" component={DevLoginPage} />
 
+        {/* One landing route for every verification email — Firebase action codes
+            and our own branded tokens both arrive here. */}
         <Route path="/email-action" component={EmailAction} />
         <Route path="/forgot-password" component={ForgotPasswordPage} />
         {localePublicRoutes("/forgot-password", ForgotPasswordPage)}

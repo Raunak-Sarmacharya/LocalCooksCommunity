@@ -11,11 +11,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Loader2, Mail, Phone, Shield, Camera, Building2, Edit3, Lock } from "@/components/ui/manager-icons";
+import { Loader2, Phone, Shield, Camera, Building2, Edit3 } from "@/components/ui/manager-icons";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
 import ChangePassword from "@/components/auth/ChangePassword";
 import PhoneSignInSettings from "@/components/auth/PhoneSignInSettings";
+import EmailVerificationCard from "@/components/auth/EmailVerificationCard";
+import { useEmailSectionFocus } from "@/hooks/use-email-section-focus";
+import { isEmailSectionFocused } from "@/lib/email-verification-nav";
 import { PHONE_AUTH_ENABLED } from "@/lib/feature-flags";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { cn } from "@/lib/utils";
@@ -55,6 +58,7 @@ export default function ManagerProfileSettings({
     const queryClient = useQueryClient();
     const { user: firebaseUser, refreshUserData } = useFirebaseAuth();
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const emailSectionHighlighted = useEmailSectionFocus();
 
     const [username, setUsername] = useState("");
     const [email, setEmail] = useState("");
@@ -63,6 +67,9 @@ export default function ManagerProfileSettings({
     const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
     const [isEditingProfile, setIsEditingProfile] = useState(false);
     const [activeTab, setActiveTab] = useState(() => {
+        // A deep link to the email section wins over any remembered tab, otherwise
+        // "verify your email" could land the manager on Payments with no card in sight.
+        if (isEmailSectionFocused()) return "account";
         const params = new URLSearchParams(window.location.search);
         const legacyView = params.get("view");
         const tab = legacyView === "payments"
@@ -159,7 +166,10 @@ export default function ManagerProfileSettings({
     useEffect(() => {
         if (user) {
             setUsername(user.username || "");
-            setEmail(user.email || firebaseUser?.email || "");
+            // `username` holds the registration email; the profile API has no
+            // dedicated `email` column, so without this fallback the field renders
+            // blank for every phone-first account.
+            setEmail(user.email || user.username || firebaseUser?.email || "");
         }
         // Set displayName with priority: Firebase Auth displayName first
         const firebaseDisplayName = auth.currentUser?.displayName;
@@ -422,22 +432,15 @@ export default function ManagerProfileSettings({
                                 />
                             </div>
 
-                            {/* Email - Read only */}
-                            <div className="space-y-2">
-                                <Label htmlFor="email" className="text-sm font-medium text-slate-700">{mt("emailAddress")}</Label>
-                                <div className="relative">
-                                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                                    <Input
-                                        id="email"
-                                        type="email"
-                                        value={email}
-                                        disabled
-                                        className="h-11 pl-10 bg-slate-50 border-slate-200 text-slate-600"
-                                    />
-                                    <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300" />
-                                </div>
-                                <p className="text-xs text-slate-500 flex items-center gap-1">
-                                    <Shield className="h-3 w-3" />{mt("emailIsLinkedToYourAuthenticationAndCannotBeChangedHere")}</p>
+                            {/* Email — the one place it is added, verified or changed */}
+                            <div className="space-y-2 sm:col-span-2">
+                                <EmailVerificationCard
+                                    highlighted={emailSectionHighlighted}
+                                    onVerified={() => {
+                                        void refreshUserData();
+                                        queryClient.invalidateQueries({ queryKey: ["/api/user/profile", firebaseUser?.uid] });
+                                    }}
+                                />
                             </div>
 
                             {/* Phone */}

@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useRef, useCallback, type Dispatch, type 
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
 import { useKitchenBookings } from "@/hooks/use-kitchen-bookings";
+import { useEmailVerificationGuard } from "@/hooks/use-email-verification-guard";
 import { useStoragePricing } from "@/hooks/use-storage-pricing";
 import { formatCurrency, formatHourSlotRange } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
@@ -349,6 +350,7 @@ export default function KitchenBookingFlow({
   const { t, i18n } = useTranslation(["booking", "kitchen"]);
   const { kitchens, createBooking, isLoadingKitchens } = useKitchenBookings();
   const { toast } = useToast();
+  const { guard, gate } = useEmailVerificationGuard();
 
   // Filter kitchens to only those in this location
   const locationKitchens = useMemo(() => {
@@ -2172,7 +2174,13 @@ export default function KitchenBookingFlow({
             {previousButton}
             <Button
               className={chefPrimaryCtaClass("flex-1 min-h-[44px]")}
-              onClick={grandTotal > 0 ? redirectToStripeCheckout : handleFreeBookingSubmit}
+              // Guarded rather than disabled: an unverified chef gets the gate with
+              // a way forward instead of a dead button.
+              onClick={() =>
+                guard(() =>
+                  grandTotal > 0 ? redirectToStripeCheckout() : handleFreeBookingSubmit()
+                )
+              }
               disabled={createBooking.isPending || isRedirectingToCheckout || isProcessingBooking}
             >
               {createBooking.isPending || isRedirectingToCheckout || isProcessingBooking ? (
@@ -2610,6 +2618,8 @@ export default function KitchenBookingFlow({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {gate}
     </>
   );
 }

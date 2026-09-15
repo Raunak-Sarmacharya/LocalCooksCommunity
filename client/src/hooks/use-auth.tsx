@@ -9,7 +9,7 @@ import { createContext, ReactNode, useContext, useEffect, useState, useRef, useC
 import { getSubdomainFromHostname, getRoleLoginOrigin } from "@shared/subdomain-utils";
 import { User, UserWithFlags } from "@shared/schema";
 import { createDuplicateAccountError, isDuplicateAccountError } from "@/lib/registration-error";
-import { isPhoneAuthInProgress, markPhoneAuthInProgress } from "@/lib/phone-registration";
+import { isPhoneAuthInProgress } from "@/lib/phone-registration";
 import { createMissingProfileError, rememberAuthMethod } from "@/lib/login-challenge";
 import { normalizePhoneNumber } from "@shared/phone-validation";
 
@@ -22,12 +22,13 @@ export type AuthPhase =
   | 'ready'          // Fully authenticated, sync complete
   | 'error';         // Auth failed
 
-interface AuthUser extends Partial<AuthUserLegacyFields> {
+export interface AuthUser extends Partial<AuthUserLegacyFields> {
   uid: string;
   email: string | null;
   displayName: string | null;
   photoURL: string | null;
   emailVerified: boolean;
+  phoneVerified: boolean;
   phoneNumber?: string | null;
   providers: string[];
   role?: string;
@@ -61,7 +62,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, displayName?: string, accountType?: PublicRegistrationRole, termsAccepted?: boolean, phoneNumber?: string) => Promise<void>;
   logout: () => Promise<void>;
-  signInWithGoogle: (isRegistration?: boolean, accountType?: PublicRegistrationRole, termsAccepted?: boolean, profile?: { displayName: string; phoneNumber: string }) => Promise<'existing' | 'registered' | 'phone-verification-required'>;
+  signInWithGoogle: (isRegistration?: boolean, accountType?: PublicRegistrationRole, termsAccepted?: boolean, profile?: { displayName: string; phoneNumber: string }) => Promise<'existing' | 'registered'>;
   sendEmailLink: (email: string) => Promise<void>;
   handleEmailLinkSignIn: () => Promise<void>;
   isUserVerified: (user: AuthUser | null) => boolean;
@@ -69,7 +70,7 @@ interface AuthContextType {
   sendVerificationEmail: (email: string, fullName: string) => Promise<boolean>;
   resendFirebaseVerification: () => Promise<boolean>;
   resendEmailVerification: (email: string, password: string) => Promise<boolean>;
-  refreshUserData: () => Promise<void>;
+  refreshUserData: () => Promise<AuthUser | null>;
   syncUserWithBackend: (firebaseUser: any, accountType?: PublicRegistrationRole, isRegistration?: boolean, termsAccepted?: boolean, phoneNumber?: string) => Promise<boolean>;
 }
 
@@ -156,6 +157,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             await setDoc(doc(db, "users", firebaseUser.uid), {
               email: firebaseUser.email,
               displayName: firebaseUser.displayName,
+              phoneNumber: phoneNumber || firebaseUser.phoneNumber || null,
+              emailVerified: firebaseUser.emailVerified === true,
+              phoneVerified: Boolean(firebaseUser.phoneNumber),
               createdAt: serverTimestamp(),
               lastLoginAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
@@ -261,6 +265,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 isPortalUser: userData.isPortalUser || userData.is_portal_user || false,
                 chefOnboardingCompleted: userData.chefOnboardingCompleted || userData.chef_onboarding_completed || false,
                 phoneNumber: userData.phoneNumber || userData.managerProfileData?.phone || null,
+                phoneVerified: userData.phoneVerified === true,
               };
               logger.info('🔥 BACKEND USER DATA:', {
                 role,
@@ -338,6 +343,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     isPortalUser: userData.isPortalUser || userData.is_portal_user || false,
                     chefOnboardingCompleted: userData.chefOnboardingCompleted || userData.chef_onboarding_completed || false,
                     phoneNumber: userData.phoneNumber || userData.managerProfileData?.phone || null,
+                    phoneVerified: userData.phoneVerified === true,
                   };
                   logger.info('🔥 RE-FETCHED BACKEND USER DATA AFTER SYNC');
                 }
@@ -363,6 +369,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             displayName: firebaseUser.displayName,
             photoURL: firebaseUser.photoURL,
             emailVerified: firebaseUser.emailVerified,
+            phoneVerified: Boolean(firebaseUser.phoneNumber) || applicationData?.phoneVerified === true,
             phoneNumber: applicationData?.phoneNumber,
             providers,
             role,
@@ -442,11 +449,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // reload and check it, even if an old database row says verified.
         await cred.user.reload();
 
-        if (!cred.user.emailVerified) {
-          logger.info('❌ User not verified in Firebase - signing out');
+        if (!cred.user.emailVerified && !cred.user.phoneNumber) {
+          logger.info('❌ User has no verified email or phone - signing out');
           setAuthPhase('error');
           await signOut(auth);
-          throw new Error('Please verify your email before logging in. Check your inbox and spam folder for the verification link, then click it to continue.');
+          throw new Error('Please verify your email or phone number before logging in.');
         }
 
         if (!userData.is_verified) {
@@ -698,29 +705,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw new Error('Unable to verify your account. Please try again.');
         }
 
-        if (!profile?.displayName?.trim() || !profile.phoneNumber?.trim()) {
+        const googleDisplayName = profile?.displayName?.trim() || result.user.displayName?.trim();
+        if (!googleDisplayName) {
           await auth.signOut();
-          throw new Error('Full name and phone number are required to create an account.');
+          throw new Error('Your Google account must provide a display name.');
         }
 
-        await updateProfile(result.user, { displayName: profile.displayName.trim() });
+        await updateProfile(result.user, { displayName: googleDisplayName });
         await result.user.reload();
         const googleUser = auth.currentUser || result.user;
 
-        const normalizedProfilePhone = normalizePhoneNumber(profile.phoneNumber);
-        if (!normalizedProfilePhone || googleUser.phoneNumber !== normalizedProfilePhone) {
-          // Keep the verified Google session alive while the registration form
-          // proves and links the mandatory phone credential. No application
-          // profile is written until that second proof succeeds.
-          markPhoneAuthInProgress(true, isNewGoogleUser);
-          setAuthPhase('authenticating');
-          return 'phone-verification-required';
-        }
+        const normalizedProfilePhone = profile?.phoneNumber
+          ? normalizePhoneNumber(profile.phoneNumber)
+          : undefined;
 
         // Manually trigger sync for registration with detected role
         let syncSuccess = false;
         try {
-          syncSuccess = await syncUserWithBackend(googleUser, accountType, true, termsAccepted, normalizedProfilePhone);
+          syncSuccess = await syncUserWithBackend(googleUser, accountType, true, termsAccepted, normalizedProfilePhone || undefined);
         } catch (syncError) {
           if (isNewGoogleUser) {
             try {
@@ -874,7 +876,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Function to check if user is verified
   const isUserVerified = (user: AuthUser | null): boolean => {
-    return !!(user && (user.isVerified === true || user.is_verified === true || user.emailVerified === true));
+    return !!(user && (user.phoneVerified === true || user.emailVerified === true));
   };
 
   /**
@@ -1019,6 +1021,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           displayName: currentUser.displayName,
           photoURL: currentUser.photoURL,
           emailVerified: currentUser.emailVerified,
+          phoneVerified: Boolean(currentUser.phoneNumber) || userData.phoneVerified === true,
           phoneNumber: userData.phoneNumber || userData.managerProfileData?.phone || null,
           providers: currentUser.providerData.map((p: any) => p.providerId),
           role: userData.role,
@@ -1098,11 +1101,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const firebaseUser = auth.currentUser;
       if (!firebaseUser) {
         logger.warn('No Firebase user available for refresh');
-        return;
+        return null;
       }
 
       logger.info('🔄 Refreshing user data from backend...');
-      const token = await firebaseUser.getIdToken();
+      await firebaseUser.reload();
+      const currentUser = auth.currentUser || firebaseUser;
+      const token = await currentUser.getIdToken(true);
       const response = await fetch('/api/user/profile', {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -1121,13 +1126,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         // Update the user object with fresh data
         const updatedUser: AuthUser = {
-          uid: firebaseUser.uid,
-          email: firebaseUser.email,
-          displayName: firebaseUser.displayName,
-          photoURL: firebaseUser.photoURL,
-          emailVerified: firebaseUser.emailVerified,
+          uid: currentUser.uid,
+          email: currentUser.email,
+          displayName: currentUser.displayName,
+          photoURL: currentUser.photoURL,
+          emailVerified: currentUser.emailVerified,
+          phoneVerified: Boolean(currentUser.phoneNumber) || userData.phoneVerified === true,
           phoneNumber: userData.phoneNumber || userData.managerProfileData?.phone || null,
-          providers: firebaseUser.providerData.map((p: any) => p.providerId),
+          providers: currentUser.providerData.map((p: any) => p.providerId),
           role: userData.role, // Don't set default role - let it be null if no role selected
           application_type: userData.application_type, // DEPRECATED: kept for backward compatibility
           isChef: userData.isChef || userData.is_chef || false,
@@ -1149,11 +1155,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // ENTERPRISE FIX: Set authPhase to ready after successful refresh
         // Don't trigger artificial loading state - it causes onboarding reset
         setAuthPhase('ready');
+        queryClient.setQueryData(['/api/user/profile', currentUser.uid], userData);
+        return updatedUser;
       } else {
         logger.error('❌ Failed to refresh user data:', response.status);
+        return null;
       }
     } catch (error) {
       logger.error('❌ Error refreshing user data:', error);
+      return null;
     }
   };
 

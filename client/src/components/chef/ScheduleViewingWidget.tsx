@@ -8,15 +8,17 @@ import { useState, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Icon } from "@iconify/react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, Clock, MapPin, Loader2, CheckCircle, ArrowLeft, Building2, Send, Mail, RefreshCw } from "lucide-react";
+import { CalendarDays, Clock, MapPin, Loader2, CheckCircle, ArrowLeft, Building2, Send, Mail, Phone, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { auth } from "@/lib/firebase";
 import { useFirebaseAuth } from "@/hooks/use-auth";
+import { useEmailVerificationGuard } from "@/hooks/use-email-verification-guard";
 import AuthFlow, { type AuthFlowStep } from "@/components/auth/AuthFlow";
 import { useLocation } from "wouter";
 import { chefDashboardHref } from "@/lib/chef-dashboard-nav";
 import { saveAuthIntentFromCurrentPage, getAuthIntent, resolveVerificationReturnPath, kitchenActor, nextTourStepAfterSlot, coerceTourStepForActor, skipKitchenVerify } from "@/lib/auth-intent";
 import { sendVerificationEmailWithFallback } from "@/lib/send-verification-email";
+import { hasVerifiedEmail } from "@/lib/auth-verification";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -73,12 +75,18 @@ interface ScheduleViewingWidgetProps {
   open?: boolean;
 }
 
+/**
+ * Email is the gate; a missing phone never blocks a tour request. Kept in step
+ * with the server, which refuses `POST /api/viewings/book` on an unverified email
+ * alone — a stricter client would strand users on a wall the API would have passed.
+ */
 function isUserVerified(
   user: { is_verified?: boolean; isVerified?: boolean; emailVerified?: boolean } | null | undefined
 ): boolean {
-  const firebaseVerified = !!auth.currentUser?.emailVerified;
-  const dbVerified = !!(user?.is_verified || user?.isVerified || user?.emailVerified);
-  return firebaseVerified || dbVerified;
+  return hasVerifiedEmail(
+    { emailVerified: Boolean(auth.currentUser?.emailVerified) },
+    { is_verified: user?.is_verified, isVerified: user?.isVerified }
+  );
 }
 
 export function ScheduleViewingWidget({
@@ -93,11 +101,16 @@ export function ScheduleViewingWidget({
   const queryClient = useQueryClient();
   const { t } = useTranslation("kitchen");
   const { user, refreshUserData, signInWithGoogle } = useFirebaseAuth();
+  const { guard, gate } = useEmailVerificationGuard();
   const [, setLocation] = useLocation();
   const isAuthenticated = !!user;
   const [registeredInFlow, setRegisteredInFlow] = useState(false);
   const actor = kitchenActor(isAuthenticated, registeredInFlow);
   const emailVerified = isUserVerified(user);
+  const phoneVerified = Boolean(auth.currentUser?.phoneNumber || user?.phoneVerified);
+  const contactVerificationComplete = emailVerified && phoneVerified;
+  // Phone is surfaced as an optional nudge elsewhere, so it must not drive whether
+  // the verification step is skipped.
   const skipVerify = skipKitchenVerify(actor, emailVerified);
 
   const [step, setStep] = useState<TourStep>("date");
@@ -170,7 +183,7 @@ export function ScheduleViewingWidget({
         rawStep,
         restoreActor,
         !!parsed.slot,
-        isUserVerified(user)
+        contactVerificationComplete
       ) as TourStep;
       // Resume fields only — the preview page decides whether to reopen the dialog.
       if (restored !== "date") setStep(restored);
@@ -185,7 +198,7 @@ export function ScheduleViewingWidget({
   useEffect(() => {
     if (!selectedSlot) return;
     if (step === "time" || step === "date" || step === "success") return;
-    const next = nextTourStepAfterSlot(actor, emailVerified);
+    const next = nextTourStepAfterSlot(actor, contactVerificationComplete);
     if (next === "confirm" && (step === "verify" || step === "account")) {
       setStep("confirm");
       onRequireOpen?.();
@@ -193,7 +206,7 @@ export function ScheduleViewingWidget({
       setStep("verify");
       onRequireOpen?.();
     }
-  }, [actor, emailVerified, selectedSlot, step, onRequireOpen]);
+  }, [actor, contactVerificationComplete, selectedSlot, step, onRequireOpen]);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -338,13 +351,12 @@ export function ScheduleViewingWidget({
     try {
       await auth.currentUser?.reload();
       await refreshUserData();
-      const verified =
-        !!auth.currentUser?.emailVerified || isUserVerified(user);
+      const verified = isUserVerified(user);
       if (!verified) {
         setVerifyError(
           t(
             "notVerifiedYet",
-            "We haven't detected your verification yet. Click the link in your email, wait a few seconds, and try again."
+            "We haven't detected a verified email address yet. Verify your email, then try again."
           )
         );
         return;
@@ -622,7 +634,7 @@ export function ScheduleViewingWidget({
           },
           onSuccess: async () => {
             await refreshUserData();
-            if (auth.currentUser?.emailVerified) {
+            if (auth.currentUser?.emailVerified && auth.currentUser?.phoneNumber) {
               setRegisteredInFlow(false);
               setStep("confirm");
               persistProgress({ step: "confirm", registeredInFlow: false });
@@ -675,6 +687,17 @@ export function ScheduleViewingWidget({
 
   const renderVerifyStep = () => (
     <div className="space-y-4">
+      {emailVerified && !phoneVerified ? (
+        <div className="rounded-[1.35rem] border-2 border-amber-300 bg-amber-50 p-5 text-center space-y-3">
+          <Phone className="mx-auto h-8 w-8 text-amber-700" aria-hidden />
+          <p className="text-lg font-bold text-gray-900">Verify your phone to continue</p>
+          <p className="text-sm text-gray-700">
+            Your account is registered. Add the OTP-verified phone from your profile, then return to this saved request.
+          </p>
+          <Button onClick={() => setLocation(chefDashboardHref("profile"))}>Open profile</Button>
+        </div>
+      ) : (
+      <>
       <div className="rounded-[1.35rem] border-2 border-[#F51042]/30 bg-[#F51042]/5 p-5 text-center space-y-3">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#F51042] text-white">
           <Mail className="h-6 w-6" aria-hidden />
@@ -753,6 +776,8 @@ export function ScheduleViewingWidget({
         <ArrowLeft className="h-4 w-4 mr-1" />
         {t("modalBack")}
       </Button>
+      </>
+      )}
     </div>
   );
 
@@ -820,8 +845,10 @@ export function ScheduleViewingWidget({
         className="w-full bg-[#F51042] hover:bg-[#E00A38] text-white"
         size="lg"
         data-testid="tour-request-submit"
-        onClick={() => bookMutation.mutate()}
-        disabled={bookMutation.isPending || !isAuthenticated || !emailVerified}
+        // Left enabled for unverified users so the guard can explain the refusal
+        // instead of presenting a dead control with no reason attached.
+        onClick={() => guard(() => bookMutation.mutate())}
+        disabled={bookMutation.isPending || !isAuthenticated}
       >
         {bookMutation.isPending ? (
           <>
@@ -1023,6 +1050,8 @@ export function ScheduleViewingWidget({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {gate}
     </>
   );
 }

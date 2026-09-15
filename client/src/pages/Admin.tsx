@@ -6,6 +6,7 @@ import DamageClaimReview from "@/components/admin/DamageClaimReview";
 import DamageClaimSettings from "@/components/admin/DamageClaimSettings";
 import OverstayPenaltySettings from "@/components/admin/OverstayPenaltySettings";
 import EscalatedPenalties from "@/components/admin/EscalatedPenalties";
+import { AdminUserManagement } from "@/components/admin/sections/AdminUserManagement";
 import { AdminLayout } from "@/components/admin/layout/AdminLayout";
 import type { AdminSection } from "@/components/admin/layout/AdminSidebar";
 import { KitchenLicenseApprovalSection } from "@/components/admin/sections/KitchenLicenseApprovalSection";
@@ -92,7 +93,7 @@ function AdminDashboard() {
   
   const validSections: AdminSection[] = useMemo(() => [
     "applications", "kitchen-applications-step1", "tour-requests", "kitchen-licenses", "damage-claims", "escalated-penalties",
-    "chef-kitchen-access", "kitchen-management", "promos", "manager-revenues",
+    "chef-kitchen-access", "kitchen-management", "user-management", "promos", "manager-revenues",
     "platform-overview", "platform-settings", "overstay-settings",
     "damage-claim-settings", "account-settings", "overview", "transactions",
     "overstay-penalties-history", "damage-claims-history",
@@ -1150,6 +1151,10 @@ function AdminDashboard() {
             <EscalatedPenalties />
           </ErrorBoundary>
         );
+
+
+      case "user-management":
+        return <AdminUserManagement />;
 
       case "chef-kitchen-access":
         return <ChefKitchenAccessManager />;

@@ -2,8 +2,9 @@ import { logger } from "@/lib/logger";
 import { useTranslation } from "react-i18next";
 import AuthFlow, { type AuthFlowStep } from "@/components/auth/AuthFlow";
 import { isPhoneAuthInProgress } from "@/lib/phone-registration";
-import { hasVerifiedEmail } from "@/lib/auth-verification";
+import { hasVerifiedContact, hasVerifiedEmail } from "@/lib/auth-verification";
 import EmailVerificationScreen from "@/components/auth/EmailVerificationScreen";
+import PhoneOtpChallenge from "@/components/auth/PhoneOtpChallenge";
 import LoadingOverlay from "@/components/auth/LoadingOverlay";
 import Logo from "@/components/ui/logo";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -16,6 +17,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import KitchenAuthShowcase from "@/components/auth/KitchenAuthShowcase";
+import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
 
 export default function ManagerLogin() {
   const { t } = useTranslation(["manager", "auth"]);
@@ -35,6 +37,8 @@ export default function ManagerLogin() {
   // ENTERPRISE FIX: Lift email verification state to parent so it persists across auth state changes
   const [showEmailVerification, setShowEmailVerification] = useState(false);
   const [emailForVerification, setEmailForVerification] = useState("");
+  const [phoneForVerification, setPhoneForVerification] = useState("");
+  const [showPhoneVerification, setShowPhoneVerification] = useState(false);
   
   // ENTERPRISE FIX: Lift loading overlay state to parent so it persists across auth state changes
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
@@ -94,8 +98,37 @@ export default function ManagerLogin() {
     setShowLoadingOverlay(true);
   };
   
+  const finishAuthentication = async () => {
+    setHasAttemptedLogin(true);
+    await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
+    const refreshedUser = await refreshUserData();
+    if (!refreshedUser) {
+      setHasAttemptedLogin(false);
+      setShowLoadingOverlay(false);
+      return;
+    }
+
+    if (hasVerifiedContact(refreshedUser, refreshedUser)) {
+      const needsTerms =
+        !refreshedUser.termsAccepted ||
+        refreshedUser.termsVersion !== CURRENT_POLICY_VERSION;
+      setLocation(
+        needsTerms
+          ? `/accept-terms?redirect=${encodeURIComponent("/manager/dashboard")}`
+          : "/manager/dashboard",
+        { replace: true },
+      );
+    }
+  };
+
   // Callback when registration completes successfully
-  const handleRegistrationSuccess = (email: string) => {
+  const handleRegistrationSuccess = async (email: string, data?: { phone?: string }) => {
+    setPhoneForVerification(data?.phone || "");
+    if (auth.currentUser?.phoneNumber) {
+      setShowLoadingOverlay(false);
+      await finishAuthentication();
+      return;
+    }
     logger.info('✅ Registration complete - showing email verification screen');
     // Brief delay to show success state before transitioning
     setLoadingMessage("Account created!");
@@ -119,9 +152,7 @@ export default function ManagerLogin() {
     if (!hasVerifiedEmail(auth.currentUser, updatedUser)) return false;
 
     setShowEmailVerification(false);
-    setHasAttemptedLogin(true);
-    await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
-    await refreshUserData();
+    await finishAuthentication();
     return true;
   };
 
@@ -222,12 +253,12 @@ export default function ManagerLogin() {
     if (!loading && !userMetaLoading && user && userMetaData && location === '/manager/login' && !hasRedirected.current) {
       const isManager = userMetaData.role === 'manager' || userMetaData.isManager;
       
-      if (isManager && hasVerifiedEmail(user, userMetaData)) {
-        logger.info('✅ Manager verified - redirecting to dashboard (wizard will show if needed)');
+      if (isManager && hasVerifiedContact(user, userMetaData)) {
+        logger.info('✅ Manager has a verified contact - continuing');
         hasRedirected.current = true;
         setLocation('/manager/dashboard');
-      } else if (isManager && !hasVerifiedEmail(user, userMetaData)) {
-        logger.info('📧 EMAIL VERIFICATION REQUIRED');
+      } else if (isManager && !hasVerifiedContact(user, userMetaData)) {
+        logger.info('📧 EMAIL OR PHONE VERIFICATION REQUIRED');
         // Stay on login page to show verification message
       } else if (!isManager) {
         logger.warn('⚠️ User is not a manager, redirecting...');
@@ -254,7 +285,7 @@ export default function ManagerLogin() {
   // Show loading spinner when auth is in progress OR when login was attempted but profile hasn't loaded yet
   const isAwaitingProfile = hasAttemptedLogin && !!user && !userMetaData;
   const isCompletingPhoneRegistration = isPhoneAuthInProgress();
-  if (!showEmailVerification && !isCompletingPhoneRegistration && (loading || isInitialLoad || userMetaLoading || isAuthenticating || isAwaitingProfile)) {
+  if (!showEmailVerification && !showPhoneVerification && !isCompletingPhoneRegistration && (loading || isInitialLoad || userMetaLoading || isAuthenticating || isAwaitingProfile)) {
     // Determine the message based on auth phase
     let loadingText = "Loading...";
     if (authPhase === 'authenticating') {
@@ -384,11 +415,27 @@ export default function ManagerLogin() {
                   </motion.div>
                 )}
 
-                {showEmailVerification ? (
+                {showPhoneVerification ? (
+                  <PhoneOtpChallenge
+                    purpose="link"
+                    initialPhone={phoneForVerification}
+                    autoSend
+                    onCancel={() => setShowPhoneVerification(false)}
+                    onExistingUser={() => undefined}
+                    onNewUser={() => undefined}
+                    onLinkedPhone={async () => {
+                      await updateUserVerification();
+                      setShowPhoneVerification(false);
+                      setShowEmailVerification(false);
+                      await finishAuthentication();
+                    }}
+                  />
+                ) : showEmailVerification ? (
                   <EmailVerificationScreen
                     email={emailForVerification}
                     onResend={handleResendVerification}
                     onCheckVerified={handleCheckVerified}
+                    onVerifyPhone={() => setShowPhoneVerification(true)}
                     onGoBack={() => {
                       setShowEmailVerification(false);
                       setAuthStep("login");
@@ -400,9 +447,7 @@ export default function ManagerLogin() {
                     onStepChange={setAuthStep}
                     loginProps={{
                       onSuccess: async () => {
-                        setHasAttemptedLogin(true);
-                        await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
-                        await refreshUserData();
+                        await finishAuthentication();
                       },
                       setHasAttemptedLogin: setHasAttemptedLogin,
                       animateEntrance: false,
@@ -412,10 +457,7 @@ export default function ManagerLogin() {
                       hideApplyingToggle: true,
                       onSuccess: async () => {
                         logger.info("🎯 GOOGLE REGISTRATION SUCCESS - Invalidating cache and refreshing data");
-                        await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
-                        setHasAttemptedLogin(true);
-                        await refreshUserData();
-                        queryClient.refetchQueries({ queryKey: ["/api/user/profile", user?.uid] });
+                        await finishAuthentication();
                       },
                       setHasAttemptedLogin: setHasAttemptedLogin,
                       onRegistrationStart: handleRegistrationStart,
@@ -424,15 +466,13 @@ export default function ManagerLogin() {
                       animateEntrance: false,
                     }}
                     onGoogleSignIn={async () => {
-                      await signInWithGoogle();
-                      setHasAttemptedLogin(true);
-                      await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
-                      await refreshUserData();
+                      // Registration mode is also safe for returning managers;
+                      // it checks the platform profile before creating anything.
+                      await signInWithGoogle(true, "manager", false);
+                      await finishAuthentication();
                     }}
                     onPhoneExistingUser={async () => {
-                      setHasAttemptedLogin(true);
-                      await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
-                      await refreshUserData();
+                      await finishAuthentication();
                     }}
                   />
                 )}
