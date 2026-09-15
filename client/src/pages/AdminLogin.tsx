@@ -22,7 +22,7 @@ const loginSchema = z.object({
 type LoginFormData = z.infer<typeof loginSchema>;
 
 export default function AdminLogin() {
-  const { user, loading } = useFirebaseAuth();
+  const { user, loading, login, signInWithGoogle } = useFirebaseAuth();
   const isAdmin = user?.role === 'admin';
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -35,7 +35,29 @@ export default function AdminLogin() {
     },
   });
 
-  const { login } = useFirebaseAuth();
+  const handleGoogleSignIn = async () => {
+    setIsSubmitting(true);
+    setErrorMessage(null);
+
+    try {
+      await signInWithGoogle(false);
+      queryClient.clear();
+    } catch (error: any) {
+      logger.error('Admin Google sign-in error:', error);
+
+      if (error.message?.includes('popup-closed-by-user')) {
+        setErrorMessage('Sign-in was cancelled. Please try again.');
+      } else if (error.message?.includes('popup-blocked')) {
+        setErrorMessage('Pop-up blocked. Please allow pop-ups and try again.');
+      } else if (error.message?.includes('not registered') || error.message?.includes('Account not found')) {
+        setErrorMessage('This Google account is not an existing Local Cooks account.');
+      } else {
+        setErrorMessage(error.message || 'Google sign-in failed. Please try again.');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const onSubmit = async (data: LoginFormData) => {
     setIsSubmitting(true);
@@ -249,6 +271,28 @@ export default function AdminLogin() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <Button
+            type="button"
+            variant="outline"
+            className="mb-4 w-full"
+            onClick={handleGoogleSignIn}
+            disabled={isSubmitting || loading}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 48 48" className="mr-2 flex-shrink-0" aria-hidden="true">
+              <path fill="#4285F4" d="M24 9.5c3.54 0 6.7 1.22 9.19 3.23l6.85-6.85C35.64 2.36 30.18 0 24 0 14.82 0 6.73 5.48 2.69 13.44l7.98 6.2C12.13 13.13 17.62 9.5 24 9.5z" />
+              <path fill="#34A853" d="M46.1 24.55c0-1.64-.15-3.22-.43-4.74H24v9.01h12.42c-.54 2.9-2.18 5.36-4.65 7.01l7.19 5.6C43.98 37.36 46.1 31.44 46.1 24.55z" />
+              <path fill="#FBBC05" d="M10.67 28.65c-1.01-2.99-1.01-6.31 0-9.3l-7.98-6.2C.99 17.36 0 20.57 0 24c0 3.43.99 6.64 2.69 9.44l7.98-6.2z" />
+              <path fill="#EA4335" d="M24 48c6.18 0 11.64-2.04 15.54-5.56l-7.19-5.6c-2.01 1.35-4.59 2.16-8.35 2.16-6.38 0-11.87-3.63-14.33-8.94l-7.98 6.2C6.73 42.52 14.82 48 24 48z" />
+            </svg>
+            Continue with Google
+          </Button>
+
+          <div className="relative mb-4 flex items-center" aria-hidden="true">
+            <div className="flex-grow border-t border-border" />
+            <span className="mx-3 flex-shrink text-xs uppercase tracking-wider text-muted-foreground">Or use legacy credentials</span>
+            <div className="flex-grow border-t border-border" />
+          </div>
+
           <Form {...form}>
             <form
               onSubmit={form.handleSubmit(onSubmit)}
