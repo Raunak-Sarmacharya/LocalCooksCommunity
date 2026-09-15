@@ -9,7 +9,7 @@ import { createContext, ReactNode, useContext, useEffect, useState, useRef, useC
 import { getSubdomainFromHostname, getRoleLoginOrigin } from "@shared/subdomain-utils";
 import { User, UserWithFlags } from "@shared/schema";
 import { createDuplicateAccountError, isDuplicateAccountError } from "@/lib/registration-error";
-import { isPhoneAuthInProgress } from "@/lib/phone-registration";
+import { isPhoneAuthInProgress, markPhoneAuthInProgress } from "@/lib/phone-registration";
 import { createMissingProfileError, rememberAuthMethod } from "@/lib/login-challenge";
 import { normalizePhoneNumber } from "@shared/phone-validation";
 
@@ -147,6 +147,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (response.ok) {
         const result = await response.json();
         logger.info('✅ SYNC SUCCESS:', result);
+
+        // Registration is complete only after Neon accepts the account. Mirror
+        // the non-authoritative profile here so every registration path,
+        // including Google + linked phone, writes the same Firestore document.
+        if (isRegistration) {
+          try {
+            await setDoc(doc(db, "users", firebaseUser.uid), {
+              email: firebaseUser.email,
+              displayName: firebaseUser.displayName,
+              createdAt: serverTimestamp(),
+              lastLoginAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            }, { merge: true });
+            logger.info('📝 Created/updated non-authoritative Firestore profile data');
+          } catch (firestoreError) {
+            logger.error('❌ Failed to create/update Firestore document:', firestoreError);
+          }
+        }
         return true;
       } else {
         const errorText = await response.text();
@@ -514,27 +532,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error('Failed to create account in the database. Please try again.');
       }
 
-      // Write optional metadata only after the authoritative database accepts signup.
-      // Firestore rules intentionally disallow client deletion, so it cannot be rolled back.
-      if (displayName) {
-        // Firestore contains non-authoritative profile data only. Application
-        // roles are assigned and enforced by the backend/Neon profile.
-        try {
-          const userDocRef = doc(db, "users", cred.user.uid);
-          await setDoc(userDocRef, {
-            email: cred.user.email,
-            displayName: displayName,
-            createdAt: serverTimestamp(),
-            lastLoginAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-          logger.info('📝 Updated non-authoritative Firestore profile data');
-        } catch (firestoreError) {
-          logger.error('❌ Failed to update Firestore:', firestoreError);
-          // Don't fail registration if Firestore fails
-        }
-      }
-
       // CRITICAL: Send Custom Backend email verification
       logger.info('📧 Sending Custom email verification...');
       let emailSent = false;
@@ -707,6 +704,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Keep the verified Google session alive while the registration form
           // proves and links the mandatory phone credential. No application
           // profile is written until that second proof succeeds.
+          markPhoneAuthInProgress(true, isNewGoogleUser);
           setAuthPhase('authenticating');
           return 'phone-verification-required';
         }
@@ -729,21 +727,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw syncError;
         }
 
-        // Keep Firestore profile data non-authoritative; role comes from Neon.
-        try {
-          const userDocRef = doc(db, "users", result.user.uid);
-          await setDoc(userDocRef, {
-            email: result.user.email,
-            displayName: googleUser.displayName,
-            createdAt: serverTimestamp(),
-            lastLoginAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          }, { merge: true }); // Use merge to update if document already exists
-          logger.info('📝 Created/updated non-authoritative Firestore profile data');
-        } catch (firestoreError) {
-          logger.error('❌ Failed to create/update Firestore document:', firestoreError);
-          // Don't fail registration if Firestore fails
-        }
         if (syncSuccess) {
           logger.info('✅ Google registration sync completed');
           hasSyncedThisSession.current = true;
