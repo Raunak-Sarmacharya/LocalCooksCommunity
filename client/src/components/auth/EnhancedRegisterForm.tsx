@@ -636,7 +636,13 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
         initialPhone={googlePhonePending.phoneNumber}
         autoSend
         onCancel={async () => {
-          await signOut(auth).catch(() => undefined);
+          const currentUser = auth.currentUser;
+          if (currentUser && didPhoneAuthCreateNewIdentity()) {
+            await deleteUser(currentUser).catch(() => signOut(auth));
+          } else {
+            await signOut(auth).catch(() => undefined);
+          }
+          clearPendingPhoneRegistration();
           setGooglePhonePending(null);
           setAuthState("idle");
         }}
@@ -654,6 +660,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
               googleUser.phoneNumber || googlePhonePending.phoneNumber,
             );
             if (!synced) throw new Error("Could not finish your account setup.");
+            clearPendingPhoneRegistration();
             await refreshUserData();
             await rememberAuthMethod(googleUser.email, "google");
             setGooglePhonePending(null);
@@ -662,6 +669,13 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
             onRegistrationComplete?.(googleUser.email || form.getValues("email"), form.getValues());
             onSuccess?.();
           } catch (verificationError) {
+            const currentUser = auth.currentUser;
+            if (currentUser && didPhoneAuthCreateNewIdentity()) {
+              await deleteUser(currentUser).catch(() => signOut(auth));
+            } else {
+              await signOut(auth).catch(() => undefined);
+            }
+            clearPendingPhoneRegistration();
             setShowLoadingOverlay(false);
             setAuthState("error");
             throw verificationError;

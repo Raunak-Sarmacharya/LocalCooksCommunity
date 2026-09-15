@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Google Registration Consistency",
+    "output": "google-registration-consistency.html",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "viewBox": [1080, 610]
+  },
+  "participants": [
+    { "id": "person", "type": "external", "label": "New user", "sublabel": "registration form" },
+    { "id": "client", "type": "frontend", "label": "AuthProvider", "sublabel": "use-auth.tsx" },
+    { "id": "firebase", "type": "cloud", "label": "Firebase Auth", "sublabel": "Google + phone" },
+    { "id": "api", "type": "backend", "label": "Registration API", "sublabel": "server route" },
+    { "id": "neon", "type": "database", "label": "Neon", "sublabel": "authoritative user" },
+    { "id": "firestore", "type": "database", "label": "Firestore", "sublabel": "profile mirror" }
+  ],
+  "segments": [
+    { "from": 150, "to": 282, "label": "Prove identity" },
+    { "from": 290, "to": 478, "label": "Provision application account" },
+    { "from": 486, "to": 540, "label": "Compensate failure" }
+  ],
+  "messages": [
+    { "id": "start", "from": "person", "to": "client", "y": 160, "label": "Continue with Google", "variant": "emphasis" },
+    { "id": "google", "from": "client", "to": "firebase", "y": 188, "label": "signInWithPopup", "variant": "security" },
+    { "id": "identity", "from": "firebase", "to": "client", "y": 216, "label": "Firebase UID + ID token", "variant": "return" },
+    { "id": "phone", "from": "client", "to": "firebase", "y": 244, "label": "verify and link phone", "variant": "security" },
+    { "id": "freshToken", "from": "firebase", "to": "client", "y": 272, "label": "fresh token with phone claim", "variant": "return" },
+    { "id": "register", "from": "client", "to": "api", "y": 300, "label": "POST registration + bearer token", "variant": "emphasis" },
+    { "id": "verify", "from": "api", "to": "firebase", "y": 328, "label": "verifyIdToken(checkRevoked)", "variant": "security" },
+    { "id": "claims", "from": "firebase", "to": "api", "y": 356, "label": "verified UID, email, phone", "variant": "return" },
+    { "id": "persist", "from": "api", "to": "neon", "y": 384, "label": "transactional user insert", "variant": "emphasis" },
+    { "id": "created", "from": "neon", "to": "api", "y": 412, "label": "created / existing user", "variant": "return" },
+    { "id": "accepted", "from": "api", "to": "client", "y": 440, "label": "201 or idempotent 200", "variant": "return" },
+    { "id": "mirror", "from": "client", "to": "firestore", "y": 468, "label": "setDoc users/{uid}, merge", "variant": "emphasis" },
+    { "id": "cancel", "from": "person", "to": "client", "y": 496, "label": "cancel or provisioning error", "variant": "dashed" },
+    { "id": "rollback", "from": "client", "to": "firebase", "y": 524, "label": "delete new identity; otherwise sign out", "variant": "dashed" }
+  ],
+  "activations": [
+    { "participant": "client", "from": 154, "to": 474, "type": "frontend" },
+    { "participant": "firebase", "from": 182, "to": 278, "type": "cloud" },
+    { "participant": "api", "from": 294, "to": 446, "type": "backend" },
+    { "participant": "neon", "from": 378, "to": 418, "type": "database" },
+    { "participant": "firestore", "from": 462, "to": 480, "type": "database" },
+    { "participant": "client", "from": 490, "to": 530, "type": "frontend" }
+  ]
+}
