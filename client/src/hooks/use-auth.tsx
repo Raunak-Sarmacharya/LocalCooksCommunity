@@ -289,9 +289,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Registration is provisioned explicitly by signup/signInWithGoogle so
           // the selected public account type and consent evidence travel in the
           // same request. The auth-state listener must not race that request.
+          //
+          // Deliberately NOT keyed on isInitializingRef: that is true on every fresh
+          // page load, so this used to fire a POST on every refresh against the auth
+          // rate limiter — and a 429 there signed the user out. Sync now runs only
+          // where it is needed: after sign-in/registration (pendingSync) and after a
+          // verification redirect. The is_verified mirror is still repaired by
+          // /api/user/profile and by requireFirebaseAuthWithUser on every request,
+          // and the welcome email is sent by the verify-email-complete path.
           const shouldSync = !pendingRegistrationRef.current &&
             !isPhoneAuthInProgress() &&
-            (isInitializingRef.current || pendingSyncRef.current || isVerificationRedirect);
+            (pendingSyncRef.current || isVerificationRedirect);
 
           if (shouldSync && !hasSyncedThisSession.current) {
             logger.info('🔥 SYNCING USER - Conditions met:', {

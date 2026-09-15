@@ -33,6 +33,25 @@ export function isEmailSectionFocused(search: string = window.location.search): 
   return new URLSearchParams(search).get(EMAIL_FOCUS_PARAM) === EMAIL_FOCUS_VALUE;
 }
 
+/** The query param the auth listener looks for after a verification redirect. */
+export const VERIFIED_MARKER_PARAM = "verified";
+
+/**
+ * Adds the `verified` marker to a post-verification redirect.
+ *
+ * The auth listener only reloads Firebase's record and runs its post-verification sync
+ * when this param is present, and it strips the param again once the sync succeeds. The
+ * signed-out verification redirect already carries it (it goes to a `/…login?verified=true`
+ * path), but the signed-in one goes straight to a dashboard path that does not — so
+ * without this the post-verification sync would silently stop happening.
+ *
+ * Idempotent: a URL that already carries the marker is returned untouched.
+ */
+export function withVerifiedMarker(url: string): string {
+  if (new RegExp(`[?&]${VERIFIED_MARKER_PARAM}=`).test(url)) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}${VERIFIED_MARKER_PARAM}=true`;
+}
+
 /**
  * Removes the deep-link marker so a refresh (or a later visit) does not re-ring
  * the card. History is replaced rather than pushed to avoid a dead back step.

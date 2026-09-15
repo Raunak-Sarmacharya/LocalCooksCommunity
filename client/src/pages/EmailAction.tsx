@@ -30,6 +30,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import Logo from "@/components/ui/logo";
 import { provisionPendingPhoneRegistration } from "@/lib/phone-registration";
+import { withVerifiedMarker } from "@/lib/email-verification-nav";
 
 // ============================================================================
 // TYPES & CONSTANTS
@@ -647,7 +648,9 @@ export default function EmailAction() {
         setMessage(
           'Your email has been verified! You can now book, apply and receive notifications.'
         );
-        setRedirectUrl(buildRedirectUrl(continueUrl, databaseRole, signedIn));
+        setRedirectUrl(
+          withVerifiedMarker(buildRedirectUrl(continueUrl, databaseRole, signedIn))
+        );
       } catch (verifyError: any) {
         logger.error('❌ Branded email verification failed:', verifyError);
         throw new Error(
