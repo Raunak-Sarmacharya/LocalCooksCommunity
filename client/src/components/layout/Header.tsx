@@ -46,6 +46,10 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
     return currentSubdomain === 'kitchen';
   }, [currentSubdomain]);
 
+  const loginHref = currentSubdomain === 'admin'
+    ? '/admin/login'
+    : showPartnerLogin ? '/manager/login' : '/auth';
+
   // Services: cross-subdomain audience links (full URLs — subdomain hops are hard navigations)
   // Preview → https://dev-chef.localcooks.ca ; production → https://chef.localcooks.ca
   const serviceUrls = useMemo(() => {
@@ -438,7 +442,7 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
                     size="sm"
                     className="border-[#F51042]/80 text-[#F51042] hover:bg-[#F51042] hover:text-white transition-all duration-300 rounded-full font-medium text-[13px] ml-2"
                   >
-                    <Link href={showPartnerLogin ? "/manager/login" : "/auth"}>
+                    <Link href={loginHref}>
                       {showPartnerLogin ? t("partnerLoginRegister") : t("loginRegister")}
                     </Link>
                   </Button>
@@ -641,7 +645,7 @@ export default function Header({ position = "fixed", hideHowItWorks = false }: {
                       asChild
                       className="w-full rounded-full bg-primary hover:bg-opacity-90 hover-standard text-white"
                     >
-                      <Link href={showPartnerLogin ? "/manager/login" : "/auth"} onClick={closeMenu}>
+                      <Link href={loginHref} onClick={closeMenu}>
                         {showPartnerLogin ? t("partnerLoginRegister") : t("loginRegister")}
                       </Link>
                     </Button>
