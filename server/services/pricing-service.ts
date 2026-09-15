@@ -9,6 +9,7 @@ import { logger } from "../logger";
 import { db } from "../db";
 import { kitchens, platformSettings } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { timeToMinutes } from "@shared/operating-hours";
 
 export interface KitchenPricingInfo {
   hourlyRate: number; // in cents
@@ -28,11 +29,9 @@ export interface BookingDuration {
  * @returns Duration in decimal hours (e.g., 2.5)
  */
 export function calculateDurationHours(startTime: string, endTime: string): number {
-  const [startHours, startMinutes] = startTime.split(':').map(Number);
-  const [endHours, endMinutes] = endTime.split(':').map(Number);
-
-  const startTotalMinutes = startHours * 60 + startMinutes;
-  const endTotalMinutes = endHours * 60 + endMinutes;
+  const startTotalMinutes = timeToMinutes(startTime);
+  let endTotalMinutes = timeToMinutes(endTime);
+  if (endTotalMinutes < startTotalMinutes) endTotalMinutes += 24 * 60;
 
   const durationMinutes = endTotalMinutes - startTotalMinutes;
   const durationHours = durationMinutes / 60;

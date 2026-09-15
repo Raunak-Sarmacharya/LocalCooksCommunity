@@ -27,6 +27,7 @@ import { InfoChip } from "@/components/chef/info-chip";
 import { tt } from "@/i18n/common-ns";
 import { bt } from "@/i18n/booking-ns";
 import { calculateKitchenBasePrice, type KitchenBookingRateMode } from "@shared/kitchen-booking-rate";
+import { addHour, minutesInOperatingWindow } from "@shared/operating-hours";
 
 /** Inline storage cards before "Show all" — 12 fills a 2-col grid (6 rows). */
 const STORAGE_PREVIEW_COUNT = 12;
@@ -652,7 +653,7 @@ export default function KitchenBookingFlow({
   useEffect(() => {
     if (bookingRateMode !== "daily" || isLoadingSlots) return;
     setSelectedSlots(allSlots.length > 0 && allSlots.every((slot) => !slot.isFullyBooked)
-      ? allSlots.map((slot) => slot.time).sort()
+      ? allSlots.map((slot) => slot.time)
       : []);
   }, [allSlots, bookingRateMode, isLoadingSlots]);
 
@@ -715,10 +716,14 @@ export default function KitchenBookingFlow({
       // Get minimum booking window from location (0 = no restriction)
       const minimumBookingWindowHours = selectedKitchen?.location?.minimumBookingWindowHours ?? 0;
 
+      const operatingStart = slots[0]?.time;
       const filteredSlots = slots.filter((slot: any) => {
         const [slotHours, slotMins] = slot.time.split(':').map(Number);
         const slotTime = new Date(selectedDateObj);
-        slotTime.setHours(slotHours, slotMins, 0, 0);
+        const slotMinutes = operatingStart
+          ? minutesInOperatingWindow(slot.time, operatingStart)
+          : slotHours * 60 + slotMins;
+        slotTime.setHours(0, slotMinutes, 0, 0);
 
         // Filter out past times (applies to any date)
         if (slotTime <= now) return false;
@@ -1101,12 +1106,10 @@ export default function KitchenBookingFlow({
   // Get booking time range helper
   const getBookingTimeRange = () => {
     if (selectedSlots.length === 0) return '';
-    const sortedSlots = [...selectedSlots].sort();
+    const sortedSlots = bookingRateMode === 'daily' ? selectedSlots : [...selectedSlots].sort();
     const startTime = sortedSlots[0];
     const lastSlotStart = sortedSlots[sortedSlots.length - 1];
-    const [lastHours, lastMinutes] = lastSlotStart.split(':').map(Number);
-    const endHour = lastHours + 1;
-    const endTimeStr = `${endHour.toString().padStart(2, '0')}:${lastMinutes.toString().padStart(2, '0')}`;
+    const endTimeStr = addHour(lastSlotStart);
     return `${formatTime(startTime)} - ${formatTime(endTimeStr)}`;
   };
 
@@ -1138,15 +1141,12 @@ export default function KitchenBookingFlow({
 
     setIsRedirectingToCheckout(true);
     try {
-      const sortedSlots = [...selectedSlots].sort();
+      const sortedSlots = bookingRateMode === 'daily'
+        ? selectedSlots
+        : [...selectedSlots].sort();
       const startTime = sortedSlots[0];
-      // Calculate endTime from the last slot (each slot is 1 hour)
       const lastSlot = sortedSlots[sortedSlots.length - 1];
-      const [lastH, lastM] = lastSlot.split(':').map(Number);
-      const endTotalMins = lastH * 60 + lastM + 60; // Add 1 hour to last slot start
-      const endHours = Math.floor(endTotalMins / 60);
-      const endMins = endTotalMins % 60;
-      const endTime = `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
+      const endTime = addHour(lastSlot);
 
       const bookingDateStr = toLocalDateString(selectedDate);
       const [year, month, day] = bookingDateStr.split('-').map(Number);
@@ -1168,16 +1168,10 @@ export default function KitchenBookingFlow({
           bookingDate: bookingDate.toISOString(),
           startTime,
           endTime,
-          selectedSlots: sortedSlots.map(slot => {
-            const [h, m] = slot.split(':').map(Number);
-            const endMins = h * 60 + m + 60;
-            const endH = Math.floor(endMins / 60);
-            const endM = endMins % 60;
-            return {
-              startTime: slot,
-              endTime: `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`
-            };
-          }),
+          selectedSlots: sortedSlots.map(slot => ({
+            startTime: slot,
+            endTime: addHour(slot),
+          })),
           pricingMode: bookingRateMode,
           specialNotes: notes,
           selectedStorage: selectedStorage.length > 0 ? selectedStorage.map((s: any) => ({
@@ -1241,15 +1235,12 @@ export default function KitchenBookingFlow({
 
     setIsProcessingBooking(true);
 
-    const sortedSlots = [...selectedSlots].sort();
+    const sortedSlots = bookingRateMode === 'daily'
+      ? selectedSlots
+      : [...selectedSlots].sort();
     const startTime = sortedSlots[0];
-    // Calculate endTime from the last slot (each slot is 1 hour)
     const lastSlot = sortedSlots[sortedSlots.length - 1];
-    const [lastH, lastM] = lastSlot.split(':').map(Number);
-    const endTotalMins = lastH * 60 + lastM + 60; // Add 1 hour to last slot start
-    const endHours = Math.floor(endTotalMins / 60);
-    const endMins = endTotalMins % 60;
-    const endTime = `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
+    const endTime = addHour(lastSlot);
 
     const bookingDateStr = toLocalDateString(selectedDate);
     const [year, month, day] = bookingDateStr.split('-').map(Number);
@@ -1261,16 +1252,10 @@ export default function KitchenBookingFlow({
         bookingDate: bookingDate.toISOString(),
         startTime,
         endTime,
-        selectedSlots: sortedSlots.map(slot => {
-          const [h, m] = slot.split(':').map(Number);
-          const endMins = h * 60 + m + 60;
-          const endH = Math.floor(endMins / 60);
-          const endM = endMins % 60;
-          return {
-            startTime: slot,
-            endTime: `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`
-          };
-        }),
+        selectedSlots: sortedSlots.map(slot => ({
+          startTime: slot,
+          endTime: addHour(slot),
+        })),
         specialNotes: notes,
         selectedStorage: selectedStorage.length > 0 ? selectedStorage.map((s: any) => ({
           storageListingId: s.storageListingId,
@@ -1459,7 +1444,7 @@ export default function KitchenBookingFlow({
                     onClick={() => {
                       setBookingRateMode(mode);
                       setSelectedSlots(mode === "daily"
-                        ? allSlots.map((slot) => slot.time).sort()
+                        ? allSlots.map((slot) => slot.time)
                         : []);
                     }}
                     className={cn(

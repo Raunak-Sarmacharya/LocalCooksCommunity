@@ -21,6 +21,7 @@ import { db } from "../../db";
 import { eq, and, ne } from "drizzle-orm";
 import { sendEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateBookingCancellationNotificationEmail } from "../../email";
 import { kitchenService } from "../kitchens/kitchen.service";
+import { getHourlySlotStarts, isRangeWithinOperatingWindow, isSlotCoveredByRange, minutesInOperatingWindow } from "@shared/operating-hours";
 
 type BookingInterval = { startTime: string; endTime: string };
 
@@ -458,11 +459,6 @@ export class BookingService {
         } = {}
     ): Promise<{ valid: boolean; error?: string }> {
         try {
-            // Check if start time is before end time
-            if (startTime >= endTime) {
-                return { valid: false, error: "End time must be after start time" };
-            }
-
             // First check if there's a date-specific override
             const dateOverride = await kitchenService.getKitchenDateOverrideForDate(kitchenId, bookingDate);
 
@@ -498,18 +494,14 @@ export class BookingService {
                 availabilityEndTime = dayAvailability.endTime;
             }
 
-            // Check if booking times are within availability window
-            if (startTime < availabilityStartTime || endTime > availabilityEndTime) {
+            if (!isRangeWithinOperatingWindow(startTime, endTime, availabilityStartTime, availabilityEndTime)) {
                 return { valid: false, error: "Booking time must be within manager-set available hours" };
             }
 
-            // Check that start time aligns with available slots (hourly slots)
-            const startHour = parseInt(startTime.split(':')[0]);
-            const availabilityStartHour = parseInt(availabilityStartTime.split(':')[0]);
-            const availabilityEndHour = parseInt(availabilityEndTime.split(':')[0]);
-
-            if (startHour < availabilityStartHour || startHour >= availabilityEndHour) {
-                return { valid: false, error: "Start time must be within manager-set available slot times" };
+            if (options.selectedSlots?.some((slot) =>
+                !isRangeWithinOperatingWindow(slot.startTime, slot.endTime, availabilityStartTime, availabilityEndTime)
+            )) {
+                return { valid: false, error: "Selected slots must be within manager-set available hours" };
             }
 
             const dateStr = bookingDate.toISOString().split('T')[0];
@@ -543,8 +535,8 @@ export class BookingService {
             // First check if there's a date-specific override
             const dateOverride = await kitchenService.getKitchenDateOverrideForDate(kitchenId, date);
 
-            let startHour: number;
-            let endHour: number;
+            let availabilityStartTime: string;
+            let availabilityEndTime: string;
 
             if (dateOverride) {
                 // If there's an override and it's closed, return empty slots
@@ -553,8 +545,8 @@ export class BookingService {
                 }
                 // If override is available with custom hours, use those
                 if (dateOverride.startTime && dateOverride.endTime) {
-                    startHour = parseInt(dateOverride.startTime.split(':')[0]);
-                    endHour = parseInt(dateOverride.endTime.split(':')[0]);
+                    availabilityStartTime = dateOverride.startTime;
+                    availabilityEndTime = dateOverride.endTime;
                 } else {
                     return [];
                 }
@@ -570,14 +562,11 @@ export class BookingService {
                     return [];
                 }
 
-                startHour = parseInt(dayAvailability.startTime.split(':')[0]);
-                endHour = parseInt(dayAvailability.endTime.split(':')[0]);
+                availabilityStartTime = dayAvailability.startTime;
+                availabilityEndTime = dayAvailability.endTime;
             }
 
-            const slots: string[] = [];
-            for (let hour = startHour; hour < endHour; hour++) {
-                slots.push(`${hour.toString().padStart(2, '0')}:00`);
-            }
+            const slots = getHourlySlotStarts(availabilityStartTime, availabilityEndTime);
 
             // Filter out already booked slots
             const bookings = await this.getBookingsByKitchen(kitchenId);
@@ -590,16 +579,8 @@ export class BookingService {
 
             const bookedSlots = new Set<string>();
             dayBookings.forEach(booking => {
-                const [startHours, startMins] = booking.startTime.split(':').map(Number);
-                const [endHours, endMins] = booking.endTime.split(':').map(Number);
-                const startTotalMins = startHours * 60 + startMins;
-                const endTotalMins = endHours * 60 + endMins;
-
                 for (const slot of slots) {
-                    const [slotHours, slotMins] = slot.split(':').map(Number);
-                    const slotTotalMins = slotHours * 60 + slotMins;
-
-                    if (slotTotalMins >= startTotalMins && slotTotalMins < endTotalMins) {
+                    if (isSlotCoveredByRange(slot, booking.startTime, booking.endTime, availabilityStartTime)) {
                         bookedSlots.add(slot);
                     }
                 }
@@ -632,8 +613,8 @@ export class BookingService {
         try {
             const dateOverride = await kitchenService.getKitchenDateOverrideForDate(kitchenId, date);
 
-            let startHour: number;
-            let endHour: number;
+            let availabilityStartTime: string;
+            let availabilityEndTime: string;
             let capacity: number;
 
             if (dateOverride) {
@@ -641,8 +622,8 @@ export class BookingService {
                     return [];
                 }
                 if (dateOverride.startTime && dateOverride.endTime) {
-                    startHour = parseInt(dateOverride.startTime.split(':')[0]);
-                    endHour = parseInt(dateOverride.endTime.split(':')[0]);
+                    availabilityStartTime = dateOverride.startTime;
+                    availabilityEndTime = dateOverride.endTime;
                     capacity = (dateOverride as any).maxConcurrentBookings ?? 1;
                 } else {
                     return [];
@@ -657,15 +638,12 @@ export class BookingService {
                     return [];
                 }
 
-                startHour = parseInt(dayAvailability.startTime.split(':')[0]);
-                endHour = parseInt(dayAvailability.endTime.split(':')[0]);
+                availabilityStartTime = dayAvailability.startTime;
+                availabilityEndTime = dayAvailability.endTime;
                 capacity = (dayAvailability as any).maxConcurrentBookings ?? 1;
             }
 
-            const allSlots: string[] = [];
-            for (let hour = startHour; hour < endHour; hour++) {
-                allSlots.push(`${hour.toString().padStart(2, '0')}:00`);
-            }
+            const allSlots = getHourlySlotStarts(availabilityStartTime, availabilityEndTime);
 
             const bookings = await this.getBookingsByKitchen(kitchenId);
             const dateStr = date.toISOString().split('T')[0];
@@ -679,15 +657,8 @@ export class BookingService {
             allSlots.forEach(slot => slotBookingCounts.set(slot, 0));
 
             dayBookings.forEach(booking => {
-                const [startHours, startMins] = booking.startTime.split(':').map(Number);
-                const [endHours, endMins] = booking.endTime.split(':').map(Number);
-                const startTotalMins = startHours * 60 + startMins;
-                const endTotalMins = endHours * 60 + endMins;
-
                 allSlots.forEach(slot => {
-                    const [slotHours, slotMins] = slot.split(':').map(Number);
-                    const slotTotalMins = slotHours * 60 + slotMins;
-                    if (slotTotalMins >= startTotalMins && slotTotalMins < endTotalMins) {
+                    if (isSlotCoveredByRange(slot, booking.startTime, booking.endTime, availabilityStartTime)) {
                         slotBookingCounts.set(slot, (slotBookingCounts.get(slot) || 0) + 1);
                     }
                 });
@@ -889,8 +860,8 @@ export class BookingService {
             }
 
             const override = overrideMap.get(dateStr);
-            let startHour: number;
-            let endHour: number;
+            let availabilityStartTime: string;
+            let availabilityEndTime: string;
             let capacity: number;
 
             if (override) {
@@ -898,8 +869,8 @@ export class BookingService {
                     result[dateStr] = false;
                     continue;
                 }
-                startHour = parseInt(override.startTime.split(':')[0]);
-                endHour = parseInt(override.endTime.split(':')[0]);
+                availabilityStartTime = override.startTime;
+                availabilityEndTime = override.endTime;
                 capacity = (override as any).maxConcurrentBookings ?? 1;
             } else {
                 const dayOfWeek = date.getUTCDay();
@@ -908,15 +879,12 @@ export class BookingService {
                     result[dateStr] = false;
                     continue;
                 }
-                startHour = parseInt(dayAvail.startTime.split(':')[0]);
-                endHour = parseInt(dayAvail.endTime.split(':')[0]);
+                availabilityStartTime = dayAvail.startTime;
+                availabilityEndTime = dayAvail.endTime;
                 capacity = dayAvail.maxConcurrentBookings ?? 1;
             }
 
-            const allSlots: string[] = [];
-            for (let hour = startHour; hour < endHour; hour++) {
-                allSlots.push(`${hour.toString().padStart(2, '0')}:00`);
-            }
+            const allSlots = getHourlySlotStarts(availabilityStartTime, availabilityEndTime);
 
             const dayBookings = bookings.filter((b) => {
                 const bookingDateStr = new Date(b.bookingDate).toISOString().split('T')[0];
@@ -927,15 +895,8 @@ export class BookingService {
             allSlots.forEach((slot) => slotBookingCounts.set(slot, 0));
 
             dayBookings.forEach((booking) => {
-                const [startHours, startMins] = booking.startTime.split(':').map(Number);
-                const [endHours, endMins] = booking.endTime.split(':').map(Number);
-                const startTotalMins = startHours * 60 + startMins;
-                const endTotalMins = endHours * 60 + endMins;
-
                 allSlots.forEach((slot) => {
-                    const [slotHours, slotMins] = slot.split(':').map(Number);
-                    const slotTotalMins = slotHours * 60 + slotMins;
-                    if (slotTotalMins >= startTotalMins && slotTotalMins < endTotalMins) {
+                    if (isSlotCoveredByRange(slot, booking.startTime, booking.endTime, availabilityStartTime)) {
                         slotBookingCounts.set(slot, (slotBookingCounts.get(slot) || 0) + 1);
                     }
                 });
@@ -943,8 +904,8 @@ export class BookingService {
 
             result[dateStr] = allSlots.some((slot) => {
                 if ((slotBookingCounts.get(slot) || 0) >= capacity) return false;
-                const [h, m] = slot.split(':').map(Number);
-                const slotTime = new Date(year, month, day, h, m, 0, 0);
+                const slotMinutes = minutesInOperatingWindow(slot, availabilityStartTime);
+                const slotTime = new Date(year, month, day, 0, slotMinutes, 0, 0);
                 return slotTime > now;
             });
         }
