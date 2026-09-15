@@ -69,11 +69,12 @@ export function initializeFirebaseAdmin() {
 
 export async function verifyFirebaseToken(token: string, checkRevoked = false): Promise<DecodedIdToken | null> {
   try {
-    // ID-token verification only needs the Firebase project ID and public
-    // signing keys. Keep it independent from service-account credentials,
-    // which are required for privileged Admin API operations but can be
-    // misconfigured without breaking every authenticated request.
-    const app = initializeFirebaseTokenVerifier();
+    // Revocation checks call the Firebase Auth Admin API after verifying the
+    // signature, so they must use the app with service-account credentials.
+    // Signature-only checks can continue using the lightweight verifier.
+    const app = checkRevoked
+      ? initializeFirebaseAdmin()
+      : initializeFirebaseTokenVerifier();
     if (!app) {
       logger.warn('Firebase token verifier not initialized - missing project ID');
       return null;
