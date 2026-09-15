@@ -164,6 +164,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           } catch (firestoreError) {
             logger.error('❌ Failed to create/update Firestore document:', firestoreError);
           }
+
+          // Complete both the React state and its synchronous mirrors together.
+          // onAuthStateChanged reads the refs, so waiting for the state effects can
+          // otherwise leave the UI permanently stuck in the `syncing` phase.
+          hasSyncedThisSession.current = true;
+          pendingSyncRef.current = false;
+          pendingRegistrationRef.current = false;
+          setPendingSync(false);
+          setPendingRegistration(false);
+          setAuthPhase('ready');
         }
         return true;
       } else {
@@ -559,13 +569,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logger.info('📧 USER REGISTERED - Kept logged in (unverified) to allow seamless verification');
 
 
-      // Reset states
-      setPendingSync(false);
-      setPendingRegistration(false);
-
     } catch (e: any) {
       // Don't set raw Firebase error - let the components handle user-friendly messages
       // setError(e.message);
+      pendingSyncRef.current = false;
+      pendingRegistrationRef.current = false;
       setPendingSync(false);
       setPendingRegistration(false);
       setAuthPhase('error');
@@ -795,6 +803,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (e: any) {
       // Clean up state on error
+      pendingSyncRef.current = false;
+      pendingRegistrationRef.current = false;
       setPendingSync(false);
       setPendingRegistration(false);
       setAuthPhase('error');

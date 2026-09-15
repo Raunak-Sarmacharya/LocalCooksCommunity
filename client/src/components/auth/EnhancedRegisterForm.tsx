@@ -473,48 +473,6 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
         saveRegistrationName(googleUser.email, enteredName);
       }
 
-      // Wait for sync to complete - poll for user profile to be available
-      let attempts = 0;
-      let needsTerms = false;
-      const maxAttempts = 20; // 10 seconds max (20 * 500ms)
-
-      while (attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        // Check if user profile is available
-        try {
-          const { auth } = await import('@/lib/firebase');
-          const currentUser = auth.currentUser;
-          if (currentUser) {
-            const token = await currentUser.getIdToken();
-            const response = await fetch('/api/user/profile', {
-              headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-              }
-            });
-
-            if (response.ok) {
-              const userData = await response.json();
-              if (userData && userData.termsAccepted === false) {
-                needsTerms = true;
-              }
-              // User profile is available, sync is complete
-              logger.info('✅ User profile available, registration complete');
-              break;
-            }
-          }
-        } catch (err) {
-          // Continue polling
-        }
-
-        attempts++;
-      }
-
-      if (attempts >= maxAttempts) {
-        logger.warn('⚠️ Registration sync timeout, but proceeding anyway');
-      }
-
       setAuthState('success');
       setShowLoadingOverlay(false);
 
@@ -530,13 +488,8 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       // 1. Set hasAttemptedLogin to true
       // 2. Refresh user data via React Query
       // 3. The useEffect will detect the authenticated manager and redirect
-      if (needsTerms) {
-        logger.info('🎯 Google registration needs terms acceptance - showing terms screen');
-        if (onSuccess) onSuccess();
-      } else {
-        logger.info('🎯 Google registration complete - calling onSuccess to trigger parent redirect');
-        if (onSuccess) onSuccess();
-      }
+      logger.info('🎯 Google registration complete - calling onSuccess to trigger parent redirect');
+      if (onSuccess) onSuccess();
 
     } catch (e: any) {
       setShowLoadingOverlay(false);

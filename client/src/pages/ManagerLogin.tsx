@@ -22,7 +22,7 @@ export default function ManagerLogin() {
 
   // Managers now use Firebase authentication (like chefs)
   const [location, setLocation] = useLocation();
-  const { user, loading, authPhase, refreshUserData, signInWithGoogle } = useFirebaseAuth();
+  const { user, loading, authPhase, refreshUserData, signInWithGoogle, updateUserVerification } = useFirebaseAuth();
   const queryClient = useQueryClient();
   const [authStep, setAuthStep] = useState<AuthFlowStep>(() =>
     new URLSearchParams(window.location.search).get("tab") === "register" ? "register" : "identifier"
@@ -112,6 +112,17 @@ export default function ManagerLogin() {
   const handleRegistrationError = () => {
     logger.info('❌ Registration failed - hiding loading overlay');
     setShowLoadingOverlay(false);
+  };
+
+  const handleCheckVerified = async () => {
+    const updatedUser = await updateUserVerification();
+    if (!hasVerifiedEmail(auth.currentUser, updatedUser)) return false;
+
+    setShowEmailVerification(false);
+    setHasAttemptedLogin(true);
+    await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
+    await refreshUserData();
+    return true;
   };
 
 
@@ -242,7 +253,8 @@ export default function ManagerLogin() {
   
   // Show loading spinner when auth is in progress OR when login was attempted but profile hasn't loaded yet
   const isAwaitingProfile = hasAttemptedLogin && !!user && !userMetaData;
-  if (loading || isInitialLoad || userMetaLoading || isAuthenticating || isAwaitingProfile) {
+  const isCompletingPhoneRegistration = isPhoneAuthInProgress();
+  if (!showEmailVerification && !isCompletingPhoneRegistration && (loading || isInitialLoad || userMetaLoading || isAuthenticating || isAwaitingProfile)) {
     // Determine the message based on auth phase
     let loadingText = "Loading...";
     if (authPhase === 'authenticating') {
@@ -376,6 +388,7 @@ export default function ManagerLogin() {
                   <EmailVerificationScreen
                     email={emailForVerification}
                     onResend={handleResendVerification}
+                    onCheckVerified={handleCheckVerified}
                     onGoBack={() => {
                       setShowEmailVerification(false);
                       setAuthStep("login");
