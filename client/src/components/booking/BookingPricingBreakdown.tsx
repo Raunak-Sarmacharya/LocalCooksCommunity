@@ -102,6 +102,11 @@ export type KitchenPayoutStatementBreakdownProps = BookingPricingBreakdownInput 
   platformFeeLabel?: string;
   /** Shown when platform fee was paid by chef on top (not withheld from manager). */
   platformFeeChefPaidLabel?: string;
+  /**
+   * Info control rendered beside the platform fee label. Only shown on the
+   * chef-paid variant — it explains that the fee is not a manager deduction.
+   */
+  platformFeeInfo?: React.ReactNode;
   refundLabel?: string;
   hstLabel?: string;
 };
@@ -115,6 +120,7 @@ export function KitchenPayoutStatementBreakdown({
   processingFeeLabel = "Processing fee",
   platformFeeLabel = "Local Cooks fee",
   platformFeeChefPaidLabel,
+  platformFeeInfo,
   refundLabel = "Refund",
   hstLabel,
   ...input
@@ -142,7 +148,16 @@ export function KitchenPayoutStatementBreakdown({
       )}
       {showPlatformFee && (
         <BreakdownLine
-          label={platformFeeLabelResolved}
+          label={
+            platformFeeInfo && !b.platformFeeWithheldFromManager ? (
+              <span className="inline-flex items-center gap-1">
+                {platformFeeLabelResolved}
+                {platformFeeInfo}
+              </span>
+            ) : (
+              platformFeeLabelResolved
+            )
+          }
           amountCents={b.platformFeeAmountCents}
           currency={currency}
           prefix={b.platformFeeWithheldFromManager ? "−" : undefined}

@@ -21,6 +21,7 @@ import { BookingActionSheet, type BookingForAction } from "@/components/manager/
 import { BookingManagementSheet, type BookingForManagement, type ManagementSubmitParams } from "@/components/manager/bookings/BookingManagementSheet";
 import { KitchenCheckinTracker } from "@/components/booking/KitchenCheckinTracker";
 import { StripeProcessingFeeRefundInfo } from "@/components/booking/StripeProcessingFeeRefundInfo";
+import { ServiceFeeInfoPopover } from "@/components/booking/ServiceFeeInfoPopover";
 import { SmartImage } from "@/components/ui/smart-image";
 import { tt } from "@/i18n/common-ns";
 import { mt } from "@/i18n/manager";
@@ -1674,9 +1675,9 @@ export default function BookingDetailsPage() {
                         defaultValue: "Service fee ({percent}%)",
                       })}
                       platformFeeChefPaidLabel={t("bdLocalCooksFeePaidByChef", {
-                        percent: Math.round((pricingBreakdownInput.platformFeeRate || 0) * 100),
-                        defaultValue: "Service fee ({percent}%) · paid by chef",
+                        defaultValue: "Service fee",
                       })}
+                      platformFeeInfo={<ServiceFeeInfoPopover iconClassName="h-3 w-3" />}
                       refundLabel={t("bdRefund")}
                       hstLabel={t("bdHstPercent", {
                         percent: pricingBreakdownInput.kitchenHstRatePercent ?? 0,
