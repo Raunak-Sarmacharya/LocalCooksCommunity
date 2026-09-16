@@ -12,14 +12,15 @@ import { mt } from "@/i18n/manager";
  */
 
 import { useState, useEffect, useCallback, useImperativeHandle, forwardRef } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { FileText, ExternalLink } from "@/components/ui/manager-icons";
+import { FileText, ExternalLink, ClipboardCheck, ArrowRight } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
+import { apiGet } from "@/lib/api";
 import { tt } from "@/i18n/common-ns";
 import { getDocumentFilename } from "@/lib/formatters";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,6 +45,20 @@ interface BookingRulesSettingsProps {
   onSave: (updates: any) => Promise<unknown>;
   /** Reports unsaved-changes state so the shell can guard navigation away. */
   onDirtyChange?: (dirty: boolean) => void;
+  /** Lets the arrival-timing card link across to the check-in/check-out page. */
+  onNavigate?: (view: 'settings-checkin-checkout') => void;
+}
+
+/** Shape of the arrival-timing values, which are owned by the check-in/check-out endpoint. */
+interface ArrivalTimings {
+  timeWindowSettings?: {
+    checkinWindowMinutesBefore: number | null;
+    noShowGraceMinutes: number | null;
+  };
+  platformDefaults?: {
+    checkinWindowMinutesBefore: number;
+    noShowGraceMinutes: number;
+  };
 }
 
 export interface BookingPoliciesHandle {
@@ -52,7 +67,7 @@ export interface BookingPoliciesHandle {
 }
 
 const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSettingsProps>(
-  function BookingRulesSettings({ location, onSave, onDirtyChange }, ref) {
+  function BookingRulesSettings({ location, onSave, onDirtyChange, onNavigate }, ref) {
     const { toast } = useToast();
     const queryClient = useQueryClient();
 
@@ -69,9 +84,24 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
     const [termsFile, setTermsFile] = useState<File | null>(null);
     const [isReplacingTerms, setIsReplacingTerms] = useState(false);
 
+    // Arrival timings. These live on the locations table but the check-in/check-out
+    // endpoint owns them, so read them (plus the platform defaults shown as hints)
+    // from there rather than from the locations list. Sharing the query key with
+    // that page means one cache entry, not two.
+    const { data: arrivalSettings } = useQuery<ArrivalTimings>({
+      queryKey: ["checkin-checkout-settings", location.id],
+      queryFn: () => apiGet(`/manager/locations/${location.id}/checkin-checkout-settings`),
+      enabled: !!location.id,
+    });
+
+    const [checkinWindow, setCheckinWindow] = useState<number | null>(null);
+    const [noShowGrace, setNoShowGrace] = useState<number | null>(null);
+
     const isRulesDirty = cancellationHours !== (location.cancellationPolicyHours || 24)
       || dailyBookingLimit !== (location.defaultDailyBookingLimit || 2)
-      || minimumBookingWindowHours !== (location.minimumBookingWindowHours ?? 1);
+      || minimumBookingWindowHours !== (location.minimumBookingWindowHours ?? 1)
+      || checkinWindow !== (arrivalSettings?.timeWindowSettings?.checkinWindowMinutesBefore ?? null)
+      || noShowGrace !== (arrivalSettings?.timeWindowSettings?.noShowGraceMinutes ?? null);
 
     const hasTerms = Boolean(location.kitchenTermsUrl);
     const showTermsUpload = !hasTerms || isReplacingTerms;
@@ -86,6 +116,15 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
       setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
       setMinimumBookingWindowHours(location.minimumBookingWindowHours ?? 1);
     }, [location]);
+
+    // Seed the arrival timings once their own query resolves. Safe to key off the
+    // object because queries here never refetch on window focus (see
+    // lib/queryClient.ts), so this cannot wipe an edit in progress.
+    useEffect(() => {
+      if (!arrivalSettings) return;
+      setCheckinWindow(arrivalSettings.timeWindowSettings?.checkinWindowMinutesBefore ?? null);
+      setNoShowGrace(arrivalSettings.timeWindowSettings?.noShowGraceMinutes ?? null);
+    }, [arrivalSettings]);
 
     // Let the shell warn before navigating away with unsaved edits.
     useEffect(() => {
@@ -109,8 +148,23 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
         cancellationPolicyHours: cancellationHours,
         defaultDailyBookingLimit: dailyBookingLimit,
         minimumBookingWindowHours: minimumBookingWindowHours,
+        // null clears the per-location override so the platform default applies.
+        checkinWindowMinutesBefore: checkinWindow,
+        noShowGraceMinutes: noShowGrace,
       });
-    }, [onSave, location.id, cancellationHours, dailyBookingLimit, minimumBookingWindowHours]);
+      // The timings are served by the check-in/check-out endpoint, so refresh that
+      // cache too or the page would keep rendering the pre-save values.
+      queryClient.invalidateQueries({ queryKey: ["checkin-checkout-settings", location.id] });
+    }, [
+      onSave,
+      location.id,
+      cancellationHours,
+      dailyBookingLimit,
+      minimumBookingWindowHours,
+      checkinWindow,
+      noShowGrace,
+      queryClient,
+    ]);
 
     const saveRulesAction = useStatusButton(saveRules);
 
@@ -176,20 +230,23 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
         <ChefPageHeader
           title={mt("navBookingRules")}
           description={mt("configureCancellationPoliciesBookingLimitsAndPenaltiesForYou")}
+          actions={
+            // One save for the whole page, in a stable spot near the title and
+            // only while something is unsaved — the page now spans three cards,
+            // so an in-card action would sit next to only one of them.
+            showSaveAction ? (
+              <StatusButton
+                status={saveRulesAction.status}
+                onClick={saveRulesAction.execute}
+                labels={{ idle: mt("saveChanges"), loading: mt("savingShort"), success: mt("saved") }}
+              />
+            ) : undefined
+          }
         />
 
         <Card>
           <CardHeader className="p-4 pb-2">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <CardTitle className="text-lg">{mt("bookingPoliciesLimits")}</CardTitle>
-              {showSaveAction && (
-                <StatusButton
-                  status={saveRulesAction.status}
-                  onClick={saveRulesAction.execute}
-                  labels={{ idle: mt("saveChanges"), loading: mt("savingShort"), success: mt("saved") }}
-                />
-              )}
-            </div>
+            <CardTitle className="text-lg">{mt("bookingPoliciesLimits")}</CardTitle>
           </CardHeader>
           <CardContent className="divide-y divide-border p-0">
             <SettingsRow
@@ -239,6 +296,87 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
                 className="w-32"
               />
             </SettingsRow>
+          </CardContent>
+        </Card>
+
+        {/* Arrival timing. Kept with the other time-based rules so there is one
+            place to look for "when" — the checklist of what chefs must DO lives
+            on the check-in/check-out page, linked below. */}
+        <Card>
+          <CardHeader className="p-4 pb-3">
+            <CardTitle className="text-lg">{mt("arrivalTiming")}</CardTitle>
+            <CardDescription>{mt("arrivalTimingDescription")}</CardDescription>
+          </CardHeader>
+          <CardContent className="divide-y divide-border p-0">
+            <SettingsRow
+              id="checkin-window"
+              label={mt("checkinOpensLabel")}
+              hint={
+                arrivalSettings?.platformDefaults
+                  ? mt("platformDefaultIs", {
+                      value: mt("minutesShort", {
+                        count: arrivalSettings.platformDefaults.checkinWindowMinutesBefore,
+                      }),
+                    })
+                  : undefined
+              }
+              help={mt("checkinWindowHelp")}
+            >
+              <NumericInput
+                id="checkin-window"
+                suffix={mt("minutesShort", { count: checkinWindow ?? 0 })}
+                value={checkinWindow === null ? "" : String(checkinWindow)}
+                onValueChange={(val) => {
+                  const parsed = parseInt(val, 10);
+                  setCheckinWindow(
+                    val.trim() === "" || isNaN(parsed) ? null : Math.min(120, Math.max(0, parsed)),
+                  );
+                }}
+                className="w-32"
+              />
+            </SettingsRow>
+
+            <SettingsRow
+              id="no-show-grace"
+              label={mt("noShowGraceLabel")}
+              hint={
+                arrivalSettings?.platformDefaults
+                  ? mt("platformDefaultIs", {
+                      value: mt("minutesShort", {
+                        count: arrivalSettings.platformDefaults.noShowGraceMinutes,
+                      }),
+                    })
+                  : undefined
+              }
+              help={mt("noShowGraceHelp")}
+            >
+              <NumericInput
+                id="no-show-grace"
+                suffix={mt("minutesShort", { count: noShowGrace ?? 0 })}
+                value={noShowGrace === null ? "" : String(noShowGrace)}
+                onValueChange={(val) => {
+                  const parsed = parseInt(val, 10);
+                  setNoShowGrace(
+                    val.trim() === "" || isNaN(parsed) ? null : Math.min(120, Math.max(0, parsed)),
+                  );
+                }}
+                className="w-32"
+              />
+            </SettingsRow>
+
+            {onNavigate && (
+              <div className="flex justify-end px-4 py-3">
+                <button
+                  type="button"
+                  onClick={() => onNavigate("settings-checkin-checkout")}
+                  className="inline-flex items-center gap-1.5 rounded-md text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <ClipboardCheck className="h-4 w-4" />
+                  {mt("goToCheckinChecklist")}
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
           </CardContent>
         </Card>
 

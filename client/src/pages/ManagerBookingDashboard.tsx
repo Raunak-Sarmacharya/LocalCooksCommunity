@@ -31,7 +31,7 @@ import ManagerRevenueDashboard from "./ManagerRevenueDashboard";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
 import LocationRequirementsSettings from "@/components/manager/LocationRequirementsSettings";
 import { LicenseSettings, BookingRulesSettings, LocationSettings, KitchensManagement, FacilityDocsSettings, CheckinCheckoutSettings, StorageCheckinCheckoutSettings } from "@/components/manager/settings";
-import type { BookingPoliciesHandle, KitchensHandle } from "@/components/manager/settings";
+import type { BookingPoliciesHandle, CheckinCheckoutHandle, KitchensHandle } from "@/components/manager/settings";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import DashboardLayout from "@/layouts/DashboardLayout";
@@ -188,6 +188,10 @@ export default function ManagerBookingDashboard() {
   const bypassKitchensGuard = useRef(false);
   const [kitchensDirty, setKitchensDirty] = useState(false);
   const [pendingKitchensView, setPendingKitchensView] = useState<ViewType | null>(null);
+  const checkinCheckoutRef = useRef<CheckinCheckoutHandle>(null);
+  const bypassCheckinCheckoutGuard = useRef(false);
+  const [checkinCheckoutDirty, setCheckinCheckoutDirty] = useState(false);
+  const [pendingCheckinCheckoutView, setPendingCheckinCheckoutView] = useState<ViewType | null>(null);
 
   // Handle locationId from URL for direct navigation (e.g., returning from setup, notification links)
   useEffect(() => {
@@ -310,6 +314,10 @@ export default function ManagerBookingDashboard() {
       setPendingKitchensView(view);
       return;
     }
+    if (activeView === 'settings-checkin-checkout' && checkinCheckoutDirty && !bypassCheckinCheckoutGuard.current) {
+      setPendingCheckinCheckoutView(view);
+      return;
+    }
     setActiveView(nextView);
     const url = new URL(window.location.href);
     if (legacySection) {
@@ -376,6 +384,22 @@ export default function ManagerBookingDashboard() {
     const saved = await kitchensSaveRef.current?.saveAllChanges();
     setIsSavingBeforeLeave(false);
     if (saved) continueFromKitchens(pendingKitchensView);
+  };
+
+  const continueFromCheckinCheckout = (view: ViewType) => {
+    bypassCheckinCheckoutGuard.current = true;
+    setCheckinCheckoutDirty(false);
+    setPendingCheckinCheckoutView(null);
+    handleViewChange(view);
+    bypassCheckinCheckoutGuard.current = false;
+  };
+
+  const saveAndLeaveCheckinCheckout = async () => {
+    if (!pendingCheckinCheckoutView) return;
+    setIsSavingBeforeLeave(true);
+    checkinCheckoutRef.current?.save();
+    setIsSavingBeforeLeave(false);
+    continueFromCheckinCheckout(pendingCheckinCheckoutView);
   };
 
   const kitchenChildLabel: Partial<Record<ViewType, string>> = {
@@ -998,6 +1022,7 @@ export default function ManagerBookingDashboard() {
           location={locationDetails || selectedLocation}
           onSave={(updates) => updateLocationSettings.mutateAsync(updates)}
           onDirtyChange={setBookingPoliciesDirty}
+          onNavigate={handleViewChange}
         />
       )}
 
@@ -1069,7 +1094,12 @@ export default function ManagerBookingDashboard() {
       )}
 
       {activeView === 'settings-checkin-checkout' && selectedLocation && (
-        <CheckinCheckoutSettings location={locationDetails || selectedLocation} />
+        <CheckinCheckoutSettings
+          location={locationDetails || selectedLocation}
+          saveRef={checkinCheckoutRef}
+          onDirtyChange={setCheckinCheckoutDirty}
+          onNavigate={handleViewChange}
+        />
       )}
 
       {activeView === 'settings-checkin-checkout' && !selectedLocation && (
@@ -1156,6 +1186,29 @@ export default function ManagerBookingDashboard() {
               {mt("discardChanges")}
             </Button>
             <AlertDialogAction disabled={isSavingBeforeLeave} onClick={(event) => { event.preventDefault(); void saveAndLeaveKitchens(); }}>
+              {isSavingBeforeLeave && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {mt("saveChanges")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={pendingCheckinCheckoutView !== null} onOpenChange={(open) => !open && setPendingCheckinCheckoutView(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{mt("unsavedChanges")}</AlertDialogTitle>
+            <AlertDialogDescription>{mt("checkinCheckoutUnsavedChangesDescription")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSavingBeforeLeave}>{mt("cancel")}</AlertDialogCancel>
+            <Button
+              variant="outline"
+              disabled={isSavingBeforeLeave}
+              onClick={() => pendingCheckinCheckoutView && continueFromCheckinCheckout(pendingCheckinCheckoutView)}
+            >
+              {mt("discardChanges")}
+            </Button>
+            <AlertDialogAction disabled={isSavingBeforeLeave} onClick={(event) => { event.preventDefault(); void saveAndLeaveCheckinCheckout(); }}>
               {isSavingBeforeLeave && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {mt("saveChanges")}
             </AlertDialogAction>

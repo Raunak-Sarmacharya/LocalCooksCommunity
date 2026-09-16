@@ -1,45 +1,45 @@
 /**
- * Kitchen Check-In / Check-Out Settings Component
- * Manager-controlled checklists + photo requirements for kitchen check-in and
- * check-out, plus smart-lock access codes. Storage checkout lives on its own
- * page (StorageCheckoutSettings).
+ * Kitchen Check-In / Check-Out Settings
+ *
+ * Manager-controlled check-in and check-out checklists for kitchens, including
+ * per-item photo requirements and optional arrival instructions.
+ *
+ * Deliberately scoped to *the checklist itself*. Everything that describes
+ * *when* a booking happens — the check-in window and the no-show grace period —
+ * lives on the Booking Policies page, and the arrival-timing card there links
+ * back to this page. Storage check-out lives on its own page.
+ *
+ * Save model: one page-level Save covering every field on this page. Nothing
+ * here autosaves, and the exit guard is wired to the same dirty flag, so the
+ * two can never disagree about whether work is at risk.
  */
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { mt } from "@/i18n/manager";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Lock, AlertTriangle, KeyRound, Hash, Copy, Eye, EyeOff, Calendar, Clock, Info } from "@/components/ui/manager-icons";
-import { Button } from "@/components/ui/button";
+import type { MutableRefObject, Ref } from "react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  Calendar,
+  Clock,
+  Loader2,
+} from "@/components/ui/manager-icons";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiGet, apiPut } from "@/lib/api";
-import type {
-  ChecklistItem,
-  PhotoRequirement,
-} from "./shared/ChecklistEditor";
-import { KitchenCheckinCheckoutEditor, itemsToStorage, unifyStorageToItems, validateUnifiedItems, type UnifiedChecklistItem } from "./KitchenCheckinCheckoutEditor";
+import type { ChecklistItem, PhotoRequirement } from "./shared/ChecklistEditor";
+import {
+  KitchenCheckinCheckoutEditor,
+  findUnifiedItemProblems,
+  itemsToStorage,
+  unifyStorageToItems,
+  type UnifiedChecklistItem,
+} from "./KitchenCheckinCheckoutEditor";
 import { ChefPageHeader } from "@/components/chef/ui";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-// Manager-overridable time windows only. Checkout review window is admin-only
-// (platform setting); kitchen overstay tracking has been removed.
-interface TimeWindowSettings {
-  checkinWindowMinutesBefore: number | null;
-  noShowGraceMinutes: number | null;
-}
-
-interface PlatformTimeWindowDefaults {
-  checkinWindowMinutesBefore: number;
-  noShowGraceMinutes: number;
-}
 
 interface CheckinCheckoutSettingsData {
   id: number | null;
@@ -53,8 +53,11 @@ interface CheckinCheckoutSettingsData {
   checkoutPhotoRequirements: PhotoRequirement[];
   checkoutInstructions: string | null;
   smartLockCheckinInstructions: string | null;
-  timeWindowSettings?: TimeWindowSettings;
-  platformDefaults?: PlatformTimeWindowDefaults;
+}
+
+/** Imperative handle so the dashboard shell can trigger Save from its header. */
+export interface CheckinCheckoutHandle {
+  save: () => void;
 }
 
 interface CheckinCheckoutSettingsProps {
@@ -62,494 +65,28 @@ interface CheckinCheckoutSettingsProps {
     id: number;
     name: string;
   };
-}
-
-// ─── Kitchen Access Code Types ────────────────────────────────────────────────
-
-type CodeVisibility = "on_booking" | "at_checkin" | "manual";
-
-interface KitchenForAccessCode {
-  id: number;
-  name: string;
-  /** Admin-controlled capability gate. When false the kitchen is hidden from this section. */
-  smartLockAvailable: boolean;
-  smartLockEnabled: boolean;
-  smartLockConfig: {
-    accessCodeFormat?: "numeric" | "alphanumeric";
-    accessCode?: string;
-    codeSetAt?: string;
-    codeVisibility?: CodeVisibility;
-    [key: string]: unknown;
-  } | null;
-}
-
-// ─── Access Codes Section ─────────────────────────────────────────────────────
-
-function AccessCodesSection({ locationId }: { locationId: number }) {
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-  const [revealedCodes, setRevealedCodes] = useState<Set<number>>(new Set());
-  const [savingKitchenId, setSavingKitchenId] = useState<number | null>(null);
-  const [codeInputs, setCodeInputs] = useState<Record<number, string>>({});
-
-  // Fetch kitchens for this location
-  const { data: kitchensRaw, isLoading: isLoadingKitchens } = useQuery<
-    KitchenForAccessCode[]
-  >({
-    queryKey: ["manager-kitchens-access", locationId],
-    queryFn: () => apiGet(`/manager/kitchens/${locationId}`),
-    enabled: !!locationId,
-  });
-
-  const kitchensList = useMemo(() => {
-    if (!kitchensRaw) return [];
-    // Only surface kitchens whose smart-door capability has been enabled by the
-    // admin. Hiding them here guarantees managers never see smart-lock controls
-    // for kitchens that aren't equipped for them.
-    return kitchensRaw
-      .map((k: any) => ({
-        id: k.id,
-        name: k.name,
-        smartLockAvailable: Boolean(k.smartLockAvailable ?? k.smart_lock_available ?? false),
-        smartLockEnabled: k.smartLockEnabled ?? false,
-        smartLockConfig: k.smartLockConfig ?? null,
-      }))
-      .filter((k) => k.smartLockAvailable) as KitchenForAccessCode[];
-  }, [kitchensRaw]);
-
-  // If no kitchens at this location have smart-door capability enabled by the
-  // admin, don't render the Access Codes section at all.
-  const hasSmartLockKitchens = kitchensList.length > 0;
-
-  const handleToggleSmartLock = useCallback(
-    async (kitchen: KitchenForAccessCode, enabled: boolean) => {
-      setSavingKitchenId(kitchen.id);
-      try {
-        const existingConfig = kitchen.smartLockConfig || {};
-        await apiPut(`/manager/kitchens/${kitchen.id}/smart-lock/config`, {
-          enabled,
-          config: {
-            ...existingConfig,
-            accessCodeFormat: existingConfig.accessCodeFormat || "numeric",
-          },
-        });
-        queryClient.invalidateQueries({
-          queryKey: ["manager-kitchens-access", locationId],
-        });
-        toast({ title: enabled ? mt("smartLockEnabledToast") : mt("smartLockDisabledToast") });
-      } catch {
-        toast({ title: mt("error"),
-          description: mt("failedToUpdateSmartLock"),
-          variant: "destructive",
-        });
-      } finally {
-        setSavingKitchenId(null);
-      }
-    },
-    [locationId, queryClient, toast],
-  );
-
-  const handleUpdateCodeFormat = useCallback(
-    async (
-      kitchen: KitchenForAccessCode,
-      format: "numeric" | "alphanumeric",
-    ) => {
-      setSavingKitchenId(kitchen.id);
-      try {
-        const existingConfig = kitchen.smartLockConfig || {};
-        await apiPut(`/manager/kitchens/${kitchen.id}/smart-lock/config`, {
-          enabled: true,
-          config: { ...existingConfig, accessCodeFormat: format },
-        });
-        queryClient.invalidateQueries({
-          queryKey: ["manager-kitchens-access", locationId],
-        });
-        toast({ title: mt("codeFormatSetTo", { format }) });
-      } catch {
-        toast({ title: mt("error"),
-          description: mt("failedToUpdateCodeFormat"),
-          variant: "destructive",
-        });
-      } finally {
-        setSavingKitchenId(null);
-      }
-    },
-    [locationId, queryClient, toast],
-  );
-
-  const handleUpdateCodeVisibility = useCallback(
-    async (kitchen: KitchenForAccessCode, visibility: CodeVisibility) => {
-      setSavingKitchenId(kitchen.id);
-      try {
-        const existingConfig = kitchen.smartLockConfig || {};
-        await apiPut(`/manager/kitchens/${kitchen.id}/smart-lock/config`, {
-          enabled: true,
-          config: { ...existingConfig, codeVisibility: visibility },
-        });
-        queryClient.invalidateQueries({
-          queryKey: ["manager-kitchens-access", locationId],
-        });
-        const labels: Record<CodeVisibility, string> = {
-          on_booking: mt("codeShownAtBookingConfirmation"),
-          at_checkin: mt("codeShownAtCheckinTime"),
-          manual: mt("codeSharedManually"),
-        };
-        toast({ title: labels[visibility] });
-      } catch {
-        toast({ title: mt("error"),
-          description: mt("failedToUpdateVisibility"),
-          variant: "destructive",
-        });
-      } finally {
-        setSavingKitchenId(null);
-      }
-    },
-    [locationId, queryClient, toast],
-  );
-
-  const handleSaveCode = useCallback(
-    async (kitchen: KitchenForAccessCode) => {
-      const code = codeInputs[kitchen.id]?.trim();
-      if (!code) {
-        toast({ title: mt("enterACode"),
-          description: mt("typeTheAccessCodeForThisKitchen"),
-          variant: "destructive",
-        });
-        return;
-      }
-      setSavingKitchenId(kitchen.id);
-      try {
-        const existingConfig = kitchen.smartLockConfig || {};
-        const format = (existingConfig.accessCodeFormat as string) || "numeric";
-        await apiPut(`/manager/kitchens/${kitchen.id}/smart-lock/config`, {
-          enabled: true,
-          config: {
-            ...existingConfig,
-            accessCodeFormat: format,
-            accessCode: code,
-            codeSetAt: new Date().toISOString(),
-          },
-        });
-        queryClient.invalidateQueries({
-          queryKey: ["manager-kitchens-access", locationId],
-        });
-        setCodeInputs((prev) => {
-          const n = { ...prev };
-          delete n[kitchen.id];
-          return n;
-        });
-        setRevealedCodes((prev) => {
-          const n = new Set(prev);
-          n.add(kitchen.id);
-          return n;
-        });
-        toast({ title: mt("accessCodeSaved") });
-      } catch {
-        toast({ title: mt("error"),
-          description: mt("failedToSaveAccessCode"),
-          variant: "destructive",
-        });
-      } finally {
-        setSavingKitchenId(null);
-      }
-    },
-    [codeInputs, locationId, queryClient, toast],
-  );
-
-  const handleRevokeCode = useCallback(
-    async (kitchen: KitchenForAccessCode) => {
-      setSavingKitchenId(kitchen.id);
-      try {
-        const existingConfig = kitchen.smartLockConfig || {};
-        await apiPut(`/manager/kitchens/${kitchen.id}/smart-lock/config`, {
-          enabled: kitchen.smartLockEnabled,
-          config: {
-            ...existingConfig,
-            accessCode: null,
-            codeSetAt: null,
-          },
-        });
-        queryClient.invalidateQueries({
-          queryKey: ["manager-kitchens-access", locationId],
-        });
-        setRevealedCodes((prev) => {
-          const n = new Set(prev);
-          n.delete(kitchen.id);
-          return n;
-        });
-        toast({ title: mt("accessCodeRevoked") });
-      } catch {
-        toast({ title: mt("error"),
-          description: mt("failedToRevokeCode"),
-          variant: "destructive",
-        });
-      } finally {
-        setSavingKitchenId(null);
-      }
-    },
-    [locationId, queryClient, toast],
-  );
-
-  const copyCode = useCallback(
-    (code: string) => {
-      navigator.clipboard.writeText(code);
-      toast({ title: mt("copiedToClipboard") });
-    },
-    [toast],
-  );
-
-  // Don't render anything at all when no kitchens have smart-door capability.
-  // The admin must enable smart doors on at least one kitchen for this section
-  // to appear.
-  if (!isLoadingKitchens && !hasSmartLockKitchens) {
-    return null;
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">{mt("smartLockAccessCodes")}</CardTitle>
-        <CardDescription>{mt("manageAccessCodesForKitchensWithSmartLocks")}</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {isLoadingKitchens ? (
-          <div className="flex items-center gap-2 py-6 justify-center">
-            <Loader2 className="size-4 animate-spin text-violet-600" />
-            <span className="text-sm text-muted-foreground">{mt("loadingKitchens")}</span>
-          </div>
-        ) : kitchensList.length === 0 ? (
-          <div className="text-center py-6 text-sm text-muted-foreground border border-dashed rounded-lg">
-            <Calendar className="size-8 text-muted-foreground/40 mx-auto mb-2" />{mt("noKitchensFoundAtThisLocation")}</div>
-        ) : (
-          kitchensList.map((kitchen) => {
-            const config = kitchen.smartLockConfig || {};
-            const currentCode = config.accessCode as string | undefined;
-            const codeFormat =
-              (config.accessCodeFormat as "numeric" | "alphanumeric") || "numeric";
-            const codeVisibility =
-              (config.codeVisibility as CodeVisibility) || "at_checkin";
-            const codeSetAt = config.codeSetAt as string | undefined;
-            const isRevealed = revealedCodes.has(kitchen.id);
-            const isSaving = savingKitchenId === kitchen.id;
-
-            return (
-              <div key={kitchen.id} className="rounded-lg border p-3 space-y-3">
-                {/* Kitchen Header Row */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="size-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">{kitchen.name}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Label
-                      htmlFor={`sl-${kitchen.id}`}
-                      className="text-xs text-muted-foreground"
-                    >
-                      {kitchen.smartLockEnabled ? mt("enabledLabel") : mt("disabledLabel")}
-                    </Label>
-                    <Switch
-                      id={`sl-${kitchen.id}`}
-                      checked={kitchen.smartLockEnabled}
-                      onCheckedChange={(checked) =>
-                        handleToggleSmartLock(kitchen, checked)
-                      }
-                      disabled={isSaving}
-                      className="scale-90"
-                    />
-                  </div>
-                </div>
-
-                {kitchen.smartLockEnabled && (
-                  <>
-                    {/* Code Format Selector */}
-                    <div className="flex items-center gap-3">
-                      <Label className="text-xs text-muted-foreground shrink-0">{mt("codeType")}</Label>
-                      <Select
-                        value={codeFormat}
-                        onValueChange={(val) =>
-                          handleUpdateCodeFormat(
-                            kitchen,
-                            val as "numeric" | "alphanumeric",
-                          )
-                        }
-                        disabled={isSaving}
-                      >
-                        <SelectTrigger className="h-8 w-[180px] text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="numeric">
-                            <div className="flex items-center gap-1.5">
-                              <Hash className="size-3" />{mt("numericOnly")}</div>
-                          </SelectItem>
-                          <SelectItem value="alphanumeric">
-                            <div className="flex items-center gap-1.5">
-                              <KeyRound className="size-3" />{mt("alphanumeric")}</div>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Current Code Display */}
-                    {currentCode && (
-                      <div className="flex items-center gap-2 p-2 rounded-md bg-violet-50 border border-violet-200">
-                        <Lock className="size-3.5 text-violet-600 shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <span className="text-sm font-mono font-semibold text-violet-900 tracking-wider">
-                            {isRevealed
-                              ? currentCode
-                              : "•".repeat(currentCode.length)}
-                          </span>
-                          {codeSetAt && (
-                            <p className="text-[10px] text-violet-600">
-                              Set {new Date(codeSetAt).toLocaleDateString()}
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="size-7"
-                            onClick={() => {
-                              setRevealedCodes((prev) => {
-                                const n = new Set(prev);
-                                if (isRevealed) n.delete(kitchen.id);
-                                else n.add(kitchen.id);
-                                return n;
-                              });
-                            }}
-                          >
-                            {isRevealed ? (
-                              <EyeOff className="size-3.5" />
-                            ) : (
-                              <Eye className="size-3.5" />
-                            )}
-                          </Button>
-                          {isRevealed && (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="size-7"
-                              onClick={() => copyCode(currentCode)}
-                            >
-                              <Copy className="size-3.5" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Code Visibility Policy */}
-                    <div className="flex items-center gap-3">
-                      <Label className="text-xs text-muted-foreground shrink-0">{mt("showCode")}</Label>
-                      <Select
-                        value={codeVisibility}
-                        onValueChange={(val) =>
-                          handleUpdateCodeVisibility(
-                            kitchen,
-                            val as CodeVisibility,
-                          )
-                        }
-                        disabled={isSaving}
-                      >
-                        <SelectTrigger className="h-8 flex-1 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="on_booking">
-                            <div className="flex items-center gap-1.5">
-                              <Eye className="size-3" />{mt("atBookingConfirmation")}</div>
-                          </SelectItem>
-                          <SelectItem value="at_checkin">
-                            <div className="flex items-center gap-1.5">
-                              <Clock className="size-3" />{mt("atCheckInTimeOnly")}</div>
-                          </SelectItem>
-                          <SelectItem value="manual">
-                            <div className="flex items-center gap-1.5">
-                              <EyeOff className="size-3" />{mt("neverShareManually")}</div>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Code Input + Actions */}
-                    <div className="flex items-center gap-2">
-                      <Input
-                        placeholder={
-                          codeFormat === "numeric"
-                            ? mt("enterNumericCode") : mt("enterAccessCode")
-                        }
-                        value={codeInputs[kitchen.id] ?? ""}
-                        onChange={(e) => {
-                          const val =
-                            codeFormat === "numeric"
-                              ? e.target.value.replace(/[^0-9]/g, "")
-                              : e.target.value.toUpperCase();
-                          setCodeInputs((prev) => ({
-                            ...prev,
-                            [kitchen.id]: val,
-                          }));
-                        }}
-                        className="h-8 text-sm font-mono flex-1"
-                        disabled={isSaving}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="text-xs shrink-0"
-                        onClick={() => handleSaveCode(kitchen)}
-                        disabled={isSaving || !codeInputs[kitchen.id]?.trim()}
-                      >
-                        {isSaving ? (
-                          <Loader2 className="size-3 mr-1.5 animate-spin" />
-                        ) : (
-                          <KeyRound className="size-3 mr-1.5" />
-                        )}
-                        {currentCode ? mt("updateCode") : mt("setCode")}
-                      </Button>
-                      {currentCode && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="text-xs text-destructive hover:text-destructive shrink-0"
-                          onClick={() => handleRevokeCode(kitchen)}
-                          disabled={isSaving}
-                        >{mt("revoke")}</Button>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })
-        )}
-
-        <div className="p-3 rounded-lg border border-blue-200 bg-blue-50">
-          <div className="flex items-start gap-2">
-            <Info className="size-3.5 text-blue-600 mt-0.5 shrink-0" />
-            <p className="text-[11px] text-blue-700">
-              Enter the code for your physical smart lock. Choose numeric for
-              keypad-only locks, or alphanumeric for locks that support letters.
-              Chefs see this code when they check in.
-            </p>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
+  /**
+   * Receives the page's dirty state so the dashboard can show the shared save
+   * action and guard navigation. Called on every transition only.
+   */
+  onDirtyChange?: (dirty: boolean) => void;
+  saveRef?: Ref<CheckinCheckoutHandle>;
+  /**
+   * Navigate to another manager view. Typed to the single destination this page
+   * links to, matching the convention used by `BookingRulesSettings` — the shell
+   * passes `handleViewChange`, which accepts a wider union.
+   */
+  onNavigate?: (view: "settings-booking-rules") => void;
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function CheckinCheckoutSettings({
   location,
+  onDirtyChange,
+  saveRef,
+  onNavigate,
 }: CheckinCheckoutSettingsProps) {
-  
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -564,7 +101,9 @@ export default function CheckinCheckoutSettings({
   // Fetch kitchens to determine if ANY kitchen at this location has the
   // admin-controlled smart-door capability enabled. When none do, the smart
   // lock instructions textarea and all related UI is hidden from the manager.
-  const { data: kitchensAtLocation } = useQuery<Array<{ id: number; smartLockAvailable?: boolean; smart_lock_available?: boolean }>>({
+  const { data: kitchensAtLocation } = useQuery<
+    Array<{ id: number; smartLockAvailable?: boolean; smart_lock_available?: boolean }>
+  >({
     queryKey: ["manager-kitchens-smart-availability", location.id],
     queryFn: () => apiGet(`/manager/kitchens/${location.id}`),
     enabled: !!location.id,
@@ -583,18 +122,10 @@ export default function CheckinCheckoutSettings({
   const [checkinEnabled, setCheckinEnabled] = useState(false);
   const [checkoutEnabled, setCheckoutEnabled] = useState(false);
   const [items, setItems] = useState<UnifiedChecklistItem[]>([]);
-  const [checkinInstructions, setCheckinInstructions] = useState<string | null>(
-    null,
-  );
-  const [checkoutInstructions, setCheckoutInstructions] = useState<string | null>(
-    null,
-  );
+  const [checkinInstructions, setCheckinInstructions] = useState<string | null>(null);
+  const [checkoutInstructions, setCheckoutInstructions] = useState<string | null>(null);
   const [smartLockCheckinInstructions, setSmartLockCheckinInstructions] =
     useState<string | null>(null);
-
-  // Time window override state (null = use platform default)
-  const [twCheckinWindow, setTwCheckinWindow] = useState<number | null>(null);
-  const [twNoShowGrace, setTwNoShowGrace] = useState<number | null>(null);
 
   // Memoized initial unified list derived from server data. Kept in a memo so
   // we can reuse it for the "isDirty" comparison below without re-running the
@@ -602,12 +133,8 @@ export default function CheckinCheckoutSettings({
   const initialUnifiedItems = useMemo<UnifiedChecklistItem[]>(() => {
     if (!data) return [];
     return unifyStorageToItems({
-      checkinItems: (Array.isArray(data.checkinItems)
-        ? data.checkinItems
-        : []) as ChecklistItem[],
-      checkoutItems: (Array.isArray(data.checkoutItems)
-        ? data.checkoutItems
-        : []) as ChecklistItem[],
+      checkinItems: (Array.isArray(data.checkinItems) ? data.checkinItems : []) as ChecklistItem[],
+      checkoutItems: (Array.isArray(data.checkoutItems) ? data.checkoutItems : []) as ChecklistItem[],
       checkinPhotoRequirements: (Array.isArray(data.checkinPhotoRequirements)
         ? data.checkinPhotoRequirements
         : []) as PhotoRequirement[],
@@ -626,15 +153,10 @@ export default function CheckinCheckoutSettings({
       setCheckoutInstructions(data.checkoutInstructions);
       setSmartLockCheckinInstructions(data.smartLockCheckinInstructions);
       setItems(initialUnifiedItems);
-      // Sync time window overrides
-      if (data.timeWindowSettings) {
-        setTwCheckinWindow(data.timeWindowSettings.checkinWindowMinutesBefore);
-        setTwNoShowGrace(data.timeWindowSettings.noShowGraceMinutes);
-      }
     }
   }, [data, initialUnifiedItems]);
 
-  const isChecklistDirty = useMemo(() => {
+  const isDirty = useMemo(() => {
     if (!data) return false;
     return (
       checkinEnabled !== data.checkinEnabled ||
@@ -642,8 +164,7 @@ export default function CheckinCheckoutSettings({
       JSON.stringify(items) !== JSON.stringify(initialUnifiedItems) ||
       (checkinInstructions || null) !== (data.checkinInstructions || null) ||
       (checkoutInstructions || null) !== (data.checkoutInstructions || null) ||
-      (smartLockCheckinInstructions || null) !==
-        (data.smartLockCheckinInstructions || null)
+      (smartLockCheckinInstructions || null) !== (data.smartLockCheckinInstructions || null)
     );
   }, [
     data,
@@ -656,23 +177,18 @@ export default function CheckinCheckoutSettings({
     smartLockCheckinInstructions,
   ]);
 
-  const isTimeWindowDirty = useMemo(() => {
-    if (!data) return false;
-    return (
-      twCheckinWindow !== (data.timeWindowSettings?.checkinWindowMinutesBefore ?? null) ||
-      twNoShowGrace !== (data.timeWindowSettings?.noShowGraceMinutes ?? null)
-    );
-  }, [data, twCheckinWindow, twNoShowGrace]);
+  /**
+   * Problems that would silently truncate the configuration on save. Reported
+   * per-row rather than as a count, so the message can name the offending item.
+   */
+  const problems = useMemo(() => findUnifiedItemProblems(items), [items]);
 
-  const validationErrors = useMemo(
-    () => validateUnifiedItems(items),
-    [items],
-  );
+  const hasProblems = problems.empty.length > 0 || problems.unassigned.length > 0;
 
-  const saveChecklistsAction = useStatusButton(
+  const saveAction = useStatusButton(
     useCallback(async () => {
-      if (validationErrors.length > 0) {
-        throw new Error(validationErrors[0]);
+      if (hasProblems) {
+        throw new Error(mt("fixChecklistItemsBeforeSaving"));
       }
 
       const {
@@ -682,26 +198,24 @@ export default function CheckinCheckoutSettings({
         checkoutPhotoRequirements: outCheckoutPhotos,
       } = itemsToStorage(items);
 
-      await apiPut(
-        `/manager/locations/${location.id}/checkin-checkout-settings`,
-        {
-          checkinEnabled,
-          checkinItems: outCheckinItems,
-          checkinPhotoRequirements: outCheckinPhotos,
-          checkinInstructions: checkinInstructions || null,
-          checkoutEnabled,
-          checkoutItems: outCheckoutItems,
-          checkoutPhotoRequirements: outCheckoutPhotos,
-          checkoutInstructions: checkoutInstructions || null,
-          smartLockCheckinInstructions: smartLockCheckinInstructions || null,
-        },
-      );
+      await apiPut(`/manager/locations/${location.id}/checkin-checkout-settings`, {
+        checkinEnabled,
+        checkinItems: outCheckinItems,
+        checkinPhotoRequirements: outCheckinPhotos,
+        checkinInstructions: checkinInstructions || null,
+        checkoutEnabled,
+        checkoutItems: outCheckoutItems,
+        checkoutPhotoRequirements: outCheckoutPhotos,
+        checkoutInstructions: checkoutInstructions || null,
+        smartLockCheckinInstructions: smartLockCheckinInstructions || null,
+      });
 
       queryClient.invalidateQueries({
         queryKey: ["checkin-checkout-settings", location.id],
       });
 
-      toast({ title: mt("checklistsSaved"),
+      toast({
+        title: mt("checklistsSaved"),
         description: mt("kitchenCheckInCheckOutChecklistsUpdatedSuccessfully"),
       });
     }, [
@@ -712,44 +226,36 @@ export default function CheckinCheckoutSettings({
       checkinInstructions,
       checkoutInstructions,
       smartLockCheckinInstructions,
-      validationErrors,
+      hasProblems,
       queryClient,
       toast,
     ]),
   );
 
-  const saveTimeWindowsAction = useStatusButton(
-    useCallback(async () => {
-      await apiPut(
-        `/manager/locations/${location.id}/checkin-checkout-settings`,
-        {
-          timeWindowSettings: {
-            checkinWindowMinutesBefore: twCheckinWindow,
-            noShowGraceMinutes: twNoShowGrace,
-          },
-        },
-      );
+  // Report dirty state upward, but only on transitions — the shell re-renders
+  // on every keystroke otherwise.
+  const lastDirtyRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (lastDirtyRef.current === isDirty) return;
+    lastDirtyRef.current = isDirty;
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
 
-      queryClient.invalidateQueries({
-        queryKey: ["checkin-checkout-settings", location.id],
-      });
-
-      toast({ title: mt("timeWindowsSaved"),
-        description: mt("timeWindowOverridesUpdatedSuccessfully"),
-      });
-    }, [
-      location.id,
-      twCheckinWindow,
-      twNoShowGrace,
-      queryClient,
-      toast,
-    ]),
-  );
+  // Expose save() to the shell's header action.
+  useEffect(() => {
+    if (!saveRef) return;
+    const handle: CheckinCheckoutHandle = { save: () => void saveAction.execute() };
+    if (typeof saveRef === "function") saveRef(handle);
+    else (saveRef as MutableRefObject<CheckinCheckoutHandle | null>).current = handle;
+  }, [saveRef, saveAction.execute]);
 
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <ChefPageHeader title={mt("kitchenCheckInCheckOut")} description={mt("configureChecklistsAndPhotoRequirementsForYourKitchens")} />
+        <ChefPageHeader
+          title={mt("kitchenCheckInCheckOut")}
+          description={mt("configureChecklistsAndPhotoRequirementsForYourKitchens")}
+        />
         <div className="flex items-center justify-center py-16">
           <Loader2 className="size-6 animate-spin text-muted-foreground" />
           <span className="ml-2 text-sm text-muted-foreground">{mt("loadingSettings")}</span>
@@ -760,20 +266,42 @@ export default function CheckinCheckoutSettings({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <ChefPageHeader
         title={mt("kitchenCheckInCheckOut")}
-        description="Define checklists and photo requirements chefs must complete when using your kitchens."
-        actions={(isChecklistDirty || isTimeWindowDirty) ? (
-          <Badge
-            variant="outline"
-            className="text-amber-700 bg-amber-50 border-amber-200"
-          >{mt("unsavedChanges")}</Badge>
-        ) : undefined}
+        description={mt("checkinCheckoutPageDescription")}
+        actions={
+          isDirty ? (
+            <StatusButton
+              status={saveAction.status}
+              onClick={saveAction.execute}
+              disabled={hasProblems}
+              labels={{
+                idle: mt("saveChanges"),
+                loading: mt("savingShort"),
+                success: mt("saved"),
+              }}
+            />
+          ) : undefined
+        }
       />
 
+      {/* Items that cannot be saved as-is — surfaced before the rows so the
+          manager sees the reason, not just a disabled button. */}
+      {hasProblems && (
+        <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
+          <div className="space-y-0.5 text-xs text-destructive">
+            {problems.empty.length > 0 && (
+              <p>{mt("checklistEmptyLabels", { count: problems.empty.length })}</p>
+            )}
+            {problems.unassigned.length > 0 && (
+              <p>{mt("checklistUnassignedItems", { count: problems.unassigned.length })}</p>
+            )}
+          </div>
+        </div>
+      )}
 
-      {/* Unified Tabbed Editor */}
+      {/* Checklist editor */}
       <KitchenCheckinCheckoutEditor
         items={items}
         onItemsChange={setItems}
@@ -789,100 +317,25 @@ export default function CheckinCheckoutSettings({
         onSmartLockInstructionsChange={setSmartLockCheckinInstructions}
         smartLockAvailable={hasSmartLockKitchen}
       />
-      
-      {/* Save Checklists Button */}
-      <div className="flex justify-end">
-        <StatusButton
-          status={saveChecklistsAction.status}
-          onClick={saveChecklistsAction.execute}
-          disabled={
-            (!isChecklistDirty && data?.id !== null) || validationErrors.length > 0
-          }
-          labels={{ idle: mt("saveChecklists"), loading: mt("savingShort"), success: mt("saved") }}
-        />
-      </div>
 
-      {/* Smart Lock & Access Codes */}
-      <AccessCodesSection locationId={location.id} />
-
-      {/* Time Window Overrides */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{mt("timeWindowOverrides")}</CardTitle>
-          <CardDescription>
-            {mt("timeWindowOverridesDesc")}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="text-xs">
-                {mt("checkinWindowMinutesBeforeLabel")}
-                {data?.platformDefaults && (
-                  <span className="text-muted-foreground ml-1">
-                    {mt("defaultValue", { value: data.platformDefaults.checkinWindowMinutesBefore })}
-                  </span>
-                )}
-              </Label>
-              <Input
-                type="number"
-                min={0}
-                max={120}
-                placeholder={data?.platformDefaults ? String(data.platformDefaults.checkinWindowMinutesBefore) : "15"}
-                value={twCheckinWindow ?? ""}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setTwCheckinWindow(v === "" ? null : parseInt(v));
-                }}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs">
-                {mt("noShowGraceMinutesAfterLabel")}
-                {data?.platformDefaults && (
-                  <span className="text-muted-foreground ml-1">
-                    {mt("defaultValue", { value: data.platformDefaults.noShowGraceMinutes })}
-                  </span>
-                )}
-              </Label>
-              <Input
-                type="number"
-                min={0}
-                max={120}
-                placeholder={data?.platformDefaults ? String(data.platformDefaults.noShowGraceMinutes) : "30"}
-                value={twNoShowGrace ?? ""}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setTwNoShowGrace(v === "" ? null : parseInt(v));
-                }}
-              />
-            </div>
-          </div>
-          <p className="text-[11px] text-muted-foreground mt-4 mb-4">{mt("theseValuesOverrideThePlatformDefaultsForThisLocationOnlyLea")}</p>
-          
-          <div className="flex justify-end pt-4 border-t">
-            <StatusButton
-              status={saveTimeWindowsAction.status}
-              onClick={saveTimeWindowsAction.execute}
-              disabled={!isTimeWindowDirty && data?.id !== null}
-              labels={{ idle: mt("saveTimeWindows"), loading: mt("savingShort"), success: mt("saved") }}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Validation Errors */}
-      {validationErrors.length > 0 && (
-        <div className="flex items-start gap-2 p-3 rounded-lg border border-destructive/30 bg-destructive/5">
-          <AlertTriangle className="size-4 text-destructive mt-0.5 shrink-0" />
-          <div className="text-xs text-destructive space-y-0.5">
-            {validationErrors.map((err, i) => (
-              <p key={i}>{err}</p>
-            ))}
-          </div>
+      {/* Cross-link: everything about *when* arrival happens lives on Booking
+          Policies. Sending managers there beats duplicating the fields. */}
+      <button
+        type="button"
+        onClick={() => onNavigate?.("settings-booking-rules")}
+        className="!min-h-0 flex w-full items-center gap-3 rounded-lg border border-border bg-card p-3 text-left transition-colors hover:bg-muted/50"
+      >
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-md border bg-background text-muted-foreground">
+          <Clock className="size-4" />
         </div>
-      )}
-
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium">{mt("checkinWindowAndGracePeriod")}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {mt("checkinWindowAndGracePeriodHint")}
+          </p>
+        </div>
+        <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
+      </button>
     </div>
   );
 }

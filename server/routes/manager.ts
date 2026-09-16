@@ -5987,6 +5987,11 @@ router.put(
         cancellationPolicyMessage,
         defaultDailyBookingLimit,
         minimumBookingWindowHours,
+        // Arrival timings. These live on the locations table alongside the other
+        // time-based rules and are also written by the check-in/check-out
+        // endpoint; managers edit them on the Booking Policies page.
+        checkinWindowMinutesBefore,
+        noShowGraceMinutes,
         notificationEmail,
         notificationPhone,
         logoUrl,
@@ -6068,6 +6073,27 @@ router.put(
           });
       }
 
+      // Arrival timings. Bounds mirror the admin platform-settings route
+      // (server/routes/firebase/platform.ts) so a per-location override can
+      // never fall outside what the platform itself permits.
+      for (const [field, value] of [
+        ["checkinWindowMinutesBefore", checkinWindowMinutesBefore],
+        ["noShowGraceMinutes", noShowGraceMinutes],
+      ] as const) {
+        if (
+          value !== undefined &&
+          value !== null &&
+          (typeof value !== "number" ||
+            !Number.isInteger(value) ||
+            value < 0 ||
+            value > 120)
+        ) {
+          return res.status(400).json({
+            error: `${field} must be a whole number between 0 and 120, or null to use the platform default`,
+          });
+        }
+      }
+
       // Import db dynamically
 
       // Verify manager owns this location
@@ -6136,6 +6162,14 @@ router.put(
       }
       if (minimumBookingWindowHours !== undefined) {
         (updates as any).minimumBookingWindowHours = minimumBookingWindowHours;
+      }
+      // `null` is meaningful here: it clears the override so the platform
+      // default applies again.
+      if (checkinWindowMinutesBefore !== undefined) {
+        (updates as any).checkinWindowMinutesBefore = checkinWindowMinutesBefore;
+      }
+      if (noShowGraceMinutes !== undefined) {
+        (updates as any).noShowGraceMinutes = noShowGraceMinutes;
       }
       if (notificationEmail !== undefined) {
         // Validate email format if provided and not empty
