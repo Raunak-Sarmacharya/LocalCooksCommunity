@@ -6,7 +6,7 @@ import { Upload, X, Loader2, Image as ImageIcon } from "lucide-react";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
 import { cn } from "@/lib/utils";
 import { auth } from "@/lib/firebase";
-import { getR2ProxyUrl } from "@/utils/r2-url-helper";
+import { resolveImageUrl } from "@/lib/resolve-image-url";
 import { SmartImage } from "@/components/ui/smart-image";
 
 interface ImageWithReplaceProps {
@@ -58,92 +58,10 @@ export function ImageWithReplace({
     },
   });
 
-  // Fetch presigned URL for the image
+  // Resolve the stored reference into a URL the browser can load.
   useEffect(() => {
-    const fetchImageUrl = async () => {
-      if (!imageUrl) {
-        setImageSrc(null);
-        setIsLoading(false);
-        return;
-      }
-
-      // If it's already a data URL or absolute URL that doesn't need presigning
-      if (imageUrl.startsWith('data:') || imageUrl.startsWith('blob:')) {
-        setImageSrc(imageUrl);
-        setIsLoading(false);
-        return;
-      }
-
-      // Check if it's a local development URL
-      if (imageUrl.startsWith('/api/files/') || imageUrl.startsWith('/uploads/')) {
-        setImageSrc(imageUrl);
-        setIsLoading(false);
-        return;
-      }
-
-      // Handle URLs without protocol (e.g., "files.localcooks.ca/documents/...")
-      // These need to be routed through the proxy with the full URL
-      if (imageUrl.includes('files.localcooks.ca') || imageUrl.includes('r2.cloudflarestorage.com')) {
-        // Add https:// if missing and route through proxy
-        const fullUrl = imageUrl.startsWith('http') ? imageUrl : `https://${imageUrl}`;
-        const proxyUrl = getR2ProxyUrl(fullUrl);
-        setImageSrc(proxyUrl);
-        setIsLoading(false);
-        return;
-      }
-
-      // Handle plain filenames (no path prefix, no protocol) - route through proxy
-      // These are likely R2 filenames stored without the full URL
-      const isPlainFilename = !imageUrl.startsWith('http://') && 
-                              !imageUrl.startsWith('https://') && 
-                              !imageUrl.startsWith('/') &&
-                              !imageUrl.startsWith('data:') &&
-                              !imageUrl.startsWith('blob:') &&
-                              (imageUrl.endsWith('.png') || imageUrl.endsWith('.jpg') || 
-                               imageUrl.endsWith('.jpeg') || imageUrl.endsWith('.webp') ||
-                               imageUrl.endsWith('.gif'));
-      
-      if (isPlainFilename) {
-        // Route through the R2 proxy with the filename - server will resolve the full path
-        const proxyUrl = `/api/files/r2-proxy?filename=${encodeURIComponent(imageUrl)}`;
-        setImageSrc(proxyUrl);
-        setIsLoading(false);
-        return;
-      }
-
-      // Check if it's already a full URL (R2 public URL or other CDN)
-      if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-        // Check if it's a public R2 URL - use directly
-        if (imageUrl.includes('.r2.dev/')) {
-          setImageSrc(imageUrl);
-          setIsLoading(false);
-          return;
-        }
-
-        // Check if it's a private R2 URL or custom domain - use the public proxy endpoint
-        const isR2Url = imageUrl.includes('r2.cloudflarestorage.com') ||
-          imageUrl.includes('files.localcooks.ca');
-
-        if (isR2Url) {
-          // Use the public r2-proxy endpoint (no auth required)
-          const proxyUrl = getR2ProxyUrl(imageUrl);
-          setImageSrc(proxyUrl);
-          setIsLoading(false);
-          return;
-        }
-
-        // For non-R2 URLs, use directly
-        setImageSrc(imageUrl);
-        setIsLoading(false);
-        return;
-      }
-
-      // For other cases, use the URL directly
-      setImageSrc(imageUrl);
-      setIsLoading(false);
-    };
-
-    fetchImageUrl();
+    setImageSrc(resolveImageUrl(imageUrl));
+    setIsLoading(false);
   }, [imageUrl]);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {

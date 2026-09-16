@@ -31,7 +31,7 @@ import ManagerRevenueDashboard from "./ManagerRevenueDashboard";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
 import LocationRequirementsSettings from "@/components/manager/LocationRequirementsSettings";
 import { LicenseSettings, BookingRulesSettings, LocationSettings, KitchensManagement, FacilityDocsSettings, CheckinCheckoutSettings, StorageCheckinCheckoutSettings } from "@/components/manager/settings";
-import type { BookingPoliciesHandle } from "@/components/manager/settings";
+import type { BookingPoliciesHandle, KitchensHandle } from "@/components/manager/settings";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import DashboardLayout from "@/layouts/DashboardLayout";
@@ -184,6 +184,10 @@ export default function ManagerBookingDashboard() {
   const bypassBookingPoliciesGuard = useRef(false);
   const [bookingPoliciesDirty, setBookingPoliciesDirty] = useState(false);
   const [pendingBookingPoliciesView, setPendingBookingPoliciesView] = useState<ViewType | null>(null);
+  const kitchensSaveRef = useRef<KitchensHandle>(null);
+  const bypassKitchensGuard = useRef(false);
+  const [kitchensDirty, setKitchensDirty] = useState(false);
+  const [pendingKitchensView, setPendingKitchensView] = useState<ViewType | null>(null);
 
   // Handle locationId from URL for direct navigation (e.g., returning from setup, notification links)
   useEffect(() => {
@@ -302,6 +306,10 @@ export default function ManagerBookingDashboard() {
       setPendingBookingPoliciesView(view);
       return;
     }
+    if (activeView === 'kitchens' && kitchensDirty && !bypassKitchensGuard.current) {
+      setPendingKitchensView(view);
+      return;
+    }
     setActiveView(nextView);
     const url = new URL(window.location.href);
     if (legacySection) {
@@ -352,6 +360,22 @@ export default function ManagerBookingDashboard() {
     const saved = await bookingPoliciesRef.current?.saveAllChanges();
     setIsSavingBeforeLeave(false);
     if (saved) continueFromBookingPolicies(pendingBookingPoliciesView);
+  };
+
+  const continueFromKitchens = (view: ViewType) => {
+    bypassKitchensGuard.current = true;
+    setKitchensDirty(false);
+    setPendingKitchensView(null);
+    handleViewChange(view);
+    bypassKitchensGuard.current = false;
+  };
+
+  const saveAndLeaveKitchens = async () => {
+    if (!pendingKitchensView) return;
+    setIsSavingBeforeLeave(true);
+    const saved = await kitchensSaveRef.current?.saveAllChanges();
+    setIsSavingBeforeLeave(false);
+    if (saved) continueFromKitchens(pendingKitchensView);
   };
 
   const kitchenChildLabel: Partial<Record<ViewType, string>> = {
@@ -937,6 +961,8 @@ export default function ManagerBookingDashboard() {
           location={locationDetails || selectedLocation}
           onNavigate={handleViewChange}
           onConfigureRequirements={() => handleViewChange('application-requirements')}
+          saveRef={kitchensSaveRef}
+          onDirtyChange={setKitchensDirty}
         />
       )}
 
@@ -1107,6 +1133,29 @@ export default function ManagerBookingDashboard() {
               {mt("discardChanges")}
             </Button>
             <AlertDialogAction disabled={isSavingBeforeLeave} onClick={(event) => { event.preventDefault(); void saveAndLeaveBookingPolicies(); }}>
+              {isSavingBeforeLeave && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {mt("saveChanges")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={pendingKitchensView !== null} onOpenChange={(open) => !open && setPendingKitchensView(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{mt("unsavedChanges")}</AlertDialogTitle>
+            <AlertDialogDescription>{mt("kitchenUnsavedChangesDescription")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSavingBeforeLeave}>{mt("cancel")}</AlertDialogCancel>
+            <Button
+              variant="outline"
+              disabled={isSavingBeforeLeave}
+              onClick={() => pendingKitchensView && continueFromKitchens(pendingKitchensView)}
+            >
+              {mt("discardChanges")}
+            </Button>
+            <AlertDialogAction disabled={isSavingBeforeLeave} onClick={(event) => { event.preventDefault(); void saveAndLeaveKitchens(); }}>
               {isSavingBeforeLeave && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {mt("saveChanges")}
             </AlertDialogAction>

@@ -2958,7 +2958,19 @@ async function putKitchenDetails(req: Request, res: Response) {
       amenities?: string[];
       smartLockEnabled?: boolean;
     } = { id: kitchenId };
-    if (name !== undefined) patch.name = name;
+    if (name !== undefined) {
+      // `kitchens.name` is NOT NULL but not length-checked, so an empty rename
+      // would otherwise blank the kitchen everywhere it is displayed.
+      if (typeof name !== "string" || !name.trim()) {
+        return res.status(400).json({ error: "Kitchen name cannot be empty" });
+      }
+      if (name.trim().length > 120) {
+        return res
+          .status(400)
+          .json({ error: "Kitchen name must be 120 characters or fewer" });
+      }
+      patch.name = name.trim();
+    }
     if (description !== undefined) patch.description = description;
     if (features !== undefined) patch.amenities = features;
     if (smartLockEnabled !== undefined) {
@@ -3314,6 +3326,53 @@ router.put(
     } catch (error: any) {
       logger.error("Error updating checkin/checkout settings:", error);
       res.status(500).json({ error: error.message || "Failed to update settings" });
+    }
+  },
+);
+
+/**
+ * GET /manager/kitchens/:kitchenId/delete-impact
+ *
+ * Reports what deleting this kitchen would actually destroy, so the
+ * confirmation dialog can state real numbers instead of a vague warning.
+ * Deliberately separate from the kitchens list so that list stays one cheap
+ * query, and only paid for when a manager opens the delete dialog.
+ */
+router.get(
+  "/kitchens/:kitchenId/delete-impact",
+  requireFirebaseAuthWithUser,
+  requireManager,
+  async (req: Request, res: Response) => {
+    try {
+      const user = req.neonUser!;
+      const kitchenId = parseInt(req.params.kitchenId);
+      if (isNaN(kitchenId) || kitchenId <= 0) {
+        return res.status(400).json({ error: "Invalid kitchen ID" });
+      }
+
+      const kitchen = await kitchenService.getKitchenById(kitchenId);
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
+      const location = await locationService.getLocationById(
+        kitchen.locationId,
+      );
+      if (!location || location.managerId !== user.id) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const [row] = await db
+        .select({ value: count() })
+        .from(kitchenBookings)
+        .where(eq(kitchenBookings.kitchenId, kitchenId));
+
+      res.json({ bookings: Number(row?.value ?? 0) });
+    } catch (error: any) {
+      logger.error("Error computing kitchen delete impact:", error);
+      res.status(500).json({
+        error: error.message || "Failed to compute kitchen delete impact",
+      });
     }
   },
 );

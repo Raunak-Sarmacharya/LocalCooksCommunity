@@ -14,7 +14,7 @@ import { mt } from "@/i18n/manager";
 import { useState, useEffect, useCallback, useImperativeHandle, forwardRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { Info, FileText, ExternalLink } from "@/components/ui/manager-icons";
+import { FileText, ExternalLink } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
@@ -24,11 +24,10 @@ import { tt } from "@/i18n/common-ns";
 import { getDocumentFilename } from "@/lib/formatters";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { NumericInput } from "@/components/ui/numeric-input";
-import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ChefPageHeader } from "@/components/chef/ui";
 import { SettingsFileUpload } from "./SettingsFileUpload";
 import { AuthenticatedDocumentLink } from "./AuthenticatedDocumentLink";
+import { SettingsRow } from "./SettingsRow";
 
 interface Location {
   id: number;
@@ -50,53 +49,6 @@ interface BookingRulesSettingsProps {
 export interface BookingPoliciesHandle {
   /** Persist pending edits. Resolves `true` when the save succeeded. */
   saveAllChanges: () => Promise<boolean>;
-}
-
-function RuleHelp({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button type="button" aria-label={label} className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <Info className="h-3.5 w-3.5" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-80 p-3 text-xs leading-relaxed text-muted-foreground">
-        {children}
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-/**
- * A single policy row. One label per setting — the field name is the row label,
- * so the control reads as "set this value", not as a second column of copy.
- * The control sits on the right and is only as wide as the number it holds.
- */
-function PolicyRow({
-  id,
-  label,
-  hint,
-  help,
-  children,
-}: {
-  id: string;
-  label: string;
-  hint: string;
-  help: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-3">
-      <div className="min-w-0">
-        <div className="flex items-center gap-1">
-          <Label htmlFor={id} className="text-sm font-medium">{label}</Label>
-          <RuleHelp label={label}>{help}</RuleHelp>
-        </div>
-        <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>
-      </div>
-      <div className="shrink-0">{children}</div>
-    </div>
-  );
 }
 
 const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSettingsProps>(
@@ -240,7 +192,7 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
             </div>
           </CardHeader>
           <CardContent className="divide-y divide-border p-0">
-            <PolicyRow
+            <SettingsRow
               id="cancellation-hours"
               label={mt("cancellationWindow")}
               hint={mt("minimumHoursBeforeCancellationAllowed")}
@@ -253,9 +205,9 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
                 onValueChange={(val) => setCancellationHours(parseInt(val) || 0)}
                 className="w-32"
               />
-            </PolicyRow>
+            </SettingsRow>
 
-            <PolicyRow
+            <SettingsRow
               id="daily-limit"
               label={mt("dailyBookingLimit")}
               hint={mt("maximumHoursAChefCanBookInASingleDay124Hours")}
@@ -268,9 +220,9 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
                 onValueChange={(val) => setDailyBookingLimit(parseInt(val) || 2)}
                 className="w-32"
               />
-            </PolicyRow>
+            </SettingsRow>
 
-            <PolicyRow
+            <SettingsRow
               id="min-window"
               label={mt("minimumBookingWindow")}
               hint={mt("chefsMustBookAtLeastHours")}
@@ -286,7 +238,7 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
                 }}
                 className="w-32"
               />
-            </PolicyRow>
+            </SettingsRow>
           </CardContent>
         </Card>
 
