@@ -11,11 +11,18 @@ export function resolveAuthMethods(input: {
   email?: string | null;
   phoneNumber?: string | null;
   providerIds?: string[];
+  /**
+   * Neon `password_set_by_user`. Registration still links a Firebase password
+   * provider with a generated secret — only offer password sign-in when the
+   * account holder actually chose that secret. Required so callers cannot
+   * silently omit it and treat placeholder passwords as real.
+   */
+  passwordSetByUser: boolean | null;
 }): AuthMethod[] {
   const providers = new Set(input.providerIds || []);
   const methods: AuthMethod[] = [];
   if (input.email) methods.push("email-link");
-  if (providers.has("password")) methods.push("password");
+  if (providers.has("password") && input.passwordSetByUser === true) methods.push("password");
   if (input.phoneNumber || providers.has("phone")) methods.push("phone");
   if (providers.has("google.com")) methods.push("google");
   return methods;

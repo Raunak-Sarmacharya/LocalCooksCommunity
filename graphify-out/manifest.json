@@ -1002,9 +1002,9 @@
     "semantic_hash": ""
   },
   "client/src/components/manager/ManagerProfileSettings.tsx": {
-    "mtime": 1789557350.2323737,
-    "seen": 1789559371.406584,
-    "ast_hash": "b32054e9418087188d724c6392d74add",
+    "mtime": 1789561133.7142603,
+    "seen": 1789563334.8736389,
+    "ast_hash": "870dc10235da323505cdbb5c3ff71796",
     "semantic_hash": ""
   },
   "client/src/components/manager/ManagerProtectedRoute.tsx": {
@@ -2556,9 +2556,9 @@
     "semantic_hash": ""
   },
   "client/src/pages/ManagerProfile.tsx": {
-    "mtime": 1789557406.8689501,
-    "seen": 1789559371.4153652,
-    "ast_hash": "441eaabe6599dcff156bfc61155a7a45",
+    "mtime": 1789561173.932883,
+    "seen": 1789563334.890833,
+    "ast_hash": "7d267c9255717c6f643a0367fefc3381",
     "semantic_hash": ""
   },
   "client/src/pages/ManagerRevenueDashboard.tsx": {
@@ -3306,9 +3306,9 @@
     "semantic_hash": "3d3b81d019b20d209871224506c33f9a"
   },
   "server/routes.ts": {
-    "mtime": 1789546728.6696525,
-    "seen": 1789547970.175457,
-    "ast_hash": "04de3ead0454a71b6f1c9dcf51f319ed",
+    "mtime": 1789563531.653702,
+    "seen": 1789563562.65342,
+    "ast_hash": "73061d151473fc10f121d4460786d6e6",
     "semantic_hash": ""
   },
   "server/routes/admin.ts": {
@@ -6270,15 +6270,15 @@
     "semantic_hash": ""
   },
   "server/auth-account-resolution.test.ts": {
-    "mtime": 1789415649.864569,
-    "seen": 1789505058.364008,
-    "ast_hash": "04265e4a8d500bc11155ee7173e1b6d3",
+    "mtime": 1789563531.7068393,
+    "seen": 1789563562.652014,
+    "ast_hash": "ced9aa74844696abcf7f7dd38b934c8e",
     "semantic_hash": ""
   },
   "server/auth-account-resolution.ts": {
-    "mtime": 1789415649.782464,
-    "seen": 1789505058.364008,
-    "ast_hash": "bd41b3be597bc1ed599959e3de961938",
+    "mtime": 1789563529.9300709,
+    "seen": 1789563562.6520152,
+    "ast_hash": "8203962904e1d2a36c3edee5c3149178",
     "semantic_hash": ""
   },
   "server/domains/bookings/booking-availability.test.ts": {

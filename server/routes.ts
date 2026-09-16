@@ -482,6 +482,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             email: firebaseUser?.email,
             phoneNumber: firebaseUser?.phoneNumber,
             providerIds: firebaseUser?.providerData.map((provider) => provider.providerId),
+            passwordSetByUser: neonUser?.passwordSetByUser ?? null,
           })
         : [];
 
