@@ -197,7 +197,7 @@ export default function ManagerProfileSettings({
             avatarUrl?: string;
         }) => {
             const currentFirebaseUser = auth.currentUser;
-            if (!currentFirebaseUser) throw new Error(tt("notAuthenticated"));
+            if (!currentFirebaseUser) throw new Error(mt("notAuthenticated"));
 
             // IMPORTANT: Update Firebase Auth displayName if it changed
             if (profileData.displayName) {
@@ -223,7 +223,7 @@ export default function ManagerProfileSettings({
                 body: JSON.stringify(profileData),
             });
 
-            if (!response.ok) throw new Error(tt("failedToUpdateProfile"));
+            if (!response.ok) throw new Error(mt("failedToUpdateProfile"));
             return response.json();
         },
         onSuccess: () => {

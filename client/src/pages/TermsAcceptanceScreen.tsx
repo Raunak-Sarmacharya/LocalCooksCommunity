@@ -16,6 +16,20 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
+import { postTermsRedirect } from "@/lib/post-terms-redirect";
+
+/** Component wrapper around the pure {@link postTermsRedirect} helper. */
+function resolvePostTermsRedirect(
+  user: { role?: string | null; isManager?: boolean | null } | null | undefined,
+): string {
+  return postTermsRedirect({
+    hostname: window.location.hostname,
+    redirectParam: new URLSearchParams(window.location.search).get("redirect"),
+    role: user?.role,
+    isManager: user?.isManager,
+    chefFallback: getChefPostAuthPath(user),
+  });
+}
 
 function TermsAcceptanceScreen() {
   const { user, refreshUserData } = useFirebaseAuth();
@@ -36,17 +50,7 @@ function TermsAcceptanceScreen() {
 
   useEffect(() => {
     if (user?.termsAccepted && user?.termsVersion === CURRENT_POLICY_VERSION) {
-      const params = new URLSearchParams(window.location.search);
-      let redirectPath = params.get("redirect") || "/dashboard";
-
-      // Role-aware redirect
-      if (redirectPath === '/dashboard') {
-        if (user?.role === 'manager') redirectPath = '/manager/dashboard';
-        else if (user?.role === 'admin') redirectPath = '/admin';
-        else redirectPath = getChefPostAuthPath(user);
-      }
-
-      setLocation(redirectPath, { replace: true });
+      setLocation(resolvePostTermsRedirect(user), { replace: true });
     }
   }, [user, setLocation]);
 
@@ -135,17 +139,7 @@ function TermsAcceptanceScreen() {
         await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
         setSuccess(true);
         setTimeout(() => {
-          const params = new URLSearchParams(window.location.search);
-          let redirectPath = params.get("redirect") || "/dashboard";
-
-          // Role-aware redirect
-          if (redirectPath === '/dashboard') {
-            if (user?.role === 'manager') redirectPath = '/manager/dashboard';
-            else if (user?.role === 'admin') redirectPath = '/admin';
-            else redirectPath = getChefPostAuthPath(user);
-          }
-
-          setLocation(redirectPath, { replace: true });
+          setLocation(resolvePostTermsRedirect(user), { replace: true });
         }, 800);
       } else {
         const text = await response.text();

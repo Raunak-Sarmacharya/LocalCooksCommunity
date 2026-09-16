@@ -2544,9 +2544,9 @@
     "semantic_hash": ""
   },
   "client/src/pages/ManagerLogin.tsx": {
-    "mtime": 1789559963.8236976,
-    "seen": 1789559993.6927302,
-    "ast_hash": "fd5fcd82b55a71be6659e0f54f561401",
+    "mtime": 1789560680.0429113,
+    "seen": 1789560814.224362,
+    "ast_hash": "2a427d54a27f0c11ce4b95defa503a06",
     "semantic_hash": ""
   },
   "client/src/pages/ManagerOverstaysPage.tsx": {
@@ -2634,9 +2634,9 @@
     "semantic_hash": "1f39621a015f477a7a53519032f30995"
   },
   "client/src/pages/TermsAcceptanceScreen.tsx": {
-    "mtime": 1789559953.948423,
-    "seen": 1789559993.693032,
-    "ast_hash": "0665238f89a989195b06c8defd901dde",
+    "mtime": 1789560764.7108,
+    "seen": 1789560814.224704,
+    "ast_hash": "9f063393829791203329e055dd8b324e",
     "semantic_hash": ""
   },
   "client/src/pages/UnsubscribePage.tsx": {
@@ -7035,6 +7035,18 @@
     "mtime": 1789559110.4340327,
     "seen": 1789559371.422786,
     "ast_hash": "205a367b201b10a83039d058b80699b1",
+    "semantic_hash": ""
+  },
+  "client/src/lib/post-terms-redirect.test.ts": {
+    "mtime": 1789560752.9955094,
+    "seen": 1789560814.2229671,
+    "ast_hash": "baa2e2ba526398778234b7a7b171bab6",
+    "semantic_hash": ""
+  },
+  "client/src/lib/post-terms-redirect.ts": {
+    "mtime": 1789560747.551332,
+    "seen": 1789560814.222968,
+    "ast_hash": "ef8c132fd496bf37b2db928d65c717dd",
     "semantic_hash": ""
   }
 }

@@ -133,7 +133,7 @@ export default function ManagerProfile() {
     }) => {
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
-        throw new Error(tt("firebaseUserNotAvailable"));
+        throw new Error("Firebase user not available");
       }
       
       // IMPORTANT: Update Firebase Auth displayName if it changed

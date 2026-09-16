@@ -181,15 +181,17 @@ export default function ManagerLogin() {
   };
 
   const handleGoogleSignIn = async () => {
+    // Keep the full-page loader up for the entire popup + sync + redirect. Do
+    // NOT pre-raise the cross-route handoff here: its 6s ceiling would expire
+    // while the user is still choosing an account in Google's tab, dropping the
+    // loader and flashing the form. The gate below stays up via googleAuthPending
+    // (which ignores the gate timeout), and finishAuthentication raises the
+    // handoff only once, right before it navigates.
     setGoogleAuthPending(true);
     setHasAttemptedLogin(true);
-    beginHandoff(
-      t("btnSigningYouIn", { ns: "auth", defaultValue: "Signing you in..." }),
-      t("overlayRedirectingDashboard", { ns: "auth", defaultValue: "Redirecting to your dashboard..." }),
-    );
     try {
       await signInWithGoogle(true, "manager", false);
-      await finishAuthentication({ handoffAlreadyRaised: true });
+      await finishAuthentication();
     } catch (error: unknown) {
       endHandoff();
       setHasAttemptedLogin(false);
@@ -400,17 +402,22 @@ export default function ManagerLogin() {
   // Same escape hatch the chef page has. `isAwaitingProfile` in particular can
   // hold indefinitely if the profile request never resolves, and a manager
   // staring at a spinner with no way out is the worst outcome here.
+  //
+  // Exception: while the Google popup is open (`googleAuthPending`), the wait is
+  // gated on a human picking an account, which routinely takes longer than the
+  // 8s valve. Timing out then is exactly what flashed the form behind the popup,
+  // so the popup keeps the loader up regardless of the timer.
   const [gateTimedOut, setGateTimedOut] = useState(false);
   useEffect(() => {
-    if (!isGateActive) {
+    if (!isGateActive || googleAuthPending) {
       setGateTimedOut(false);
       return;
     }
     const timer = setTimeout(() => setGateTimedOut(true), AUTH_GATE_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [isGateActive]);
+  }, [isGateActive, googleAuthPending]);
 
-  if (isGateActive && !gateTimedOut) {
+  if (isGateActive && (!gateTimedOut || googleAuthPending)) {
     return (
       <AuthLoadingScreen
         message={
