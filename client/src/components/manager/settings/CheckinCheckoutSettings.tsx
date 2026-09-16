@@ -25,10 +25,15 @@ import {
   Clock,
   Loader2,
 } from "@/components/ui/manager-icons";
+import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
 import { useToast } from "@/hooks/use-toast";
 import { apiGet, apiPut } from "@/lib/api";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { SettingsRow } from "./SettingsRow";
 import type { ChecklistItem, PhotoRequirement } from "./shared/ChecklistEditor";
 import {
   KitchenCheckinCheckoutEditor,
@@ -53,6 +58,22 @@ interface CheckinCheckoutSettingsData {
   checkoutPhotoRequirements: PhotoRequirement[];
   checkoutInstructions: string | null;
   smartLockCheckinInstructions: string | null;
+  timeWindowSettings?: TimeWindowSettings;
+  platformDefaults?: PlatformTimeWindowDefaults;
+}
+
+/**
+ * Manager-overridable arrival timings. `null` means "use the platform default",
+ * which is shown next to the field so the effective value is never a mystery.
+ */
+interface TimeWindowSettings {
+  checkinWindowMinutesBefore: number | null;
+  noShowGraceMinutes: number | null;
+}
+
+interface PlatformTimeWindowDefaults {
+  checkinWindowMinutesBefore: number;
+  noShowGraceMinutes: number;
 }
 
 /** Imperative handle so the dashboard shell can trigger Save from its header. */
@@ -127,6 +148,10 @@ export default function CheckinCheckoutSettings({
   const [smartLockCheckinInstructions, setSmartLockCheckinInstructions] =
     useState<string | null>(null);
 
+  // Arrival timings (null = inherit the platform default).
+  const [twCheckinWindow, setTwCheckinWindow] = useState<number | null>(null);
+  const [twNoShowGrace, setTwNoShowGrace] = useState<number | null>(null);
+
   // Memoized initial unified list derived from server data. Kept in a memo so
   // we can reuse it for the "isDirty" comparison below without re-running the
   // merge repeatedly.
@@ -153,6 +178,10 @@ export default function CheckinCheckoutSettings({
       setCheckoutInstructions(data.checkoutInstructions);
       setSmartLockCheckinInstructions(data.smartLockCheckinInstructions);
       setItems(initialUnifiedItems);
+      if (data.timeWindowSettings) {
+        setTwCheckinWindow(data.timeWindowSettings.checkinWindowMinutesBefore);
+        setTwNoShowGrace(data.timeWindowSettings.noShowGraceMinutes);
+      }
     }
   }, [data, initialUnifiedItems]);
 
@@ -164,7 +193,9 @@ export default function CheckinCheckoutSettings({
       JSON.stringify(items) !== JSON.stringify(initialUnifiedItems) ||
       (checkinInstructions || null) !== (data.checkinInstructions || null) ||
       (checkoutInstructions || null) !== (data.checkoutInstructions || null) ||
-      (smartLockCheckinInstructions || null) !== (data.smartLockCheckinInstructions || null)
+      (smartLockCheckinInstructions || null) !== (data.smartLockCheckinInstructions || null) ||
+      twCheckinWindow !== (data.timeWindowSettings?.checkinWindowMinutesBefore ?? null) ||
+      twNoShowGrace !== (data.timeWindowSettings?.noShowGraceMinutes ?? null)
     );
   }, [
     data,
@@ -175,6 +206,8 @@ export default function CheckinCheckoutSettings({
     checkinInstructions,
     checkoutInstructions,
     smartLockCheckinInstructions,
+    twCheckinWindow,
+    twNoShowGrace,
   ]);
 
   /**
@@ -208,6 +241,10 @@ export default function CheckinCheckoutSettings({
         checkoutPhotoRequirements: outCheckoutPhotos,
         checkoutInstructions: checkoutInstructions || null,
         smartLockCheckinInstructions: smartLockCheckinInstructions || null,
+        timeWindowSettings: {
+          checkinWindowMinutesBefore: twCheckinWindow,
+          noShowGraceMinutes: twNoShowGrace,
+        },
       });
 
       queryClient.invalidateQueries({
@@ -226,6 +263,8 @@ export default function CheckinCheckoutSettings({
       checkinInstructions,
       checkoutInstructions,
       smartLockCheckinInstructions,
+      twCheckinWindow,
+      twNoShowGrace,
       hasProblems,
       queryClient,
       toast,
@@ -318,24 +357,155 @@ export default function CheckinCheckoutSettings({
         smartLockAvailable={hasSmartLockKitchen}
       />
 
-      {/* Cross-link: everything about *when* arrival happens lives on Booking
-          Policies. Sending managers there beats duplicating the fields. */}
+      {/* Arrival timings. Shown here as well as on Booking Policies — both read
+          and write the same query-cached field, so a manager setting up the
+          arrival experience never has to leave this page. */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10">
+              <Clock className="size-5 text-primary" />
+            </div>
+            <div>
+              <CardTitle className="text-lg">{mt("arrivalTiming")}</CardTitle>
+              <CardDescription>{mt("arrivalTimingDescription")}</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="divide-y p-0">
+          <SettingsRow
+            id="checkin-window"
+            label={mt("checkinOpensLabel")}
+            hint={
+              data?.platformDefaults
+                ? mt("platformDefaultIs", {
+                    value: data.platformDefaults.checkinWindowMinutesBefore,
+                  })
+                : undefined
+            }
+            help={mt("checkinWindowHelp")}
+          >
+            <div className="flex items-center gap-1.5">
+              <Input
+                id="checkin-window"
+                type="number"
+                min={0}
+                max={120}
+                inputMode="numeric"
+                value={twCheckinWindow ?? ""}
+                placeholder={
+                  data?.platformDefaults
+                    ? String(data.platformDefaults.checkinWindowMinutesBefore)
+                    : "15"
+                }
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setTwCheckinWindow(v === "" ? null : Math.max(0, Math.min(120, parseInt(v, 10) || 0)));
+                }}
+                className="h-9 w-20 text-sm tabular-nums"
+              />
+              <span className="text-xs text-muted-foreground">{mt("minutesShort")}</span>
+            </div>
+          </SettingsRow>
+
+          <SettingsRow
+            id="no-show-grace"
+            label={mt("noShowGraceLabel")}
+            hint={
+              data?.platformDefaults
+                ? mt("platformDefaultIs", {
+                    value: data.platformDefaults.noShowGraceMinutes,
+                  })
+                : undefined
+            }
+            help={mt("noShowGraceHelp")}
+          >
+            <div className="flex items-center gap-1.5">
+              <Input
+                id="no-show-grace"
+                type="number"
+                min={0}
+                max={120}
+                inputMode="numeric"
+                value={twNoShowGrace ?? ""}
+                placeholder={
+                  data?.platformDefaults
+                    ? String(data.platformDefaults.noShowGraceMinutes)
+                    : "30"
+                }
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setTwNoShowGrace(v === "" ? null : Math.max(0, Math.min(120, parseInt(v, 10) || 0)));
+                }}
+                className="h-9 w-20 text-sm tabular-nums"
+              />
+              <span className="text-xs text-muted-foreground">{mt("minutesShort")}</span>
+            </div>
+          </SettingsRow>
+        </CardContent>
+      </Card>
+
+      {/* Soft cross-link to the rest of the booking rules, for managers who came
+          here looking for something else rather than to duplicate the fields. */}
       <button
         type="button"
         onClick={() => onNavigate?.("settings-booking-rules")}
         className="!min-h-0 flex w-full items-center gap-3 rounded-lg border border-border bg-card p-3 text-left transition-colors hover:bg-muted/50"
       >
         <div className="flex size-8 shrink-0 items-center justify-center rounded-md border bg-background text-muted-foreground">
-          <Clock className="size-4" />
+          <Calendar className="size-4" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium">{mt("checkinWindowAndGracePeriod")}</p>
+          <p className="text-sm font-medium">{mt("navBookingRules")}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {mt("checkinWindowAndGracePeriodHint")}
+            {mt("bookingRulesCrossLinkHint")}
           </p>
         </div>
         <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
       </button>
+
+      {/* Sticky save bar. The header Save is the primary action and stays for
+          consistency with the other settings pages, but on a page whose content
+          is a long editable list it can be scrolled far out of view — so while
+          something is unsaved, a pinned bar mirrors it next to the work. */}
+      {isDirty && (
+        <div className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card/95 px-3 py-2 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-card/80">
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <AlertTriangle className="size-3.5 text-amber-500" />
+            {mt("unsavedChanges")}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 rounded-lg px-2 text-xs hover:bg-muted"
+              onClick={() => {
+                setCheckinEnabled(data?.checkinEnabled ?? false);
+                setCheckoutEnabled(data?.checkoutEnabled ?? false);
+                setCheckinInstructions(data?.checkinInstructions ?? null);
+                setCheckoutInstructions(data?.checkoutInstructions ?? null);
+                setSmartLockCheckinInstructions(data?.smartLockCheckinInstructions ?? null);
+                setTwCheckinWindow(data?.timeWindowSettings?.checkinWindowMinutesBefore ?? null);
+                setTwNoShowGrace(data?.timeWindowSettings?.noShowGraceMinutes ?? null);
+                setItems(initialUnifiedItems);
+              }}
+            >
+              {mt("discardChanges")}
+            </Button>
+            <StatusButton
+              status={saveAction.status}
+              onClick={saveAction.execute}
+              disabled={hasProblems}
+              labels={{
+                idle: mt("saveChanges"),
+                loading: mt("savingShort"),
+                success: mt("saved"),
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

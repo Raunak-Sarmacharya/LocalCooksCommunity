@@ -299,9 +299,11 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
           </CardContent>
         </Card>
 
-        {/* Arrival timing. Kept with the other time-based rules so there is one
-            place to look for "when" — the checklist of what chefs must DO lives
-            on the check-in/check-out page, linked below. */}
+        {/* Arrival timing. These two values also appear on the check-in/check-out
+            page, which is intentional — both pages read and write the same
+            query-cached field, so a manager never has to leave the page they are
+            already on to set when arrival opens. The help text on each row spells
+            out that they are shared. */}
         <Card>
           <CardHeader className="p-4 pb-3">
             <CardTitle className="text-lg">{mt("arrivalTiming")}</CardTitle>

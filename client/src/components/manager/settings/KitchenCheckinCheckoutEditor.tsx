@@ -112,18 +112,22 @@ export function generateUnifiedItemId(): string {
  * field is the single biggest source of friction on a page like this. Booking
  * context is deliberately excluded here because it already has a home on the
  * Details tab, and duplicating it would create two sources of truth.
+ *
+ * `key` is an i18n key rather than literal copy so the picker reads in the
+ * manager's language. Once picked, the resolved text is written into the item's
+ * `label`, which is the same free-text field a manager would have typed into.
  */
-const PRESET_TASKS: { label: string; stages: Stage[]; photo?: boolean }[] = [
-  { label: "Gather used towels and linens", stages: ["checkout"] },
-  { label: "Take out the trash and recycling", stages: ["checkout"] },
-  { label: "Wash and put away all dishes", stages: ["checkout"] },
-  { label: "Wipe down counters and stovetop", stages: ["checkin", "checkout"] },
-  { label: "Sweep and mop the floor", stages: ["checkout"] },
-  { label: "Turn off lights and appliances", stages: ["checkout"] },
-  { label: "Lock all doors and windows", stages: ["checkout"] },
-  { label: "Return keys and access cards", stages: ["checkout"] },
-  { label: "Confirm equipment is clean and undamaged", stages: ["checkout"], photo: true },
-  { label: "Photograph the kitchen before you leave", stages: ["checkout"], photo: true },
+const PRESET_TASKS: { key: string; stages: Stage[]; photo?: boolean }[] = [
+  { key: "presetTaskGatherTowels", stages: ["checkout"] },
+  { key: "presetTaskTakeOutTrash", stages: ["checkout"] },
+  { key: "presetTaskWashDishes", stages: ["checkout"] },
+  { key: "presetTaskWipeCounters", stages: ["checkin", "checkout"] },
+  { key: "presetTaskSweepAndMop", stages: ["checkout"] },
+  { key: "presetTaskTurnOffLights", stages: ["checkout"] },
+  { key: "presetTaskLockUp", stages: ["checkout"] },
+  { key: "presetTaskReturnKeys", stages: ["checkout"] },
+  { key: "presetTaskConfirmEquipment", stages: ["checkout"], photo: true },
+  { key: "presetTaskPhotographKitchen", stages: ["checkout"], photo: true },
 ];
 
 // ─── Storage ↔ Unified conversion helpers ─────────────────────────────────────
@@ -620,7 +624,7 @@ function PresetPicker({
   existingLabels: Set<string>;
 }) {
   const available = PRESET_TASKS.filter(
-    (preset) => !existingLabels.has(preset.label.toLowerCase()),
+    (preset) => !existingLabels.has(mt(preset.key).toLowerCase()),
   );
 
   return (
@@ -641,13 +645,13 @@ function PresetPicker({
             : mt("checkIn");
           return (
             <button
-              key={preset.label}
+              key={preset.key}
               type="button"
               onClick={() => onPick(preset)}
               className="!min-h-0 flex w-full items-center gap-2 rounded-md border border-transparent px-2 py-1.5 text-left text-xs transition-colors hover:border-border hover:bg-muted"
             >
               <Plus className="size-3.5 shrink-0 text-muted-foreground" />
-              <span className="min-w-0 flex-1 truncate">{preset.label}</span>
+              <span className="min-w-0 flex-1 truncate">{mt(preset.key)}</span>
               <span className="shrink-0 text-[10px] text-muted-foreground">
                 {stages}
                 {preset.photo ? " · 📷" : ""}
@@ -1181,7 +1185,7 @@ function ChecklistList({
       ...itemsRef.current,
       {
         id: generateUnifiedItemId(),
-        label: preset.label,
+        label: mt(preset.key),
         description: undefined,
         requiredOnCheckin: preset.stages.includes("checkin"),
         requiredOnCheckout: preset.stages.includes("checkout"),

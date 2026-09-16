@@ -1,4 +1,5 @@
 {
+  "addToCheckinFirst": "Ajoutez d'abord à l'arrivée, ou supprimez l'élément.",
   "appName": "LocalCooks",
   "loading": "Chargement…",
   "save": "Enregistrer",
@@ -13,6 +14,7 @@
   "search": "Rechercher",
   "retry": "Réessayer",
   "submit": "Soumettre",
+  "undo": "Annuler",
   "yes": "Oui",
   "no": "Non",
   "or": "ou",
