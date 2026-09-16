@@ -23,7 +23,10 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
 import {
+  AlertTriangle,
+  ArrowRight,
   Camera,
+  CheckCircle2,
   ClipboardCheck,
   Copy,
   GripVertical,
@@ -60,7 +63,6 @@ import { FormLegend } from "@/components/ui/form-legend";
 import {
   Sheet,
   SheetContent,
-  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
@@ -689,8 +691,21 @@ function UndoBar({ onUndo, label }: { onUndo: () => void; label: string }) {
   );
 }
 
-// ─── Chef View Preview (matches KitchenCheckinTracker exactly) ───────────────
+// ─── Chef View Preview (matches KitchenCheckinTracker) ───────────────────────
 
+/**
+ * Chef-facing preview, rendered live off the editor's own state.
+ *
+ * It is fully interactive — tasks tick, photo slots accept files — because the
+ * two questions a manager actually has here ("what does the chef get?" and "how
+ * much work is this?") are both answered faster by using the thing than by
+ * reading a picture of it. Nothing is uploaded: photo URLs stay in local state
+ * and the object URLs are revoked when the preview closes.
+ *
+ * The booking header is the only invented part — a manager has no booking in
+ * front of them when configuring a kitchen — so it is labelled as sample data
+ * rather than dressed up as real.
+ */
 function ChefPreviewSheet({
   open,
   onOpenChange,
@@ -706,158 +721,317 @@ function ChefPreviewSheet({
   smartLockInstructions: string | null;
   items: UnifiedChecklistItem[];
 }) {
-  // Filter items that actually apply to this stage and have a label
+  /** Item ids the manager has ticked while trying the preview. */
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  /** Requirement id → stand-in photos, for "uploaded" demo slots. */
+  const [photos, setPhotos] = useState<Record<string, string[]>>({});
+
+  // Each open starts a fresh trial — otherwise the previous kitchen's ticks are
+  // still on screen and the preview reads as real saved progress.
+  useEffect(() => {
+    if (!open) return;
+    setChecked(new Set());
+    setPhotos({});
+  }, [open, stage]);
+
   const filledItems = items.filter(
     (i) =>
       i.label.trim() &&
       (stage === "checkin" ? i.requiredOnCheckin : i.requiredOnCheckout),
   );
-  const filledPhotoItems = filledItems.filter((i) => i.photoRequired);
-  const hasAnyContent =
-    filledItems.length > 0 ||
-    !!instructions ||
-    (stage === "checkin" && !!smartLockInstructions);
+  const photoItems = filledItems.filter((i) => i.photoRequired);
+  const hasInstructions = !!instructions;
+  const hasSmartLock = stage === "checkin" && !!smartLockInstructions;
+  const hasContent = filledItems.length > 0;
+
+  const allTasksTicked = filledItems.every((i) => checked.has(i.id));
+  const allPhotosAdded = photoItems.every((i) => (photos[i.id]?.length ?? 0) > 0);
+  const canSubmit = hasContent && allTasksTicked && allPhotosAdded;
+
+  const toggleItem = (id: string) => {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  /**
+   * Stand-in photo. The chef-side uploader holds uploaded URLs only, so a "
+   * ticked" slot is all the preview needs to show the progress state — no file
+   * picker, no upload, nothing to clean up.
+   */
+  const addPhoto = (id: string) => {
+    setPhotos((prev) => ({ ...prev, [id]: [...(prev[id] ?? []), `preview-${Date.now()}`] }));
+  };
+
+  const stageTitle = stage === "checkin" ? mt("kitchenCheckInTitle") : mt("kitchenCheckOutTitle");
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-md overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-primary" />
-            {stage === "checkin" ? mt("kitchenCheckInTitle") : mt("kitchenCheckOutTitle")}
+      <SheetContent className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
+        {/* Header */}
+        <SheetHeader className="border-b px-4 py-3 pr-12 text-left">
+          <SheetTitle className="flex items-center gap-2 text-base">
+            <LogIn className="size-4 text-muted-foreground" />
+            {stageTitle}
           </SheetTitle>
-          <SheetDescription>{mt("chefPreviewDescription")}</SheetDescription>
+          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+            <Badge variant="outline" className="text-[11px] font-normal">
+              {mt("previewBookingTime")}
+            </Badge>
+            <Badge variant="outline" className="border-primary/30 bg-primary/5 text-[11px] font-normal text-primary">
+              <Eye className="mr-1 size-2.5" />
+              {mt("previewChefPov")}
+            </Badge>
+          </div>
         </SheetHeader>
 
-        {filledItems.length > 0 && <FormLegend className="mt-4 mb-0" />}
-
-        <div className="py-4 space-y-3">
-          {/* Manager Instructions */}
-          {instructions && (
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
-              <p className="text-xs text-blue-800 font-medium mb-1">{mt("instructionsFromManager")}</p>
-              <p className="text-xs text-blue-700 whitespace-pre-line">
-                {instructions}
-              </p>
-            </div>
-          )}
-
-          {/* Smart Lock (check-in only) */}
-          {stage === "checkin" && smartLockInstructions && (
-            <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 space-y-2">
-              <div className="flex items-center gap-1.5">
-                <Lock className="size-3.5 text-violet-600" />
-                <p className="text-xs text-violet-800 font-medium">{mt("smartLockAccess")}</p>
-              </div>
-              <p className="text-xs text-violet-700 whitespace-pre-line">
-                {smartLockInstructions}
-              </p>
-              <div className="flex items-center gap-2 p-2 rounded-md bg-violet-100 border border-violet-300">
-                <span className="text-lg font-mono font-bold text-violet-900 tracking-[0.2em]">
-                  A1B2C3
-                </span>
-                <span className="text-[10px] text-violet-600 ml-auto">
-                  {mt("sampleCode")}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Checklist Items */}
-          {filledItems.length > 0 && (
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">
-                {stage === "checkin" ? mt("checklist") : mt("checkoutChecklist")}
-              </Label>
-              {filledItems.map((item, index) => (
-                <div
-                  key={item.id}
-                  className="flex items-start gap-2.5 p-2 rounded-lg border bg-background"
-                >
-                  <Checkbox disabled className="mt-0.5" />
-                  <div className="flex-1 min-w-0">
-                    <span className="text-sm">
-                      <span className="tabular-nums font-medium text-muted-foreground mr-1.5">{index + 1}.</span>
-                      {item.label}
-                      <span className="text-destructive ml-0.5">*</span>
-                    </span>
-                    {item.description && (
-                      <p className="text-[11px] text-muted-foreground mt-0.5">
-                        {item.description}
-                      </p>
-                    )}
-                    {item.photoRequired && (
-                      <Badge
-                        variant="outline"
-                        className="mt-1 text-[10px] bg-amber-50 text-amber-800 border-amber-200"
-                      >
-                        <Camera className="size-2.5 mr-1" />{mt("photoRequired")}</Badge>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Photo Upload Section — appears once, slots for every item that needs a photo */}
-          {filledPhotoItems.length > 0 && (
-            <div className="space-y-2">
-              <Label className="text-sm font-medium flex items-center gap-1.5">
-                <Camera className="h-4 w-4" />{mt("photosRequired")}</Label>
-              <p className="text-[11px] text-muted-foreground">{mt("onePhotoPerItemChefUploadsTheseAsPartOfTheForm")}</p>
-              {filledPhotoItems.map((item) => (
-                <div key={`preview-photo-${item.id}`} className="space-y-1">
-                  <p className="text-sm font-medium">
-                    {item.label}
-                    <span className="text-destructive ml-0.5">*</span>
-                  </p>
-                  <div className="border-2 border-dashed border-border rounded-lg p-4 flex flex-col items-center justify-center opacity-60">
-                    <Upload className="h-5 w-5 text-muted-foreground mb-1" />
-                    <span className="text-[11px] text-muted-foreground">{mt("chefUploadsThisPhoto")}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Notes textarea */}
-          <div className="space-y-1">
-            <Label className="text-sm font-medium">{mt("notesOptional")}</Label>
-            <Textarea
-              disabled
-              rows={2}
-              placeholder={
-                stage === "checkin"
-                  ? mt("optionalCheckInNotes") : mt("checkoutNotesPlaceholder")
-              }
-              className="opacity-60"
-            />
-          </div>
-
-          {/* Empty state */}
-          {!hasAnyContent && (
-            <div className="text-center py-8 text-sm text-muted-foreground border border-dashed rounded-lg">
-              <Info className="size-5 mx-auto mb-2" />
-              <p>{mt("nothingConfiguredYet")}</p>
-              <p className="text-xs mt-1">{mt("addItemsToTheLeftToSeeTheChefView")}</p>
-            </div>
-          )}
-
-          {/* Submit button */}
-          <Button disabled className="w-full mt-2" size="lg">
-            {stage === "checkin" ? (
-              <LogIn className="h-4 w-4 mr-2" />
-            ) : (
-              <LogOut className="h-4 w-4 mr-2" />
-            )}
-            {stage === "checkin" ? mt("confirmCheckIn") : mt("submitCheckout")}
-          </Button>
-          <p className="text-[10px] text-center text-muted-foreground">
-            {mt("chefSubmitGateNote")}
+        {/* Trial notice — what is real here and what is not */}
+        <div className="flex items-start gap-2 border-b bg-muted/40 px-4 py-2 text-[10px] leading-snug text-muted-foreground">
+          <Info className="mt-0.5 size-3 shrink-0" />
+          <p>
+            {mt("previewInteractiveNote")}{" "}
+            <span className="text-muted-foreground/80">{mt("previewSampleDataNote")}</span>
           </p>
         </div>
+
+        {/* Body */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+          {!hasContent ? (
+            <div className="rounded-lg border border-dashed px-6 py-12 text-center">
+              <ClipboardCheck className="mx-auto mb-2 size-6 text-muted-foreground/40" />
+              <p className="text-sm font-medium">{mt("previewEmptyTitle")}</p>
+              <p className="mx-auto mt-1 max-w-[240px] text-[10px] leading-snug text-muted-foreground/80">
+                {mt("previewEmptyHint")}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <FormLegend className="mb-0" />
+
+              {/* Step timeline, mirroring the tracker's pre-check-in state */}
+              <ol className="space-y-3">
+                <PreviewStep
+                  done
+                  title={stage === "checkin" ? mt("previewStepCheckIn") : mt("previewStepCheckout")}
+                  description={
+                    stage === "checkin" ? mt("previewStepArrive") : mt("previewStepSubmitPhotos")
+                  }
+                  icon={<LogIn className="size-3.5" />}
+                />
+                <PreviewStep
+                  active
+                  title={mt("previewStepInProgress")}
+                  description={mt("previewStepUseKitchen")}
+                  icon={<Calendar className="size-3.5" />}
+                />
+              </ol>
+
+              {/* Manager instructions */}
+              {hasInstructions && (
+                <div className="rounded-lg border p-3">
+                  <p className="mb-1 text-xs font-medium">{mt("instructionsFromManager")}</p>
+                  <p className="whitespace-pre-line text-xs text-muted-foreground">
+                    {instructions}
+                  </p>
+                </div>
+              )}
+
+              {/* Smart lock, check-in only */}
+              {hasSmartLock && (
+                <div className="space-y-2 rounded-lg border p-3">
+                  <div className="flex items-center gap-1.5">
+                    <Lock className="size-3.5 text-muted-foreground" />
+                    <p className="text-xs font-medium">{mt("smartLockAccess")}</p>
+                  </div>
+                  <p className="whitespace-pre-line text-xs text-muted-foreground">
+                    {smartLockInstructions}
+                  </p>
+                  <div className="flex items-center gap-2 rounded-md border bg-muted/50 p-2">
+                    <span className="font-mono text-lg font-bold tracking-[0.2em]">A1B2C3</span>
+                    <span className="ml-auto text-[10px] text-muted-foreground">
+                      {mt("sampleCode")}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* The task list itself */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-sm font-medium">{mt("checklist")}</Label>
+                  <Badge variant="outline" className="text-[10px] font-normal">
+                    {mt("previewTaskCount", { count: filledItems.length })}
+                  </Badge>
+                </div>
+                {filledItems.map((item, index) => {
+                  const isChecked = checked.has(item.id);
+                  return (
+                    <label
+                      key={item.id}
+                      className={cn(
+                        "flex cursor-pointer items-start gap-2.5 rounded-lg border p-2 transition-colors",
+                        isChecked ? "border-border bg-muted/40" : "bg-background hover:bg-muted/50",
+                      )}
+                    >
+                      <Checkbox
+                        checked={isChecked}
+                        onCheckedChange={() => toggleItem(item.id)}
+                        className="mt-0.5"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <span className={cn("text-sm", isChecked && "text-muted-foreground line-through")}>
+                          <span className="mr-1.5 font-medium tabular-nums text-muted-foreground">
+                            {index + 1}.
+                          </span>
+                          {item.label}
+                          <span className="ml-0.5 text-destructive">*</span>
+                        </span>
+                        {item.description && (
+                          <p className="mt-0.5 text-xs text-muted-foreground">{item.description}</p>
+                        )}
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+
+              {/* Photo slots — click to add a stand-in photo */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="flex items-center gap-1.5 text-sm font-medium">
+                    <Camera className="size-3.5" />
+                    {mt("photosRequired")}
+                  </Label>
+                  <Badge variant="outline" className="text-[10px] font-normal">
+                    {photoItems.length > 0
+                      ? mt("previewPhotoCount", { count: photoItems.length })
+                      : mt("previewNoPhotos")}
+                  </Badge>
+                </div>
+                {photoItems.length === 0 ? (
+                  <p className="rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
+                    {mt("previewNoPhotos")}
+                  </p>
+                ) : (
+                  photoItems.map((item) => {
+                    const urls = photos[item.id] ?? [];
+                    const has = urls.length > 0;
+                    return (
+                      <div
+                        key={`preview-photo-${item.id}`}
+                        className={cn(
+                          "space-y-2 rounded-lg border p-3 transition-colors",
+                          has ? "border-emerald-300/60 bg-emerald-50/40" : "border-border",
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="min-w-0 flex-1 truncate text-sm font-medium">
+                            {item.label}
+                            <span className="ml-0.5 text-destructive">*</span>
+                          </p>
+                          {has && (
+                            <span className="flex shrink-0 items-center gap-1 text-[11px] text-emerald-700">
+                              <CheckCircle2 className="size-3" />
+                              {urls.length}/3
+                            </span>
+                          )}
+                        </div>
+                        {!has && (
+                          <button
+                            type="button"
+                            onClick={() => addPhoto(item.id)}
+                            className="!min-h-0 flex w-full flex-col items-center justify-center rounded-lg border-2 border-dashed border-border px-4 py-4 transition-colors hover:border-primary/50"
+                          >
+                            <Upload className="mb-1 size-5 text-muted-foreground" />
+                            <span className="text-[11px] text-muted-foreground">
+                              {mt("chefUploadsThisPhoto")}
+                            </span>
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Notes */}
+              <div className="space-y-1">
+                <Label className="text-sm font-medium">{mt("previewNotesLabel")}</Label>
+                <Textarea
+                  rows={2}
+                  placeholder={
+                    stage === "checkin"
+                      ? mt("optionalCheckInNotes")
+                      : mt("checkoutNotesPlaceholder")
+                  }
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer — the real gate, reproduced */}
+        {hasContent && (
+          <div className="space-y-2 border-t px-4 py-3">
+            {/* There is no submit in a preview, and there should not be — the
+                button exists to show the gate, so it is deliberately inert. */}
+            <Button className="w-full" size="lg" disabled={!canSubmit} type="button">
+              {stage === "checkin" ? (
+                <LogIn className="mr-2 size-4" />
+              ) : (
+                <LogOut className="mr-2 size-4" />
+              )}
+              {stage === "checkin" ? mt("previewSubmitCheckIn") : mt("previewSubmitCheckout")}
+            </Button>
+            <p className="text-center text-[10px] leading-snug text-muted-foreground">
+              {canSubmit ? mt("previewGateNote") : mt("previewTryHint")}
+            </p>
+            <p className="text-center text-[10px] leading-snug text-muted-foreground/70">
+              {mt("chefSubmitGateNote")}
+            </p>
+          </div>
+        )}
       </SheetContent>
     </Sheet>
+  );
+}
+
+/** One row of the preview's step timeline. */
+function PreviewStep({
+  title,
+  description,
+  icon,
+  done,
+  active,
+}: {
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  done?: boolean;
+  active?: boolean;
+}) {
+  return (
+    <li className="flex gap-3">
+      <span
+        className={cn(
+          "flex size-7 shrink-0 items-center justify-center rounded-full border",
+          done
+            ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+            : active
+              ? "border-primary/40 bg-primary/10 text-primary"
+              : "border-border bg-muted text-muted-foreground",
+        )}
+      >
+        {icon}
+      </span>
+      <div className="min-w-0 pt-0.5">
+        <p className="text-sm font-medium">{title}</p>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+    </li>
   );
 }
 
@@ -883,13 +1057,18 @@ interface StageHeaderProps {
 }
 
 /**
- * Per-stage control panel: enable switch, instructions textarea, smart-lock
- * instructions (check-in only), counts, and preview button. The actual
- * checklist items live in the shared list below both StageHeaders so managers
- * can see and edit the whole matrix at once.
+ * Per-flow control panel: the enable switch, a one-line status, the arrival
+ * instructions disclosure and a preview entry point. The checklist items
+ * themselves live in the shared list below both panels so managers can see and
+ * edit the whole matrix at once.
  *
- * Instructions stay collapsed behind a disclosure: most managers write nothing
- * here, and a permanently-open textarea on both panels reads as work.
+ * State is carried by a single `On` / `Off` badge next to a description that
+ * says what that state *means* for the chef — the previous version showed
+ * counts only when enabled and nothing when disabled, which left "off" reading
+ * as "broken" rather than "intentionally not used". Instructions and smart-lock
+ * copy are the only things hidden behind a disclosure, and they announce
+ * themselves with an `Added` badge when set, so a manager can always tell at a
+ * glance whether they have written something.
  */
 function StageHeader({
   stage,
@@ -906,165 +1085,238 @@ function StageHeader({
 }: StageHeaderProps) {
   const title = stage === "checkin" ? mt("checkInStage") : mt("checkOutStage");
   const StageIcon = stage === "checkin" ? LogIn : LogOut;
-  const panelClass = enabled
-    ? stage === "checkin"
-      ? "border-emerald-200 bg-emerald-50/40"
-      : "border-primary/20 bg-primary/5"
-    : "border-border bg-muted/20";
-  const iconClass = stage === "checkin" ? "text-emerald-600" : "text-primary";
 
   const hasSmartLock = stage === "checkin" && smartLockAvailable;
-  const [detailsOpen, setDetailsOpen] = useState(
-    !!instructions || !!smartLockInstructions,
-  );
+  const hasInstructions = !!instructions;
+  const hasSmartLockInstructions = hasSmartLock && !!smartLockInstructions;
+
+  const [detailsOpen, setDetailsOpen] = useState(hasInstructions || hasSmartLockInstructions);
 
   useEffect(() => {
-    if (instructions || (hasSmartLock && smartLockInstructions)) {
-      setDetailsOpen(true);
-    }
-  }, [instructions, smartLockInstructions, hasSmartLock]);
+    if (hasInstructions || hasSmartLockInstructions) setDetailsOpen(true);
+  }, [hasInstructions, hasSmartLockInstructions]);
 
-  const showDetails = detailsOpen || !!instructions || (hasSmartLock && !!smartLockInstructions);
+  // A flow with nothing in it will do nothing for the chef, which is worth
+  // saying before they save and wonder.
+  const needsSetup = enabled && itemCount === 0;
 
   return (
-    <div className={cn("rounded-lg border p-3", panelClass)}>
+    <div
+      className={cn(
+        "rounded-lg border p-3 transition-colors",
+        enabled ? "border-border bg-card" : "border-dashed border-border bg-muted/30",
+      )}
+    >
       {/* Header row */}
       <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-2 min-w-0">
+        <div className="flex min-w-0 items-start gap-2">
           <div
             className={cn(
-              "size-8 rounded-md flex items-center justify-center bg-background border shrink-0",
-              iconClass,
+              "flex size-8 shrink-0 items-center justify-center rounded-md border",
+              enabled
+                ? stage === "checkin"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-600"
+                  : "border-primary/20 bg-primary/5 text-primary"
+                : "border-border bg-background text-muted-foreground",
             )}
           >
             <StageIcon className="size-4" />
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-1.5 flex-wrap">
+            <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-sm font-semibold">{title}</span>
-              {enabled && (
-                <>
-                  <Badge variant="outline" className="text-[10px] h-4 px-1.5">
-                    {mt("itemCountLabel", { count: itemCount })}
-                  </Badge>
-                  {photoCount > 0 && (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] h-4 px-1.5 bg-amber-50 text-amber-800 border-amber-200"
-                    >
-                      <Camera className="size-2.5 mr-0.5" />
-                      {mt("photoCountLabel", { count: photoCount })}
-                    </Badge>
-                  )}
-                </>
+              <Badge
+                variant="outline"
+                className={cn(
+                  "h-4 px-1.5 text-[10px] font-medium",
+                  enabled
+                    ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                    : "text-muted-foreground",
+                )}
+              >
+                {enabled ? mt("flowOnBadge") : mt("flowOffBadge")}
+              </Badge>
+              {needsSetup && (
+                <Badge
+                  variant="outline"
+                  className="h-4 border-amber-300 bg-amber-50 px-1.5 text-[10px] font-medium text-amber-800"
+                >
+                  <AlertTriangle className="mr-0.5 size-2.5" />
+                  {mt("flowSetupNeededBadge")}
+                </Badge>
               )}
             </div>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
-              {stage === "checkin"
-                ? mt("confirmedByChefsOnArrival") : mt("confirmedByChefsBeforeLeaving")}
+            <p className="mt-1 text-[10px] leading-snug text-muted-foreground/80">
+              {enabled ? mt("flowOnDescription") : mt("flowOffDescription")}
             </p>
+            {/* Be active about why nothing is happening. A dashed panel and the
+                word "Off" explain the state but not the next step. */}
+            {stage === "checkin" && !enabled && (
+              <p className="mt-1 flex items-start gap-1 text-[10px] leading-snug text-muted-foreground/80">
+                <Info className="mt-0.5 size-3 shrink-0" />
+                {mt("checkinOffArrivalTimingNote")}
+              </p>
+            )}
           </div>
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
-          {enabled && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 rounded-lg text-xs shadow-none hover:translate-y-0 hover:shadow-none"
-              onClick={onOpenPreview}
-            >
-              <Eye className="size-3 mr-1" />{mt("preview")}</Button>
-          )}
-          <Switch
-            checked={enabled}
-            onCheckedChange={onEnabledChange}
-            aria-label={
-              enabled
-                ? mt("disableStage", { stage: title })
-                : mt("enableStage", { stage: title })
-            }
-          />
-        </div>
+        <Switch
+          checked={enabled}
+          onCheckedChange={onEnabledChange}
+          aria-label={enabled ? mt("disableStage", { stage: title }) : mt("enableStage", { stage: title })}
+        />
       </div>
 
       {enabled && (
-        <div className="mt-2.5">
-          {showDetails ? (
-            <div className="space-y-2">
-              {/* Instructions */}
-              <div>
-                <div className="flex items-center justify-between gap-2">
-                  <Label
-                    htmlFor={`${stage}-instructions`}
-                    className="text-xs font-medium text-muted-foreground"
-                  >
-                    {mt("instructionsForChefs")}{" "}
-                    <span className="font-normal">{mt("optionalLabel")}</span>
-                  </Label>
-                  <button
-                    type="button"
-                    onClick={() => setDetailsOpen(false)}
-                    className="!min-h-0 !min-w-0 rounded px-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-                  >
-                    {mt("hide")}
-                  </button>
-                </div>
-                <Textarea
-                  id={`${stage}-instructions`}
-                  value={instructions || ""}
-                  onChange={(e) => onInstructionsChange(e.target.value || null)}
-                  placeholder={
-                    stage === "checkin"
-                      ? mt("shownBeforeChefsCheckIn") : mt("shownBeforeChefsCheckOut")
-                  }
-                  rows={2}
-                  className="mt-1 text-xs bg-background"
-                />
-              </div>
+        <>
+          {/* Live totals — the reason the flow is worth turning on */}
+          <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+            <Badge variant="outline" className="h-5 px-2 text-[11px] font-normal">
+              <ListChecks className="mr-1 size-3 text-muted-foreground" />
+              {mt("itemCountLabel", { count: itemCount })}
+            </Badge>
+            {photoCount > 0 && (
+              <Badge
+                variant="outline"
+                className="h-5 border-amber-300 bg-amber-50 px-2 text-[11px] font-normal text-amber-800"
+              >
+                <Camera className="mr-1 size-3" />
+                {mt("photoCountLabel", { count: photoCount })}
+              </Badge>
+            )}
+          </div>
 
-              {/*
-                Smart-lock instructions — admin-gated capability and check-in
-                only, since smart locks are irrelevant to post-booking checkout.
-              */}
-              {hasSmartLock && (
-                <div className="rounded-md border border-violet-200 bg-violet-50/70 p-2.5">
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <Lock className="size-3.5 text-violet-600" />
+          {/* Instructions + smart lock, behind one disclosure.
+              This is the primary writing surface on the panel — the thing a
+              manager actually comes here to type — so it is the full-width,
+              always-labelled field. The preview below it is only a way to
+              check the work, and is sized as the secondary action. */}
+          <div className="mt-3 border-t pt-3">
+            {detailsOpen ? (
+              <div className="space-y-2">
+                <div>
+                  <div className="flex items-center justify-between gap-2">
                     <Label
-                      htmlFor="smart-lock-instructions"
-                      className="text-xs font-medium text-violet-900"
+                      htmlFor={`${stage}-instructions`}
+                      className="text-sm font-semibold"
                     >
-                      {mt("smartLockInstructions")}{" "}
-                      <span className="text-violet-500 font-normal">
+                      {stage === "checkin" ? mt("arrivalInstructionsTitle") : mt("departureInstructionsTitle")}{" "}
+                      <span className="text-xs font-normal text-muted-foreground">
                         {mt("optionalLabel")}
                       </span>
                     </Label>
+                    <button
+                      type="button"
+                      onClick={() => setDetailsOpen(false)}
+                      className="!min-h-0 !min-w-0 rounded px-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      {mt("hide")}
+                    </button>
                   </div>
+                  {/*
+                    This is not where tasks go. A checklist item is a checkbox the
+                    chef must tick before the form will submit; this box is plain
+                    text shown above that list. Writing the same sentence in both
+                    places shows it twice and only one of them gates the submit —
+                    so the field says out loud what it is *for*.
+                  */}
+                  <p className="mt-1 text-[10px] leading-snug text-muted-foreground/80">
+                    {stage === "checkin" ? mt("arrivalInstructionsHelp") : mt("departureInstructionsHelp")}
+                  </p>
                   <Textarea
-                    id="smart-lock-instructions"
-                    value={smartLockInstructions || ""}
-                    onChange={(e) =>
-                      onSmartLockInstructionsChange(e.target.value || null)
+                    id={`${stage}-instructions`}
+                    value={instructions || ""}
+                    onChange={(e) => onInstructionsChange(e.target.value || null)}
+                    placeholder={
+                      stage === "checkin"
+                        ? mt("arrivalInstructionsPlaceholder")
+                        : mt("departureInstructionsPlaceholder")
                     }
-                    placeholder={mt("smartLockAccessPlaceholder")}
-                    rows={2}
-                    className="text-xs border-violet-200 bg-white"
+                    rows={3}
+                    className="mt-1.5 bg-background text-xs"
                   />
                 </div>
-              )}
-            </div>
-          ) : (
+
+                {hasSmartLock && (
+                  <div className="rounded-md border bg-muted/40 p-2.5">
+                    <div className="mb-1 flex items-center gap-1.5">
+                      <Lock className="size-3.5 text-muted-foreground" />
+                      <Label
+                        htmlFor="smart-lock-instructions"
+                        className="text-xs font-medium"
+                      >
+                        {mt("smartLockInstructions")}{" "}
+                        <span className="font-normal text-muted-foreground">
+                          {mt("optionalLabel")}
+                        </span>
+                      </Label>
+                    </div>
+                    <Textarea
+                      id="smart-lock-instructions"
+                      value={smartLockInstructions || ""}
+                      onChange={(e) => onSmartLockInstructionsChange(e.target.value || null)}
+                      placeholder={mt("smartLockAccessPlaceholder")}
+                      rows={2}
+                      className="bg-background text-xs"
+                    />
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Notes are empty. This is still the primary writing surface, so
+                 the entry point is a full-width field-shaped button rather than
+                 a small muted chip — it should read as "a thing you can type in
+                 that is currently empty", not as a secondary toggle.
+
+                 The label is set at the same size as every other field label on
+                 the page (`text-xs` medium, matching ChecklistRow's `addNote`),
+                 and the help line one step below it. Anything larger and the
+                 entry point stops matching the page it lives on. */
+              <div className="space-y-1.5">
+                <button
+                  type="button"
+                  onClick={() => setDetailsOpen(true)}
+                  className="!min-h-0 flex w-full items-center gap-2 rounded-md border border-dashed border-border bg-background px-2.5 py-2 text-left transition-colors hover:border-solid hover:border-primary/40 hover:bg-muted/40"
+                >
+                  <Plus className="size-3.5 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-xs font-medium">
+                      {stage === "checkin" ? mt("arrivalInstructionsCta") : mt("departureInstructionsCta")}
+                    </span>
+                    <span className="mt-px block text-[10px] leading-snug text-muted-foreground/80">
+                      {stage === "checkin" ? mt("arrivalInstructionsHelp") : mt("departureInstructionsHelp")}
+                    </span>
+                  </span>
+                </button>
+                {hasSmartLock && hasSmartLockInstructions && (
+                  <Badge
+                    variant="outline"
+                    className="h-5 px-1.5 text-[10px] font-normal text-muted-foreground"
+                  >
+                    <Lock className="mr-0.5 size-2.5" />
+                    {mt("smartLockAddedBadge")}
+                  </Badge>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Preview entry — deliberately the quiet action on this panel. The
+              notes field above is what the manager is here to write; this only
+              opens a check. Kept as a plain text button so it stays discoverable
+              without competing with the field for attention. */}
+          <div className="mt-2 flex justify-end">
             <button
               type="button"
-              onClick={() => setDetailsOpen(true)}
-              className="!min-h-0 inline-flex items-center gap-1.5 rounded-md border border-dashed border-border px-2 py-1.5 text-[11px] text-muted-foreground transition-colors hover:border-solid hover:text-foreground"
+              onClick={onOpenPreview}
+              title={mt("previewChefViewHint")}
+              className="!min-h-0 !min-w-0 inline-flex items-center gap-1 rounded px-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
             >
-              <Plus className="size-3" />
-              {mt("addArrivalInstructions")}
+              <Eye className="size-3" />
+              {mt("previewChefView")}
+              <ArrowRight className="size-3" />
             </button>
-          )}
-        </div>
+          </div>
+        </>
       )}
     </div>
   );
@@ -1072,11 +1324,19 @@ function StageHeader({
 
 // ─── Checklist list ──────────────────────────────────────────────────────────
 
+/** Which slice of the task list is visible. Purely a view — never a partition. */
+type ItemFilter = "all" | "checkin" | "checkout" | "photo";
+
 interface ChecklistListProps {
+  /** The rows to render — already filtered. */
   items: UnifiedChecklistItem[];
+  /** How many rows exist in the unfiltered list, for the filtered empty state. */
+  totalCount: number;
+  filter: ItemFilter;
   onItemsChange: (next: UnifiedChecklistItem[]) => void;
   checkinEnabled: boolean;
   checkoutEnabled: boolean;
+  onClearFilter: () => void;
 }
 
 /**
@@ -1091,12 +1351,20 @@ interface ChecklistListProps {
  *
  * Every reorder also has a keyboard path (ArrowUp / ArrowDown on the focused
  * handle), because drag cannot be the only way to fix an order.
+ *
+ * `items` may be a filtered view, so mutations are resolved against the
+ * unfiltered source by id and written back in full — a filtered drag would
+ * otherwise reorder the visible slice in place and scramble the rows the
+ * manager cannot see. Numbering stays absolute for the same reason.
  */
 function ChecklistList({
   items,
+  totalCount,
+  filter,
   onItemsChange,
   checkinEnabled,
   checkoutEnabled,
+  onClearFilter,
 }: ChecklistListProps) {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragActive, setDragActive] = useState(false);
@@ -1194,12 +1462,22 @@ function ChecklistList({
     ]);
   }, []);
 
+  /**
+   * Move one row one slot, in the *unfiltered* list. Neighbours are found by id
+   * so that under a filter the row swaps with the next row of the same kind
+   * instead of jumping past items that are not on screen.
+   */
   const moveItem = useCallback((from: number, to: number) => {
     const current = itemsRef.current;
-    if (to < 0 || to >= current.length || from === to) return;
+    const dragged = itemsRef.current[from];
+    const over = itemsRef.current[to];
+    if (!dragged || !over) return;
+    const fromAbs = current.findIndex((i) => i.id === dragged.id);
+    const toAbs = current.findIndex((i) => i.id === over.id);
+    if (fromAbs === -1 || toAbs === -1 || fromAbs === toAbs) return;
     const next = [...current];
-    const [moved] = next.splice(from, 1);
-    next.splice(to, 0, moved);
+    const [moved] = next.splice(fromAbs, 1);
+    next.splice(toAbs, 0, moved);
     onItemsChangeRef.current(next);
   }, []);
 
@@ -1259,50 +1537,34 @@ function ChecklistList({
   const checkinCount = items.filter((i) => i.requiredOnCheckin).length;
   const checkoutCount = items.filter((i) => i.requiredOnCheckout).length;
 
+  // Filtered to nothing: the list is not empty, it is just all hidden. Offer the
+  // way back rather than showing the blank-slate "add your first task" state.
+  const filteredToNothing =
+    filter !== "all" && items.length === 0 && totalCount > 0;
+
   return (
     <div className="space-y-2.5">
-      {/* Section header: title, live totals, and the two add affordances */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex min-w-0 items-center gap-2">
-          <ListChecks className="size-4 shrink-0 text-muted-foreground" />
-          <span className="text-sm font-medium">{mt("checklistItems")}</span>
-          {items.length > 0 && (
-            <span className="hidden text-[11px] text-muted-foreground sm:inline">
-              {mt("checklistTotals", {
-                checkin: checkinCount,
-                checkout: checkoutCount,
-              })}
-            </span>
-          )}
+      {filteredToNothing ? (
+        <div className="rounded-lg border border-dashed py-8 text-center">
+          <ListChecks className="mx-auto mb-2 size-6 text-muted-foreground/40" />
+          <p className="text-sm font-medium">
+            {mt("noTasksInFilter", { filter: mt(`filter_${filter}`) })}
+          </p>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onClearFilter}
+            className="mt-2 h-8 rounded-lg px-3 text-xs hover:bg-muted"
+          >
+            {mt("showAllTasks")}
+          </Button>
         </div>
-        {items.length > 0 && (
-          <TooltipProvider delayDuration={200}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 rounded-lg px-2 text-xs hover:bg-muted"
-                >
-                  <PlaylistPlus className="mr-1 size-3.5" />
-                  {mt("addFromCommonTasks")}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" align="end" className="p-0">
-                <PresetPicker onPick={addPreset} existingLabels={existingLabels} />
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-      </div>
-
-      {/* Rows */}
-      {items.length === 0 ? (
+      ) : items.length === 0 ? (
         <div className="rounded-lg border border-dashed py-8 text-center">
           <ClipboardCheck className="mx-auto mb-2 size-6 text-muted-foreground/40" />
           <p className="text-sm font-medium">{mt("noChecklistItemsYet")}</p>
-          <p className="mx-auto mt-0.5 max-w-sm text-xs text-muted-foreground">
+          <p className="mx-auto mt-1 max-w-sm text-[10px] leading-snug text-muted-foreground/80">
             {mt("noChecklistItemsHint")}
           </p>
           <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
@@ -1365,7 +1627,8 @@ function ChecklistList({
         />
       )}
 
-      {/* Footer: add row + scope legend */}
+      {/* Footer: add row + scope legend. Hidden for the filtered-empty state,
+          which already offers a way out. */}
       {items.length > 0 && (
         <div className="space-y-2 pt-0.5">
           <Button
@@ -1427,6 +1690,8 @@ export function KitchenCheckinCheckoutEditor({
   smartLockAvailable,
 }: KitchenCheckinCheckoutEditorProps) {
   const [previewStage, setPreviewStage] = useState<Stage | null>(null);
+  /** Which slice of the shared list is on screen. Editing is never restricted. */
+  const [itemFilter, setItemFilter] = useState<ItemFilter>("all");
 
   const checkinItemCount = useMemo(
     () => items.filter((i) => i.requiredOnCheckin).length,
@@ -1434,6 +1699,10 @@ export function KitchenCheckinCheckoutEditor({
   );
   const checkoutItemCount = useMemo(
     () => items.filter((i) => i.requiredOnCheckout).length,
+    [items],
+  );
+  const photoItemCount = useMemo(
+    () => items.filter((i) => i.photoRequired).length,
     [items],
   );
   const checkinPhotoCount = useMemo(
@@ -1444,6 +1713,24 @@ export function KitchenCheckinCheckoutEditor({
     () => items.filter((i) => i.requiredOnCheckout && i.photoRequired).length,
     [items],
   );
+
+  /**
+   * The filter is a view over one list, never a partition of it — a task
+   * assigned to both flows must stay a single row that edits both flags, which
+   * is the whole reason the list is unified in the first place.
+   */
+  const visibleItems = useMemo(() => {
+    switch (itemFilter) {
+      case "checkin":
+        return items.filter((i) => i.requiredOnCheckin);
+      case "checkout":
+        return items.filter((i) => i.requiredOnCheckout);
+      case "photo":
+        return items.filter((i) => i.photoRequired);
+      default:
+        return items;
+    }
+  }, [items, itemFilter]);
 
   const bothDisabled = !checkinEnabled && !checkoutEnabled;
 
@@ -1456,16 +1743,17 @@ export function KitchenCheckinCheckoutEditor({
           </div>
           <div className="min-w-0">
             <CardTitle className="text-lg">{mt("checkInCheckOutChecklists")}</CardTitle>
-            <p className="mt-0.5 text-xs text-muted-foreground">
+            <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground/80">
               {mt("checkinCheckoutPageHint")}
             </p>
           </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Stage panels — stacked on mobile, side-by-side on md+. Each panel
-            owns its enable switch, instructions, smart-lock (check-in only),
-            and preview. Items are managed in the shared list below. */}
+      <CardContent className="space-y-5">
+        {/* ── Tier 1: the flows ───────────────────────────────────────────────
+            Only the switches and their consequences. Nothing that the manager
+            edits per-item lives here, because a panel that is half settings and
+            half content reads as one undifferentiated block. */}
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <StageHeader
             stage="checkin"
@@ -1497,19 +1785,67 @@ export function KitchenCheckinCheckoutEditor({
 
         {/* Nothing is switched on — the list is inert, so say so once. */}
         {bothDisabled && (
-          <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/40 p-2.5 text-xs text-muted-foreground">
+          <div className="flex items-start gap-2 rounded-lg border border-dashed border-border bg-muted/40 p-2.5 text-[10px] leading-snug text-muted-foreground/80">
             <Info className="mt-0.5 size-3.5 shrink-0" />
             <p>{mt("bothStagesDisabledHint")}</p>
           </div>
         )}
 
-        {/* The shared list of items. */}
-        <ChecklistList
-          items={items}
-          onItemsChange={onItemsChange}
-          checkinEnabled={checkinEnabled}
-          checkoutEnabled={checkoutEnabled}
-        />
+        {/* ── Tier 2: the tasks ───────────────────────────────────────────────
+            One list, both flows. Above it sits the filter control, below it the
+            totals and legend — so the manager reads "these are the tasks, this
+            is how they split" in that order instead of being handed a bare list
+            and left to work out what belongs to what. */}
+        <div className="space-y-3 border-t pt-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <ListChecks className="size-4 shrink-0 text-muted-foreground" />
+              <h3 className="text-sm font-semibold">{mt("checklistItems")}</h3>
+            </div>
+            <div
+              className="flex items-center gap-0.5 rounded-full bg-muted p-0.5"
+              role="group"
+              aria-label={mt("filterTasks")}
+            >
+              {(
+                [
+                  { id: "all", label: mt("filterAll"), count: items.length },
+                  // Reuse the scope-chip labels already used on every row, so the
+                  // filter and the chips call the same thing by the same name.
+                  { id: "checkin", label: mt("checkIn"), count: checkinItemCount },
+                  { id: "checkout", label: mt("checkOut"), count: checkoutItemCount },
+                  { id: "photo", label: mt("photo"), count: photoItemCount },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  aria-pressed={itemFilter === tab.id}
+                  onClick={() => setItemFilter(tab.id)}
+                  className={cn(
+                    "!min-h-0 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
+                    itemFilter === tab.id
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {tab.label}
+                  <span className="tabular-nums text-[10px] opacity-60">{tab.count}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <ChecklistList
+            items={visibleItems}
+            totalCount={items.length}
+            filter={itemFilter}
+            onItemsChange={onItemsChange}
+            checkinEnabled={checkinEnabled}
+            checkoutEnabled={checkoutEnabled}
+            onClearFilter={() => setItemFilter("all")}
+          />
+        </div>
       </CardContent>
 
       {/* Chef-view preview — side Sheet mirroring KitchenCheckinTracker */}

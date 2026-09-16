@@ -26,15 +26,17 @@ import {
   Loader2,
 } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
 import { useToast } from "@/hooks/use-toast";
 import { apiGet, apiPut } from "@/lib/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { NumericInput } from "@/components/ui/numeric-input";
 import { Label } from "@/components/ui/label";
 import { SettingsRow } from "./SettingsRow";
 import type { ChecklistItem, PhotoRequirement } from "./shared/ChecklistEditor";
+import { arrivalTimingsLocked } from "./shared/ChecklistEditor";
 import {
   KitchenCheckinCheckoutEditor,
   findUnifiedItemProblems,
@@ -218,6 +220,19 @@ export default function CheckinCheckoutSettings({
 
   const hasProblems = problems.empty.length > 0 || problems.unassigned.length > 0;
 
+  // Arrival timings are meaningless without at least one flow to be on time for.
+  const timingsLocked = arrivalTimingsLocked(data ?? undefined);
+
+  /**
+   * The timings rule is evaluated against the *live* toggles, not the saved
+   * ones — so a manager who has switched check-in on but not yet saved should
+   * be editing, not looking at a locked field wondering why last save's state
+   * is still in charge. The fields stay writable, and the card says plainly
+   * that nothing takes effect until Save, which is what the exit guard is for.
+   */
+  const timingsPendingSave =
+    timingsLocked && !arrivalTimingsLocked({ checkinEnabled, checkoutEnabled });
+
   const saveAction = useStatusButton(
     useCallback(async () => {
       if (hasProblems) {
@@ -359,16 +374,32 @@ export default function CheckinCheckoutSettings({
 
       {/* Arrival timings. Shown here as well as on Booking Policies — both read
           and write the same query-cached field, so a manager setting up the
-          arrival experience never has to leave this page. */}
+          arrival experience never has to leave this page. Locked entirely while
+          neither flow is on, because a check-in window with no check-in is
+          meaningless. */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-3">
             <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10">
               <Clock className="size-5 text-primary" />
             </div>
-            <div>
-              <CardTitle className="text-lg">{mt("arrivalTiming")}</CardTitle>
-              <CardDescription>{mt("arrivalTimingDescription")}</CardDescription>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <CardTitle className="text-lg">{mt("arrivalTiming")}</CardTitle>
+                {timingsPendingSave && (
+                  <Badge
+                    variant="outline"
+                    className="h-5 border-amber-300 bg-amber-50 px-1.5 text-[10px] font-medium text-amber-800"
+                  >
+                    {mt("saveToApply")}
+                  </Badge>
+                )}
+              </div>
+              <CardDescription>
+                {timingsLocked
+                  ? mt("arrivalTimingLockedDescription")
+                  : mt("arrivalTimingDescription")}
+              </CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -376,71 +407,83 @@ export default function CheckinCheckoutSettings({
           <SettingsRow
             id="checkin-window"
             label={mt("checkinOpensLabel")}
+            disabledReason={
+              timingsLocked
+                ? timingsPendingSave
+                  ? mt("arrivalTimingsPendingSave")
+                  : mt("enableStageToEditTimings")
+                : undefined
+            }
             hint={
               data?.platformDefaults
                 ? mt("platformDefaultIs", {
-                    value: data.platformDefaults.checkinWindowMinutesBefore,
+                    minutes: mt("minutesShort", {
+                      count: data.platformDefaults.checkinWindowMinutesBefore,
+                    }),
                   })
                 : undefined
             }
             help={mt("checkinWindowHelp")}
           >
-            <div className="flex items-center gap-1.5">
-              <Input
-                id="checkin-window"
-                type="number"
-                min={0}
-                max={120}
-                inputMode="numeric"
-                value={twCheckinWindow ?? ""}
-                placeholder={
-                  data?.platformDefaults
-                    ? String(data.platformDefaults.checkinWindowMinutesBefore)
-                    : "15"
-                }
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setTwCheckinWindow(v === "" ? null : Math.max(0, Math.min(120, parseInt(v, 10) || 0)));
-                }}
-                className="h-9 w-20 text-sm tabular-nums"
-              />
-              <span className="text-xs text-muted-foreground">{mt("minutesShort")}</span>
-            </div>
+            <NumericInput
+              id="checkin-window"
+              disabled={timingsLocked && !timingsPendingSave}
+              suffix={mt("minutesUnit")}
+              value={twCheckinWindow === null ? "" : String(twCheckinWindow)}
+              placeholder={
+                data?.platformDefaults
+                  ? String(data.platformDefaults.checkinWindowMinutesBefore)
+                  : "15"
+              }
+              onValueChange={(val) => {
+                const parsed = parseInt(val, 10);
+                setTwCheckinWindow(
+                  val.trim() === "" || isNaN(parsed) ? null : Math.min(120, Math.max(0, parsed)),
+                );
+              }}
+              className="h-9 w-28"
+            />
           </SettingsRow>
 
           <SettingsRow
             id="no-show-grace"
             label={mt("noShowGraceLabel")}
+            disabledReason={
+              timingsLocked
+                ? timingsPendingSave
+                  ? mt("arrivalTimingsPendingSave")
+                  : mt("enableStageToEditTimings")
+                : undefined
+            }
             hint={
               data?.platformDefaults
                 ? mt("platformDefaultIs", {
-                    value: data.platformDefaults.noShowGraceMinutes,
+                    minutes: mt("minutesShort", {
+                      count: data.platformDefaults.noShowGraceMinutes,
+                    }),
                   })
                 : undefined
             }
             help={mt("noShowGraceHelp")}
           >
-            <div className="flex items-center gap-1.5">
-              <Input
-                id="no-show-grace"
-                type="number"
-                min={0}
-                max={120}
-                inputMode="numeric"
-                value={twNoShowGrace ?? ""}
-                placeholder={
-                  data?.platformDefaults
-                    ? String(data.platformDefaults.noShowGraceMinutes)
-                    : "30"
-                }
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setTwNoShowGrace(v === "" ? null : Math.max(0, Math.min(120, parseInt(v, 10) || 0)));
-                }}
-                className="h-9 w-20 text-sm tabular-nums"
-              />
-              <span className="text-xs text-muted-foreground">{mt("minutesShort")}</span>
-            </div>
+            <NumericInput
+              id="no-show-grace"
+              disabled={timingsLocked && !timingsPendingSave}
+              suffix={mt("minutesUnit")}
+              value={twNoShowGrace === null ? "" : String(twNoShowGrace)}
+              placeholder={
+                data?.platformDefaults
+                  ? String(data.platformDefaults.noShowGraceMinutes)
+                  : "30"
+              }
+              onValueChange={(val) => {
+                const parsed = parseInt(val, 10);
+                setTwNoShowGrace(
+                  val.trim() === "" || isNaN(parsed) ? null : Math.min(120, Math.max(0, parsed)),
+                );
+              }}
+              className="h-9 w-28"
+            />
           </SettingsRow>
         </CardContent>
       </Card>

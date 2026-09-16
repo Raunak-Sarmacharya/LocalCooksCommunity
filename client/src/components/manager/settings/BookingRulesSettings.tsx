@@ -29,6 +29,7 @@ import { ChefPageHeader } from "@/components/chef/ui";
 import { SettingsFileUpload } from "./SettingsFileUpload";
 import { AuthenticatedDocumentLink } from "./AuthenticatedDocumentLink";
 import { SettingsRow } from "./SettingsRow";
+import { arrivalTimingsLocked } from "./shared/ChecklistEditor";
 
 interface Location {
   id: number;
@@ -51,6 +52,9 @@ interface BookingRulesSettingsProps {
 
 /** Shape of the arrival-timing values, which are owned by the check-in/check-out endpoint. */
 interface ArrivalTimings {
+  /** Present on the same payload; drives whether the timings below are editable. */
+  checkinEnabled?: boolean;
+  checkoutEnabled?: boolean;
   timeWindowSettings?: {
     checkinWindowMinutesBefore: number | null;
     noShowGraceMinutes: number | null;
@@ -302,21 +306,30 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
         {/* Arrival timing. These two values also appear on the check-in/check-out
             page, which is intentional — both pages read and write the same
             query-cached field, so a manager never has to leave the page they are
-            already on to set when arrival opens. The help text on each row spells
-            out that they are shared. */}
+            already on to set when arrival opens. Locked (and explained) on both
+            pages whenever neither flow is switched on. */}
         <Card>
           <CardHeader className="p-4 pb-3">
             <CardTitle className="text-lg">{mt("arrivalTiming")}</CardTitle>
-            <CardDescription>{mt("arrivalTimingDescription")}</CardDescription>
+            <CardDescription>
+              {arrivalTimingsLocked(arrivalSettings ?? undefined)
+                ? mt("arrivalTimingLockedDescription")
+                : mt("arrivalTimingDescription")}
+            </CardDescription>
           </CardHeader>
           <CardContent className="divide-y divide-border p-0">
             <SettingsRow
               id="checkin-window"
               label={mt("checkinOpensLabel")}
+              disabledReason={
+                arrivalTimingsLocked(arrivalSettings ?? undefined)
+                  ? mt("enableStageToEditTimings")
+                  : undefined
+              }
               hint={
                 arrivalSettings?.platformDefaults
                   ? mt("platformDefaultIs", {
-                      value: mt("minutesShort", {
+                      minutes: mt("minutesShort", {
                         count: arrivalSettings.platformDefaults.checkinWindowMinutesBefore,
                       }),
                     })
@@ -326,7 +339,8 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
             >
               <NumericInput
                 id="checkin-window"
-                suffix={mt("minutesShort", { count: checkinWindow ?? 0 })}
+                disabled={arrivalTimingsLocked(arrivalSettings ?? undefined)}
+                suffix={mt("minutesUnit")}
                 value={checkinWindow === null ? "" : String(checkinWindow)}
                 onValueChange={(val) => {
                   const parsed = parseInt(val, 10);
@@ -341,10 +355,15 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
             <SettingsRow
               id="no-show-grace"
               label={mt("noShowGraceLabel")}
+              disabledReason={
+                arrivalTimingsLocked(arrivalSettings ?? undefined)
+                  ? mt("enableStageToEditTimings")
+                  : undefined
+              }
               hint={
                 arrivalSettings?.platformDefaults
                   ? mt("platformDefaultIs", {
-                      value: mt("minutesShort", {
+                      minutes: mt("minutesShort", {
                         count: arrivalSettings.platformDefaults.noShowGraceMinutes,
                       }),
                     })
@@ -354,7 +373,8 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
             >
               <NumericInput
                 id="no-show-grace"
-                suffix={mt("minutesShort", { count: noShowGrace ?? 0 })}
+                disabled={arrivalTimingsLocked(arrivalSettings ?? undefined)}
+                suffix={mt("minutesUnit")}
                 value={noShowGrace === null ? "" : String(noShowGrace)}
                 onValueChange={(val) => {
                   const parsed = parseInt(val, 10);

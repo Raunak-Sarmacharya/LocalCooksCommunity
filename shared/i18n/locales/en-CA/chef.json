@@ -568,6 +568,8 @@
   "ciFailedToast": "Check-in failed",
   "ciGenericInstruction": "Upload photos documenting the move-in condition of the storage unit. These establish the baseline for any damage claim at checkout.",
   "ciManagerInstructions": "Instructions from Manager",
+  "coManagerInstructions": "Departure notes from manager",
+  "ciManagerInstructionsTitle": "Arrival notes from manager",
   "ciNotesLabel": "Notes (optional)",
   "ciNotesPlaceholder": "Note any pre-existing wear or concerns for the manager...",
   "ciPhotoAtLeastOne": "Please upload at least one photo documenting the move-in condition",

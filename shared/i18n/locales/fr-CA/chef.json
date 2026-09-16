@@ -561,6 +561,8 @@
   "ciFailedToast": "Échec de l'arrivée",
   "ciGenericInstruction": "Téléversez des photos documentant l'état de l'unité d'entreposage à l'entrée. Elles établissent la référence pour toute réclamation de dommage à la sortie.",
   "ciManagerInstructions": "Instructions du gérant",
+  "coManagerInstructions": "Notes de départ du gérant",
+  "ciManagerInstructionsTitle": "Notes d'arrivée du gérant",
   "ciNotesLabel": "Notes (facultatif)",
   "ciNotesPlaceholder": "Signalez toute usure préexistante ou préoccupation pour le gérant...",
   "ciPhotoAtLeastOne": "Veuillez téléverser au moins une photo documentant l'état à l'entrée",
