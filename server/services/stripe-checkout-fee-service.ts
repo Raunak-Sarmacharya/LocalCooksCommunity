@@ -23,6 +23,7 @@ import { logger } from "../logger";
 
 import { db } from '../db';
 import { platformSettings } from '@shared/schema';
+import { estimateManagerPayoutFeesCents } from "@shared/booking-pricing-breakdown";
 
 export interface FeeCalculationResult {
   bookingPriceInCents: number;
@@ -313,27 +314,22 @@ export async function calculateCheckoutFeesAsync(
   }
 
   const config = await getFeeConfig();
+  const estimated = estimateManagerPayoutFeesCents({
+    subtotalCents: bookingPriceInCents,
+    taxCents: options?.taxAmountCents,
+    platformCommissionRate: config.platformCommissionRate,
+    stripePercentageFee: config.stripePercentageFee,
+    stripeFlatFeeCents: config.stripeFlatFeeCents,
+  });
 
-  const platformCommissionInCents = Math.round(
-    bookingPriceInCents * config.platformCommissionRate
+  let totalPlatformFeeInCents =
+    estimated.stripeProcessingFeeCents + estimated.platformCommissionCents;
+  totalPlatformFeeInCents = Math.max(
+    totalPlatformFeeInCents,
+    config.minimumApplicationFeeCents,
   );
 
-  const taxAmountInCents = Math.max(0, Math.round(options?.taxAmountCents || 0));
-  const totalChargeInCents = bookingPriceInCents + taxAmountInCents + platformCommissionInCents;
-
-  // Stripe charges its processing fee on everything collected from the chef,
-  // including kitchen tax and the platform service fee.
-  const actualChargeEstimateFeeInCents = Math.round(
-    totalChargeInCents * config.stripePercentageFee + config.stripeFlatFeeCents
-  );
-
-  let totalPlatformFeeInCents = actualChargeEstimateFeeInCents + platformCommissionInCents;
-  totalPlatformFeeInCents = Math.max(totalPlatformFeeInCents, config.minimumApplicationFeeCents);
-
-  // Kitchen owns subtotal + tax. The service fee was added on top for the chef.
-  const managerReceivesInCents = bookingPriceInCents + taxAmountInCents - actualChargeEstimateFeeInCents;
-
-  if (managerReceivesInCents <= 0) {
+  if (estimated.managerReceivesCents <= 0) {
     throw new Error(
       `Estimated fee (${totalPlatformFeeInCents} cents) cannot exceed booking price (${bookingPriceInCents} cents)`
     );
@@ -341,12 +337,12 @@ export async function calculateCheckoutFeesAsync(
 
   return {
     bookingPriceInCents,
-    stripeProcessingFeeInCents: actualChargeEstimateFeeInCents,
-    platformCommissionInCents,
+    stripeProcessingFeeInCents: estimated.stripeProcessingFeeCents,
+    platformCommissionInCents: estimated.platformCommissionCents,
     totalPlatformFeeInCents,
-    totalChargeInCents,
-    managerReceivesInCents,
-    percentageFeeInCents: actualChargeEstimateFeeInCents,
+    totalChargeInCents: estimated.totalChargeCents,
+    managerReceivesInCents: estimated.managerReceivesCents,
+    percentageFeeInCents: estimated.stripeProcessingFeeCents,
     flatFeeInCents: config.stripeFlatFeeCents,
   };
 }

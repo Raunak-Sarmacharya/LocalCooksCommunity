@@ -1,6 +1,10 @@
 import { formatCurrency, formatDate } from "@/lib/formatters";
 import type { PaymentStatus, Transaction } from "./types";
-import { buildKitchenPayoutStatementBreakdown, aggregateKitchenPayoutTotals } from "@shared/booking-pricing-breakdown";
+import {
+    buildKitchenPayoutStatementBreakdown,
+    aggregateKitchenPayoutTotals,
+    resolveDisplayedKitchenNetPayoutCents,
+} from "@shared/booking-pricing-breakdown";
 
 const REVENUE_ELIGIBLE_STATUSES = new Set<PaymentStatus>([
     "paid",
@@ -29,9 +33,9 @@ export function isRevenueEligibleTransaction(transaction: Pick<Transaction, "pay
  *
  * Money model (chef pays → platform → manager):
  *   chefTotal = subtotal + tax + serviceFee
- *   platform keeps serviceFee
+ *   platform keeps serviceFee (unless charge omitted fee-on-top — then withheld from transfer)
  *   manager keeps tax; Stripe fee is deducted from manager
- *   managerNet = subtotal + tax − stripeFee  (= managerRevenue when synced)
+ *   managerNet = synced manager_revenue (= Connect transfer) when available
  *
  * `transaction.totalPrice` is the manager-facing booking subtotal (not chef charge).
  */
@@ -50,10 +54,19 @@ export function getTransactionRevenueBreakdown(transaction: Transaction) {
         ? transaction.stripeFee
         : 0;
 
-    // Prefer Stripe-synced payout; else subtotal + tax − stripe (managers keep tax).
-    const grossNetRevenue = managerRevenue > 0
-        ? managerRevenue
-        : Math.max(0, totalPrice + taxAmount - stripeFee);
+    const chargeAmount = transaction.chargeAmount
+        ?? (totalPrice + taxAmount + serviceFee);
+
+    const resolved = resolveDisplayedKitchenNetPayoutCents({
+        kitchenNetPayoutCents: managerRevenue > 0 ? managerRevenue : null,
+        kitchenBaseSubtotalCents: totalPrice,
+        kitchenHstAmountCents: taxAmount,
+        paymentProcessorFeeCents: stripeFee,
+        platformFeeAmountCents: serviceFee,
+        chargeAmountCents: chargeAmount,
+    });
+
+    const grossNetRevenue = resolved.netPayoutCents;
 
     const isRevenueEligible = isRevenueEligibleTransaction(transaction);
     const netRevenue = isRevenueEligible
@@ -69,6 +82,7 @@ export function getTransactionRevenueBreakdown(transaction: Transaction) {
         refundAmount,
         grossNetRevenue,
         netRevenue,
+        platformFeeWithheldFromManager: resolved.platformFeeWithheldFromManager,
     };
 }
 
@@ -77,13 +91,17 @@ export function transactionToPayoutBreakdown(transaction: Transaction) {
     const breakdown = getTransactionRevenueBreakdown(transaction);
     const subtotal = breakdown.totalPrice;
     const platformFee = breakdown.serviceFee;
+    const chargeAmount = transaction.chargeAmount
+        ?? (subtotal + breakdown.taxAmount + platformFee);
     return buildKitchenPayoutStatementBreakdown({
         kitchenBaseSubtotalCents: subtotal,
         kitchenHstRatePercent: transaction.taxRatePercent,
+        kitchenHstAmountCents: breakdown.taxAmount,
         platformFeeRate: subtotal > 0 ? platformFee / subtotal : 0,
         platformFeeAmountCents: platformFee,
         paymentProcessorFeeCents: breakdown.stripeFee,
-        kitchenNetPayoutCents: breakdown.netRevenue,
+        kitchenNetPayoutCents: transaction.managerRevenue > 0 ? transaction.managerRevenue : null,
+        chargeAmountCents: chargeAmount,
         refundAmountCents: breakdown.refundAmount,
         showPaymentProcessorFee: breakdown.stripeFee > 0,
     });
