@@ -10,6 +10,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { createBookingDateTime, DEFAULT_TIMEZONE } from "@/utils/timezone-utils"
+import { resolveDisplayedKitchenNetPayoutCents } from "@shared/booking-pricing-breakdown"
 
 // Storage/Equipment item types from JSONB fields
 export type StorageItem = {
@@ -470,17 +471,21 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
             // exactly what the chef sees: subtotal + kitchen tax + platform fee.
             const displayAmount = transactionAmount ?? (subtotal + taxAmount + serviceFee);
 
-            // ENTERPRISE STANDARD: Use managerRevenue (from transfer service) as the authoritative
-            // "You receive" amount. The service fee belongs to the platform and is
-            // added on top of the kitchen-owned subtotal + tax.
-            // This prevents showing the full charge amount when stripeFee is still 0 (async webhook).
-            const netAmount = (managerRevenue != null && managerRevenue > 0)
-                ? managerRevenue
-                : subtotal + taxAmount - (row.original.stripeProcessingFee ?? 0);
+            // ENTERPRISE STANDARD: Prefer Stripe-synced managerRevenue; reconstruct
+            // when pre-transfer gross is still stored or fees are known.
+            const netAmount = resolveDisplayedKitchenNetPayoutCents({
+                kitchenNetPayoutCents: managerRevenue,
+                kitchenBaseSubtotalCents: subtotal,
+                kitchenHstAmountCents: taxAmount,
+                paymentProcessorFeeCents: row.original.stripeProcessingFee ?? 0,
+                platformFeeAmountCents: serviceFee,
+                chargeAmountCents: transactionAmount ?? (subtotal + taxAmount + serviceFee),
+            }).netPayoutCents;
 
             // Derive the effective Stripe fee: if stripeProcessingFee is synced, use it.
             // Otherwise, if manager revenue is known, derive Stripe's fee from the
-            // kitchen-owned amount. Never treat the platform fee as a manager deduction.
+            // kitchen-owned amount. Never treat the platform fee as a manager deduction
+            // unless the charge omitted fee-on-top (handled in the shared resolver).
             const stripeFee = (row.original.stripeProcessingFee ?? 0) > 0
                 ? (row.original.stripeProcessingFee ?? 0)
                 : (managerRevenue != null && managerRevenue > 0 && displayAmount > 0)
@@ -800,8 +805,8 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
             // Show for confirmed/completed bookings where check-in is relevant.
             // Hide for pending/cancelled (those states pre-empt check-in).
             const checkinStatus = row.original.checkinStatus;
-            const checkinEnabled = (row.original as any).checkinEnabled !== false;
-            const checkoutEnabled = (row.original as any).checkoutEnabled !== false;
+            const checkinEnabled = (row.original as any).checkinEnabled === true;
+            const checkoutEnabled = (row.original as any).checkoutEnabled === true;
             const showCheckinBadge =
                 (status === 'confirmed' || status === 'completed') &&
                 checkinStatus !== undefined &&

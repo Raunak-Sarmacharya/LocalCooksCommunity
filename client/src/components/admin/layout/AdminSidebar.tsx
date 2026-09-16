@@ -12,6 +12,7 @@ export type AdminSection =
   | "escalated-penalties"
   | "chef-kitchen-access"
   | "kitchen-management"
+  | "user-management"
   | "promos"
   | "manager-revenues"
   | "platform-overview"
@@ -57,6 +58,7 @@ const NAV_GROUPS = [
   {
     label: "Management",
     items: [
+      { id: "user-management" as AdminSection, label: "User Management", icon: Users },
       { id: "chef-kitchen-access" as AdminSection, label: "Chef Kitchen Access", icon: Users },
       { id: "kitchen-management" as AdminSection, label: "Manage Kitchens", icon: Building2 },
       { id: "access-codes" as AdminSection, label: "Access Codes", icon: Key },

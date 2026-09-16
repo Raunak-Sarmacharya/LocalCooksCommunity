@@ -1,4 +1,5 @@
-import { auth } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
+import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import type { PublicRegistrationRole } from "@/hooks/use-auth";
 
 const PHONE_REGISTRATION_KEY = "localcooks:pending-phone-registration";
@@ -93,8 +94,7 @@ export async function provisionPendingPhoneRegistration(): Promise<{ completed: 
   if (!firebaseUser || !draft || firebaseUser.uid !== draft.uid) return { completed: false };
 
   await firebaseUser.reload();
-  const normalizedEmail = firebaseUser.email?.trim().toLowerCase();
-  if (!firebaseUser.emailVerified || normalizedEmail !== draft.email.trim().toLowerCase() || !firebaseUser.phoneNumber) {
+  if (!firebaseUser.phoneNumber || firebaseUser.phoneNumber !== draft.phoneNumber) {
     return { completed: false };
   }
 
@@ -107,6 +107,7 @@ export async function provisionPendingPhoneRegistration(): Promise<{ completed: 
     },
     body: JSON.stringify({
       uid: firebaseUser.uid,
+      email: draft.email,
       displayName: draft.displayName,
       accountType: draft.accountType,
       termsAccepted: draft.termsAccepted,
@@ -120,6 +121,19 @@ export async function provisionPendingPhoneRegistration(): Promise<{ completed: 
     error.code = payload.code;
     throw error;
   }
+
+  // Mirror the non-authoritative profile only after Neon accepts the account.
+  // Keep the draft on failure so retrying completes the missing mirror safely.
+  await setDoc(doc(db, "users", firebaseUser.uid), {
+    email: draft.email,
+    displayName: draft.displayName,
+    phoneNumber: firebaseUser.phoneNumber,
+    emailVerified: firebaseUser.emailVerified === true,
+    phoneVerified: true,
+    createdAt: serverTimestamp(),
+    lastLoginAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
 
   clearPendingPhoneRegistration();
   return { completed: true, role: draft.accountType };

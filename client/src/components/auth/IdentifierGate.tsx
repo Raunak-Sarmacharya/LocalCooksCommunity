@@ -114,7 +114,7 @@ export default function IdentifierGate({
         <p className="text-xs text-slate-500">
           {t(
             "phoneAuthDisclaimer",
-            "We'll send a confirmation code by text or email. Message and data rates may apply."
+            "We may email or text you a code to log you in."
           )}
         </p>
 

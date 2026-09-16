@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
-import { ArrowLeft, Clock, Mail, RefreshCw, CheckCircle2, Loader2 } from "lucide-react";
+import { ArrowLeft, Clock, Mail, Phone, RefreshCw, CheckCircle2, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import AnimatedButton from "./AnimatedButton";
 import { EmailContinueHint, getEmailContinueMessage } from "./EmailContinueHint";
@@ -9,7 +9,8 @@ interface EmailVerificationScreenProps {
   email: string;
   onResend: () => Promise<void>;
   onGoBack: () => void;
-  onCheckVerified?: () => Promise<void>;
+  onCheckVerified?: () => Promise<boolean | void>;
+  onVerifyPhone?: () => void;
   resendLoading?: boolean;
   mode?: "verification" | "magic-link";
 }
@@ -48,6 +49,7 @@ export default function EmailVerificationScreen({
   onResend,
   onGoBack,
   onCheckVerified,
+  onVerifyPhone,
   resendLoading = false,
   mode = "verification"
 }: EmailVerificationScreenProps) {
@@ -55,6 +57,7 @@ export default function EmailVerificationScreen({
   const [resendDisabled, setResendDisabled] = useState(false);
   const [resendTimer, setResendTimer] = useState(60);
   const [resendError, setResendError] = useState<string | null>(null);
+  const [verificationError, setVerificationError] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(false);
 
   useEffect(() => {
@@ -158,26 +161,32 @@ export default function EmailVerificationScreen({
             onClick={async () => {
               if (isChecking) return;
               setIsChecking(true);
-            try {
-              if (onCheckVerified) {
-                await onCheckVerified();
-              } else {
-                onGoBack();
+              setVerificationError(null);
+              try {
+                if (onCheckVerified) {
+                  const isVerified = await onCheckVerified();
+                  if (isVerified === false) {
+                    setVerificationError("We haven't detected verification yet. Open the link in your email, then try again.");
+                  }
+                } else {
+                  onGoBack();
+                }
+              } catch {
+                setVerificationError("We couldn't check your verification status. Please try again.");
+              } finally {
+                setIsChecking(false);
               }
-            } finally {
-              setIsChecking(false);
-            }
-          }}
-          disabled={isChecking}
-          className="w-full bg-[#10b981] hover:bg-[#059669] text-white flex items-center justify-center gap-2 h-12 rounded-md font-medium transition-colors"
-        >
-          {isChecking ? (
-            <Loader2 className="w-5 h-5 animate-spin" />
-          ) : (
-            <CheckCircle2 className="w-5 h-5" />
-          )}
-          {isChecking ? "Checking..." : "I have verified my email"}
-        </Button>
+            }}
+            disabled={isChecking}
+            className="w-full bg-[#10b981] hover:bg-[#059669] text-white flex items-center justify-center gap-2 h-12 rounded-md font-medium transition-colors"
+          >
+            {isChecking ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <CheckCircle2 className="w-5 h-5" />
+            )}
+            {isChecking ? "Checking..." : "I have verified my email"}
+          </Button>
         )}
         
         <AnimatedButton
@@ -202,6 +211,18 @@ export default function EmailVerificationScreen({
             </>
           )}
         </AnimatedButton>
+
+        {mode !== "magic-link" && onVerifyPhone && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onVerifyPhone}
+            className="h-12 w-full gap-2"
+          >
+            <Phone className="h-4 w-4" />
+            Verify phone instead
+          </Button>
+        )}
       </motion.div>
 
       {/* Error Message */}
@@ -215,10 +236,21 @@ export default function EmailVerificationScreen({
         </motion.div>
       )}
 
+      {verificationError && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mt-4 text-center text-red-600 text-sm"
+          role="alert"
+        >
+          {verificationError}
+        </motion.div>
+      )}
+
       <EmailContinueHint
         variant={mode === "magic-link" ? "sign-in" : "verify"}
         className="mt-8"
       />
     </motion.div>
   );
-} 
+}

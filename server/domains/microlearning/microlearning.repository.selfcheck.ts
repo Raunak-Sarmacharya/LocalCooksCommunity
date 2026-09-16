@@ -3,7 +3,7 @@
  * Run: node --import tsx server/domains/microlearning/microlearning.repository.selfcheck.ts
  * (or via API smoke JI-BE-003)
  */
-import { MicrolearningRepository } from "./microlearning.repository.ts";
+import { MicrolearningRepository } from "./microlearning.repository";
 
 async function main() {
   const repo = new MicrolearningRepository();

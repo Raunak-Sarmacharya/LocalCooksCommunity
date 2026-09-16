@@ -17,4 +17,6 @@
   "TERMS_NOT_ACCEPTED": "Прийміть умови, щоб продовжити.",
   "ACCOUNT_NOT_REGISTERED": "Цей акаунт не зареєстровано в LocalCooks.",
   "INVALID_LOCALE": "Ця мова не підтримується."
+,
+  "EMAIL_VERIFICATION_REQUIRED": "Підтвердьте адресу електронної пошти, щоб продовжити."
 }

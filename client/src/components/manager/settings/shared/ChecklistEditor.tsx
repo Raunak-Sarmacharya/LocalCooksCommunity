@@ -47,6 +47,39 @@ export interface PhotoRequirement {
 
 export type PreviewType = "checkin" | "checkout" | "storage_checkout";
 
+// ─── Arrival timing gate ──────────────────────────────────────────────────────
+
+/**
+ * The check-in window and the no-show grace period are both acts of enforcement
+ * against a check-in: the first delays the check-in button, the second decides
+ * when a missing check-in becomes a no-show (`managerConfirmCheckin` →
+ * `checkInChef`, and the no-show sweeper, both in
+ * `server/services/kitchen-checkout-service.ts`). Neither is consulted anywhere
+ * on the check-out path.
+ *
+ * So they only mean something while check-in is on. With check-in off there is
+ * nothing to arrive for and nothing to be late for, and the fields are locked
+ * rather than accepting edits the server will never read.
+ *
+ * Deliberately keyed on **check-in only, not check-out**: an earlier version
+ * locked when *both* flows were off, which left the fields editable — and
+ * silently useless — for a manager who had check-out on and check-in off. That
+ * is the exact confusion this gate exists to prevent, so the honest rule is the
+ * narrower one. Shared so the check-in page and Booking Policies cannot
+ * disagree: both read the same query.
+ */
+export function arrivalTimingsLocked(settings?: {
+  checkinEnabled?: boolean;
+  checkoutEnabled?: boolean;
+}): boolean {
+  // Only lock once we positively know check-in is off. Treating an absent flag
+  // as "off" would gray the fields out for a beat on every page load, before the
+  // settings query resolves — a locked field that unlocks itself reads worse
+  // than one that enables a moment late.
+  if (!settings) return false;
+  return settings.checkinEnabled === false;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 export function generateChecklistId(): string {

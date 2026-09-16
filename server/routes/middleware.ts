@@ -1,6 +1,7 @@
 import { logger } from "../logger";
 import { Request, Response, NextFunction } from "express";
 import { verifyFirebaseToken } from "../firebase-setup";
+import { hasVerifiedEmail } from "../firebase-auth-middleware";
 
 import { db } from "../db";
 import { portalUserApplications, portalUserLocationAccess } from "@shared/schema";
@@ -39,6 +40,20 @@ export async function requireChef(req: Request, res: Response, next: NextFunctio
             isChef: req.neonUser.isChef
         });
         return res.status(403).json({ error: "Access denied. Chef role required." });
+    }
+
+    // Email gates operational access; a missing phone never does. Admins are
+    // exempt so a broken mailbox can never lock the platform out of itself.
+    if (
+        req.neonUser.role !== 'admin' &&
+        !hasVerifiedEmail(req) &&
+        !req.originalUrl.startsWith('/api/chef/my-profile')
+    ) {
+        return res.status(403).json({
+            error: "Email verification required",
+            code: "EMAIL_VERIFICATION_REQUIRED",
+            message: "Verify your email address before using chef operations.",
+        });
     }
 
     next();

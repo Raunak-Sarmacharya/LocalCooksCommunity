@@ -42,7 +42,9 @@ export interface Transaction {
     itemName?: string | null;
     description?: string | null; // Description for special transaction types (damage claims, extensions, etc.)
     referenceCode?: string | null; // Booking reference code for lookup
-    totalPrice: number;        // Amount in cents - gross amount charged
+    totalPrice: number;        // Amount in cents - manager-facing booking subtotal
+    /** Chef charge from payment_transactions.amount (subtotal+tax[+fee]) */
+    chargeAmount?: number;
     managerRevenue: number;    // Amount in cents after fees
     platformFee: number;       // Platform fee in cents - DEPRECATED, use taxAmount
     taxAmount: number;         // Tax collected in cents

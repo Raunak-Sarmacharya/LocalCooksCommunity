@@ -77,6 +77,8 @@ interface Booking {
   noShowDetectedAt?: string | null
   accessCodeValidFrom?: string | null
   accessCodeValidUntil?: string | null
+  checkinEnabled?: boolean
+  checkoutEnabled?: boolean
 }
 
 interface StorageBooking {
@@ -104,6 +106,8 @@ interface StorageBooking {
   serviceFee?: number
   basePrice?: number
   minimumBookingDuration?: number
+  storageCheckinEnabled?: boolean
+  storageCheckoutEnabled?: boolean
 }
 
 interface EquipmentBooking {
@@ -387,7 +391,7 @@ const getChefBookingColumns = ({
       // ── Kitchen Check-In/Check-Out lifecycle badge (chef-facing) ──────────
       const checkinStatus = booking.checkinStatus
       let checkinBadge: { label: string; variant: "success" | "warning" | "destructive" | "outline"; icon: React.ReactNode } | null = null
-      if ((status === 'confirmed' || status === 'completed') && checkinStatus && ((booking as any).checkinEnabled !== false || (booking as any).checkoutEnabled !== false)) {
+      if ((status === 'confirmed' || status === 'completed') && checkinStatus && ((booking as any).checkinEnabled === true || (booking as any).checkoutEnabled === true)) {
         if (checkinStatus === 'checked_in') {
           checkinBadge = { label: t("bdCiCheckedIn"), variant: 'success', icon: <LogIn className="h-2.5 w-2.5" /> }
         } else if (checkinStatus === 'checkout_requested') {
@@ -755,7 +759,7 @@ const getChefBookingColumns = ({
             </DropdownMenuItem>
 
             {(booking.status === 'confirmed' || booking.status === 'completed') &&
-             ((booking as any).checkinEnabled !== false || (booking as any).checkoutEnabled !== false) && (
+             ((booking as any).checkinEnabled === true || (booking as any).checkoutEnabled === true) && (
               <DropdownMenuItem onClick={() => onCheckinTracker(booking.id)}>
                 <LogIn className="h-4 w-4 mr-2" />
                 {!booking.checkinStatus || booking.checkinStatus === 'not_checked_in'
@@ -1063,7 +1067,7 @@ const getStorageBookingColumns = ({
         checkoutStatusActive &&
         hasStarted &&
         !checkinCompleted &&
-        storageBooking.storageCheckinEnabled !== false
+        storageBooking.storageCheckinEnabled === true
 
       // Storage Check-Out: only available AFTER check-in is completed.
       // You cannot check out of a storage unit you haven't checked into.
@@ -1071,7 +1075,7 @@ const getStorageBookingColumns = ({
         isConfirmed &&
         checkoutStatusActive &&
         checkinCompleted &&
-        storageBooking.storageCheckoutEnabled !== false
+        storageBooking.storageCheckoutEnabled === true
 
       const canExtend = isConfirmed && checkoutStatusActive && !isCompleted && !isExpired
 
@@ -1614,9 +1618,8 @@ export default function ChefBookingsView({
     const now = new Date()
     return upcomingBookings.filter(b => {
       if (b.status !== 'confirmed') return false
-      // Explicit check for check-in enabled (default is false)
-      // Note: checkinEnabled might be undefined for legacy data, so we treat false explicitly
-      if (b.checkinEnabled === false) return false
+      // Explicit opt-in only — missing/null checklist rows mean disabled
+      if (b.checkinEnabled !== true) return false
       if (b.checkinStatus && b.checkinStatus !== 'not_checked_in') return false
       // Resolve booking start in the LOCATION's timezone so this filter agrees
       // with the kitchen's wall clock (not the chef's browser clock). An NDT
@@ -1642,8 +1645,8 @@ export default function ChefBookingsView({
     const todayStr = now.toISOString().split('T')[0]
     return (storageBookings as StorageBooking[]).filter(sb => {
       if (sb.status !== 'confirmed') return false
-      // Treat null/undefined as false explicitly
-      if (sb.storageCheckinEnabled === false) return false
+      // Explicit opt-in only — missing/null means disabled
+      if (sb.storageCheckinEnabled !== true) return false
       if (sb.checkinStatus && sb.checkinStatus !== 'not_checked_in') return false
       const sd = String(sb.startDate).split('T')[0]
       return sd <= todayStr // Start date is today or earlier
@@ -1653,7 +1656,7 @@ export default function ChefBookingsView({
   const needsStorageCheckout = useMemo(() => {
     return (storageBookings as StorageBooking[]).filter(sb => {
       if (sb.status !== 'confirmed') return false
-      if (sb.storageCheckoutEnabled === false) return false
+      if (sb.storageCheckoutEnabled !== true) return false
       return sb.checkinStatus === 'checkin_completed' && (!sb.checkoutStatus || sb.checkoutStatus === 'active')
     })
   }, [storageBookings])

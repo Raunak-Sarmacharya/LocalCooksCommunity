@@ -39,6 +39,14 @@ export class LocationService {
       }
 
       const location = await this.locationRepo.create(validatedData);
+
+      // Explicit OFF checklist row so the DB mirrors "never configured" —
+      // missing rows were treated as enabled by some chef/booking callers.
+      const { ensureDefaultCheckinCheckoutChecklist } = await import(
+        "../../services/checkin-checkout-checklist"
+      );
+      await ensureDefaultCheckinCheckoutChecklist(location.id);
+
       return location;
     } catch (error: any) {
       if (error instanceof DomainError) {

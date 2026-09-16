@@ -43,6 +43,20 @@ interface StripeBalanceData {
   hasStripeAccount: boolean;
 }
 
+/** Time-of-day buckets for the greeting — same boundaries as the chef dashboard. */
+const GREETING_KEYS = {
+  morning: "goodMorning",
+  afternoon: "goodAfternoon",
+  evening: "goodEvening",
+} as const;
+
+function getTimeOfDay(now: Date = new Date()): keyof typeof GREETING_KEYS {
+  const hour = now.getHours();
+  if (hour < 12) return "morning";
+  if (hour < 17) return "afternoon";
+  return "evening";
+}
+
 // Helper function to get auth headers
 async function getAuthHeaders(): Promise<HeadersInit> {
   const token = localStorage.getItem('firebaseToken');
@@ -67,6 +81,11 @@ export default function KitchenDashboardOverview({
   // Get Firebase user for authentication
   const { user: firebaseUser } = useFirebaseAuth();
   const { i18n } = useTranslation();
+
+  // The greeting addresses the manager, not the location — the location belongs
+  // in the subtitle below. Same source as the sidebar avatar/name.
+  const managerDisplayName = firebaseUser?.displayName?.trim();
+  const greeting = mt(GREETING_KEYS[getTimeOfDay()]);
   
   // Create a map of location names to location IDs for filtering bookings
   const locationNameToIdMap = useMemo(() => {
@@ -571,9 +590,9 @@ export default function KitchenDashboardOverview({
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 min-w-0">
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl md:text-3xl font-bold text-gray-900 break-words">
-            {selectedLocation
-              ? mt("welcomeBackNamed", { name: selectedLocation.name })
-              : mt("welcomeBack")}
+            {managerDisplayName
+              ? mt("greetingNamed", { greeting, name: managerDisplayName })
+              : greeting}
           </h1>
           <p className="text-gray-500 mt-1 break-words">
             {selectedLocation

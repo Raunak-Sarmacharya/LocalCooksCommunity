@@ -7,7 +7,7 @@ import { logger } from "../../logger";
  */
 
 import { db } from '../../db';
-import { kitchens, locations, kitchenDateOverrides, kitchenAvailability } from '@shared/schema';
+import { kitchens, locations, kitchenDateOverrides, kitchenAvailability, kitchenBookings } from '@shared/schema';
 import { eq, and, desc, gte, lte, sql } from 'drizzle-orm';
 import type { CreateKitchenDTO, UpdateKitchenDTO, KitchenDTO, KitchenWithLocationDTO, CreateKitchenOverrideDTO, UpdateKitchenOverrideDTO, KitchenOverrideDTO } from './kitchen.types';
 import { KitchenErrorCodes, DomainError } from '../../shared/errors/domain-error';
@@ -384,11 +384,25 @@ export class KitchenRepository {
   }
 
   /**
-   * Delete kitchen
+   * Delete kitchen.
+   *
+   * `kitchen_bookings.kitchen_id` is the only foreign key pointing at `kitchens`
+   * that is NOT `ON DELETE CASCADE` — every sibling table (availability, date
+   * overrides, storage/equipment listings, viewings, access codes) cascades.
+   * Relying on the database therefore aborted the delete with a foreign-key
+   * violation for any kitchen that had ever been booked, which surfaced to the
+   * manager as a bare "Failed to delete kitchen". Booking rows are removed
+   * explicitly here so the whole delete is atomic:
+   *   - storage_bookings / equipment_bookings / access_code_audit cascade from
+   *     `kitchen_bookings` on their own;
+   *   - damage_claims keeps its row and is delinked (its FK is `SET NULL`).
    */
   async delete(id: number): Promise<void> {
     try {
-      await db.delete(kitchens).where(eq(kitchens.id, id));
+      await db.transaction(async (tx) => {
+        await tx.delete(kitchenBookings).where(eq(kitchenBookings.kitchenId, id));
+        await tx.delete(kitchens).where(eq(kitchens.id, id));
+      });
     } catch (error: any) {
       logger.error(`[KitchenRepository] Error deleting kitchen ${id}:`, error);
       throw new DomainError(

@@ -397,7 +397,7 @@ export function KitchenCheckinTracker({
                   {/* Manager Instructions */}
                   {checklist?.checkinInstructions && (
                     <div className="rounded-lg border p-3">
-                      <p className="text-xs font-medium mb-1">{t("ciManagerInstructions")}</p>
+                      <p className="text-xs font-medium mb-1">{t("ciManagerInstructionsTitle")}</p>
                       <p className="text-xs text-muted-foreground whitespace-pre-line">{checklist.checkinInstructions}</p>
                     </div>
                   )}
@@ -531,7 +531,7 @@ export function KitchenCheckinTracker({
                   {/* Manager Checkout Instructions */}
                   {checklist?.checkoutInstructions && (
                     <div className="rounded-lg border p-3">
-                      <p className="text-xs font-medium mb-1">{t("ciManagerInstructions")}</p>
+                      <p className="text-xs font-medium mb-1">{t("coManagerInstructions")}</p>
                       <p className="text-xs text-muted-foreground whitespace-pre-line">{checklist.checkoutInstructions}</p>
                     </div>
                   )}

@@ -152,6 +152,9 @@ router.post("/portal-register", async (req: Request, res: Response) => {
                 isChef: false,
                 isManager: false,
                 isPortalUser: true,
+                // Portal registration is the one path that does collect a
+                // password from the person, so it is a known secret from day one.
+                passwordSetByUser: true,
             });
             if (updatedPortalUser) user = updatedPortalUser;
             isNewUser = true;

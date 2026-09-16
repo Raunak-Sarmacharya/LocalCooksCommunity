@@ -5,17 +5,21 @@ import {
   RecaptchaVerifier,
   unlink,
 } from "firebase/auth";
-import { CheckCircle2, Loader2, MessageSquareText, Phone, XCircle } from "lucide-react";
+import { Check, Clock, Loader2, Phone, XCircle } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { logger } from "@/lib/logger";
 import { isValidNorthAmericanPhone, normalizePhoneNumber, formatPhoneForDisplay } from "@shared/phone-validation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
 import { hasRecentFirebaseAuth } from "@/lib/firebase-auth-security";
+import {
+  ContactInfoCard,
+  ContactStatusPill,
+  ContactVerificationRow,
+  type ContactTone,
+} from "@/components/profile/ContactVerificationRow";
 
 function maskPhone(phone: string): string {
   return phone.length > 4 ? `••• ••• ${phone.slice(-4)}` : phone;
@@ -27,9 +31,9 @@ interface PhoneSignInSettingsProps {
   /** Pre-fill the phone input (e.g. from DB profile) */
   initialPhone?: string;
   /** Called after OTP verification succeeds and phone is linked to Firebase UID */
-  onPhoneLinked?: (phone: string) => void;
+  onPhoneLinked?: (phone: string) => void | Promise<void>;
   /** Called after phone is unlinked from Firebase UID */
-  onPhoneUnlinked?: () => void;
+  onPhoneUnlinked?: () => void | Promise<void>;
 }
 
 export default function PhoneSignInSettings({
@@ -46,6 +50,7 @@ export default function PhoneSignInSettings({
   const [confirmation, setConfirmation] = useState<ConfirmationResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [unlinking, setUnlinking] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const verifierRef = useRef<RecaptchaVerifier | null>(null);
   const recaptchaId = useRef(`link-phone-recaptcha-${crypto.randomUUID()}`);
@@ -151,9 +156,11 @@ export default function PhoneSignInSettings({
       setLinkedPhone(verifiedPhone);
       setConfirmation(null);
       setCode("");
+      setIsAdding(false);
+      setSmsConsent(false);
       clearVerifier();
       // Notify parent so it can sync verified phone to DB
-      onPhoneLinked?.(verifiedPhone);
+      await onPhoneLinked?.(verifiedPhone);
     } catch (verifyError: any) {
       setError(verifyError?.code === "auth/invalid-verification-code"
         ? "That code is incorrect. Check the text message and try again."
@@ -173,13 +180,17 @@ export default function PhoneSignInSettings({
       await user.reload();
       setLinkedPhone("");
       setPhone("");
-      onPhoneUnlinked?.();
+      setIsAdding(false);
+      setSmsConsent(false);
+      await onPhoneUnlinked?.();
     } catch (err: any) {
       if (err?.code === "auth/no-such-provider") {
         // Already unlinked — sync state
         setLinkedPhone("");
         setPhone("");
-        onPhoneUnlinked?.();
+        setIsAdding(false);
+        setSmsConsent(false);
+        await onPhoneUnlinked?.();
       } else {
         setError("Could not remove phone number. Try again.");
       }
@@ -188,107 +199,194 @@ export default function PhoneSignInSettings({
     }
   };
 
-  const body = linkedPhone ? (
-    <div className="space-y-3">
-      <div className="flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-        <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" aria-hidden />
-        <div className="flex-1">
-          <p className="font-medium text-emerald-900">Phone verified</p>
-          <p className="mt-1 text-sm text-emerald-700">{formatPhoneForDisplay(linkedPhone)}</p>
-        </div>
-        <button
-          type="button"
-          onClick={handleUnlink}
-          disabled={unlinking}
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {unlinking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />}
-          Remove
-        </button>
-      </div>
-      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-    </div>
-  ) : (
-    <div className="space-y-4">
-      {!confirmation ? (
-        <>
-          <div className="space-y-2">
-            <Label htmlFor="security-phone-number">Phone number</Label>
-            <Input
-              id="security-phone-number"
-              type="tel"
-              autoComplete="tel"
-              value={phone}
-              onChange={(event) => setPhone(event.target.value)}
-              placeholder="(416) 555-0123"
-              disabled={busy}
-            />
-          </div>
-          <label className="flex items-start gap-3 text-sm text-muted-foreground">
-            <input
-              type="checkbox"
-              checked={smsConsent}
-              onChange={(event) => setSmsConsent(event.target.checked)}
-              className="mt-1"
-            />
-            <span>I agree to receive a one-time authentication text. Message and data rates may apply.</span>
-          </label>
-        </>
-      ) : (
-        <div className="space-y-2">
-          <Label htmlFor="security-phone-code">Verification code</Label>
-          <Input
-            id="security-phone-code"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            maxLength={6}
-            value={code}
-            onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
-            disabled={busy}
-          />
-          <p className="text-xs text-muted-foreground">We sent a 6-digit code to {formatPhoneForDisplay(phone)}.</p>
-        </div>
-      )}
+  const cancelAdding = () => {
+    setIsAdding(false);
+    setError(null);
+    setCode("");
+    setSmsConsent(false);
+    clearVerifier();
+  };
 
-      <div id={recaptchaId.current} className="absolute h-0 w-0" aria-hidden="true" />
+  const tone: ContactTone = linkedPhone
+    ? "verified"
+    : confirmation
+      ? "pending"
+      : "empty";
 
-      <Button
-        type="button"
-        onClick={confirmation ? verifyCode : sendCode}
-        disabled={busy || (!!confirmation && code.length !== 6)}
-        className={cn(embedded ? "w-full sm:w-auto" : "w-full")}
-      >
-        {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-        {confirmation ? "Verify and add phone" : "Verify phone number"}
-      </Button>
-      {confirmation && (
-        <button
-          type="button"
-          onClick={() => { setConfirmation(null); setCode(""); clearVerifier(); }}
-          className="block text-sm text-muted-foreground underline"
-        >
-          Use a different number
-        </button>
-      )}
-      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-    </div>
-  );
+  const statusLabel = linkedPhone
+    ? "Verified"
+    : confirmation
+      ? "Code sent"
+      : "Not added";
 
-  if (embedded) {
-    return (
-      <>
-        {body}
-      </>
-    );
+  const value = linkedPhone
+    ? formatPhoneForDisplay(linkedPhone)
+    : confirmation
+      ? formatPhoneForDisplay(phone)
+      : "No phone number added";
+
+  let secondary: string;
+  let description: string;
+  if (linkedPhone) {
+    secondary = "Verified";
+    description =
+      "You can use this number to sign in .";
+  } else if (confirmation) {
+    secondary = "Code sent";
+    description = `Enter the 6-digit code we sent to ${formatPhoneForDisplay(phone)}.`;
+  } else {
+    secondary = "Not added";
+    description =
+      "Add a mobile number for booking . It is verified with a one-time code.";
   }
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2"><MessageSquareText className="h-5 w-5" />Phone</CardTitle>
-        <CardDescription>Add a verified phone as another way to access this same account.</CardDescription>
-      </CardHeader>
-      <CardContent>{body}</CardContent>
-    </Card>
+  const addForm = (
+    <div className="max-w-md space-y-3">
+      <div className="space-y-2">
+        <Label htmlFor="security-phone-number" className="text-xs font-medium">
+          Mobile number
+        </Label>
+        <Input
+          id="security-phone-number"
+          type="tel"
+          autoComplete="tel"
+          value={phone}
+          onChange={(event) => setPhone(event.target.value)}
+          placeholder="(416) 555-0123"
+          disabled={busy}
+        />
+        <p className="text-xs text-muted-foreground">US and Canadian numbers only.</p>
+      </div>
+      <label className="flex items-start gap-2 text-xs text-muted-foreground">
+        <input
+          type="checkbox"
+          checked={smsConsent}
+          onChange={(event) => setSmsConsent(event.target.checked)}
+          className="mt-0.5"
+          disabled={busy}
+        />
+        <span>
+          I agree to receive a one-time authentication text. Message and data rates may
+          apply.
+        </span>
+      </label>
+      <div id={recaptchaId.current} className="absolute h-0 w-0" aria-hidden="true" />
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="button" size="sm" onClick={sendCode} disabled={busy}>
+          {busy && <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />}
+          Send code
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={cancelAdding}
+          disabled={busy}
+        >
+          Cancel
+        </Button>
+      </div>
+    </div>
   );
+
+  const codeForm = (
+    <div className="max-w-md space-y-2">
+      <Label htmlFor="security-phone-code" className="text-xs font-medium">
+        Verification code
+      </Label>
+      <Input
+        id="security-phone-code"
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        maxLength={6}
+        value={code}
+        onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
+        disabled={busy}
+        className="tracking-[0.35em]"
+      />
+      <div className="flex flex-wrap items-center gap-2 pt-1">
+        <Button
+          type="button"
+          size="sm"
+          onClick={verifyCode}
+          disabled={busy || code.length !== 6}
+        >
+          {busy && <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />}
+          Verify and add phone
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            setConfirmation(null);
+            setCode("");
+            clearVerifier();
+          }}
+          disabled={busy}
+        >
+          Use a different number
+        </Button>
+      </div>
+    </div>
+  );
+
+  const row = (
+    <ContactVerificationRow
+      id="phone-verification"
+      labelId="phone-verification-heading"
+      icon={
+        linkedPhone ? (
+          <Check className="size-4" />
+        ) : tone === "pending" ? (
+          <Clock className="size-4" />
+        ) : (
+          <Phone className="size-4" />
+        )
+      }
+      label="Phone number"
+      tone={tone}
+      badges={<ContactStatusPill tone={tone}>{statusLabel}</ContactStatusPill>}
+      value={value}
+      secondary={secondary}
+      description={
+        <>
+          <p>{description}</p>
+          {error ? (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
+        </>
+      }
+      actions={
+        linkedPhone ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={handleUnlink}
+            disabled={unlinking}
+          >
+            {unlinking ? (
+              <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />
+            ) : (
+              <XCircle className="mr-1.5 size-3.5" aria-hidden="true" />
+            )}
+            Remove
+          </Button>
+        ) : confirmation || isAdding ? undefined : (
+          <Button type="button" size="sm" onClick={() => setIsAdding(true)}>
+            Add phone number
+          </Button>
+        )
+      }
+    >
+      {linkedPhone ? null : confirmation ? codeForm : isAdding ? addForm : null}
+    </ContactVerificationRow>
+  );
+
+  if (embedded) return row;
+
+  return <ContactInfoCard>{row}</ContactInfoCard>;
 }

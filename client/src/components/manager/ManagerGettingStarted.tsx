@@ -1,6 +1,6 @@
 import { useState, type ElementType } from "react";
 import { SiStripe } from "react-icons/si";
-import { Calendar, CalendarClock, Check, ChevronRight, Circle, ClipboardList, Edit, FileCheck, ListChecks, User } from "@/components/ui/manager-icons";
+import { Calendar, CalendarClock, Check, ChevronRight, Circle, ClipboardList, Edit, FileCheck, ListChecks, Mail } from "@/components/ui/manager-icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SidebarGroup, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
@@ -10,7 +10,7 @@ import type { ManagerSetupStep } from "@/hooks/use-onboarding-status";
 /** Short action phrases for the popover + the icon each step already uses elsewhere
  *  (CompletionSummaryStep / EnterpriseStepper), so both checklists read alike. */
 const STEP_META: Record<ManagerSetupStep["id"], { Icon: ElementType; labelKey: string; iconClassName?: string }> = {
-  profile: { Icon: User, labelKey: "managerSetupStepProfile" },
+  profile: { Icon: Mail, labelKey: "managerSetupStepProfile" },
   license: { Icon: FileCheck, labelKey: "managerSetupStepLicense" },
   kitchen: { Icon: Calendar, labelKey: "managerSetupStepKitchen" },
   availability: { Icon: CalendarClock, labelKey: "managerSetupStepAvailability" },

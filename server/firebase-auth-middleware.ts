@@ -11,6 +11,41 @@ export async function resolveNeonUser(decodedToken: { uid: string }) {
   return userService.getUserByFirebaseUid(decodedToken.uid);
 }
 
+/**
+ * Has this account proven ownership of an email address?
+ *
+ * Accepts either the token claim or the application mirror. The claim is a *cache*: it is
+ * baked into the ID token and stays stale for up to an hour after the address changes, and
+ * refreshing it is not something we can force safely (a forced refresh against an
+ * invalidated token signs the user out everywhere). The mirror is written only when
+ * Firebase has confirmed the address — by registration, by the confirmation endpoint, or
+ * by the repair below — so `isVerified === true` implies Firebase agrees.
+ *
+ * Gating on the mirror therefore removes any dependency on token freshness without
+ * loosening the check.
+ */
+export function hasVerifiedEmail(req: Request): boolean {
+  return req.firebaseUser?.email_verified === true || req.neonUser?.isVerified === true;
+}
+
+/**
+ * Previously a gate requiring email AND phone. Removed: phone never blocks an action, and a
+ * predicate named "requires both" is a footgun — the natural thing to do with it is to gate
+ * something, which would silently reintroduce the phone block. Nothing referenced it any more.
+ */
+
+function isContactVerificationRecoveryRoute(req: Request): boolean {
+  const path = req.originalUrl.split('?')[0];
+  return [
+    '/api/user/',
+    '/api/manager/profile',
+    '/api/chef/my-profile',
+    '/api/sync-verification-status',
+    '/api/firebase/user/me',
+    '/api/firebase-sync-user',
+  ].some((allowed) => path === allowed.replace(/\/$/, '') || path.startsWith(allowed));
+}
+
 // Extend Express Request to include Firebase user data
 declare global {
   namespace Express {
@@ -19,6 +54,8 @@ declare global {
         uid: string;
         email?: string;
         email_verified?: boolean;
+        /** Seconds since epoch of the last sign-in, from the decoded ID token. */
+        auth_time?: number;
         name?: string;
         picture?: string;
         phone_number?: string;
@@ -140,7 +177,13 @@ export async function requireFirebaseAuthWithUser(req: Request, res: Response, n
     // mirror during any authenticated request so verified users are never
     // blocked while waiting for a separate profile-sync call.
     if (req.firebaseUser.email_verified === true && neonUser.isVerified !== true) {
-      const syncedUser = await userService.updateUser(neonUser.id, { isVerified: true });
+      const syncedUser = await userService.updateUser(neonUser.id, {
+        isVerified: true,
+        // Record the first time we learn the address is confirmed, so the profile
+        // card can show a date however the user verified — our token loop or
+        // Firebase's own action code. Never moves an existing date.
+        emailVerifiedAt: neonUser.emailVerifiedAt ?? new Date(),
+      });
       if (syncedUser) neonUser = syncedUser;
     }
 
@@ -150,6 +193,21 @@ export async function requireFirebaseAuthWithUser(req: Request, res: Response, n
       ...neonUser,
       uid: neonUser.firebaseUid || undefined, // Support legacy code that uses .uid
     } as UserWithFlags;
+
+    const isChefOrManager =
+      neonUser.role === 'chef' || neonUser.role === 'manager' ||
+      neonUser.isChef === true || neonUser.isManager === true;
+    if (
+      isChefOrManager &&
+      !hasVerifiedEmail(req) &&
+      !isContactVerificationRecoveryRoute(req)
+    ) {
+      return res.status(403).json({
+        error: 'Email verification required',
+        code: 'EMAIL_VERIFICATION_REQUIRED',
+        message: 'Verify your email address before using operational features.',
+      });
+    }
 
     // Enrich Sentry with authenticated user context for error attribution
     Sentry.setUser({
@@ -199,6 +257,9 @@ export async function optionalFirebaseAuth(req: Request, res: Response, next: Ne
         uid: decodedToken.uid,
         email: decodedToken.email,
         email_verified: decodedToken.email_verified,
+        // When the user last signed in. Required to gate identity-changing operations
+        // (changing a verified email) behind a recent authentication.
+        auth_time: decodedToken.auth_time,
         name: decodedToken.name,
         picture: decodedToken.picture,
         phone_number: decodedToken.phone_number,
@@ -272,6 +333,16 @@ export function requireManager(req: Request, res: Response, next: NextFunction) 
     return res.status(403).json({
       error: 'Forbidden',
       message: 'Manager access required'
+    });
+  }
+
+  // Email gates operational access; a missing phone never does. Admins never
+  // reach here (role check above), so a broken mailbox cannot lock the platform.
+  if (!hasVerifiedEmail(req) && !req.originalUrl.startsWith('/api/manager/profile')) {
+    return res.status(403).json({
+      error: 'Email verification required',
+      code: 'EMAIL_VERIFICATION_REQUIRED',
+      message: 'Verify your email address before using manager operations.',
     });
   }
 

@@ -6,39 +6,62 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import WelcomeScreen from "@/pages/welcome-screen";
 import { motion, useReducedMotion } from "framer-motion";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, Redirect } from "wouter";
 import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
 import SEOHead from "@/components/SEO/SEOHead";
 import { getChefPostAuthPath } from "@/config/chef-onboarding-steps";
-import { hasVerifiedEmail } from "@/lib/auth-verification";
-import LoadingOverlay from "@/components/auth/LoadingOverlay";
+import { hasVerifiedContact, hasVerifiedEmail } from "@/lib/auth-verification";
 import ChefAuthShowcase from "@/components/auth/ChefAuthShowcase";
 import { getSellerJourneyDraft } from "@/lib/seller-journey";
 import { addCollection, Icon } from "@iconify/react";
 import { icons as mdiIcons } from "@iconify-json/mdi";
 import { isPhoneAuthInProgress } from "@/lib/phone-registration";
+import { isSignInWithEmailLink } from "firebase/auth";
+import AuthLoadingScreen from "@/components/auth/AuthLoadingScreen";
+import EmailVerificationScreen from "@/components/auth/EmailVerificationScreen";
+import { useAuthTransition } from "@/components/auth/AuthTransition";
+import { AUTH_GATE_TIMEOUT_MS } from "@/config/auth-timing";
+import { sendVerificationEmailWithFallback } from "@/lib/send-verification-email";
 
 addCollection(mdiIcons);
 
 export default function EnhancedAuthPage() {
   const { t } = useTranslation("auth");
   const [location, setLocation] = useLocation();
-  const { user, loading, logout, refreshUserData, handleEmailLinkSignIn, signInWithGoogle } = useFirebaseAuth();
+  const {
+    user,
+    loading,
+    logout,
+    refreshUserData,
+    handleEmailLinkSignIn,
+    signInWithGoogle,
+    authPhase,
+    updateUserVerification,
+  } = useFirebaseAuth();
+  const { begin: beginHandoff, end: endHandoff } = useAuthTransition();
   const [authStep, setAuthStep] = useState<AuthFlowStep>(() =>
     new URLSearchParams(window.location.search).get("tab") === "register" ? "register" : "identifier"
   );
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
+  // Lifted out of EnhancedRegisterForm: the page gate used to unmount the form
+  // the moment Firebase created the user, wiping the in-form verification screen
+  // and leaving an empty auth form behind the loader.
+  const [showEmailVerification, setShowEmailVerification] = useState(false);
+  const [emailForVerification, setEmailForVerification] = useState("");
+  const [awaitingEmailVerificationUi, setAwaitingEmailVerificationUi] = useState(false);
+  // A magic-link callback is just a /auth URL, so the route alone cannot tell
+  // that a sign-in is in flight. Track it explicitly: without this the login
+  // form paints while the SDK is still exchanging the link for a session, which
+  // is the "I see the login page for a second" report.
+  const [emailLinkPending, setEmailLinkPending] = useState(() =>
+    isSignInWithEmailLink(auth, window.location.href),
+  );
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [userMeta, setUserMeta] = useState<any>(null);
   const [userMetaLoading, setUserMetaLoading] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [successMessageType, setSuccessMessageType] = useState<'password-reset' | 'email-verified'>('password-reset');
-  const [isCompletingVerification, setIsCompletingVerification] = useState(() =>
-    typeof window !== 'undefined' &&
-    sessionStorage.getItem('localcooks:completing-verification') === 'true'
-  );
-
   const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasCheckedUser = useRef(false);
   const hasUserMetaRef = useRef(false); // Track if userMeta was successfully fetched (avoids stale closure)
@@ -55,7 +78,7 @@ export default function EnhancedAuthPage() {
     const observer = new ResizeObserver(measure);
     observer.observe(content);
     return () => observer.disconnect();
-  }, [isCompletingVerification, loading, userMetaLoading, user, userMeta]);
+  }, [loading, userMetaLoading, user, userMeta]);
 
   const [retryCount, setRetryCount] = useState(0);
   const sellerJourneyDraft =
@@ -64,9 +87,36 @@ export default function EnhancedAuthPage() {
       : null;
   const completingPhoneSignup = authStep === "register" && isPhoneAuthInProgress();
 
+  // Whether the session is mid-transition and the form must not paint yet.
+  // Computed before any early return so the safety valve can depend on it.
+  const isAuthenticating = authPhase === 'authenticating' || authPhase === 'syncing';
+  // Any signed-in visitor is either on their way out of this page or still
+  // being checked, so "user without a profile" always means "not decided yet".
+  // Keying this on hasAttemptedLogin instead left a one-render hole: the magic
+  // link callback flips `emailLinkPending` off before the profile request has
+  // started, and the form painted in that gap.
+  const awaitingProfile = !!user && !userMeta;
+  // Email verification is a destination on this page. While we are handing off
+  // to that screen — or already showing it — the full-page gate must not run:
+  // it unmounts AuthFlow and destroys the verification UI.
+  const isAuthSettling =
+    !showEmailVerification &&
+    !awaitingEmailVerificationUi &&
+    (loading || isInitialLoad || userMetaLoading || isAuthenticating || awaitingProfile || emailLinkPending);
+
+  const [gateTimedOut, setGateTimedOut] = useState(false);
+  useEffect(() => {
+    if (!isAuthSettling) {
+      setGateTimedOut(false);
+      return;
+    }
+    const timer = setTimeout(() => setGateTimedOut(true), AUTH_GATE_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [isAuthSettling]);
+
   useLayoutEffect(() => {
     authCardRef.current?.scrollTo({ top: 0, behavior: "instant" });
-  }, [authStep]);
+  }, [authStep, showEmailVerification]);
 
   // Check for success messages from URL parameters
   useEffect(() => {
@@ -113,13 +163,88 @@ export default function EnhancedAuthPage() {
     }
   };
 
-  // Handle email link sign-in on mount
+  /**
+   * Leave the auth page behind a loading screen.
+   *
+   * The handoff overlay is raised *before* the route changes and lives above
+   * the router, so it covers the gap between "sign-in finished" and "the
+   * dashboard has rendered its data" — the window in which the login form
+   * used to flash back.
+   */
+  // `t` does not keep a stable identity while i18n resources settle, and the
+  // redirect effect depends on `navigateAfterAuth`. A fresh identity on every
+  // render re-runs that effect, which clears and re-arms its 300 ms timer — so
+  // the timer never reaches zero and the redirect never fires. That is a real
+  // way to strand someone on this page. Read `t` through a ref so the callback
+  // identity depends only on values that genuinely are stable.
+  const tRef = useRef(t);
+  tRef.current = t;
+
+  const navigateAfterAuth = useCallback(
+    (targetPath: string) => {
+      beginHandoff(
+        tRef.current("btnSigningYouIn", "Signing you in..."),
+        tRef.current("overlayRedirectingDashboard", "Redirecting to your dashboard..."),
+      );
+      setLocation(targetPath, { replace: true });
+    },
+    [beginHandoff, setLocation],
+  );
+
+  const handleRegistrationStart = useCallback(() => {
+    // Keep the page gate off for the rest of this registration. As soon as
+    // Firebase creates the user, `awaitingProfile` would otherwise swap the
+    // whole page for AuthLoadingScreen and unmount the form mid-submit.
+    setAwaitingEmailVerificationUi(true);
+  }, []);
+
+  const handleRegistrationComplete = useCallback(
+    (email: string) => {
+      // Phone-verified registrations continue through onSuccess → handleSuccess.
+      if (auth.currentUser?.phoneNumber) {
+        setAwaitingEmailVerificationUi(false);
+        return;
+      }
+      endHandoff();
+      setEmailForVerification(email);
+      setShowEmailVerification(true);
+      setAwaitingEmailVerificationUi(false);
+    },
+    [endHandoff],
+  );
+
+  const handleRegistrationError = useCallback(() => {
+    setAwaitingEmailVerificationUi(false);
+  }, []);
+
+  const handleResendVerification = useCallback(async () => {
+    const currentUser = auth.currentUser;
+    if (!currentUser?.email) {
+      throw new Error("No signed-in user to resend verification for.");
+    }
+    await sendVerificationEmailWithFallback({
+      email: currentUser.email,
+      role: "chef",
+    });
+  }, []);
+
+  // Handle email link sign-in on mount.
+  //
+  // Runs once. `handleEmailLinkSignIn` is a fresh function on every render, so
+  // depending on it re-ran the exchange repeatedly while the sign-in URL was
+  // still in the address bar, and every retry after the first failed.
+  const emailLinkHandled = useRef(false);
   useEffect(() => {
+    if (emailLinkHandled.current) return;
+    emailLinkHandled.current = true;
+
     const handleEmailSignIn = async () => {
       try {
         await handleEmailLinkSignIn();
       } catch (error) {
         logger.error('Failed to handle email link sign-in:', error);
+      } finally {
+        setEmailLinkPending(false);
       }
     };
     handleEmailSignIn();
@@ -133,25 +258,6 @@ export default function EnhancedAuthPage() {
       return () => clearTimeout(timer);
     }
   }, [loading]);
-
-  // A hard refresh is needed to rebuild auth/profile state after Firebase email
-  // verification. Keep the transition covered until the verified profile is
-  // ready, so the login form never flashes between verification and welcome.
-  useEffect(() => {
-    if (
-      isCompletingVerification &&
-      !loading &&
-      !userMetaLoading &&
-      user &&
-      userMeta &&
-      hasVerifiedEmail(user, userMeta)
-    ) {
-      sessionStorage.removeItem('localcooks:completing-verification');
-      setIsCompletingVerification(false);
-    }
-  }, [isCompletingVerification, loading, userMetaLoading, user, userMeta]);
-
-
 
   // Fetch user metadata to check welcome screen status
   useEffect(() => {
@@ -193,13 +299,13 @@ export default function EnhancedAuthPage() {
             
             // **CRITICAL WELCOME SCREEN LOGIC**
             // Show welcome screen if user is verified but hasn't seen welcome
-            if (hasVerifiedEmail(user, userData) && !userData.has_seen_welcome) {
+            if (hasVerifiedContact(user, userData) && !userData.has_seen_welcome) {
               logger.info('🎉 WELCOME SCREEN REQUIRED - User needs onboarding');
               return; // Don't proceed with redirect, let the render logic handle welcome screen
             }
             
             // Check if user needs email verification (for email/password users)
-            if (!hasVerifiedEmail(user, userData)) {
+            if (!hasVerifiedContact(user, userData)) {
               logger.info('📧 EMAIL VERIFICATION REQUIRED');
               return; // MUST RETURN HERE so it doesn't execute the redirect logic below which bounces unverified users back to login
             }
@@ -212,7 +318,7 @@ export default function EnhancedAuthPage() {
               
               // Use setTimeout to ensure state is properly set before redirect
               setTimeout(() => {
-                setLocation(targetPath, { replace: true });
+                navigateAfterAuth(targetPath);
               }, 500);
             }
             
@@ -243,7 +349,7 @@ export default function EnhancedAuthPage() {
       hasUserMetaRef.current = false;
       setUserMeta(null);
     }
-  }, [loading, user, hasAttemptedLogin, retryCount, setLocation]);
+  }, [loading, user, hasAttemptedLogin, retryCount, navigateAfterAuth]);
 
   // Handle welcome screen completion
   const handleWelcomeContinue = async () => {
@@ -295,7 +401,7 @@ export default function EnhancedAuthPage() {
           }
         }
         logger.info(`🚀 WELCOME COMPLETE - REDIRECTING TO: ${targetPath}`);
-        setLocation(targetPath, { replace: true });
+        navigateAfterAuth(targetPath);
       } else {
         logger.error('⚠️ Welcome completion API failed:', response.status);
         const errorText = await response.text();
@@ -310,7 +416,7 @@ export default function EnhancedAuthPage() {
           targetPath = getChefPostAuthPath(userMeta);
         }
         logger.info(`🔄 REDIRECTING DESPITE ERROR TO: ${targetPath}`);
-        setLocation(targetPath, { replace: true });
+        navigateAfterAuth(targetPath);
       }
     } catch (error) {
       logger.error('❌ Error completing welcome screen:', error);
@@ -324,7 +430,7 @@ export default function EnhancedAuthPage() {
         targetPath = getChefPostAuthPath(userMeta);
       }
       logger.info(`🔄 REDIRECTING DESPITE ERROR TO: ${targetPath}`);
-      setLocation(targetPath, { replace: true });
+      navigateAfterAuth(targetPath);
     }
   };
 
@@ -342,8 +448,17 @@ export default function EnhancedAuthPage() {
       // Email ownership is the first gate. In particular, an authenticated
       // Firebase session exists immediately after registration; that must not
       // be mistaken for a verified session and allowed into onboarding.
-      if (!hasVerifiedEmail(user, userMeta)) {
+      if (!hasVerifiedContact(user, userMeta)) {
         logger.info('📧 EMAIL VERIFICATION REQUIRED - holding on auth page');
+        // We are staying, so take the cover down. Leaving it up would tell an
+        // unverified chef they are being redirected to a dashboard they are
+        // not going to see.
+        endHandoff();
+        const verifyEmail = user.email || userMeta.email || "";
+        if (verifyEmail && !showEmailVerification) {
+          setEmailForVerification(verifyEmail);
+          setShowEmailVerification(true);
+        }
         return;
       }
 
@@ -370,7 +485,7 @@ export default function EnhancedAuthPage() {
 
         logger.info('🔒 TERMS ACCEPTANCE REQUIRED - redirecting to /accept-terms');
         redirectTimeoutRef.current = setTimeout(() => {
-          setLocation(`/accept-terms?redirect=${targetPath}`, { replace: true });
+          navigateAfterAuth(`/accept-terms?redirect=${targetPath}`);
         }, 300);
         return;
       }
@@ -382,14 +497,17 @@ export default function EnhancedAuthPage() {
       if (!userMeta.has_seen_welcome) {
         if (userMeta.role === 'admin') {
           logger.info('👑 Admin user - skipping welcome screen, redirecting to admin');
-          setLocation('/admin', { replace: true });
+          navigateAfterAuth('/admin');
           return;
         } else if (userMeta.role === 'manager') {
           logger.info('🏢 Manager user - skipping welcome screen, redirecting to manager dashboard');
-          setLocation('/manager/dashboard', { replace: true });
+          navigateAfterAuth('/manager/dashboard');
           return;
         } else {
           logger.info('🎉 WELCOME SCREEN REQUIRED - Not redirecting yet');
+          // The welcome screen is a destination. Drop the cover so it is not
+          // hidden behind "Redirecting to your dashboard...".
+          endHandoff();
           return; // Don't redirect, show welcome screen for chefs
         }
       }
@@ -411,11 +529,11 @@ export default function EnhancedAuthPage() {
       
       if (location !== targetPath && targetPath !== '/auth') {
         redirectTimeoutRef.current = setTimeout(() => {
-          setLocation(targetPath, { replace: true });
+          navigateAfterAuth(targetPath);
         }, 300);
       }
     }
-  }, [loading, isInitialLoad, user, userMeta, location, setLocation]);
+  }, [loading, isInitialLoad, user, userMeta, location, navigateAfterAuth, endHandoff, showEmailVerification]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -426,25 +544,74 @@ export default function EnhancedAuthPage() {
     };
   }, []);
 
-  const handleSuccess = () => {
+  const handleSuccess = async () => {
     logger.info('🎯 AUTH SUCCESS - Setting hasAttemptedLogin to true, hasUserMetaRef:', hasUserMetaRef.current);
-    // Only reset hasCheckedUser if userMeta was NOT successfully fetched
-    // Use ref instead of state to avoid stale closure issues
-    if (!hasUserMetaRef.current) {
-      logger.info('🔄 Resetting hasCheckedUser for retry (userMeta not fetched yet)');
-      hasCheckedUser.current = false;
-      setRetryCount(c => c + 1); // Force a re-render to trigger fetchUserMeta again
-    }
     setHasAttemptedLogin(true);
+
+    // Cover the page before any of the work below starts. The redirect is
+    // decided later, by an effect with a 300 ms timer; without raising the
+    // handoff here that wait happens with the login form back on screen.
+    beginHandoff(
+      t("btnSigningYouIn", "Signing you in..."),
+      t("overlayRedirectingDashboard", "Redirecting to your dashboard..."),
+    );
+
+    // Registration completion is authoritative. Consume the freshly returned
+    // profile instead of waiting for the earlier page-local request/cache.
+    const refreshedUser = await refreshUserData();
+    if (refreshedUser) {
+      setUserMeta(refreshedUser);
+      hasUserMetaRef.current = true;
+      hasCheckedUser.current = true;
+
+      if (
+        hasVerifiedContact(refreshedUser, refreshedUser) &&
+        (!refreshedUser.termsAccepted || refreshedUser.termsVersion !== CURRENT_POLICY_VERSION)
+      ) {
+        const requestedPath = getRedirectPath();
+        const targetPath = requestedPath !== "/"
+          ? requestedPath
+          : refreshedUser.role === "admin"
+            ? "/admin"
+            : refreshedUser.role === "manager"
+              ? "/manager/dashboard"
+              : "/dashboard";
+        navigateAfterAuth(`/accept-terms?redirect=${encodeURIComponent(targetPath)}`);
+      }
+      return;
+    }
+
+    logger.info('🔄 Fresh profile unavailable - scheduling one bounded retry');
+    // No redirect is coming from this pass, so drop the cover. If the retry
+    // succeeds the redirect raises it again.
+    endHandoff();
+    hasCheckedUser.current = false;
+    setRetryCount(c => c + 1);
   };
 
-  if (isCompletingVerification) {
+  const handleCheckVerified = async () => {
+    const updatedUser = await updateUserVerification();
+    if (!hasVerifiedEmail(auth.currentUser, updatedUser)) return false;
+    setShowEmailVerification(false);
+    await handleSuccess();
+    return true;
+  };
+
+  // Hold one loading screen for the whole auth transition.
+  //
+  // This page used to render the form unconditionally, so a successful sign-in
+  // showed the login screen again while the profile was still being fetched and
+  // the redirect was still waiting on its 300 ms timer. `ManagerLogin` has had
+  // this gate for a long time; the chef entry point never got one.
+  if (isAuthSettling && !gateTimedOut) {
     return (
-      <LoadingOverlay
-        isVisible
-        message={t("overlayFinishingAccount", "Finishing your account setup...")}
-        submessage={t("overlayPreparingWelcome", "Your email is verified. We're preparing your welcome experience.")}
-        type="loading"
+      <AuthLoadingScreen
+        message={
+          authPhase === 'syncing'
+            ? t("statusCheckingAccount", "Checking account...")
+            : t("btnSigningYouIn", "Signing you in...")
+        }
+        submessage={t("overlayVerifyCredentials", "Please wait while we verify your credentials securely.")}
       />
     );
   }
@@ -453,7 +620,7 @@ export default function EnhancedAuthPage() {
   // Admins: Go straight to admin dashboard
   // Managers: Go to dashboard where ManagerOnboardingWizard will show
   // Only show welcome screen for chefs
-  if (!loading && !userMetaLoading && user && userMeta && hasVerifiedEmail(user, userMeta) && !userMeta.has_seen_welcome) {
+  if (!loading && !userMetaLoading && user && userMeta && hasVerifiedContact(user, userMeta) && !userMeta.has_seen_welcome) {
     if (userMeta.role === 'admin') {
       return <Redirect to="/admin" replace />;
     } else if (userMeta.role === 'manager') {
@@ -521,7 +688,7 @@ export default function EnhancedAuthPage() {
               transition={{ duration: reduceMotion ? 0 : 0.2, ease: "easeOut" }}
               className="w-full"
             >
-              {authStep !== "phone-otp" && authStep !== "google-hint" && authStep !== "methods" && <div className="mb-6">
+              {!showEmailVerification && authStep !== "phone-otp" && authStep !== "google-hint" && authStep !== "methods" && <div className="mb-6">
               <h1 className="text-3xl font-bold tracking-[-0.03em] text-gray-950">
                 {authStep === "register"
                   ? completingPhoneSignup
@@ -573,28 +740,45 @@ export default function EnhancedAuthPage() {
               </motion.div>
             )}
 
-            <AuthFlow
-              step={authStep}
-              onStepChange={setAuthStep}
-              loginProps={{
-                onSuccess: handleSuccess,
-                setHasAttemptedLogin: setHasAttemptedLogin,
-                animateEntrance: false,
-              }}
-              registerProps={{
-                onSuccess: handleSuccess,
-                setHasAttemptedLogin: setHasAttemptedLogin,
-                hideApplyingToggle: true,
-                initialTermsAccepted: sellerJourneyDraft?.termsAccepted === true,
-                animateEntrance: false,
-              }}
-              onGoogleSignIn={async () => {
-                await signInWithGoogle();
-                setHasAttemptedLogin(true);
-                await refreshUserData();
-              }}
-              onPhoneExistingUser={handleSuccess}
-            />
+            {showEmailVerification ? (
+              <EmailVerificationScreen
+                email={emailForVerification}
+                onResend={handleResendVerification}
+                onCheckVerified={handleCheckVerified}
+                onGoBack={() => {
+                  setShowEmailVerification(false);
+                  setAwaitingEmailVerificationUi(false);
+                  setAuthStep("login");
+                }}
+              />
+            ) : (
+              <AuthFlow
+                step={authStep}
+                onStepChange={setAuthStep}
+                loginProps={{
+                  onSuccess: handleSuccess,
+                  setHasAttemptedLogin: setHasAttemptedLogin,
+                  animateEntrance: false,
+                }}
+                registerProps={{
+                  onSuccess: handleSuccess,
+                  setHasAttemptedLogin: setHasAttemptedLogin,
+                  hideApplyingToggle: true,
+                  initialTermsAccepted: sellerJourneyDraft?.termsAccepted === true,
+                  animateEntrance: false,
+                  onRegistrationStart: handleRegistrationStart,
+                  onRegistrationComplete: handleRegistrationComplete,
+                  onRegistrationError: handleRegistrationError,
+                }}
+                onGoogleSignIn={async () => {
+                  // Public Google entry is idempotent: existing users sign in;
+                  // Firebase-only users are provisioned immediately as chefs.
+                  await signInWithGoogle(true, "chef", sellerJourneyDraft?.termsAccepted === true);
+                  await handleSuccess();
+                }}
+                onPhoneExistingUser={handleSuccess}
+              />
+            )}
 
             </motion.div>
             </div>

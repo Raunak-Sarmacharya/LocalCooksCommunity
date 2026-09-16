@@ -1,4 +1,5 @@
 {
+  "addToCheckinFirst": "Add to Check-In first, or delete the item instead.",
   "appName": "LocalCooks",
   "loading": "Loading…",
   "save": "Save",
@@ -13,6 +14,7 @@
   "search": "Search",
   "retry": "Retry",
   "submit": "Submit",
+  "undo": "Undo",
   "yes": "Yes",
   "no": "No",
   "or": "or",
@@ -91,7 +93,7 @@
     "description": "We use cookies to keep you signed in and to understand site usage.",
     "privacyLink": "Privacy policy",
     "reject": "Reject",
-    "accept":"Accept"
+    "accept": "Accept"
   },
   "connectingTalentedHomeChefs": "Connecting talented home chefs with customers. We're building more than a platform – we're creating a community where cooks and customers connect directly.",
   "loginRegister": "Login / Register",
@@ -311,5 +313,6 @@
   "kitchenServiceEarn": "Earn revenue",
   "kitchenServiceEarnDesc": "Monetize your unused kitchen hours",
   "chefPartnerLink": "For chefs",
-  "chefPartnerLinkDesc": "Sell food or book prep space at chef.localcooks.ca"
+  "chefPartnerLinkDesc": "Sell food or book prep space at chef.localcooks.ca",
+  "phoneVerificationRequired": "Phone numbers require OTP verification to link with your account."
 }

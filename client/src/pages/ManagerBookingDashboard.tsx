@@ -31,6 +31,7 @@ import ManagerRevenueDashboard from "./ManagerRevenueDashboard";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
 import LocationRequirementsSettings from "@/components/manager/LocationRequirementsSettings";
 import { LicenseSettings, BookingRulesSettings, LocationSettings, KitchensManagement, FacilityDocsSettings, CheckinCheckoutSettings, StorageCheckinCheckoutSettings } from "@/components/manager/settings";
+import type { BookingPoliciesHandle, CheckinCheckoutHandle, KitchensHandle } from "@/components/manager/settings";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import DashboardLayout from "@/layouts/DashboardLayout";
@@ -179,6 +180,18 @@ export default function ManagerBookingDashboard() {
   const [availabilityDirty, setAvailabilityDirty] = useState(false);
   const [pendingAvailabilityView, setPendingAvailabilityView] = useState<ViewType | null>(null);
   const [isSavingBeforeLeave, setIsSavingBeforeLeave] = useState(false);
+  const bookingPoliciesRef = useRef<BookingPoliciesHandle>(null);
+  const bypassBookingPoliciesGuard = useRef(false);
+  const [bookingPoliciesDirty, setBookingPoliciesDirty] = useState(false);
+  const [pendingBookingPoliciesView, setPendingBookingPoliciesView] = useState<ViewType | null>(null);
+  const kitchensSaveRef = useRef<KitchensHandle>(null);
+  const bypassKitchensGuard = useRef(false);
+  const [kitchensDirty, setKitchensDirty] = useState(false);
+  const [pendingKitchensView, setPendingKitchensView] = useState<ViewType | null>(null);
+  const checkinCheckoutRef = useRef<CheckinCheckoutHandle>(null);
+  const bypassCheckinCheckoutGuard = useRef(false);
+  const [checkinCheckoutDirty, setCheckinCheckoutDirty] = useState(false);
+  const [pendingCheckinCheckoutView, setPendingCheckinCheckoutView] = useState<ViewType | null>(null);
 
   // Handle locationId from URL for direct navigation (e.g., returning from setup, notification links)
   useEffect(() => {
@@ -293,6 +306,18 @@ export default function ManagerBookingDashboard() {
       setPendingAvailabilityView(view);
       return;
     }
+    if (activeView === 'settings-booking-rules' && bookingPoliciesDirty && !bypassBookingPoliciesGuard.current) {
+      setPendingBookingPoliciesView(view);
+      return;
+    }
+    if (activeView === 'kitchens' && kitchensDirty && !bypassKitchensGuard.current) {
+      setPendingKitchensView(view);
+      return;
+    }
+    if (activeView === 'settings-checkin-checkout' && checkinCheckoutDirty && !bypassCheckinCheckoutGuard.current) {
+      setPendingCheckinCheckoutView(view);
+      return;
+    }
     setActiveView(nextView);
     const url = new URL(window.location.href);
     if (legacySection) {
@@ -327,6 +352,54 @@ export default function ManagerBookingDashboard() {
     const saved = await availabilityRef.current?.saveAllChanges();
     setIsSavingBeforeLeave(false);
     if (saved) continueFromAvailability(pendingAvailabilityView);
+  };
+
+  const continueFromBookingPolicies = (view: ViewType) => {
+    bypassBookingPoliciesGuard.current = true;
+    setBookingPoliciesDirty(false);
+    setPendingBookingPoliciesView(null);
+    handleViewChange(view);
+    bypassBookingPoliciesGuard.current = false;
+  };
+
+  const saveAndLeaveBookingPolicies = async () => {
+    if (!pendingBookingPoliciesView) return;
+    setIsSavingBeforeLeave(true);
+    const saved = await bookingPoliciesRef.current?.saveAllChanges();
+    setIsSavingBeforeLeave(false);
+    if (saved) continueFromBookingPolicies(pendingBookingPoliciesView);
+  };
+
+  const continueFromKitchens = (view: ViewType) => {
+    bypassKitchensGuard.current = true;
+    setKitchensDirty(false);
+    setPendingKitchensView(null);
+    handleViewChange(view);
+    bypassKitchensGuard.current = false;
+  };
+
+  const saveAndLeaveKitchens = async () => {
+    if (!pendingKitchensView) return;
+    setIsSavingBeforeLeave(true);
+    const saved = await kitchensSaveRef.current?.saveAllChanges();
+    setIsSavingBeforeLeave(false);
+    if (saved) continueFromKitchens(pendingKitchensView);
+  };
+
+  const continueFromCheckinCheckout = (view: ViewType) => {
+    bypassCheckinCheckoutGuard.current = true;
+    setCheckinCheckoutDirty(false);
+    setPendingCheckinCheckoutView(null);
+    handleViewChange(view);
+    bypassCheckinCheckoutGuard.current = false;
+  };
+
+  const saveAndLeaveCheckinCheckout = async () => {
+    if (!pendingCheckinCheckoutView) return;
+    setIsSavingBeforeLeave(true);
+    checkinCheckoutRef.current?.save();
+    setIsSavingBeforeLeave(false);
+    continueFromCheckinCheckout(pendingCheckinCheckoutView);
   };
 
   const kitchenChildLabel: Partial<Record<ViewType, string>> = {
@@ -912,6 +985,8 @@ export default function ManagerBookingDashboard() {
           location={locationDetails || selectedLocation}
           onNavigate={handleViewChange}
           onConfigureRequirements={() => handleViewChange('application-requirements')}
+          saveRef={kitchensSaveRef}
+          onDirtyChange={setKitchensDirty}
         />
       )}
 
@@ -943,8 +1018,11 @@ export default function ManagerBookingDashboard() {
 
       {activeView === 'settings-booking-rules' && selectedLocation && (
         <BookingRulesSettings
+          ref={bookingPoliciesRef}
           location={locationDetails || selectedLocation}
           onSave={(updates) => updateLocationSettings.mutateAsync(updates)}
+          onDirtyChange={setBookingPoliciesDirty}
+          onNavigate={handleViewChange}
         />
       )}
 
@@ -1016,7 +1094,12 @@ export default function ManagerBookingDashboard() {
       )}
 
       {activeView === 'settings-checkin-checkout' && selectedLocation && (
-        <CheckinCheckoutSettings location={locationDetails || selectedLocation} />
+        <CheckinCheckoutSettings
+          location={locationDetails || selectedLocation}
+          saveRef={checkinCheckoutRef}
+          onDirtyChange={setCheckinCheckoutDirty}
+          onNavigate={handleViewChange}
+        />
       )}
 
       {activeView === 'settings-checkin-checkout' && !selectedLocation && (
@@ -1057,6 +1140,75 @@ export default function ManagerBookingDashboard() {
               {mt("discardChanges")}
             </Button>
             <AlertDialogAction disabled={isSavingBeforeLeave} onClick={(event) => { event.preventDefault(); void saveAndLeaveAvailability(); }}>
+              {isSavingBeforeLeave && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {mt("saveChanges")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={pendingBookingPoliciesView !== null} onOpenChange={(open) => !open && setPendingBookingPoliciesView(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{mt("unsavedChanges")}</AlertDialogTitle>
+            <AlertDialogDescription>{mt("bookingPoliciesUnsavedChangesDescription")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSavingBeforeLeave}>{mt("cancel")}</AlertDialogCancel>
+            <Button
+              variant="outline"
+              disabled={isSavingBeforeLeave}
+              onClick={() => pendingBookingPoliciesView && continueFromBookingPolicies(pendingBookingPoliciesView)}
+            >
+              {mt("discardChanges")}
+            </Button>
+            <AlertDialogAction disabled={isSavingBeforeLeave} onClick={(event) => { event.preventDefault(); void saveAndLeaveBookingPolicies(); }}>
+              {isSavingBeforeLeave && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {mt("saveChanges")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={pendingKitchensView !== null} onOpenChange={(open) => !open && setPendingKitchensView(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{mt("unsavedChanges")}</AlertDialogTitle>
+            <AlertDialogDescription>{mt("kitchenUnsavedChangesDescription")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSavingBeforeLeave}>{mt("cancel")}</AlertDialogCancel>
+            <Button
+              variant="outline"
+              disabled={isSavingBeforeLeave}
+              onClick={() => pendingKitchensView && continueFromKitchens(pendingKitchensView)}
+            >
+              {mt("discardChanges")}
+            </Button>
+            <AlertDialogAction disabled={isSavingBeforeLeave} onClick={(event) => { event.preventDefault(); void saveAndLeaveKitchens(); }}>
+              {isSavingBeforeLeave && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {mt("saveChanges")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={pendingCheckinCheckoutView !== null} onOpenChange={(open) => !open && setPendingCheckinCheckoutView(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{mt("unsavedChanges")}</AlertDialogTitle>
+            <AlertDialogDescription>{mt("checkinCheckoutUnsavedChangesDescription")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSavingBeforeLeave}>{mt("cancel")}</AlertDialogCancel>
+            <Button
+              variant="outline"
+              disabled={isSavingBeforeLeave}
+              onClick={() => pendingCheckinCheckoutView && continueFromCheckinCheckout(pendingCheckinCheckoutView)}
+            >
+              {mt("discardChanges")}
+            </Button>
+            <AlertDialogAction disabled={isSavingBeforeLeave} onClick={(event) => { event.preventDefault(); void saveAndLeaveCheckinCheckout(); }}>
               {isSavingBeforeLeave && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {mt("saveChanges")}
             </AlertDialogAction>
@@ -1316,7 +1468,7 @@ function CompactSettingsView({ location, onUpdateSettings }: SettingsViewProps) 
       <TabGroup index={activeIndex} onIndexChange={(index) => changeTab(tabs[index])}>
         <TabList variant="line" className="mt-2">
           <Tab>Location</Tab>
-          <Tab>Booking rules</Tab>
+          <Tab>{mt("navBookingRules")}</Tab>
           <Tab>Documents</Tab>
           <Tab>Requirements</Tab>
         </TabList>

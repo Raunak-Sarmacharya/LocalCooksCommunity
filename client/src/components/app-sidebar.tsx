@@ -15,6 +15,7 @@ import { mt } from "@/i18n/manager";
 import type { ManagerBreadcrumb } from "@/lib/manager-kitchens-navigation";
 import ManagerGettingStarted from "@/components/manager/ManagerGettingStarted";
 import type { ManagerSetupStep } from "@/hooks/use-onboarding-status";
+import { EMAIL_FOCUS_PARAM, EMAIL_FOCUS_VALUE } from "@/lib/email-verification-nav";
 
 interface NavItem {
     labelKey: string;
@@ -153,6 +154,13 @@ export function AppSidebar({
     /** "Getting started" rows deep-link into the page that completes them. */
     const handleManagerSetupStep = (stepId: ManagerSetupStep["id"]) => {
         handleAccountAction(SETUP_STEP_VIEWS[stepId]);
+        if (stepId !== "profile") return;
+        // The profile view is a multi-section tab; land the manager on the email
+        // card specifically rather than at the top of the page. Written
+        // synchronously so the param is present before the view mounts and reads it.
+        const url = new URL(window.location.href);
+        url.searchParams.set(EMAIL_FOCUS_PARAM, EMAIL_FOCUS_VALUE);
+        window.history.replaceState({}, "", url);
     };
 
     const handleImproveManagerListing = (task: string) => {

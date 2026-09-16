@@ -38,6 +38,7 @@ import { eq, and, lt, inArray, sql, type SQL } from "drizzle-orm";
 import { randomInt, randomBytes } from 'crypto';
 import bcrypt from 'bcryptjs';
 import { logger } from "../logger";
+import { isChecklistSectionEnabled } from "./checkin-checkout-checklist";
 import { sendEmail, generateKitchenCheckinManagerEmail, generateKitchenCheckinChefEmail, generateKitchenCheckoutRequestManagerEmail, generateKitchenCheckoutClearedChefEmail, generateKitchenNoShowManagerEmail, generateKitchenNoShowChefEmail } from "../email";
 import { createBookingDateTime, DEFAULT_TIMEZONE } from "@shared/timezone-utils";
 
@@ -154,19 +155,19 @@ export async function validateRequiredPhotos(
   if (!checklist) return { valid: true };
 
   let requirementsRaw: unknown = [];
-  let sectionEnabled = true;
+  let sectionEnabled = false;
   if (type === 'checkin') {
     requirementsRaw = checklist.checkinPhotoRequirements;
-    sectionEnabled = checklist.checkinEnabled !== false;
+    sectionEnabled = isChecklistSectionEnabled(checklist.checkinEnabled);
   } else if (type === 'checkout') {
     requirementsRaw = checklist.checkoutPhotoRequirements;
-    sectionEnabled = checklist.checkoutEnabled !== false;
+    sectionEnabled = isChecklistSectionEnabled(checklist.checkoutEnabled);
   } else if (type === 'storage_checkin') {
     requirementsRaw = (checklist as any).storageCheckinPhotoRequirements;
-    sectionEnabled = (checklist as any).storageCheckinEnabled !== false;
+    sectionEnabled = isChecklistSectionEnabled((checklist as any).storageCheckinEnabled);
   } else {
     requirementsRaw = checklist.storageCheckoutPhotoRequirements;
-    sectionEnabled = checklist.storageCheckoutEnabled !== false;
+    sectionEnabled = isChecklistSectionEnabled(checklist.storageCheckoutEnabled);
   }
 
   // If the section is disabled entirely, skip validation.
@@ -222,19 +223,19 @@ export async function validateRequiredChecklistItems(
   if (!checklist) return { valid: true };
 
   let requiredItemsRaw: unknown = [];
-  let sectionEnabled = true;
+  let sectionEnabled = false;
   if (type === 'checkin') {
     requiredItemsRaw = checklist.checkinItems;
-    sectionEnabled = checklist.checkinEnabled !== false;
+    sectionEnabled = isChecklistSectionEnabled(checklist.checkinEnabled);
   } else if (type === 'checkout') {
     requiredItemsRaw = checklist.checkoutItems;
-    sectionEnabled = checklist.checkoutEnabled !== false;
+    sectionEnabled = isChecklistSectionEnabled(checklist.checkoutEnabled);
   } else if (type === 'storage_checkin') {
     requiredItemsRaw = (checklist as any).storageCheckinItems;
-    sectionEnabled = (checklist as any).storageCheckinEnabled !== false;
+    sectionEnabled = isChecklistSectionEnabled((checklist as any).storageCheckinEnabled);
   } else {
     requiredItemsRaw = checklist.storageCheckoutItems;
-    sectionEnabled = checklist.storageCheckoutEnabled !== false;
+    sectionEnabled = isChecklistSectionEnabled(checklist.storageCheckoutEnabled);
   }
 
   // If the section is disabled entirely, skip validation.

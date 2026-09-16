@@ -552,7 +552,15 @@ export async function generateInvoicePDF(
           addRow(`HST (${payout.kitchenHstRatePercent}%)`, taxAmount);
         }
         if (platformFeeDollars > 0) {
-          addRow(`Service fee (${feePercent}%)`, platformFeeDollars);
+          // Chef-paid fee on the manager's statement: state who pays it instead of
+          // showing the rate, matching the payout breakdown in the manager UI.
+          addRow(
+            tLocale(locale, "bdLocalCooksFeePaidByChef", {
+              ns: "chef",
+              defaultValue: "Service fee · paid by chef",
+            }),
+            platformFeeDollars
+          );
         }
 
         doc.rect(labelCol, yPos, 230, 1).fill('#000000');

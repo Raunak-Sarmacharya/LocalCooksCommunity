@@ -1,45 +1,82 @@
 import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
-import { DollarSign, Save, Info, Loader2 } from "@/components/ui/manager-icons";
-import { useState, useEffect, useCallback } from "react";
+import { DollarSign } from "@/components/ui/manager-icons";
+import { useState, useEffect, useCallback, useImperativeHandle, forwardRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { NumericInput } from "@/components/ui/numeric-input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ManagerPageLayout } from "@/components/layout/ManagerPageLayout";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { SettingsRow } from "@/components/manager/settings/SettingsRow";
 import { apiGet, apiPut } from "@/lib/api";
+
+/**
+ * The platform bills in Canadian dollars only, so the manager never picks a
+ * currency. Kept as a constant rather than a form field so the value that is
+ * written can never drift from the value that is displayed.
+ */
+const CURRENCY = "CAD";
 
 interface KitchenPricing {
   /** Raw input string in dollars (e.g. "15.50"). Empty string = unset. Stored as string so trailing decimals survive while typing. */
   hourlyRate: string;
   dailyRate: string;
-  currency: string;
-  pricingModel: 'hourly' | 'daily' | 'weekly';
   /** Raw input string as a percentage (e.g. "13" or "13.5"). Empty string = unset. */
   taxRatePercent: string;
+  /** Whole hours, 0–24. 0 means no minimum. */
+  minimumBookingHours: number;
+  pricingModel: 'hourly' | 'daily' | 'weekly';
 }
 
-interface KitchenPricingManagementProps {
-  embedded?: boolean;
+const EMPTY_PRICING: KitchenPricing = {
+  hourlyRate: '',
+  dailyRate: '',
+  taxRatePercent: '',
+  minimumBookingHours: 0,
+  pricingModel: 'hourly',
+};
+
+export interface KitchenPricingHandle {
+  /** Persist pending pricing edits. Resolves `true` when the save succeeded. */
+  saveAllChanges: () => Promise<boolean>;
 }
 
+interface KitchenPricingContentProps {
+  selectedLocationId: number | null;
+  selectedKitchenId: number | null;
+  /** Reports unsaved-changes state so the shell can guard navigation away. */
+  onDirtyChange?: (dirty: boolean) => void;
+}
 
-export default function KitchenPricingManagement({ embedded = false }: KitchenPricingManagementProps = {}) {
-  
-  const { toast } = useToast();
+/** Normalise the API shape (rates in cents, tax as numeric) into form strings. */
+function toForm(data: any): KitchenPricing {
+  return {
+    hourlyRate:
+      data.hourlyRate !== undefined && data.hourlyRate !== null
+        ? (Number(data.hourlyRate) / 100).toFixed(2)
+        : '',
+    dailyRate:
+      data.dailyRate !== undefined && data.dailyRate !== null
+        ? (Number(data.dailyRate) / 100).toFixed(2)
+        : '',
+    taxRatePercent:
+      data.taxRatePercent !== undefined && data.taxRatePercent !== null
+        ? String(Number(data.taxRatePercent))
+        : '',
+    minimumBookingHours: Number(data.minimumBookingHours ?? 0),
+    pricingModel: data.pricingModel || 'hourly',
+  };
+}
 
+export default function KitchenPricingManagement({ embedded = false }: { embedded?: boolean } = {}) {
   return (
     <ManagerPageLayout
       title={mt("kitchenPricing")}
       description={mt("manageRatesAndBookingRequirements")}
       showKitchenSelector={true}
     >
-      {({ selectedLocationId, selectedKitchenId, isLoading }) => (
+      {({ selectedLocationId, selectedKitchenId }) => (
         <KitchenPricingContent
           selectedLocationId={selectedLocationId}
           selectedKitchenId={selectedKitchenId}
@@ -49,303 +86,247 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
   );
 }
 
-// Extracted Content Component
-export function KitchenPricingContent({
-  selectedLocationId,
-  selectedKitchenId
-}: {
-  selectedLocationId: number | null,
-  selectedKitchenId: number | null
-}) {
+/**
+ * Pricing fields for one kitchen.
+ *
+ * Renders a card rather than a page: the parent supplies the heading context and
+ * owns the save action, so all four values commit together through the ref
+ * handle instead of each carrying its own button.
+ */
+export const KitchenPricingContent = forwardRef<
+  KitchenPricingHandle,
+  KitchenPricingContentProps
+>(function KitchenPricingContent(
+  { selectedLocationId, selectedKitchenId, onDirtyChange },
+  ref,
+) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const [kitchenName, setKitchenName] = useState<string>('');
+  const [pricing, setPricing] = useState<KitchenPricing>(EMPTY_PRICING);
+  // Snapshot of the last saved values — dirty is a comparison against this, so
+  // refetches after a save do not leave the form looking edited.
+  const [baseline, setBaseline] = useState<KitchenPricing>(EMPTY_PRICING);
 
-  // Pricing form state — string-based so users can type decimals freely (e.g. "5." → "5.5" → "5.50")
-  const [pricing, setPricing] = useState<KitchenPricing>({
-    hourlyRate: '',
-    dailyRate: '',
-    currency: 'CAD',
-    pricingModel: 'hourly',
-    taxRatePercent: '',
-  });
-  const [isSaving, setIsSaving] = useState(false);
+  const isDirty =
+    pricing.hourlyRate !== baseline.hourlyRate ||
+    pricing.dailyRate !== baseline.dailyRate ||
+    pricing.taxRatePercent !== baseline.taxRatePercent ||
+    pricing.minimumBookingHours !== baseline.minimumBookingHours;
 
-  // Kitchen name is handled by the parent ManagerPageLayout
-  // No need to fetch separately
-
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
 
   const loadPricing = useCallback(async () => {
     if (!selectedKitchenId) return;
 
     try {
-      logger.info('Loading pricing for kitchen:', selectedKitchenId);
-
       const data = await apiGet(`/manager/kitchens/${selectedKitchenId}/pricing`);
-      logger.info('Pricing loaded:', data);
-      logger.info('Pricing loaded:', data);
-
-      setPricing({
-        // Convert cents to dollars formatted as fixed 2-decimal string for clean display
-        hourlyRate: data.hourlyRate !== undefined && data.hourlyRate !== null
-          ? (Number(data.hourlyRate) / 100).toFixed(2)
-          : '',
-        dailyRate: data.dailyRate !== undefined && data.dailyRate !== null
-          ? (Number(data.dailyRate) / 100).toFixed(2)
-          : '',
-        currency: data.currency || 'CAD',
-        pricingModel: data.pricingModel || 'hourly',
-        taxRatePercent: data.taxRatePercent !== undefined && data.taxRatePercent !== null
-          ? String(Number(data.taxRatePercent))
-          : '',
-      });
+      const form = toForm(data);
+      setPricing(form);
+      setBaseline(form);
     } catch (error) {
       logger.error('Error loading pricing:', error);
-      toast({ title: mt("error"),
-        description: (error as Error).message || "Failed to load pricing",
+      toast({
+        title: mt("error"),
+        description: (error as Error).message || mt("failedToLoadPricing"),
         variant: "destructive",
       });
     }
   }, [selectedKitchenId, toast]);
 
-  // Load pricing when kitchen is selected
   useEffect(() => {
+    // Reset before loading, so the previous kitchen's values can never be read as
+    // this kitchen's unsaved edits while the request is in flight.
+    setPricing(EMPTY_PRICING);
+    setBaseline(EMPTY_PRICING);
     if (selectedKitchenId) {
-      loadPricing();
-    } else {
-      setPricing({
-        hourlyRate: '',
-        dailyRate: '',
-        taxRatePercent: '',
-        currency: 'CAD',
-        pricingModel: 'hourly',
-      });
+      void loadPricing();
     }
   }, [selectedKitchenId, loadPricing]);
 
-
-  const savePricing = async () => {
+  /**
+   * Persist the pricing fields. Throws on validation or transport failure so the
+   * caller's status button can report it; the toast carries the detail.
+   */
+  const savePricing = useCallback(async () => {
     if (!selectedKitchenId) {
-      toast({ title: mt("error"),
+      toast({
+        title: mt("error"),
         description: mt("pleaseSelectAKitchenFirst"),
         variant: "destructive",
       });
-      return;
+      throw new Error("no-kitchen");
     }
 
-    // Parse string inputs into numbers for validation + payload
     const hourlyRateNum = pricing.hourlyRate.trim() === '' ? null : parseFloat(pricing.hourlyRate);
     const dailyRateNum = pricing.dailyRate.trim() === '' ? null : parseFloat(pricing.dailyRate);
     const taxRateNum = pricing.taxRatePercent.trim() === '' ? null : parseFloat(pricing.taxRatePercent);
 
-    // Validate hourly rate
-    if (hourlyRateNum !== null && (isNaN(hourlyRateNum) || hourlyRateNum < 0)) {
-      toast({ title: mt("validationError"),
+    const invalid = (value: number | null) => value !== null && (isNaN(value) || value < 0);
+
+    if (invalid(hourlyRateNum)) {
+      toast({
+        title: mt("validationError"),
         description: mt("hourlyRateMustBeAPositiveNumberOrEmpty"),
         variant: "destructive",
       });
-      return;
+      throw new Error("invalid-hourly-rate");
     }
 
-    if (dailyRateNum !== null && (isNaN(dailyRateNum) || dailyRateNum < 0)) {
-      toast({ title: mt("validationError"),
-        description: "Daily rate must be a positive number or empty",
+    if (invalid(dailyRateNum)) {
+      toast({
+        title: mt("validationError"),
+        description: mt("dailyRateMustBeAPositiveNumberOrEmpty"),
         variant: "destructive",
       });
-      return;
+      throw new Error("invalid-daily-rate");
     }
 
     if ((hourlyRateNum ?? 0) <= 0 && (dailyRateNum ?? 0) <= 0) {
-      toast({ title: mt("validationError"),
+      toast({
+        title: mt("validationError"),
         description: mt("atLeastOneKitchenRateRequired"),
         variant: "destructive",
       });
-      return;
+      throw new Error("no-rate");
     }
 
-    // Validate tax rate
-    if (taxRateNum !== null && (isNaN(taxRateNum) || taxRateNum < 0)) {
-      toast({ title: mt("validationError"),
+    if (invalid(taxRateNum)) {
+      toast({
+        title: mt("validationError"),
         description: mt("taxRateMustBeAPositiveNumberOrEmpty"),
         variant: "destructive",
       });
-      return;
+      throw new Error("invalid-tax-rate");
     }
 
-    setIsSaving(true);
-    try {
-      // Prepare payload - convert dollars to cents for database storage
-      const hourlyRateInCents = hourlyRateNum === null
-        ? null
-        : Math.round(hourlyRateNum * 100);
-      const dailyRateInCents = dailyRateNum === null
-        ? null
-        : Math.round(dailyRateNum * 100);
+    const payload = {
+      // Rates travel in cents; the form holds dollars.
+      hourlyRate: hourlyRateNum === null ? null : Math.round(hourlyRateNum * 100),
+      dailyRate: dailyRateNum === null ? null : Math.round(dailyRateNum * 100),
+      currency: CURRENCY,
+      pricingModel: pricing.pricingModel || 'hourly',
+      taxRatePercent: taxRateNum,
+      minimumBookingHours: pricing.minimumBookingHours,
+    };
 
-      const payload = {
-        hourlyRate: hourlyRateInCents,
-        dailyRate: dailyRateInCents,
-        currency: pricing.currency || 'CAD',
-        pricingModel: pricing.pricingModel || 'hourly',
-        taxRatePercent: taxRateNum,
-      };
+    const updated = await apiPut(`/manager/kitchens/${selectedKitchenId}/pricing`, payload);
 
-      logger.info('Saving kitchen pricing:', { kitchenId: selectedKitchenId, payload });
+    const form = toForm(updated);
+    setPricing(form);
+    setBaseline(form);
 
-      const updated = await apiPut(`/manager/kitchens/${selectedKitchenId}/pricing`, payload);
-      logger.info('Pricing saved successfully:', updated);
-      logger.info('Pricing saved successfully:', updated);
+    queryClient.invalidateQueries({ queryKey: [`/api/manager/kitchens/${selectedKitchenId}/pricing`] });
+    queryClient.invalidateQueries({ queryKey: ['managerKitchens', selectedLocationId] });
+    queryClient.invalidateQueries({ queryKey: ["/api/manager/all-kitchens"] });
 
-      // Update state with the response data (convert cents back to dollar string for UI)
-      setPricing({
-        hourlyRate: updated.hourlyRate !== null && updated.hourlyRate !== undefined
-          ? (Number(updated.hourlyRate) / 100).toFixed(2)
-          : '',
-        dailyRate: updated.dailyRate !== null && updated.dailyRate !== undefined
-          ? (Number(updated.dailyRate) / 100).toFixed(2)
-          : '',
-        taxRatePercent: updated.taxRatePercent !== undefined && updated.taxRatePercent !== null
-          ? String(Number(updated.taxRatePercent))
-          : '',
-        currency: updated.currency || 'CAD',
-        pricingModel: updated.pricingModel || 'hourly',
-      });
+    toast({ title: mt("success"), description: mt("kitchenPricingUpdatedSuccessfully") });
+  }, [selectedKitchenId, selectedLocationId, pricing, queryClient, toast]);
 
-      toast({ title: mt("success"),
-        description: mt("kitchenPricingUpdatedSuccessfully"),
-      });
-
-      // Invalidate queries to refresh data
-      queryClient.invalidateQueries({ queryKey: [`/api/manager/kitchens/${selectedKitchenId}/pricing`] });
-    } catch (error) {
-      logger.error('Error saving pricing:', error);
-      toast({ title: mt("error"),
-        description: (error as Error).message || "Failed to save pricing",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
+  useImperativeHandle(
+    ref,
+    () => ({
+      saveAllChanges: async () => {
+        try {
+          await savePricing();
+          return true;
+        } catch {
+          return false;
+        }
+      },
+    }),
+    [savePricing],
+  );
 
   if (!selectedKitchenId) {
     return (
-      <Card className="border-dashed h-full">
-        <CardContent className="flex flex-col items-center justify-center p-12 text-center text-muted-foreground h-full">
-          <DollarSign className="h-12 w-12 mb-4 opacity-20" />
-          <h3 className="text-lg font-medium text-foreground mb-1">{mt("noKitchenSelected")}</h3>
-          <p>{mt("selectALocationAndKitchenFromTheSidebarToManagePricing")}</p>
+      <Card className="border-dashed">
+        <CardContent className="flex flex-col items-center justify-center gap-3 p-12 text-center text-muted-foreground">
+          <DollarSign className="h-10 w-10 opacity-20" />
+          <div>
+            <h3 className="mb-1 font-medium text-foreground">{mt("noKitchenSelected")}</h3>
+            <p className="text-sm">{mt("selectALocationAndKitchenFromTheSidebarToManagePricing")}</p>
+          </div>
         </CardContent>
       </Card>
     );
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-top-4">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">{mt("pricingConfiguration")}</CardTitle>
-          <CardDescription>{mt("setHourlyRatesAndBookingRequirements")}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid gap-5 sm:grid-cols-2">
-            <div>
-            <Label htmlFor="hourlyRate">
-              {mt("hourlyRate")} ({pricing.currency})
-            </Label>
-            <CurrencyInput
-              id="hourlyRate"
-              value={pricing.hourlyRate}
-              onValueChange={(val) => {
-                setPricing({ ...pricing, hourlyRate: val });
-              }}
-              placeholder="0.00"
-              className="mt-2"
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              {mt("amountChargedPerHour")}
-            </p>
-            </div>
-            <div>
-              <Label htmlFor="dailyRate">{mt("dailyRate")} ({pricing.currency})</Label>
-              <CurrencyInput
-                id="dailyRate"
-                value={pricing.dailyRate}
-                onValueChange={(val) => setPricing({ ...pricing, dailyRate: val })}
-                placeholder="0.00"
-                className="mt-2"
-              />
-              <p className="text-xs text-muted-foreground mt-1">{mt("amountChargedPerDay")}</p>
-            </div>
-          </div>
+    <Card>
+      <CardHeader className="p-4 pb-3">
+        <CardTitle className="text-lg">{mt("navPricing")}</CardTitle>
+        <CardDescription>{mt("pricingCardDescription")}</CardDescription>
+      </CardHeader>
+      <CardContent className="divide-y divide-border p-0">
+        <SettingsRow
+          id="hourly-rate"
+          label={mt("hourlyRate")}
+          hint={mt("amountChargedPerHour")}
+          help={mt("chefsWillSeeTheCalculatedTotalPriceBeforeBooking")}
+        >
+          <CurrencyInput
+            id="hourly-rate"
+            value={pricing.hourlyRate}
+            onValueChange={(val) => setPricing((current) => ({ ...current, hourlyRate: val }))}
+            placeholder="0.00"
+            className="w-36"
+          />
+        </SettingsRow>
 
-          {/* Tax Rate */}
-          <div>
-            <Label htmlFor="taxRatePercent">{mt("taxRate2")}</Label>
-            <NumericInput
-              id="taxRatePercent"
-              allowDecimals
-              suffix="%"
-              value={pricing.taxRatePercent}
-              onValueChange={(val) => {
-                setPricing({ ...pricing, taxRatePercent: val });
-              }}
-              placeholder={mt("eG13")}
-              className="mt-2"
-            />
-             <p className="text-xs text-muted-foreground mt-1">{mt("percentageTaxToApplyToBookingsEGGSTHST")}</p>
-          </div>
+        <SettingsRow
+          id="daily-rate"
+          label={mt("dailyRate")}
+          hint={mt("amountChargedPerDay")}
+        >
+          <CurrencyInput
+            id="daily-rate"
+            value={pricing.dailyRate}
+            onValueChange={(val) => setPricing((current) => ({ ...current, dailyRate: val }))}
+            placeholder="0.00"
+            className="w-36"
+          />
+        </SettingsRow>
 
-          {/* Currency */}
-          <div>
-            <Label htmlFor="currency">{mt("currency")}</Label>
-            <Select
-              value={pricing.currency}
-              onValueChange={(value) => setPricing({ ...pricing, currency: value })}
-            >
-              <SelectTrigger id="currency" className="mt-2">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="CAD">{mt("cADCanadianDollar")}</SelectItem>
-                <SelectItem value="USD">{mt("uSDUSDollar")}</SelectItem>
-                <SelectItem value="EUR">{mt("eUREuro")}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+        <SettingsRow
+          id="tax-rate"
+          label={mt("taxRate2")}
+          hint={mt("percentageTaxToApplyToBookingsEGGSTHST")}
+        >
+          <NumericInput
+            id="tax-rate"
+            allowDecimals
+            suffix="%"
+            value={pricing.taxRatePercent}
+            onValueChange={(val) => setPricing((current) => ({ ...current, taxRatePercent: val }))}
+            placeholder={mt("eG13")}
+            className="w-36"
+          />
+        </SettingsRow>
 
-          {/* Info Alert */}
-          <Alert>
-            <Info className="h-4 w-4" />
-            <AlertTitle>{mt("pricingInformation")}</AlertTitle>
-            <AlertDescription>
-              <ul className="text-xs space-y-1 mt-2 list-disc list-inside">
-                <li>{mt("chefsWillSeeTheCalculatedTotalPriceBeforeBooking")}</li>
-                <li>{mt("updatesApplyToNewBookingsOnly")}</li>
-              </ul>
-            </AlertDescription>
-          </Alert>
-
-          {/* Save Button */}
-          <div className="flex justify-end pt-4 border-t">
-            <Button
-              onClick={savePricing}
-              disabled={isSaving}
-              className="w-full sm:w-auto"
-            >
-              {isSaving ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />{mt("saving")}</>
-              ) : (
-                <>
-                  <Save className="h-4 w-4 mr-2" />{mt("saveChanges")}</>
-              )}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+        <SettingsRow
+          id="minimum-booking"
+          label={mt("minimumBookingDuration")}
+          hint={mt("zeroMeansNoMinimum")}
+          help={mt("setTheMinimumHoursRequiredPerBookingForEachKitchen")}
+        >
+          <NumericInput
+            id="minimum-booking"
+            suffix={mt("hoursSuffix")}
+            value={String(pricing.minimumBookingHours)}
+            onValueChange={(val) => {
+              const parsed = parseInt(val, 10);
+              setPricing((current) => ({
+                ...current,
+                minimumBookingHours: isNaN(parsed) ? 0 : Math.min(24, Math.max(0, parsed)),
+              }));
+            }}
+            className="w-36"
+          />
+        </SettingsRow>
+      </CardContent>
+    </Card>
   );
-}
+});

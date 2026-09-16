@@ -11,15 +11,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Loader2, Mail, Phone, Shield, Camera, Building2, Edit3, Lock } from "@/components/ui/manager-icons";
+import { Loader2, Shield, Camera, Building2, Edit3 } from "@/components/ui/manager-icons";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
 import ChangePassword from "@/components/auth/ChangePassword";
 import PhoneSignInSettings from "@/components/auth/PhoneSignInSettings";
+import EmailVerificationCard from "@/components/auth/EmailVerificationCard";
+import { useEmailSectionFocus } from "@/hooks/use-email-section-focus";
+import { isEmailSectionFocused } from "@/lib/email-verification-nav";
+import { ContactInfoCard } from "@/components/profile/ContactVerificationRow";
 import { PHONE_AUTH_ENABLED } from "@/lib/feature-flags";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { cn } from "@/lib/utils";
-import { tt } from "@/i18n/common-ns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import StripeConnectSetup from "@/components/manager/StripeConnectSetup";
 import NotificationsSettings from "@/components/manager/settings/NotificationsSettings";
@@ -55,6 +58,7 @@ export default function ManagerProfileSettings({
     const queryClient = useQueryClient();
     const { user: firebaseUser, refreshUserData } = useFirebaseAuth();
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const emailSectionHighlighted = useEmailSectionFocus();
 
     const [username, setUsername] = useState("");
     const [email, setEmail] = useState("");
@@ -63,6 +67,9 @@ export default function ManagerProfileSettings({
     const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
     const [isEditingProfile, setIsEditingProfile] = useState(false);
     const [activeTab, setActiveTab] = useState(() => {
+        // A deep link to the email section wins over any remembered tab, otherwise
+        // "verify your email" could land the manager on Payments with no card in sight.
+        if (isEmailSectionFocused()) return "account";
         const params = new URLSearchParams(window.location.search);
         const legacyView = params.get("view");
         const tab = legacyView === "payments"
@@ -159,7 +166,10 @@ export default function ManagerProfileSettings({
     useEffect(() => {
         if (user) {
             setUsername(user.username || "");
-            setEmail(user.email || firebaseUser?.email || "");
+            // `username` holds the registration email; the profile API has no
+            // dedicated `email` column, so without this fallback the field renders
+            // blank for every phone-first account.
+            setEmail(user.email || user.username || firebaseUser?.email || "");
         }
         // Set displayName with priority: Firebase Auth displayName first
         const firebaseDisplayName = auth.currentUser?.displayName;
@@ -187,7 +197,7 @@ export default function ManagerProfileSettings({
             avatarUrl?: string;
         }) => {
             const currentFirebaseUser = auth.currentUser;
-            if (!currentFirebaseUser) throw new Error(tt("notAuthenticated"));
+            if (!currentFirebaseUser) throw new Error(mt("notAuthenticated"));
 
             // IMPORTANT: Update Firebase Auth displayName if it changed
             if (profileData.displayName) {
@@ -213,7 +223,7 @@ export default function ManagerProfileSettings({
                 body: JSON.stringify(profileData),
             });
 
-            if (!response.ok) throw new Error(tt("failedToUpdateProfile"));
+            if (!response.ok) throw new Error(mt("failedToUpdateProfile"));
             return response.json();
         },
         onSuccess: () => {
@@ -422,36 +432,44 @@ export default function ManagerProfileSettings({
                                 />
                             </div>
 
-                            {/* Email - Read only */}
-                            <div className="space-y-2">
-                                <Label htmlFor="email" className="text-sm font-medium text-slate-700">{mt("emailAddress")}</Label>
-                                <div className="relative">
-                                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                                    <Input
-                                        id="email"
-                                        type="email"
-                                        value={email}
-                                        disabled
-                                        className="h-11 pl-10 bg-slate-50 border-slate-200 text-slate-600"
+                            {/* Save Button */}
+                            {isEditingProfile && (
+                                <div className="flex justify-end border-t pt-4 sm:col-span-2">
+                                    <StatusButton
+                                        status={saveProfileAction.status}
+                                        onClick={saveProfileAction.execute}
+                                        labels={{ idle: mt("saveChanges"), loading: mt("saving"), success: mt("saved") }}
                                     />
-                                    <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300" />
                                 </div>
-                                <p className="text-xs text-slate-500 flex items-center gap-1">
-                                    <Shield className="h-3 w-3" />{mt("emailIsLinkedToYourAuthenticationAndCannotBeChangedHere")}</p>
-                            </div>
+                            )}
+                        </div>
+                    </div>
 
-                            {/* Phone */}
+                    {/* Contact Details Card — email and phone share one matched list */}
+                    <div className="overflow-hidden rounded-[1.35rem] border bg-card">
+                        <div className="border-b px-5 py-4">
+                            <h3 className="font-semibold text-foreground">
+                                {mt("contactInformation", { defaultValue: "Contact information" })}
+                            </h3>
+                            <p className="text-sm text-muted-foreground">
+                                {mt("contactInformationDesc", {
+                                    defaultValue:
+                                        "Where we send booking confirmations, payout notices and account security alerts.",
+                                })}
+                            </p>
+                        </div>
+                        <ContactInfoCard className="rounded-none border-0">
+                            <EmailVerificationCard
+                                embedded
+                                highlighted={emailSectionHighlighted}
+                                onVerified={() => {
+                                    // Non-forcing: background refresh, and an email change
+                                    // invalidates the token a forced refresh would use.
+                                    void refreshUserData({ forceToken: false });
+                                    queryClient.invalidateQueries({ queryKey: ["/api/user/profile", firebaseUser?.uid] });
+                                }}
+                            />
                             {PHONE_AUTH_ENABLED && (
-                            <div className="space-y-2 sm:col-span-2 rounded-xl border bg-slate-50/50 p-4">
-                                <div className="space-y-1 mb-3">
-                                    <Label className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
-                                        <Phone className="h-4 w-4 text-slate-400" />
-                                        {mt("phoneNumber")}
-                                    </Label>
-                                    <p className="text-xs text-slate-500">
-                                        {tt("phoneVerificationRequired", { defaultValue: "Phone numbers require OTP verification to link with your account." })}
-                                    </p>
-                                </div>
                                 <PhoneSignInSettings
                                     embedded
                                     initialPhone={phone}
@@ -466,20 +484,8 @@ export default function ManagerProfileSettings({
                                         } catch {}
                                     }}
                                 />
-                            </div>
                             )}
-
-                            {/* Save Button */}
-                            {isEditingProfile && (
-                                <div className="flex justify-end border-t pt-4 sm:col-span-2">
-                                    <StatusButton
-                                        status={saveProfileAction.status}
-                                        onClick={saveProfileAction.execute}
-                                        labels={{ idle: mt("saveChanges"), loading: mt("saving"), success: mt("saved") }}
-                                    />
-                                </div>
-                            )}
-                        </div>
+                        </ContactInfoCard>
                     </div>
 
                 </div>

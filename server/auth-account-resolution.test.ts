@@ -15,12 +15,29 @@ describe("auth account resolution", () => {
       email: "satyajit@example.com",
       phoneNumber: "+17096555123",
       providerIds: ["password", "phone", "google.com"],
+      passwordSetByUser: true,
     })).toEqual(["email-link", "password", "phone", "google"]);
   });
 
   it("returns only capabilities actually available to the account", () => {
-    expect(resolveAuthMethods({ email: "google@example.com", providerIds: ["google.com"] }))
-      .toEqual(["email-link", "google"]);
+    expect(resolveAuthMethods({
+      email: "google@example.com",
+      providerIds: ["google.com"],
+      passwordSetByUser: false,
+    })).toEqual(["email-link", "google"]);
+  });
+
+  it("hides password when the account only has a registration placeholder", () => {
+    expect(resolveAuthMethods({
+      email: "link@example.com",
+      providerIds: ["password"],
+      passwordSetByUser: false,
+    })).toEqual(["email-link"]);
+    expect(resolveAuthMethods({
+      email: "link@example.com",
+      providerIds: ["password"],
+      passwordSetByUser: null,
+    })).toEqual(["email-link"]);
   });
 
   it("never returns full recovery identifiers", () => {

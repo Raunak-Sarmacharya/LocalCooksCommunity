@@ -4,6 +4,7 @@ import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/use-auth";
 import { AuthModalProvider } from "@/components/auth/AuthModalProvider";
+import { AuthTransitionProvider } from "@/components/auth/AuthTransition";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { HelmetProvider } from "react-helmet-async";
 import { lazy, useEffect } from "react";
@@ -239,6 +240,8 @@ function Router() {
         {localePublicRoutes("/auth", EnhancedAuthPage)}
         <Route path="/dev-login" component={DevLoginPage} />
 
+        {/* One landing route for every verification email — Firebase action codes
+            and our own branded tokens both arrive here. */}
         <Route path="/email-action" component={EmailAction} />
         <Route path="/forgot-password" component={ForgotPasswordPage} />
         {localePublicRoutes("/forgot-password", ForgotPasswordPage)}
@@ -402,7 +405,12 @@ function App() {
                 <TooltipProvider>
                   <RadixBodyCleanupProvider>
                     <SonnerToaster />
-                    <Router />
+                    {/* Above the router: the overlay it renders has to survive
+                        the route change, otherwise the login screen shows
+                        through between the auth call and the redirect. */}
+                    <AuthTransitionProvider>
+                      <Router />
+                    </AuthTransitionProvider>
                     <CookieConsentBanner />
                   </RadixBodyCleanupProvider>
                 </TooltipProvider>

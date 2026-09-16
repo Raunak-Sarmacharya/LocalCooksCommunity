@@ -9,14 +9,15 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
-import { User, Mail, Phone, Loader2, KeyRound } from "@/components/ui/manager-icons";
-import { Phone as PhoneIcon } from "lucide-react";
+import { User, Loader2, KeyRound } from "@/components/ui/manager-icons";
 import ManagerHeader from "@/components/layout/ManagerHeader";
 import ChangePassword from "@/components/auth/ChangePassword";
 import PhoneSignInSettings from "@/components/auth/PhoneSignInSettings";
+import EmailVerificationCard from "@/components/auth/EmailVerificationCard";
+import { useEmailSectionFocus } from "@/hooks/use-email-section-focus";
 import { PHONE_AUTH_ENABLED } from "@/lib/feature-flags";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { tt } from "@/i18n/common-ns";
+import { ContactInfoCard } from "@/components/profile/ContactVerificationRow";
 import { Edit3 } from "lucide-react";
 import { InfoChip } from "@/components/chef/info-chip";
 
@@ -25,7 +26,8 @@ export default function ManagerProfile() {
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { user: firebaseUser } = useFirebaseAuth();
+  const { user: firebaseUser, refreshUserData } = useFirebaseAuth();
+  const emailSectionHighlighted = useEmailSectionFocus();
   
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -106,7 +108,7 @@ export default function ManagerProfile() {
   useEffect(() => {
     if (user) {
       setUsername(user.username || "");
-      setEmail(user.email || firebaseUser?.email || "");
+      setEmail(user.email || user.username || firebaseUser?.email || "");
     }
     // Set displayName with priority: Firebase Auth displayName first
     const firebaseDisplayName = auth.currentUser?.displayName;
@@ -118,7 +120,7 @@ export default function ManagerProfile() {
       setDisplayName(user.displayName || user.fullName || "");
     }
     if (managerProfile) {
-      setPhone(managerProfile.phone || "");
+      setPhone(managerProfile.phone || user?.phoneNumber || "");
     }
   }, [user, managerProfile, firebaseUser]);
 
@@ -131,7 +133,7 @@ export default function ManagerProfile() {
     }) => {
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
-        throw new Error(tt("firebaseUserNotAvailable"));
+        throw new Error("Firebase user not available");
       }
       
       // IMPORTANT: Update Firebase Auth displayName if it changed
@@ -277,44 +279,6 @@ export default function ManagerProfile() {
                   <p className="text-xs text-gray-600 mt-1">{t("yourNameAsItAppearsToOthers")}</p>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-900 mb-2">
-                    <Mail className="h-4 w-4 inline mr-1" />{t("emailAddress")}</label>
-                  <input
-                    type="email"
-                    value={email}
-                    disabled
-                    className="w-full max-w-md border border-gray-300 rounded-lg px-4 py-2 bg-gray-100 text-gray-600 cursor-not-allowed"
-                  />
-                  <p className="text-xs text-gray-600 mt-1">{t("emailIsManagedThroughYourFirebaseAccountAndCannotBeChangedHe")}</p>
-                </div>
-
-                {PHONE_AUTH_ENABLED && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-900 mb-2">
-                    <PhoneIcon className="h-4 w-4 inline mr-1" />{t("phoneNumber")}</label>
-                  <p className="text-xs text-gray-600 mb-3">{t("phoneVerificationRequired", "Phone numbers require OTP verification to link with your account.")}</p>
-                  <PhoneSignInSettings
-                    embedded
-                    initialPhone={phone}
-                    onPhoneLinked={async (verifiedPhone) => {
-                      try {
-                        await updateProfileMutation.mutateAsync({ phone: verifiedPhone });
-                      } catch {
-                        // mutation handles its own toast errors
-                      }
-                    }}
-                    onPhoneUnlinked={async () => {
-                      try {
-                        await updateProfileMutation.mutateAsync({ phone: "" });
-                      } catch {
-                        // mutation handles its own toast errors
-                      }
-                    }}
-                  />
-                </div>
-                )}
-
                 <div className="flex gap-3 pt-2">
                   <StatusButton
                     status={saveProfileAction.status}
@@ -333,6 +297,54 @@ export default function ManagerProfile() {
                   >{t("reset")}</Button>
                 </div>
               </div>
+            </div>
+
+            {/* Contact Information Section */}
+            <div className="space-y-4">
+              <div className="flex items-start gap-3">
+                <User className="h-5 w-5 text-orange-600 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-1">
+                    {t("contactInformation", "Contact information")}
+                  </h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    {t(
+                      "contactInformationDesc",
+                      "Where we send booking confirmations, payout notices and account security alerts."
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <ContactInfoCard>
+                <EmailVerificationCard
+                  embedded
+                  highlighted={emailSectionHighlighted}
+                  onVerified={() => void refreshUserData({ forceToken: false })}
+                />
+                {PHONE_AUTH_ENABLED && (
+                  <PhoneSignInSettings
+                    embedded
+                    initialPhone={phone}
+                    onPhoneLinked={async (verifiedPhone) => {
+                      try {
+                        await updateProfileMutation.mutateAsync({ phone: verifiedPhone });
+                        await refreshUserData();
+                      } catch {
+                        // mutation handles its own toast errors
+                      }
+                    }}
+                    onPhoneUnlinked={async () => {
+                      try {
+                        await updateProfileMutation.mutateAsync({ phone: "" });
+                        await refreshUserData();
+                      } catch {
+                        // mutation handles its own toast errors
+                      }
+                    }}
+                  />
+                )}
+              </ContactInfoCard>
             </div>
 
             {/* Change Password Section */}

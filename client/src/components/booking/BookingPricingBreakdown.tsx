@@ -99,6 +99,14 @@ export type KitchenPayoutStatementBreakdownProps = BookingPricingBreakdownInput 
   title?: string;
   showProcessorFee?: boolean;
   processingFeeLabel?: string;
+  platformFeeLabel?: string;
+  /** Shown when platform fee was paid by chef on top (not withheld from manager). */
+  platformFeeChefPaidLabel?: string;
+  /**
+   * Info control rendered beside the platform fee label. Only shown on the
+   * chef-paid variant — it explains that the fee is not a manager deduction.
+   */
+  platformFeeInfo?: React.ReactNode;
   refundLabel?: string;
   hstLabel?: string;
 };
@@ -110,6 +118,9 @@ export function KitchenPayoutStatementBreakdown({
   title = "Net payout",
   showProcessorFee,
   processingFeeLabel = "Processing fee",
+  platformFeeLabel = "Local Cooks fee",
+  platformFeeChefPaidLabel,
+  platformFeeInfo,
   refundLabel = "Refund",
   hstLabel,
   ...input
@@ -121,6 +132,10 @@ export function KitchenPayoutStatementBreakdown({
   const showStripe =
     (showProcessorFee ?? input.showPaymentProcessorFee ?? false) &&
     b.paymentProcessorFeeCents > 0;
+  const showPlatformFee = b.showPlatformFeeLine && b.platformFeeAmountCents > 0;
+  const platformFeeLabelResolved = b.platformFeeWithheldFromManager
+    ? platformFeeLabel
+    : (platformFeeChefPaidLabel || platformFeeLabel);
 
   return (
     <div className={cn("space-y-2", className)}>
@@ -129,6 +144,26 @@ export function KitchenPayoutStatementBreakdown({
           label={hstLabel ?? `HST (${b.kitchenHstRatePercent}%)`}
           amountCents={b.kitchenHstAmountCents}
           currency={currency}
+        />
+      )}
+      {showPlatformFee && (
+        <BreakdownLine
+          label={
+            platformFeeInfo && !b.platformFeeWithheldFromManager ? (
+              <span className="inline-flex items-center gap-1">
+                {platformFeeLabelResolved}
+                {platformFeeInfo}
+              </span>
+            ) : (
+              platformFeeLabelResolved
+            )
+          }
+          amountCents={b.platformFeeAmountCents}
+          currency={currency}
+          prefix={b.platformFeeWithheldFromManager ? "−" : undefined}
+          amountClassName={
+            b.platformFeeWithheldFromManager ? undefined : "text-muted-foreground"
+          }
         />
       )}
       {showStripe && (

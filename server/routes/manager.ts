@@ -15,6 +15,7 @@ import { format } from "date-fns";
 import { db } from "../db";
 import { resolveCapturedKitchenRate } from "@shared/kitchen-booking-rate";
 import { resolveKitchenTransactionTaxAndSubtotal } from "../services/revenue-transaction-tax";
+import { parseCentsField, parseCentsFieldOrZero } from "@shared/money-cents";
 
 import {
   requireFirebaseAuthWithUser,
@@ -2958,7 +2959,19 @@ async function putKitchenDetails(req: Request, res: Response) {
       amenities?: string[];
       smartLockEnabled?: boolean;
     } = { id: kitchenId };
-    if (name !== undefined) patch.name = name;
+    if (name !== undefined) {
+      // `kitchens.name` is NOT NULL but not length-checked, so an empty rename
+      // would otherwise blank the kitchen everywhere it is displayed.
+      if (typeof name !== "string" || !name.trim()) {
+        return res.status(400).json({ error: "Kitchen name cannot be empty" });
+      }
+      if (name.trim().length > 120) {
+        return res
+          .status(400)
+          .json({ error: "Kitchen name must be 120 characters or fewer" });
+      }
+      patch.name = name.trim();
+    }
     if (description !== undefined) patch.description = description;
     if (features !== undefined) patch.amenities = features;
     if (smartLockEnabled !== undefined) {
@@ -3158,33 +3171,12 @@ router.get(
       const { getCheckinSettings } = await import("../services/kitchen-checkout-service");
       const platformDefaults = await getCheckinSettings();
 
-      // Fetch existing checklist settings or return defaults
-      const [existing] = await db
-        .select()
-        .from(checkinCheckoutChecklists)
-        .where(eq(checkinCheckoutChecklists.locationId, locationId));
-
-      const checklistSettings = existing || {
-        id: null,
-        locationId,
-        checkinEnabled: false,
-        checkinItems: [],
-        checkinPhotoRequirements: [],
-        checkinInstructions: null,
-        checkoutEnabled: false,
-        checkoutItems: [],
-        checkoutPhotoRequirements: [],
-        checkoutInstructions: null,
-        storageCheckoutEnabled: false,
-        storageCheckoutItems: [],
-        storageCheckoutPhotoRequirements: [],
-        storageCheckoutInstructions: null,
-        storageCheckinEnabled: false,
-        storageCheckinItems: [],
-        storageCheckinPhotoRequirements: [],
-        storageCheckinInstructions: null,
-        smartLockCheckinInstructions: null,
-      };
+      // Ensure a real DB row exists (all toggles OFF). Locations created before
+      // this guarantee, or that never opened settings, used to have no row.
+      const { ensureDefaultCheckinCheckoutChecklist } = await import(
+        "../services/checkin-checkout-checklist"
+      );
+      const checklistSettings = await ensureDefaultCheckinCheckoutChecklist(locationId);
 
       // Return checklist settings + time window overrides + platform defaults.
       // Checkout review window is admin-only (not surfaced here); kitchen
@@ -3335,6 +3327,53 @@ router.put(
     } catch (error: any) {
       logger.error("Error updating checkin/checkout settings:", error);
       res.status(500).json({ error: error.message || "Failed to update settings" });
+    }
+  },
+);
+
+/**
+ * GET /manager/kitchens/:kitchenId/delete-impact
+ *
+ * Reports what deleting this kitchen would actually destroy, so the
+ * confirmation dialog can state real numbers instead of a vague warning.
+ * Deliberately separate from the kitchens list so that list stays one cheap
+ * query, and only paid for when a manager opens the delete dialog.
+ */
+router.get(
+  "/kitchens/:kitchenId/delete-impact",
+  requireFirebaseAuthWithUser,
+  requireManager,
+  async (req: Request, res: Response) => {
+    try {
+      const user = req.neonUser!;
+      const kitchenId = parseInt(req.params.kitchenId);
+      if (isNaN(kitchenId) || kitchenId <= 0) {
+        return res.status(400).json({ error: "Invalid kitchen ID" });
+      }
+
+      const kitchen = await kitchenService.getKitchenById(kitchenId);
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
+      const location = await locationService.getLocationById(
+        kitchen.locationId,
+      );
+      if (!location || location.managerId !== user.id) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const [row] = await db
+        .select({ value: count() })
+        .from(kitchenBookings)
+        .where(eq(kitchenBookings.kitchenId, kitchenId));
+
+      res.json({ bookings: Number(row?.value ?? 0) });
+    } catch (error: any) {
+      logger.error("Error computing kitchen delete impact:", error);
+      res.status(500).json({
+        error: error.message || "Failed to compute kitchen delete impact",
+      });
     }
   },
 );
@@ -4397,7 +4436,7 @@ router.get(
       );
 
       // Get payment transaction if exists
-      let paymentTransaction = null;
+      let paymentTransaction: any = null;
       try {
         const [txn] = await db
           .select({
@@ -4431,18 +4470,14 @@ router.get(
         if (txn) {
           paymentTransaction = {
             ...txn,
-            amount: txn.amount ? parseFloat(txn.amount) : null,
-            baseAmount: txn.baseAmount ? parseFloat(txn.baseAmount) : null, // Base before tax
-            serviceFee: txn.serviceFee ? parseFloat(txn.serviceFee) : null,
-            taxAmount: txn.taxAmount != null ? parseFloat(txn.taxAmount) : null,
-            managerRevenue: txn.managerRevenue
-              ? parseFloat(txn.managerRevenue)
-              : null,
-            stripeProcessingFee: txn.stripeProcessingFee
-              ? parseFloat(txn.stripeProcessingFee)
-              : null,
-            refundAmount: txn.refundAmount ? parseFloat(txn.refundAmount) : 0,
-            netAmount: txn.netAmount ? parseFloat(txn.netAmount) : null,
+            amount: parseCentsField(txn.amount),
+            baseAmount: parseCentsField(txn.baseAmount),
+            serviceFee: parseCentsField(txn.serviceFee),
+            taxAmount: parseCentsField(txn.taxAmount),
+            managerRevenue: parseCentsField(txn.managerRevenue),
+            stripeProcessingFee: parseCentsField(txn.stripeProcessingFee),
+            refundAmount: parseCentsFieldOrZero(txn.refundAmount),
+            netAmount: parseCentsField(txn.netAmount),
             refundedAt: txn.refundedAt || null,
             refundReason: txn.refundReason || null,
             metadata: txn.metadata || null,
@@ -4484,19 +4519,64 @@ router.get(
         ptServiceFee: Number(paymentTransaction?.serviceFee || booking.serviceFee || 0),
         metadata: capturedMetadata,
       });
-      const capturedTaxAmount = reconciledFinancials.taxCents;
+      // When PT base already equals kitchen subtotal + stored tax, trust those
+      // faces for display. Inflated capture metadata can otherwise shrink the
+      // kitchen line via transfer-oriented split recovery.
+      const ptBase = Number(paymentTransaction?.baseAmount || 0);
+      const ptTax = Number(paymentTransaction?.taxAmount || 0);
+      const coherentStoredFaces =
+        capturedSubtotal > 0 &&
+        ptTax >= 0 &&
+        ptBase > 0 &&
+        Math.abs(ptBase - (capturedSubtotal + ptTax)) <= 1;
+      const capturedTaxAmount = coherentStoredFaces ? ptTax : reconciledFinancials.taxCents;
       const historicalTaxRatePercent = metadataTaxRate != null
         ? Number(metadataTaxRate)
         : capturedSubtotal > 0 && capturedTaxAmount > 0
           ? (capturedTaxAmount * 100) / capturedSubtotal
           : fallbackTaxRatePercent;
-      const reconciledSubtotal = reconciledFinancials.totalPriceCents || capturedSubtotal;
+      const reconciledSubtotal = coherentStoredFaces
+        ? capturedSubtotal
+        : (reconciledFinancials.totalPriceCents || capturedSubtotal);
       const reconciledKitchenOnlyPrice = Math.max(0, reconciledSubtotal - addonSubtotal);
-      const reconciledServiceFee = reconciledFinancials.serviceFeeCents;
+      const reconciledServiceFee = coherentStoredFaces
+        ? Number(paymentTransaction?.serviceFee || booking.serviceFee || 0)
+        : reconciledFinancials.serviceFeeCents;
       const historicalCommissionRate = reconciledSubtotal > 0 ? reconciledServiceFee / reconciledSubtotal : 0;
       if (paymentTransaction) {
         paymentTransaction.taxAmount = capturedTaxAmount;
         paymentTransaction.serviceFee = reconciledServiceFee;
+      }
+
+      // Pre-capture: surface estimated Stripe + platform fees so managers see
+      // deductions before approval. Post-capture uses synced PT fields.
+      const isAuthorizedHold =
+        booking.paymentStatus === "authorized" ||
+        paymentTransaction?.status === "authorized";
+      if (paymentTransaction && isAuthorizedHold) {
+        const actualStripe = Number(paymentTransaction.stripeProcessingFee || 0);
+        if (actualStripe <= 0 && reconciledSubtotal > 0) {
+          try {
+            const { calculateCheckoutFeesAsync } = await import(
+              "../services/stripe-checkout-fee-service"
+            );
+            const feeCalc = await calculateCheckoutFeesAsync(reconciledSubtotal, {
+              taxAmountCents: capturedTaxAmount,
+            });
+            paymentTransaction.estimatedStripeProcessingFee =
+              feeCalc.stripeProcessingFeeInCents;
+            paymentTransaction.estimatedManagerPayout =
+              feeCalc.managerReceivesInCents;
+            if (!paymentTransaction.serviceFee || paymentTransaction.serviceFee <= 0) {
+              paymentTransaction.serviceFee = feeCalc.platformCommissionInCents;
+            }
+          } catch (feeErr) {
+            logger.warn(
+              "[Manager] Could not estimate pre-capture payout fees:",
+              feeErr as Error,
+            );
+          }
+        }
       }
 
       res.json({
@@ -5949,6 +6029,11 @@ router.put(
         cancellationPolicyMessage,
         defaultDailyBookingLimit,
         minimumBookingWindowHours,
+        // Arrival timings. These live on the locations table alongside the other
+        // time-based rules and are also written by the check-in/check-out
+        // endpoint; managers edit them on the Booking Policies page.
+        checkinWindowMinutesBefore,
+        noShowGraceMinutes,
         notificationEmail,
         notificationPhone,
         logoUrl,
@@ -6030,6 +6115,27 @@ router.put(
           });
       }
 
+      // Arrival timings. Bounds mirror the admin platform-settings route
+      // (server/routes/firebase/platform.ts) so a per-location override can
+      // never fall outside what the platform itself permits.
+      for (const [field, value] of [
+        ["checkinWindowMinutesBefore", checkinWindowMinutesBefore],
+        ["noShowGraceMinutes", noShowGraceMinutes],
+      ] as const) {
+        if (
+          value !== undefined &&
+          value !== null &&
+          (typeof value !== "number" ||
+            !Number.isInteger(value) ||
+            value < 0 ||
+            value > 120)
+        ) {
+          return res.status(400).json({
+            error: `${field} must be a whole number between 0 and 120, or null to use the platform default`,
+          });
+        }
+      }
+
       // Import db dynamically
 
       // Verify manager owns this location
@@ -6098,6 +6204,14 @@ router.put(
       }
       if (minimumBookingWindowHours !== undefined) {
         (updates as any).minimumBookingWindowHours = minimumBookingWindowHours;
+      }
+      // `null` is meaningful here: it clears the override so the platform
+      // default applies again.
+      if (checkinWindowMinutesBefore !== undefined) {
+        (updates as any).checkinWindowMinutesBefore = checkinWindowMinutesBefore;
+      }
+      if (noShowGraceMinutes !== undefined) {
+        (updates as any).noShowGraceMinutes = noShowGraceMinutes;
       }
       if (notificationEmail !== undefined) {
         // Validate email format if provided and not empty

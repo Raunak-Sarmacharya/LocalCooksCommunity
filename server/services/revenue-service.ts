@@ -14,6 +14,7 @@ import { logger } from "../logger";
 import { sql } from "drizzle-orm";
 import { resolveKitchenTransactionTaxAndSubtotal } from "./revenue-transaction-tax";
 import { calculateRefundBreakdown } from "./stripe-service";
+import { resolveDisplayedKitchenNetPayoutCents } from "@shared/booking-pricing-breakdown";
 
 export interface RevenueMetrics {
   totalRevenue: number;        // Total booking revenue (cents) - gross amount charged to customer
@@ -1032,19 +1033,22 @@ export async function getTransactionHistory(
         serviceFeeCents = kbServiceFee;
       }
       
-      // Manager revenue - use actual from payment_transactions if available
-      // Provisional fallback: subtotal + tax (stripe fee applied when synced)
-      const calculatedManagerRevenue = totalPriceCents + taxCents - (actualStripeFee > 0 ? actualStripeFee : 0);
-      const managerRevenue = ptManagerRevenue > 0 ? ptManagerRevenue : calculatedManagerRevenue;
+      // Manager revenue - prefer Stripe transfer; reconstruct when stale gross remains
+      const managerRevenue = resolveDisplayedKitchenNetPayoutCents({
+        kitchenNetPayoutCents: ptManagerRevenue > 0 ? ptManagerRevenue : null,
+        kitchenBaseSubtotalCents: totalPriceCents,
+        kitchenHstAmountCents: taxCents,
+        paymentProcessorFeeCents: actualStripeFee,
+        platformFeeAmountCents: serviceFeeCents,
+        chargeAmountCents: hasPaymentTransaction ? ptAmount : (totalPriceCents + taxCents + serviceFeeCents),
+      }).netPayoutCents;
       
       // ENTERPRISE STANDARD: Use actual Stripe fee only - do not estimate
       // If actual fee is 0, it will be synced via charge.updated webhook
       const stripeFee = actualStripeFee > 0 ? actualStripeFee : 0;
       
       // Net revenue = manager payout (includes tax collected; Stripe fee already deducted)
-      const grossNetRevenue = managerRevenue > 0
-        ? managerRevenue
-        : Math.max(0, totalPriceCents + taxCents - stripeFee);
+      const grossNetRevenue = managerRevenue;
 
       // Determine booking type for UI display
       // ENTERPRISE STANDARD: Damage claims get their own type for distinct UI treatment
@@ -1073,6 +1077,7 @@ export async function getTransactionHistory(
         endTime: row.end_time,
         chefId: row.chef_id != null ? parseInt(String(row.chef_id)) : null,
         totalPrice: totalPriceCents,
+        chargeAmount: hasPaymentTransaction ? ptAmount : (totalPriceCents + taxCents + serviceFeeCents),
         serviceFee: serviceFeeCents,
         platformFee: serviceFeeCents, // Alias for frontend compatibility - DEPRECATED
         taxAmount: taxCents, // Tax collected (from payment_transactions or calculated)
@@ -1256,6 +1261,7 @@ export async function getTransactionHistory(
         endTime: null,
         chefId: row.chef_id != null ? parseInt(String(row.chef_id)) : null,
         totalPrice: totalPriceCents,
+        chargeAmount: ptAmount > 0 ? ptAmount : (totalPriceCents + taxCents + ptServiceFee),
         serviceFee: ptServiceFee,
         platformFee: ptServiceFee,
         taxAmount: taxCents,

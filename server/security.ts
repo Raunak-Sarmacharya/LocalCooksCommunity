@@ -338,13 +338,20 @@ export function registerSecurityMiddleware(app: Express): void {
   // Apply strict limiter to auth-sensitive endpoints
   app.use('/api/portal-login', authLimiter);
   app.use('/api/firebase-register-user', authLimiter);
-  app.use('/api/firebase-sync-user', authLimiter);
+  // NOTE: /api/firebase-sync-user is deliberately NOT here. The client calls it on
+  // sign-in and after verification — and historically on every page load — against a
+  // brute-force budget capped at 30 per 15 min in production, which real browsing
+  // exhausts. It cannot be brute-forced anyway: it requires a valid Firebase ID token
+  // and the account is resolved from that token's uid. It stays under the global limiter.
   app.use('/api/firebase/send-magic-link-email', authLimiter);
   app.use('/api/firebase/auth-method-hints', authLimiter);
   app.use('/api/firebase/send-verification-email', authLimiter);
   app.use('/api/firebase/forgot-password', authLimiter);
   app.use('/api/manager/forgot-password', authLimiter);
   app.use('/api/user/verify-email-complete', authLimiter);
+  // The confirmation endpoint is unauthenticated by design (the emailed token is
+  // the proof), so it needs the same brute-force ceiling as the other auth paths.
+  app.use('/api/user/email/verification/confirm', authLimiter);
 
   // Webhook-specific rate limit (higher ceiling for Stripe event bursts)
   const webhookLimiter = rateLimit({

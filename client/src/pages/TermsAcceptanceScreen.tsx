@@ -16,6 +16,20 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
+import { postTermsRedirect } from "@/lib/post-terms-redirect";
+
+/** Component wrapper around the pure {@link postTermsRedirect} helper. */
+function resolvePostTermsRedirect(
+  user: { role?: string | null; isManager?: boolean | null } | null | undefined,
+): string {
+  return postTermsRedirect({
+    hostname: window.location.hostname,
+    redirectParam: new URLSearchParams(window.location.search).get("redirect"),
+    role: user?.role,
+    isManager: user?.isManager,
+    chefFallback: getChefPostAuthPath(user),
+  });
+}
 
 function TermsAcceptanceScreen() {
   const { user, refreshUserData } = useFirebaseAuth();
@@ -36,17 +50,7 @@ function TermsAcceptanceScreen() {
 
   useEffect(() => {
     if (user?.termsAccepted && user?.termsVersion === CURRENT_POLICY_VERSION) {
-      const params = new URLSearchParams(window.location.search);
-      let redirectPath = params.get("redirect") || "/dashboard";
-
-      // Role-aware redirect
-      if (redirectPath === '/dashboard') {
-        if (user?.role === 'manager') redirectPath = '/manager/dashboard';
-        else if (user?.role === 'admin') redirectPath = '/admin';
-        else redirectPath = getChefPostAuthPath(user);
-      }
-
-      setLocation(redirectPath, { replace: true });
+      setLocation(resolvePostTermsRedirect(user), { replace: true });
     }
   }, [user, setLocation]);
 
@@ -135,17 +139,7 @@ function TermsAcceptanceScreen() {
         await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
         setSuccess(true);
         setTimeout(() => {
-          const params = new URLSearchParams(window.location.search);
-          let redirectPath = params.get("redirect") || "/dashboard";
-
-          // Role-aware redirect
-          if (redirectPath === '/dashboard') {
-            if (user?.role === 'manager') redirectPath = '/manager/dashboard';
-            else if (user?.role === 'admin') redirectPath = '/admin';
-            else redirectPath = getChefPostAuthPath(user);
-          }
-
-          setLocation(redirectPath, { replace: true });
+          setLocation(resolvePostTermsRedirect(user), { replace: true });
         }, 800);
       } else {
         const text = await response.text();
@@ -161,7 +155,14 @@ function TermsAcceptanceScreen() {
   };
 
   if (!user) {
-    return <Redirect to="/auth" replace />;
+    // Role-aware: managers on kitchen must not bounce to the chef /auth page.
+    const fallback =
+      typeof window !== "undefined" && window.location.hostname.includes("kitchen")
+        ? "/manager/login"
+        : window.location.pathname.startsWith("/manager")
+          ? "/manager/login"
+          : "/auth";
+    return <Redirect to={fallback} replace />;
   }
 
   const allRead = termsRead && privacyRead;
@@ -321,20 +322,37 @@ function TermsAcceptanceScreen() {
                       {/* Minimal shadcn Acceptance Area */}
                       <div className="bg-slate-50/50 rounded-2xl border border-slate-100 p-6 space-y-4">
                         <div className="flex items-start space-x-3 group cursor-pointer">
-                          <Checkbox 
-                            id="terms-check" 
-                            checked={termsAccepted} 
-                            onCheckedChange={(checked) => termsRead && setTermsAccepted(checked as boolean)}
-                            disabled={!termsRead}
-                            className="mt-0.5 border-slate-300 data-[state=checked]:bg-primary data-[state=checked]:border-primary transition-all duration-300"
-                          />
+                          <div className="relative flex items-center justify-center">
+                            <Checkbox 
+                              id="terms-check" 
+                              checked={termsAccepted} 
+                              onCheckedChange={(checked) => {
+                                if (termsRead) {
+                                  setTermsAccepted(checked as boolean);
+                                  if (checked && !privacyAccepted) {
+                                    setTimeout(() => setActiveTab("privacy"), 300);
+                                  }
+                                }
+                              }}
+                              disabled={!termsRead}
+                              className={`mt-0.5 border-slate-300 data-[state=checked]:bg-primary data-[state=checked]:border-primary transition-all duration-300 ${termsRead && !termsAccepted ? 'ring-2 ring-primary ring-offset-2 animate-pulse' : ''}`}
+                            />
+                            {termsRead && !termsAccepted && (
+                              <div className="absolute inset-0 -m-1 rounded-full border border-primary/50 animate-ping pointer-events-none" />
+                            )}
+                          </div>
                           <div className="grid gap-1.5 leading-none">
-                            <Label 
-                              htmlFor="terms-check" 
-                              className={`text-sm font-semibold leading-tight cursor-pointer transition-colors ${!termsRead ? 'text-slate-400' : 'text-slate-700 group-hover:text-primary'}`}
-                            >
-                              I agree to the Terms of Service
-                            </Label>
+                            <div className="flex items-center gap-2">
+                              <Label 
+                                htmlFor="terms-check" 
+                                className={`text-sm font-semibold leading-tight cursor-pointer transition-colors ${!termsRead ? 'text-slate-400' : 'text-slate-700 group-hover:text-primary'}`}
+                              >
+                                I agree to the Terms of Service
+                              </Label>
+                              {termsRead && !termsAccepted && (
+                                <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full animate-pulse">Click to Check</span>
+                              )}
+                            </div>
                             <p className="text-[11px] text-slate-500 font-medium">
                               Required agreement for platform usage
                             </p>
@@ -342,20 +360,37 @@ function TermsAcceptanceScreen() {
                         </div>
 
                         <div className="flex items-start space-x-3 group cursor-pointer">
-                          <Checkbox 
-                            id="privacy-check" 
-                            checked={privacyAccepted} 
-                            onCheckedChange={(checked) => privacyRead && setPrivacyAccepted(checked as boolean)}
-                            disabled={!privacyRead}
-                            className="mt-0.5 border-slate-300 data-[state=checked]:bg-primary data-[state=checked]:border-primary transition-all duration-300"
-                          />
+                          <div className="relative flex items-center justify-center">
+                            <Checkbox 
+                              id="privacy-check" 
+                              checked={privacyAccepted} 
+                              onCheckedChange={(checked) => {
+                                if (privacyRead) {
+                                  setPrivacyAccepted(checked as boolean);
+                                  if (checked && !termsAccepted) {
+                                    setTimeout(() => setActiveTab("terms"), 300);
+                                  }
+                                }
+                              }}
+                              disabled={!privacyRead}
+                              className={`mt-0.5 border-slate-300 data-[state=checked]:bg-primary data-[state=checked]:border-primary transition-all duration-300 ${privacyRead && !privacyAccepted ? 'ring-2 ring-primary ring-offset-2 animate-pulse' : ''}`}
+                            />
+                            {privacyRead && !privacyAccepted && (
+                              <div className="absolute inset-0 -m-1 rounded-full border border-primary/50 animate-ping pointer-events-none" />
+                            )}
+                          </div>
                           <div className="grid gap-1.5 leading-none">
-                            <Label 
-                              htmlFor="privacy-check" 
-                              className={`text-sm font-semibold leading-tight cursor-pointer transition-colors ${!privacyRead ? 'text-slate-400' : 'text-slate-700 group-hover:text-primary'}`}
-                            >
-                              I agree to the Privacy Policy
-                            </Label>
+                            <div className="flex items-center gap-2">
+                              <Label 
+                                htmlFor="privacy-check" 
+                                className={`text-sm font-semibold leading-tight cursor-pointer transition-colors ${!privacyRead ? 'text-slate-400' : 'text-slate-700 group-hover:text-primary'}`}
+                              >
+                                I agree to the Privacy Policy
+                              </Label>
+                              {privacyRead && !privacyAccepted && (
+                                <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full animate-pulse">Click to Check</span>
+                              )}
+                            </div>
                             <p className="text-[11px] text-slate-500 font-medium">
                               Acknowledgment of data processing practices
                             </p>

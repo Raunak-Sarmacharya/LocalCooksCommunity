@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { FormLegend } from "@/components/ui/form-legend";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2, Lock, Mail, User } from "lucide-react";
@@ -246,8 +247,7 @@ export default function RegisterForm({ onSuccess, setHasAttemptedLogin, onRegist
                 <FormControl>
                   <div className="relative group">
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-blue-500 transition-colors pointer-events-none" />
-                    <Input 
-                      type="password" 
+                    <PasswordInput
                       className="pl-11 h-12 border-gray-200 rounded-xl bg-gray-50/50 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all duration-200 text-sm placeholder:text-gray-400" 
                       placeholder="Create a secure password" 
                       autoComplete="new-password"

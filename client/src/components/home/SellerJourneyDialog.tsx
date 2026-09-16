@@ -14,9 +14,10 @@ import { auth } from "@/lib/firebase";
 import { hasVerifiedEmail } from "@/lib/auth-verification";
 import { logger } from "@/lib/logger";
 import LoadingOverlay from "@/components/auth/LoadingOverlay";
+import PhoneOtpChallenge from "@/components/auth/PhoneOtpChallenge";
 
 type Preference = "commercial" | "home" | "notSure";
-type JourneyStage = "form" | "creating" | "verify" | "sign-in-link" | "finishing";
+type JourneyStage = "form" | "creating" | "verify" | "phone-verify" | "sign-in-link" | "finishing";
 
 export default function SellerJourneyDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const [fullName, setFullName] = useState("");
@@ -50,7 +51,7 @@ export default function SellerJourneyDialog({ open, onOpenChange }: { open: bool
     try {
       const randomBase = crypto.randomUUID().replace(/-/g, "");
       const generatedPassword = `A1!${randomBase}`.slice(0, 16);
-      await signup(normalizedEmail, generatedPassword, fullName.trim(), "chef", true);
+      await signup(normalizedEmail, generatedPassword, fullName.trim(), "chef", true, phone);
       setStage("verify");
     } catch (registrationError) {
       if (isDuplicateAccountError(registrationError)) {
@@ -92,7 +93,21 @@ export default function SellerJourneyDialog({ open, onOpenChange }: { open: bool
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92vh] w-[calc(100%-2rem)] max-w-xl overflow-y-auto rounded-3xl border-0 p-0 shadow-2xl sm:rounded-3xl">
         <div className="bg-[#fffaf7] px-6 py-7 sm:px-8">
-          {stage === "verify" || stage === "sign-in-link" ? (
+          {stage === "phone-verify" ? (
+            <PhoneOtpChallenge
+              purpose="link"
+              initialPhone={phone}
+              autoSend
+              onCancel={() => setStage("verify")}
+              onExistingUser={() => undefined}
+              onNewUser={() => undefined}
+              onLinkedPhone={async () => {
+                await updateUserVerification();
+                setStage("finishing");
+                window.location.reload();
+              }}
+            />
+          ) : stage === "verify" || stage === "sign-in-link" ? (
             <div>
             <EmailVerificationScreen
               email={email.trim().toLowerCase()}
@@ -119,6 +134,7 @@ export default function SellerJourneyDialog({ open, onOpenChange }: { open: bool
                 await new Promise((resolve) => setTimeout(resolve, 100));
                 window.location.reload();
               }}
+              onVerifyPhone={stage === "verify" ? () => setStage("phone-verify") : undefined}
             />
             {error && <p role="alert" className="mt-4 text-center text-sm font-medium text-red-600">{error}</p>}
             </div>

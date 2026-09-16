@@ -58,7 +58,7 @@ import { UserRepository } from "./domains/users/user.repository";
 import { UserService } from "./domains/users/user.service";
 import { CURRENT_POLICY_VERSION } from "@shared/policy-config";
 import { normalizePhoneNumber } from "@shared/phone-validation";
-import { validateNewRegistrationProfile } from "./registration-profile";
+import { resolveRegistrationEmail, validateNewRegistrationProfile } from "./registration-profile";
 import type { AuthAccountResolution, AuthMethod } from "@shared/auth-resolution";
 import { maskRecoveryEmail, maskRecoveryPhone, resolveAuthAccountState, resolveAuthMethods } from "./auth-account-resolution";
 
@@ -107,6 +107,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Mount Auth Router (Legacy - removed in favor of Firebase Auth)
   // app.use("/api/auth", (await import("./routes/auth")).default);
+
+  // Mount the email verification loop ahead of the user router so its nested
+  // paths win the match. Public confirmation lives here because the link is
+  // routinely opened on a different device from the one that requested it.
+  app.use("/api/user/email/verification", (await import("./routes/user-email-verification")).default);
 
   // Mount User Router (profile, onboarding)
   app.use("/api/user", (await import("./routes/user")).default);
@@ -176,7 +181,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const firebaseEmailVerified = req.firebaseUser?.email_verified;
       if (firebaseEmailVerified && !user.isVerified) {
         logger.info(`📧 Updating is_verified for user ${user.id} - Firebase email verified`);
-        const updatedUser = await userService.updateUser(user.id, { isVerified: true });
+        const updatedUser = await userService.updateUser(user.id, {
+          isVerified: true,
+          emailVerifiedAt: user.emailVerifiedAt ?? new Date(),
+        });
         if (updatedUser) {
           user = updatedUser;
         }
@@ -335,26 +343,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { getEmailLinkOrigin } = await import('./email');
       const userType = userRole === 'manager' ? 'kitchen' : userRole === 'admin' ? 'admin' : 'chef';
-      const emailLinkOrigin = getEmailLinkOrigin(userType);
 
-      // We don't necessarily need a redirectPath because EmailAction.tsx handles the ?mode=verifyEmail flow
-      // The user is redirected to EmailAction by Firebase's default handlers if we don't set it,
-      // but wait, we are generating an OOB URL and sending it directly. 
-      // The generated OOB URL by Firebase Admin SDK will point to the Firebase project's action URL 
-      // (e.g. auth.localcooks.ca/__/auth/action) UNLESS we specify a custom URL in actionCodeSettings.
-      // If we specify a custom URL, Firebase embeds it in the action link. 
-      // Actually, if we use actionCodeSettings, the link points to OUR URL instead of Firebase's.
-      // E.g., `https://kitchen.localcooks.ca/auth/action?mode=verifyEmail&oobCode=...` 
-      // Wait, let's see how forgot-password uses actionCodeSettings.
       const redirectPath = userRole === 'manager'
         ? '/manager/login?verified=true'
         : userRole === 'admin'
           ? '/admin/login?verified=true'
           : '/auth?verified=true';
 
-      const { getFirebaseContinueUrl } = await import('./email');
+      // One origin for the whole email, resolved once. Previously the action URL came from
+      // `getEmailLinkOrigin` (a public host) while the continue URL came from
+      // `getFirebaseContinueUrl` -> `getSubdomainUrl` — two resolvers, two possible origins.
+      // Keeping both on the caller's own environment also avoids the failure mode where the
+      // public host is running an older build and the link answers "Invalid email action link".
+      const { resolveAuthEmailLink } = await import('./email-verification');
+      const { linkOrigin, continueUrl } = resolveAuthEmailLink({
+        callerOrigin: req.body?.origin,
+        role: userRole,
+        redirectPath,
+        fallbackOrigin: getEmailLinkOrigin(userType),
+      });
+
       const actionCodeSettings = {
-        url: getFirebaseContinueUrl(userType, redirectPath),
+        url: continueUrl,
         handleCodeInApp: false,
       };
 
@@ -386,10 +396,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Firebase's default handler can land on the wrong subdomain (e.g. admin).
       try {
         const generatedUrl = new URL(verificationUrl);
-        const targetUrlObj = new URL(emailLinkOrigin);
+        const targetUrlObj = new URL(linkOrigin);
         const query = generatedUrl.search;
         const finalOrigin =
-          generatedUrl.origin !== targetUrlObj.origin ? emailLinkOrigin : generatedUrl.origin;
+          generatedUrl.origin !== targetUrlObj.origin ? linkOrigin : generatedUrl.origin;
         verificationUrl = `${finalOrigin}/email-action${query}`;
         logger.info("🔧 Verification link rewritten to /email-action (URL omitted from logs)");
       } catch (rewriteError) {
@@ -472,6 +482,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             email: firebaseUser?.email,
             phoneNumber: firebaseUser?.phoneNumber,
             providerIds: firebaseUser?.providerData.map((provider) => provider.providerId),
+            passwordSetByUser: neonUser?.passwordSetByUser ?? null,
           })
         : [];
 
@@ -541,7 +552,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // EmailAction handles cross-subdomain routing, but we set a sensible default here
       const { getEmailLinkOrigin } = await import('./email');
       const userType = userRole === 'manager' ? 'kitchen' : userRole === 'admin' ? 'admin' : 'chef';
-      const emailLinkOrigin = getEmailLinkOrigin(userType);
 
       // The post-sign-in redirect path (role-based) — EmailAction may override with
       // cross-subdomain redirect if the user's role doesn't match the current subdomain,
@@ -567,9 +577,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const { getFirebaseContinueUrl } = await import('./email');
-      const continueUrlObj = new URL(getFirebaseContinueUrl(userType, redirectPath));
-      const continueUrl = continueUrlObj.toString();
+      // One origin for the whole email. `getEmailLinkOrigin` deliberately resolves to a
+      // *public* host so a link sent from a local API is still openable elsewhere — but the
+      // continue URL used to be built with a different helper (`getSubdomainUrl`, i.e.
+      // BASE_URL/localhost in local dev), so a single email carried two origins. The link
+      // opened on one host and completing it redirected to another; worse, the
+      // `emailForSignIn` sendEmailLink() had just stored was on a different origin than the
+      // link, so the user was asked to retype an address we had masked.
+      //
+      // `resolveAuthEmailLink` resolves the caller's own origin (when trusted for this role)
+      // once and derives BOTH URLs from it, so they cannot diverge again.
+      const { resolveAuthEmailLink } = await import('./email-verification');
+      const { linkOrigin, continueUrl } = resolveAuthEmailLink({
+        callerOrigin: req.body?.origin,
+        role: userRole,
+        redirectPath,
+        fallbackOrigin: getEmailLinkOrigin(userType),
+      });
 
       // Action code settings: handleCodeInApp=true sends mode=signIn to /email-action
       // (instead of Firebase's default auth handler URL), which we process in EmailAction.tsx
@@ -615,16 +639,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const generatedUrl = new URL(signInUrl);
 
           // Determine the target origin based on environment:
-          //   - Local dev: BASE_URL (localhost)
+          //   - Local dev: the caller's own origin (e.g. http://chef.localhost:5001)
           //   - Vercel preview: role-based dev subdomain (dev-chef.localcooks.ca)
           //   - Production: role-based prod subdomain (chef.localcooks.ca)
           let targetOrigin: string;
           let envLabel: string;
           if (isLocalDev) {
-            targetOrigin = emailLinkOrigin;
-            envLabel = 'LOCAL DEV (public email link)';
+            targetOrigin = linkOrigin;
+            envLabel = 'LOCAL DEV (caller origin)';
           } else {
-            targetOrigin = emailLinkOrigin;
+            targetOrigin = linkOrigin;
             envLabel = isVercelPreview ? 'VERCEL PREVIEW' : 'PRODUCTION';
           }
 
@@ -787,9 +811,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const tokenEmail = typeof decodedToken.email === 'string'
         ? decodedToken.email.trim().toLowerCase()
         : '';
+      const submittedEmail = typeof req.body?.email === 'string'
+        ? req.body.email.trim().toLowerCase()
+        : '';
       const accountType = req.body?.accountType;
       const termsAccepted = req.body?.termsAccepted;
-      const registrationMethod = decodedToken.firebase?.sign_in_provider === 'phone' ? 'phone' : 'email';
+      const signInProvider = decodedToken.firebase?.sign_in_provider;
+      const registrationMethod = signInProvider === 'phone'
+        ? 'phone'
+        : signInProvider === 'google.com'
+          ? 'google'
+          : 'email';
       const displayName = typeof req.body?.displayName === 'string'
         ? req.body.displayName.trim().slice(0, 120)
         : '';
@@ -799,6 +831,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const submittedPhone = typeof req.body?.phoneNumber === 'string'
         ? normalizePhoneNumber(req.body.phoneNumber)
         : null;
+      const registrationEmail = resolveRegistrationEmail({
+        provider: registrationMethod,
+        tokenEmail,
+        submittedEmail,
+      });
 
       if (decodedToken.uid !== uid) {
         return res.status(403).json({ error: "Token mismatch" });
@@ -812,20 +849,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(existingByUid);
       }
 
-      if (!tokenEmail) {
-        return res.status(400).json({ error: "A Firebase email identity is required" });
+      if (!registrationEmail) {
+        return res.status(400).json({ error: "A valid email address is required" });
       }
-      if (registrationMethod === 'phone' && (!tokenPhone || decodedToken.email_verified !== true)) {
+      if (registrationMethod === 'phone' && !tokenPhone) {
         return res.status(400).json({
-          error: "Phone registration requires a verified phone number and verified email address",
+          error: "Phone registration requires a verified phone number",
           code: "INCOMPLETE_PHONE_REGISTRATION",
-        });
-      }
-      const googleIdentity = (decodedToken.firebase as any)?.identities?.['google.com'];
-      if (Array.isArray(googleIdentity) && googleIdentity.length > 0 && (!tokenPhone || tokenPhone !== submittedPhone)) {
-        return res.status(400).json({
-          error: "Google registration requires a verified phone number",
-          code: "PHONE_VERIFICATION_REQUIRED",
         });
       }
       if (accountType !== 'chef' && accountType !== 'manager') {
@@ -851,9 +881,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // ENTERPRISE FIX: Also check if user exists by email/username
       // This handles the case where user was deleted from Firebase but not Neon, or vice versa
-      const existingByUsername = await userService.getUserByUsername(tokenEmail);
+      const existingByUsername = await userService.getUserByUsername(registrationEmail);
       if (existingByUsername) {
-        logger.info(`⚠️ Registration blocked because ${tokenEmail} already exists in the application database`);
+        logger.info(`⚠️ Registration blocked because ${registrationEmail} already exists in the application database`);
         return res.status(409).json({
           error: "Email already registered",
           code: "EMAIL_EXISTS",
@@ -863,11 +893,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Create new user - no existing user found
       const finalRole: 'chef' | 'manager' = accountType;
-      logger.info(`📝 Creating new public ${finalRole} account: ${tokenEmail}`);
+      logger.info(`📝 Creating new public ${finalRole} account: ${registrationEmail}`);
       const newUser = await userService.createPublicFirebaseUser({
-        username: tokenEmail,
+        username: registrationEmail,
         firebaseUid: uid,
-        phoneNumber: registrationProfile.phoneNumber,
+        phoneNumber: registrationProfile.phoneNumber || undefined,
         role: finalRole,
         isVerified: decodedToken.email_verified || false,
         termsAccepted: termsAccepted === true,
@@ -881,7 +911,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const { users } = await import('@shared/schema');
         const { eq } = await import('drizzle-orm');
 
-        const email = tokenEmail;
+        const email = registrationEmail;
         const recipientName = registrationProfile.displayName;
 
         // ENTERPRISE: Only send welcome email if the user is verified (e.g. Google Auth)

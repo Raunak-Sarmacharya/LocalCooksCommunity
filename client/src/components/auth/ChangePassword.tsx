@@ -2,7 +2,7 @@ import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { KeyRound, Loader2, ShieldCheck, Chrome, Mail } from "lucide-react";
 import { useState, useMemo, useEffect, useRef } from "react";
@@ -14,6 +14,7 @@ import { auth } from "@/lib/firebase";
 import { EmailAuthProvider, linkWithCredential, reauthenticateWithCredential, updatePassword } from "firebase/auth";
 import { cn } from "@/lib/utils";
 import { resolvePasswordFormMode, type PasswordFormMode } from "./password-form-mode";
+import { useQuery } from "@tanstack/react-query";
 
 // ─── Helpers ────────────────────────────────────────────
 async function syncPasswordToNeon(newPassword: string): Promise<void> {
@@ -112,11 +113,33 @@ export default function ChangePassword({ onSuccess, embedded = false, onModeReso
     };
   }, []);
 
+  // Firebase cannot tell a registration placeholder from a chosen password —
+  // both look like a "password" provider. The server's flag is the only answer.
+  const { data: profile, isError: profileUnavailable } = useQuery({
+    queryKey: ["/api/user/profile", auth.currentUser?.uid],
+    enabled: hasPasswordProvider !== null,
+    queryFn: async () => {
+      const currentUser = auth.currentUser!;
+      const token = await currentUser.getIdToken();
+      const response = await fetch("/api/user/profile", {
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Failed to load profile");
+      return response.json() as Promise<{ passwordSetByUser?: boolean | null }>;
+    },
+  });
+
   const mode = resolvePasswordFormMode({
     hasPasswordProvider,
     signInProvider,
     treatPasswordAsKnown,
+    // A failed read must not deadlock on the spinner, so fall back to the
+    // pre-flag behaviour (provider-derived) instead of guessing "unset".
+    passwordSetByUser: profile?.passwordSetByUser ?? (profileUnavailable ? true : null),
   });
+
+  const isPlaceholderPassword = profile?.passwordSetByUser === false;
 
   // Surface the resolved mode (e.g. so a parent header can say "Create" vs "Update").
   // Re-fires if the mode changes mid-session (set → change after a successful set).
@@ -157,6 +180,7 @@ export default function ChangePassword({ onSuccess, embedded = false, onModeReso
     <SetPasswordForm
       mode={mode}
       isGoogleUser={isGoogleUser}
+      isPlaceholderPassword={isPlaceholderPassword}
       embedded={embedded}
       onSuccess={markPasswordKnown}
     />
@@ -259,7 +283,7 @@ function ChangePasswordForm({
             <FormItem>
               <FormLabel>{t("pwCurrentLabel")}</FormLabel>
               <FormControl>
-                <Input type="password" placeholder={t("pwCurrentPlaceholder")} {...field} disabled={isSubmitting} className="h-11" />
+                <PasswordInput placeholder={t("pwCurrentPlaceholder")} {...field} disabled={isSubmitting} className="h-11" />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -272,7 +296,7 @@ function ChangePasswordForm({
             <FormItem>
               <FormLabel>{t("pwNewLabel")}</FormLabel>
               <FormControl>
-                <Input type="password" placeholder={t("pwNewPlaceholder")} {...field} disabled={isSubmitting} className="h-11" />
+                <PasswordInput placeholder={t("pwNewPlaceholder")} {...field} disabled={isSubmitting} className="h-11" />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -285,7 +309,7 @@ function ChangePasswordForm({
             <FormItem>
               <FormLabel>{t("pwConfirmLabel")}</FormLabel>
               <FormControl>
-                <Input type="password" placeholder={t("pwConfirmPlaceholder")} {...field} disabled={isSubmitting} className="h-11" />
+                <PasswordInput placeholder={t("pwConfirmPlaceholder")} {...field} disabled={isSubmitting} className="h-11" />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -330,11 +354,14 @@ function ChangePasswordForm({
 function SetPasswordForm({
   mode,
   isGoogleUser,
+  isPlaceholderPassword,
   onSuccess,
   embedded = false,
 }: {
   mode: "set-link" | "set-update";
   isGoogleUser: boolean;
+  /** The stored password is a registration placeholder the user never chose. */
+  isPlaceholderPassword: boolean;
   onSuccess?: () => void;
   embedded?: boolean;
 }) {
@@ -395,9 +422,11 @@ function SetPasswordForm({
       if (error.code === 'auth/weak-password') {
         errorMessage = "Password is too weak. Use at least 8 characters with a mix of letters, numbers, and symbols.";
       } else if (error.code === 'auth/requires-recent-login') {
-        errorMessage = isEmailLinkSet
-          ? "For security reasons, please sign out and sign back in with your email link, then try again."
-          : "For security reasons, please sign out and sign back in with Google, then try again.";
+        errorMessage = isPlaceholderPassword
+          ? "For security reasons, please sign out and sign back in, then try again."
+          : isEmailLinkSet
+            ? "For security reasons, please sign out and sign back in with your email link, then try again."
+            : "For security reasons, please sign out and sign back in with Google, then try again.";
       } else if (error.code === 'auth/provider-already-linked') {
         errorMessage = "A password is already linked to this account. Try changing your password instead.";
       } else if (error.code === 'auth/email-already-in-use') {
@@ -409,33 +438,28 @@ function SetPasswordForm({
     }
   };
 
-  const hint = isEmailLinkSet ? (
-    embedded ? (
-      <p className="text-sm text-muted-foreground">
-        You signed in with an email link. Choose a password to also sign in with email and password.
-      </p>
+  const hintText =
+    isGoogleUser && !isEmailLinkSet
+      ? "You signed in with Google. Add a password to also sign in with email."
+      : isPlaceholderPassword
+        ? "You have not set a password yet. Choose one to also sign in with email and password."
+        : isEmailLinkSet
+          ? "You signed in with an email link. Choose a password to also sign in with email and password."
+          : null;
+
+  const hint =
+    hintText === null ? null : embedded ? (
+      <p className="text-sm text-muted-foreground">{hintText}</p>
     ) : (
       <div className="flex items-start gap-3 rounded-lg border bg-muted/40 p-3">
-        <Mail className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">
-          You signed in with an email link. Choose a password to also sign in with email and password.
-        </p>
+        {isGoogleUser && !isEmailLinkSet ? (
+          <Chrome className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+        ) : (
+          <Mail className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+        )}
+        <p className="text-sm text-muted-foreground">{hintText}</p>
       </div>
-    )
-  ) : isGoogleUser ? (
-    embedded ? (
-      <p className="text-sm text-muted-foreground">
-        You signed in with Google. Add a password to also sign in with email.
-      </p>
-    ) : (
-      <div className="flex items-start gap-3 rounded-lg border bg-muted/40 p-3">
-        <Chrome className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">
-          You signed in with Google. Add a password to also sign in with email.
-        </p>
-      </div>
-    )
-  ) : null;
+    );
 
   const formBody = (
     <div className="space-y-5">
@@ -449,7 +473,7 @@ function SetPasswordForm({
               <FormItem>
                 <FormLabel>New password</FormLabel>
                 <FormControl>
-                  <Input type="password" placeholder="At least 8 characters" {...field} disabled={isSubmitting} className="h-11" />
+                  <PasswordInput placeholder="At least 8 characters" {...field} disabled={isSubmitting} className="h-11" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -462,7 +486,7 @@ function SetPasswordForm({
               <FormItem>
                 <FormLabel>Confirm password</FormLabel>
                 <FormControl>
-                  <Input type="password" placeholder="Confirm password" {...field} disabled={isSubmitting} className="h-11" />
+                  <PasswordInput placeholder="Confirm password" {...field} disabled={isSubmitting} className="h-11" />
                 </FormControl>
                 <FormMessage />
               </FormItem>

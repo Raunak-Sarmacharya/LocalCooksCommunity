@@ -1,7 +1,8 @@
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
-import { hasVerifiedEmail } from "@/lib/auth-verification";
-import { Loader2 } from "lucide-react";
+import { requiresEmailVerification } from "@/lib/auth-verification";
+import EmailVerificationGate from "@/components/auth/EmailVerificationGate";
+import AuthLoadingScreen from "@/components/auth/AuthLoadingScreen";
 import React from "react";
 import { Redirect, Route } from "wouter";
 
@@ -16,9 +17,10 @@ export function ProtectedRoute({ path, component: Component }: ProtectedRoutePro
   if (loading) {
     return (
       <Route path={path}>
-        <div className="flex items-center justify-center min-h-screen">
-          <Loader2 className="h-8 w-8 animate-spin text-border" />
-        </div>
+        <AuthLoadingScreen
+          message="Checking your session..."
+          submessage="Please wait while we verify your credentials."
+        />
       </Route>
     );
   }
@@ -36,16 +38,10 @@ export function ProtectedRoute({ path, component: Component }: ProtectedRoutePro
     );
   }
 
-  // Creating an account also creates an authenticated Firebase session. Do
-  // not let that session reach onboarding or any protected chef page until
-  // the email link has actually been completed and synced by the server.
-  if (!hasVerifiedEmail(user, user)) {
-    return (
-      <Route path={path}>
-        <Redirect to="/auth" replace />
-      </Route>
-    );
-  }
+  // An unverified email no longer bounces the user back to /auth: that would
+  // strand them in a login loop with no way to reach the one page that can fix
+  // it. The session is kept and the gate is shown over the real UI instead.
+  const emailUnverified = requiresEmailVerification(user, user);
 
   // Terms acceptance gate
   const needsAcceptance =
@@ -53,7 +49,7 @@ export function ProtectedRoute({ path, component: Component }: ProtectedRoutePro
     !user.termsVersion ||
     user.termsVersion !== CURRENT_POLICY_VERSION;
 
-  if (needsAcceptance) {
+  if (needsAcceptance && !emailUnverified) {
     return (
       <Route path={path}>
         <Redirect to={`/accept-terms?redirect=${path}`} replace />
@@ -61,5 +57,10 @@ export function ProtectedRoute({ path, component: Component }: ProtectedRoutePro
     );
   }
 
-  return <Route path={path} component={Component} />;
+  return (
+    <Route path={path}>
+      <EmailVerificationGate open={emailUnverified} role={user.role} />
+      <Component />
+    </Route>
+  );
 }
