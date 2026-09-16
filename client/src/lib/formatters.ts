@@ -137,6 +137,22 @@ export function generateInvoiceNumber(bookingId: number, date?: Date): string {
 }
 
 /**
+ * Extract a human-readable filename from a stored document URL.
+ * Falls back to the last path segment when the URL cannot be parsed.
+ * @param url - Document URL (may be null/undefined)
+ */
+export function getDocumentFilename(url?: string | null): string {
+    if (!url) return '';
+    try {
+        const filename = new URL(url).pathname.split('/').pop();
+        return filename ? decodeURIComponent(filename) : '';
+    } catch {
+        const parts = url.split('/');
+        return decodeURIComponent(parts[parts.length - 1] || '');
+    }
+}
+
+/**
  * Format relative time (e.g., "2 days ago")
  * @param dateStr - ISO date string
  */

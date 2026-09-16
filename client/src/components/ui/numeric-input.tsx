@@ -66,7 +66,7 @@ const NumericInput = React.forwardRef<HTMLInputElement, NumericInputProps>(
             autoComplete="off"
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            className="flex-1 h-full bg-transparent border-0 outline-none px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-0 tabular-nums"
+            className="min-w-0 flex-1 h-full bg-transparent border-0 outline-none px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-0 tabular-nums"
             {...props}
           />
           <span className="flex items-center justify-center border-l border-input bg-muted text-muted-foreground text-xs select-none shrink-0 h-full px-2.5">

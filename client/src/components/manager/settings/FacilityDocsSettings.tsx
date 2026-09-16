@@ -14,19 +14,17 @@ import { useStatusButton } from "@/hooks/use-status-button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Building2, Upload, FileText, X, Loader2, FolderOpen, Wind, Info, CheckCircle2 } from "@/components/ui/manager-icons";
+import { Upload, X, Loader2, CheckCircle2 } from "@/components/ui/manager-icons";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
-import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
 import { SettingsFileUpload } from "./SettingsFileUpload";
+import { AuthenticatedDocumentLink } from "./AuthenticatedDocumentLink";
 import { ChefPageHeader } from "@/components/chef/ui";
 
 interface Location {
   id: number;
   name: string;
-  kitchenTermsUrl?: string;
 }
 
 interface LocationRequirements {
@@ -52,23 +50,6 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   };
 }
 
-function AuthenticatedDocumentLink({ url, className, children }: { url: string | null | undefined; className?: string; children: React.ReactNode }) {
-  const { url: presignedUrl } = usePresignedDocumentUrl(url);
-  
-  if (!url) return null;
-  
-  return (
-    <a 
-      href={presignedUrl || url} 
-      target="_blank" 
-      rel="noopener noreferrer"
-      className={className}
-    >
-      {children}
-    </a>
-  );
-}
-
 export default function FacilityDocsSettings({ location }: FacilityDocsSettingsProps) {
   
   const { toast } = useToast();
@@ -77,8 +58,6 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
   const [floorPlansFile, setFloorPlansFile] = useState<File | null>(null);
   const [ventilationFile, setVentilationFile] = useState<File | null>(null);
   const [ventilationSpecs, setVentilationSpecs] = useState('');
-  const [termsFile, setTermsFile] = useState<File | null>(null);
-  const [isUploadingTerms, setIsUploadingTerms] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   const { uploadFile, isUploading, uploadProgress } = useFileUpload({
@@ -185,41 +164,6 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
     saveMutation.mutate({ ventilation_specs_url: '' });
   };
 
-  const handleTermsUpload = async () => {
-    if (!termsFile) return;
-    setIsUploadingTerms(true);
-    try {
-      const currentUser = auth.currentUser;
-      if (!currentUser) throw new Error(tt("firebaseUserNotAvailable"));
-      const token = await currentUser.getIdToken();
-      const formData = new FormData();
-      formData.append("file", termsFile);
-      const uploadResponse = await fetch("/api/files/upload-file", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        credentials: "include",
-        body: formData,
-      });
-      if (!uploadResponse.ok) throw new Error((await uploadResponse.json().catch(() => ({}))).error || tt("failedToUploadTermsDoc"));
-      const uploaded = await uploadResponse.json();
-      const updateResponse = await fetch(`/api/manager/locations/${location.id}`, {
-        method: "PUT",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ kitchenTermsUrl: uploaded.url }),
-      });
-      if (!updateResponse.ok) throw new Error((await updateResponse.json().catch(() => ({}))).error || tt("failedToUploadTermsDoc"));
-      setTermsFile(null);
-      queryClient.invalidateQueries({ queryKey: ["locationDetails", location.id] });
-      queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
-      toast({ title: mt("termsUploaded"), description: mt("yourTermsAndConditionsHaveBeenUploadedSuccessfully") });
-    } catch (error) {
-      toast({ title: mt("uploadFailed"), description: error instanceof Error ? error.message : tt("failedToUploadTermsDoc"), variant: "destructive" });
-    } finally {
-      setIsUploadingTerms(false);
-    }
-  };
-
   const saveVentilationAction = useStatusButton(
     useCallback(async () => {
       await saveMutation.mutateAsync({ ventilation_specs: ventilationSpecs });
@@ -241,29 +185,6 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
     <div className="space-y-4">
       <ChefPageHeader title={mt("facilityDocuments")} description={`Manage floor plans and ventilation specifications for ${location.name}. These documents are automatically shared with approved chefs.`} />
       <div className="space-y-4">
-      <Card>
-        <CardHeader className="p-4 pb-3">
-          <CardTitle className="text-lg">{mt("termsConditions")}</CardTitle>
-          <CardDescription>{mt("uploadTermsThatChefsMustAgreeToWhenBooking")}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3 p-4 pt-0">
-          {location.kitchenTermsUrl && (
-            <div className="flex items-center justify-between rounded-lg border bg-muted/30 p-3">
-              <span className="text-sm">{mt("currentTermsDocumentUploaded")}</span>
-              <AuthenticatedDocumentLink url={location.kitchenTermsUrl} className="text-sm text-primary hover:underline">{mt("viewDocument")}</AuthenticatedDocumentLink>
-            </div>
-          )}
-          <SettingsFileUpload id="terms-upload" accept=".pdf" file={termsFile} label="Choose terms and conditions" hint={mt("pDFOnlyMax5MB")} disabled={isUploadingTerms} onChange={setTermsFile} />
-          {termsFile && (
-            <div className="flex justify-end">
-              <Button onClick={handleTermsUpload} disabled={isUploadingTerms}>
-                {isUploadingTerms ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
-                {isUploadingTerms ? mt("uploading") : mt("uploadTerms")}
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
       {/* Floor Plans */}
       <Card>
         <CardHeader className="p-4 pb-3">
