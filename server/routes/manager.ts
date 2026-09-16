@@ -3158,33 +3158,12 @@ router.get(
       const { getCheckinSettings } = await import("../services/kitchen-checkout-service");
       const platformDefaults = await getCheckinSettings();
 
-      // Fetch existing checklist settings or return defaults
-      const [existing] = await db
-        .select()
-        .from(checkinCheckoutChecklists)
-        .where(eq(checkinCheckoutChecklists.locationId, locationId));
-
-      const checklistSettings = existing || {
-        id: null,
-        locationId,
-        checkinEnabled: false,
-        checkinItems: [],
-        checkinPhotoRequirements: [],
-        checkinInstructions: null,
-        checkoutEnabled: false,
-        checkoutItems: [],
-        checkoutPhotoRequirements: [],
-        checkoutInstructions: null,
-        storageCheckoutEnabled: false,
-        storageCheckoutItems: [],
-        storageCheckoutPhotoRequirements: [],
-        storageCheckoutInstructions: null,
-        storageCheckinEnabled: false,
-        storageCheckinItems: [],
-        storageCheckinPhotoRequirements: [],
-        storageCheckinInstructions: null,
-        smartLockCheckinInstructions: null,
-      };
+      // Ensure a real DB row exists (all toggles OFF). Locations created before
+      // this guarantee, or that never opened settings, used to have no row.
+      const { ensureDefaultCheckinCheckoutChecklist } = await import(
+        "../services/checkin-checkout-checklist"
+      );
+      const checklistSettings = await ensureDefaultCheckinCheckoutChecklist(locationId);
 
       // Return checklist settings + time window overrides + platform defaults.
       // Checkout review window is admin-only (not surfaced here); kitchen

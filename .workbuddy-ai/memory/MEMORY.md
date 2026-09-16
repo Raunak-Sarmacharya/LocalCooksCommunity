@@ -1,80 +1,108 @@
 # LocalCooksCommunity — project notes
 
 ## Identity & verification (email is the primary identifier)
-- **`users` has no `email` column.** `users.username` **is** the confirmed email (`NOT NULL UNIQUE`), written by `createPublicFirebaseUser({ username: registrationEmail })`. Any email change must rewrite `username` atomically or the two stores disagree.
-- `GET /api/user/profile` returns explicit `email`, `emailVerified`, `emailVerifiedAt`, `pendingEmail`, `pendingEmailSentAt`, `pendingEmailExpiresAt`, `resendAvailableInSeconds` (built by `server/email-verification.ts` → `buildEmailVerificationStatus`). Prefer these over guessing at `username` client-side.
-- **The gate is email-only.** `requiresEmailVerification(authUser, profile)` (client) / `hasVerifiedEmailClaim(req)` (server). A missing phone **never** blocks an action — phone is collected at registration and verified optionally from the profile. Admins are exempt from the gate.
-- `hasVerifiedEmail` requires **both** Firebase `emailVerified` **and** the DB mirror (`is_verified`), so protected state cannot get ahead of the server sync. `hasCompleteContactVerification` still exists but is **no longer a gate** — only for completeness reporting.
-- Server error code for the gate: `EMAIL_VERIFICATION_REQUIRED` (replaced `CONTACT_VERIFICATION_REQUIRED`). Apply/tour routes additionally return `EMAIL_NOT_VERIFIED`.
-- **Branded verification links are server-owned**: `POST /api/user/email/verification/start` → `/email-verify?token=…` → `POST …/confirm`. Reason: Firebase Admin's `generateEmailVerificationLink` **requires the email to already be on a Firebase user** (phone-first accounts have none), and client `verifyBeforeUpdateEmail` needs a *recent sign-in* they don't have. Only a SHA-256 digest is stored.
-- The confirmed address is only replaced **after** the new one is proven, so an account is never left without a working email. A change in flight is a distinct state (`verified-changing`), not a transient unverified window.
-- **Firebase caches `email_verified` in the ID token for up to an hour.** Anything that reads verification status must `reload()` + `getIdToken(true)` first — `fetchEmailVerificationStatus()` does this.
-- Email-card state machine lives in `client/src/lib/email-verification-state.ts` (pure, tested) — extend it there rather than adding conditionals to the component.
-- Deep-link contract for the email section: `?view=profile&focus=email` (+ `&tab=account` for managers). `focus=email` forces the account tab and is cleared on consume.
+- **`users` has no `email` column.** `users.username` **is** the confirmed email (NOT NULL UNIQUE), written by `createPublicFirebaseUser({ username: registrationEmail })`.
+- `GET /api/user/profile` returns `email`, `emailVerified`, `emailVerifiedAt`, `pendingEmail`, `pendingEmailSentAt`, `pendingEmailExpiresAt`, `resendAvailableInSeconds` (`server/email-verification.ts` → `buildEmailVerificationStatus`). Use these, don't guess from `username`.
+- **Gate is email-only.** `requiresEmailVerification()` (client) / `hasVerifiedEmailClaim(req)` (server). Missing phone never blocks. Admins exempt. Error code: `EMAIL_VERIFICATION_REQUIRED` (apply/tour also `EMAIL_NOT_VERIFIED`).
+- `hasVerifiedEmail` needs **both** Firebase `emailVerified` **and** DB mirror `is_verified`.
+- **Branded verification links are server-owned**: `POST /api/user/email/verification/start` → `/email-verify?token=…` → `POST …/confirm`. Firebase Admin `generateEmailVerificationLink` needs the email already on a Firebase user (phone-first accounts have none); client `verifyBeforeUpdateEmail` needs recent sign-in. Only a SHA-256 digest is stored.
+- Confirmed address is replaced only **after** the new one is proven. In-flight change = `verified-changing`.
+- **Firebase caches `email_verified` in the ID token up to an hour** — always `reload()` + `getIdToken(true)` first (`fetchEmailVerificationStatus()` does this).
+- Email state machine: `client/src/lib/email-verification-state.ts` (pure, tested). Deep link: `?view=profile&focus=email` (+ `&tab=account` for managers).
+
+## Auth / registration
+- Only three methods: **email verification**, **Google**, **phone OTP**. No user-chosen password at signup.
+- Email-verification path: `adminAuth.createUser({ email, password, emailVerified })` with a **server-generated placeholder password**, then client signs in via `accounts:signInWithPassword` → **its `signInProvider` is `"password"`, NOT `"emailLink"`.**
+- `POST /api/user/sync-password` (`server/routes/user.ts` ~176) mirrors a chosen password into Neon (non-blocking, client-side).
+- Password tab: `client/src/components/auth/ChangePassword.tsx` + pure helper `password-form-mode.ts` → `resolvePasswordFormMode()` → `loading | change | set-link | set-update`. Rendered in `ChefProfileSettings.tsx`, `ManagerProfile.tsx`, `ManagerProfileSettings.tsx`, `Admin.tsx`. `ManagerChangePassword.tsx` is separate and not wired to the helper.
+- **Known bug:** the helper only special-cases `signInProvider === "emailLink"`; email-verification/phone users wrongly get `change` (asks for a password they never set).
 
 ## Design tokens (`client/src/index.css`)
-- Brand / primary red: `--primary` and `--sidebar-primary` = `hsl(348 85% 59%)`. Use `text-primary` for brand-coloured UI.
-- **Gotcha:** `--accent` is `0 0% 100%` (pure white) — identical to `--popover` in *both* light and dark themes. `hover:bg-accent` is therefore invisible. Use `hover:bg-muted` for hover states.
-- `--muted` = light grey (light) / dark slate (dark) → safe hover in both themes.
+- Brand red: `--primary` / `--sidebar-primary` = `hsl(348 85% 59%)`.
+- **Gotcha:** `--accent` is pure white, same as `--popover` → `hover:bg-accent` invisible. Use `hover:bg-muted`.
 
 ## Icons
-- All manager UI icons come from `client/src/components/ui/manager-icons.tsx`, which wraps `@iconify/react`'s `Icon` via the local `managerIcon()` factory.
-- **Only the `mdi` collection is bundled** (`addCollection(mdiIcons)`). Do NOT rely on other Iconify collections (`simple-icons:`, `logos:`, `solar:`) — they need an on-demand fetch from the Iconify API, which does **not** resolve in this environment (confirmed: `simple-icons:stripe` rendered nothing). Icons registered explicitly via `addIcon(...)` in `client/src/lib/kitchen-inventory-icons.ts` are fine.
-- **Brand marks come from `react-icons/si`** (Simple Icons, bundled locally — no network). The Stripe mark is `import { SiStripe } from "react-icons/si"`, rendered with `text-stripe` (or `text-[#635BFF]`), sized `h-4 w-4` / `h-5 w-5`. Established usages: `chef/dashboard/OverviewTabContent.tsx`, `chef/seller-revenue/ChefSellerRevenue.tsx`, `chef/ChefSellerAccount.tsx`, `home/ChefServiceIllustration.tsx`. Do NOT use `client/public/stripe-logo.png` for an icon — that asset is the full **wordmark**, not the "S".
-- Brand colours: `stripe: { DEFAULT: "#635BFF" }` is a Tailwind token in `tailwind.config.ts` (→ `text-stripe`), and `client/src/lib/stripe-brand.ts` exports `STRIPE_BRAND_COLOR` + `stripeLinkClassName`. Reuse those instead of hardcoding blurple.
-- `vite.config.ts` sets `root: client/` with no `publicDir` override, so `client/public/*` is served at the site root (`/stripe-logo.png`). The repo-root `public/` folder is NOT the Vite publicDir.
+- Manager icons: `components/ui/manager-icons.tsx`, wraps `@iconify/react` `Icon`. **Only `mdi` is bundled** — other collections need a network fetch that fails here.
+- Brand marks from `react-icons/si` (bundled). Stripe = `SiStripe`. Do NOT use `client/public/stripe-logo.png` (wordmark).
+- `vite.config.ts` root is `client/` → `client/public/*` served at site root. Repo-root `public/` is NOT the publicDir.
 
 ## i18n
-- Manager strings: `mt(key)` from `client/src/i18n/manager.ts`, namespace `manager`. Chef strings use `useTranslation("chef")`.
-- Locales live in `shared/i18n/locales/{en-CA,fr-CA,uk}/<ns>.json`. **All three must stay in key parity** — add new keys to all of them.
-- `npm run i18n:lint` flags missing / empty / hardcoded strings.
-- `client/src/i18n/locales.test.ts` parses every message containing `{` with `@formatjs/icu-messageformat-parser` and forbids `{{...}}`. Use single braces: `{completed} of {total} complete`.
+- Manager: `mt(key)` (`client/src/i18n/manager.ts`). Chef: `useTranslation("chef")`.
+- Locales: `shared/i18n/locales/{en-CA,fr-CA,uk}/<ns>.json` — **all three must stay in key parity**.
+- `npm run i18n:lint`; ICU single braces `{count}`, never `{{...}}`.
+- Pre-existing lint failures (not yours): `rcOverstayPenalty` (fr/uk kitchen), `howPayoutsWorkServiceFeeNote` (fr/uk manager), `phoneVerificationRequired`.
 
 ## Manager dashboard navigation
-- `ManagerBookingDashboard.tsx` owns `activeView: ViewType` and `handleViewChange()`, which pushes `?view=` into history and guards unsaved availability edits. Prefer routing through it over raw `history.pushState`.
-- `client/src/components/app-sidebar.tsx` holds `navData` plus `SETUP_STEP_VIEWS` (onboarding step id → manager view) used by the sidebar "Getting started" popover.
-- Onboarding step definitions + completion logic live in `client/src/hooks/use-onboarding-status.ts`.
+- `ManagerBookingDashboard.tsx` owns `activeView` + `handleViewChange()` (pushes `?view=`). `app-sidebar.tsx` holds `navData` + `SETUP_STEP_VIEWS`. Onboarding: `use-onboarding-status.ts`.
 
-## Booking Policies (manager portal) — formerly "Booking Rules"
-- **The page is called "Booking Policies" in the UI.** The internal view key is still `settings-booking-rules` and the tab param is still `?tab=booking-rules` — deliberately, so deep links keep working. The i18n **key names** also still say `navBookingRules` etc.; only the string **values** were renamed. Don't "fix" the key names without checking deep links.
-- Component: `client/src/components/manager/settings/BookingRulesSettings.tsx` (file name intentionally unchanged). Exposes `BookingPoliciesHandle.saveAllChanges()` for the unsaved-changes guard.
-- Saves via `onSave` → `PUT /api/manager/locations/:id/cancellation-policy` (field-whitelisted). The save button only renders while dirty (`showSaveAction`).
-- Guard wiring lives in `ManagerBookingDashboard.tsx`: `bookingPoliciesDirty` / `pendingBookingPoliciesView` / `bypassBookingPoliciesGuard` / `bookingPoliciesRef`, mirroring the pre-existing availability guard.
-- Admin-side `LocationDetailSheet.tsx` still says "Booking Rules" (out of scope by request).
-
-## Kitchen Terms & Conditions (manager portal)
-- Lives in the Booking Policies page (same component as above), moved there from `FacilityDocsSettings.tsx`. Do not re-add it to Facility Documents.
-- Two-state card: no document → dropzone; document → file block (filename + "Uploaded:" date + View Document) with a "Replace" button in the card header that re-opens the dropzone.
-- Upload is self-contained: `POST /api/files/upload-file` → `PUT /api/manager/locations/:id` with `{kitchenTermsUrl}`. It deliberately does **not** use `onSave`/`updateLocationSettings`, because `PUT /api/manager/locations/:id/cancellation-policy` whitelists fields and excludes `kitchenTermsUrl`.
-- `GET /api/manager/locations` (`server/routes/manager.ts` ~6506) returns `kitchenTermsUrl` + `kitchenTermsUploadedAt`; both the Booking Policies and Facility Documents views get the same `locationDetails || selectedLocation` object.
-- `AuthenticatedDocumentLink` (presigned-URL anchor) now lives in `client/src/components/manager/settings/AuthenticatedDocumentLink.tsx`. Three older duplicate copies still exist in `DocumentUpload.tsx`, `ManagerBookingDashboard.tsx`, `KitchenApplicationForm.tsx` — prefer importing the shared one for new code.
-- `getDocumentFilename()` lives in `client/src/lib/formatters.ts`.
+## Booking Policies (was "Booking Rules")
+- UI says **Booking Policies**; view key stays `settings-booking-rules`, tab param `?tab=booking-rules`, i18n **key names** unchanged — deep links depend on them. Don't rename.
+- Component `settings/BookingRulesSettings.tsx` (filename unchanged), exposes `saveAllChanges()`. Saves via `PUT /api/manager/locations/:id/cancellation-policy`. Save button renders only when dirty.
+- Kitchen Terms & Conditions lives here too. Upload: `POST /api/files/upload-file` → `PUT /api/manager/locations/:id` `{kitchenTermsUrl}`.
+- `AuthenticatedDocumentLink` → `manager/settings/AuthenticatedDocumentLink.tsx` (3 older dupes exist). `getDocumentFilename()` in `client/src/lib/formatters.ts`.
 
 ## Manager settings UI conventions
-- House layout for a settings page: `ChefPageHeader` (optionally a dirty `Badge` in `actions`) + cards, with a `StatusButton` for saves. See `CheckinCheckoutSettings` / `StorageCheckinCheckoutSettings`.
-- `StatusButton` (from `useStatusButton`) **swallows thrown errors** — re-throw after toasting if you want the error state to show. It also animates text per character, so its accessible name may lose spaces in tests.
-- **Do NOT use `client/src/components/ui/field.tsx`** (`Field`/`FieldGroup`/`FieldLabel`) — it is referenced nowhere and is written in **Tailwind v4** syntax (`@md/field-group:`, `has-data-checked:`, `data-[slot=…]`) while this project is on **Tailwind v3.4.17**, so those classes are inert.
-- One label per setting. A group title on the left *and* a field label above the control is the duplication that made the old Booking Rules page feel cluttered.
+- Layout: `ChefPageHeader` (+ dirty `Badge`) + cards + `StatusButton`. See `CheckinCheckoutSettings`.
+- `StatusButton` **swallows thrown errors** — re-throw after toasting.
+- **Never use `components/ui/field.tsx`** — Tailwind v4 syntax, project is v3.4.17, inert.
+- One label per setting (no group title + field label).
 
-## Dead code — do not be fooled
-- `SettingsView` in `ManagerBookingDashboard.tsx` (~1549) and `LocationSettingsView.tsx` in `components/manager/locations/` both contain their own booking-rules / kitchen-terms UI but are **never rendered**. The live paths are `BookingRulesSettings` + `FacilityDocsSettings`.
-- `client/src/components/chef/ChefOverview.tsx` is **never imported or rendered**. It holds a second copy of the time-of-day greeting using the `overviewGoodMorning` / `overviewGoodAfternoon` / `overviewGoodEvening` keys — and those same `overview*` keys are duplicated across **both** `chef.json` and `kitchen.json`. The live chef greeting is `components/chef/dashboard/OverviewTabContent.tsx` (via `ApplicantDashboard`), which uses the `ovGood*` keys.
+## Dead code
+- `SettingsView` (~1549 in `ManagerBookingDashboard.tsx`) and `LocationSettingsView.tsx` hold booking-rules UI that is **never rendered**.
+- `chef/ChefOverview.tsx` never rendered; its `overview*` keys are duplicated in `chef.json` and `kitchen.json`. Live greeting: `chef/dashboard/OverviewTabContent.tsx` (`ovGood*`).
 
-## Greeting conventions
-- Person's name always comes from `user.displayName` (sidebar, manager overview greeting, chef greeting). The legacy `fullName` field is unused by the UI.
-- **Both** dashboard overviews now greet by **time of day** + name, with the same boundaries: `< 12` morning, `< 17` afternoon, else evening.
-  - Manager: `KitchenDashboardOverview.tsx` — `GREETING_KEYS` + `getTimeOfDay()` at module scope, keys `goodMorning` / `goodAfternoon` / `goodEvening` + `greetingNamed` (`"{greeting}, {name}"`) in the **manager** namespace.
-  - Chef: `components/chef/dashboard/OverviewTabContent.tsx` — inline `getGreeting()`, keys `ovGoodMorning` / `ovGoodAfternoon` / `ovGoodEvening` in the **chef** namespace (plus a hardcoded `", " + firstName`).
-  - The two are separate implementations with the same boundaries. If the boundaries ever change, update **both** (grep `getHours()`).
-- Manager overview subtitle carries the **location** name (`heresWhatsHappeningWith`); chef subtitle is dynamic status copy.
-- `welcomeBack` / `welcomeBackNamed` in the manager namespace are now **unused** (kept in the locale files).
-- "Now" is always the **device's** local time — `getNowInTimezone()` intentionally returns `new Date()`. Only booking date/time math is timezone-converted. The greeting has no timer, so it only refreshes on re-render.
+## Greetings
+- Name always `user.displayName` (legacy `fullName` unused).
+- Time-of-day boundaries duplicated in **two** places: `KitchenDashboardOverview.tsx` (`goodMorning`, manager ns) and `chef/dashboard/OverviewTabContent.tsx` (`ovGood*`, chef ns). Update both if changed (grep `getHours()`).
+- `welcomeBack*` (manager) unused. "Now" = device local time; no timer.
 
-## Tooling notes
-- `graphify-out/` holds the knowledge graph; per `.cursor/rules/graphify.mdc`, run `graphify query|path|explain` before grepping, and `graphify update .` after code changes. (`graphify update .` can get killed by resource limits on this machine — retry in the background.)
-- Test suite is slow (~2 min for the ICU locale test); do not run `tsc --noEmit` and `vitest` concurrently — vitest workers time out. `tsc --noEmit` alone takes ~4–5.5 min here. `tsconfig.json` sets `incremental: true` with `tsBuildInfoFile: ./node_modules/typescript/tsbuildinfo` — a repeat run can finish in seconds off the cache, so delete that file to force a genuine full check.
-- **`npx <tool>` rewrites `package-lock.json`** (npm normalizes `"peer": true` markers) — check `git status` afterwards and revert if you didn't mean to touch it.
-- **`npm run dev` can fail at route registration with `[safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED]`** when Vite re-optimizes deps after a lockfile change: it tries to `rm -rf node_modules/.vite/deps` (~270 files, over the 50-file guard). Fix: `mv node_modules/.vite node_modules/.vite.stale-<ts>` then start the server; Vite builds a fresh cache and boots. Dev server port is **5001** in development (`server/index.ts` ~132).
-- `npx eslint` currently fails environment-wide before loading the config (`zod-validation-error` does not export `./v4`) — pre-existing, not a symptom of your change.
-- Pre-existing `i18n:lint` failures: `rcOverstayPenalty` missing in fr/uk `kitchen.json`, `howPayoutsWorkServiceFeeNote` empty (`" "`) in fr/uk `manager.json`, `phoneVerificationRequired` missing. All were already failing before this work.
+## Tooling
+- `graphify-out/` = knowledge graph (`graphify query|path|explain` per `.cursor/rules/graphify.mdc`). **graphify is NOT on PATH**; ponytail is only a `.cursor/rules` persona rule.
+- Tests slow (~2 min). Don't run `tsc --noEmit` (~4–5.5 min) and vitest together.
+- **Never run `tsc` / `npm run build`** (build = `tsc -b && vite build`). User forbade it.
+  Syntax + import check with esbuild instead — **must pass `--bundle` to validate `@/`
+  paths** (`--bundle=false` only parses one file and silently accepts a bad import):
+  `./node_modules/.bin/esbuild <files> --bundle --packages=external
+  --alias:@=./client/src --alias:@shared=./shared --alias:@assets=./attached_assets
+  --loader:.tsx=tsx --loader:.ts=ts --jsx=automatic '--external:*.css' --outdir=/tmp/x`
+  Quote the `--external:` globs or zsh errors with "no matches found".
+  `import.meta` warnings under iife output are expected noise.
+- **`npx <tool>` rewrites `package-lock.json`** — check `git status`, revert if unintended.
+- `npm run dev` can fail with `[safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED]` after a lockfile change. Fix: `mv node_modules/.vite node_modules/.vite.stale-<ts>`. Dev port **5001**.
+- `npx eslint` fails environment-wide (`zod-validation-error` has no `./v4`) — pre-existing.
+- **Two tsconfigs**: `tsconfig.json` (noEmit, client+server+shared) and `tsconfig.server.json` (outDir `dist`, server+shared, does **not** exclude `*.test.ts`). Check **both**. Always `rm -f node_modules/typescript/tsbuildinfo` first — `incremental: true` + stale `tsBuildInfoFile` silently hides errors.
 
+## Deployment
+- **Vercel** (`vercel.json`, `vercel-build.mjs`). Hosts: `localcooks.ca`, `chef.localcooks.ca`, `kitchen.localcooks.ca`, `admin.localcooks.ca`, plus `dev-*` variants — all live. Firebase Hosting site `formauth-9e620` is not the app.
+
+## Contact information UI (profile → Account details)
+- Shared row shell: `client/src/components/profile/ContactVerificationRow.tsx` → exports
+  `ContactInfoCard` (divided list), `ContactVerificationRow`, `ContactStatusPill`, type `ContactTone`
+  (`verified | action | pending | empty` — drives icon tint, pill colour and row tint).
+- `EmailVerificationCard.tsx` and `PhoneSignInSettings.tsx` both render through that row.
+  Both take `embedded?: boolean` — `true` = bare row, parent supplies the `ContactInfoCard`.
+- Rule: **email and phone are always siblings in one `ContactInfoCard`**, never in the
+  profile field grid (that was the old asymmetry: phone `sm:col-span-2`, email 1 column).
+- Editing expands inline inside the row (`children`), the row's shape never changes.
+- **Three-line structure is fixed**: `value` → `secondary` (one-line status, same
+  `text-sm text-muted-foreground`) → `description` (helper copy). Every row in every
+  state has the same shape — verified, unverified, pending, empty. No state may omit
+  the `secondary` line just because it has nothing extra to say (use the pill word or
+  "Verified" / "Link sent" / "Not added" / "Not verified" / "Change pending" / "Code sent").
+- Verified icon is the **same on both rows**: `Check` from lucide. Do not use
+  `CheckCircle2` for phone — it draws a second circle inside the row's icon badge and
+  breaks the visual match. `Mail`/`Phone` only for unverified / empty (type-specific
+  identification), `Clock` for pending.
+- Phone flows are 4 states: linked → `verified`; `confirmation` → `pending` (code input);
+  local `isAdding` → phone input + SMS consent; else `empty` with "Add phone number".
+  The reCAPTCHA div only exists while expanded — fine, `sendCode` is only reachable then.
+- Three hosts must stay in sync: `ChefProfileSettings.tsx`, `ManagerProfileSettings.tsx`,
+  `pages/ManagerProfile.tsx` (legacy orange-gradient page, still live at `/manager/profile`).
+- `Section` in `ChefProfileSettings.tsx` gained `flush` (no body padding + `overflow-hidden`)
+  so the contact list sits full-bleed inside the section card.
+
+## Working style
+- Worktree is usually **dirty** — always `git status` before editing; finish prior work first.
+- User prefers: no assumptions; stop and ask when a fact is unverified.
+- **Verify against the published app, never the local dev server.** After any UI change, open the published app, click the affected screen, confirm, then edit local files.
+- Clean `tsc --noEmit` (both configs) is the bar for "done".

@@ -192,10 +192,11 @@ export default function EnhancedLoginForm({
       await Promise.all([login(email, password), new Promise((r) => setTimeout(r, 400))]);
       await rememberAuthMethod(email, "password");
       setAuthState("success");
+      // Stay covered until the parent has taken over. This used to close the
+      // overlay and then wait 600 ms before telling the parent, which showed
+      // the login form again on top of a session that was already valid.
+      await onSuccess?.();
       setShowLoadingOverlay(false);
-      setTimeout(() => {
-        onSuccess?.();
-      }, 600);
     } catch (e: unknown) {
       setShowLoadingOverlay(false);
       setAuthState("error");

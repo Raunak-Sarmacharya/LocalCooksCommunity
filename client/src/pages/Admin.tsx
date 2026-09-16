@@ -62,6 +62,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -74,7 +75,7 @@ import { auth } from "@/lib/firebase";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { AdminOverviewSection } from "@/components/admin/sections/AdminOverviewSection";
 import { SecuritySettingsSection } from "@/components/admin/sections/SecuritySettingsSection";
-import { AlertCircle, AlertTriangle, CalendarDays, CheckCircle, Clock, ExternalLink, RefreshCw, Search, Shield, User as UserIcon, XCircle, Check, Building2, Loader2, MailCheck, Eye, EyeOff, KeyRound, Copy } from "lucide-react";
+import { AlertCircle, AlertTriangle, CalendarDays, CheckCircle, Clock, ExternalLink, RefreshCw, Search, Shield, User as UserIcon, XCircle, Check, Building2, Loader2, MailCheck, Eye, KeyRound, Copy } from "lucide-react";
 
 function AdminDashboard() {
   const [, navigate] = useLocation();
@@ -89,7 +90,6 @@ function AdminDashboard() {
 
   // Shop credentials viewer state
   const [credentialsAppId, setCredentialsAppId] = useState<number | null>(null);
-  const [showShopPassword, setShowShopPassword] = useState(false);
   
   const validSections: AdminSection[] = useMemo(() => [
     "applications", "kitchen-applications-step1", "tour-requests", "kitchen-licenses", "damage-claims", "escalated-penalties",
@@ -1821,7 +1821,6 @@ function AdminDashboard() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => {
-                                  setShowShopPassword(false);
                                   setCredentialsAppId(selectedApplication.id);
                                 }}
                                 className="w-full"
@@ -1887,7 +1886,6 @@ function AdminDashboard() {
           onOpenChange={(open) => {
             if (!open) {
               setCredentialsAppId(null);
-              setShowShopPassword(false);
             }
           }}
         >
@@ -1957,22 +1955,12 @@ function AdminDashboard() {
                 <div className="space-y-2">
                   <label className="text-xs font-medium text-muted-foreground">Password</label>
                   <div className="flex items-stretch gap-2">
-                    <Input
+                    <PasswordInput
                       readOnly
-                      type={showShopPassword ? "text" : "password"}
                       value={shopCredentials.password}
                       className="font-mono text-sm"
                       onFocus={(e) => e.currentTarget.select()}
                     />
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="outline"
-                      onClick={() => setShowShopPassword((v) => !v)}
-                      title={showShopPassword ? "Hide password" : "Show password"}
-                    >
-                      {showShopPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </Button>
                     <Button
                       type="button"
                       size="icon"

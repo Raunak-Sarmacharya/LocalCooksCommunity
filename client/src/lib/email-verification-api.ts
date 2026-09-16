@@ -112,20 +112,21 @@ export async function cancelEmailVerification(): Promise<EmailVerificationStatus
   return (await response.json()) as EmailVerificationStatus;
 }
 
+/**
+ * Reads verification state. Deliberately does NOT touch the Firebase session.
+ *
+ * This is polled every 15s while a link is outstanding, and `reload()` /
+ * `getIdToken(true)` were here briefly to work around `email_verified` being cached in
+ * the ID token. That was actively harmful: an email change invalidates the account's
+ * refresh token, so the first forced refresh to notice it makes the SDK sign the user out
+ * GLOBALLY — meaning this poll could log the dashboard out of its own session while the
+ * user was verifying in another tab.
+ *
+ * The server now reports `emailVerified` from its own verification mirror, which it
+ * updates the moment a link is confirmed, so a cheap read is both sufficient and safe.
+ * Never reintroduce a token refresh on a read path.
+ */
 export async function fetchEmailVerificationStatus(): Promise<EmailVerificationStatus> {
-  // `email_verified` is baked into the ID token and cached for up to an hour, so a
-  // confirmation completed on another device — or in another tab — would otherwise
-  // stay invisible. Reload the user and force a token refresh before asking.
-  const currentUser = auth.currentUser;
-  if (currentUser) {
-    try {
-      await currentUser.reload();
-      await currentUser.getIdToken(true);
-    } catch {
-      // A stale token still produces a usable answer; the server stays authoritative.
-    }
-  }
-
   const response = await authorizedFetch("/api/user/email/verification/status");
   if (!response.ok) throw await readError(response);
   return (await response.json()) as EmailVerificationStatus;

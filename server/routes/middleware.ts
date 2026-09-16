@@ -1,7 +1,7 @@
 import { logger } from "../logger";
 import { Request, Response, NextFunction } from "express";
 import { verifyFirebaseToken } from "../firebase-setup";
-import { hasVerifiedEmailClaim } from "../firebase-auth-middleware";
+import { hasVerifiedEmail } from "../firebase-auth-middleware";
 
 import { db } from "../db";
 import { portalUserApplications, portalUserLocationAccess } from "@shared/schema";
@@ -46,7 +46,7 @@ export async function requireChef(req: Request, res: Response, next: NextFunctio
     // exempt so a broken mailbox can never lock the platform out of itself.
     if (
         req.neonUser.role !== 'admin' &&
-        !hasVerifiedEmailClaim(req) &&
+        !hasVerifiedEmail(req) &&
         !req.originalUrl.startsWith('/api/chef/my-profile')
     ) {
         return res.status(403).json({

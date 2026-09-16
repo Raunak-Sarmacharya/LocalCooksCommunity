@@ -171,3 +171,54 @@ export function resolveTrustedLinkOrigin(
 
   return allowed.has(host) ? url.origin : null;
 }
+
+/**
+ * How recently the user must have signed in before we allow an identity-changing operation
+ * (changing a verified email address). Matches the client's window in
+ * `client/src/lib/firebase-auth-security.ts` so both sides agree.
+ */
+export const RECENT_AUTH_WINDOW_SECONDS = 5 * 60;
+
+/**
+ * True when the caller authenticated recently enough to change a verified email address.
+ *
+ * Tolerant of mild clock skew: `auth_time` is minted by Firebase while `nowMs` comes from this
+ * process, so a slightly negative age is allowed, mirroring the client helper.
+ */
+export function hasRecentFirebaseAuth(authTime: unknown, nowMs = Date.now()): boolean {
+  const authTimeSeconds = Number(authTime);
+  if (!Number.isFinite(authTimeSeconds)) return false;
+  const ageSeconds = nowMs / 1000 - authTimeSeconds;
+  return ageSeconds >= -60 && ageSeconds <= RECENT_AUTH_WINDOW_SECONDS;
+}
+
+/**
+ * Resolves the single origin an outbound auth email should use, and the continue URL
+ * derived from it.
+ *
+ * These must never be resolved independently — that was the bug. The action URL used
+ * `getEmailLinkOrigin` (deliberately a *public* host, so a link sent from a local API stays
+ * openable elsewhere) while the continue URL used `getSubdomainUrl` (BASE_URL, i.e.
+ * localhost in local dev). One email therefore carried two origins: the link opened on one
+ * host and completing it redirected to another. In the magic-link flow it also meant the
+ * `emailForSignIn` the client had just stored lived on a different origin than the link, so
+ * the user was asked to retype an address we had already masked.
+ *
+ * Prefer the caller's own origin when it is a trusted host for this role; otherwise fall
+ * back to the public host. Returning both values from one call makes divergence impossible.
+ */
+export function resolveAuthEmailLink(input: {
+  callerOrigin: unknown;
+  role: string | null | undefined;
+  redirectPath: string;
+  fallbackOrigin: string;
+}): { linkOrigin: string; continueUrl: string } {
+  const linkOrigin =
+    resolveTrustedLinkOrigin(input.callerOrigin, input.role) ?? input.fallbackOrigin;
+
+  return {
+    linkOrigin,
+    // Absolute-ised against the SAME origin, so a relative path cannot escape it.
+    continueUrl: new URL(input.redirectPath, linkOrigin).toString(),
+  };
+}

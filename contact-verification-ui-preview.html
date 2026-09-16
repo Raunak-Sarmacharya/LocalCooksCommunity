@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-page-node-id="EZ1iFdt1SwD94r15umxUq1">
+<head data-page-node-id="M3ELh6uPd6eDtf1LGV1BIh">
+<meta charset="utf-8" data-page-node-id="iFqTxNk2Hn9ktGThrFOWA2" />
+<meta name="viewport" content="width=device-width, initial-scale=1" data-page-node-id="jBGVaCB1XvWvylcB9f5eUv" />
+<title>Contact information — redesign preview</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --fg: #0f172a;
+    --muted: #64748b;
+    --border: #e5e7eb;
+    --primary: hsl(348 85% 59%);
+    --emerald-bg: rgba(16,185,129,.15);
+    --emerald-fg: #047857;
+    --amber-bg: rgba(245,158,11,.15);
+    --amber-fg: #b45309;
+    --amber-row: rgba(245,158,11,.04);
+    --sky-bg: rgba(14,165,233,.15);
+    --sky-fg: #0369a1;
+    --sky-row: rgba(14,165,233,.04);
+    --muted-bg: #f1f5f9;
+    --muted-fg: #64748b;
+    --danger: #dc2626;
+  }
+  [data-theme="dark"] {
+    --bg: #0b1020;
+    --card: #111827;
+    --fg: #f8fafc;
+    --muted: #94a3b8;
+    --border: #1f2937;
+    --emerald-fg: #34d399;
+    --amber-fg: #fbbf24;
+    --sky-fg: #38bdf8;
+    --muted-bg: #1f2937;
+    --muted-fg: #94a3b8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 40px 20px 80px; }
+  header.page { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
+  h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; margin: 0; }
+  .sub { color: var(--muted); font-size: 14px; margin: 6px 0 0; }
+  .toggle {
+    border: 1px solid var(--border); background: var(--card); color: var(--fg);
+    border-radius: 999px; padding: 7px 14px; font-size: 13px; cursor: pointer; font-weight: 500;
+  }
+  .toggle:hover { background: var(--muted-bg); }
+
+  .section-title { margin: 32px 0 10px; font-size: 13px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 1.35rem; overflow: hidden;
+  }
+  .card-head { border-bottom: 1px solid var(--border); padding: 16px 20px; }
+  .card-head h3 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+  .card-head p { margin: 2px 0 0; font-size: 14px; color: var(--muted); }
+
+  .row { padding: 20px; border-top: 1px solid var(--border); scroll-margin-top: 96px; }
+  .row:first-child { border-top: 0; }
+  .row.tint-amber { background: var(--amber-row); }
+  .row.tint-sky { background: var(--sky-row); }
+  .row.highlight { position: relative; z-index: 10; box-shadow: inset 0 0 0 2px var(--primary); }
+
+  .row-inner { display: flex; flex-direction: column; gap: 16px; }
+  @media (min-width: 640px) { .row-inner { flex-direction: row; align-items: flex-start; } }
+  .row-main { display: flex; align-items: flex-start; gap: 16px; min-width: 0; flex: 1; }
+  .row-body { min-width: 0; flex: 1; }
+
+  .icon {
+    width: 36px; height: 36px; border-radius: 999px; flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: center; font-size: 16px;
+  }
+  .tone-verified.icon { background: var(--emerald-bg); color: var(--emerald-fg); }
+  .tone-action.icon   { background: var(--amber-bg);   color: var(--amber-fg); }
+  .tone-pending.icon  { background: var(--sky-bg);     color: var(--sky-fg); }
+  .tone-empty.icon    { background: var(--muted-bg);   color: var(--muted-fg); }
+
+  .row-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .row-head h3 { margin: 0; font-size: 14px; font-weight: 500; color: var(--fg); }
+  .pill {
+    display: inline-flex; align-items: center; border-radius: 999px;
+    padding: 2px 8px; font-size: 12px; font-weight: 500; white-space: nowrap;
+  }
+  .pill.tone-verified { background: var(--emerald-bg); color: var(--emerald-fg); }
+  .pill.tone-action   { background: var(--amber-bg);   color: var(--amber-fg); }
+  .pill.tone-pending  { background: var(--sky-bg);     color: var(--sky-fg); }
+  .pill.tone-empty    { background: var(--muted-bg);   color: var(--muted-fg); }
+
+  .value { margin: 4px 0 0; font-size: 14px; font-weight: 500; color: var(--fg); word-break: break-all; }
+  .value.muted { color: var(--muted); font-weight: 400; }
+  .secondary { margin: 4px 0 0; font-size: 14px; color: var(--muted); }
+  .desc { margin-top: 4px; font-size: 14px; line-height: 1.6; color: var(--muted); }
+  .desc p { margin: 0; }
+  .desc p + p { margin-top: 4px; }
+  .desc .xs { font-size: 12px; }
+  .desc .err { color: var(--danger); }
+
+  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex: 0 0 auto; }
+  @media (min-width: 640px) { .actions { justify-content: flex-end; } }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 32px; padding: 0 12px; border-radius: 6px;
+    font-size: 13px; font-weight: 500; font-family: inherit; cursor: pointer;
+    border: 1px solid transparent; background: transparent; color: var(--fg);
+  }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-outline { border-color: var(--border); background: var(--card); }
+  .btn-ghost { color: var(--fg); }
+  .btn-ghost:hover { background: var(--muted-bg); }
+
+  .editor { margin-top: 16px; max-width: 448px; }
+  .editor label { display: block; font-size: 12px; font-weight: 500; margin-bottom: 6px; }
+  .editor input {
+    width: 100%; height: 36px; padding: 0 12px; font-size: 14px; font-family: inherit;
+    border: 1px solid var(--border); border-radius: 6px; background: var(--card); color: var(--fg);
+  }
+  .editor input.otp { letter-spacing: .35em; }
+  .editor .help { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+  .editor .form-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .consent { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; color: var(--muted); margin-top: 12px; }
+  .consent input { margin-top: 2px; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr; gap: 12px; padding: 20px; }
+  @media (min-width: 640px) { .grid2 { grid-template-columns: 1fr 1fr; gap: 16px; } }
+  .field { border: 1px solid var(--border); background: var(--muted-bg); border-radius: .75rem; padding: 12px 16px; }
+  .field .k { font-size: 12px; font-weight: 500; color: var(--muted); }
+  .field .v { font-size: 14px; font-weight: 500; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+</style>
+</head>
+<body data-page-node-id="HLZu4aDomGK9JAUzhQU6W2">
+<div class="wrap" data-page-node-id="1D49apUWKXalnfWkoX4eTS">
+  <header class="page" data-page-node-id="QqMpwoBlPUA7TsFsYB9JMA">
+    <div data-page-node-id="yaq4gc3tEsVmkkqF9ACmaa">
+      <h1 data-page-node-id="gEirMpRiKZIopnHSmIBQDG">Profile Settings</h1>
+      <p class="sub" data-page-node-id="gxZZFWmHI6YNP9R7QZOnGh">Account details → Contact information</p>
+    </div>
+    <button class="toggle" id="themeToggle" type="button" data-page-node-id="MIJPItTe0818qrI2wduEw9">Dark mode</button>
+  </header>
+
+  <p class="section-title" data-page-node-id="yNpA5lpSdcqot7BzH0YI8b">Before — phone full width, email squeezed into one column</p>
+  <div class="card" data-page-node-id="8SW2ryi13RxgKc8uWu5gcu">
+    <div class="card-head" data-page-node-id="I59Oc44zkhMdgQuOEp2N1k">
+      <h3 data-page-node-id="ei0YjBLRvePEuvB6FDiC1H">Personal Information</h3>
+      <p data-page-node-id="xHBBIQ5Az769pmzRMMFUbG">Your public profile details</p>
+    </div>
+    <div class="grid2" data-page-node-id="a7yiQpfy8yWs8O7tqLFB9Z">
+      <div class="field" data-page-node-id="BsucNk73ucdJe1HvQ85euu"><div class="k" data-page-node-id="GFuiPgeQLq0b0cDGelX13b">Display Name</div><div class="v" data-page-node-id="Gb9S1oXFE4t1YkrEEBblMC">Jordan Ellis</div></div>
+      <div class="field" data-page-node-id="xt9JJ7Y12qAtoHKVR1vOZG"><div class="k" data-page-node-id="CdHyicZEWPMRRwm0knCY6N">Username</div><div class="v" data-page-node-id="hUGSpR6e7sI5imupOgu2lT">jordan.ellis</div></div>
+      <div class="field" style="grid-column: 1 / -1;" data-page-node-id="pmS50Oy3JtoBiqqlCgpA8V">
+        <div class="k" data-page-node-id="p7FkhgVePmNvaxiOywYi2R">Phone Number</div>
+        <div class="v" style="font-weight:400;color:var(--muted);white-space:normal;" data-page-node-id="ojFES9uHdfqfY7AtDlQmhj">Phone numbers require OTP verification to link with your account. <em data-page-node-id="inx2PovcmEAGHYkynd7Cja">[full-width block]</em></div>
+      </div>
+      <div class="field" style="min-height:132px;" data-page-node-id="vtyHCry9LKbAMUXUaPY6Z6">
+        <div class="k" data-page-node-id="glKbGQxoSpnDQs7cm20ABr">Verify your email address</div>
+        <div class="v" style="font-weight:400;color:var(--muted);white-space:normal;" data-page-node-id="EcCMBmBWkL795IScitBp4z">Email is how we send booking confirmations… <em data-page-node-id="mBDuiU8nqoUByOGL6BwXW0">[1 column]</em></div>
+      </div>
+    </div>
+  </div>
+
+  <p class="section-title" data-page-node-id="lWQBGenjPs6HgxPFAn94j1">Standardized — same icon, same shape, same secondary line</p>
+  <div class="card" data-page-node-id="SknzxQjVub5CcC99uKfpGq">
+    <div class="card-head" data-page-node-id="tnPeGK2aungJaMCiDgbkKF">
+      <h3 data-page-node-id="OiucVxdp93CcDwcsQ5ZfIk">Contact information</h3>
+      <p data-page-node-id="o71yGQZ84J1D4DP0i0RchK">Where we send booking confirmations, payout notices and account security alerts.</p>
+    </div>
+
+    <section class="row" data-page-node-id="lN4PEykLriJ2VRZDdBxRKh">
+      <div class="row-inner" data-page-node-id="JfkdDsCvPKx6aBqk29MHiA">
+        <div class="row-main" data-page-node-id="37YZ9JOQvuVrbwaNOX1sHA">
+          <span class="icon tone-verified" data-page-node-id="wRlMgfi4eM4h1JUKUAe405">&#10003;</span>
+          <div class="row-body" data-page-node-id="uVlc2ow9BVSlFJbpF9uEN3">
+            <div class="row-head" data-page-node-id="lVCNIwyn8qxMMG7SQ1Ha7c">
+              <h3 data-page-node-id="NdNIGLtrQOPvPVB6a8xCHu">Email address</h3>
+              <span class="pill tone-verified" data-page-node-id="iCZRiyxIFu0qAKlH8IN3Ou">Verified</span>
+            </div>
+            <p class="value" data-page-node-id="9zvVGP56yAYDAVyKAtmYSy">jordan.ellis@example.com</p>
+            <p class="secondary" data-page-node-id="new-secondary-email">Verified March 12, 2026</p>
+            <div class="desc" data-page-node-id="aUxzKsYcHHs1b0LoGRzX6Q">
+              <p data-page-node-id="LtAsnNMR9uXcWBeY6E7GML">Changing it requires verifying the new address first.</p>
+            </div>
+          </div>
+        </div>
+        <div class="actions" data-page-node-id="CVQYDZcHrhfb3BztVLJVm1">
+          <button class="btn btn-outline" type="button" data-page-node-id="R2JV5luHN2lIBZpYTBIva3">&#9998; Change email</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="row" data-page-node-id="bshOlvnjnqMTIc0hFpQqj8">
+      <div class="row-inner" data-page-node-id="BnLTN5YXEXUwccUq4B2Hq6">
+        <div class="row-main" data-page-node-id="bGl5q74z46mQe2CfKQWwFQ">
+          <span class="icon tone-verified" data-page-node-id="W5rrOf8fgu7KVXObIwBgif">&#10003;</span>
+          <div class="row-body" data-page-node-id="fuVckk96z9y1ENeJXiBikT">
+            <div class="row-head" data-page-node-id="XUQTBBT5yHDz6SufN75JUF">
+              <h3 data-page-node-id="E3gBdnY9mNs8CiUd32Ttrk">Phone number</h3>
+              <span class="pill tone-verified" data-page-node-id="gxzDTHHl2mLab8ftu4pEn5">Verified</span>
+            </div>
+            <p class="value" data-page-node-id="391MfADe0psBUDOzzIZWgD">(416) 555-0123</p>
+            <p class="secondary" data-page-node-id="new-secondary-phone">Verified</p>
+            <div class="desc" data-page-node-id="QsHv3SH3cZM17BHI6uddS7"><p data-page-node-id="Sts7WE9QkWMZMc5sPY1Rmk">You can use this number to sign in.</p></div>
+          </div>
+        </div>
+        <div class="actions" data-page-node-id="tcVHQKJ2jW1Gf3Tuueg4Hy">
+          <button class="btn btn-outline" type="button" data-page-node-id="SlvDOULfVtgqfdDQwZ1yZO">&#10005; Remove</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <p class="section-title" data-page-node-id="73fPOv6UKGZCuEqFt6gBjE">Unverified state — both rows carry the same shape</p>
+  <div class="card" data-page-node-id="fpCn0uGWos5jjIeDOtmqCb">
+    <div class="card-head" data-page-node-id="06jH5lvOQntgXCDZ52AayC">
+      <h3 data-page-node-id="MXL9Kkez6LHyFaTU46QaEA">Contact information</h3>
+      <p data-page-node-id="YmYzFmNxvIsT8XKEu6Hwvg">Where we send booking confirmations, payout notices and account security alerts.</p>
+    </div>
+
+    <section class="row tint-amber highlight" data-page-node-id="N4pkitPwHi40HkOWLqIRyp">
+      <div class="row-inner" data-page-node-id="Aj85uyzlMnsLBs1MWIDWsW">
+        <div class="row-main" data-page-node-id="PTfR99GfBbt5YclClEOvDD">
+          <span class="icon tone-action" data-page-node-id="yxmAYhbfdHSFlijOkkt3ji">&#9993;</span>
+          <div class="row-body" data-page-node-id="xphwGHTSSOgbARCr6IN41r">
+            <div class="row-head" data-page-node-id="LI5fej6hTiFI7dzKABv6Ij">
+              <h3 data-page-node-id="Kg8VIewfEwv8CmCyAA7rhB">Verify your email address</h3>
+              <span class="pill tone-action" data-page-node-id="uI7kuAzE0V3ugMtwzEBe7E">Action needed</span>
+            </div>
+            <p class="value" data-page-node-id="GoeVM582DfhN4DaAKt7YZZ">jordan.ellis@example.com</p>
+            <div class="desc" data-page-node-id="crXIUSAlHmPpcK9GeJZmFU">
+              <p data-page-node-id="6Fat5XnG8KLoOTUceBbFQD">Email is how we send booking confirmations and payout notices. Verify jordan.ellis@example.com to unlock the platform.</p>
+              <p class="xs" data-page-node-id="CDgM2jQsjYimFhnAAulXkO">Actions are locked until this address is verified.</p>
+            </div>
+          </div>
+        </div>
+        <div class="actions" data-page-node-id="qHr1DHx7vRX1DCDT5EVSTO">
+          <button class="btn btn-primary" type="button" data-page-node-id="u0WL5SHZcVOHnMoizRfrph">Send verification link</button>
+          <button class="btn btn-ghost" type="button" data-page-node-id="dXCNdvd3ei0P8D1nmZ4jB8">&#9998; Use a different email</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="row" data-page-node-id="3ffgB4RXMKjkCiuXK2dCBN">
+      <div class="row-inner" data-page-node-id="0XbYt95mB4xT1AXk6PrRuR">
+        <div class="row-main" data-page-node-id="TmdhBWDLrkovEgjfM7PkiK">
+          <span class="icon tone-empty" data-page-node-id="kIPEYPOHZ7cBdcoQUGXxiB">&#9742;</span>
+          <div class="row-body" data-page-node-id="oBx1sd4WVu4msUJeWuVCt0">
+            <div class="row-head" data-page-node-id="6Aq5XsYyFxh1xftGGglkhD">
+              <h3 data-page-node-id="lCedAFv7FRQGATonWwQtlU">Phone number</h3>
+              <span class="pill tone-empty" data-page-node-id="KHlcxoqpB4lUYHWtf6qQNR">Not added</span>
+            </div>
+            <p class="value muted" data-page-node-id="UsiM16QNQTpbCeWYBfv7Eu">No phone number added</p>
+            <div class="desc" data-page-node-id="ITwxdmrtbZqZ4JMTX58hIL"><p data-page-node-id="Rp7er2khQObrorQf7pMEgz">Add a mobile number for booking . It is verified with a one-time code.</p></div>
+          </div>
+        </div>
+        <div class="actions" data-page-node-id="CFotEaQtxl5IVZpUtuC3XH">
+          <button class="btn btn-primary" type="button" data-page-node-id="uMWjU8A7UJYAEAyO8AQ4AF">Add phone number</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <p class="section-title" data-page-node-id="wFeKR3n7tIDNcOx7DAyuwB">Expanded inline — the row grows, the shape never changes</p>
+  <div class="card" data-page-node-id="Bt2isNxsJpzKgEtKoAArLR">
+    <div class="card-head" data-page-node-id="dh8IvDg0foD6X3OYhA6LpF">
+      <h3 data-page-node-id="WUHwx125RTvIMsn6wUxNdh">Contact information</h3>
+      <p data-page-node-id="IHAABEIcNsYbcrNWNd1Kl9">Where we send booking confirmations, payout notices and account security alerts.</p>
+    </div>
+
+    <section class="row tint-amber" data-page-node-id="78l8QduJwX2kkx1pY5EGn0">
+      <div class="row-inner" data-page-node-id="Mca9tA9nfbYBbdgxk7CdCo">
+        <div class="row-main" data-page-node-id="PnNECjExYd11tCwycIAnlz">
+          <span class="icon tone-action" data-page-node-id="W8JfJTprbnJpccR5YhLh6G">&#9993;</span>
+          <div class="row-body" data-page-node-id="YZCFFnO7l82QYB6lfYW67W">
+            <div class="row-head" data-page-node-id="pKzB9tKLKXHyF6xQFSqCq1">
+              <h3 data-page-node-id="UPG25VB1PHDefr29g8FWCz">Verify your email address</h3>
+              <span class="pill tone-action" data-page-node-id="HRgz5QBLsjb3FpGNklT4pe">Action needed</span>
+            </div>
+            <p class="value" data-page-node-id="vT3MdWgc81LHJDTrYX63Lu">jordan.ellis@example.com</p>
+            <div class="desc" data-page-node-id="rwgemoteDKs4ExKpMpB7ex"><p data-page-node-id="JQQuVuya6aKLiFLTX6X4kF">We sent a verification link to jordan.ellis@example.com.</p></div>
+            <div class="editor" data-page-node-id="26AtHuutZOzoLQ7nA1AhyF">
+              <label for="e1" data-page-node-id="1SKqdziANVgWbL2BrXu5Rb">New email address</label>
+              <input id="e1" type="email" value="jordan@newdomain.com" data-page-node-id="yaISw4AAIrj5uSHA7zVE0I" />
+              <p class="help" data-page-node-id="Vqb0JBHUG2t4XLkPpGvNEk">Your current address jordan.ellis@example.com stays active and verified until you confirm the new one, so you are never left without a working email.</p>
+              <div class="form-actions" data-page-node-id="vdzaYsE94blMIzEPKD6RFH">
+                <button class="btn btn-primary" type="button" data-page-node-id="pfql6NegDafYJZOGGCyaak">Send verification link</button>
+                <button class="btn btn-ghost" type="button" data-page-node-id="P6VN6Lqznxo4UWNFJxOGLA">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="row tint-sky" data-page-node-id="kIhmXYvSOlGeHyopi8lCJ7">
+      <div class="row-inner" data-page-node-id="qFE0x8oacmx8QkkxEMOiX8">
+        <div class="row-main" data-page-node-id="oV95Emg72rjBFP1EXVBn10">
+          <span class="icon tone-pending" data-page-node-id="oHGXbaUzJjEBNMGtKuVZ18">&#9742;</span>
+          <div class="row-body" data-page-node-id="vAVRRwkt0WP7uDBWGfJE6n">
+            <div class="row-head" data-page-node-id="xxWCb3iubnZqxJvHRciLsp">
+              <h3 data-page-node-id="1pQ3HKGuFODcXtwTVGqG7K">Phone number</h3>
+              <span class="pill tone-pending" data-page-node-id="8roYtLFU0xEOJ6Yj2EdxxM">Code sent</span>
+            </div>
+            <p class="value" data-page-node-id="YNTzf9LSXPMiFZHpmHACrC">(416) 555-0123</p>
+            <div class="desc" data-page-node-id="cv5BDVd1PELj8C8RIEDUwY"><p data-page-node-id="uNEwzWEqG3Dy6d1T8xXJdQ">Enter the 6-digit code we sent to (416) 555-0123.</p></div>
+            <div class="editor" data-page-node-id="ZOBGJMss70yaeuGfTLRN7M">
+              <label for="p1" data-page-node-id="VVT1jaKsQfM3asokQSgi7J">Verification code</label>
+              <input id="p1" class="otp" inputmode="numeric" maxlength="6" value="482913" data-page-node-id="CROqNoDqDXoRn1u62NgmHI" />
+              <div class="form-actions" data-page-node-id="nEKBdtjTkLmdCeKWkpKuYM">
+                <button class="btn btn-primary" type="button" data-page-node-id="gunh7seJKlqUveKrWNN4kl">Verify and add phone</button>
+                <button class="btn btn-ghost" type="button" data-page-node-id="BCUr8REsIGIKwVmc8E7ujq">Use a different number</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+  var btn = document.getElementById('themeToggle');
+  btn.addEventListener('click', function () {
+    var root = document.documentElement;
+    var dark = root.getAttribute('data-theme') === 'dark';
+    root.setAttribute('data-theme', dark ? 'light' : 'dark');
+    btn.textContent = dark ? 'Dark mode' : 'Light mode';
+  });
+</script>
+</body>
+</html>

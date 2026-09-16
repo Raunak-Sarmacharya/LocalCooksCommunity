@@ -1383,6 +1383,8 @@
   "profileEmailAddress": "Email Address",
   "profileEmailLinkedNotice": "Email is linked to your sign-in method and cannot be changed here.",
   "profileLoadingProfile": "Loading profile...",
+  "profileContactInformation": "Contact information",
+  "profileContactInformationDesc": "Where we send booking confirmations, payout notices and account security alerts.",
   "profilePersonalInformation": "Personal Information",
   "profilePhoneNumber": "Phone Number",
   "profilePhonePlaceholder": "+1 (709) 555-0100",

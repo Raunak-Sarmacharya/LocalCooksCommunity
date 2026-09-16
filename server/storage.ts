@@ -80,6 +80,8 @@ export class MemStorage implements IStorage {
       id: this.userCurrentId++,
       username: "admin",
       password: "fcf0872ea0a0c91f3d8e64dc5005c9b6a36371eddc6c1127a3c0b45c71db5b72f85c5e93b80993ec37c6aff8b08d07b68e9c58f28e3bd20d9d2a4eb38992aad0.ef32a41b7d478668", // "localcooks"
+      // Seeded admins sign in with this password, so it is a known secret.
+      passwordSetByUser: true,
       role: "admin",
       googleId: null,
       facebookId: null,
@@ -174,6 +176,8 @@ export class MemStorage implements IStorage {
       id: this.userCurrentId++,
       username: insertUser.username,
       password: insertUser.password,
+      // Mirrors the column default: registration never collects a password.
+      passwordSetByUser: (insertUser as any).passwordSetByUser ?? false,
       role: insertUser.role || "chef",
       googleId: insertUser.googleId || null,
       facebookId: insertUser.facebookId || null,

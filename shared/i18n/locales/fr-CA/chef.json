@@ -1376,6 +1376,8 @@
   "profileEmailAddress": "Adresse courriel",
   "profileEmailLinkedNotice": "Le courriel est lié à votre méthode de connexion et ne peut pas être modifié ici.",
   "profileLoadingProfile": "Chargement du profil...",
+  "profileContactInformation": "Coordonnées",
+  "profileContactInformationDesc": "Là où nous envoyons les confirmations de réservation, les avis de versement et les alertes de sécurité du compte.",
   "profilePersonalInformation": "Renseignements personnels",
   "profilePhoneNumber": "Numéro de téléphone",
   "profilePhonePlaceholder": "+1 (709) 555-0100",

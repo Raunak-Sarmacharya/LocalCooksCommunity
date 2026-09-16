@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Loader2, Phone, Shield, Camera, Building2, Edit3 } from "@/components/ui/manager-icons";
+import { Loader2, Shield, Camera, Building2, Edit3 } from "@/components/ui/manager-icons";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
 import ChangePassword from "@/components/auth/ChangePassword";
@@ -19,10 +19,10 @@ import PhoneSignInSettings from "@/components/auth/PhoneSignInSettings";
 import EmailVerificationCard from "@/components/auth/EmailVerificationCard";
 import { useEmailSectionFocus } from "@/hooks/use-email-section-focus";
 import { isEmailSectionFocused } from "@/lib/email-verification-nav";
+import { ContactInfoCard } from "@/components/profile/ContactVerificationRow";
 import { PHONE_AUTH_ENABLED } from "@/lib/feature-flags";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { cn } from "@/lib/utils";
-import { tt } from "@/i18n/common-ns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import StripeConnectSetup from "@/components/manager/StripeConnectSetup";
 import NotificationsSettings from "@/components/manager/settings/NotificationsSettings";
@@ -432,29 +432,44 @@ export default function ManagerProfileSettings({
                                 />
                             </div>
 
-                            {/* Email — the one place it is added, verified or changed */}
-                            <div className="space-y-2 sm:col-span-2">
-                                <EmailVerificationCard
-                                    highlighted={emailSectionHighlighted}
-                                    onVerified={() => {
-                                        void refreshUserData();
-                                        queryClient.invalidateQueries({ queryKey: ["/api/user/profile", firebaseUser?.uid] });
-                                    }}
-                                />
-                            </div>
-
-                            {/* Phone */}
-                            {PHONE_AUTH_ENABLED && (
-                            <div className="space-y-2 sm:col-span-2 rounded-xl border bg-slate-50/50 p-4">
-                                <div className="space-y-1 mb-3">
-                                    <Label className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
-                                        <Phone className="h-4 w-4 text-slate-400" />
-                                        {mt("phoneNumber")}
-                                    </Label>
-                                    <p className="text-xs text-slate-500">
-                                        {tt("phoneVerificationRequired", { defaultValue: "Phone numbers require OTP verification to link with your account." })}
-                                    </p>
+                            {/* Save Button */}
+                            {isEditingProfile && (
+                                <div className="flex justify-end border-t pt-4 sm:col-span-2">
+                                    <StatusButton
+                                        status={saveProfileAction.status}
+                                        onClick={saveProfileAction.execute}
+                                        labels={{ idle: mt("saveChanges"), loading: mt("saving"), success: mt("saved") }}
+                                    />
                                 </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Contact Details Card — email and phone share one matched list */}
+                    <div className="overflow-hidden rounded-[1.35rem] border bg-card">
+                        <div className="border-b px-5 py-4">
+                            <h3 className="font-semibold text-foreground">
+                                {mt("contactInformation", { defaultValue: "Contact information" })}
+                            </h3>
+                            <p className="text-sm text-muted-foreground">
+                                {mt("contactInformationDesc", {
+                                    defaultValue:
+                                        "Where we send booking confirmations, payout notices and account security alerts.",
+                                })}
+                            </p>
+                        </div>
+                        <ContactInfoCard className="rounded-none border-0">
+                            <EmailVerificationCard
+                                embedded
+                                highlighted={emailSectionHighlighted}
+                                onVerified={() => {
+                                    // Non-forcing: background refresh, and an email change
+                                    // invalidates the token a forced refresh would use.
+                                    void refreshUserData({ forceToken: false });
+                                    queryClient.invalidateQueries({ queryKey: ["/api/user/profile", firebaseUser?.uid] });
+                                }}
+                            />
+                            {PHONE_AUTH_ENABLED && (
                                 <PhoneSignInSettings
                                     embedded
                                     initialPhone={phone}
@@ -469,20 +484,8 @@ export default function ManagerProfileSettings({
                                         } catch {}
                                     }}
                                 />
-                            </div>
                             )}
-
-                            {/* Save Button */}
-                            {isEditingProfile && (
-                                <div className="flex justify-end border-t pt-4 sm:col-span-2">
-                                    <StatusButton
-                                        status={saveProfileAction.status}
-                                        onClick={saveProfileAction.execute}
-                                        labels={{ idle: mt("saveChanges"), loading: mt("saving"), success: mt("saved") }}
-                                    />
-                                </div>
-                            )}
-                        </div>
+                        </ContactInfoCard>
                     </div>
 
                 </div>

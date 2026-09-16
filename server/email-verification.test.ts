@@ -5,6 +5,8 @@ import {
   CLEARED_PENDING_EMAIL,
   EMAIL_VERIFICATION_RESEND_COOLDOWN_MS,
   EMAIL_VERIFICATION_TOKEN_TTL_MS,
+  hasRecentFirebaseAuth,
+  RECENT_AUTH_WINDOW_SECONDS,
   generateVerificationToken,
   hashVerificationToken,
   isValidEmail,
@@ -12,6 +14,7 @@ import {
   normalizeEmail,
   resolveEmailLinkUserType,
   resolveTrustedLinkOrigin,
+  resolveAuthEmailLink,
 } from "./email-verification";
 
 const NOW = Date.parse("2026-09-15T12:00:00.000Z");
@@ -277,5 +280,120 @@ describe("resolveTrustedLinkOrigin", () => {
     expect(resolveTrustedLinkOrigin({ origin: "https://chef.localcooks.ca" }, "chef")).toBeNull();
     expect(resolveTrustedLinkOrigin("not a url", "chef")).toBeNull();
     expect(resolveTrustedLinkOrigin(`https://chef.localcooks.ca/${"a".repeat(300)}`, "chef")).toBeNull();
+  });
+});
+
+describe("resolveAuthEmailLink", () => {
+  const PUBLIC_FALLBACK = "https://dev-chef.localcooks.ca";
+
+  it("keeps a local-dev request on the caller's own origin, both URLs alike", () => {
+    // The regression: the action URL resolved to the public host while the continue URL
+    // resolved to BASE_URL, so one email carried two origins. That also put the link on a
+    // different origin than the `emailForSignIn` the client had just stored, which is why
+    // the user was asked to retype an address we had masked.
+    const { linkOrigin, continueUrl } = resolveAuthEmailLink({
+      callerOrigin: "http://chef.localhost:5001",
+      role: "chef",
+      redirectPath: "/dashboard",
+      fallbackOrigin: PUBLIC_FALLBACK,
+    });
+
+    expect(linkOrigin).toBe("http://chef.localhost:5001");
+    expect(continueUrl).toBe("http://chef.localhost:5001/dashboard");
+    expect(new URL(continueUrl).origin).toBe(linkOrigin);
+  });
+
+  it("keeps a staging request on staging", () => {
+    const { linkOrigin, continueUrl } = resolveAuthEmailLink({
+      callerOrigin: "https://dev-chef.localcooks.ca",
+      role: "chef",
+      redirectPath: "/dashboard",
+      fallbackOrigin: PUBLIC_FALLBACK,
+    });
+
+    expect(linkOrigin).toBe("https://dev-chef.localcooks.ca");
+    expect(continueUrl).toBe("https://dev-chef.localcooks.ca/dashboard");
+  });
+
+  it("keeps a production request on production, for a manager's role host", () => {
+    const { linkOrigin, continueUrl } = resolveAuthEmailLink({
+      callerOrigin: "https://kitchen.localcooks.ca",
+      role: "manager",
+      redirectPath: "/manager/dashboard",
+      fallbackOrigin: "https://dev-kitchen.localcooks.ca",
+    });
+
+    expect(linkOrigin).toBe("https://kitchen.localcooks.ca");
+    expect(continueUrl).toBe("https://kitchen.localcooks.ca/manager/dashboard");
+  });
+
+  it("falls back to the public host but still agrees with itself", () => {
+    // An untrusted or absent origin must not produce a half-local email.
+    for (const callerOrigin of [undefined, "https://evil.com", "not a url", 42]) {
+      const { linkOrigin, continueUrl } = resolveAuthEmailLink({
+        callerOrigin,
+        role: "chef",
+        redirectPath: "/dashboard",
+        fallbackOrigin: PUBLIC_FALLBACK,
+      });
+
+      expect(linkOrigin).toBe(PUBLIC_FALLBACK);
+      expect(new URL(continueUrl).origin).toBe(linkOrigin);
+    }
+  });
+
+  it("never lets the continue URL escape the link origin", () => {
+    // A protocol-relative path would otherwise point at another host entirely.
+    const { linkOrigin, continueUrl } = resolveAuthEmailLink({
+      callerOrigin: "http://chef.localhost:5001",
+      role: "chef",
+      redirectPath: "/dashboard",
+      fallbackOrigin: PUBLIC_FALLBACK,
+    });
+
+    expect(continueUrl.startsWith(linkOrigin)).toBe(true);
+    expect(continueUrl).not.toContain("//evil.com");
+  });
+
+  it("refuses a caller origin belonging to a different role", () => {
+    const { linkOrigin } = resolveAuthEmailLink({
+      callerOrigin: "https://chef.localcooks.ca",
+      role: "manager",
+      redirectPath: "/manager/dashboard",
+      fallbackOrigin: "https://dev-kitchen.localcooks.ca",
+    });
+
+    expect(linkOrigin).toBe("https://dev-kitchen.localcooks.ca");
+  });
+});
+
+describe("hasRecentFirebaseAuth", () => {
+  const now = 1_800_000_000_000;
+  const nowSeconds = now / 1000;
+
+  it("accepts a sign-in inside the window", () => {
+    expect(hasRecentFirebaseAuth(nowSeconds - 299, now)).toBe(true);
+    expect(hasRecentFirebaseAuth(nowSeconds, now)).toBe(true);
+  });
+
+  it("rejects a sign-in older than the window", () => {
+    expect(hasRecentFirebaseAuth(nowSeconds - 301, now)).toBe(false);
+    expect(hasRecentFirebaseAuth(nowSeconds - 60 * 60, now)).toBe(false);
+  });
+
+  it("tolerates mild clock skew, as the client helper does", () => {
+    // Firebase mints auth_time; `now` comes from this process.
+    expect(hasRecentFirebaseAuth(nowSeconds + 10, now)).toBe(true);
+    expect(hasRecentFirebaseAuth(nowSeconds + 61, now)).toBe(false);
+  });
+
+  it("refuses anything that is not a usable timestamp", () => {
+    for (const value of [undefined, null, "", "abc", {}, []]) {
+      expect(hasRecentFirebaseAuth(value, now)).toBe(false);
+    }
+  });
+
+  it("uses a five minute window, so a stale session must re-authenticate", () => {
+    expect(RECENT_AUTH_WINDOW_SECONDS).toBe(300);
   });
 });

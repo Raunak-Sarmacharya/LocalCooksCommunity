@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { useQueryClient } from "@tanstack/react-query";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
@@ -17,27 +17,20 @@ import { z } from "zod";
 import { toast } from "../hooks/use-toast";
 import { useQuery } from "@tanstack/react-query";
 
-const changePasswordSchema = z.object({
-  currentPassword: z.string().min(1, "Current password is required"),
-  newPassword: z.string().min(8, "New password must be at least 8 characters"),
-  confirmPassword: z.string().min(1, "Please confirm your new password"),
-}).refine((data) => data.newPassword === data.confirmPassword, {
-  message: "Passwords do not match",
-  path: ["confirmPassword"],
-});
-
-type ChangePasswordFormData = z.infer<typeof changePasswordSchema>;
+type ChangePasswordFormData = {
+  currentPassword?: string;
+  newPassword: string;
+  confirmPassword: string;
+};
 
 export default function ManagerChangePassword() {
   const { t } = useTranslation("manager");
 
   const [, setLocation] = useLocation();
-  const queryClient = useQueryClient();
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Verify user is a manager using Firebase auth
   const { user: firebaseUser } = useFirebaseAuth();
-  
+
   const { data: user, isLoading } = useQuery({
     queryKey: ["/api/user/profile", firebaseUser?.uid],
     queryFn: async () => {
@@ -67,116 +60,6 @@ export default function ManagerChangePassword() {
     },
     enabled: !!firebaseUser,
   });
-
-  const form = useForm<ChangePasswordFormData>({
-    resolver: zodResolver(changePasswordSchema),
-    defaultValues: {
-      currentPassword: "",
-      newPassword: "",
-      confirmPassword: "",
-    },
-  });
-
-  const onSubmit = async (data: ChangePasswordFormData) => {
-    setIsSubmitting(true);
-    
-    try {
-      // Get current Firebase user
-      const currentFirebaseUser = auth.currentUser;
-      if (!currentFirebaseUser) {
-        throw new Error("You must be signed in to change your password");
-      }
-      
-      const userEmail = currentFirebaseUser.email;
-      if (!userEmail) {
-        throw new Error("No email associated with this account. Password change requires an email-based account.");
-      }
-      
-      // Step 1: Re-authenticate user with current password
-      // This is required by Firebase for security-sensitive operations
-      const credential = EmailAuthProvider.credential(userEmail, data.currentPassword);
-      
-      try {
-        await reauthenticateWithCredential(currentFirebaseUser, credential);
-      } catch (reauthError: any) {
-        logger.error('Reauthentication failed:', reauthError);
-        
-        // Provide user-friendly error messages for common reauthentication errors
-        if (reauthError.code === 'auth/wrong-password' || reauthError.code === 'auth/invalid-credential') {
-          throw new Error("Current password is incorrect");
-        } else if (reauthError.code === 'auth/too-many-requests') {
-          throw new Error("Too many failed attempts. Please try again later.");
-        } else if (reauthError.code === 'auth/user-mismatch') {
-          throw new Error("Authentication error. Please sign out and sign back in.");
-        } else if (reauthError.code === 'auth/user-not-found') {
-          throw new Error("User account not found. Please sign out and sign back in.");
-        } else {
-          throw new Error("Failed to verify current password. Please try again.");
-        }
-      }
-      
-      // Step 2: Update password using Firebase Auth
-      await updatePassword(currentFirebaseUser, data.newPassword);
-      
-      // Step 3: Sync hashed password to Neon DB (non-blocking)
-      try {
-        const token = await currentFirebaseUser.getIdToken();
-        await fetch('/api/user/sync-password', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ newPassword: data.newPassword }),
-        });
-      } catch (syncError) {
-        logger.warn('Failed to sync password to database:', syncError);
-      }
-      
-      // Step 4: Mark welcome as seen (password changed) via API
-      try {
-        const token = await currentFirebaseUser.getIdToken();
-        await fetch('/api/user/seen-welcome', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-        });
-      } catch (seenError) {
-        logger.warn('Failed to mark welcome as seen:', seenError);
-        // Non-blocking - continue with success flow
-      }
-      
-      toast({ title: t("success"), 
-        description: t("passwordChangedSuccessfully") 
-      });
-      
-      // Clear cache and redirect to manager dashboard
-      queryClient.clear();
-      window.location.href = '/manager/dashboard';
-      
-    } catch (error: any) {
-      logger.error('Password change error:', error);
-      
-      // Handle Firebase-specific errors with user-friendly messages
-      let errorMessage = error.message || 'Failed to change password';
-      
-      if (error.code === 'auth/weak-password') {
-        errorMessage = "New password is too weak. Please use at least 6 characters with a mix of letters, numbers, and symbols.";
-      } else if (error.code === 'auth/requires-recent-login') {
-        errorMessage = "For security reasons, please sign out and sign back in before changing your password.";
-      }
-      
-      toast({ title: t("error"), 
-        description: errorMessage,
-        variant: "destructive"
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   if (isLoading) {
     return (
@@ -214,7 +97,6 @@ export default function ManagerChangePassword() {
           credentials: 'include',
         });
       } catch { /* non-blocking */ }
-      queryClient.clear();
       window.location.href = '/manager/dashboard';
     })();
     return (
@@ -223,6 +105,11 @@ export default function ManagerChangePassword() {
       </div>
     );
   }
+
+  // A manager who registered by email verification, Google or phone never chose
+  // a password — the stored one is a server-generated placeholder. Asking for it
+  // would dead-end the gate, so those accounts only set a new one.
+  const requiresCurrentPassword = user.passwordSetByUser !== false;
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
@@ -235,84 +122,221 @@ export default function ManagerChangePassword() {
           <CardDescription>{t("forSecurityReasonsYouMustChangeYourPasswordBeforeAccessingTh")}</CardDescription>
         </CardHeader>
         <CardContent>
-          <Form {...form}>
-            <form
-              onSubmit={form.handleSubmit(onSubmit)}
-              className="space-y-4"
-              noValidate
-            >
-              <FormField
-                control={form.control}
-                name="currentPassword"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t("currentPassword")}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="password"
-                        placeholder={t("enterYourCurrentPassword")}
-                        {...field}
-                        disabled={isSubmitting}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="newPassword"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t("newPassword")}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="password"
-                        placeholder={t("enterYourNewPasswordMin8Characters")}
-                        {...field}
-                        disabled={isSubmitting}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="confirmPassword"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t("confirmNewPassword")}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="password"
-                        placeholder={t("confirmYourNewPassword")}
-                        {...field}
-                        disabled={isSubmitting}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />{t("changingPassword")}</>
-                ) : (
-                  <>
-                    <KeyRound className="mr-2 h-4 w-4" />{t("changePassword")}</>
-                )}
-              </Button>
-            </form>
-          </Form>
+          <PasswordForm key={requiresCurrentPassword ? "change" : "set"} requiresCurrentPassword={requiresCurrentPassword} />
         </CardContent>
       </Card>
     </div>
   );
 }
 
+function PasswordForm({ requiresCurrentPassword }: { requiresCurrentPassword: boolean }) {
+  const { t } = useTranslation("manager");
+  const queryClient = useQueryClient();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // The schema depends on whether a current password exists to ask for, so it is
+  // built per-instance and the parent remounts this form (via key) if that flips.
+  const schema = z.object({
+    currentPassword: z.string().optional(),
+    newPassword: z.string().min(8, "New password must be at least 8 characters"),
+    confirmPassword: z.string().min(1, "Please confirm your new password"),
+  })
+    .refine((data) => data.newPassword === data.confirmPassword, {
+      message: "Passwords do not match",
+      path: ["confirmPassword"],
+    })
+    .refine((data) => !requiresCurrentPassword || (data.currentPassword?.length ?? 0) > 0, {
+      message: "Current password is required",
+      path: ["currentPassword"],
+    });
+
+  const form = useForm<ChangePasswordFormData>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      currentPassword: "",
+      newPassword: "",
+      confirmPassword: "",
+    },
+  });
+
+  const onSubmit = async (data: ChangePasswordFormData) => {
+    setIsSubmitting(true);
+
+    try {
+      // Get current Firebase user
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("You must be signed in to change your password");
+      }
+
+      const userEmail = currentFirebaseUser.email;
+      if (!userEmail) {
+        throw new Error("No email associated with this account. Password change requires an email-based account.");
+      }
+
+      // Step 1: Re-authenticate user with current password
+      // This is required by Firebase for security-sensitive operations, but it
+      // can only succeed when the account holder actually knows that secret.
+      if (requiresCurrentPassword) {
+        const credential = EmailAuthProvider.credential(userEmail, data.currentPassword!);
+
+        try {
+          await reauthenticateWithCredential(currentFirebaseUser, credential);
+        } catch (reauthError: any) {
+          logger.error('Reauthentication failed:', reauthError);
+
+          // Provide user-friendly error messages for common reauthentication errors
+          if (reauthError.code === 'auth/wrong-password' || reauthError.code === 'auth/invalid-credential') {
+            throw new Error("Current password is incorrect");
+          } else if (reauthError.code === 'auth/too-many-requests') {
+            throw new Error("Too many failed attempts. Please try again later.");
+          } else if (reauthError.code === 'auth/user-mismatch') {
+            throw new Error("Authentication error. Please sign out and sign back in.");
+          } else if (reauthError.code === 'auth/user-not-found') {
+            throw new Error("User account not found. Please sign out and sign back in.");
+          } else {
+            throw new Error("Failed to verify current password. Please try again.");
+          }
+        }
+      }
+
+      // Step 2: Update password using Firebase Auth
+      await updatePassword(currentFirebaseUser, data.newPassword);
+
+      // Step 3: Sync hashed password to Neon DB (non-blocking)
+      try {
+        const token = await currentFirebaseUser.getIdToken();
+        await fetch('/api/user/sync-password', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ newPassword: data.newPassword }),
+        });
+      } catch (syncError) {
+        logger.warn('Failed to sync password to database:', syncError);
+      }
+
+      // Step 4: Mark welcome as seen (password changed) via API
+      try {
+        const token = await currentFirebaseUser.getIdToken();
+        await fetch('/api/user/seen-welcome', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+        });
+      } catch (seenError) {
+        logger.warn('Failed to mark welcome as seen:', seenError);
+        // Non-blocking - continue with success flow
+      }
+
+      toast({ title: t("success"),
+        description: t("passwordChangedSuccessfully")
+      });
+
+      // Clear cache and redirect to manager dashboard
+      queryClient.clear();
+      window.location.href = '/manager/dashboard';
+
+    } catch (error: any) {
+      logger.error('Password change error:', error);
+
+      // Handle Firebase-specific errors with user-friendly messages
+      let errorMessage = error.message || 'Failed to change password';
+
+      if (error.code === 'auth/weak-password') {
+        errorMessage = "New password is too weak. Please use at least 6 characters with a mix of letters, numbers, and symbols.";
+      } else if (error.code === 'auth/requires-recent-login') {
+        errorMessage = "For security reasons, please sign out and sign back in before changing your password.";
+      }
+
+      toast({ title: t("error"),
+        description: errorMessage,
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Form {...form}>
+      <form
+        onSubmit={form.handleSubmit(onSubmit)}
+        className="space-y-4"
+        noValidate
+      >
+        {requiresCurrentPassword && (
+          <FormField
+            control={form.control}
+            name="currentPassword"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t("currentPassword")}</FormLabel>
+                <FormControl>
+                  <PasswordInput
+                    placeholder={t("enterYourCurrentPassword")}
+                    {...field}
+                    disabled={isSubmitting}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
+        <FormField
+          control={form.control}
+          name="newPassword"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t("newPassword")}</FormLabel>
+              <FormControl>
+                <PasswordInput
+                  placeholder={t("enterYourNewPasswordMin8Characters")}
+                  {...field}
+                  disabled={isSubmitting}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="confirmPassword"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t("confirmNewPassword")}</FormLabel>
+              <FormControl>
+                <PasswordInput
+                  placeholder={t("confirmYourNewPassword")}
+                  {...field}
+                  disabled={isSubmitting}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <Button
+          type="submit"
+          className="w-full"
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />{t("changingPassword")}</>
+          ) : (
+            <>
+              <KeyRound className="mr-2 h-4 w-4" />{t("changePassword")}</>
+          )}
+        </Button>
+      </form>
+    </Form>
+  );
+}

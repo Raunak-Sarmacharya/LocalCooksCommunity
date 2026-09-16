@@ -12,6 +12,8 @@ import { createDuplicateAccountError, isDuplicateAccountError } from "@/lib/regi
 import { isPhoneAuthInProgress } from "@/lib/phone-registration";
 import { createMissingProfileError, rememberAuthMethod } from "@/lib/login-challenge";
 import { normalizePhoneNumber } from "@shared/phone-validation";
+// See the ladder documented there: this is the outermost (longest) auth timeout.
+import { AUTH_PHASE_TIMEOUT_MS } from "@/config/auth-timing";
 
 // ENTERPRISE: Auth Phase State Machine
 // Separates Firebase Auth State from Sync State to prevent timing issues
@@ -54,6 +56,7 @@ interface AuthUserLegacyFields {
 
 export type PublicRegistrationRole = 'chef' | 'manager';
 
+
 interface AuthContextType {
   user: AuthUser | null;
   loading: boolean;
@@ -70,7 +73,14 @@ interface AuthContextType {
   sendVerificationEmail: (email: string, fullName: string) => Promise<boolean>;
   resendFirebaseVerification: () => Promise<boolean>;
   resendEmailVerification: (email: string, password: string) => Promise<boolean>;
-  refreshUserData: () => Promise<AuthUser | null>;
+  /**
+   * Refetch the profile and rebuild the auth-context user.
+   *
+   * Pass `{ forceToken: false }` for anything background (polling, noticing a change made
+   * in another tab). Forcing a token refresh against a refresh token that an email change
+   * invalidated makes the SDK sign the user out globally.
+   */
+  refreshUserData: (options?: { forceToken?: boolean }) => Promise<AuthUser | null>;
   syncUserWithBackend: (firebaseUser: any, accountType?: PublicRegistrationRole, isRegistration?: boolean, termsAccepted?: boolean, phoneNumber?: string) => Promise<boolean>;
 }
 
@@ -107,6 +117,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     isInitializingRef.current = isInitializing;
   }, [isInitializing]);
+
+  // `loading` above only tracks the individual SDK call (signInWithPopup,
+  // signInWithEmailLink, createUserWithEmailAndPassword...). It flips back to
+  // false while `onAuthStateChanged` is still fetching /api/user/profile and
+  // provisioning the account — which is exactly the window that made the app
+  // flash the login screen "for a second" right after a successful registration
+  // or magic-link sign-in, even though the session was fine.
+  //
+  // Consumers read `loading` as "the auth session is not settled yet, do not
+  // render an authenticated or unauthenticated decision". Folding the phase
+  // machine in is what makes that true:
+  //   authenticating -> Firebase round-trip still in flight
+  //   syncing        -> backend provisioning / profile fetch still in flight
+  //   isInitializing -> first auth-state resolution after a page load
+  const isAuthPhaseBusy = authPhase === 'authenticating' || authPhase === 'syncing';
+  const isSessionSettling = loading || isAuthPhaseBusy || isInitializing;
+
+  // Safety valve for the phase machine above. If a phase never resolves, release
+  // it so `isSessionSettling` can fall back to false and the user lands on a
+  // screen instead of an endless spinner.
+  useEffect(() => {
+    if (!isAuthPhaseBusy) return;
+    const timer = setTimeout(() => {
+      logger.warn(
+        `⏱️ Auth phase "${authPhase}" ran longer than ${AUTH_PHASE_TIMEOUT_MS}ms — releasing the loading gate`
+      );
+      setAuthPhase(auth.currentUser ? 'ready' : 'idle');
+    }, AUTH_PHASE_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [authPhase, isAuthPhaseBusy]);
 
   const syncUserWithBackend = async (firebaseUser: any, accountType?: PublicRegistrationRole, isRegistration = false, termsAccepted = false, phoneNumber?: string) => {
     try {
@@ -266,6 +306,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 chefOnboardingCompleted: userData.chefOnboardingCompleted || userData.chef_onboarding_completed || false,
                 phoneNumber: userData.phoneNumber || userData.managerProfileData?.phone || null,
                 phoneVerified: userData.phoneVerified === true,
+                // Server-side verification mirror — see the note on refreshUserData.
+                emailVerified: userData.emailVerified === true,
               };
               logger.info('🔥 BACKEND USER DATA:', {
                 role,
@@ -342,6 +384,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     isChef: userData.isChef || userData.is_chef || false,
                     is_verified: userData.is_verified,
                     isVerified: userData.isVerified || userData.is_verified,
+                    emailVerified: userData.emailVerified === true,
                     has_seen_welcome: userData.has_seen_welcome,
                     hasSeenWelcome: userData.hasSeenWelcome || userData.has_seen_welcome,
                     termsAccepted: userData.termsAccepted || userData.terms_accepted,
@@ -376,7 +419,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             email: firebaseUser.email,
             displayName: firebaseUser.displayName,
             photoURL: firebaseUser.photoURL,
-            emailVerified: firebaseUser.emailVerified,
+            // Claim OR the server's verification mirror. The claim is a cache that lags an
+            // email change by up to an hour, and forcing a refresh to clear it can sign the
+            // user out — so the mirror is what makes a confirmation visible promptly.
+            emailVerified: firebaseUser.emailVerified || applicationData?.emailVerified === true,
             phoneVerified: Boolean(firebaseUser.phoneNumber) || applicationData?.phoneVerified === true,
             phoneNumber: applicationData?.phoneNumber,
             providers,
@@ -577,6 +623,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!emailSent) {
         logger.warn('⚠️ Verification email was not sent - user will need to request resend');
       }
+
+      // The provisioning request has landed, but `onAuthStateChanged` raced it:
+      // the listener read /api/user/profile before Neon accepted the account, so
+      // the context user can still be missing role / verification / terms. Re-read
+      // the profile before resolving so a caller that hides its loader the moment
+      // `signup()` returns is hiding it in front of a complete session, not a
+      // half-populated one.
+      await refreshUserData();
 
       // Removed: Sign out the user immediately after registration
       // Keeping them logged in allows for a smoother UX when they verify their email.
@@ -839,7 +893,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const customEmailResponse = await fetch('/api/firebase/send-magic-link-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, returnUrl })
+        // Send the origin the user is actually on. Without it the server has to guess, and
+        // its guess (a public host) differs from where `emailForSignIn` was written — so the
+        // link opened on a different origin, localStorage was empty, and the user was asked
+        // to retype an address we had just masked. It also sent the post-sign-in redirect to
+        // a different environment than the one they started from.
+        body: JSON.stringify({ email, returnUrl, origin: window.location.origin })
       });
 
       if (!customEmailResponse.ok) {
@@ -861,6 +920,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const handleEmailLinkSignIn = async () => {
     setError(null);
     setLoading(true);
+    // Without this the phase machine sits in `idle` for the whole round-trip, so
+    // every loader gated on it disappears while the SDK is still exchanging the
+    // link for a session — the login form then flashes before the redirect.
+    setAuthPhase('authenticating');
     try {
       if (isSignInWithEmailLink(auth, window.location.href)) {
         let email = window.localStorage.getItem('emailForSignIn');
@@ -868,15 +931,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Keep cross-device confirmation inside the branded EmailAction UI.
           // Preserving the Firebase query parameters keeps the one-time link valid.
           const actionUrl = `/email-action${window.location.search}${window.location.hash}`;
+          setAuthPhase(auth.currentUser ? 'ready' : 'idle');
           window.location.replace(actionUrl);
           return;
         }
         await signInWithEmailLink(auth, email, window.location.href);
         await rememberAuthMethod(email, 'email-link');
         window.localStorage.removeItem('emailForSignIn');
+      } else {
+        // Not a sign-in link at all — do not leave the phase machine hanging in
+        // `authenticating`, or every loader stays up until the watchdog fires.
+        setAuthPhase(auth.currentUser ? 'ready' : 'idle');
       }
     } catch (e: any) {
       setError(e.message);
+      setAuthPhase('error');
     } finally {
       setLoading(false);
     }
@@ -1028,7 +1097,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: currentUser.email,
           displayName: currentUser.displayName,
           photoURL: currentUser.photoURL,
-          emailVerified: currentUser.emailVerified,
+          // The profile reports the server's own verification mirror, which is written the
+          // moment a confirmation lands. Trusting it here is what lets a verification
+          // surface without forcing a token refresh.
+          emailVerified: currentUser.emailVerified || userData.emailVerified === true,
           phoneVerified: Boolean(currentUser.phoneNumber) || userData.phoneVerified === true,
           phoneNumber: userData.phoneNumber || userData.managerProfileData?.phone || null,
           providers: currentUser.providerData.map((p: any) => p.providerId),
@@ -1104,7 +1176,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   // Refresh user data from backend (useful after role changes)
-  const refreshUserData = async () => {
+  //
+  // `forceToken` must stay false for any refresh triggered by polling or by noticing a
+  // change made elsewhere. Forcing a token refresh against an invalidated refresh token
+  // makes the Firebase SDK sign the user out GLOBALLY — and an email change invalidates
+  // that token — so a background refresh that forces one can log the user out of a session
+  // that was about to be restored. Only force it for explicit user-initiated actions
+  // (sign-in, registration, "I have verified my email").
+  const refreshUserData = async ({ forceToken = true }: { forceToken?: boolean } = {}) => {
     try {
       const firebaseUser = auth.currentUser;
       if (!firebaseUser) {
@@ -1112,10 +1191,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return null;
       }
 
-      logger.info('🔄 Refreshing user data from backend...');
-      await firebaseUser.reload();
+      logger.info('🔄 Refreshing user data from backend...', { forceToken });
+      // `reload()` can itself trigger a token refresh when the cached token has expired, so
+      // a background refresh skips it and relies on the profile's verification mirror.
+      if (forceToken) await firebaseUser.reload();
       const currentUser = auth.currentUser || firebaseUser;
-      const token = await currentUser.getIdToken(true);
+      const token = await currentUser.getIdToken(forceToken);
       const response = await fetch('/api/user/profile', {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -1138,7 +1219,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: currentUser.email,
           displayName: currentUser.displayName,
           photoURL: currentUser.photoURL,
-          emailVerified: currentUser.emailVerified,
+          // The profile reports the server's own verification mirror, which is written the
+          // moment a confirmation lands. Trusting it here is what lets a verification
+          // surface without forcing a token refresh.
+          emailVerified: currentUser.emailVerified || userData.emailVerified === true,
           phoneVerified: Boolean(currentUser.phoneNumber) || userData.phoneVerified === true,
           phoneNumber: userData.phoneNumber || userData.managerProfileData?.phone || null,
           providers: currentUser.providerData.map((p: any) => p.providerId),
@@ -1179,7 +1263,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
-        loading,
+        // See `isSessionSettling`: this stays true until Firebase, the backend
+        // sync and the first profile read have all resolved.
+        loading: isSessionSettling,
         error,
         authPhase,
         login,

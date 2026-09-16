@@ -31,6 +31,10 @@ export async function sendVerificationEmailWithFallback(options: {
       email,
       role,
       returnUrl: resolvedReturnUrl,
+      // Report the environment the request came from so the link opens there rather than
+      // on a public host that may be serving an older build (which is how the link
+      // previously answered "Invalid email action link").
+      origin: window.location.origin,
     }),
   });
 

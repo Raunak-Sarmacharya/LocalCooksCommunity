@@ -311,5 +311,6 @@
   "kitchenServiceEarn": "Earn revenue",
   "kitchenServiceEarnDesc": "Monetize your unused kitchen hours",
   "chefPartnerLink": "For chefs",
-  "chefPartnerLinkDesc": "Sell food or book prep space at chef.localcooks.ca"
+  "chefPartnerLinkDesc": "Sell food or book prep space at chef.localcooks.ca",
+  "phoneVerificationRequired": "Номери телефону потрібно підтвердити кодом, перш ніж прив’язувати їх до облікового запису."
 }

@@ -465,6 +465,8 @@
   "contactEmail": "Контактна адреса електронної пошти",
   "contactPhone": "Контактний телефон",
   "contactInfoUpdated": "Контактну інформацію оновлено",
+  "contactInformation": "Контактна інформація",
+  "contactInformationDesc": "Тут ми надсилаємо підтвердження бронювань, повідомлення про виплати та сповіщення про безпеку акаунта.",
   "continueSetup": "Продовжити налаштування",
   "cooking": "Приготування їжі",
   "copiedToClipboard": "Скопійовано в буфер обміну",
@@ -2350,11 +2352,5 @@
   "failedToAcceptCheckout": "Не вдалося підтвердити виїзд",
   "phoneSignIn": "Вхід за номером телефону",
   "profileTabAccount": "Обліковий запис і безпека",
-  "chooseTermsAndConditions": "Виберіть документ з умовами",
-  "replace": "Замінити",
-  "bookingPoliciesUnsavedChangesDescription": "Збережіть зміни політики перед виходом або скасуйте їх і продовжте.",
-  "goodMorning": "Доброго ранку",
-  "goodAfternoon": "Доброго дня",
-  "goodEvening": "Доброго вечора",
-  "greetingNamed": "{greeting}, {name}"
+  "phoneVerificationRequired": "Номери телефону потрібно підтвердити кодом, перш ніж прив’язувати їх до облікового запису."
 }

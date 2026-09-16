@@ -800,8 +800,8 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
             // Show for confirmed/completed bookings where check-in is relevant.
             // Hide for pending/cancelled (those states pre-empt check-in).
             const checkinStatus = row.original.checkinStatus;
-            const checkinEnabled = (row.original as any).checkinEnabled !== false;
-            const checkoutEnabled = (row.original as any).checkoutEnabled !== false;
+            const checkinEnabled = (row.original as any).checkinEnabled === true;
+            const checkoutEnabled = (row.original as any).checkoutEnabled === true;
             const showCheckinBadge =
                 (status === 'confirmed' || status === 'completed') &&
                 checkinStatus !== undefined &&

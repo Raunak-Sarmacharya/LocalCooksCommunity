@@ -1411,5 +1411,6 @@
   "gridCardEquipmentIncluded": "inclus",
   "gridCardEquipmentRental": "location",
   "applyEmailUnverifiedTitle": "Vérifiez votre courriel avant de soumettre",
-  "applyEmailUnverifiedBody": "Vous pouvez remplir ce formulaire dès maintenant, mais la demande ne pourra pas être soumise tant que votre adresse courriel n’aura pas été confirmée."
+  "applyEmailUnverifiedBody": "Vous pouvez remplir ce formulaire dès maintenant, mais la demande ne pourra pas être soumise tant que votre adresse courriel n’aura pas été confirmée.",
+  "rcOverstayPenalty": "Pénalité de dépassement de stockage"
 }

@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { getAuth } from "firebase-admin/auth";
 
 import { logger } from "../logger";
-import { requireFirebaseAuthWithUser } from "../firebase-auth-middleware";
+import { hasVerifiedEmail, requireFirebaseAuthWithUser } from "../firebase-auth-middleware";
 import { userService } from "../domains/users/user.service";
 import { getFirebaseUserByEmail, initializeFirebaseAdmin, verifyFirebaseToken } from "../firebase-setup";
 import { generateEmailVerificationEmail, generateWelcomeEmail, getEmailLinkOrigin, sendEmail } from "../email";
@@ -11,6 +11,7 @@ import {
   CLEARED_PENDING_EMAIL,
   EMAIL_VERIFICATION_RESEND_COOLDOWN_MS,
   EMAIL_VERIFICATION_TOKEN_TTL_MS,
+  hasRecentFirebaseAuth,
   generateVerificationToken,
   hashVerificationToken,
   isValidEmail,
@@ -69,13 +70,29 @@ router.post("/start", requireFirebaseAuthWithUser, async (req: Request, res: Res
     }
 
     const alreadyVerifiedThisAddress =
-      req.firebaseUser?.email_verified === true &&
-      user.username.trim().toLowerCase() === email;
+      hasVerifiedEmail(req) && user.username.trim().toLowerCase() === email;
 
     if (alreadyVerifiedThisAddress) {
       return res.status(409).json({
         error: "That email address is already verified on your account.",
         code: "ALREADY_VERIFIED",
+      });
+    }
+
+    // Changing an address that is already verified is an identity-changing operation, so it
+    // must be backed by a recent sign-in. Otherwise a stolen session could silently move the
+    // account's recovery channel to an attacker's address and persist access via a password
+    // reset — the classic takeover path. This deliberately does NOT apply to adding the FIRST
+    // address: there the verification link itself proves ownership, and demanding a fresh
+    // sign-in there would break the ordinary "register, then verify from your inbox later"
+    // path, which is how most people use it.
+    const isChangingVerifiedEmail =
+      hasVerifiedEmail(req) && user.username.trim().toLowerCase() !== email;
+
+    if (isChangingVerifiedEmail && !hasRecentFirebaseAuth(req.firebaseUser?.auth_time)) {
+      return res.status(403).json({
+        error: "For your security, sign in again before changing your email address.",
+        code: "REAUTH_REQUIRED",
       });
     }
 
@@ -395,9 +412,9 @@ router.post("/confirm", async (req: Request, res: Response) => {
 router.get("/status", requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
   try {
     const user = req.neonUser!;
-    return res.json(
-      buildEmailVerificationStatus(user, req.firebaseUser?.email_verified === true)
-    );
+    // Same claim-or-mirror rule as the rest of the gate: the client polls this cheaply and
+    // must be able to learn that a confirmation landed without forcing a token refresh.
+    return res.json(buildEmailVerificationStatus(user, hasVerifiedEmail(req)));
   } catch (error) {
     logger.error("Error reading email verification status:", error);
     return res.status(500).json({ error: "Please try again.", code: "INTERNAL_ERROR" });

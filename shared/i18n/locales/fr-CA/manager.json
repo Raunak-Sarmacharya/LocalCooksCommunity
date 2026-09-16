@@ -465,6 +465,8 @@
   "contactEmail": "courriel de contact",
   "contactPhone": "Téléphone de contact",
   "contactInfoUpdated": "Coordonnées mises à jour",
+  "contactInformation": "Coordonnées",
+  "contactInformationDesc": "Là où nous envoyons les confirmations de réservation, les avis de versement et les alertes de sécurité du compte.",
   "continueSetup": "Continuer la configuration",
   "cooking": "Cuisson",
   "copiedToClipboard": "Copié dans le presse-papiers",
@@ -2350,11 +2352,5 @@
   "failedToAcceptCheckout": "Impossible d'accepter la sortie",
   "phoneSignIn": "Connexion par téléphone",
   "profileTabAccount": "Compte et sécurité",
-  "chooseTermsAndConditions": "Choisir un document de conditions",
-  "replace": "Remplacer",
-  "bookingPoliciesUnsavedChangesDescription": "Enregistrez vos modifications de politiques avant de quitter, ou annulez-les et continuez.",
-  "goodMorning": "Bonjour",
-  "goodAfternoon": "Bon après-midi",
-  "goodEvening": "Bonsoir",
-  "greetingNamed": "{greeting}, {name}"
+  "phoneVerificationRequired": "Les numéros de téléphone doivent être vérifiés par code avant d’être associés à votre compte."
 }

@@ -1070,7 +1070,7 @@ export default function BookingDetailsPage() {
           <div className="flex items-center gap-2 flex-wrap">
             {getStatusBadge(booking.status)}
             {(booking.status === 'confirmed' || booking.status === 'completed') &&
-              (booking.checkinEnabled !== false || booking.checkoutEnabled !== false) &&
+              (booking.checkinEnabled === true || booking.checkoutEnabled === true) &&
               getCheckinStatusBadge(booking.checkinStatus)}
             {getPaymentStatusBadge(booking.paymentStatus)}
             {isManagerView && booking.status === 'pending' && (
@@ -1149,8 +1149,8 @@ export default function BookingDetailsPage() {
 
           {/* ── Check-In / Check-Out CTA (Chef View — confirmed bookings) ── */}
           {!isManagerView && booking.status === 'confirmed' && (() => {
-            const showCheckin = booking.checkinEnabled !== false && (!booking.checkinStatus || booking.checkinStatus === 'not_checked_in');
-            const showCheckout = booking.checkoutEnabled !== false && booking.checkinStatus === 'checked_in';
+            const showCheckin = booking.checkinEnabled === true && (!booking.checkinStatus || booking.checkinStatus === 'not_checked_in');
+            const showCheckout = booking.checkoutEnabled === true && booking.checkinStatus === 'checked_in';
             
             if (!showCheckin && !showCheckout) return null;
             
@@ -1182,7 +1182,7 @@ export default function BookingDetailsPage() {
 
           {/* ── Check-In / Check-Out Timeline (only for confirmed or completed bookings) ── */}
           {(booking.status === 'confirmed' || booking.status === 'completed') &&
-            (booking.checkinEnabled !== false || booking.checkoutEnabled !== false) &&
+            (booking.checkinEnabled === true || booking.checkoutEnabled === true) &&
             (booking.checkinStatus || booking.checkedInAt || booking.checkoutRequestedAt) && (
             <section>
               <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-1.5">

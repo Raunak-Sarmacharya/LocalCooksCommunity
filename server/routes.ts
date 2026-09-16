@@ -343,26 +343,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { getEmailLinkOrigin } = await import('./email');
       const userType = userRole === 'manager' ? 'kitchen' : userRole === 'admin' ? 'admin' : 'chef';
-      const emailLinkOrigin = getEmailLinkOrigin(userType);
 
-      // We don't necessarily need a redirectPath because EmailAction.tsx handles the ?mode=verifyEmail flow
-      // The user is redirected to EmailAction by Firebase's default handlers if we don't set it,
-      // but wait, we are generating an OOB URL and sending it directly. 
-      // The generated OOB URL by Firebase Admin SDK will point to the Firebase project's action URL 
-      // (e.g. auth.localcooks.ca/__/auth/action) UNLESS we specify a custom URL in actionCodeSettings.
-      // If we specify a custom URL, Firebase embeds it in the action link. 
-      // Actually, if we use actionCodeSettings, the link points to OUR URL instead of Firebase's.
-      // E.g., `https://kitchen.localcooks.ca/auth/action?mode=verifyEmail&oobCode=...` 
-      // Wait, let's see how forgot-password uses actionCodeSettings.
       const redirectPath = userRole === 'manager'
         ? '/manager/login?verified=true'
         : userRole === 'admin'
           ? '/admin/login?verified=true'
           : '/auth?verified=true';
 
-      const { getFirebaseContinueUrl } = await import('./email');
+      // One origin for the whole email, resolved once. Previously the action URL came from
+      // `getEmailLinkOrigin` (a public host) while the continue URL came from
+      // `getFirebaseContinueUrl` -> `getSubdomainUrl` — two resolvers, two possible origins.
+      // Keeping both on the caller's own environment also avoids the failure mode where the
+      // public host is running an older build and the link answers "Invalid email action link".
+      const { resolveAuthEmailLink } = await import('./email-verification');
+      const { linkOrigin, continueUrl } = resolveAuthEmailLink({
+        callerOrigin: req.body?.origin,
+        role: userRole,
+        redirectPath,
+        fallbackOrigin: getEmailLinkOrigin(userType),
+      });
+
       const actionCodeSettings = {
-        url: getFirebaseContinueUrl(userType, redirectPath),
+        url: continueUrl,
         handleCodeInApp: false,
       };
 
@@ -394,10 +396,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Firebase's default handler can land on the wrong subdomain (e.g. admin).
       try {
         const generatedUrl = new URL(verificationUrl);
-        const targetUrlObj = new URL(emailLinkOrigin);
+        const targetUrlObj = new URL(linkOrigin);
         const query = generatedUrl.search;
         const finalOrigin =
-          generatedUrl.origin !== targetUrlObj.origin ? emailLinkOrigin : generatedUrl.origin;
+          generatedUrl.origin !== targetUrlObj.origin ? linkOrigin : generatedUrl.origin;
         verificationUrl = `${finalOrigin}/email-action${query}`;
         logger.info("🔧 Verification link rewritten to /email-action (URL omitted from logs)");
       } catch (rewriteError) {
@@ -549,7 +551,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // EmailAction handles cross-subdomain routing, but we set a sensible default here
       const { getEmailLinkOrigin } = await import('./email');
       const userType = userRole === 'manager' ? 'kitchen' : userRole === 'admin' ? 'admin' : 'chef';
-      const emailLinkOrigin = getEmailLinkOrigin(userType);
 
       // The post-sign-in redirect path (role-based) — EmailAction may override with
       // cross-subdomain redirect if the user's role doesn't match the current subdomain,
@@ -575,9 +576,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const { getFirebaseContinueUrl } = await import('./email');
-      const continueUrlObj = new URL(getFirebaseContinueUrl(userType, redirectPath));
-      const continueUrl = continueUrlObj.toString();
+      // One origin for the whole email. `getEmailLinkOrigin` deliberately resolves to a
+      // *public* host so a link sent from a local API is still openable elsewhere — but the
+      // continue URL used to be built with a different helper (`getSubdomainUrl`, i.e.
+      // BASE_URL/localhost in local dev), so a single email carried two origins. The link
+      // opened on one host and completing it redirected to another; worse, the
+      // `emailForSignIn` sendEmailLink() had just stored was on a different origin than the
+      // link, so the user was asked to retype an address we had masked.
+      //
+      // `resolveAuthEmailLink` resolves the caller's own origin (when trusted for this role)
+      // once and derives BOTH URLs from it, so they cannot diverge again.
+      const { resolveAuthEmailLink } = await import('./email-verification');
+      const { linkOrigin, continueUrl } = resolveAuthEmailLink({
+        callerOrigin: req.body?.origin,
+        role: userRole,
+        redirectPath,
+        fallbackOrigin: getEmailLinkOrigin(userType),
+      });
 
       // Action code settings: handleCodeInApp=true sends mode=signIn to /email-action
       // (instead of Firebase's default auth handler URL), which we process in EmailAction.tsx
@@ -623,16 +638,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const generatedUrl = new URL(signInUrl);
 
           // Determine the target origin based on environment:
-          //   - Local dev: BASE_URL (localhost)
+          //   - Local dev: the caller's own origin (e.g. http://chef.localhost:5001)
           //   - Vercel preview: role-based dev subdomain (dev-chef.localcooks.ca)
           //   - Production: role-based prod subdomain (chef.localcooks.ca)
           let targetOrigin: string;
           let envLabel: string;
           if (isLocalDev) {
-            targetOrigin = emailLinkOrigin;
-            envLabel = 'LOCAL DEV (public email link)';
+            targetOrigin = linkOrigin;
+            envLabel = 'LOCAL DEV (caller origin)';
           } else {
-            targetOrigin = emailLinkOrigin;
+            targetOrigin = linkOrigin;
             envLabel = isVercelPreview ? 'VERCEL PREVIEW' : 'PRODUCTION';
           }
 

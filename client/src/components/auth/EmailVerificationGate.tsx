@@ -103,10 +103,13 @@ export default function EmailVerificationGate({
 
   // The gate's visibility is driven by the auth context, which only learns about a
   // confirmation when the profile is refetched. Without this, a user who verifies
-  // on another device would keep staring at a gate that no longer applies.
+  // elsewhere would keep staring at a gate that no longer applies.
+  //
+  // Non-forcing on purpose: this fires in the background, and forcing a token refresh
+  // against a refresh token that an email change just invalidated signs the user out.
   const verifiedElsewhere = status?.emailVerified === true && user?.emailVerified !== true;
   useEffect(() => {
-    if (verifiedElsewhere) void refreshUserData();
+    if (verifiedElsewhere) void refreshUserData({ forceToken: false });
   }, [verifiedElsewhere, refreshUserData]);
 
   const goToVerification = useCallback(() => {
@@ -123,10 +126,10 @@ export default function EmailVerificationGate({
     setChecking(true);
     setCheckedButUnverified(false);
     try {
-      // Reload + force a token refresh: `email_verified` is cached in the ID token
-      // for up to an hour, so a confirmation made moments ago would otherwise stay
-      // invisible and the user would be told they are still unverified.
-      const updated = await refreshUserData();
+      // Non-forcing: the profile reports the server's verification mirror, which is written
+      // the instant a link is confirmed, so this answers correctly without touching the
+      // token. Forcing here would sign the user out if they verified in another tab.
+      const updated = await refreshUserData({ forceToken: false });
       if (updated && !requiresEmailVerification(updated, updated)) {
         // The host closes the gate off the auth context; nothing more to do.
         return;

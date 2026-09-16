@@ -304,10 +304,13 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
         }
 
         setAuthState("success");
-        setShowLoadingOverlay(false);
 
         await onRegistrationComplete?.(data.email, data);
+        // The overlay is deliberately left up across `onSuccess`. The parent
+        // raises the cross-route handoff before it navigates, so closing here
+        // would expose the login form in front of a valid new session.
         await onSuccess?.();
+        setShowLoadingOverlay(false);
         return;
       }
 
@@ -329,14 +332,18 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
 
       // Step 3: Show email verification screen / success message
       setAuthState('success');
-      setShowLoadingOverlay(false);
 
       if (reviewAfterRegistration && onRegistrationComplete) {
+        setShowLoadingOverlay(false);
         await onRegistrationComplete(data.email, data);
         return;
       } else if (onRegistrationComplete) {
+        setShowLoadingOverlay(false);
         await onRegistrationComplete(data.email, data);
       } else {
+        // The verification screen is a destination, not a waypoint, so the
+        // overlay can go here. Every branch that navigates keeps it up instead.
+        setShowLoadingOverlay(false);
         setEmailForVerification(data.email);
         setShowEmailVerification(true);
       }
@@ -421,7 +428,6 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       }
 
       setAuthState('success');
-      setShowLoadingOverlay(false);
 
       // ENTERPRISE FIX: Don't use hard redirect (window.location.href) for managers
       // Hard redirects cause full page reloads which lose React state and can cause
@@ -437,6 +443,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       // 3. The useEffect will detect the authenticated manager and redirect
       logger.info('🎯 Google registration complete - calling onSuccess to trigger parent redirect');
       await onSuccess?.();
+      setShowLoadingOverlay(false);
 
     } catch (e: any) {
       setShowLoadingOverlay(false);
@@ -545,8 +552,8 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
             setShowPhoneFallback(false);
             setShowEmailVerification(false);
             setAuthState("success");
-            setShowLoadingOverlay(false);
             await onSuccess?.();
+            setShowLoadingOverlay(false);
           } catch (verificationError) {
             setShowLoadingOverlay(false);
             setAuthState("error");
@@ -586,6 +593,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
                   setShowEmailVerification(false);
                   setAuthState('success');
                   await onSuccess?.();
+                  setShowLoadingOverlay(false);
                   return true;
                 }
               }
@@ -596,9 +604,9 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
                 setShowLoadingOverlay(true);
                 await refreshUserData();
                 setShowEmailVerification(false);
-                setShowLoadingOverlay(false);
                 setAuthState('success');
                 await onSuccess?.();
+                setShowLoadingOverlay(false);
                 return true;
               }
               showAlert({

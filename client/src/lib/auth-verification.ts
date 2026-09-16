@@ -57,12 +57,7 @@ export function requiresEmailVerification(
 }
 
 /**
- * Both contacts proven. NOT a gate — kept for surfaces that report overall
- * account completeness, so a missing phone can be surfaced as a nudge.
+ * Previously a gate requiring email AND phone. Removed: phone never blocks an action, and a
+ * predicate named "requires both" is a footgun — the natural thing to do with it is to gate
+ * something, which would silently reintroduce the phone block. Nothing referenced it any more.
  */
-export function hasCompleteContactVerification(
-  authUser: AuthVerificationUser,
-  profile?: ProfileVerification
-): boolean {
-  return hasVerifiedEmail(authUser, profile) && hasVerifiedPhone(authUser, profile);
-}

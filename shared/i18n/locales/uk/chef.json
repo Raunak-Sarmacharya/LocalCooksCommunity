@@ -1376,6 +1376,8 @@
   "profileEmailAddress": "Електронна пошта",
   "profileEmailLinkedNotice": "Електронну пошту прив'язано до вашого способу входу, і її не можна змінити тут.",
   "profileLoadingProfile": "Завантаження профілю...",
+  "profileContactInformation": "Контактна інформація",
+  "profileContactInformationDesc": "Тут ми надсилаємо підтвердження бронювань, повідомлення про виплати та сповіщення про безпеку акаунта.",
   "profilePersonalInformation": "Особисті дані",
   "profilePhoneNumber": "Номер телефону",
   "profilePhonePlaceholder": "+1 (709) 555-0100",

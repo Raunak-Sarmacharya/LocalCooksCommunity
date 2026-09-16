@@ -1,8 +1,7 @@
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Icon } from "@iconify/react";
 import { forwardRef, useState } from "react";
 
 interface AnimatedInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onDrag'> {
@@ -18,16 +17,23 @@ interface AnimatedInputProps extends Omit<React.InputHTMLAttributes<HTMLInputEle
 }
 
 const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
-  ({ label, labelRight, error, icon, showPasswordToggle, showPasswordStrength = false, validationState = 'idle', className, type = 'text', value, ...props }, ref) => {
-    const [showPassword, setShowPassword] = useState(false);
+  ({ label, labelRight, error, icon, showPasswordToggle, showPasswordStrength = false, validationState = 'idle', className, type = 'text', value, onChange, ...props }, ref) => {
     const [internalValue, setInternalValue] = useState(value || '');
 
-    const inputType = showPasswordToggle && !showPassword ? 'password' : showPasswordToggle && showPassword ? 'text' : type;
     const hasValue = Boolean(value || internalValue);
+    const fieldClassName = cn(
+      "h-12",
+      icon && "pl-10",
+      validationState === 'invalid' && "border-destructive focus-visible:ring-destructive",
+      className
+    );
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      setInternalValue(e.target.value);
+      onChange?.(e);
+    };
 
     return (
       <div className="space-y-2">
-        {/* Label row */}
         {(label || labelRight) && (
           <div className="flex items-baseline justify-between gap-2">
             {label && (
@@ -48,62 +54,41 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
           </div>
         )}
 
-        {/* Input Container */}
         <div className="relative">
-          {/* Icon */}
           {icon && (
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
+            <div className="absolute left-3 top-1/2 z-10 -translate-y-1/2 text-muted-foreground pointer-events-none">
               {icon}
             </div>
           )}
 
-          {/* Input */}
-          <Input
-            ref={ref}
-            id={props.id || props.name}
-            type={inputType}
-            value={value}
-            className={cn(
-              "h-12",
-              icon && "pl-10",
-              showPasswordToggle && "pr-10",
-              validationState === 'invalid' && "border-destructive focus-visible:ring-destructive",
-              className
-            )}
-            onChange={(e) => {
-              setInternalValue(e.target.value);
-              props.onChange?.(e);
-            }}
-            {...props}
-          />
-
-          {/* Password Toggle */}
-          {showPasswordToggle && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 text-muted-foreground hover:text-foreground"
-              onClick={() => setShowPassword(!showPassword)}
-              tabIndex={-1}
-            >
-              <Icon
-                icon={showPassword ? "mdi:eye-off-outline" : "mdi:eye-outline"}
-                className="h-4 w-4"
-                aria-hidden
-              />
-            </Button>
+          {showPasswordToggle ? (
+            <PasswordInput
+              ref={ref}
+              id={props.id || props.name}
+              value={value}
+              className={fieldClassName}
+              onChange={handleChange}
+              {...props}
+            />
+          ) : (
+            <Input
+              ref={ref}
+              id={props.id || props.name}
+              type={type}
+              value={value}
+              className={fieldClassName}
+              onChange={handleChange}
+              {...props}
+            />
           )}
         </div>
 
-        {/* Error Message */}
         {error && (
           <p className="text-sm text-destructive">
             {error}
           </p>
         )}
 
-        {/* Password Strength Indicator (create/reset flows only) */}
         {showPasswordStrength && hasValue && (
           <PasswordStrengthIndicator password={String(value || internalValue)} />
         )}
@@ -114,7 +99,6 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
 
 AnimatedInput.displayName = "AnimatedInput";
 
-// Password Strength Indicator Component
 function PasswordStrengthIndicator({ password }: { password: string }) {
   const getStrength = (password: string) => {
     let score = 0;

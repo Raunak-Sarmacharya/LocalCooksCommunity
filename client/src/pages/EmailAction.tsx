@@ -24,7 +24,7 @@ import { CheckCircle2, Loader2, XCircle, ArrowRight, Mail, ShieldCheck, Link2, L
 import { useEffect, useState, useRef, useCallback, type FormEvent } from "react";
 import { useLocation } from "wouter";
 import { useFirebaseAuth } from "../hooks/use-auth";
-import { auth } from "../lib/firebase";
+import { auth, waitForFirebaseAuthReady } from "../lib/firebase";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -457,7 +457,7 @@ export default function EmailAction() {
   const [progress, setProgress] = useState(0);
   const [confirmationEmail, setConfirmationEmail] = useState('');
   const [confirmationError, setConfirmationError] = useState('');
-  const { updateUserVerification } = useFirebaseAuth();
+  const { updateUserVerification, refreshUserData } = useFirebaseAuth();
   const emailConfirmationResolver = useRef<((email: string | null) => void) | null>(null);
 
   // Prevent double execution in React StrictMode
@@ -616,10 +616,15 @@ export default function EmailAction() {
       try {
         logger.info('🔍 Confirming branded email verification token...');
 
+        // The SDK has not restored the persisted session yet when this mount effect runs, and
+        // `auth.currentUser` is null until it has. Reading it here without waiting silently
+        // produced no proof, so the server minted no session token — leaving the account with a
+        // session that an email change had just invalidated and nothing to replace it. The page
+        // looked fine; the next refresh signed the user out.
+        await waitForFirebaseAuthReady();
+
         // Read before confirming: once the email changes, this token is dead.
-        const sessionProof = await auth.currentUser
-          ?.getIdToken()
-          .catch(() => null) ?? null;
+        const sessionProof = (await auth.currentUser?.getIdToken().catch(() => null)) ?? null;
 
         const response = await fetch('/api/user/email/verification/confirm', {
           method: 'POST',
@@ -654,11 +659,12 @@ export default function EmailAction() {
           }
         }
 
-        // Reload + force-refresh the ID token: `email_verified` is cached in the token
-        // for up to an hour, so without this the app would keep behaving as if
-        // unverified. Must run AFTER the re-auth or it operates on a dead session.
+        // Refresh the app's view of the account. Deliberately non-forcing: the session was
+        // just restored above, and if that restore did not happen (link opened elsewhere)
+        // forcing a refresh against the invalidated token would sign this tab out. The
+        // profile carries the server's verification mirror, so a plain read is enough.
         try {
-          await updateUserVerification();
+          await refreshUserData({ forceToken: false });
           logger.info('✅ Auth context updated');
         } catch (updateError) {
           logger.info('ℹ️ Auth context update skipped (user not signed in)');

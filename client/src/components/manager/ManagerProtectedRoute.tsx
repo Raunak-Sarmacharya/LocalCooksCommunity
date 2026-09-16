@@ -1,12 +1,12 @@
 import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
 import { useTranslation } from "react-i18next";
-import { Loader2 } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { Redirect, useLocation } from "wouter";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
+import AuthLoadingScreen from "@/components/auth/AuthLoadingScreen";
 import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
 import ManagerOnboardingWizard from "./ManagerOnboardingWizard";
 import { requiresEmailVerification } from "@/lib/auth-verification";
@@ -124,13 +124,10 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
   // Show loading state while checking authentication
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-2" />
-          <p className="text-sm text-gray-600">{t("checkingManagerSession")}</p>
-          <p className="text-xs text-gray-400 mt-2">{t("verifyingCredentials")}</p>
-        </div>
-      </div>
+      <AuthLoadingScreen
+        message={t("checkingManagerSession")}
+        submessage={t("verifyingCredentials")}
+      />
     );
   }
 

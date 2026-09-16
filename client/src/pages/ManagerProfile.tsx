@@ -9,8 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
-import { User, Phone, Loader2, KeyRound } from "@/components/ui/manager-icons";
-import { Phone as PhoneIcon } from "lucide-react";
+import { User, Loader2, KeyRound } from "@/components/ui/manager-icons";
 import ManagerHeader from "@/components/layout/ManagerHeader";
 import ChangePassword from "@/components/auth/ChangePassword";
 import PhoneSignInSettings from "@/components/auth/PhoneSignInSettings";
@@ -18,7 +17,7 @@ import EmailVerificationCard from "@/components/auth/EmailVerificationCard";
 import { useEmailSectionFocus } from "@/hooks/use-email-section-focus";
 import { PHONE_AUTH_ENABLED } from "@/lib/feature-flags";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { tt } from "@/i18n/common-ns";
+import { ContactInfoCard } from "@/components/profile/ContactVerificationRow";
 import { Edit3 } from "lucide-react";
 import { InfoChip } from "@/components/chef/info-chip";
 
@@ -220,12 +219,6 @@ export default function ManagerProfile() {
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-blue-50">
       <ManagerHeader />
       <div className="pt-24 pb-12 container mx-auto px-4 max-w-4xl">
-        <div className="mb-6">
-          <EmailVerificationCard
-            highlighted={emailSectionHighlighted}
-            onVerified={() => void refreshUserData()}
-          />
-        </div>
         <div className="bg-white rounded-lg shadow-sm border border-gray-200">
           <div className="p-6 border-b border-gray-200 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
             <div>
@@ -286,15 +279,50 @@ export default function ManagerProfile() {
                   <p className="text-xs text-gray-600 mt-1">{t("yourNameAsItAppearsToOthers")}</p>
                 </div>
 
-                <div className="max-w-md">
-                  <EmailVerificationCard highlighted={emailSectionHighlighted} />
+                <div className="flex gap-3 pt-2">
+                  <StatusButton
+                    status={saveProfileAction.status}
+                    onClick={saveProfileAction.execute}
+                    labels={{ idle: "Save Changes", loading: "Saving", success: "Saved" }}
+                  />
+                  <Button
+                    onClick={() => {
+                      setUsername(user.username || "");
+                      // Reset to Firebase Auth displayName first, then fallback
+                      const firebaseDisplayName = auth.currentUser?.displayName;
+                      setDisplayName(firebaseDisplayName || managerProfile?.displayName || user.displayName || user.fullName || "");
+                    }}
+                    variant="outline"
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  >{t("reset")}</Button>
                 </div>
+              </div>
+            </div>
 
+            {/* Contact Information Section */}
+            <div className="space-y-4">
+              <div className="flex items-start gap-3">
+                <User className="h-5 w-5 text-orange-600 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-1">
+                    {t("contactInformation", "Contact information")}
+                  </h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    {t(
+                      "contactInformationDesc",
+                      "Where we send booking confirmations, payout notices and account security alerts."
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <ContactInfoCard>
+                <EmailVerificationCard
+                  embedded
+                  highlighted={emailSectionHighlighted}
+                  onVerified={() => void refreshUserData({ forceToken: false })}
+                />
                 {PHONE_AUTH_ENABLED && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-900 mb-2">
-                    <PhoneIcon className="h-4 w-4 inline mr-1" />{t("phoneNumber")}</label>
-                  <p className="text-xs text-gray-600 mb-3">{t("phoneVerificationRequired", "Phone numbers require OTP verification to link with your account.")}</p>
                   <PhoneSignInSettings
                     embedded
                     initialPhone={phone}
@@ -315,27 +343,8 @@ export default function ManagerProfile() {
                       }
                     }}
                   />
-                </div>
                 )}
-
-                <div className="flex gap-3 pt-2">
-                  <StatusButton
-                    status={saveProfileAction.status}
-                    onClick={saveProfileAction.execute}
-                    labels={{ idle: "Save Changes", loading: "Saving", success: "Saved" }}
-                  />
-                  <Button
-                    onClick={() => {
-                      setUsername(user.username || "");
-                      // Reset to Firebase Auth displayName first, then fallback
-                      const firebaseDisplayName = auth.currentUser?.displayName;
-                      setDisplayName(firebaseDisplayName || managerProfile?.displayName || user.displayName || user.fullName || "");
-                    }}
-                    variant="outline"
-                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                  >{t("reset")}</Button>
-                </div>
-              </div>
+              </ContactInfoCard>
             </div>
 
             {/* Change Password Section */}

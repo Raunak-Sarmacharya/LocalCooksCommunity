@@ -35,6 +35,9 @@ export interface UpdateUserDTO {
   firebaseUid?: string;
   phoneNumber?: string | null;
   password?: string;
+  // True only once the account holder chose the password themselves. Flipped by
+  // POST /api/user/sync-password; never settable from a client-supplied body.
+  passwordSetByUser?: boolean;
   role?: 'admin' | 'chef' | 'manager';
   isChef?: boolean;
   isManager?: boolean;

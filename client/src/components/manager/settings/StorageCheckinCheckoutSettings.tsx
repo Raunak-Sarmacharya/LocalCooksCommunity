@@ -106,8 +106,8 @@ export default function StorageCheckinCheckoutSettings({
   // Sync from server data on first load / when switching locations
   useEffect(() => {
     if (data) {
-      setCheckinEnabled(data.storageCheckinEnabled ?? true);
-      setCheckoutEnabled(data.storageCheckoutEnabled ?? true);
+      setCheckinEnabled(data.storageCheckinEnabled ?? false);
+      setCheckoutEnabled(data.storageCheckoutEnabled ?? false);
       setCheckinInstructions(data.storageCheckinInstructions);
       setCheckoutInstructions(data.storageCheckoutInstructions);
       setItems(initialUnifiedItems);
@@ -117,8 +117,8 @@ export default function StorageCheckinCheckoutSettings({
   const isDirty = useMemo(() => {
     if (!data) return false;
     return (
-      checkinEnabled !== (data.storageCheckinEnabled ?? true) ||
-      checkoutEnabled !== (data.storageCheckoutEnabled ?? true) ||
+      checkinEnabled !== (data.storageCheckinEnabled ?? false) ||
+      checkoutEnabled !== (data.storageCheckoutEnabled ?? false) ||
       JSON.stringify(items) !== JSON.stringify(initialUnifiedItems) ||
       (checkinInstructions || null) !==
         (data.storageCheckinInstructions || null) ||

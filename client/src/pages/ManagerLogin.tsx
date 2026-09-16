@@ -12,24 +12,36 @@ import { auth } from "@/lib/firebase";
 // Removed sendEmailVerification from firebase/auth
 // WelcomeScreen removed - managers use ManagerOnboardingWizard instead
 import { motion, useReducedMotion } from "framer-motion";
-import { Check, Loader2, X } from "@/components/ui/manager-icons";
+import { Check, X } from "@/components/ui/manager-icons";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import KitchenAuthShowcase from "@/components/auth/KitchenAuthShowcase";
+import AuthLoadingScreen from "@/components/auth/AuthLoadingScreen";
+import { useAuthTransition } from "@/components/auth/AuthTransition";
+import { AUTH_GATE_TIMEOUT_MS } from "@/config/auth-timing";
 import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
+import { getSubdomainOriginForEnvironment } from "@shared/subdomain-utils";
+import { clearSellerJourneyDraft } from "@/lib/seller-journey";
+import { useCustomAlerts } from "@/components/ui/custom-alerts";
 
 export default function ManagerLogin() {
   const { t } = useTranslation(["manager", "auth"]);
+  const { showAlert } = useCustomAlerts();
 
   // Managers now use Firebase authentication (like chefs)
   const [location, setLocation] = useLocation();
   const { user, loading, authPhase, refreshUserData, signInWithGoogle, updateUserVerification } = useFirebaseAuth();
+  const { begin: beginHandoff, end: endHandoff } = useAuthTransition();
   const queryClient = useQueryClient();
   const [authStep, setAuthStep] = useState<AuthFlowStep>(() =>
     new URLSearchParams(window.location.search).get("tab") === "register" ? "register" : "identifier"
   );
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
+  // Covers the gap after Google's account picker returns: signInWithGoogle sets
+  // authPhase back to `ready` before finishAuthentication can raise the handoff,
+  // which is the "auth form flashes for a few seconds" report.
+  const [googleAuthPending, setGoogleAuthPending] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [successMessageType, setSuccessMessageType] = useState<'password-reset' | 'email-verified'>('password-reset');
@@ -98,26 +110,99 @@ export default function ManagerLogin() {
     setShowLoadingOverlay(true);
   };
   
-  const finishAuthentication = async () => {
+  const finishAuthentication = async (opts?: { handoffAlreadyRaised?: boolean }) => {
     setHasAttemptedLogin(true);
+
+    // Raise the handoff before any of the work below. It lives above the
+    // router, so the overlay carries across the route change and stays until
+    // the destination's queries settle — instead of the login form reappearing
+    // between "signed in" and "dashboard rendered".
+    if (!opts?.handoffAlreadyRaised) {
+      beginHandoff(
+        t("btnSigningYouIn", { ns: "auth", defaultValue: "Signing you in..." }),
+        t("overlayRedirectingDashboard", { ns: "auth", defaultValue: "Redirecting to your dashboard..." }),
+      );
+    }
+
     await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
     const refreshedUser = await refreshUserData();
     if (!refreshedUser) {
       setHasAttemptedLogin(false);
       setShowLoadingOverlay(false);
+      endHandoff();
       return;
     }
 
-    if (hasVerifiedContact(refreshedUser, refreshedUser)) {
-      const needsTerms =
-        !refreshedUser.termsAccepted ||
-        refreshedUser.termsVersion !== CURRENT_POLICY_VERSION;
-      setLocation(
-        needsTerms
-          ? `/accept-terms?redirect=${encodeURIComponent("/manager/dashboard")}`
-          : "/manager/dashboard",
-        { replace: true },
-      );
+    if (!hasVerifiedContact(refreshedUser, refreshedUser)) {
+      // Staying put: drop the handoff so the verification step is reachable.
+      endHandoff();
+      return;
+    }
+
+    const isManager =
+      refreshedUser.role === "manager" || refreshedUser.isManager === true;
+    if (!isManager) {
+      // Stay on the kitchen portal. Hard-redirecting to chef.localhost is what
+      // felt like "I registered as a manager and got forced into chef".
+      endHandoff();
+      setShowLoadingOverlay(false);
+      const chefOrigin = getSubdomainOriginForEnvironment("chef", window.location.hostname, {
+        port: window.location.port,
+        protocol: window.location.protocol,
+      });
+      logger.warn("Manager login: authenticated non-manager stayed on kitchen portal", {
+        role: refreshedUser.role,
+        chefOrigin,
+      });
+      showAlert({
+        title: t("wrongPortalTitle", { ns: "manager", defaultValue: "This account is not a kitchen manager" }),
+        description: t("wrongPortalBody", {
+          ns: "manager",
+          defaultValue: `That Google account is already a chef (or not a manager). Use a different account to register here, or continue at ${chefOrigin}.`,
+        }),
+        type: "warning",
+      });
+      return;
+    }
+
+    // A kitchen-manager session must never be yanked to chef by a leftover
+    // seller-journey draft (PendingSellerJourneySubmitter is global).
+    clearSellerJourneyDraft();
+
+    const needsTerms =
+      !refreshedUser.termsAccepted ||
+      refreshedUser.termsVersion !== CURRENT_POLICY_VERSION;
+    setLocation(
+      needsTerms
+        ? `/accept-terms?redirect=${encodeURIComponent("/manager/dashboard")}`
+        : "/manager/dashboard",
+      { replace: true },
+    );
+  };
+
+  const handleGoogleSignIn = async () => {
+    setGoogleAuthPending(true);
+    setHasAttemptedLogin(true);
+    beginHandoff(
+      t("btnSigningYouIn", { ns: "auth", defaultValue: "Signing you in..." }),
+      t("overlayRedirectingDashboard", { ns: "auth", defaultValue: "Redirecting to your dashboard..." }),
+    );
+    try {
+      await signInWithGoogle(true, "manager", false);
+      await finishAuthentication({ handoffAlreadyRaised: true });
+    } catch (error: unknown) {
+      endHandoff();
+      setHasAttemptedLogin(false);
+      const message = error instanceof Error ? error.message : String(error);
+      if (!message.includes("popup-closed-by-user") && !message.includes("cancelled")) {
+        showAlert({
+          title: t("signInFailedTitle", { ns: "auth", defaultValue: "Sign In Failed" }),
+          description: message || t("errSignInGeneric", { ns: "auth", defaultValue: "Unable to sign in. Please try again." }),
+          type: "error",
+        });
+      }
+    } finally {
+      setGoogleAuthPending(false);
     }
   };
 
@@ -125,7 +210,8 @@ export default function ManagerLogin() {
   const handleRegistrationSuccess = async (email: string, data?: { phone?: string }) => {
     setPhoneForVerification(data?.phone || "");
     if (auth.currentUser?.phoneNumber) {
-      setShowLoadingOverlay(false);
+      // No overlay to close here: finishAuthentication raises the handoff
+      // itself, and closing ours first would flash the login form.
       await finishAuthentication();
       return;
     }
@@ -256,18 +342,33 @@ export default function ManagerLogin() {
       if (isManager && hasVerifiedContact(user, userMetaData)) {
         logger.info('✅ Manager has a verified contact - continuing');
         hasRedirected.current = true;
+        beginHandoff(
+          t("btnSigningYouIn", { ns: "auth", defaultValue: "Signing you in..." }),
+          t("overlayRedirectingDashboard", { ns: "auth", defaultValue: "Redirecting to your dashboard..." }),
+        );
         setLocation('/manager/dashboard');
       } else if (isManager && !hasVerifiedContact(user, userMetaData)) {
         logger.info('📧 EMAIL OR PHONE VERIFICATION REQUIRED');
         // Stay on login page to show verification message
       } else if (!isManager) {
-        logger.warn('⚠️ User is not a manager, redirecting...');
+        logger.warn('⚠️ User is not a manager — staying on kitchen login (no chef hard-redirect)');
         hasRedirected.current = true;
-        // Redirect non-managers to appropriate page
+        endHandoff();
+        const chefOrigin = getSubdomainOriginForEnvironment("chef", window.location.hostname, {
+          port: window.location.port,
+          protocol: window.location.protocol,
+        });
         if (userMetaData.role === 'admin') {
           setLocation('/admin');
         } else {
-          setLocation('/dashboard');
+          showAlert({
+            title: t("wrongPortalTitle", { ns: "manager", defaultValue: "This account is not a kitchen manager" }),
+            description: t("wrongPortalBody", {
+              ns: "manager",
+              defaultValue: `You're signed in with a chef account. Use a different account to manage kitchens, or continue at ${chefOrigin}.`,
+            }),
+            type: "warning",
+          });
         }
       }
     }
@@ -276,7 +377,7 @@ export default function ManagerLogin() {
     if (!user || location !== '/manager/login') {
       hasRedirected.current = false;
     }
-  }, [loading, userMetaLoading, user, userMetaData, location, setLocation]);
+  }, [loading, userMetaLoading, user, userMetaData, location, setLocation, beginHandoff, endHandoff, showAlert, t]);
 
   // ENTERPRISE: Show appropriate loading state based on auth phase
   // This prevents the login form from flashing during Google sign-in
@@ -285,24 +386,40 @@ export default function ManagerLogin() {
   // Show loading spinner when auth is in progress OR when login was attempted but profile hasn't loaded yet
   const isAwaitingProfile = hasAttemptedLogin && !!user && !userMetaData;
   const isCompletingPhoneRegistration = isPhoneAuthInProgress();
-  if (!showEmailVerification && !showPhoneVerification && !isCompletingPhoneRegistration && (loading || isInitialLoad || userMetaLoading || isAuthenticating || isAwaitingProfile)) {
-    // Determine the message based on auth phase
-    let loadingText = "Loading...";
-    if (authPhase === 'authenticating') {
-      loadingText = "Signing you in...";
-    } else if (authPhase === 'syncing') {
-      loadingText = "Setting up your account...";
-    } else if (isAwaitingProfile || userMetaLoading) {
-      loadingText = "Signing you in...";
+  const isGateActive =
+    !showEmailVerification &&
+    !showPhoneVerification &&
+    !isCompletingPhoneRegistration &&
+    (loading ||
+      isInitialLoad ||
+      userMetaLoading ||
+      isAuthenticating ||
+      isAwaitingProfile ||
+      googleAuthPending);
+
+  // Same escape hatch the chef page has. `isAwaitingProfile` in particular can
+  // hold indefinitely if the profile request never resolves, and a manager
+  // staring at a spinner with no way out is the worst outcome here.
+  const [gateTimedOut, setGateTimedOut] = useState(false);
+  useEffect(() => {
+    if (!isGateActive) {
+      setGateTimedOut(false);
+      return;
     }
-    
+    const timer = setTimeout(() => setGateTimedOut(true), AUTH_GATE_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [isGateActive]);
+
+  if (isGateActive && !gateTimedOut) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mx-auto mb-2" />
-          <p className="text-sm text-gray-600">{loadingText}</p>
-        </div>
-      </div>
+      <AuthLoadingScreen
+        message={
+          authPhase === 'syncing'
+            ? t("statusCheckingAccount", { ns: "auth", defaultValue: "Checking account..." })
+            : t("btnSigningYouIn", { ns: "auth", defaultValue: "Signing you in..." })
+        }
+        submessage={t("overlayVerifyCredentials", { ns: "auth", defaultValue: "Please wait while we verify your credentials securely." })}
+      />
     );
   }
 
@@ -465,12 +582,7 @@ export default function ManagerLogin() {
                       onRegistrationError: handleRegistrationError,
                       animateEntrance: false,
                     }}
-                    onGoogleSignIn={async () => {
-                      // Registration mode is also safe for returning managers;
-                      // it checks the platform profile before creating anything.
-                      await signInWithGoogle(true, "manager", false);
-                      await finishAuthentication();
-                    }}
+                    onGoogleSignIn={handleGoogleSignIn}
                     onPhoneExistingUser={async () => {
                       await finishAuthentication();
                     }}

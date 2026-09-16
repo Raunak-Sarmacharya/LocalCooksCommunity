@@ -3,14 +3,17 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { queryClient } from "@/lib/queryClient";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Calendar, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Redirect, useLocation } from "wouter";
 import { z } from "zod";
+import AuthLoadingScreen from "@/components/auth/AuthLoadingScreen";
+import { useAuthTransition } from "@/components/auth/AuthTransition";
 
 const loginSchema = z.object({
   email: z.string().email("Valid email required"),
@@ -21,9 +24,21 @@ type LoginFormData = z.infer<typeof loginSchema>;
 
 export default function AdminLogin() {
   const { user, loading, login, signInWithGoogle } = useFirebaseAuth();
+  const { begin: beginHandoff } = useAuthTransition();
   const isAdmin = user?.role === 'admin';
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Where an already-signed-in visitor belongs. Resolved before the redirect so
+  // the handoff overlay can be raised with it.
+  const redirectTo = !loading && user?.role
+    ? (isAdmin ? '/admin' : user.role === 'manager' ? '/manager/dashboard' : '/dashboard')
+    : null;
+
+  useEffect(() => {
+    if (!redirectTo) return;
+    beginHandoff('Signing you in...', 'Redirecting to your dashboard...');
+  }, [redirectTo, beginHandoff]);
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -83,19 +98,24 @@ export default function AdminLogin() {
     }
   };
 
-  // Redirect if already logged in as admin
-  if (!loading && isAdmin) {
-    logger.info('Admin already logged in, redirecting to admin panel');
-    return <Redirect to="/admin" />;
+  // The session is still being resolved. Without this the form painted first
+  // and then jumped to the dashboard on the next tick.
+  if (loading) {
+    return (
+      <AuthLoadingScreen
+        message="Checking your session..."
+        submessage="Please wait while we verify your credentials."
+      />
+    );
   }
-  
-  // Redirect non-admin users
-  if (!loading && user?.role && !isAdmin) {
-    logger.info('Non-admin user detected, redirecting to appropriate dashboard');
-    if (user.role === 'manager') {
-      return <Redirect to="/manager/dashboard" />;
-    }
-    return <Redirect to="/dashboard" />;
+
+  if (redirectTo) {
+    logger.info(
+      isAdmin
+        ? 'Admin already logged in, redirecting to admin panel'
+        : 'Non-admin user detected, redirecting to appropriate dashboard',
+    );
+    return <Redirect to={redirectTo} />;
   }
 
   return (
@@ -171,8 +191,7 @@ export default function AdminLogin() {
                   <FormItem>
                     <FormLabel>Password</FormLabel>
                     <FormControl>
-                      <Input
-                        type="password"
+                      <PasswordInput
                         placeholder="Enter your password"
                         {...field}
                         disabled={isSubmitting}

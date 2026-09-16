@@ -35,7 +35,7 @@ const COPY = {
     emailCardChange: "Change email",
     emailCardUseDifferent: "Use a different email",
     emailCardCancelPending: "Cancel change",
-    emailCardChangeNotice: "Changing it requires verifying the new address first.",
+    emailCardChangeNotice: "Changing it requires verifying the new email first.",
     emailCardGateNotice: "Actions are locked until this address is verified.",
     emailCardSentTitle: "Verification link sent",
     emailCardSentBody: "Check your inbox and spam folder, then open the link to confirm.",

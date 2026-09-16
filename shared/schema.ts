@@ -69,6 +69,13 @@ export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
+  // Registration (email verification / Google / phone) never collects a password,
+  // so a server-generated placeholder is stored to satisfy this NOT NULL column
+  // and to let the client sign in via accounts:signInWithPassword. This flag is
+  // the only way to tell "the human chose this secret" from "we generated it",
+  // which is what decides whether the profile asks for a *current* password.
+  // Flipped to true only by POST /api/user/sync-password.
+  passwordSetByUser: boolean("password_set_by_user").default(false).notNull(),
   role: userRoleEnum("role"), // Allow null initially - user will choose role
   googleId: text("google_id").unique(),
   facebookId: text("facebook_id").unique(),

@@ -37,6 +37,11 @@ router.get("/profile", requireFirebaseAuthWithUser, async (req: Request, res: Re
     // and the digest of any in-flight email confirmation token.
     const { password: _password, pendingEmailTokenHash: _pendingEmailTokenHash, ...safeUser } = user;
 
+    // The token claim is a cache that stays stale for up to an hour after the address
+    // changes, and we cannot force a refresh safely. The mirror is written only when
+    // Firebase confirms the address, so either signal being true means verified.
+    const emailVerified = firebaseEmailVerified === true || user.isVerified === true;
+
     const responseUser = {
       ...safeUser,
       is_verified: user.isVerified,
@@ -46,7 +51,7 @@ router.get("/profile", requireFirebaseAuthWithUser, async (req: Request, res: Re
       // address is carried here even before it is verified, which is what lets
       // the profile page show a pending address instead of a blank field.
       // Also carries `emailVerified`, so it is not set separately above.
-      ...buildEmailVerificationStatus(user, firebaseEmailVerified === true),
+      ...buildEmailVerificationStatus(user, emailVerified),
     };
     res.json(responseUser);
   } catch (error) {
@@ -177,8 +182,14 @@ router.post("/sync-password", requireFirebaseAuthWithUser, async (req: Request, 
       return res.status(400).json({ error: 'Valid password (min 8 characters) is required' });
     }
 
-    // updateUser auto-hashes the password via hashPassword()
-    await userService.updateUser(user.id, { password: newPassword });
+    // updateUser auto-hashes the password via hashPassword().
+    // Flip the flag in the same write: this endpoint is the only sink for both
+    // the "set" and "change" flows, so from here on the account holder knows the
+    // secret and the profile may legitimately ask for a current password.
+    await userService.updateUser(user.id, {
+      password: newPassword,
+      passwordSetByUser: true,
+    });
 
     logger.info(`[sync-password] Password synced to Neon for user ${user.id} (${user.username})`);
     res.json({ success: true });

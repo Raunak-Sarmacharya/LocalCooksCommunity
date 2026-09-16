@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  hasCompleteContactVerification,
   hasVerifiedContact,
   hasVerifiedEmail,
   hasVerifiedPhone,
@@ -52,16 +51,6 @@ describe("contact verification policy", () => {
     )).toBe(true);
   });
 
-  it("requires both contacts before operational access", () => {
-    expect(hasCompleteContactVerification(
-      { emailVerified: true, phoneVerified: false },
-      { is_verified: true },
-    )).toBe(false);
-    expect(hasCompleteContactVerification(
-      { emailVerified: true, phoneVerified: true },
-      { is_verified: true },
-    )).toBe(true);
-  });
 });
 
 describe("requiresEmailVerification (the platform gate)", () => {

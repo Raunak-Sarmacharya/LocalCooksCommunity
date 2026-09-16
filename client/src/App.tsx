@@ -4,6 +4,7 @@ import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/use-auth";
 import { AuthModalProvider } from "@/components/auth/AuthModalProvider";
+import { AuthTransitionProvider } from "@/components/auth/AuthTransition";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { HelmetProvider } from "react-helmet-async";
 import { lazy, useEffect } from "react";
@@ -404,7 +405,12 @@ function App() {
                 <TooltipProvider>
                   <RadixBodyCleanupProvider>
                     <SonnerToaster />
-                    <Router />
+                    {/* Above the router: the overlay it renders has to survive
+                        the route change, otherwise the login screen shows
+                        through between the auth call and the redirect. */}
+                    <AuthTransitionProvider>
+                      <Router />
+                    </AuthTransitionProvider>
                     <CookieConsentBanner />
                   </RadixBodyCleanupProvider>
                 </TooltipProvider>

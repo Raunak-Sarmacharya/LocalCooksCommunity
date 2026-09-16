@@ -2,7 +2,7 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
 import { requiresEmailVerification } from "@/lib/auth-verification";
 import EmailVerificationGate from "@/components/auth/EmailVerificationGate";
-import { Loader2 } from "lucide-react";
+import AuthLoadingScreen from "@/components/auth/AuthLoadingScreen";
 import React from "react";
 import { Redirect, Route } from "wouter";
 
@@ -17,9 +17,10 @@ export function ProtectedRoute({ path, component: Component }: ProtectedRoutePro
   if (loading) {
     return (
       <Route path={path}>
-        <div className="flex items-center justify-center min-h-screen">
-          <Loader2 className="h-8 w-8 animate-spin text-border" />
-        </div>
+        <AuthLoadingScreen
+          message="Checking your session..."
+          submessage="Please wait while we verify your credentials."
+        />
       </Route>
     );
   }

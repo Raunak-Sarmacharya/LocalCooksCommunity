@@ -117,9 +117,10 @@ describe("stripe webhook contract", () => {
     // Contract: handlers must tolerate either order (lookup by PI / session metadata; no throw on missing booking)
     expect(succeeded.type).toBe("payment_intent.succeeded");
     expect(checkout.type).toBe("checkout.session.completed");
+    const checkoutSession = checkout.data.object as Stripe.Checkout.Session;
     const piFromCheckout =
-      typeof checkout.data.object.payment_intent === "string"
-        ? checkout.data.object.payment_intent
+      typeof checkoutSession.payment_intent === "string"
+        ? checkoutSession.payment_intent
         : null;
     expect(piFromCheckout).toBe("pi_test_contract");
   });
