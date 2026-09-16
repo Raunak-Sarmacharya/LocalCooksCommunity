@@ -15,6 +15,7 @@ import { format } from "date-fns";
 import { db } from "../db";
 import { resolveCapturedKitchenRate } from "@shared/kitchen-booking-rate";
 import { resolveKitchenTransactionTaxAndSubtotal } from "../services/revenue-transaction-tax";
+import { parseCentsField, parseCentsFieldOrZero } from "@shared/money-cents";
 
 import {
   requireFirebaseAuthWithUser,
@@ -4435,7 +4436,7 @@ router.get(
       );
 
       // Get payment transaction if exists
-      let paymentTransaction = null;
+      let paymentTransaction: any = null;
       try {
         const [txn] = await db
           .select({
@@ -4469,18 +4470,14 @@ router.get(
         if (txn) {
           paymentTransaction = {
             ...txn,
-            amount: txn.amount ? parseFloat(txn.amount) : null,
-            baseAmount: txn.baseAmount ? parseFloat(txn.baseAmount) : null, // Base before tax
-            serviceFee: txn.serviceFee ? parseFloat(txn.serviceFee) : null,
-            taxAmount: txn.taxAmount != null ? parseFloat(txn.taxAmount) : null,
-            managerRevenue: txn.managerRevenue
-              ? parseFloat(txn.managerRevenue)
-              : null,
-            stripeProcessingFee: txn.stripeProcessingFee
-              ? parseFloat(txn.stripeProcessingFee)
-              : null,
-            refundAmount: txn.refundAmount ? parseFloat(txn.refundAmount) : 0,
-            netAmount: txn.netAmount ? parseFloat(txn.netAmount) : null,
+            amount: parseCentsField(txn.amount),
+            baseAmount: parseCentsField(txn.baseAmount),
+            serviceFee: parseCentsField(txn.serviceFee),
+            taxAmount: parseCentsField(txn.taxAmount),
+            managerRevenue: parseCentsField(txn.managerRevenue),
+            stripeProcessingFee: parseCentsField(txn.stripeProcessingFee),
+            refundAmount: parseCentsFieldOrZero(txn.refundAmount),
+            netAmount: parseCentsField(txn.netAmount),
             refundedAt: txn.refundedAt || null,
             refundReason: txn.refundReason || null,
             metadata: txn.metadata || null,
@@ -4522,19 +4519,64 @@ router.get(
         ptServiceFee: Number(paymentTransaction?.serviceFee || booking.serviceFee || 0),
         metadata: capturedMetadata,
       });
-      const capturedTaxAmount = reconciledFinancials.taxCents;
+      // When PT base already equals kitchen subtotal + stored tax, trust those
+      // faces for display. Inflated capture metadata can otherwise shrink the
+      // kitchen line via transfer-oriented split recovery.
+      const ptBase = Number(paymentTransaction?.baseAmount || 0);
+      const ptTax = Number(paymentTransaction?.taxAmount || 0);
+      const coherentStoredFaces =
+        capturedSubtotal > 0 &&
+        ptTax >= 0 &&
+        ptBase > 0 &&
+        Math.abs(ptBase - (capturedSubtotal + ptTax)) <= 1;
+      const capturedTaxAmount = coherentStoredFaces ? ptTax : reconciledFinancials.taxCents;
       const historicalTaxRatePercent = metadataTaxRate != null
         ? Number(metadataTaxRate)
         : capturedSubtotal > 0 && capturedTaxAmount > 0
           ? (capturedTaxAmount * 100) / capturedSubtotal
           : fallbackTaxRatePercent;
-      const reconciledSubtotal = reconciledFinancials.totalPriceCents || capturedSubtotal;
+      const reconciledSubtotal = coherentStoredFaces
+        ? capturedSubtotal
+        : (reconciledFinancials.totalPriceCents || capturedSubtotal);
       const reconciledKitchenOnlyPrice = Math.max(0, reconciledSubtotal - addonSubtotal);
-      const reconciledServiceFee = reconciledFinancials.serviceFeeCents;
+      const reconciledServiceFee = coherentStoredFaces
+        ? Number(paymentTransaction?.serviceFee || booking.serviceFee || 0)
+        : reconciledFinancials.serviceFeeCents;
       const historicalCommissionRate = reconciledSubtotal > 0 ? reconciledServiceFee / reconciledSubtotal : 0;
       if (paymentTransaction) {
         paymentTransaction.taxAmount = capturedTaxAmount;
         paymentTransaction.serviceFee = reconciledServiceFee;
+      }
+
+      // Pre-capture: surface estimated Stripe + platform fees so managers see
+      // deductions before approval. Post-capture uses synced PT fields.
+      const isAuthorizedHold =
+        booking.paymentStatus === "authorized" ||
+        paymentTransaction?.status === "authorized";
+      if (paymentTransaction && isAuthorizedHold) {
+        const actualStripe = Number(paymentTransaction.stripeProcessingFee || 0);
+        if (actualStripe <= 0 && reconciledSubtotal > 0) {
+          try {
+            const { calculateCheckoutFeesAsync } = await import(
+              "../services/stripe-checkout-fee-service"
+            );
+            const feeCalc = await calculateCheckoutFeesAsync(reconciledSubtotal, {
+              taxAmountCents: capturedTaxAmount,
+            });
+            paymentTransaction.estimatedStripeProcessingFee =
+              feeCalc.stripeProcessingFeeInCents;
+            paymentTransaction.estimatedManagerPayout =
+              feeCalc.managerReceivesInCents;
+            if (!paymentTransaction.serviceFee || paymentTransaction.serviceFee <= 0) {
+              paymentTransaction.serviceFee = feeCalc.platformCommissionInCents;
+            }
+          } catch (feeErr) {
+            logger.warn(
+              "[Manager] Could not estimate pre-capture payout fees:",
+              feeErr as Error,
+            );
+          }
+        }
       }
 
       res.json({

@@ -99,6 +99,9 @@ export type KitchenPayoutStatementBreakdownProps = BookingPricingBreakdownInput 
   title?: string;
   showProcessorFee?: boolean;
   processingFeeLabel?: string;
+  platformFeeLabel?: string;
+  /** Shown when platform fee was paid by chef on top (not withheld from manager). */
+  platformFeeChefPaidLabel?: string;
   refundLabel?: string;
   hstLabel?: string;
 };
@@ -110,6 +113,8 @@ export function KitchenPayoutStatementBreakdown({
   title = "Net payout",
   showProcessorFee,
   processingFeeLabel = "Processing fee",
+  platformFeeLabel = "Local Cooks fee",
+  platformFeeChefPaidLabel,
   refundLabel = "Refund",
   hstLabel,
   ...input
@@ -121,6 +126,10 @@ export function KitchenPayoutStatementBreakdown({
   const showStripe =
     (showProcessorFee ?? input.showPaymentProcessorFee ?? false) &&
     b.paymentProcessorFeeCents > 0;
+  const showPlatformFee = b.showPlatformFeeLine && b.platformFeeAmountCents > 0;
+  const platformFeeLabelResolved = b.platformFeeWithheldFromManager
+    ? platformFeeLabel
+    : (platformFeeChefPaidLabel || platformFeeLabel);
 
   return (
     <div className={cn("space-y-2", className)}>
@@ -129,6 +138,17 @@ export function KitchenPayoutStatementBreakdown({
           label={hstLabel ?? `HST (${b.kitchenHstRatePercent}%)`}
           amountCents={b.kitchenHstAmountCents}
           currency={currency}
+        />
+      )}
+      {showPlatformFee && (
+        <BreakdownLine
+          label={platformFeeLabelResolved}
+          amountCents={b.platformFeeAmountCents}
+          currency={currency}
+          prefix={b.platformFeeWithheldFromManager ? "−" : undefined}
+          amountClassName={
+            b.platformFeeWithheldFromManager ? undefined : "text-muted-foreground"
+          }
         />
       )}
       {showStripe && (

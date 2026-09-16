@@ -104,6 +104,9 @@ interface BookingDetails {
     managerRevenue: number;
     status: string;
     stripeProcessingFee?: number;
+    /** Pre-capture estimate from platform_settings (when stripeProcessingFee is 0) */
+    estimatedStripeProcessingFee?: number;
+    estimatedManagerPayout?: number;
     paidAt?: string;
     refundAmount?: number;
     netAmount?: number;
@@ -196,6 +199,8 @@ export default function BookingDetailsPage() {
       return; // auth not ready yet — effect will re-run when authLoading becomes false
     }
 
+    let cancelled = false;
+
     const fetchBookingDetails = async () => {
       try {
         const headers = await getAuthHeaders();
@@ -222,17 +227,37 @@ export default function BookingDetailsPage() {
         }
 
         const data = await response.json();
-        setBooking(data);
+        if (!cancelled) setBooking(data);
       } catch (err) {
+        if (cancelled) return;
         logger.error("Error fetching booking details:", err);
         setError(err instanceof Error ? err.message : t("bdErrLoad"));
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
     fetchBookingDetails();
+    return () => {
+      cancelled = true;
+    };
   }, [bookingId, isManagerView, authLoading]);
+
+  const reloadBookingDetails = async () => {
+    if (!bookingId) return;
+    try {
+      const headers = await getAuthHeaders();
+      const endpoint = isManagerView
+        ? `/api/manager/bookings/${bookingId}/details`
+        : `/api/chef/bookings/${bookingId}/details`;
+      const response = await fetch(endpoint, { credentials: "include", headers });
+      if (!response.ok) return;
+      const data = await response.json();
+      setBooking(data);
+    } catch (err) {
+      logger.error("Error reloading booking details:", err);
+    }
+  };
 
   const handleDownloadInvoice = async () => {
     if (!booking?.id) return;
@@ -600,6 +625,16 @@ export default function BookingDetailsPage() {
         : subtotal > 0 && serviceFee > 0
           ? serviceFee / subtotal
           : 0;
+    const actualStripe = booking.paymentTransaction?.stripeProcessingFee || 0;
+    const estimatedStripe = booking.paymentTransaction?.estimatedStripeProcessingFee || 0;
+    const isAuthorizedHold = booking.paymentStatus === "authorized";
+    const stripeFee =
+      actualStripe > 0
+        ? actualStripe
+        : isAuthorizedHold
+          ? estimatedStripe
+          : 0;
+    const feesAreEstimated = isAuthorizedHold && actualStripe <= 0 && stripeFee > 0;
 
     return {
       kitchenBaseSubtotalCents: subtotal,
@@ -607,12 +642,18 @@ export default function BookingDetailsPage() {
       kitchenHstAmountCents: booking.paymentTransaction?.taxAmount,
       platformFeeRate,
       platformFeeAmountCents: serviceFee,
-      paymentProcessorFeeCents: booking.paymentTransaction?.stripeProcessingFee || 0,
-      kitchenNetPayoutCents: booking.paymentTransaction?.managerRevenue,
+      paymentProcessorFeeCents: stripeFee,
+      // Pre-capture manager_revenue is still kitchen gross — force estimate path.
+      kitchenNetPayoutCents: feesAreEstimated
+        ? null
+        : booking.paymentTransaction?.managerRevenue,
+      chargeAmountCents: booking.paymentTransaction?.amount,
       refundAmountCents: booking.paymentTransaction?.refundAmount || 0,
       hourlyRateCents: booking.hourlyRate,
       bookedHours: booking.durationHours,
-      showPaymentProcessorFee: (booking.paymentTransaction?.stripeProcessingFee || 0) > 0,
+      showPaymentProcessorFee: stripeFee > 0,
+      paymentProcessorFeeIsEstimate: feesAreEstimated,
+      showPlatformFeeLine: serviceFee > 0,
     };
   }, [booking, totals]);
 
@@ -730,7 +771,29 @@ export default function BookingDetailsPage() {
         return;
       }
 
-      // For non-refund scenarios (void or simple approve), update local state directly
+      // Capture + Connect transfer update payment_transactions asynchronously.
+      // Never keep the pre-capture paymentTransaction on the client — that shows
+      // kitchen gross (subtotal+tax) as "Your payout" instead of the transfer net.
+      if (
+        params.status === "confirmed" &&
+        (booking.paymentStatus === "authorized" || updatedPaymentStatus === "paid")
+      ) {
+        queryClient.invalidateQueries({ queryKey: ["managerBookings"] });
+        toast({
+          title: t("bdSuccessTitle"),
+          description: t("bdBookingConfirmedDesc"),
+        });
+        await reloadBookingDetails();
+        // Transfer may land slightly after capture; one short follow-up refresh.
+        window.setTimeout(() => {
+          void reloadBookingDetails();
+        }, 2500);
+        setIsUpdatingStatus(false);
+        setActionSheetOpen(false);
+        return;
+      }
+
+      // For non-refund scenarios (void or simple status change), update local state directly
       // Cancelled items have paymentStatus='failed' (voided — never charged)
       const updatedStorageBookings = booking.storageBookings?.map((sb) => {
         const action = params.storageActions?.find((a) => a.storageBookingId === sb.id);
@@ -1599,7 +1662,21 @@ export default function BookingDetailsPage() {
                           : t("bdYourPayout", { defaultValue: "Your payout" })
                       }
                       showProcessorFee={pricingBreakdownInput.showPaymentProcessorFee}
-                      processingFeeLabel={t("bdProcessingFee")}
+                      processingFeeLabel={
+                        pricingBreakdownInput.paymentProcessorFeeIsEstimate
+                          ? t("bdEstProcessingFee", {
+                              defaultValue: "Est. processing fee",
+                            })
+                          : t("bdProcessingFee")
+                      }
+                      platformFeeLabel={t("bdLocalCooksServiceFee", {
+                        percent: Math.round((pricingBreakdownInput.platformFeeRate || 0) * 100),
+                        defaultValue: "Service fee ({percent}%)",
+                      })}
+                      platformFeeChefPaidLabel={t("bdLocalCooksFeePaidByChef", {
+                        percent: Math.round((pricingBreakdownInput.platformFeeRate || 0) * 100),
+                        defaultValue: "Service fee ({percent}%) · paid by chef",
+                      })}
                       refundLabel={t("bdRefund")}
                       hstLabel={t("bdHstPercent", {
                         percent: pricingBreakdownInput.kitchenHstRatePercent ?? 0,

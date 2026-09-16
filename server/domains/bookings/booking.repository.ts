@@ -20,6 +20,8 @@ import { eq, and, desc, asc, lt, not, inArray, gte, lte, or, sql, ne } from "dri
 import { KitchenBooking, StorageBooking, EquipmentBooking, InsertKitchenBooking } from "./booking.types";
 import { calculateRefundBreakdown } from "../../services/stripe-service";
 import { resolveKitchenTransactionTaxAndSubtotal } from "../../services/revenue-transaction-tax";
+import { resolveDisplayedKitchenNetPayoutCents, estimateManagerPayoutFeesCents } from "@shared/booking-pricing-breakdown";
+import { getFeeConfig } from "../../services/stripe-checkout-fee-service";
 
 export class BookingRepository {
 
@@ -215,6 +217,14 @@ export class BookingRepository {
             ))
             .orderBy(desc(kitchenBookings.createdAt));
 
+        // One fee-config read for pre-capture estimated Stripe fees on held bookings.
+        let feeConfig: Awaited<ReturnType<typeof getFeeConfig>> | null = null;
+        try {
+            feeConfig = await getFeeConfig();
+        } catch {
+            feeConfig = null;
+        }
+
         return results.map(row => {
             const mappedBooking = this.mapKitchenBookingToDTO(row.booking);
 
@@ -249,14 +259,14 @@ export class BookingRepository {
                 : row.transactionServiceFee
                     ? parseFloat(row.transactionServiceFee as string)
                     : 0);
-            const managerRevenue = isVoidedAuthorization ? 0 : (row.transactionManagerRevenue
-                ? parseFloat(row.transactionManagerRevenue as string)
+            const managerRevenue = isVoidedAuthorization ? 0 : (row.transactionManagerRevenue != null
+                ? parseFloat(String(row.transactionManagerRevenue))
                 : null);
-            const refundAmount = isVoidedAuthorization ? 0 : (row.transactionRefundAmount
-                ? parseFloat(row.transactionRefundAmount as string)
+            const refundAmount = isVoidedAuthorization ? 0 : (row.transactionRefundAmount != null
+                ? parseFloat(String(row.transactionRefundAmount))
                 : 0);
-            const stripeProcessingFee = isVoidedAuthorization ? 0 : (row.transactionStripeProcessingFee
-                ? parseFloat(row.transactionStripeProcessingFee as string)
+            let stripeProcessingFee = isVoidedAuthorization ? 0 : (row.transactionStripeProcessingFee != null
+                ? parseFloat(String(row.transactionStripeProcessingFee))
                 : 0);
             
             // ENTERPRISE STANDARD: Calculate tax EXACTLY like transaction history table
@@ -291,14 +301,34 @@ export class BookingRepository {
                     ? (taxAmount * 100) / kbTotalPrice
                     : currentTaxRatePercent
             ));
+
+            // Pre-capture: estimate Stripe fee from platform_settings so held
+            // bookings show expected deductions before approval.
+            let estimatedStripeProcessingFee = 0;
+            if (isAuthorizedHold && stripeProcessingFee <= 0 && feeConfig && kbTotalPrice > 0) {
+                const estimated = estimateManagerPayoutFeesCents({
+                    subtotalCents: kbTotalPrice,
+                    taxCents: taxAmount,
+                    platformCommissionRate: feeConfig.platformCommissionRate,
+                    stripePercentageFee: feeConfig.stripePercentageFee,
+                    stripeFlatFeeCents: feeConfig.stripeFlatFeeCents,
+                    platformFeeAmountCents: serviceFee,
+                });
+                estimatedStripeProcessingFee = estimated.stripeProcessingFeeCents;
+                stripeProcessingFee = estimatedStripeProcessingFee;
+            }
             
-            // Net revenue = total charged - tax - stripe fee (same as transaction history)
-            // For voided authorizations: all values are 0, so netRevenue = 0
-            // Kitchen owns subtotal + its tax. The platform service fee is paid on
-            // top and is never part of manager revenue.
-            const netRevenue = isVoidedAuthorization ? 0 : (managerRevenue != null
-                ? managerRevenue
-                : kbTotalPrice + taxAmount - stripeProcessingFee);
+            // Prefer Stripe-synced manager_revenue; reconstruct when stale gross remains.
+            const netRevenue = isVoidedAuthorization ? 0 : resolveDisplayedKitchenNetPayoutCents({
+                kitchenNetPayoutCents: isAuthorizedHold && estimatedStripeProcessingFee > 0
+                    ? null
+                    : managerRevenue,
+                kitchenBaseSubtotalCents: kbTotalPrice,
+                kitchenHstAmountCents: taxAmount,
+                paymentProcessorFeeCents: stripeProcessingFee,
+                platformFeeAmountCents: serviceFee,
+                chargeAmountCents: transactionAmount ?? (kbTotalPrice + taxAmount + serviceFee),
+            }).netPayoutCents;
             
             // Max refundable includes platform service fee (returned on refund).
             // Stripe fee is sunk. For voided authorizations: nothing to refund.
@@ -362,6 +392,9 @@ export class BookingRepository {
                 refundAmount,      // Amount already refunded (0 for voided auths)
                 refundableAmount,  // manager remaining + service fee remaining (0 for voided auths)
                 stripeProcessingFee,   // Total Stripe processing fee (0 for voided auths)
+                estimatedStripeProcessingFee: estimatedStripeProcessingFee > 0
+                    ? estimatedStripeProcessingFee
+                    : undefined,
                 managerRemainingBalance, // Manager's remaining Connect balance (0 for voided auths)
                 // ── Voided Authorization Context ────────────────────────────────────
                 // These fields let the client distinguish between "never charged" vs "$0 booking"

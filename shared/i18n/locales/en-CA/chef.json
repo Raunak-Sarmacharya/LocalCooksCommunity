@@ -245,6 +245,8 @@
   "bdErrSessionExpired": "Your session has expired. Please sign in again.",
   "bdErrorTitle": "Error",
   "bdEstimatedPayout": "Estimated payout",
+  "bdEstProcessingFee": "Est. processing fee",
+  "bdLocalCooksFeePaidByChef": "Service fee ({percent}%) · paid by chef",
   "bdFullyRefunded": "Fully Refunded",
   "bdGenerating": "Generating…",
   "bdGoBack": "Go Back",
