@@ -41,9 +41,9 @@ import {
   PlaylistPlus,
   Plus,
   Trash2,
-  Undo2,
   X,
 } from "@/components/ui/manager-icons";
+import { UndoBar, UNDO_WINDOW_MS } from "@/components/manager/shared/UndoBar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -685,66 +685,6 @@ function PresetPicker({
           );
         })
       )}
-    </div>
-  );
-}
-
-// ─── Restore snackbar ────────────────────────────────────────────────────────
-
-/**
- * How long the undo affordance stays available after a delete. Shared by the
- * dismissal timer and the countdown so the two can never disagree.
- */
-const UNDO_WINDOW_MS = 6000;
-
-/**
- * Undo affordance after a delete. Deletes are instant and unconfirmed — a
- * confirmation dialog on every row is heavier than the action deserves, and a
- * five-second window with a one-tap restore covers the genuine misclick.
- *
- * It previously borrowed the checklist row's own chrome (muted fill, grey
- * border, plain text button), so it read as one more list item rather than as a
- * transient system message, and was easy to miss entirely. It now announces
- * itself with a colour the row language never uses (sky, not emerald/rose/amber),
- * and carries a live countdown ring so its five-second life is visible.
- */
-function UndoBar({
-  onUndo,
-  label,
-  seconds,
-}: {
-  onUndo: () => void;
-  label: string;
-  seconds: number;
-}) {
-  const [remaining, setRemaining] = useState(seconds);
-  useEffect(() => {
-    setRemaining(seconds);
-    const id = setInterval(() => setRemaining((r) => Math.max(0, r - 1)), 1000);
-    return () => clearInterval(id);
-  }, [seconds, label]);
-
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="flex items-center gap-3 rounded-lg border border-sky-200 bg-sky-50 py-1.5 pl-3 pr-1.5 shadow-sm"
-    >
-      <Undo2 className="size-3.5 shrink-0 text-sky-600" />
-      <p className="min-w-0 flex-1 truncate text-xs font-medium text-sky-900">{label}</p>
-      <button
-        type="button"
-        onClick={onUndo}
-        className="!min-h-0 !min-w-0 shrink-0 rounded-md border border-sky-300 bg-white px-2 py-1 text-xs font-semibold text-sky-800 transition-colors hover:bg-sky-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-      >
-        {tt("undo")}
-      </button>
-      <span
-        aria-hidden
-        className="w-3 shrink-0 text-center text-[11px] tabular-nums text-sky-600"
-      >
-        {remaining}
-      </span>
     </div>
   );
 }

@@ -1,39 +1,59 @@
 import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
-import { Package, Plus, Check, Loader2, Pencil, Trash2, Search, Thermometer, Snowflake, Grid3X3, DollarSign, PlusCircle, SearchX, AlertTriangle } from "@/components/ui/manager-icons";
-import { useState, useEffect, useMemo } from "react";
+import { Package, Plus, Pencil, Trash2, Thermometer, Snowflake, AlertTriangle, ChevronLeft } from "@/components/ui/manager-icons";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { NumericInput } from "@/components/ui/numeric-input";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown, ChevronUp } from "@/components/ui/manager-icons";
-import { ManagerPageLayout } from "@/components/layout/ManagerPageLayout";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { ManagerPageLayout } from "@/components/layout/ManagerPageLayout";
+import { KitchenScopeField } from "@/components/manager/listings/KitchenScopeField";
+import { SuggestionList, type AddSuggestion } from "@/components/manager/listings/SuggestionList";
+import { SectionBand } from "@/components/manager/listings/SectionBand";
+import { UndoBar, UNDO_WINDOW_MS } from "@/components/manager/shared/UndoBar";
+import { SettingsRow } from "@/components/manager/settings/SettingsRow";
+import { FormLegend } from "@/components/ui/form-legend";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 import { STORAGE_CATEGORIES, StorageTemplate, StorageTypeId, ACCESS_TYPE_LABELS, getDefaultTemperatureRange } from "@/lib/storage-templates";
 import { cn } from "@/lib/utils";
 
-const StorageCategoryIcon = ({ iconName, className }: { iconName: string; className?: string }) => {
-  const icons: Record<string, React.ComponentType<{ className?: string }>> = {
-    Package, Thermometer, Snowflake
-  };
-  const Icon = icons[iconName] || Package;
-  return <Icon className={className} />;
-};
+/**
+ * Storage tab — "My Kitchens".
+ *
+ * Adding and editing are **pages**, not modals. The form has eleven fields, and a
+ * modal cannot hold that without a height ceiling and its own scrollbar — which is
+ * what made the earlier popover get clamped and cut off. A page has no ceiling, the
+ * page's own scroll does the work, and it matches how listing setup works on the
+ * platforms this is modelled on.
+ *
+ * Adding is master–detail: the platform's suggestions on the left, the listing's
+ * own form on the right. Selecting a suggestion only *previews* it — nothing is
+ * written until Add is pressed — so every detail can be read first, and the same
+ * suggestion can be added twice if the kitchen genuinely has two of something.
+ *
+ * Field rows follow the Booking Policies page: `SettingsRow` with the label on the
+ * left and a control sized to its content on the right, so a two-digit number never
+ * gets a full-width input.
+ */
 
-// Storage type icon for edit dialog header
 const StorageTypeIcon = ({ type, className }: { type: string; className?: string }) => {
   switch (type) {
     case 'cold':
@@ -63,28 +83,26 @@ interface StorageListing {
   accessType?: string;
   temperatureRange?: string;
   isActive?: boolean;
-  minimumBookingDuration?: number; // Minimum days for booking
-  // Overstay penalty configuration
+  minimumBookingDuration?: number;
   overstayGracePeriodDays?: number;
   overstayPenaltyRate?: string;
   overstayMaxPenaltyDays?: number;
   overstayPolicyText?: string;
 }
 
-interface SelectedStorage {
-  templateId: string;
+/** Exactly the fields the form edits — shared by the create and edit paths. */
+interface StorageFormValues {
   name: string;
   storageType: StorageTypeId;
-  description: string;
-  dailyRate: number;
-  totalVolume: number;
   accessType: string;
+  minimumBookingDuration: number;
+  totalVolume: number;
   temperatureRange: string;
-  minimumBookingDuration: number; // Minimum days for booking
-  // Overstay penalty configuration
+  basePrice: number;
   overstayGracePeriodDays: number;
   overstayPenaltyRate: string;
   overstayMaxPenaltyDays: number;
+  description: string;
 }
 
 interface LocationDefaults {
@@ -94,8 +112,230 @@ interface LocationDefaults {
   policyText: string | null;
 }
 
+/**
+ * A storage listing in *another* kitchen that looks like the one being edited.
+ *
+ * There is no group/link column in the schema, so copies are matched by name +
+ * type. That is deliberately loose: renaming one copy detaches it, which is the
+ * honest behaviour for a model where each kitchen owns its own row.
+ */
+interface StorageMatch {
+  kitchenId: number;
+  kitchenName: string;
+  listingId: number;
+}
+
+/** Sentinel for the "Other…" entry in the access-type Select. */
+const ACCESS_OTHER = "__other__";
+
+/**
+ * The storage form. Declared at module scope on purpose: a component defined
+ * inside the page would be a new type on every render, remounting the inputs and
+ * dropping focus on each keystroke.
+ */
+function StorageFields({
+  values,
+  onChange,
+}: {
+  values: StorageFormValues;
+  onChange: (updates: Partial<StorageFormValues>) => void;
+}) {
+  /**
+   * `access_type` is a plain text column and is never validated server-side, so a
+   * manager may name their own. Anything not in the common list — including the
+   * empty value "Other…" sets — counts as custom and gets a text field.
+   */
+  const accessIsCustom = !(values.accessType in ACCESS_TYPE_LABELS);
+
+  /**
+   * Set the moment "Other…" is picked, so the focus-restore suppression below
+   * does not depend on a re-render landing before the menu finishes closing.
+   */
+  const keepFocusRef = useRef(false);
+
+  /** Mirrors the server's own rule (`name: z.string().min(3)`), surfaced inline. */
+  const nameTooShort = values.name.length > 0 && values.name.trim().length < 3;
+
+  /**
+   * React's `autoFocus` only sets the attribute — browsers honour it for elements
+   * present at parse time, not for one mounted later, so the field has to be
+   * focused explicitly. Suppressing Radix's focus restore above is what stops it
+   * being stolen back once this has run.
+   */
+  const customAccessRef = useRef<HTMLInputElement>(null);
+  const wasCustomRef = useRef(accessIsCustom);
+  useEffect(() => {
+    const justBecameCustom = accessIsCustom && !wasCustomRef.current;
+    wasCustomRef.current = accessIsCustom;
+    if (justBecameCustom) customAccessRef.current?.focus();
+  }, [accessIsCustom]);
+
+  return (
+    <div className="overflow-hidden rounded-lg border bg-background">
+      {/* Same convention as every other form in the app. */}
+      <FormLegend className="mb-0 border-b px-4 py-2" />
+      <div className="divide-y">
+        <SectionBand label={mt("groupDetails")} />
+
+        <SettingsRow layout="stacked" id="sf-name" label={mt("storageName")} required>
+          <Input
+            id="sf-name"
+            value={values.name}
+            onChange={(e) => onChange({ name: e.target.value })}
+            placeholder={mt("eGWalkInCoolerA")}
+            aria-invalid={nameTooShort || undefined}
+          />
+          {nameTooShort && (
+            <p className="mt-1 text-xs text-destructive">{mt("storageNameMinLength")}</p>
+          )}
+        </SettingsRow>
+
+        <SettingsRow id="sf-type" label={mt("storageType")} required>
+          <Select
+            value={values.storageType}
+            onValueChange={(v: StorageTypeId) => onChange({
+              storageType: v,
+              temperatureRange: getDefaultTemperatureRange(v) || '',
+            })}
+          >
+            <SelectTrigger id="sf-type" className="w-44"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="dry">{mt("dryStorage")}</SelectItem>
+              <SelectItem value="cold">{mt("coldStorage")}</SelectItem>
+              <SelectItem value="freezer">{mt("freezer")}</SelectItem>
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+
+        <SettingsRow id="sf-access" label={mt("accessType")} help={mt("helpAccessType")}>
+          <div className="flex items-center gap-2">
+            <Select
+              value={accessIsCustom ? ACCESS_OTHER : values.accessType}
+              onValueChange={(v) => {
+                keepFocusRef.current = v === ACCESS_OTHER;
+                onChange({ accessType: v === ACCESS_OTHER ? '' : v });
+              }}
+            >
+              <SelectTrigger id="sf-access" className="w-48">
+                <SelectValue placeholder={mt("selectAccessType")} />
+              </SelectTrigger>
+              {/*
+                Radix restores focus to the trigger as the menu closes, which
+                happens after the close animation and would steal it from the
+                field that "Other…" just revealed. Suppressing the restore only
+                in that case keeps normal keyboard flow intact for real options.
+              */}
+              <SelectContent onCloseAutoFocus={(event) => { if (keepFocusRef.current) event.preventDefault(); }}>
+                {Object.entries(ACCESS_TYPE_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>{label}</SelectItem>
+                ))}
+                <SelectItem value={ACCESS_OTHER}>{mt("accessTypeOther")}</SelectItem>
+              </SelectContent>
+            </Select>
+            {accessIsCustom && (
+              <Input
+                ref={customAccessRef}
+                className="w-44"
+                value={values.accessType}
+                onChange={(e) => onChange({ accessType: e.target.value })}
+                placeholder={mt("accessTypeCustomPlaceholder")}
+              />
+            )}
+          </div>
+        </SettingsRow>
+
+        <SettingsRow id="sf-min" label={mt("minimumBookingDays")} help={mt("helpMinBooking")}>
+          <NumericInput
+            id="sf-min"
+            className="w-28"
+            suffix={mt("daysUnit")}
+            value={String(values.minimumBookingDuration || 1)}
+            onValueChange={(v) => onChange({ minimumBookingDuration: parseInt(v) || 1 })}
+          />
+        </SettingsRow>
+
+        <SettingsRow id="sf-size" label={mt("sizeCubicFeet")} help={mt("helpSize")}>
+          <NumericInput
+            id="sf-size"
+            className="w-28"
+            suffix="cu ft"
+            value={values.totalVolume ? String(values.totalVolume) : ''}
+            onValueChange={(v) => onChange({ totalVolume: parseFloat(v) || 0 })}
+          />
+        </SettingsRow>
+
+        {(values.storageType === 'cold' || values.storageType === 'freezer') && (
+          <SettingsRow id="sf-temp" label={mt("temperatureRange")} help={mt("helpTemperature")}>
+            <Input
+              id="sf-temp"
+              className="w-40"
+              value={values.temperatureRange}
+              onChange={(e) => onChange({ temperatureRange: e.target.value })}
+              placeholder={mt("eG3540F")}
+            />
+          </SettingsRow>
+        )}
+
+        <SectionBand label={mt("groupPricing")} />
+
+        <SettingsRow id="sf-rate" label={mt("dailyRateDollars")} hint={mt("currencyCadHint")} required>
+          <NumericInput
+            id="sf-rate"
+            className="w-32"
+            suffix={mt("perDay")}
+            allowDecimals
+            value={values.basePrice ? String(values.basePrice) : ''}
+            onValueChange={(v) => onChange({ basePrice: parseFloat(v) || 0 })}
+          />
+        </SettingsRow>
+
+        <SectionBand label={mt("navOverstayPenalties")} hint={mt("penaltiesHint")} />
+
+        <SettingsRow id="sf-grace" label={mt("gracePeriodDays2")} help={mt("helpGraceDays")}>
+          <NumericInput
+            id="sf-grace"
+            className="w-24"
+            suffix={mt("daysUnit")}
+            value={String(values.overstayGracePeriodDays)}
+            onValueChange={(v) => onChange({ overstayGracePeriodDays: parseInt(v) || 0 })}
+          />
+        </SettingsRow>
+
+        <SettingsRow id="sf-pen" label={mt("penaltyRate2")} help={mt("helpPenaltyRate")}>
+          <NumericInput
+            id="sf-pen"
+            className="w-24"
+            suffix="%"
+            value={String(Math.round(parseFloat(values.overstayPenaltyRate) * 100))}
+            onValueChange={(v) => onChange({ overstayPenaltyRate: ((parseInt(v) || 0) / 100).toString() })}
+          />
+        </SettingsRow>
+
+        <SettingsRow id="sf-max" label={mt("maxPenaltyDays")} help={mt("helpMaxPenaltyDays")}>
+          <NumericInput
+            id="sf-max"
+            className="w-24"
+            suffix={mt("daysUnit")}
+            value={String(values.overstayMaxPenaltyDays)}
+            onValueChange={(v) => onChange({ overstayMaxPenaltyDays: parseInt(v) || 1 })}
+          />
+        </SettingsRow>
+
+        <SettingsRow layout="stacked" id="sf-desc" label={mt("description")}>
+          <Textarea
+            id="sf-desc"
+            value={values.description}
+            onChange={(e) => onChange({ description: e.target.value })}
+            placeholder={mt("describeTheStorageSpace")}
+            rows={2}
+          />
+        </SettingsRow>
+      </div>
+    </div>
+  );
+}
+
 export default function StorageListingManagement() {
-  
   return (
     <ManagerPageLayout
       title={mt("storageManagement")}
@@ -132,46 +372,57 @@ export function StorageListingContent({
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  /** The tab shows either the listings or a full page for one listing. */
+  const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
+
   const [kitchens, setKitchens] = useState<Kitchen[]>([]);
   const [listings, setListings] = useState<StorageListing[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  
-  // Location overstay penalty defaults
   const [locationDefaults, setLocationDefaults] = useState<LocationDefaults | null>(null);
-  
-  const [activeTab, setActiveTab] = useState<'list' | 'add'>('list');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [expandedCategories, setExpandedCategories] = useState<string[]>(['dry', 'cold', 'freezer']);
-  const [selectedStorage, setSelectedStorage] = useState<Record<string, SelectedStorage>>({});
-  
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [editingListing, setEditingListing] = useState<StorageListing | null>(null);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
-  const [toggleDialogOpen, setToggleDialogOpen] = useState(false);
-  const [pendingToggle, setPendingToggle] = useState<{ id: number; isActive: boolean } | null>(null);
-  
+
+  /**
+   * Storage listings for every kitchen at this location, keyed by kitchen id.
+   * Only used to answer "does another kitchen already have this shelf?" — the list
+   * view and every write still go through `listings` / the single-kitchen
+   * endpoints, so nothing downstream changes shape.
+   */
+  const [allKitchenListings, setAllKitchenListings] = useState<Record<number, StorageListing[]>>({});
+
+  // ── Add page ──────────────────────────────────────────────────────────────
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const [form, setForm] = useState<StorageFormValues | null>(null);
+  const [targetKitchenIds, setTargetKitchenIds] = useState<number[]>([]);
+  const [isCreating, setIsCreating] = useState(false);
+  /** What the form held when it was opened or last re-previewed. */
+  const addBaselineRef = useRef<string>("");
+
+  // ── Edit page ─────────────────────────────────────────────────────────────
+  const [draft, setDraft] = useState<StorageListing | null>(null);
+  const [editMatches, setEditMatches] = useState<StorageMatch[]>([]);
+  const [applyToKitchenIds, setApplyToKitchenIds] = useState<number[]>([]);
   const [isSaving, setIsSaving] = useState(false);
-  const [activeSavingAction, setActiveSavingAction] = useState<'custom' | 'bulk' | 'edit' | null>(null);
+  const [pendingExit, setPendingExit] = useState<(() => void) | null>(null);
+
+  // ── Delete (instant, with an undo window) ─────────────────────────────────
+  const [pendingDelete, setPendingDelete] = useState<{ id: number; name: string } | null>(null);
+  const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [isToggling, setIsToggling] = useState(false);
 
-  // Custom storage state for intuitive "not found" flow
-  const [customStorage, setCustomStorage] = useState(() => ({
-    name: '',
-    storageType: 'dry' as StorageTypeId,
-    description: '',
-    dailyRate: 0,
-    totalVolume: 0,
-    accessType: 'shelving-unit',
-    temperatureRange: '',
-    minimumBookingDuration: 1,
-    // Overstay penalty configuration - will be updated when location defaults are fetched
-    overstayGracePeriodDays: 3,
-    overstayPenaltyRate: '0.10',
-    overstayMaxPenaltyDays: 30,
-  }));
+  const originalListing = useMemo(
+    () => (draft?.id == null ? null : listings.find((l) => l.id === draft.id) ?? null),
+    [draft, listings],
+  );
 
-  const selectedStorageCount = Object.keys(selectedStorage).length;
+  const editDirty = useMemo(() => {
+    if (!draft || !originalListing) return false;
+    return JSON.stringify(draft) !== JSON.stringify(originalListing);
+  }, [draft, originalListing]);
+
+  /** Typing in the add form counts as unsaved work too. */
+  const addDirty = Boolean(form) && JSON.stringify(form) !== addBaselineRef.current;
+
+  const hasUnsavedWork = view === 'add' ? addDirty : view === 'edit' ? editDirty : false;
 
   useEffect(() => {
     if (selectedLocationId) {
@@ -187,26 +438,53 @@ export function StorageListingContent({
     else setListings([]);
   }, [selectedKitchenId]);
 
-  // Update customStorage overstay defaults when locationDefaults are loaded
+  // Switching kitchen or location unmounts the page, so leave the editor first.
   useEffect(() => {
-    if (locationDefaults) {
-      setCustomStorage(prev => ({
-        ...prev,
-        overstayGracePeriodDays: locationDefaults.gracePeriodDays ?? 3,
-        overstayPenaltyRate: (locationDefaults.penaltyRate ?? 0.10).toString(),
-        overstayMaxPenaltyDays: locationDefaults.maxPenaltyDays ?? 30,
-      }));
-    }
-  }, [locationDefaults]);
+    setView('list');
+    setForm(null);
+    setDraft(null);
+    setPendingExit(null);
+  }, [selectedKitchenId]);
+
+  // Cover browser refresh / tab close, which the in-app guard cannot intercept.
+  useEffect(() => {
+    if (!hasUnsavedWork) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasUnsavedWork]);
 
   const loadKitchens = async () => {
     if (!selectedLocationId) return;
     try {
       const data = await apiGet(`/manager/kitchens/${selectedLocationId}`);
       setKitchens(data);
+      loadAllKitchenListings(data);
     } catch (error: any) {
       toast({ title: mt("error"), description: error.message || "Failed to load kitchens", variant: "destructive" });
     }
+  };
+
+  /**
+   * Fetch every kitchen's storage listings so the page can tell which other
+   * kitchens already carry a given shelf. Failures are swallowed per kitchen —
+   * this is advisory data, and one failure must not blank the page.
+   */
+  const loadAllKitchenListings = async (kitchenList: Kitchen[]) => {
+    const entries = await Promise.all(
+      kitchenList.map(async (k) => {
+        try {
+          const rows = await apiGet(`/manager/kitchens/${k.id}/storage-listings`);
+          return [k.id, Array.isArray(rows) ? rows : []] as const;
+        } catch {
+          return [k.id, []] as const;
+        }
+      }),
+    );
+    setAllKitchenListings(Object.fromEntries(entries));
   };
 
   const loadLocationDefaults = async () => {
@@ -219,229 +497,436 @@ export function StorageListingContent({
     }
   };
 
-  const loadListings = async () => {
-    if (!selectedKitchenId) return;
-    setIsLoading(true);
+  /** Fetch and map the current kitchen's listings. Returns them for callers that need the fresh rows. */
+  const fetchListings = async (): Promise<StorageListing[] | null> => {
+    if (!selectedKitchenId) return null;
     try {
       const data = await apiGet(`/manager/kitchens/${selectedKitchenId}/storage-listings`);
-      // Convert cents to dollars for UI
-      const mappedData = Array.isArray(data) ? data.map((item: any) => ({
+      return Array.isArray(data) ? data.map((item: any) => ({
         ...item,
         basePrice: item.basePrice ? item.basePrice / 100 : 0,
       })) : [];
-      setListings(mappedData);
-    } catch (error: any) {
-      toast({ title: mt("error"), description: error.message || "Failed to load storage listings", variant: "destructive" });
-    } finally {
-      setIsLoading(false);
+    } catch {
+      return null;
     }
   };
 
-  const filteredCategories = useMemo(() => {
-    if (!searchQuery.trim()) return STORAGE_CATEGORIES;
-    const query = searchQuery.toLowerCase();
-    return STORAGE_CATEGORIES.map(cat => ({
-      ...cat,
-      items: cat.items.filter(item => item.name.toLowerCase().includes(query) || cat.name.toLowerCase().includes(query))
-    })).filter(cat => cat.items.length > 0);
-  }, [searchQuery]);
-
-  const totalFilteredItems = filteredCategories.reduce((sum, cat) => sum + cat.items.length, 0);
-  const showNoResultsCustomOption = searchQuery.trim().length > 0 && totalFilteredItems === 0;
-
-  const saveCustomStorage = async () => {
-    // Use searchQuery as fallback if customStorage.name is empty (intuitive flow)
-    const storageName = (customStorage.name.trim() || searchQuery.trim());
-    if (!selectedKitchenId || !storageName) {
-      toast({ title: mt("error"), description: mt("pleaseEnterAStorageName"), variant: "destructive" });
-      return;
-    }
-    if (!customStorage.dailyRate || customStorage.dailyRate <= 0) {
-      toast({ title: mt("error"), description: mt("pleaseEnterADailyRate"), variant: "destructive" });
-      return;
-    }
-    setIsSaving(true);
-    try {
-      await apiPost('/manager/storage-listings', {
-        kitchenId: selectedKitchenId,
-        name: storageName,
-        storageType: customStorage.storageType,
-        description: customStorage.description || undefined,
-        basePrice: Math.round(customStorage.dailyRate * 100), // Convert to cents
-        totalVolume: customStorage.totalVolume || undefined,
-        accessType: customStorage.accessType || undefined,
-        temperatureRange: customStorage.temperatureRange || getDefaultTemperatureRange(customStorage.storageType) || undefined,
-        pricingModel: 'daily',
-        minimumBookingDuration: customStorage.minimumBookingDuration || 1,
-        bookingDurationUnit: 'daily',
-        currency: 'CAD',
-        isActive: true,
-        // Overstay penalty configuration
-        overstayGracePeriodDays: customStorage.overstayGracePeriodDays,
-        overstayPenaltyRate: customStorage.overstayPenaltyRate,
-        overstayMaxPenaltyDays: customStorage.overstayMaxPenaltyDays,
-      });
-      toast({ title: mt("storageAdded"), description: `Successfully added "${storageName}"` });
-      setCustomStorage({ 
-        name: '', 
-        storageType: 'dry' as StorageTypeId, 
-        description: '', 
-        dailyRate: 0, 
-        totalVolume: 0, 
-        accessType: 'shelving-unit', 
-        temperatureRange: '', 
-        minimumBookingDuration: 1, 
-        overstayGracePeriodDays: locationDefaults?.gracePeriodDays ?? 3, 
-        overstayPenaltyRate: (locationDefaults?.penaltyRate ?? 0.10).toString(), 
-        overstayMaxPenaltyDays: locationDefaults?.maxPenaltyDays ?? 30 
-      });
-      setSearchQuery('');
-      setActiveTab('list');
-      loadListings();
-      queryClient.invalidateQueries({ queryKey: [`/api/manager/storage-listings`] });
-    } catch (error: any) {
-      toast({ title: mt("error"), description: error.message || "Failed to add storage", variant: "destructive" });
-    } finally {
-      setIsSaving(false);
-    }
+  const loadListings = async () => {
+    if (!selectedKitchenId) return;
+    setIsLoading(true);
+    const mapped = await fetchListings();
+    if (mapped) setListings(mapped);
+    else toast({ title: mt("error"), description: "Failed to load storage listings", variant: "destructive" });
+    setIsLoading(false);
   };
 
-  const toggleCategory = (categoryId: string) => {
-    setExpandedCategories(prev => prev.includes(categoryId) ? prev.filter(id => id !== categoryId) : [...prev, categoryId]);
+  // ── Derived ───────────────────────────────────────────────────────────────
+
+  /** Loose identity for "the same shelf in another kitchen": name + type. */
+  const matchKey = (name: string, type: string) => `${name.trim().toLowerCase()}|${type}`;
+
+  /** Names of the other kitchens at this location that already carry this listing. */
+  const kitchensAlsoHaving = (listing: StorageListing) => {
+    const key = matchKey(listing.name, listing.storageType);
+    return kitchens
+      .filter((k) => k.id !== listing.kitchenId)
+      .filter((k) =>
+        (allKitchenListings[k.id] || []).some((l) => matchKey(l.name, l.storageType) === key),
+      )
+      .map((k) => k.name);
   };
 
-  const handleTemplateSelect = (template: StorageTemplate) => {
-    setSelectedStorage(prev => {
-      const newState = { ...prev };
-      if (newState[template.id]) {
-        delete newState[template.id];
-      } else {
-        newState[template.id] = {
-          templateId: template.id,
+  const countListedHere = (name: string) =>
+    listings.filter((l) => l.name.trim().toLowerCase() === name.trim().toLowerCase()).length;
+
+  const storageTypeLabel = (type: StorageTypeId) =>
+    type === 'cold' ? mt("coldStorage") : type === 'freezer' ? mt("freezer") : mt("dryStorage");
+
+  /**
+   * Every kitchen's listings, flattened and de-duped by id.
+   *
+   * Cross-kitchen matching has to see the *other* kitchens' rows. `listings` only
+   * holds the current kitchen's, so passing it as the match source made every
+   * "also update" lookup fail silently and the control rendered nothing at all.
+   * The current kitchen's rows win on conflict because they are the freshest.
+   */
+  const matchSource = useMemo(() => {
+    const byId = new Map<number, StorageListing>();
+    for (const rows of Object.values(allKitchenListings)) {
+      for (const row of rows) if (row.id != null) byId.set(row.id, row);
+    }
+    for (const row of listings) if (row.id != null) byId.set(row.id, row);
+    return [...byId.values()];
+  }, [allKitchenListings, listings]);
+
+  /** The row being deleted is hidden straight away; the API call waits for the undo window. */
+  const visibleListings = useMemo(
+    () => (pendingDelete ? listings.filter((l) => l.id !== pendingDelete.id) : listings),
+    [listings, pendingDelete],
+  );
+
+  const groupedListings = useMemo(() => {
+    const order: StorageTypeId[] = ['dry', 'cold', 'freezer'];
+    return order
+      .map((type) => ({ type, items: visibleListings.filter((l) => l.storageType === type) }))
+      .filter((group) => group.items.length > 0);
+  }, [visibleListings]);
+
+  /**
+   * The suggestion list. Nothing is disabled: a kitchen can legitimately hold two
+   * of the same thing, so "already listed" is shown as a note, never a block.
+   */
+  const suggestions: AddSuggestion[] = useMemo(
+    () => STORAGE_CATEGORIES.flatMap((cat) =>
+      cat.items.map((template) => {
+        const here = countListedHere(template.name);
+        return {
+          id: template.id,
           name: template.name,
-          storageType: template.storageType,
-          description: template.description,
-          dailyRate: template.suggestedDailyRate,
-          totalVolume: 0,
-          accessType: template.accessTypes[0] || 'walk-in',
-          temperatureRange: template.temperatureRange || getDefaultTemperatureRange(template.storageType) || '',
-          minimumBookingDuration: 1,
-          // Use location defaults if available, otherwise platform defaults
-          overstayGracePeriodDays: locationDefaults?.gracePeriodDays ?? 3,
-          overstayPenaltyRate: (locationDefaults?.penaltyRate ?? 0.10).toString(),
-          overstayMaxPenaltyDays: locationDefaults?.maxPenaltyDays ?? 30,
+          group: cat.name,
+          meta: `$${template.suggestedDailyRate}${mt("perDay")}`,
+          note: here > 0 ? mt("alreadyListedCount", { count: here }) : undefined,
         };
-      }
-      return newState;
+      }),
+    ),
+    [listings],
+  );
+
+  /** Sensible starting values, seeded from the location's overstay defaults. */
+  const blankEntry = (overrides: Partial<StorageFormValues> = {}): StorageFormValues => ({
+    name: '',
+    storageType: 'dry',
+    accessType: 'shelving-unit',
+    minimumBookingDuration: 1,
+    totalVolume: 0,
+    temperatureRange: getDefaultTemperatureRange('dry') || '',
+    basePrice: 0,
+    overstayGracePeriodDays: locationDefaults?.gracePeriodDays ?? 3,
+    overstayPenaltyRate: (locationDefaults?.penaltyRate ?? 0.10).toString(),
+    overstayMaxPenaltyDays: locationDefaults?.maxPenaltyDays ?? 30,
+    description: '',
+    ...overrides,
+  });
+
+  const templateToEntry = (template: StorageTemplate): StorageFormValues =>
+    blankEntry({
+      name: template.name,
+      storageType: template.storageType,
+      description: template.description,
+      basePrice: template.suggestedDailyRate,
+      accessType: template.accessTypes[0] || 'walk-in',
+      temperatureRange: template.temperatureRange || getDefaultTemperatureRange(template.storageType) || '',
     });
+
+  /** Project a stored listing onto the form's shape. */
+  const toFormValues = (listing: StorageListing): StorageFormValues => ({
+    name: listing.name,
+    storageType: listing.storageType,
+    // `??`, not `||`: an empty access type is meaningful — it is what "Other…"
+    // sets while the manager is typing their own label — and `||` would coerce it
+    // straight back to a preset, making the custom field unreachable on edit.
+    accessType: listing.accessType ?? 'shelving-unit',
+    minimumBookingDuration: listing.minimumBookingDuration ?? 1,
+    totalVolume: listing.totalVolume ?? 0,
+    temperatureRange: listing.temperatureRange || '',
+    basePrice: listing.basePrice || 0,
+    overstayGracePeriodDays: listing.overstayGracePeriodDays ?? 3,
+    overstayPenaltyRate: listing.overstayPenaltyRate || '0.10',
+    overstayMaxPenaltyDays: listing.overstayMaxPenaltyDays ?? 30,
+    description: listing.description || '',
+  });
+
+  /** Current kitchen plus any ticked others — de-duped, order irrelevant. */
+  const targetKitchens = () =>
+    Array.from(new Set(selectedKitchenId ? [selectedKitchenId, ...targetKitchenIds] : targetKitchenIds));
+
+  // ── Navigation between the list and the two pages ─────────────────────────
+
+  const openAdd = () => {
+    const blank = blankEntry();
+    addBaselineRef.current = JSON.stringify(blank);
+    setPreviewId(null);
+    setForm(blank);
+    setTargetKitchenIds([]);
+    setView('add');
   };
 
-  const updateSelectedStorage = (templateId: string, updates: Partial<SelectedStorage>) => {
-    setSelectedStorage(prev => {
-      if (!prev[templateId]) return prev;
-      return { ...prev, [templateId]: { ...prev[templateId], ...updates } };
-    });
-  };
+  const openEdit = useCallback((listing: StorageListing, source: StorageListing[]) => {
+    setDraft({ ...listing });
+    const key = matchKey(listing.name, listing.storageType);
+    const matches: StorageMatch[] = kitchens
+      .filter((k) => k.id !== listing.kitchenId)
+      .flatMap((k) => {
+        const hit = source.find(
+          (l) => l.kitchenId === k.id && matchKey(l.name, l.storageType) === key,
+        );
+        return hit?.id != null
+          ? [{ kitchenId: k.id, kitchenName: k.name, listingId: hit.id }]
+          : [];
+      });
+    setEditMatches(matches);
+    setApplyToKitchenIds([]); // opt-in — never write to another kitchen unasked
+    setView('edit');
+  }, [kitchens]);
 
-  const saveSelectedStorage = async () => {
-    if (!selectedKitchenId || selectedStorageCount === 0) return;
-    setIsSaving(true);
-    let successCount = 0;
-    for (const storage of Object.values(selectedStorage)) {
-      try {
-        await apiPost('/manager/storage-listings', {
-          kitchenId: selectedKitchenId,
-          name: storage.name,
-          storageType: storage.storageType,
-          description: storage.description || undefined,
-          basePrice: Math.round(storage.dailyRate * 100), // Convert to cents
-          totalVolume: storage.totalVolume || undefined,
-          accessType: storage.accessType || undefined,
-          temperatureRange: storage.temperatureRange || undefined,
-          pricingModel: 'daily',
-          minimumBookingDuration: storage.minimumBookingDuration || 1,
-          bookingDurationUnit: 'daily',
-          currency: 'CAD',
-          isActive: true,
-          // Overstay penalty configuration
-          overstayGracePeriodDays: storage.overstayGracePeriodDays,
-          overstayPenaltyRate: storage.overstayPenaltyRate,
-          overstayMaxPenaltyDays: storage.overstayMaxPenaltyDays,
-        });
-        successCount++;
-      } catch (error) {
-        logger.error('Error creating storage listing:', error);
-      }
+  const closePage = useCallback(() => {
+    setView('list');
+    setForm(null);
+    setDraft(null);
+    setEditMatches([]);
+    setApplyToKitchenIds([]);
+  }, []);
+
+  /**
+   * Leaving the page. PatternFly's rule for an inline editor: closing with no
+   * changes is silent, but once there are changes the user is asked rather than
+   * having the work vanish.
+   */
+  const requestExit = useCallback((after?: () => void) => {
+    if (!hasUnsavedWork) {
+      closePage();
+      after?.();
+      return;
     }
-    setIsSaving(false);
-    if (successCount > 0) {
-      toast({ title: mt("storageAdded"), description: `Successfully added ${successCount} storage listing${successCount > 1 ? 's' : ''}.` });
-      setSelectedStorage({});
-      setActiveTab('list');
-      loadListings();
+    setPendingExit(() => () => {
+      closePage();
+      after?.();
+    });
+  }, [hasUnsavedWork, closePage]);
+
+  /**
+   * Escape leaves the page, with the same unsaved-changes guard.
+   *
+   * Guarded against an open Radix dropdown: the select renders into a popper and
+   * Escape belongs to it first. Without this the one keypress closed the menu AND
+   * left the page, and with a dirty draft it opened the unsaved-changes dialog
+   * behind the closing menu.
+   */
+  useEffect(() => {
+    if (view === 'list') return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (document.querySelector("[data-radix-popper-content-wrapper]")) return;
+      event.preventDefault();
+      requestExit();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [view, requestExit]);
+
+  // ── Add ───────────────────────────────────────────────────────────────────
+
+  /** Previewing only — nothing is written until Add is pressed. */
+  const selectSuggestion = (id: string | null) => {
+    setPreviewId(id);
+    const next = id === null
+      ? blankEntry()
+      : (() => {
+          const template = STORAGE_CATEGORIES.flatMap((c) => c.items).find((t) => t.id === id);
+          return template ? templateToEntry(template) : blankEntry();
+        })();
+    addBaselineRef.current = JSON.stringify(next);
+    setForm(next);
+  };
+
+  const updateForm = (updates: Partial<StorageFormValues>) => {
+    setForm((prev) => (prev ? { ...prev, ...updates } : prev));
+  };
+
+  /** Mirrors the server's own rules so the button can be disabled rather than failing. */
+  const canSubmitAdd = Boolean(form && form.name.trim().length >= 3 && form.basePrice > 0);
+
+  /** Same rules for the edit page, used to explain a save that cannot succeed. */
+  const editIncomplete = Boolean(
+    draft && (draft.name.trim().length < 3 || !draft.basePrice),
+  );
+
+  /** Fields the server accepts for a new listing. `kitchenId` is added per target. */
+  const storagePayload = (storage: StorageFormValues) => ({
+    name: storage.name.trim(),
+    storageType: storage.storageType,
+    description: storage.description || undefined,
+    basePrice: Math.round(storage.basePrice * 100), // Convert to cents
+    totalVolume: storage.totalVolume || undefined,
+    accessType: storage.accessType || undefined,
+    temperatureRange: storage.temperatureRange || undefined,
+    pricingModel: 'daily',
+    minimumBookingDuration: storage.minimumBookingDuration || 1,
+    bookingDurationUnit: 'daily',
+    currency: 'CAD',
+    isActive: true,
+    overstayGracePeriodDays: storage.overstayGracePeriodDays,
+    overstayPenaltyRate: storage.overstayPenaltyRate,
+    overstayMaxPenaltyDays: storage.overstayMaxPenaltyDays,
+  });
+
+  /**
+   * Create one listing per target kitchen.
+   *
+   * Reuses the single-kitchen endpoint in parallel rather than adding a bulk route:
+   * per-kitchen access checks and overstay-default resolution keep running exactly
+   * as they do today, so there is no new server surface to get wrong.
+   */
+  const createForKitchens = async (storage: StorageFormValues, kitchenIds: number[]) => {
+    const results = await Promise.allSettled(
+      kitchenIds.map((kitchenId) =>
+        apiPost('/manager/storage-listings', { kitchenId, ...storagePayload(storage) }),
+      ),
+    );
+    return results.filter((r) => r.status === 'fulfilled').length;
+  };
+
+  const submitAdd = async () => {
+    if (!form || !selectedKitchenId || isCreating || !canSubmitAdd) return;
+    const targets = targetKitchens();
+    setIsCreating(true);
+    try {
+      const created = await createForKitchens(form, targets);
+      if (created === 0) throw new Error(mt("failedToAddStorageListings"));
+      toast({
+        title: mt("storageAdded"),
+        description:
+          created > 1
+            ? mt("addToKitchensCount", { count: created })
+            : `${form.name.trim()} · $${form.basePrice}${mt("perDay")}`,
+      });
+      closePage();
+      const fresh = await fetchListings();
+      if (fresh) setListings(fresh);
+      loadAllKitchenListings(kitchens);
       queryClient.invalidateQueries({ queryKey: [`/api/manager/storage-listings`] });
-    } else {
-      toast({ title: mt("error"), description: mt("failedToAddStorageListings"), variant: "destructive" });
+    } catch (error: any) {
+      toast({ title: mt("error"), description: error.message || mt("failedToAddStorageListings"), variant: "destructive" });
+    } finally {
+      setIsCreating(false);
     }
   };
 
-  const handleEdit = (listing: StorageListing) => {
-    setEditingListing(listing);
-    setEditDialogOpen(true);
+  // ── Edit ──────────────────────────────────────────────────────────────────
+
+  const updateDraft = (updates: Partial<StorageListing>) => {
+    setDraft((prev) => (prev ? { ...prev, ...updates } : prev));
   };
 
-  const saveEditedListing = async () => {
-    if (!editingListing?.id) return;
+  /**
+   * Body for a copy living in another kitchen.
+   *
+   * Deliberately a whitelist of the fields this form exposes, not a spread of the
+   * whole row: a spread would also push `availability_calendar`, `status` and
+   * `photos`, silently wiping the other kitchen's blocked dates. `kitchenId` is
+   * omitted for the same class of reason — the repository applies the body straight
+   * to the UPDATE, so forwarding it would move the other kitchen's listing here.
+   */
+  const extraKitchenPayload = (listing: StorageListing) => ({
+    name: listing.name,
+    storageType: listing.storageType,
+    description: listing.description || undefined,
+    basePrice: Math.round((listing.basePrice || 0) * 100), // Convert to cents
+    totalVolume: listing.totalVolume || undefined,
+    accessType: listing.accessType || undefined,
+    temperatureRange: listing.temperatureRange || undefined,
+    minimumBookingDuration: listing.minimumBookingDuration || 1,
+    overstayGracePeriodDays: listing.overstayGracePeriodDays,
+    overstayPenaltyRate: listing.overstayPenaltyRate,
+    overstayMaxPenaltyDays: listing.overstayMaxPenaltyDays,
+    overstayPolicyText: listing.overstayPolicyText,
+  });
+
+  /** Returns true when the listing saved, so the unsaved-changes dialog can stay open on failure. */
+  const saveDraft = async (): Promise<boolean> => {
+    if (!draft?.id) return false;
+    if (!draft.name.trim()) {
+      toast({ title: mt("error"), description: mt("pleaseEnterAStorageName"), variant: "destructive" });
+      return false;
+    }
     setIsSaving(true);
     try {
-      await apiPut(`/manager/storage-listings/${editingListing.id}`, {
-        ...editingListing,
-        basePrice: Math.round((editingListing.basePrice || 0) * 100), // Convert to cents
+      await apiPut(`/manager/storage-listings/${draft.id}`, {
+        ...draft,
+        basePrice: Math.round((draft.basePrice || 0) * 100), // Convert to cents
       });
-      toast({ title: mt("success"), description: mt("storageListingUpdatedSuccessfully") });
-      setEditDialogOpen(false);
-      setEditingListing(null);
+
+      const extras = editMatches.filter((m) => applyToKitchenIds.includes(m.kitchenId));
+      const results = extras.length
+        ? await Promise.allSettled(
+            extras.map((m) =>
+              apiPut(`/manager/storage-listings/${m.listingId}`, extraKitchenPayload(draft)),
+            ),
+          )
+        : [];
+      const extraOk = results.filter((r) => r.status === 'fulfilled').length;
+      const extraFailed = extras.length - extraOk;
+
+      toast({
+        title: mt("success"),
+        description: extraFailed
+          ? `${mt("storageListingUpdatedSuccessfully")} ${extraFailed} failed.`
+          : extraOk > 0
+            ? mt("updatedInKitchens", { count: extraOk + 1 })
+            : mt("storageListingUpdatedSuccessfully"),
+      });
+      closePage();
       loadListings();
+      loadAllKitchenListings(kitchens);
       queryClient.invalidateQueries({ queryKey: [`/api/manager/storage-listings`] });
+      return true;
     } catch (error: any) {
       toast({ title: mt("error"), description: error.message || "Failed to update listing", variant: "destructive" });
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleDelete = async () => {
-    if (!pendingDeleteId) return;
+  // ── Delete ────────────────────────────────────────────────────────────────
+
+  /**
+   * Deletes are instant with a six-second undo, matching the check-in /
+   * check-out page. The API call is held back until the window closes, so an undo
+   * never has to re-create the row — which would mint a new id and drop the
+   * bookings that point at it. Starting a second delete commits the first.
+   */
+  const commitDelete = async (id: number) => {
+    if (deleteTimerRef.current) {
+      clearTimeout(deleteTimerRef.current);
+      deleteTimerRef.current = null;
+    }
+    setPendingDelete(null);
     try {
-      await apiDelete(`/manager/storage-listings/${pendingDeleteId}`);
+      await apiDelete(`/manager/storage-listings/${id}`);
       toast({ title: mt("success"), description: mt("storageListingDeletedSuccessfully") });
-      setDeleteDialogOpen(false);
-      setPendingDeleteId(null);
-      loadListings();
+      loadAllKitchenListings(kitchens);
     } catch (error: any) {
       toast({ title: mt("error"), description: error.message || "Failed to delete listing", variant: "destructive" });
+    } finally {
+      loadListings();
     }
   };
 
-  const handleToggleActive = (listingId: number, currentStatus: boolean) => {
-    const newStatus = !currentStatus;
-    if (!newStatus) {
-      setPendingToggle({ id: listingId, isActive: newStatus });
-      setToggleDialogOpen(true);
-    } else {
-      doToggleActive(listingId, newStatus);
-    }
+  const requestDelete = (listing: StorageListing) => {
+    if (listing.id == null) return;
+    if (pendingDelete) void commitDelete(pendingDelete.id);
+    setPendingDelete({ id: listing.id, name: listing.name });
+    deleteTimerRef.current = setTimeout(() => void commitDelete(listing.id!), UNDO_WINDOW_MS);
   };
 
-  const doToggleActive = async (id: number, isActive: boolean) => {
+  const undoDelete = () => {
+    if (deleteTimerRef.current) {
+      clearTimeout(deleteTimerRef.current);
+      deleteTimerRef.current = null;
+    }
+    setPendingDelete(null);
+  };
+
+  const handleToggleActive = async (listing: StorageListing) => {
+    if (listing.id == null) return;
+    const next = listing.isActive === false;
     setIsToggling(true);
     try {
-      await apiPut(`/manager/storage-listings/${id}`, { isActive });
-      queryClient.invalidateQueries({ queryKey: [`/api/manager/storage-listings`] });
+      await apiPut(`/manager/storage-listings/${listing.id}`, { isActive: next });
       loadListings();
-      toast({ title: mt("statusUpdated"), description: isActive ? mt("listingNowActive") : mt("listingNowInactive") });
-      setToggleDialogOpen(false);
-      setPendingToggle(null);
+      queryClient.invalidateQueries({ queryKey: [`/api/manager/storage-listings`] });
+      toast({ title: mt("statusUpdated"), description: next ? mt("listingNowActive") : mt("listingNowInactive") });
     } catch (error: any) {
       toast({ title: mt("error"), description: error.message || "Failed to update status", variant: "destructive" });
     } finally {
@@ -463,598 +948,301 @@ export function StorageListingContent({
     );
   }
 
-  return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-top-4">
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'list' | 'add')}>
-        <div className="flex items-center justify-between mb-4">
-          <TabsList className="grid w-[300px] grid-cols-2">
-            <TabsTrigger value="list" className="flex items-center gap-2"><Package className="h-4 w-4" />{mt("myStorage")}</TabsTrigger>
-            <TabsTrigger value="add" className="flex items-center gap-2"><Plus className="h-4 w-4" />{mt("addStorage")}</TabsTrigger>
-          </TabsList>
-          {selectedKitchen && <Badge variant="outline" className="text-sm">{selectedKitchen.name}</Badge>}
-        </div>
+  const unsavedDialog = (
+    <AlertDialog open={pendingExit !== null} onOpenChange={(open) => !open && setPendingExit(null)}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{mt("unsavedChanges")}</AlertDialogTitle>
+          <AlertDialogDescription>{mt("storageUnsavedChangesDescription")}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{mt("cancel")}</AlertDialogCancel>
+          <Button
+            variant="outline"
+            onClick={() => {
+              const action = pendingExit;
+              setPendingExit(null);
+              action?.();
+            }}
+          >
+            {mt("discardChanges")}
+          </Button>
+          <AlertDialogAction
+            onClick={(event) => {
+              event.preventDefault();
+              void (async () => {
+                if (view === 'edit') {
+                  if (await saveDraft()) setPendingExit(null);
+                } else {
+                  // "Save" on the add page means "create it now".
+                  setPendingExit(null);
+                  await submitAdd();
+                }
+              })();
+            }}
+          >
+            {mt("saveChanges")}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
 
-        <TabsContent value="list" className="mt-0">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">{mt("storageInventory")}</CardTitle>
-              <CardDescription>{listings.length} storage listing{listings.length !== 1 ? 's' : ''} for this kitchen</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <div className="space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-24 w-full" />)}</div>
-              ) : listings.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground">
-                  <Package className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                  <p className="font-medium">{mt("noStorageListedYet")}</p>
-                  <p className="text-sm mt-1">Click "Add Storage" to get started</p>
-                  <Button className="mt-4" onClick={() => setActiveTab('add')}><Plus className="h-4 w-4 mr-2" />{mt("addStorage")}</Button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {listings.map((listing) => (
-                    <div key={listing.id} className={cn("p-4 border rounded-lg transition-colors", listing.isActive === false && "bg-muted/50 opacity-75")}>
-                      {/* Main Row */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h4 className="font-medium truncate">{listing.name}</h4>
-                            <Badge variant={listing.isActive !== false ? "success" : "outline"} className="text-xs">{listing.isActive !== false ? mt("active") : mt("inactive")}</Badge>
-                          </div>
-                          <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                            <span className="capitalize">{listing.storageType}</span>
-                            {listing.totalVolume && <><span>•</span><span>{listing.totalVolume} cu ft</span></>}
-                            <span>•</span>
-                            <span className="font-medium text-blue-600">${(listing.basePrice || 0).toFixed(2)}/day</span>
-                            {listing.minimumBookingDuration && listing.minimumBookingDuration > 1 && <><span>•</span><span>Min {listing.minimumBookingDuration} days</span></>}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 ml-4">
-                          <Switch checked={listing.isActive !== false} onCheckedChange={() => handleToggleActive(listing.id!, listing.isActive !== false)} disabled={isToggling} />
-                          <Button variant="ghost" size="icon" onClick={() => handleEdit(listing)} title={mt("editStorageDetails")}><Pencil className="h-4 w-4" /></Button>
-                          <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => { setPendingDeleteId(listing.id!); setDeleteDialogOpen(true); }} title={mt("deleteStorage")}><Trash2 className="h-4 w-4" /></Button>
-                        </div>
-                      </div>
-                      
-                      {/* Penalty Configuration Row */}
-                      <div className="mt-3 pt-3 border-t flex items-center justify-between">
-                        <div className="flex items-center gap-3 text-sm">
-                          <div className="flex items-center gap-1.5">
-                            <AlertTriangle className={cn("h-4 w-4", listing.overstayGracePeriodDays !== undefined ? "text-orange-500" : "text-gray-300")} />
-                            <span className="text-muted-foreground">{mt("overstayPenalties2")}</span>
-                          </div>
-                          {listing.overstayGracePeriodDays !== undefined ? (
-                            <div className="flex items-center gap-2">
-                              <Badge variant="outline" className="text-xs font-normal">
-                                {listing.overstayGracePeriodDays}d grace
-                              </Badge>
-                              <Badge variant="outline" className="text-xs font-normal">
-                                {Math.round((parseFloat(listing.overstayPenaltyRate || '0.1')) * 100)}% / day
-                              </Badge>
-                              <span className="text-xs text-muted-foreground">max {listing.overstayMaxPenaltyDays || 30} days</span>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-orange-600 italic">{mt("notConfiguredUsingDefaults")}</span>
-                          )}
-                        </div>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="text-xs h-7 px-2 text-orange-600 hover:text-orange-700 hover:bg-orange-50"
-                          onClick={() => handleEdit(listing)}
-                        >{mt("configure")}</Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+  // ── Add / Edit page ───────────────────────────────────────────────────────
 
-        <TabsContent value="add" className="mt-0 space-y-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder={mt("searchStorageTypes")} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
-          </div>
+  if (view !== 'list') {
+    const isAdd = view === 'add';
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2"><Grid3X3 className="h-5 w-5" />{mt("selectStorageType")}</CardTitle>
-                  <CardDescription>{mt("chooseFromPreDefinedStorageOptionsOrAddCustom")}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ScrollArea className="h-[500px] pr-4">
-                    <div className="space-y-2">
-                      {filteredCategories.map((category) => (
-                        <Collapsible key={category.id} open={expandedCategories.includes(category.id)} onOpenChange={() => toggleCategory(category.id)}>
-                          <CollapsibleTrigger asChild>
-                            <Button variant="ghost" className="w-full justify-between p-3 h-auto font-medium hover:bg-muted/50">
-                              <span className="flex items-center gap-2"><StorageCategoryIcon iconName={category.iconName} className="h-4 w-4 text-muted-foreground" />{category.name}<Badge variant="count" className="ml-2">{category.items.length}</Badge></span>
-                              {expandedCategories.includes(category.id) ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                            </Button>
-                          </CollapsibleTrigger>
-                          <CollapsibleContent>
-                            <div className="p-2 pl-4 space-y-2">
-                              {/* Category description */}
-                              <p className="text-xs text-muted-foreground mb-3">{category.description}{category.temperatureRange && ` • ${category.temperatureRange}`}</p>
-                              <div className="grid grid-cols-1 gap-2">
-                                {category.items.map((template) => {
-                                  const isSelected = !!selectedStorage[template.id];
-                                  const isAlreadyListed = listings.some(l => l.name.toLowerCase() === template.name.toLowerCase());
-                                  return (
-                                    <button key={template.id} onClick={() => !isAlreadyListed && handleTemplateSelect(template)} disabled={isAlreadyListed}
-                                      className={cn("flex items-start gap-3 p-3 rounded-lg border text-left transition-all", isSelected && "border-primary bg-primary/5 ring-1 ring-primary", isAlreadyListed && "opacity-50 cursor-not-allowed bg-muted", !isSelected && !isAlreadyListed && "hover:border-primary/50 hover:bg-muted/50")}>
-                                      <div className={cn("flex items-center justify-center w-5 h-5 rounded border mt-0.5", isSelected ? "bg-primary border-primary" : "border-muted-foreground/30")}>
-                                        {isSelected && <Check className="h-3 w-3 text-primary-foreground" />}
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2">
-                                          <p className="text-sm font-medium">{template.name}</p>
-                                          {isAlreadyListed && <Badge variant="secondary" className="text-xs">{mt("listed")}</Badge>}
-                                        </div>
-                                        <p className="text-xs text-muted-foreground mt-0.5">{template.description}</p>
-                                        <p className="text-xs text-blue-600 mt-1">~${template.suggestedDailyRate}/day</p>
-                                      </div>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          </CollapsibleContent>
-                        </Collapsible>
-                      ))}
-                      
-                      {/* Intuitive custom storage option when search has no results */}
-                      {showNoResultsCustomOption && (
-                        <Card className="border-dashed border-primary/50 bg-primary/5">
-                          <CardHeader className="pb-2">
-                            <CardTitle className="text-base flex items-center gap-2">
-                              <SearchX className="h-4 w-4" />{mt("noMatchingStorageFound")}</CardTitle>
-                            <CardDescription>Add "{searchQuery}" as custom storage</CardDescription>
-                          </CardHeader>
-                          <CardContent className="space-y-3">
-                            <div className="grid grid-cols-2 gap-3">
-                              <div className="space-y-1">
-                                <Label className="text-xs">{mt("storageType")}</Label>
-                                <Select value={customStorage.storageType} onValueChange={(v: StorageTypeId) => {
-                                  setCustomStorage({ ...customStorage, storageType: v, temperatureRange: getDefaultTemperatureRange(v) || '' });
-                                }}>
-                                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="dry">{mt("dryStorage")}</SelectItem>
-                                    <SelectItem value="cold">{mt("coldStorage")}</SelectItem>
-                                    <SelectItem value="freezer">{mt("freezer")}</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">{mt("dailyRateRequired")}</Label>
-                                <Input type="number" step="0.01" min="0" value={customStorage.dailyRate || ''} onChange={(e) => setCustomStorage({ ...customStorage, dailyRate: parseFloat(e.target.value) || 0 })} placeholder="15.00" className="h-9" />
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                              <div className="space-y-1">
-                                <Label className="text-xs">{mt("sizeCubicFeet")}</Label>
-                                <Input type="number" min="0" value={customStorage.totalVolume || ''} onChange={(e) => setCustomStorage({ ...customStorage, totalVolume: parseFloat(e.target.value) || 0 })} placeholder="50" className="h-9" />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">{mt("accessType")}</Label>
-                                <Select value={customStorage.accessType} onValueChange={(v) => setCustomStorage({ ...customStorage, accessType: v })}>
-                                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                                  <SelectContent>
-                                    {Object.entries(ACCESS_TYPE_LABELS).map(([value, label]) => (
-                                      <SelectItem key={value} value={value}>{label}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs">{mt("minimumBookingDays")}</Label>
-                              <Input type="number" min="1" value={customStorage.minimumBookingDuration || 1} onChange={(e) => setCustomStorage({ ...customStorage, minimumBookingDuration: parseInt(e.target.value) || 1 })} placeholder="1" className="h-9" />
-                            </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs">{mt("description")}</Label>
-                              <Textarea value={customStorage.description} onChange={(e) => setCustomStorage({ ...customStorage, description: e.target.value })} placeholder={mt("describeTheStorageSpace")} rows={2} className="text-sm" />
-                            </div>
-                            
-                            {/* Overstay Penalty Configuration */}
-                            <div className="border-t pt-3 mt-3">
-                              <h4 className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
-                                <AlertTriangle className="h-3 w-3 text-orange-500" />{mt("navOverstayPenalties")}</h4>
-                              <div className="grid grid-cols-3 gap-2">
-                                <div className="space-y-1">
-                                  <Label className="text-xs">{mt("graceDays")}</Label>
-                                  <Input type="number" min="0" max="14" value={customStorage.overstayGracePeriodDays} onChange={(e) => setCustomStorage({ ...customStorage, overstayGracePeriodDays: parseInt(e.target.value) || 0 })} className="h-8 text-xs" />
-                                </div>
-                                <div className="space-y-1">
-                                  <Label className="text-xs">{mt("rate2")}</Label>
-                                  <Input type="number" min="0" max="50" value={Math.round(parseFloat(customStorage.overstayPenaltyRate) * 100)} onChange={(e) => setCustomStorage({ ...customStorage, overstayPenaltyRate: ((parseInt(e.target.value) || 0) / 100).toString() })} className="h-8 text-xs" />
-                                </div>
-                                <div className="space-y-1">
-                                  <Label className="text-xs">{mt("maxDays")}</Label>
-                                  <Input type="number" min="1" max="90" value={customStorage.overstayMaxPenaltyDays} onChange={(e) => setCustomStorage({ ...customStorage, overstayMaxPenaltyDays: parseInt(e.target.value) || 1 })} className="h-8 text-xs" />
-                                </div>
-                              </div>
-                            </div>
-                            <StatusButton
-                              onClick={() => { setActiveSavingAction('custom'); saveCustomStorage(); }}
-                              status={activeSavingAction === 'custom' && isSaving ? "loading" : "idle"}
-                              disabled={(isSaving && activeSavingAction !== 'custom') || !customStorage.dailyRate}
-                              className="w-full"
-                              labels={{ idle: `Add Custom Storage`, loading: "Adding", success: "Added" }}
-                            />
-                          </CardContent>
-                        </Card>
-                      )}
-                    </div>
-                  </ScrollArea>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Configure Panel */}
-            <div className="lg:col-span-1">
-              <Card className="sticky top-4">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2"><DollarSign className="h-5 w-5" />{mt("configure")}</CardTitle>
-                  <CardDescription>{selectedStorageCount} storage{selectedStorageCount !== 1 ? 's' : ''} selected</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {selectedStorageCount === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <Package className="h-8 w-8 mx-auto mb-2 opacity-20" />
-                      <p className="text-sm">{mt("selectStorageFromTheListToConfigure")}</p>
-                    </div>
-                  ) : (
-                    <ScrollArea className="h-[400px] pr-2">
-                      <div className="space-y-4">
-                        {Object.values(selectedStorage).map((storage) => (
-                          <div key={storage.templateId} className="p-3 border rounded-lg space-y-3">
-                            <div className="flex items-center justify-between">
-                              <h4 className="font-medium text-sm">{storage.name}</h4>
-                              <Badge variant="outline" className="text-xs capitalize">{storage.storageType}</Badge>
-                            </div>
-                            <div className="space-y-2">
-                              <div className="space-y-1">
-                                <Label className="text-xs">{mt("dailyRateDollars")}</Label>
-                                <Input type="number" step="0.01" min="0" value={storage.dailyRate} onChange={(e) => updateSelectedStorage(storage.templateId, { dailyRate: parseFloat(e.target.value) || 0 })} className="h-8" />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">{mt("sizeCubicFeet")}</Label>
-                                <Input type="number" min="0" value={storage.totalVolume || ''} onChange={(e) => updateSelectedStorage(storage.templateId, { totalVolume: parseFloat(e.target.value) || 0 })} placeholder={mt("enterSize")} className="h-8" />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">{mt("accessType")}</Label>
-                                <Select value={storage.accessType} onValueChange={(v) => updateSelectedStorage(storage.templateId, { accessType: v })}>
-                                  <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
-                                  <SelectContent>
-                                    {Object.entries(ACCESS_TYPE_LABELS).map(([value, label]) => (
-                                      <SelectItem key={value} value={value}>{label}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              {(storage.storageType === 'cold' || storage.storageType === 'freezer') && (
-                                <div className="space-y-1">
-                                  <Label className="text-xs">{mt("temperatureRange")}</Label>
-                                  <Input value={storage.temperatureRange} onChange={(e) => updateSelectedStorage(storage.templateId, { temperatureRange: e.target.value })} placeholder={mt("eG3540F")} className="h-8" />
-                                </div>
-                              )}
-                              <div className="space-y-1">
-                                <Label className="text-xs">{mt("minimumBookingDays")}</Label>
-                                <Input type="number" min="1" value={storage.minimumBookingDuration || 1} onChange={(e) => updateSelectedStorage(storage.templateId, { minimumBookingDuration: parseInt(e.target.value) || 1 })} className="h-8" />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">{mt("description")}</Label>
-                                <Textarea value={storage.description} onChange={(e) => updateSelectedStorage(storage.templateId, { description: e.target.value })} rows={2} className="text-sm" />
-                              </div>
-                              
-                              {/* Overstay Penalty Configuration */}
-                              <div className="border-t pt-2 mt-2">
-                                <h4 className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1">
-                                  <AlertTriangle className="h-3 w-3 text-orange-500" />{mt("navOverstayPenalties")}</h4>
-                                <div className="grid grid-cols-3 gap-1.5">
-                                  <div className="space-y-0.5">
-                                    <Label className="text-[10px]">{mt("graceD")}</Label>
-                                    <Input type="number" min="0" max="14" value={storage.overstayGracePeriodDays} onChange={(e) => updateSelectedStorage(storage.templateId, { overstayGracePeriodDays: parseInt(e.target.value) || 0 })} className="h-7 text-xs" />
-                                  </div>
-                                  <div className="space-y-0.5">
-                                    <Label className="text-[10px]">{mt("rate2")}</Label>
-                                    <Input type="number" min="0" max="50" value={Math.round(parseFloat(storage.overstayPenaltyRate) * 100)} onChange={(e) => updateSelectedStorage(storage.templateId, { overstayPenaltyRate: ((parseInt(e.target.value) || 0) / 100).toString() })} className="h-7 text-xs" />
-                                  </div>
-                                  <div className="space-y-0.5">
-                                    <Label className="text-[10px]">{mt("maxShort")}</Label>
-                                    <Input type="number" min="1" max="90" value={storage.overstayMaxPenaltyDays} onChange={(e) => updateSelectedStorage(storage.templateId, { overstayMaxPenaltyDays: parseInt(e.target.value) || 1 })} className="h-7 text-xs" />
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </ScrollArea>
-                  )}
-                  {selectedStorageCount > 0 && (
-                    <StatusButton
-                      onClick={() => { setActiveSavingAction('bulk'); saveSelectedStorage(); }}
-                      status={activeSavingAction === 'bulk' && isSaving ? "loading" : "idle"}
-                      disabled={isSaving && activeSavingAction !== 'bulk'}
-                      className="w-full mt-4"
-                      labels={{ idle: `Add ${selectedStorageCount} Storage${selectedStorageCount > 1 ? 's' : ''}`, loading: "Adding", success: "Added" }}
-                    />
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </TabsContent>
-      </Tabs>
-
-      {/* Edit Sheet */}
-      <Sheet open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-xl p-0 flex flex-col">
-          <SheetHeader className="p-6 pb-4 border-b">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#FFE8DD] to-[#FFD4C4] flex items-center justify-center">
-                {editingListing && <StorageTypeIcon type={editingListing.storageType} className="w-5 h-5 text-[#F51042]" />}
-              </div>
-              <div>
-                <SheetTitle className="text-lg">{mt("editStorageListing")}</SheetTitle>
-                <SheetDescription>{mt("updateYourStorageDetailsAndPenaltySettings")}</SheetDescription>
-              </div>
-            </div>
-          </SheetHeader>
-          
-          {editingListing && (
-            <div className="flex-1 overflow-y-auto p-6">
-              <Tabs defaultValue="basic" className="w-full">
-                <TabsList className="grid w-full grid-cols-2 mb-4">
-                  <TabsTrigger value="basic">{mt("basicInfo")}</TabsTrigger>
-                  <TabsTrigger value="penalties" className="flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4" />{mt("penalties")}</TabsTrigger>
-                </TabsList>
-
-                {/* Basic Info Tab */}
-                <TabsContent value="basic" className="space-y-4 mt-0">
-                  {/* Name Field */}
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium">{mt("storageName")}</Label>
-                    <div className="relative">
-                      <Package className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                      <Input 
-                        value={editingListing.name} 
-                        onChange={(e) => setEditingListing({ ...editingListing, name: e.target.value })}
-                        className="pl-10"
-                        placeholder={mt("eGWalkInCoolerA")}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Storage Type & Access Type Row */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">{mt("storageType")}</Label>
-                      <Select 
-                        value={editingListing.storageType} 
-                        onValueChange={(v: 'dry' | 'cold' | 'freezer') => setEditingListing({ ...editingListing, storageType: v })}
-                      >
-                        <SelectTrigger className="h-10">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="dry">{mt("dryStorage")}</SelectItem>
-                          <SelectItem value="cold">{mt("coldStorage")}</SelectItem>
-                          <SelectItem value="freezer">{mt("freezer")}</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">{mt("accessType")}</Label>
-                      <Select 
-                        value={editingListing.accessType || ''} 
-                        onValueChange={(v) => setEditingListing({ ...editingListing, accessType: v })}
-                      >
-                        <SelectTrigger className="h-10">
-                          <SelectValue placeholder={mt("selectAccessType")} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Object.entries(ACCESS_TYPE_LABELS).map(([value, label]) => (
-                            <SelectItem key={value} value={value}>{label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  {/* Daily Rate & Size Row */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">{mt("dailyRateDollars")}</Label>
-                      <div className="relative">
-                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <Input 
-                          type="number" 
-                          step="0.01" 
-                          min="0" 
-                          value={editingListing.basePrice || ''} 
-                          onChange={(e) => setEditingListing({ ...editingListing, basePrice: parseFloat(e.target.value) || 0 })}
-                          className="pl-10"
-                          placeholder="0.00"
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">{mt("sizeCubicFeet")}</Label>
-                      <div className="relative">
-                        <Grid3X3 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <Input 
-                          type="number" 
-                          min="0" 
-                          value={editingListing.totalVolume || ''} 
-                          onChange={(e) => setEditingListing({ ...editingListing, totalVolume: parseFloat(e.target.value) || undefined })}
-                          className="pl-10"
-                          placeholder={mt("eG50")}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Minimum Booking & Temperature Row */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">{mt("minimumBookingDays")}</Label>
-                      <Input 
-                        type="number" 
-                        min="1" 
-                        value={editingListing.minimumBookingDuration || 1} 
-                        onChange={(e) => setEditingListing({ ...editingListing, minimumBookingDuration: parseInt(e.target.value) || 1 })}
-                        className="h-10"
-                      />
-                    </div>
-                    {(editingListing.storageType === 'cold' || editingListing.storageType === 'freezer') && (
-                      <div className="space-y-2">
-                        <Label className="text-sm font-medium">{mt("temperatureRange")}</Label>
-                        <div className="relative">
-                          <Thermometer className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                          <Input 
-                            value={editingListing.temperatureRange || ''} 
-                            onChange={(e) => setEditingListing({ ...editingListing, temperatureRange: e.target.value })}
-                            className="pl-10"
-                            placeholder={mt("eG3540F")}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Description */}
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium">{mt("description")}</Label>
-                    <Textarea 
-                      value={editingListing.description || ''} 
-                      onChange={(e) => setEditingListing({ ...editingListing, description: e.target.value })}
-                      placeholder={mt("optionalDescriptionOfTheStorageSpace")}
-                      rows={3}
-                      className="min-h-[80px] resize-none"
-                    />
-                  </div>
-                </TabsContent>
-
-                {/* Penalties Tab */}
-                <TabsContent value="penalties" className="space-y-4 mt-0">
-                  <div className="bg-orange-50 border-l-4 border-orange-400 p-4 rounded-r-lg">
-                    <div className="flex gap-2">
-                      <AlertTriangle className="h-4 w-4 text-orange-600 flex-shrink-0 mt-0.5" />
-                      <p className="text-sm text-gray-700">
-                        Configure penalties for chefs who stay past their booked storage period. 
-                        Charges are calculated as a percentage of the daily rate.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">{mt("gracePeriodDays2")}</Label>
-                      <Input 
-                        type="number" 
-                        min="0" 
-                        max="14" 
-                        value={editingListing.overstayGracePeriodDays ?? 3} 
-                        onChange={(e) => setEditingListing({ ...editingListing, overstayGracePeriodDays: parseInt(e.target.value) || 0 })}
-                        className="h-10"
-                      />
-                      <p className="text-xs text-muted-foreground">{mt("daysBeforePenaltiesApply")}</p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">{mt("penaltyRate2")}</Label>
-                      <Input 
-                        type="number" 
-                        min="0" 
-                        max="50" 
-                        step="1"
-                        value={editingListing.overstayPenaltyRate ? Math.round(parseFloat(editingListing.overstayPenaltyRate) * 100) : 10} 
-                        onChange={(e) => setEditingListing({ ...editingListing, overstayPenaltyRate: ((parseInt(e.target.value) || 0) / 100).toString() })}
-                        className="h-10"
-                      />
-                      <p className="text-xs text-muted-foreground">% of daily rate per day</p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">{mt("maxPenaltyDays")}</Label>
-                      <Input 
-                        type="number" 
-                        min="1" 
-                        max="90" 
-                        value={editingListing.overstayMaxPenaltyDays ?? 30} 
-                        onChange={(e) => setEditingListing({ ...editingListing, overstayMaxPenaltyDays: parseInt(e.target.value) || 1 })}
-                        className="h-10"
-                      />
-                      <p className="text-xs text-muted-foreground">{mt("maximumDaysToCharge")}</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium">{mt("policyTextOptional2")}</Label>
-                    <Textarea 
-                      value={editingListing.overstayPolicyText || ''} 
-                      onChange={(e) => setEditingListing({ ...editingListing, overstayPolicyText: e.target.value })}
-                      placeholder={mt("customOverstayPolicyMessageShownToChefs")}
-                      rows={3}
-                      className="min-h-[80px] resize-none"
-                    />
-                    <p className="text-xs text-muted-foreground">{mt("thisMessageWillBeDisplayedToChefsWhenTheyBookThisStorage")}</p>
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </div>
-          )}
-          
-          <SheetFooter className="p-6 pt-4 border-t gap-2">
-            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>{mt("cancel")}</Button>
-            <StatusButton 
-              onClick={() => { setActiveSavingAction('edit'); saveEditedListing(); }} 
-              status={activeSavingAction === 'edit' && isSaving ? "loading" : "idle"}
+    /**
+     * The page's actions, rendered twice on purpose: in the header, where the eye
+     * lands when the page opens, and again in the sticky bar, so they are still
+     * there after scrolling a long form. Both drive the same handlers.
+     */
+    const pageActions = (
+      <div className="flex shrink-0 items-center gap-2">
+        <Button variant="outline" onClick={() => requestExit()} disabled={isSaving || isCreating}>
+          {mt("cancel")}
+        </Button>
+        {isAdd ? (
+          <Button onClick={() => void submitAdd()} disabled={!canSubmitAdd || isCreating}>
+            <Plus className="mr-2 h-4 w-4" />
+            {mt("listThisStorage")}
+          </Button>
+        ) : (
+          editDirty && (
+            <StatusButton
+              onClick={() => void saveDraft()}
+              status={isSaving ? "loading" : "idle"}
               labels={{ idle: mt("saveChanges"), loading: mt("saving"), success: mt("saved") }}
             />
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+          )
+        )}
+      </div>
+    );
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{mt("deleteStorageListing")}</DialogTitle>
-            <DialogDescription>{mt("thisActionCannotBeUndoneTheStorageListingWillBePermanentlyDe")}</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>{mt("cancel")}</Button>
-            <Button variant="destructive" onClick={handleDelete}>{mt("delete")}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+    return (
+      <div className="space-y-4">
+        <div className="rounded-lg border bg-card">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b p-4">
+            <div className="flex min-w-0 items-center gap-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="!h-8 !w-8 !min-h-0 shrink-0"
+                onClick={() => requestExit()}
+                title={mt("back")}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <div className="min-w-0">
+                <h2 className="truncate text-base font-medium">
+                  {isAdd ? mt("addStorage") : mt("editStorageListing")}
+                </h2>
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                  {isAdd
+                    ? mt("addStorageDialogHint")
+                    : `${draft?.name?.trim() || mt("untitledItem")}${selectedKitchen ? ` · ${selectedKitchen.name}` : ''}`}
+                </p>
+              </div>
+            </div>
+            {pageActions}
+          </div>
 
-      {/* Toggle Confirmation Dialog */}
-      <Dialog open={toggleDialogOpen} onOpenChange={setToggleDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{mt("deactivateStorageListing")}</DialogTitle>
-            <DialogDescription>{mt("thisStorageListingWillNoLongerBeAvailableForBookingYouCanRea")}</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setToggleDialogOpen(false); setPendingToggle(null); }} disabled={isToggling}>{mt("cancel")}</Button>
-            <StatusButton
-              variant="destructive"
-              onClick={() => pendingToggle && doToggleActive(pendingToggle.id, pendingToggle.isActive)}
-              status={isToggling ? "loading" : "idle"}
-              labels={{ idle: "Deactivate", loading: "Deactivating", success: "Deactivated" }}
+          {isAdd ? (
+            <div className="grid grid-cols-1 lg:grid-cols-[17rem_minmax(0,1fr)]">
+              <div className="border-b p-4 lg:border-b-0 lg:border-r">
+                <SuggestionList
+                  title={mt("commonStorage")}
+                  hint={mt("suggestionsHint")}
+                  searchPlaceholder={mt("searchStorageTypes")}
+                  items={suggestions}
+                  selectedId={previewId}
+                  onSelect={selectSuggestion}
+                  createOwnLabel={mt("createYourOwn")}
+                  createOwnHint={mt("createYourOwnHint")}
+                  emptyLabel={mt("noMatchingStorageFound")}
+                />
+              </div>
+              <div className="p-4 lg:p-6">
+                {form && <StorageFields values={form} onChange={updateForm} />}
+              </div>
+            </div>
+          ) : (
+            <div className="p-4 lg:p-6">
+              {draft && <StorageFields values={toFormValues(draft)} onChange={updateDraft} />}
+            </div>
+          )}
+        </div>
+
+        {/* Sticky bar: the scope and the commit action never scroll away. */}
+        <div className="sticky bottom-0 z-10 space-y-3 rounded-lg border bg-background/95 p-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+          {isAdd ? (
+            <KitchenScopeField
+              kitchens={kitchens}
+              selectedKitchenId={selectedKitchenId}
+              value={targetKitchenIds}
+              onChange={setTargetKitchenIds}
+              disabled={isCreating}
             />
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          ) : (
+            <KitchenScopeField
+              mode="edit"
+              kitchens={editMatches.map((m) => ({ id: m.kitchenId, name: m.kitchenName }))}
+              selectedKitchenId={draft?.kitchenId ?? selectedKitchenId}
+              value={applyToKitchenIds}
+              onChange={setApplyToKitchenIds}
+              disabled={isSaving}
+            />
+          )}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            {/* Explains a blocked submit rather than leaving it a dead end. */}
+            <p className="text-xs text-muted-foreground">
+              {(isAdd ? !canSubmitAdd : editIncomplete) ? mt("storageIncompleteHint") : null}
+            </p>
+            {pageActions}
+          </div>
+        </div>
+
+        {unsavedDialog}
+      </div>
+    );
+  }
+
+  // ── List page ─────────────────────────────────────────────────────────────
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border bg-card">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b p-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+              <Package className="size-5 text-primary" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-base font-medium">{mt("storageInventory")}</h2>
+                {visibleListings.length > 0 && <Badge variant="count">{visibleListings.length}</Badge>}
+                {selectedKitchen && (
+                  <span className="text-xs text-muted-foreground">{selectedKitchen.name}</span>
+                )}
+              </div>
+              <p className="mt-0.5 text-xs text-muted-foreground">{mt("storageTabHint")}</p>
+            </div>
+          </div>
+          <Button onClick={openAdd}>
+            <Plus className="mr-2 h-4 w-4" />
+            {mt("addStorage")}
+          </Button>
+        </div>
+
+        {isLoading ? (
+          <div className="space-y-2 p-4">{[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>
+        ) : visibleListings.length === 0 ? (
+          <div className="px-4 py-12 text-center">
+            <Package className="mx-auto h-10 w-10 opacity-20" />
+            <h3 className="mt-3 text-sm font-medium">{mt("noStorageListedYet")}</h3>
+            <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">{mt("storageEmptyBody")}</p>
+            <Button className="mt-4" onClick={openAdd}>
+              <Plus className="mr-2 h-4 w-4" />
+              {mt("addStorage")}
+            </Button>
+          </div>
+        ) : (
+          <div>
+            {groupedListings.map((group) => (
+              <section key={group.type}>
+                <div className="flex items-center gap-2 bg-muted/40 px-4 py-2">
+                  <StorageTypeIcon type={group.type} className="h-4 w-4 text-muted-foreground" />
+                  <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    {storageTypeLabel(group.type)}
+                  </h3>
+                  <Badge variant="count">{group.items.length}</Badge>
+                </div>
+                <div className="divide-y">
+                  {group.items.map((listing) => {
+                    const alsoIn = kitchensAlsoHaving(listing);
+                    return (
+                      <div
+                        key={listing.id}
+                        className={cn(
+                          "flex items-start justify-between gap-4 px-4 py-3",
+                          listing.isActive === false && "opacity-60",
+                        )}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <span className="truncate text-sm font-medium">{listing.name}</span>
+                            <Badge variant={listing.isActive !== false ? "success" : "outline"} className="text-xs">
+                              {listing.isActive !== false ? mt("active") : mt("inactive")}
+                            </Badge>
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
+                            <span className="font-medium text-foreground">
+                              ${(listing.basePrice || 0).toFixed(2)}{mt("perDay")}
+                            </span>
+                            {listing.totalVolume ? <span>{listing.totalVolume} cu ft</span> : null}
+                            {/* Falls back to the stored value so a manager's own
+                                access-type label still shows in the list. */}
+                            {listing.accessType
+                              ? <span>{ACCESS_TYPE_LABELS[listing.accessType] ?? listing.accessType}</span>
+                              : null}
+                            {listing.minimumBookingDuration && listing.minimumBookingDuration > 1
+                              ? <span>Min {listing.minimumBookingDuration} days</span>
+                              : null}
+                            <span className="flex items-center gap-1">
+                              <AlertTriangle className="h-3 w-3" />
+                              {listing.overstayGracePeriodDays ?? 3}d · {Math.round(parseFloat(listing.overstayPenaltyRate || '0.1') * 100)}%/day
+                            </span>
+                          </div>
+                          {alsoIn.length > 0 && (
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {mt("listingsAlsoIn", { kitchens: alsoIn.join(", ") })}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <Switch
+                            checked={listing.isActive !== false}
+                            onCheckedChange={() => void handleToggleActive(listing)}
+                            disabled={isToggling}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => openEdit(listing, matchSource)}
+                            title={mt("editStorageDetails")}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => requestDelete(listing)}
+                            title={mt("deleteStorage")}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {pendingDelete && (
+        <UndoBar
+          label={mt("listingRemoved", { name: pendingDelete.name })}
+          seconds={Math.round(UNDO_WINDOW_MS / 1000)}
+          onUndo={undoDelete}
+        />
+      )}
+
+      {unsavedDialog}
     </div>
   );
 }

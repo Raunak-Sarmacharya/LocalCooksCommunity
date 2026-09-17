@@ -407,6 +407,14 @@ graphify-out/.graphify_agent_ids.txt
 graphify-out/.graphify_loco_extract_*.png
 graphify-out/.needs_update
 graphify-out/cost.json
+# Dev harness build output — esbuild bundles that inline the whole app plus
+# node_modules. `graphify update` respects .gitignore, so leaving these out of it
+# indexed them as code and they became ~44% of the graph (dev/harness.js 4,049
+# nodes + dev/listings.js 3,485, vs 9,198 for the entire real codebase).
+# The harness *sources* (dev/*.tsx, dev/*.ts, dev/*.mjs) stay tracked on purpose.
+dev/*.js
+dev/*.css
+dev/shots/
 .workbuddy-ai/memory/MEMORY.md
 .workbuddy-ai/memory/2026-09-16.md
 .workbuddy-ai/memory/MEMORY.md

@@ -11,17 +11,32 @@ import { cn } from "@/lib/utils";
  * Explanatory copy lives behind this instead of in the page body, so a row can
  * explain itself without adding a paragraph that every manager reads on every
  * visit.
+ *
+ * `compact` shrinks it to sit beside a small field label — the default 28px hit
+ * target is right for a full-width settings row but would set the height of a
+ * dense inline form.
  */
-export function RowHelp({ label, children }: { label: string; children: ReactNode }) {
+export function RowHelp({
+  label,
+  children,
+  compact,
+}: {
+  label: string;
+  children: ReactNode;
+  compact?: boolean;
+}) {
   return (
     <Popover>
       <PopoverTrigger asChild>
         <button
           type="button"
           aria-label={label}
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className={cn(
+            "!min-h-0 !min-w-0 inline-flex items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            compact ? "h-4 w-4" : "h-7 w-7",
+          )}
         >
-          <Info className="h-3.5 w-3.5" />
+          <Info className={compact ? "h-3 w-3" : "h-3.5 w-3.5"} />
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-80 p-3 text-xs leading-relaxed text-muted-foreground">
@@ -36,8 +51,10 @@ interface SettingsRowProps {
   id?: string;
   label: string;
   /**
-   * Marks the row with the `*` the page's FormLegend explains. Communication
-   * only — the caller still owns enforcing it.
+   * Renders a red asterisk after the label. Pair it with `<FormLegend />` at the
+   * top of the form, which is the convention this repo already uses everywhere
+   * else — the asterisk itself is `aria-hidden`, so the legend carries the meaning.
+   * Communication only — the caller still owns enforcing it.
    */
   required?: boolean;
   /** One short line of context. Omit when the label already says it. */
@@ -97,12 +114,10 @@ export function SettingsRow({
           className={cn("text-sm font-medium", locked && "text-muted-foreground")}
         >
           {label}
+          {required ? (
+            <span className="ml-0.5 text-red-500" aria-hidden="true">*</span>
+          ) : null}
         </Label>
-        {required ? (
-          <span aria-hidden className="text-sm text-destructive">
-            *
-          </span>
-        ) : null}
         {help ? <RowHelp label={label}>{help}</RowHelp> : null}
       </div>
       {locked ? (

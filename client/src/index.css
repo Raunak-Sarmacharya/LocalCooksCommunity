@@ -668,6 +668,38 @@ html {
   /* Prevent layout shift when scrollbar appears/disappears */
 }
 
+/*
+ * Radix Select always wraps its content in RemoveScroll, which locks the body
+ * while a dropdown is open. Two things go wrong because this app's scrollbar
+ * belongs to <html> (`scrollbar-gutter: stable`), not to <body>:
+ *
+ *   1. `body { overflow: hidden }` propagates to the viewport, so the browser
+ *      scrollbar's thumb vanishes on open and returns on close.
+ *   2. RemoveScroll compensates for the scrollbar it thinks it removed by
+ *      setting `margin-right: <scrollbar>px` on the body. The gutter was already
+ *      reserved, so nothing was reclaimed — the margin just narrows the body and
+ *      shoves the whole page sideways, then back.
+ *
+ * Radix Dialog, Sheet and AlertDialog rely on the same lock to freeze the page
+ * behind them, so it is kept whenever one of those is open. Their content is the
+ * only thing carrying role="dialog" / role="alertdialog"; Radix Select renders
+ * combobox / listbox / option / group and never a dialog, so this cannot match a
+ * dropdown by accident.
+ *
+ * Specificity matters: RemoveScroll injects `body[data-scroll-locked] { … !important }`
+ * at (0,1,1). This rule is (0,3,1) because `:not(:has(…))` takes the specificity
+ * of its argument, so it wins without needing !important to be layered.
+ */
+body[data-scroll-locked]:not(:has(
+  [role="dialog"][data-state="open"],
+  [role="alertdialog"][data-state="open"]
+)) {
+  --removed-body-scroll-bar-size: 0px !important;
+  overflow: visible !important;
+  padding-right: 0 !important;
+  margin-right: 0 !important;
+}
+
 /* Custom animations */
 .fade-in {
   @apply animate-fade-in;

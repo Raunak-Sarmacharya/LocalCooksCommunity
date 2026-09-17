@@ -4,7 +4,7 @@ import {
     storageListings,
     equipmentListings
 } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { InsertStorageListing, InsertEquipmentListing, StorageListing, EquipmentListing } from "./inventory.types";
 
 export class InventoryRepository {
@@ -40,11 +40,18 @@ export class InventoryRepository {
         return this.mapStorageToDTO(listing);
     }
 
+    /**
+     * Ordered by id on purpose. Without an ORDER BY Postgres returns rows in
+     * heap order, and an UPDATE rewrites the row's tuple — so editing or toggling
+     * a listing silently moved it somewhere else in the list on the next fetch.
+     * Insertion order is stable across writes and is what a manager expects.
+     */
     async getStorageListingsByKitchenId(kitchenId: number) {
         const rows = await db
             .select()
             .from(storageListings)
-            .where(eq(storageListings.kitchenId, kitchenId));
+            .where(eq(storageListings.kitchenId, kitchenId))
+            .orderBy(asc(storageListings.id));
         return rows.map(row => this.mapStorageToDTO(row));
     }
 
@@ -99,11 +106,13 @@ export class InventoryRepository {
         return this.mapEquipmentToDTO(listing);
     }
 
+    /** See `getStorageListingsByKitchenId` — the same missing ORDER BY moved rows. */
     async getEquipmentListingsByKitchenId(kitchenId: number) {
         const rows = await db
             .select()
             .from(equipmentListings)
-            .where(eq(equipmentListings.kitchenId, kitchenId));
+            .where(eq(equipmentListings.kitchenId, kitchenId))
+            .orderBy(asc(equipmentListings.id));
         return rows.map(row => this.mapEquipmentToDTO(row));
     }
 
