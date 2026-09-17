@@ -31,7 +31,7 @@ import { StorageListingContent } from "@/pages/StorageListingManagement";
 import KitchenDetailsPricing, { type KitchenDetailsPricingHandle } from "./KitchenDetailsPricing";
 import KitchenPhotos from "./KitchenPhotos";
 import { DEFAULT_KITCHEN_SECTION, kitchenSectionFromParams, type KitchenSection } from "@/lib/manager-kitchens-navigation";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { UnsavedChangesDialog } from "@/components/manager/UnsavedChangesDialog";
 
 interface Kitchen {
   id: number;
@@ -91,10 +91,6 @@ const TAB_ICON = "h-4 w-4 shrink-0 transition-colors group-data-[state=active]:t
 /** Quiet header link. `ghost` skips the chef CTA surface, but its own hover is
  *  `bg-accent`, which is pure white in both themes — hence the `bg-muted` override. */
 const HEADER_LINK = "rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground";
-
-/** Opts a Button out of the chef marketing CTA surface — pill radius, layered
- *  shadow and lift-on-hover — so dialogs read as product UI, not a promo. */
-const QUIET_ACTION = "rounded-lg shadow-none hover:shadow-none hover:translate-y-0 active:translate-y-0";
 
 export default function KitchensManagement({ location, onNavigate, onConfigureRequirements, onDirtyChange, saveRef }: KitchensManagementProps) {
   
@@ -505,34 +501,18 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
         </div>
       )}
 
-      {/* In-page navigation guard. Switching tabs or kitchens unmounts the details
-          form, so without this the unsaved edits would disappear with no warning. */}
-      <AlertDialog open={pendingNav !== null} onOpenChange={(open) => !open && setPendingNav(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{mt("unsavedChanges")}</AlertDialogTitle>
-            <AlertDialogDescription>{mt("kitchenUnsavedChangesDescription")}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{mt("cancel")}</AlertDialogCancel>
-            <Button
-              variant="outline"
-              className={QUIET_ACTION}
-              onClick={discardPendingNav}
-            >
-              {mt("discardChanges")}
-            </Button>
-            <AlertDialogAction
-              onClick={(event) => {
-                event.preventDefault();
-                void saveThenPendingNav();
-              }}
-            >
-              {mt("saveChanges")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/*
+        * In-page navigation guard. Switching tabs or kitchens unmounts the
+        * details form, so this runs through the shared confirmation — one dialog
+        * for every surface that can hold edits.
+        */}
+      <UnsavedChangesDialog
+        open={pendingNav !== null}
+        onOpenChange={(open) => !open && setPendingNav(null)}
+        description={mt("kitchenUnsavedChangesDescription")}
+        onDiscard={discardPendingNav}
+        onSave={saveThenPendingNav}
+      />
     </div>
   );
 }

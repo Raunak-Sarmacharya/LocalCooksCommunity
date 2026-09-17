@@ -96,26 +96,34 @@ export function KitchenLocationCard({ location, navigate }: KitchenLocationCardP
                     </div>
                 </div>
 
-                {/* Content */}
-                <div className="p-5">
+                {/* Content. Two things keep a row of cards level: every block
+                    reserves its space whether or not it has content, and the
+                    button is pushed down by `mt-auto`. Without both, a card
+                    with no description pulled its button up and the row
+                    stopped lining up. */}
+                <div className="flex flex-1 flex-col p-5">
                     <TruncatedText as="h3" className="text-lg font-bold text-[#1A1A1A] mb-1 group-hover:text-[#F51042] transition-colors">
                         {location.name}
                     </TruncatedText>
-                    {location.address && (
-                        <div className="flex items-start gap-1.5 mb-2">
-                            <Icon icon="mdi:map-marker-outline" className="mt-0.5 h-4 w-4 shrink-0 text-[#2C2C2C]" aria-hidden />
-                            <TruncatedText as="p" className="text-sm text-[#6B6B6B] leading-relaxed line-clamp-1">{location.address}</TruncatedText>
-                        </div>
-                    )}
 
-                    {location.description && (
-                        <p className="text-xs text-[#828282] leading-relaxed line-clamp-2 mb-4 italic">
-                            {location.description}
-                        </p>
-                    )}
+                    {/* The row holds its height with a non-breaking space, so a
+                        missing address cannot shorten the card. */}
+                    <div className="mb-2 flex items-start gap-1.5">
+                        <Icon icon="mdi:map-marker-outline" className="mt-0.5 h-4 w-4 shrink-0 text-[#2C2C2C]" aria-hidden />
+                        <TruncatedText as="p" className="truncate text-sm leading-relaxed text-[#6B6B6B]">
+                            {location.address?.trim() || "\u00a0"}
+                        </TruncatedText>
+                    </div>
+
+                    {/* One line, always reserved. `truncate` gives the ellipsis and
+                        TruncatedText adds the full text on hover only when it
+                        actually overflows — no wrapping, so every card matches. */}
+                    <TruncatedText as="p" className="mb-4 truncate text-xs italic leading-relaxed text-[#828282]">
+                        {location.description?.trim() || "\u00a0"}
+                    </TruncatedText>
 
                     <Button
-                        className="w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold rounded-full py-2.5 text-sm transition-all duration-300 group/btn"
+                        className="mt-auto w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold rounded-full py-2.5 text-sm transition-all duration-300 group/btn"
                         onClick={() => navigate(`/kitchen-preview/${location.slug || location.id}`)}
                     >
                         <Icon icon="mdi:calendar-month-outline" className="mr-1.5 h-4 w-4 text-white" aria-hidden />

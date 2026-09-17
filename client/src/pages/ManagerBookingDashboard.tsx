@@ -49,6 +49,8 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { ChefPageHeader } from "@/components/chef/ui";
 import { Tab, TabGroup, TabList, TabPanel, TabPanels } from "@tremor/react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { UnsavedChangesDialog } from "@/components/manager/UnsavedChangesDialog";
+import { DateField } from "@/components/ui/date-field";
 
 // Helper component for authenticated document links
 function AuthenticatedDocumentLink({ url, className, children }: { url: string | null | undefined; className?: string; children: React.ReactNode }) {
@@ -147,7 +149,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 }
 
 
-type ViewType = 'my-locations' | 'overview' | 'bookings' | 'storage-bookings' | 'viewings' | 'availability' | 'tour-availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'revenue' | 'messages' | 'profile' | 'kitchens' | 'settings-license' | 'settings-booking-rules' | 'settings-facility-docs' | 'settings-location' | 'settings-checkin-checkout' | 'settings-storage-checkin-checkout' | 'application-requirements' | 'notifications' | 'notification-settings' | 'overstays' | 'damage-claims' | 'storage-checkouts';
+type ViewType = 'my-locations' | 'overview' | 'bookings' | 'storage-bookings' | 'viewings' | 'availability' | 'tour-availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'revenue' | 'messages' | 'profile' | 'kitchens' | 'settings-license' | 'settings-booking-rules' | 'settings-facility-docs' | 'settings-location' | 'settings-checkin-checkout' | 'settings-storage-checkin-checkout' | 'application-requirements' | 'notifications' | 'notification-settings' | 'overstays' | 'damage-claims' | 'storage-checkouts' | 'support';
 
 
 export default function ManagerBookingDashboard() {
@@ -162,7 +164,7 @@ export default function ManagerBookingDashboard() {
   const [activeView, setActiveView] = useState<ViewType>(() => {
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
-    const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'storage-bookings', 'viewings', 'availability', 'tour-availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'notification-settings', 'overstays', 'damage-claims', 'storage-checkouts'];
+    const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'storage-bookings', 'viewings', 'availability', 'tour-availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'notification-settings', 'overstays', 'damage-claims', 'storage-checkouts', 'support'];
     // Back-compat: redirect legacy 'settings-storage-checkout' URLs to the new combined page.
     if (view === 'settings-storage-checkout') {
       return 'settings-storage-checkin-checkout';
@@ -263,7 +265,7 @@ export default function ManagerBookingDashboard() {
       const params = new URLSearchParams(window.location.search);
       const view = params.get('view');
       setDeepLinkConversationId(params.get("conversation"));
-      const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'storage-bookings', 'viewings', 'availability', 'tour-availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'notification-settings', 'overstays', 'damage-claims', 'storage-checkouts'];
+      const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'storage-bookings', 'viewings', 'availability', 'tour-availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'notification-settings', 'overstays', 'damage-claims', 'storage-checkouts', 'support'];
       // Back-compat: redirect legacy URL to the new combined page.
       if (view === 'settings-storage-checkout') {
         setActiveView('settings-storage-checkin-checkout');
@@ -820,6 +822,17 @@ export default function ManagerBookingDashboard() {
         />
       )}
 
+      {/*
+        * Support. Shares `SupportPageShell` with the chef page — same contact
+        * cards and FAQ layout — but supplies manager answers, because the chef
+        * FAQ is about booking a kitchen rather than running one.
+        */}
+      {activeView === 'support' && (
+        <div className="animate-in fade-in-50 duration-500">
+          <ManagerSupportPage />
+        </div>
+      )}
+
       {activeView === 'overview' && (
         <div className="space-y-6 animate-fade-in">
           <KitchenDashboardOverview
@@ -1124,97 +1137,41 @@ export default function ManagerBookingDashboard() {
         </div>
       )}
 
-      <AlertDialog open={pendingAvailabilityView !== null} onOpenChange={(open) => !open && setPendingAvailabilityView(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{mt("unsavedChanges")}</AlertDialogTitle>
-            <AlertDialogDescription>{mt("availabilityUnsavedChangesDescription")}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isSavingBeforeLeave}>{mt("cancel")}</AlertDialogCancel>
-            <Button
-              variant="outline"
-              disabled={isSavingBeforeLeave}
-              onClick={() => pendingAvailabilityView && continueFromAvailability(pendingAvailabilityView)}
-            >
-              {mt("discardChanges")}
-            </Button>
-            <AlertDialogAction disabled={isSavingBeforeLeave} onClick={(event) => { event.preventDefault(); void saveAndLeaveAvailability(); }}>
-              {isSavingBeforeLeave && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {mt("saveChanges")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <UnsavedChangesDialog
+        open={pendingAvailabilityView !== null}
+        onOpenChange={(open) => !open && setPendingAvailabilityView(null)}
+        description={mt("availabilityUnsavedChangesDescription")}
+        isSaving={isSavingBeforeLeave}
+        onDiscard={() => pendingAvailabilityView && continueFromAvailability(pendingAvailabilityView)}
+        onSave={saveAndLeaveAvailability}
+      />
 
-      <AlertDialog open={pendingBookingPoliciesView !== null} onOpenChange={(open) => !open && setPendingBookingPoliciesView(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{mt("unsavedChanges")}</AlertDialogTitle>
-            <AlertDialogDescription>{mt("bookingPoliciesUnsavedChangesDescription")}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isSavingBeforeLeave}>{mt("cancel")}</AlertDialogCancel>
-            <Button
-              variant="outline"
-              disabled={isSavingBeforeLeave}
-              onClick={() => pendingBookingPoliciesView && continueFromBookingPolicies(pendingBookingPoliciesView)}
-            >
-              {mt("discardChanges")}
-            </Button>
-            <AlertDialogAction disabled={isSavingBeforeLeave} onClick={(event) => { event.preventDefault(); void saveAndLeaveBookingPolicies(); }}>
-              {isSavingBeforeLeave && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {mt("saveChanges")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <UnsavedChangesDialog
+        open={pendingBookingPoliciesView !== null}
+        onOpenChange={(open) => !open && setPendingBookingPoliciesView(null)}
+        description={mt("bookingPoliciesUnsavedChangesDescription")}
+        isSaving={isSavingBeforeLeave}
+        onDiscard={() => pendingBookingPoliciesView && continueFromBookingPolicies(pendingBookingPoliciesView)}
+        onSave={saveAndLeaveBookingPolicies}
+      />
 
-      <AlertDialog open={pendingKitchensView !== null} onOpenChange={(open) => !open && setPendingKitchensView(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{mt("unsavedChanges")}</AlertDialogTitle>
-            <AlertDialogDescription>{mt("kitchenUnsavedChangesDescription")}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isSavingBeforeLeave}>{mt("cancel")}</AlertDialogCancel>
-            <Button
-              variant="outline"
-              disabled={isSavingBeforeLeave}
-              onClick={() => pendingKitchensView && continueFromKitchens(pendingKitchensView)}
-            >
-              {mt("discardChanges")}
-            </Button>
-            <AlertDialogAction disabled={isSavingBeforeLeave} onClick={(event) => { event.preventDefault(); void saveAndLeaveKitchens(); }}>
-              {isSavingBeforeLeave && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {mt("saveChanges")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <UnsavedChangesDialog
+        open={pendingKitchensView !== null}
+        onOpenChange={(open) => !open && setPendingKitchensView(null)}
+        description={mt("kitchenUnsavedChangesDescription")}
+        isSaving={isSavingBeforeLeave}
+        onDiscard={() => pendingKitchensView && continueFromKitchens(pendingKitchensView)}
+        onSave={saveAndLeaveKitchens}
+      />
 
-      <AlertDialog open={pendingCheckinCheckoutView !== null} onOpenChange={(open) => !open && setPendingCheckinCheckoutView(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{mt("unsavedChanges")}</AlertDialogTitle>
-            <AlertDialogDescription>{mt("checkinCheckoutUnsavedChangesDescription")}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isSavingBeforeLeave}>{mt("cancel")}</AlertDialogCancel>
-            <Button
-              variant="outline"
-              disabled={isSavingBeforeLeave}
-              onClick={() => pendingCheckinCheckoutView && continueFromCheckinCheckout(pendingCheckinCheckoutView)}
-            >
-              {mt("discardChanges")}
-            </Button>
-            <AlertDialogAction disabled={isSavingBeforeLeave} onClick={(event) => { event.preventDefault(); void saveAndLeaveCheckinCheckout(); }}>
-              {isSavingBeforeLeave && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {mt("saveChanges")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <UnsavedChangesDialog
+        open={pendingCheckinCheckoutView !== null}
+        onOpenChange={(open) => !open && setPendingCheckinCheckoutView(null)}
+        description={mt("checkinCheckoutUnsavedChangesDescription")}
+        isSaving={isSavingBeforeLeave}
+        onDiscard={() => pendingCheckinCheckoutView && continueFromCheckinCheckout(pendingCheckinCheckoutView)}
+        onSave={saveAndLeaveCheckinCheckout}
+      />
 
     </DashboardLayout>
   );
@@ -1229,6 +1186,7 @@ import { createLocationSchema, type CreateLocationFormValues } from "@/schemas/l
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { tt } from "@/i18n/common-ns";
+import ManagerSupportPage from "@/components/manager/ManagerSupportPage";
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function CreateLocationSheet({ open, onOpenChange, onSuccess }: { open: boolean; onOpenChange: (open: boolean) => void; onSuccess: () => void }) {
@@ -2378,12 +2336,11 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                             ⚠️ Please add an expiration date for your license.
                           </p>
                           <div className="flex items-center gap-3">
-                            <input
-                              type="date"
+                            <DateField
                               value={licenseExpiryDate}
-                              onChange={(e) => setLicenseExpiryDate(e.target.value)}
-                              min={new Date().toISOString().split('T')[0]}
-                              className="flex-1 max-w-md border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                              onChange={setLicenseExpiryDate}
+                              placeholder={mt("licenseExpirationDate")}
+                              className="flex-1 max-w-md"
                             />
                             <Button
                               type="button"
@@ -2530,13 +2487,11 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                       <div className="mb-4">
                         <label className="block text-sm font-medium text-gray-900 mb-2">{mt("licenseExpirationDate")}<span className="text-red-500">*</span>
                         </label>
-                        <input
-                          type="date"
+                        <DateField
                           value={licenseExpiryDate}
-                          onChange={(e) => setLicenseExpiryDate(e.target.value)}
-                          min={new Date().toISOString().split('T')[0]}
-                          className="w-full max-w-md border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                          required
+                          onChange={setLicenseExpiryDate}
+                          placeholder={mt("licenseExpirationDate")}
+                          className="w-full max-w-md"
                         />
                         <p className="text-xs text-gray-600 mt-1">{mt("requiredEnterTheDateWhenThisLicenseExpires")}</p>
                       </div>
@@ -2771,7 +2726,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                           setLogoUrl('');
                           handleSave('');
                         }}
-                        alt="Location logo"
+                        alt="Business logo"
                         className="w-full h-32 object-contain rounded-lg"
                         containerClassName="w-full"
                         aspectRatio="16/9"
@@ -3435,7 +3390,6 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
             <TabsContent value="application-requirements" className="space-y-6 mt-0">
               <LocationRequirementsSettings
                 locationId={location.id}
-                locationName={location.name}
               />
             </TabsContent>
 

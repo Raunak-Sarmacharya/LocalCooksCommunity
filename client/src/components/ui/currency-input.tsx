@@ -62,7 +62,11 @@ const CurrencyInput = React.forwardRef<HTMLInputElement, CurrencyInputProps>(
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           className={cn(
-            "flex-1 bg-transparent border-0 outline-none placeholder:text-muted-foreground font-mono tabular-nums",
+            // `min-w-0` is load-bearing: a flex item defaults to `min-width: auto`,
+            // which is the input's intrinsic ~20-character width. Without it the
+            // field refuses to shrink inside a narrow wrapper (e.g. `w-32`) and
+            // spills past the bordered box.
+            "min-w-0 flex-1 bg-transparent border-0 outline-none placeholder:text-muted-foreground font-mono tabular-nums",
             "focus:outline-none focus:ring-0",
             size === "sm" ? "h-full px-2 text-xs" : "h-full px-3 text-sm"
           )}

@@ -43,6 +43,22 @@ const NUMERIC_TO_STRING_MAP: Record<number, string> = Object.entries(STEP_ID_MAP
 // We re-export the step interface from types or core if needed, 
 // but for this context we mainly need the logic.
 
+/**
+ * Fields the Business step saves progressively, one part at a time.
+ * Every field is optional in a draft so a part can send only what it owns.
+ */
+export interface LocationDraftFields {
+  name: string;
+  address: string;
+  logoUrl: string;
+  description: string;
+  contactEmail: string;
+  contactPhone: string;
+  preferredContactMethod: "email" | "phone" | "both";
+  notificationEmail: string;
+  notificationPhone: string;
+}
+
 interface ManagerOnboardingContextType {
   // OnboardJS State & Actions
   currentStepData: any; // The payload of the current step
@@ -56,6 +72,26 @@ interface ManagerOnboardingContextType {
   handleSkip: () => Promise<void>;
   skipCurrentStep: () => Promise<void>; // Skip current step without completing it
   goToStep: (stepId: string) => Promise<void>;
+
+  // --- Unsaved-changes guard ---
+  /** True while the current step holds edits that are not persisted yet. */
+  hasUnsavedChanges: boolean;
+  /** Reported by each step when its own dirty state changes. */
+  setUnsavedChanges: (dirty: boolean) => void;
+  /**
+   * How the current step persists its own edits, so the confirmation can offer
+   * "Save changes". Steps whose only save *is* navigating register nothing.
+   */
+  registerStepSave: (save: (() => Promise<boolean>) | null) => void;
+  /** Set when a navigation was intercepted; the shell renders the dialog for it. */
+  pendingLeave: { run: () => void } | null;
+  clearPendingLeave: () => void;
+  /** Persist the current step, then run the intercepted navigation. */
+  saveAndLeave: () => Promise<void>;
+  /** Run the intercepted navigation without saving. */
+  discardAndLeave: () => void;
+  /** True while `saveAndLeave` is persisting. */
+  isSavingBeforeLeave: boolean;
 
   // Legacy/Derived State
   currentStep: number;
@@ -128,6 +164,7 @@ interface ManagerOnboardingContextType {
       name: string;
       description: string;
       hourlyRate: string;
+      dailyRate: string;
       currency: string;
       minimumBookingHours: string;
       imageUrl: string;
@@ -138,6 +175,18 @@ interface ManagerOnboardingContextType {
     setShowCreate: (show: boolean) => void;
     isCreating: boolean;
   };
+  /** Persist edits to an already-created kitchen. Resolves the updated kitchen. */
+  updateKitchen: (
+    kitchenId: number,
+    data: {
+      name: string;
+      description: string;
+      hourlyRate: string;
+      dailyRate: string;
+      minimumBookingHours: string;
+      imageUrl: string;
+    },
+  ) => Promise<any>;
 
   storageForm: {
     listings: StorageListing[];
@@ -153,6 +202,11 @@ interface ManagerOnboardingContextType {
 
   // Actions
   updateLocation: () => Promise<void>;
+  /**
+   * Persist one part of the Business step without advancing. Resolves false on
+   * failure so the caller can keep the user on the part they were editing.
+   */
+  saveLocationDraft: (fields: Partial<LocationDraftFields>) => Promise<boolean>;
   createKitchen: () => Promise<void>;
   uploadLicense: () => Promise<string | null>;
   startNewLocation: () => void;
@@ -228,6 +282,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     currency: 'CAD',
     minimumBookingHours: '1',
     imageUrl: '',
+    dailyRate: '',
     features: [],
   });
 
@@ -417,6 +472,27 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       result['equipment-listings'] = true;
     }
 
+    /*
+     * The summary is a report, not a task — but it is still one of the required
+     * rows, and nothing above ever marks it. Without this the counter could
+     * never reach its own total: a manager who had done everything saw "6 of 7"
+     * forever, and reasonably read the missing step as the licence still being
+     * under review. Licence *approval* has never gated onboarding; uploading it
+     * does. Completing the summary when everything it summarises is done makes
+     * the total reachable and keeps it stable across reloads.
+     */
+    const TASK_STEP_IDS = [
+      'welcome',
+      'location',
+      'create-kitchen',
+      'availability',
+      'application-requirements',
+      'payment-setup',
+    ];
+    if (TASK_STEP_IDS.every((id) => result[id])) {
+      result['completion-summary'] = true;
+    }
+
     return result;
   }, [userData, locations, selectedLocationId, kitchens.length,
     hasRequirements, hasAvailability, isStripeOnboardingComplete,
@@ -442,20 +518,22 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   // AUTO-SKIP: Only skip welcome step for returning users with location
   // [FIX] We no longer auto-skip payment-setup - users can view it even when complete
   // This allows them to see their completed status and access Stripe dashboard
+  //
+  // The skip is an *entry* behaviour: a returning manager should not be parked on
+  // the welcome screen when they already have a location. It runs at most once per
+  // wizard entry, so a deliberate click on Welcome in the sidebar is honoured
+  // instead of being bounced straight forward again.
+  const hasAutoSkippedWelcome = useRef(false);
+
   useEffect(() => {
     if (!currentStepId || isCompleted) return;
+    if (!(hasExistingLocation && !isAddingLocation)) return;
+    if (String(currentStepId) !== 'welcome') return;
+    if (hasAutoSkippedWelcome.current) return;
 
-    // Only auto-skip welcome for returning users who are adding a new location
-    // Payment step should stay visible even when complete (user can see status)
-    const stepsToSkip: string[] = [];
-    if (hasExistingLocation && !isAddingLocation) stepsToSkip.push('welcome');
-
-    // Only auto-skip if current step is in the explicit skip list
-    const stepIdStr = String(currentStepId);
-    if (stepsToSkip.includes(stepIdStr)) {
-      logger.info(`[Onboarding] Auto-skipping step: ${stepIdStr}`);
-      next();
-    }
+    hasAutoSkippedWelcome.current = true;
+    logger.info('[Onboarding] Auto-skipping welcome on entry');
+    next();
   }, [currentStepId, isCompleted, hasExistingLocation, isAddingLocation, next]);
 
   // ENTERPRISE FIX: Auto-redirect logic moved to ManagerProtectedRoute.tsx
@@ -500,12 +578,14 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   useEffect(() => {
     // Reset on mount (handles page-based flow at /manager/setup)
     hasPerformedInitialAutoSkip.current = false;
+    hasAutoSkippedWelcome.current = false;
     logger.info('[Onboarding] Component mounted - reset auto-skip flag');
   }, []); // Empty deps = runs once on mount
 
   useEffect(() => {
     if (isOpen) {
       hasPerformedInitialAutoSkip.current = false;
+      hasAutoSkippedWelcome.current = false;
       logger.info('[Onboarding] Wizard dialog opened - reset auto-skip flag');
     }
   }, [isOpen]);
@@ -627,8 +707,31 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     }
   }, [selectedLocation, licenseUploadedUrl, termsUploadedUrl, licenseExpiryDate]);
 
-  // Manual navigation flag to prevent auto-skip when user explicitly navigates
+  /**
+   * Set the moment the user takes control of the wizard — Continue, Back, a
+   * sidebar jump, a skip, or any successful save.
+   *
+   * Auto-resume exists to drop a *returning* manager on the first incomplete
+   * step. Once they start driving, moving them again is the glitch, not the
+   * feature — this flag is what stops it.
+   */
   const isManualNavigation = useRef(false);
+
+  /**
+   * The step the wizard opened on. Auto-resume only fires while the user is
+   * still there: if anything has moved them since, their position is
+   * intentional and must not be undone.
+   */
+  const entryStepIdRef = useRef<string | null>(null);
+
+  // Keep the entry step current until the user takes over. Recording it on every
+  // render (rather than only at mount) tolerates the engine hydrating a frame or
+  // two after mount, which would otherwise pin this to 'welcome' and silently
+  // disable resume for everyone.
+  useEffect(() => {
+    if (isManualNavigation.current) return;
+    if (currentStep?.id) entryStepIdRef.current = String(currentStep.id);
+  }, [currentStep?.id]);
 
   // [ENTERPRISE] Auto-skip to first incomplete required step when returning
   // This provides a seamless UX where users jump directly to what needs attention
@@ -648,6 +751,15 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     // This prevents jarring auto-navigation when a user completes a step actively
     // or navigates between steps manually
     if (hasPerformedInitialAutoSkip.current) {
+      return;
+    }
+
+    // The user has taken control (Continue, Back, a sidebar jump, a skip, or a
+    // save). Auto-resume is a courtesy for a fresh entry, never a correction of
+    // a deliberate position — bail and let them drive.
+    if (isManualNavigation.current) {
+      logger.info('[Onboarding] Auto-resume skipped: user has taken control');
+      hasPerformedInitialAutoSkip.current = true;
       return;
     }
 
@@ -681,6 +793,15 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     // Get current step ID from engine state
     const currentId = currentStep?.id;
     if (!currentId) return;
+
+    // Anything that moved us off the entry step was deliberate. Without this,
+    // a save that advanced the flow (e.g. creating the first kitchen) could be
+    // followed by this effect firing late and yanking the user to another step.
+    if (entryStepIdRef.current !== null && String(currentId) !== entryStepIdRef.current) {
+      logger.info(`[Onboarding] Auto-resume skipped: step moved since entry (${entryStepIdRef.current} → ${currentId})`);
+      hasPerformedInitialAutoSkip.current = true;
+      return;
+    }
 
     // [FIX] Wait for completedSteps to reflect the selected location data
     // This prevents race condition where auto-skip runs before completedSteps memo updates
@@ -774,35 +895,39 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     }
   }, [selectedLocationId]);
 
-  // Load listings based on step
+  /**
+   * Load both listing sets as soon as a kitchen is selected.
+   *
+   * These used to load only when their own step was on screen, which made
+   * completion a function of having *visited* the step: a manager whose kitchen
+   * already had storage and equipment saw both steps as incomplete until they
+   * opened them, at which point the rows appeared and the progress jumped. The
+   * completion memo reads these arrays, so they have to be populated up front —
+   * two small requests, once per kitchen, instead of on every step change.
+   */
   useEffect(() => {
     const loadListings = async () => {
       if (!selectedKitchenId) return;
       const token = await auth.currentUser?.getIdToken();
       if (!token) return;
 
-      const stepId = currentStep?.id;
-
-      if (stepId === 'storage-listings') {
-        setIsLoadingStorage(true);
-        try {
-          const res = await fetch(`/api/manager/kitchens/${selectedKitchenId}/storage-listings`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          if (res.ok) setExistingStorageListings(await res.json());
-        } finally { setIsLoadingStorage(false); }
-      } else if (stepId === 'equipment-listings') {
-        setIsLoadingEquipment(true);
-        try {
-          const res = await fetch(`/api/manager/kitchens/${selectedKitchenId}/equipment-listings`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          if (res.ok) setExistingEquipmentListings(await res.json());
-        } finally { setIsLoadingEquipment(false); }
+      const headers = { 'Authorization': `Bearer ${token}` };
+      setIsLoadingStorage(true);
+      setIsLoadingEquipment(true);
+      try {
+        const [storageRes, equipmentRes] = await Promise.all([
+          fetch(`/api/manager/kitchens/${selectedKitchenId}/storage-listings`, { headers }),
+          fetch(`/api/manager/kitchens/${selectedKitchenId}/equipment-listings`, { headers }),
+        ]);
+        if (storageRes.ok) setExistingStorageListings(await storageRes.json());
+        if (equipmentRes.ok) setExistingEquipmentListings(await equipmentRes.json());
+      } finally {
+        setIsLoadingStorage(false);
+        setIsLoadingEquipment(false);
       }
     };
     loadListings();
-  }, [selectedKitchenId, currentStep]);
+  }, [selectedKitchenId]);
 
   // Load Availability check [NEW]
   useEffect(() => {
@@ -877,6 +1002,10 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
 
   // Track step completion - saves to backend and optimistically updates local state
   const trackStepCompletion = useCallback(async (stepId: number | string) => {
+    // Completing a step is the clearest signal that the user is driving the
+    // wizard — it fires on Continue (via the step-completed listener) and on
+    // every save that advances the flow. From here on, auto-resume stands down.
+    isManualNavigation.current = true;
     try {
       const token = await auth.currentUser?.getIdToken();
       if (!token) return;
@@ -1277,6 +1406,66 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     }
   };
 
+  /**
+   * Persist a *subset* of the location's fields without advancing the wizard.
+   *
+   * The Business step is split into three parts that save as you go. Each part
+   * sends only its own fields — `PUT /manager/locations/:id` applies an
+   * `!== undefined` check per field, so anything omitted is left untouched. The
+   * first part creates the location (the endpoint requires name + address, which
+   * part one owns); later parts update it.
+   *
+   * Deliberately does NOT call `trackStepCompletion` or `next()`: the step is
+   * only complete once the documents part is saved via `updateLocation`.
+   */
+  const saveLocationDraft = async (fields: Partial<LocationDraftFields>): Promise<boolean> => {
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) return false;
+
+      const effectiveLocationId =
+        lastSubmittedLocationIdRef.current ||
+        selectedLocationId ||
+        (!isAddingLocation && locations.length > 0 ? locations[0].id : null);
+      const shouldCreate = !effectiveLocationId;
+      const endpoint = shouldCreate
+        ? `/api/manager/locations`
+        : `/api/manager/locations/${effectiveLocationId}`;
+
+      const res = await fetch(endpoint, {
+        method: shouldCreate ? "POST" : "PUT",
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(fields),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || tt("failedToSaveLocation"));
+      }
+      const saved = await res.json();
+      const savedLocationId = saved?.id || effectiveLocationId;
+      if (savedLocationId) {
+        lastSubmittedLocationIdRef.current = savedLocationId;
+        if (shouldCreate) setSelectedLocationId(savedLocationId);
+      }
+
+      // Keep the list in sync so returning to an earlier part shows what was saved.
+      queryClient.setQueryData(["/api/manager/locations"], (oldData: any) => {
+        if (!Array.isArray(oldData)) return oldData;
+        const exists = oldData.some((loc: any) => loc.id === savedLocationId);
+        if (!exists) return [...oldData, saved];
+        return oldData.map((loc: any) =>
+          loc.id === savedLocationId ? { ...loc, ...fields } : loc
+        );
+      });
+
+      return true;
+    } catch (e: any) {
+      logger.error('[Onboarding] Error in saveLocationDraft:', e);
+      toast({ title: mt("error"), description: e.message, variant: "destructive" });
+      return false;
+    }
+  };
+
   const createKitchen = async () => {
     if (!selectedLocationId) return;
     setCreatingKitchen(true);
@@ -1294,6 +1483,10 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
           imageUrl: kitchenFormData.imageUrl || undefined,
           features: kitchenFormData.features,
           hourlyRate: Math.round(parseFloat(kitchenFormData.hourlyRate) * 100),
+          // Optional: a kitchen can be priced hourly, daily, or both.
+          dailyRate: kitchenFormData.dailyRate.trim() === ''
+            ? undefined
+            : Math.round(parseFloat(kitchenFormData.dailyRate) * 100),
           currency: kitchenFormData.currency,
           minimumBookingHours: parseInt(kitchenFormData.minimumBookingHours, 10) || 0,
         })
@@ -1304,7 +1497,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       setKitchens([...kitchens, newKitchen]);
       setSelectedKitchenId(newKitchen.id);
       setShowCreateKitchen(false);
-      setKitchenFormData({ name: '', description: '', hourlyRate: '', currency: 'CAD', minimumBookingHours: '1', imageUrl: '', features: [] });
+      setKitchenFormData({ name: '', description: '', hourlyRate: '', dailyRate: '', currency: 'CAD', minimumBookingHours: '1', imageUrl: '', features: [] });
 
       await trackStepCompletion(currentStep?.id || 'create-kitchen');
       toast({ title: mt("success"), description: mt("kitchenCreated2") });
@@ -1314,6 +1507,74 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     } finally {
       setCreatingKitchen(false);
     }
+  };
+
+  /**
+   * Save edits to a kitchen created earlier in this flow.
+   *
+   * Three endpoints own the fields being edited — details (name/description),
+   * pricing (rates/minimum) and the cover image — so this fans out and reports
+   * the merged kitchen. Editing stays inside onboarding: sending a manager to the
+   * dashboard mid-setup loses the wizard's place.
+   */
+  const updateKitchen = async (
+    kitchenId: number,
+    data: {
+      name: string;
+      description: string;
+      hourlyRate: string;
+      dailyRate: string;
+      minimumBookingHours: string;
+      imageUrl: string;
+    },
+  ) => {
+    const token = await auth.currentUser?.getIdToken();
+    const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+    const toCents = (value: string) => {
+      const parsed = parseFloat(value);
+      return value.trim() === '' || isNaN(parsed) ? null : Math.round(parsed * 100);
+    };
+
+    const detailsRes = await fetch(`/api/manager/kitchens/${kitchenId}`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ name: data.name, description: data.description }),
+    });
+    if (!detailsRes.ok) {
+      throw new Error((await detailsRes.json().catch(() => ({}))).error || tt("failedToCreateKitchen"));
+    }
+    const updated = await detailsRes.json();
+
+    const pricingRes = await fetch(`/api/manager/kitchens/${kitchenId}/pricing`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({
+        hourlyRate: toCents(data.hourlyRate),
+        dailyRate: toCents(data.dailyRate),
+        currency: 'CAD',
+        minimumBookingHours: parseInt(data.minimumBookingHours, 10) || 0,
+      }),
+    });
+    if (!pricingRes.ok) {
+      throw new Error((await pricingRes.json().catch(() => ({}))).error || tt("failedToCreateKitchen"));
+    }
+    const priced = await pricingRes.json();
+
+    if (data.imageUrl !== undefined) {
+      const imageRes = await fetch(`/api/manager/kitchens/${kitchenId}/image`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ imageUrl: data.imageUrl || null }),
+      });
+      if (!imageRes.ok) {
+        throw new Error((await imageRes.json().catch(() => ({}))).error || tt("failedToCreateKitchen"));
+      }
+    }
+
+    const merged = { ...updated, ...priced, imageUrl: data.imageUrl };
+    setKitchens((prev) => prev.map((k: any) => (k.id === kitchenId ? { ...k, ...merged } : k)));
+    return merged;
   };
 
   // --- Event Listeners ---
@@ -1399,6 +1660,62 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     }
   }, [currentPath, isAddingLocation]);
 
+  // --- Unsaved-changes guard -------------------------------------------------
+  // One place decides whether a navigation may proceed, so the wizard offers the
+  // same three-way choice (keep editing / discard / save) as the dashboard tabs.
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [pendingLeave, setPendingLeave] = useState<{ run: () => void } | null>(null);
+  const [isSavingBeforeLeave, setIsSavingBeforeLeave] = useState(false);
+  const stepSaveRef = useRef<(() => Promise<boolean>) | null>(null);
+
+  const registerStepSave = useCallback((save: (() => Promise<boolean>) | null) => {
+    stepSaveRef.current = save;
+  }, []);
+
+  /** Intercept a navigation while the current step still holds edits. */
+  const guardLeave = useCallback((run: () => void) => {
+    if (!hasUnsavedChanges) {
+      run();
+      return;
+    }
+    setPendingLeave({ run });
+  }, [hasUnsavedChanges]);
+
+  const clearPendingLeave = useCallback(() => setPendingLeave(null), []);
+
+  const discardAndLeave = useCallback(() => {
+    const run = pendingLeave?.run;
+    setPendingLeave(null);
+    setHasUnsavedChanges(false);
+    run?.();
+  }, [pendingLeave]);
+
+  const saveAndLeave = useCallback(async () => {
+    const save = stepSaveRef.current;
+    if (!save) {
+      // Nothing to persist (the step saves by navigating) — just leave.
+      discardAndLeave();
+      return;
+    }
+    setIsSavingBeforeLeave(true);
+    try {
+      const saved = await save();
+      if (!saved) return; // the step reported failure; keep the choice on screen
+      const run = pendingLeave?.run;
+      setPendingLeave(null);
+      setHasUnsavedChanges(false);
+      run?.();
+    } finally {
+      setIsSavingBeforeLeave(false);
+    }
+  }, [pendingLeave, discardAndLeave]);
+
+  // A step's dirty state belongs to that step alone.
+  useEffect(() => {
+    setHasUnsavedChanges(false);
+    stepSaveRef.current = null;
+  }, [currentStep?.id]);
+
   const value: ManagerOnboardingContextType = {
     // Adapter
     currentStepData: currentStep?.payload,
@@ -1410,25 +1727,41 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
 
     handleNext: handleNextAction,
     handleBack: () => {
-      isManualNavigation.current = true;
-      previous();
+      guardLeave(() => {
+        isManualNavigation.current = true;
+        previous();
+      });
     },
     handleSkip: handleSkipAction,
     skipCurrentStep: async () => {
       // Skip to next step without marking current as complete
-      if (engine) {
-        isManualNavigation.current = true;
-        logger.info(`[Onboarding] Skipping step: ${currentStep?.id}`);
-        next(); // Move to next step without completion tracking
-      }
+      guardLeave(() => {
+        if (engine) {
+          isManualNavigation.current = true;
+          logger.info(`[Onboarding] Skipping step: ${currentStep?.id}`);
+          next(); // Move to next step without completion tracking
+        }
+      });
     },
     goToStep: async (stepId: string) => {
-      if (engine) {
-        isManualNavigation.current = true;
-        logger.info(`[Onboarding] Navigating directly to step: ${stepId}`);
-        await engine.goToStep(stepId);
-      }
+      guardLeave(() => {
+        if (engine) {
+          isManualNavigation.current = true;
+          logger.info(`[Onboarding] Navigating directly to step: ${stepId}`);
+          void engine.goToStep(stepId);
+        }
+      });
     },
+
+    // --- Unsaved-changes guard ---
+    hasUnsavedChanges,
+    setUnsavedChanges: setHasUnsavedChanges,
+    registerStepSave,
+    pendingLeave,
+    clearPendingLeave,
+    saveAndLeave,
+    discardAndLeave,
+    isSavingBeforeLeave,
 
     // Missing props:
     currentStep: (state as any)?.currentStep ?? 0,
@@ -1473,7 +1806,9 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         });
         if (res.ok) {
           const data = await res.json();
-          setHasRequirements(!!data && !!data.id);
+          // Default payload (no row yet) returns id: -1, so a truthiness check would
+          // wrongly mark the step complete. Must match the initial check above.
+          setHasRequirements(!!data && Number(data.id) > 0);
         }
       } catch (e) {
         logger.error("Failed to refresh requirements", e);
@@ -1509,6 +1844,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       showCreate: showCreateKitchen, setShowCreate: setShowCreateKitchen,
       isCreating: creatingKitchen
     },
+    updateKitchen,
     storageForm: { 
       listings: existingStorageListings, 
       isLoading: isLoadingStorage,
@@ -1542,7 +1878,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       }
     },
 
-    updateLocation, createKitchen, uploadLicense,
+    updateLocation, createKitchen, uploadLicense, saveLocationDraft,
     
     // [ENTERPRISE] Save and Exit - Persists current step progress and navigates to dashboard
     // This allows users to exit at ANY step (including welcome) and resume later
@@ -1659,7 +1995,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       setSelectedKitchenId(null);
       setKitchensLoaded(false);
       setShowCreateKitchen(false);
-      setKitchenFormData({ name: '', description: '', hourlyRate: '', currency: 'CAD', minimumBookingHours: '1', imageUrl: '', features: [] });
+      setKitchenFormData({ name: '', description: '', hourlyRate: '', dailyRate: '', currency: 'CAD', minimumBookingHours: '1', imageUrl: '', features: [] });
       setExistingStorageListings([]);
       setExistingEquipmentListings([]);
       setHasAvailability(false);
@@ -1677,8 +2013,9 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       // --- 5. Set multi-location flag BEFORE engine reset ---
       setIsAddingLocation(true);
 
-      // --- 6. Reset auto-skip ref so fresh navigation logic runs ---
+      // --- 6. Reset auto-skip refs so fresh navigation logic runs ---
       hasPerformedInitialAutoSkip.current = false;
+      hasAutoSkippedWelcome.current = false;
 
       // --- 7. Reset OnboardJS engine and navigate to 'location' step (skip welcome for secondary locations) ---
       if (engine) {

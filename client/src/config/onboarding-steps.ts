@@ -141,7 +141,7 @@ export const steps: any[] = [
         payload: {
             componentKey: 'completion-summary',
             title: 'Setup Complete',
-            description: 'Review your setup and next steps',
+            description: 'What happens next?',
         },
         nextStep: null
     },

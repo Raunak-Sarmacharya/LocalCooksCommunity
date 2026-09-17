@@ -1,182 +1,100 @@
 /**
- * Requirements Step Two Configuration
- * Kitchen Coordination requirements after initial application approval
+ * Kitchen Documents — the manager-owned half of the chef application.
+ *
+ * Deliberately header-free past the card titles: the page hosting this already
+ * names the surface, so a step heading, a compliance callout, a heading per
+ * field group and a heading above the custom-field list were four levels of
+ * copy all saying the same thing. One card, one row per requirement.
  */
 
 import { Switch } from "@/components/ui/switch";
 import { mt } from "@/i18n/manager";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { FileCheck, ShieldAlert, ClipboardList, BadgeCheck, Info, AlertTriangle } from "@/components/ui/manager-icons";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
+import { SettingsRow } from "@/components/manager/settings/SettingsRow";
 import { CustomFieldBuilder } from "./CustomFieldBuilder";
 import { LocationRequirements, CustomField, STEP2_BUILT_IN_FIELDS } from "./types";
 
 interface RequirementsStepTwoProps {
   requirements: Partial<LocationRequirements>;
   onRequirementsChange: (updates: Partial<LocationRequirements>) => void;
-  onUnsavedChange: () => void;
 }
 
-const SECTION_ICONS: Record<string, React.ReactNode> = {
-  'Licensing & Compliance': <FileCheck className="h-4 w-4" />,
-  'Insurance & Liability': <ShieldAlert className="h-4 w-4" />,
-  'Operational Documentation': <ClipboardList className="h-4 w-4" />,
-};
+/** Groups exist for the config shape; the rows themselves read as one list. */
+const FIELD_ROWS = STEP2_BUILT_IN_FIELDS.flatMap((group) => group.fields);
 
 export function RequirementsStepTwo({
   requirements,
   onRequirementsChange,
-  onUnsavedChange,
 }: RequirementsStepTwoProps) {
   
   const handleToggle = (key: keyof LocationRequirements, value: boolean) => {
     onRequirementsChange({ [key]: value });
-    onUnsavedChange();
   };
 
   const handleCustomFieldsChange = (fields: CustomField[]) => {
     onRequirementsChange({ tier2_custom_fields: fields });
-    onUnsavedChange();
   };
 
   const tier2CustomFields = (requirements.tier2_custom_fields as CustomField[]) || [];
 
-  // Count enabled requirements for summary
-  const enabledCount = STEP2_BUILT_IN_FIELDS.reduce((count, group) => {
-    return count + group.fields.filter(field => requirements[field.key] === true).length;
-  }, 0);
-
   return (
     <div className="space-y-6">
-      {/* Step Explanation Card */}
-      <div className="rounded-xl border bg-card p-5">
-        <div>
-          <div className="flex items-start gap-3">
-            <div className="flex-1">
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{mt("kitchenSpecificRequirements")}</h3>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
-                After Local Cooks approves a chef's initial request application, they'll need to provide these additional 
-                documents and information before they can start using your kitchen.
-              </p>
-            </div>
-          </div>
-          
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Badge variant="success">
-              <Info className="h-3 w-3 mr-1" />{mt("theseAreCollectedAfterInitialApproval")}</Badge>
-            {enabledCount > 0 && (
-              <Badge variant="outline">
-                {enabledCount} requirement{enabledCount !== 1 ? 's' : ''} enabled
-              </Badge>
-            )}
-          </div>
-        </div>
-      </div>
+      {/* Built-in requirements */}
+      <Card>
+        <CardHeader className="p-4 pb-2">
+          <CardTitle className="text-lg">{mt("step2Documents")}</CardTitle>
+          <CardDescription>{mt("theseAreCollectedAfterInitialApproval")}</CardDescription>
+        </CardHeader>
 
-      {/* Important Notice */}
-      <div className="flex items-start gap-3 p-4 rounded-lg bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40">
-        <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-        <div>
-          <p className="text-sm font-medium text-amber-800 dark:text-amber-200">{mt("complianceRequirements")}</p>
-          <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
-            Check your local regulations to determine which documents are legally required. 
-            Food establishment licenses and liability insurance are commonly required.
-          </p>
-        </div>
-      </div>
+        <CardContent className="divide-y divide-border p-0">
+          {FIELD_ROWS.map((field) => {
+            const controlId = `requirement-${String(field.key)}`;
+            const isRequired = requirements[field.key] === true;
+            // "Recommended" is guidance, not state — it belongs on the hint line
+            // rather than in a second badge competing with the toggle.
+            const hint = field.recommended
+              ? `${field.description ?? ""}${field.description ? " · " : ""}${mt("recommended")}`
+              : field.description;
 
-      {/* Built-in Fields Configuration */}
-      <div className="rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
-        <div className="px-5 py-4 border-b border-slate-200/80 dark:border-slate-700/80 bg-slate-50/50 dark:bg-slate-800/50">
-          <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{mt("standardCoordinationRequirements")}</h4>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{mt("enableTheDocumentationRequirementsForYourKitchen")}</p>
-        </div>
-
-        <Accordion type="multiple" defaultValue={['Licensing & Compliance', 'Insurance & Liability']} className="divide-y divide-slate-200/80 dark:divide-slate-700/80">
-          {STEP2_BUILT_IN_FIELDS.map((group) => (
-            <AccordionItem key={group.title} value={group.title} className="border-0">
-              <AccordionTrigger className="px-5 py-4 hover:no-underline hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+            return (
+              <SettingsRow key={field.key} id={controlId} label={field.label} hint={hint}>
                 <div className="flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-400">
-                    {SECTION_ICONS[group.title]}
-                  </div>
-                  <div className="text-left">
-                    <span className="font-medium text-sm text-slate-900 dark:text-slate-100">
-                      {group.title}
-                    </span>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 font-normal">
-                      {group.description}
-                    </p>
-                  </div>
+                  <span
+                    className={cn(
+                      "text-xs font-medium",
+                      isRequired ? "text-foreground" : "text-muted-foreground",
+                    )}
+                  >
+                    {isRequired ? mt("required") : mt("notRequired")}
+                  </span>
+                  <Switch
+                    id={controlId}
+                    checked={isRequired}
+                    onCheckedChange={(checked) => handleToggle(field.key, checked)}
+                  />
                 </div>
-              </AccordionTrigger>
-              <AccordionContent className="px-5 pb-4">
-                <div className="space-y-1 pl-11">
-                  {group.fields.map((field) => (
-                    <div key={field.key}>
-                      <div
-                        className="flex items-center justify-between py-3 px-3 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <Label className="text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer">
-                              {field.label}
-                            </Label>
-                            {field.recommended && (
-                              <Badge
-                                variant="outline"
-                                className="text-[10px] px-1.5 py-0 h-4 border-warning/30 text-warning bg-warning/10"
-                              >
-                                <BadgeCheck className="h-2.5 w-2.5 mr-0.5" />{mt("recommended")}</Badge>
-                            )}
-                          </div>
-                          {field.description && (
-                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                              {field.description}
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className={`text-xs font-medium transition-colors ${
-                            requirements[field.key] === true
-                              ? 'text-emerald-600 dark:text-emerald-400'
-                              : 'text-slate-400 dark:text-slate-500'
-                          }`}>
-                            {requirements[field.key] === true ? mt("required") : mt("notRequired")}
-                          </span>
-                          <Switch
-                            checked={requirements[field.key] === true}
-                            onCheckedChange={(checked) => handleToggle(field.key, checked)}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          ))}
-        </Accordion>
-      </div>
+              </SettingsRow>
+            );
+          })}
+        </CardContent>
+      </Card>
 
-      {/* Custom Fields Section */}
-      <div className="rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
-        <div className="border-b border-slate-200/80 bg-slate-50/50 px-5 py-4 dark:border-slate-700/80 dark:bg-slate-800/50">
-          <div>
-            <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{mt("customQuestionsForKitchenApplications")}</h4>
-          </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{mt("addAdditionalDocumentationOrInformationRequirements")}</p>
-        </div>
-        
-        <div className="p-5">
+      {/* Custom questions */}
+      <Card>
+        <CardHeader className="p-4 pb-2">
+          <CardTitle className="text-lg">{mt("customQuestionsForKitchenApplications")}</CardTitle>
+          <CardDescription>{mt("addAdditionalDocumentationOrInformationRequirements")}</CardDescription>
+        </CardHeader>
+
+        <CardContent className="p-0">
           <CustomFieldBuilder
             fields={tier2CustomFields}
             tier={2}
             onFieldsChange={handleCustomFieldsChange}
           />
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

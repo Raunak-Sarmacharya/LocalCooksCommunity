@@ -1,6 +1,9 @@
 /**
  * Custom Field Builder Component
  * Enterprise-grade reusable component for creating and editing custom application fields
+ *
+ * Renders the list only — the card that hosts it owns the section title, so the
+ * builder keeps just the "Add field" action next to it.
  */
 
 import { useState } from "react";
@@ -10,11 +13,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, X, Pencil, Trash2, GripVertical, Type, AlignLeft, Hash, ChevronDown, CheckSquare, Calendar, Upload, Cloud, AlertCircle } from "@/components/ui/manager-icons";
-import { CustomField, CUSTOM_FIELD_TYPES } from "./types";
+import { Plus, X, Pencil, Trash2, Type, AlignLeft, Hash, ChevronDown, CheckSquare, Calendar, Upload, Cloud, AlertCircle, PlaylistPlus } from "@/components/ui/manager-icons";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CustomField, CUSTOM_FIELD_TYPES, COMMON_REQUIREMENT_FIELDS } from "./types";
 import { FormLegend } from "@/components/ui/form-legend";
 
 interface CustomFieldBuilderProps {
@@ -25,14 +28,14 @@ interface CustomFieldBuilderProps {
 }
 
 const FIELD_TYPE_ICONS: Record<CustomField['type'], React.ReactNode> = {
-  text: <Type className="h-4 w-4" />,
-  textarea: <AlignLeft className="h-4 w-4" />,
-  number: <Hash className="h-4 w-4" />,
-  select: <ChevronDown className="h-4 w-4" />,
-  checkbox: <CheckSquare className="h-4 w-4" />,
-  date: <Calendar className="h-4 w-4" />,
-  file: <Upload className="h-4 w-4" />,
-  cloudflare_upload: <Cloud className="h-4 w-4" />,
+  text: <Type className="h-3.5 w-3.5" />,
+  textarea: <AlignLeft className="h-3.5 w-3.5" />,
+  number: <Hash className="h-3.5 w-3.5" />,
+  select: <ChevronDown className="h-3.5 w-3.5" />,
+  checkbox: <CheckSquare className="h-3.5 w-3.5" />,
+  date: <Calendar className="h-3.5 w-3.5" />,
+  file: <Upload className="h-3.5 w-3.5" />,
+  cloudflare_upload: <Cloud className="h-3.5 w-3.5" />,
 };
 
 interface FieldEditorState {
@@ -135,6 +138,30 @@ export function CustomFieldBuilder({
     onFieldsChange(fields.filter((f) => f.id !== fieldId));
   };
 
+  /**
+   * One-tap addition of a common request. The resolved label is stored on the
+   * field, so it behaves exactly like one the manager typed themselves.
+   */
+  const addCommonField = (preset: (typeof COMMON_REQUIREMENT_FIELDS)[number]) => {
+    const label = mt(preset.key);
+    onFieldsChange([
+      ...fields,
+      {
+        id: `custom_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        label,
+        type: preset.type,
+        required: preset.required ?? false,
+        tier,
+      },
+    ]);
+  };
+
+  // Already-asked requests drop out of the picker, so it never offers a duplicate.
+  const takenLabels = new Set(fields.map((f) => f.label.trim().toLowerCase()));
+  const availableCommonFields = COMMON_REQUIREMENT_FIELDS.filter(
+    (preset) => !takenLabels.has(mt(preset.key).trim().toLowerCase()),
+  );
+
   const addOption = () => {
     if (!newOption.trim()) return;
     setEditor((prev) => ({
@@ -173,93 +200,101 @@ export function CustomFieldBuilder({
     });
   };
 
-  const tierLabel = tier === 1 ? 'Step 1' : 'Step 2';
-
   return (
     <div className={className}>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{mt("customFields")}</h4>
-        </div>
-        <Button
-          onClick={openAddDialog}
-          size="sm"
-          className="shadow-sm"
-        >
-          <Plus className="h-4 w-4 mr-1.5" />{mt("addField")}</Button>
+      {/* Actions — the hosting card already carries the section title. */}
+      <div className="flex flex-wrap items-center justify-end gap-2 px-4 pt-4">
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button type="button" variant="ghost" size="sm" className="gap-1.5">
+              <PlaylistPlus className="h-4 w-4" />
+              {mt("chooseFromCommon")}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-auto p-1.5">
+            <div className="min-w-[260px] space-y-1">
+              <p className="px-1.5 pb-1 pt-0.5 text-[11px] font-medium text-muted-foreground">
+                {mt("commonRequirementFieldsHint")}
+              </p>
+              {availableCommonFields.length === 0 ? (
+                <p className="px-1.5 py-2 text-xs text-muted-foreground">
+                  {mt("allCommonRequirementFieldsAdded")}
+                </p>
+              ) : (
+                availableCommonFields.map((preset) => (
+                  <button
+                    key={preset.key}
+                    type="button"
+                    onClick={() => addCommonField(preset)}
+                    className="!min-h-0 flex w-full items-center gap-2 rounded-md border border-transparent px-2 py-1.5 text-left text-xs transition-colors hover:border-border hover:bg-muted"
+                  >
+                    <Plus className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate">{mt(preset.key)}</span>
+                    <span className="shrink-0 text-[10px] text-muted-foreground">
+                      {CUSTOM_FIELD_TYPES.find((t) => t.value === preset.type)?.label}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          </PopoverContent>
+        </Popover>
+
+        <Button onClick={openAddDialog} variant="outline" size="sm" className="gap-1.5">
+          <Plus className="h-4 w-4" />
+          {mt("addField")}
+        </Button>
       </div>
 
       {/* Existing Fields List */}
       {fields.length > 0 ? (
-        <div className="space-y-2">
+        <div className="divide-y divide-border">
           {fields.map((field) => (
-            <div
-              key={field.id}
-              className={`
-                group flex items-center gap-3 p-3 rounded-lg border transition-all
-                ${tier === 1 
-                  ? 'bg-blue-50/50 border-blue-200/60 dark:bg-blue-950/20 dark:border-blue-800/40 hover:border-blue-300 dark:hover:border-blue-700' 
-                  : 'bg-emerald-50/50 border-emerald-200/60 dark:bg-emerald-950/20 dark:border-emerald-800/40 hover:border-emerald-300 dark:hover:border-emerald-700'}
-              `}
-            >
-              <div className="text-slate-400 dark:text-slate-500 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity">
-                <GripVertical className="h-4 w-4" />
-              </div>
-
-              <div className="flex items-center justify-center h-8 w-8 rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                {FIELD_TYPE_ICONS[field.type]}
-              </div>
-
-              <div className="flex-1 min-w-0">
+            <div key={field.id} className="group flex items-center gap-3 px-4 py-3">
+              <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm text-slate-900 dark:text-slate-100 truncate">
+                  <span className="truncate text-sm font-medium text-foreground">
                     {field.label}
                   </span>
                   {field.required && (
-                    <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4">{mt("required")}</Badge>
+                    <span className="text-xs text-muted-foreground">{mt("required")}</span>
                   )}
                 </div>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-xs text-slate-500 dark:text-slate-400 capitalize">
-                    {field.type.replace('_', ' ')}
-                  </span>
-                  {field.options && field.options.length > 0 && (
-                    <span className="text-xs text-slate-400 dark:text-slate-500">
-                      ({field.options.length} options)
-                    </span>
-                  )}
-                </div>
+                <p className="mt-0.5 flex items-center gap-1.5 text-xs capitalize text-muted-foreground">
+                  {FIELD_TYPE_ICONS[field.type]}
+                  {field.type.replace('_', ' ')}
+                </p>
               </div>
 
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
                 <Button
                   onClick={() => openEditDialog(field)}
                   variant="ghost"
                   size="sm"
-                  className="h-8 w-8 p-0 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                  aria-label={mt("edit")}
+                  className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
                 >
-                  <Pencil className="h-3.5 w-3.5" />
+                  <Pencil className="h-4 w-4" />
                 </Button>
                 <Button
                   onClick={() => handleDelete(field.id)}
                   variant="ghost"
                   size="sm"
-                  className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
+                  aria-label={mt("delete")}
+                  className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
+                  <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
             </div>
           ))}
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center py-8 px-4 rounded-lg border-2 border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/30">
-          <div className="h-10 w-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-3">
-            <Plus className="h-5 w-5 text-slate-400" />
-          </div>
-          <p className="text-sm font-medium text-slate-600 dark:text-slate-400">{mt("noCustomFieldsYet")}</p>
-          <p className="text-xs text-slate-500 dark:text-slate-500 mt-1 text-center max-w-xs">{mt("addCustomFieldsToCollectSpecificInformationUniqueToYourKitch")}</p>
+        <div className="m-4 rounded-xl border border-dashed border-border px-6 py-8 text-center">
+          <p className="text-sm font-medium text-foreground">{mt("noCustomFieldsYet")}</p>
+          <p className="mx-auto mt-1 max-w-xs text-xs text-muted-foreground">
+            {mt("addCustomFieldsToCollectSpecificInformationUniqueToYourKitch")}
+          </p>
         </div>
       )}
 
@@ -267,18 +302,8 @@ export function CustomFieldBuilder({
       <Dialog open={editor.isOpen} onOpenChange={(open) => !open && closeDialog()}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+            <DialogTitle>
               {editor.editingField ? 'Edit Custom Field' : 'Add Custom Field'}
-              <Badge
-                variant="outline"
-                className={`text-xs ${
-                  tier === 1
-                    ? 'border-blue-200 text-blue-700 bg-blue-50'
-                    : 'border-emerald-200 text-emerald-700 bg-emerald-50'
-                }`}
-              >
-                {tierLabel}
-              </Badge>
             </DialogTitle>
             <DialogDescription>
               {editor.editingField
@@ -292,17 +317,17 @@ export function CustomFieldBuilder({
           <div className="space-y-4 py-4">
             {/* Field Label */}
             <div className="space-y-2">
-              <Label htmlFor="field-label" className="text-sm font-medium">{mt("fieldLabel")}<span className="text-red-500">*</span>
+              <Label htmlFor="field-label" className="text-sm font-medium">{mt("fieldLabel")}<span className="text-destructive">*</span>
               </Label>
               <Input
                 id="field-label"
                 value={editor.formData.label || ''}
                 onChange={(e) => updateFormData({ label: e.target.value })}
                 placeholder={mt("eGSpecialtyCuisineTypes")}
-                className={errors.label ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                className={errors.label ? 'border-destructive focus-visible:ring-destructive' : ''}
               />
               {errors.label && (
-                <p className="text-xs text-red-500 flex items-center gap-1">
+                <p className="flex items-center gap-1 text-xs text-destructive">
                   <AlertCircle className="h-3 w-3" />
                   {errors.label}
                 </p>
@@ -311,7 +336,7 @@ export function CustomFieldBuilder({
 
             {/* Field Type */}
             <div className="space-y-2">
-              <Label htmlFor="field-type" className="text-sm font-medium">{mt("fieldType")}<span className="text-red-500">*</span>
+              <Label htmlFor="field-type" className="text-sm font-medium">{mt("fieldType")}<span className="text-destructive">*</span>
               </Label>
               <Select
                 value={editor.formData.type}
@@ -322,7 +347,7 @@ export function CustomFieldBuilder({
                   })
                 }
               >
-                <SelectTrigger className={errors.type ? 'border-red-500' : ''}>
+                <SelectTrigger className={errors.type ? 'border-destructive' : ''}>
                   <SelectValue placeholder={mt("selectFieldType")} />
                 </SelectTrigger>
                 <SelectContent>
@@ -332,7 +357,7 @@ export function CustomFieldBuilder({
                         {FIELD_TYPE_ICONS[type.value as CustomField['type']]}
                         <div>
                           <span className="font-medium">{type.label}</span>
-                          <span className="text-xs text-slate-500 ml-2">{type.description}</span>
+                          <span className="ml-2 text-xs text-muted-foreground">{type.description}</span>
                         </div>
                       </div>
                     </SelectItem>
@@ -340,7 +365,7 @@ export function CustomFieldBuilder({
                 </SelectContent>
               </Select>
               {errors.type && (
-                <p className="text-xs text-red-500 flex items-center gap-1">
+                <p className="flex items-center gap-1 text-xs text-destructive">
                   <AlertCircle className="h-3 w-3" />
                   {errors.type}
                 </p>
@@ -349,7 +374,7 @@ export function CustomFieldBuilder({
 
             {/* Placeholder */}
             <div className="space-y-2">
-              <Label htmlFor="field-placeholder" className="text-sm font-medium">{mt("placeholderText")}<span className="text-slate-400">{mt("optionalLabel")}</span>
+              <Label htmlFor="field-placeholder" className="text-sm font-medium">{mt("placeholderText")}<span className="text-muted-foreground">{mt("optionalLabel")}</span>
               </Label>
               <Input
                 id="field-placeholder"
@@ -364,9 +389,9 @@ export function CustomFieldBuilder({
               <div className="space-y-2">
                 <Label className="text-sm font-medium">
                   {editor.formData.type === 'select' ? 'Dropdown Options' : 'Checkbox Options'}{' '}
-                  <span className="text-red-500">*</span>
+                  <span className="text-destructive">*</span>
                 </Label>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-muted-foreground">
                   {editor.formData.type === 'select'
                     ? 'Users will select one option from this list'
                     : 'Users can select multiple options'}
@@ -374,18 +399,19 @@ export function CustomFieldBuilder({
 
                 {/* Existing Options */}
                 {editor.formData.options && editor.formData.options.length > 0 && (
-                  <div className="space-y-1.5 my-2">
+                  <div className="my-2 space-y-1.5">
                     {editor.formData.options.map((option, index) => (
                       <div
                         key={index}
-                        className="flex items-center gap-2 p-2 bg-slate-50 dark:bg-slate-800 rounded-md"
+                        className="flex items-center gap-2 rounded-md bg-muted px-2 py-1.5"
                       >
-                        <span className="flex-1 text-sm truncate">{option}</span>
+                        <span className="flex-1 truncate text-sm">{option}</span>
                         <Button
                           onClick={() => removeOption(index)}
                           variant="ghost"
                           size="sm"
-                          className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                          aria-label={mt("delete")}
+                          className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
                         >
                           <X className="h-3.5 w-3.5" />
                         </Button>
@@ -403,13 +429,13 @@ export function CustomFieldBuilder({
                     onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addOption())}
                     className="flex-1"
                   />
-                  <Button onClick={addOption} variant="outline" size="sm" disabled={!newOption.trim()}>
-                    <Plus className="h-4 w-4 mr-1" />
+                  <Button onClick={addOption} variant="outline" size="sm" disabled={!newOption.trim()} className="gap-1">
+                    <Plus className="h-4 w-4" />
                     Add
                   </Button>
                 </div>
                 {errors.options && (
-                  <p className="text-xs text-red-500 flex items-center gap-1">
+                  <p className="flex items-center gap-1 text-xs text-destructive">
                     <AlertCircle className="h-3 w-3" />
                     {errors.options}
                   </p>
@@ -418,10 +444,10 @@ export function CustomFieldBuilder({
             )}
 
             {/* Required Toggle */}
-            <div className="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+            <div className="flex items-center justify-between rounded-lg border border-border bg-muted/40 p-3">
               <div>
                 <Label className="text-sm font-medium">{mt("requiredField")}</Label>
-                <p className="text-xs text-slate-500 mt-0.5">{mt("applicantsMustCompleteThisFieldToSubmit")}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{mt("applicantsMustCompleteThisFieldToSubmit")}</p>
               </div>
               <Switch
                 checked={editor.formData.required ?? false}
@@ -432,9 +458,7 @@ export function CustomFieldBuilder({
 
           <DialogFooter>
             <Button variant="outline" onClick={closeDialog}>{mt("cancel")}</Button>
-            <Button
-              onClick={handleSave}
-            >
+            <Button onClick={handleSave}>
               {editor.editingField ? 'Update Field' : 'Add Field'}
             </Button>
           </DialogFooter>

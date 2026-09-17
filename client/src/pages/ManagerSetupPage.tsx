@@ -1,28 +1,17 @@
-import React, { useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useManagerOnboarding } from "@/components/manager/onboarding/ManagerOnboardingContext";
 import { componentRegistry } from "@/config/onboarding";
 import EnterpriseStepper from "@/components/manager/onboarding/EnterpriseStepper";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { X, ChevronRight, Home, HelpCircle, MapPin, Calendar, ClipboardList, CreditCard, Clock, Package, CookingPot, PartyPopper, Handshake, Loader2 } from "@/components/ui/manager-icons";
+import { ChevronRight, Home, HelpCircle, Loader2 } from "@/components/ui/manager-icons";
 import { useLocation } from "wouter";
-import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-
-// Step icon mapping
-const STEP_ICONS: Record<string, React.ElementType> = {
-    'welcome': Handshake,
-    'location': MapPin,
-    'create-kitchen': Calendar,
-    'application-requirements': ClipboardList,
-    'payment-setup': CreditCard,
-    'availability': Clock,
-    'storage-listings': Package,
-    'equipment-listings': CookingPot,
-    'completion-summary': PartyPopper,
-};
+import { UnsavedChangesDialog } from "@/components/manager/UnsavedChangesDialog";
+import { mt } from "@/i18n/manager";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { SmartImage } from "@/components/ui/smart-image";
+import { resolveImageUrl } from "@/lib/resolve-image-url";
 
 export default function ManagerSetupPage() {
     return (
@@ -32,19 +21,49 @@ export default function ManagerSetupPage() {
     );
 }
 
+/**
+ * Setup wizard frame: a quiet sidebar, a breadcrumb bar with the exit action, and
+ * the current step's own cards. The page adds a heading and nothing else — the
+ * steps bring their own surfaces, so a wrapper card here would nest boxes.
+ */
 function ManagerSetupPageContent() {
-    const { t } = useTranslation("chef");
+    const { t } = useTranslation(["chef", "manager"]);
     const {
         currentStepData,
         currentStepIndex,
-        visibleSteps,
-        completedSteps,
-        saveAndExit,
+        hasUnsavedChanges,
+        pendingLeave,
+        clearPendingLeave,
+        saveAndLeave,
+        discardAndLeave,
+        isSavingBeforeLeave,
+        locationForm,
+        selectedLocation,
     } = useManagerOnboarding();
 
     const [, setLocation] = useLocation();
+    // Points at ScrollArea's viewport (not its Root — the Root is overflow-hidden),
+    // so we can reset scroll position when the step changes.
     const contentRef = useRef<HTMLDivElement>(null);
     const prevStepIndex = useRef(currentStepIndex);
+
+    /**
+     * The business being set up, shown on every step.
+     *
+     * The draft wins over the saved record so this doubles as a live preview:
+     * type the name in part 1 of the Business step and it appears up here at
+     * once. Read-only by design — the field itself stays the single place to
+     * edit it, so there is never a second source of truth.
+     */
+    const businessName = locationForm?.name || selectedLocation?.name || "";
+    const businessLogo = locationForm?.logoUrl || selectedLocation?.logoUrl || "";
+    const businessInitials = businessName
+        .trim()
+        .split(/\s+/)
+        .slice(0, 2)
+        .map((word) => word[0])
+        .join("")
+        .toUpperCase();
 
     // Scroll to top when step changes
     useEffect(() => {
@@ -54,41 +73,37 @@ function ManagerSetupPageContent() {
         prevStepIndex.current = currentStepIndex;
     }, [currentStepIndex]);
 
-    // [ENTERPRISE] Use context's saveAndExit which persists progress before navigating
-    const handleExit = async () => {
-        await saveAndExit();
-    };
+    // Cover browser refresh / tab close, which the in-app guard cannot intercept.
+    useEffect(() => {
+        if (!hasUnsavedChanges) return;
+        const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+            event.preventDefault();
+            event.returnValue = "";
+        };
+        window.addEventListener("beforeunload", handleBeforeUnload);
+        return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+    }, [hasUnsavedChanges]);
 
     // Get the component for the current step
     const StepComponent = currentStepData?.componentKey
         ? componentRegistry[currentStepData.componentKey as keyof typeof componentRegistry]
         : null;
 
-    // Get current step info
-    const currentStep = visibleSteps[currentStepIndex];
-    const isOptional = currentStep?.metadata?.isOptional;
-    const StepIcon = STEP_ICONS[currentStep?.id] || ClipboardList;
-
-    // Calculate step number (excluding optional from count for display)
-    const requiredSteps = visibleSteps.filter((s: any) => !s.metadata?.isOptional);
-    const currentRequiredIndex = requiredSteps.findIndex((s: any) => s.id === currentStep?.id);
-    const stepNumber = currentRequiredIndex >= 0 ? currentRequiredIndex + 1 : null;
-
     return (
-        <div className="min-h-screen w-full bg-gradient-to-br from-slate-50 via-slate-50 to-slate-100 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900 flex overflow-hidden">
-            {/* Premium Left Sidebar */}
-            <aside className="hidden lg:flex w-80 border-r border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-950 shadow-xl shadow-slate-200/50 dark:shadow-slate-950/50 z-20 flex-col h-screen">
+        <div className="min-h-screen w-full bg-background flex overflow-hidden">
+            {/* Left Sidebar */}
+            <aside className="hidden lg:flex w-80 border-r border-border bg-background z-20 flex-col h-screen">
                 <EnterpriseStepper />
             </aside>
 
             {/* Main Content Area */}
             <main className="flex-1 flex flex-col h-screen overflow-hidden relative">
-                {/* Premium Top Bar */}
-                <header className="h-16 border-b border-slate-200/80 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md flex items-center justify-between px-6 flex-shrink-0 z-10">
+                {/* Top Bar */}
+                <header className="h-16 border-b border-border bg-background/85 backdrop-blur-md flex items-center justify-between px-6 flex-shrink-0 z-10">
                     <div className="flex items-center gap-4">
                         {/* Mobile Title */}
                         <div className="md:hidden flex items-center gap-2">
-                            <span className="text-slate-900 dark:text-slate-100 font-semibold text-sm truncate max-w-[150px]">
+                            <span className="text-foreground font-semibold text-sm truncate max-w-[150px]">
                                 {currentStepData?.title || t("managerSetupSetup")}
                             </span>
                         </div>
@@ -98,120 +113,128 @@ function ManagerSetupPageContent() {
                                 <TooltipTrigger asChild>
                                     <button 
                                         onClick={() => setLocation('/manager/dashboard')}
-                                        className="text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
+                                        aria-label={t("dashboard", { ns: "common" })}
+                                        className="text-muted-foreground hover:text-foreground transition-colors"
                                     >
                                         <Home className="w-4 h-4" />
                                     </button>
                                 </TooltipTrigger>
                                 <TooltipContent>{t("dashboard", { ns: "common" })}</TooltipContent>
                             </Tooltip>
-                            <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600" />
-                            <span className="text-slate-600 dark:text-slate-400 font-medium">{t("managerSetupWizard")}</span>
-                            <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600" />
-                            <span className="text-slate-900 dark:text-slate-100 font-medium">
+                            <ChevronRight className="w-4 h-4 text-muted-foreground/50" />
+                            <span className="font-medium text-muted-foreground">{t("managerSetupWizard")}</span>
+                            <ChevronRight className="w-4 h-4 text-muted-foreground/50" />
+                            <span className="text-foreground font-medium">
                                 {currentStepData?.title || t("loading", { ns: "common" })}
                             </span>
                         </nav>
                     </div>
 
+                    {/*
+                     * No "Save & exit" here anymore — the step footer owns that
+                     * action now, so the top bar keeps only the breadcrumb and
+                     * help. Duplicating it left two save affordances per screen.
+                     */}
                     <div className="flex items-center gap-3">
                         <Tooltip>
                             <TooltipTrigger asChild>
-                                <Button 
-                                    variant="ghost" 
+                                <Button
+                                    variant="ghost"
                                     size="icon"
-                                    className="text-slate-500 hover:text-slate-900 dark:hover:text-slate-100"
+                                    aria-label={t("managerSetupNeedHelp")}
+                                    className="text-muted-foreground hover:text-foreground"
                                 >
                                     <HelpCircle className="w-5 h-5" />
                                 </Button>
                             </TooltipTrigger>
                             <TooltipContent>{t("managerSetupNeedHelp")}</TooltipContent>
                         </Tooltip>
-                        
-                        <Button 
-                            variant="outline" 
-                            size="sm" 
-                            onClick={handleExit} 
-                            className="border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
-                        >
-                            <X className="w-4 h-4 mr-2" />
-                            {t("commonSaveAndExit")}
-                        </Button>
                     </div>
                 </header>
 
-                {/* Content Container with scroll */}
-                <div 
-                    ref={contentRef}
-                    className="flex-1 overflow-y-auto scroll-smooth"
-                >
+                {/*
+                 * Content container. Uses the shared ScrollArea so long steps
+                 * get the same top fade + bottom fade/chevron as the
+                 * notification dropdown, instead of a bare scrollbar.
+                 */}
+                <ScrollArea viewportRef={contentRef} className="flex-1">
                     <div className="p-6 md:p-10 lg:p-12">
                         <div className="max-w-3xl mx-auto w-full">
-                            {/* Step Header - Minimal & Consistent */}
-                            <div className="mb-6 animate-in fade-in duration-300">
-                                <div className="flex items-center gap-3">
-                                    {/* Step Icon - Smaller, cleaner */}
-                                    <div className={cn(
-                                        "w-10 h-10 rounded-xl flex items-center justify-center shrink-0",
-                                        completedSteps[currentStep?.id] 
-                                            ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"
-                                            : "bg-primary/10 dark:bg-primary/20 text-primary"
-                                    )}>
-                                        <StepIcon className="w-5 h-5" />
+                            {/*
+                             * Step heading. The welcome step is skipped: it
+                             * renders its own eyebrow + headline, and showing
+                             * "Welcome / Learn about the setup process" above
+                             * that repeated the same idea twice.
+                             */}
+                            {currentStepData?.componentKey !== 'welcome' && (
+                                <div className="mb-6 flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+                                    <div className="min-w-0">
+                                        <h1 className="text-xl font-semibold tracking-tight text-foreground">
+                                            {currentStepData?.title || t("managerSetupSetup")}
+                                        </h1>
+                                        {currentStepData?.description && (
+                                            <p className="mt-1 text-sm text-muted-foreground">
+                                                {currentStepData.description}
+                                            </p>
+                                        )}
                                     </div>
 
-                                    <div className="flex-1 min-w-0">
-                                        {/* Step indicator */}
-                                        <div className="flex items-center gap-2 mb-0.5">
-                                            <span className="text-xs text-slate-400 dark:text-slate-500 font-medium">
-                                                {stepNumber ? t("managerSetupStepProgress", { current: stepNumber, total: requiredSteps.length }) : (isOptional ? t("commonOptional") : '')}
+                                    {/*
+                                     * The business being configured, sitting beside
+                                     * the step heading. It belongs to the content
+                                     * column rather than the top bar, so it is
+                                     * present on every step without competing for
+                                     * room with the chrome's own actions.
+                                     */}
+                                    {(businessName || businessLogo) && (
+                                        <div className="flex shrink-0 items-center gap-2.5 rounded-full border border-border bg-muted/40 py-1 pl-1 pr-3">
+                                            <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-background">
+                                                {businessLogo ? (
+                                                    <SmartImage
+                                                        src={resolveImageUrl(businessLogo) ?? undefined}
+                                                        alt=""
+                                                        className="h-full w-full object-cover"
+                                                        hideOnError
+                                                    />
+                                                ) : (
+                                                    <span aria-hidden className="text-[11px] font-semibold text-muted-foreground">
+                                                        {businessInitials}
+                                                    </span>
+                                                )}
                                             </span>
-                                            {completedSteps[currentStep?.id] && (
-                                                <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-                                                    • {t("commonCompleted")}
-                                                </span>
-                                            )}
+                                            <span className="max-w-[10rem] truncate text-sm font-medium text-foreground">
+                                                {businessName || t("manager:managerSetupYourBusiness")}
+                                            </span>
                                         </div>
-                                        {/* Title & Description inline */}
-                                        <div className="flex items-baseline gap-2 flex-wrap">
-                                            <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
-                                                {currentStepData?.title || t("managerSetupSetup")}
-                                            </h1>
-                                            {currentStepData?.description && (
-                                                <p className="text-sm text-slate-500 dark:text-slate-400">
-                                                    — {currentStepData.description}
-                                                </p>
-                                            )}
-                                        </div>
-                                    </div>
+                                    )}
                                 </div>
-                            </div>
+                            )}
 
-                            {/* Step Content Card */}
-                            <div className={cn(
-                                "bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800",
-                                "shadow-xl shadow-slate-200/50 dark:shadow-slate-950/50",
-                                "p-6 md:p-8 lg:p-10",
-                                "animate-in fade-in slide-in-from-bottom-4 duration-500"
-                            )}>
-                                {StepComponent ? (
-                                    <StepComponent />
-                                ) : (
-                                    <div className="flex flex-col items-center justify-center p-12 text-slate-400 dark:text-slate-500">
-                                        <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
-                                            <Loader2 className="w-6 h-6 animate-spin" />
-                                        </div>
-                                        <p className="text-sm font-medium">{t("managerSetupLoadingStep")}</p>
-                                    </div>
-                                )}
-                            </div>
+                            {StepComponent ? (
+                                <StepComponent />
+                            ) : (
+                                <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+                                    <Loader2 className="w-6 h-6 animate-spin" />
+                                    <p className="mt-3 text-sm font-medium">{t("managerSetupLoadingStep")}</p>
+                                </div>
+                            )}
 
                             {/* Bottom Spacer for better scroll experience */}
                             <div className="h-12" />
                         </div>
                     </div>
-                </div>
+                </ScrollArea>
             </main>
+
+            {/* The same confirmation the dashboard's settings tabs use. */}
+            <UnsavedChangesDialog
+                open={pendingLeave !== null}
+                onOpenChange={(open) => !open && clearPendingLeave()}
+                description={mt("onboardingUnsavedChangesDescription")}
+                isSaving={isSavingBeforeLeave}
+                onDiscard={discardAndLeave}
+                onSave={saveAndLeave}
+            />
         </div>
     );
 }

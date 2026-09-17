@@ -10,6 +10,9 @@ import NotificationCenter from "@/components/manager/NotificationCenter";
 import { useTranslation } from "react-i18next";
 import type { ManagerBreadcrumb } from "@/lib/manager-kitchens-navigation";
 import type { ManagerSetupStep } from "@/hooks/use-onboarding-status";
+import { Icon } from "@iconify/react";
+import { cn } from "@/lib/utils";
+import { mt } from "@/i18n/manager";
 
 interface DashboardLayoutProps {
     children: React.ReactNode;
@@ -98,6 +101,25 @@ export default function DashboardLayout({
                             </kbd>
                         </Button>
                         
+                        {/* Support — same control as the chef dashboard header, so
+                            the two shells read as one product. */}
+                        <button
+                            type="button"
+                            onClick={() => onViewChange("support")}
+                            aria-label={mt("shellOpenSupportCenter")}
+                            aria-current={activeView === "support" ? "page" : undefined}
+                            title={mt("navSupport")}
+                            className={cn(
+                                "inline-flex items-center gap-2 h-9 rounded-full px-2.5 sm:px-3 border text-sm font-medium tracking-tight transition-colors",
+                                activeView === "support"
+                                    ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                                    : "border-border bg-background text-foreground hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+                            )}
+                        >
+                            <Icon icon="mdi:headphones" className="h-4 w-4" aria-hidden />
+                            <span className="hidden sm:inline">{mt("navSupport")}</span>
+                        </button>
+
                         {/* Notification Center */}
                         <NotificationCenter
                             locationId={selectedLocation?.id}

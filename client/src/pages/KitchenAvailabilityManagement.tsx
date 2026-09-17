@@ -7,6 +7,10 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+
+/** Underline tab bar — matches the kitchen settings tabs rather than a segmented control. */
+const TAB_TRIGGER =
+  "group gap-2 rounded-none border-b-2 border-transparent px-0.5 py-2.5 font-normal text-muted-foreground transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,11 +22,11 @@ import { Calendar } from "@/components/ui/calendar";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
-import { cn } from "@/lib/utils";
 import { tt } from "@/i18n/common-ns";
 import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
 import { ChefPageHeader } from "@/components/chef/ui";
 import ViewingSettingsPanel, { type ViewingSettingsPanelHandle } from "@/components/manager/ViewingSettingsPanel";
+import { UnsavedChangesDialog } from "@/components/manager/UnsavedChangesDialog";
 
 // --- Types ---
 interface DateAvailability {
@@ -113,7 +117,7 @@ const KitchenAvailabilityManagement = forwardRef<KitchenAvailabilityManagementHa
   initialAvailabilityTab = "bookings",
   onDirtyChange,
   onSaveSuccess,
-  hideWeeklyScheduleSaveButton = false
+  hideWeeklyScheduleSaveButton = false,
 }, ref) {
   const { kitchens, isLoadingKitchens } = useManagerDashboard();
   const availableKitchens = kitchens.filter((kitchen) => !initialLocationId || kitchen.locationId === initialLocationId);
@@ -213,6 +217,7 @@ const KitchenAvailabilityManagement = forwardRef<KitchenAvailabilityManagementHa
         selectedKitchenId={initialKitchenId || null}
         onSaveSuccess={onSaveSuccess}
         hideWeeklyScheduleSaveButton={hideWeeklyScheduleSaveButton}
+        onDirtyChange={setBookingDirty}
       />
     );
   }
@@ -274,30 +279,19 @@ const KitchenAvailabilityManagement = forwardRef<KitchenAvailabilityManagementHa
           )}
         </TabsContent>
       </Tabs>
-      <AlertDialog open={pendingChange !== null} onOpenChange={(open) => !open && setPendingChange(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{mt("unsavedChanges")}</AlertDialogTitle>
-            <AlertDialogDescription>{mt("availabilityUnsavedChangesDescription")}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isSavingBeforeSwitch}>{mt("cancel")}</AlertDialogCancel>
-            <Button variant="outline" disabled={isSavingBeforeSwitch} onClick={discardAndApplyPendingChange}>
-              {mt("discardChanges")}
-            </Button>
-            <AlertDialogAction
-              disabled={isSavingBeforeSwitch}
-              onClick={(event) => {
-                event.preventDefault();
-                void saveAndApplyPendingChange();
-              }}
-            >
-              {isSavingBeforeSwitch && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {mt("saveChanges")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/*
+        * Tab and kitchen switches unmount the form below, so the shared
+        * three-way confirmation guards them — same dialog as the wizard and the
+        * dashboard tabs.
+        */}
+      <UnsavedChangesDialog
+        open={pendingChange !== null}
+        onOpenChange={(open) => !open && setPendingChange(null)}
+        description={mt("availabilityUnsavedChangesDescription")}
+        isSaving={isSavingBeforeSwitch}
+        onDiscard={discardAndApplyPendingChange}
+        onSave={saveAndApplyPendingChange}
+      />
     </div>
   );
 });
@@ -657,96 +651,99 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-top-4">
       <Tabs defaultValue="weekly" value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
-          <TabsTrigger value="weekly">{mt("weeklySchedule")}</TabsTrigger>
-          <TabsTrigger value="calendar">{mt("exceptionsCalendar")}</TabsTrigger>
+        <TabsList className="h-auto w-full justify-start gap-4 rounded-none border-b border-border bg-transparent p-0">
+          <TabsTrigger value="weekly" className={TAB_TRIGGER}>{mt("weeklySchedule")}</TabsTrigger>
+          <TabsTrigger value="calendar" className={TAB_TRIGGER}>{mt("exceptionsCalendar")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="weekly" className="space-y-4 mt-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
               <div className="space-y-1">
-                <CardTitle>{mt("recurringWeeklyHours")}</CardTitle>
+                <CardTitle className="text-lg">{mt("recurringWeeklyHours")}</CardTitle>
                 <CardDescription>{mt("defaultHoursOfOperationForThisKitchen")}</CardDescription>
               </div>
-              {!hideWeeklyScheduleSaveButton && (
-                <Button onClick={handleSaveWeeklySchedule} disabled={isSavingSchedule || !isScheduleDirty}>
+              {!hideWeeklyScheduleSaveButton && (isScheduleDirty || isSavingSchedule) && (
+                <Button onClick={handleSaveWeeklySchedule} disabled={isSavingSchedule}>
                   {isSavingSchedule ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                   {mt("saveSchedule")}
                 </Button>
               )}
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[100px]">{mt("day")}</TableHead>
-                      <TableHead className="w-[100px]">{mt("status")}</TableHead>
-                      <TableHead>{mt("hours")}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {days.map((dayName, index) => {
-                      const schedule = weeklySchedule[index] || { isAvailable: false, startTime: "09:00", endTime: "17:00" };
-                      return (
-                        <TableRow key={index}>
-                          <TableCell className="font-medium">{dayName}</TableCell>
-                          <TableCell>
-                            <div className="flex items-center space-x-2">
-                              <Switch
-                                checked={schedule.isAvailable ?? false}
-                                onCheckedChange={(checked) => {
-                                  setWeeklySchedule(prev => ({
-                                    ...prev,
-                                    [index]: { ...prev[index], isAvailable: checked, dayOfWeek: index }
-                                  }));
-                                }}
-                              />
-                              <Badge variant={schedule.isAvailable ? "outline" : "secondary"} className={cn("w-16 justify-center", !schedule.isAvailable && "opacity-50")}>
-                                {schedule.isAvailable ? mt("open") : mt("closed")}
-                              </Badge>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            {schedule.isAvailable ? (
-                              <div className="flex items-center gap-2">
-                                <Input
-                                  type="time"
-                                  className="w-28 h-8 text-sm"
-                                  value={schedule.startTime || "09:00"}
-                                  onChange={(e) => {
-                                    setWeeklySchedule(prev => ({
-                                      ...prev,
-                                      [index]: { ...prev[index], startTime: e.target.value }
-                                    }));
-                                  }}
-                                />
-                                <span className="text-muted-foreground text-xs">–</span>
-                                <Input
-                                  type="time"
-                                  className="w-28 h-8 text-sm"
-                                  value={schedule.endTime || "17:00"}
-                                  onChange={(e) => {
-                                    setWeeklySchedule(prev => ({
-                                      ...prev,
-                                      [index]: { ...prev[index], endTime: e.target.value }
-                                    }));
-                                  }}
-                                />
-                              </div>
-                            ) : (
-                              <div className="h-8 flex items-center">
-                                <span className="text-sm text-muted-foreground italic">{mt("unavailable")}</span>
-                              </div>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+            <CardContent className="divide-y divide-border p-0">
+              {/*
+               * Three explicit columns — day / time range / toggle — so the
+               * hours sit in their own lane instead of flowing around the
+               * toggle. Every row reserves the same width for the middle
+               * column whether it holds time inputs or the "Closed" pill,
+               * which keeps all seven ranges (and all seven toggles) on a
+               * single vertical axis.
+               */}
+              {days.map((dayName, index) => {
+                const schedule = weeklySchedule[index] || { isAvailable: false, startTime: "09:00", endTime: "17:00" };
+                const isAvailable = schedule.isAvailable ?? false;
+                return (
+                  <div
+                    key={index}
+                    className="grid grid-cols-1 items-center gap-x-4 gap-y-2 px-4 py-3 transition-colors hover:bg-muted/30 sm:grid-cols-[7rem_1fr_auto]"
+                  >
+                    {/* Column 1 — day */}
+                    <Label className="text-sm font-medium text-foreground">
+                      {dayName}
+                    </Label>
+
+                    {/* Column 2 — time range (or the closed state, same lane) */}
+                    <div className="flex items-center gap-2 sm:justify-end">
+                      {isAvailable ? (
+                        <>
+                          <Input
+                            type="time"
+                            aria-label={`${dayName} ${mt("open")}`}
+                            className="h-9 w-28 text-sm"
+                            value={schedule.startTime || "09:00"}
+                            onChange={(e) => {
+                              setWeeklySchedule(prev => ({
+                                ...prev,
+                                [index]: { ...prev[index], startTime: e.target.value }
+                              }));
+                            }}
+                          />
+                          <span className="select-none text-muted-foreground" aria-hidden>–</span>
+                          <Input
+                            type="time"
+                            aria-label={`${dayName} ${mt("closed")}`}
+                            className="h-9 w-28 text-sm"
+                            value={schedule.endTime || "17:00"}
+                            onChange={(e) => {
+                              setWeeklySchedule(prev => ({
+                                ...prev,
+                                [index]: { ...prev[index], endTime: e.target.value }
+                              }));
+                            }}
+                          />
+                        </>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
+                          <span className="size-1.5 rounded-full bg-muted-foreground/40" aria-hidden />
+                          {mt("closed")}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Column 3 — toggle, always the rightmost element */}
+                    <Switch
+                      aria-label={dayName}
+                      checked={isAvailable}
+                      onCheckedChange={(checked) => {
+                        setWeeklySchedule(prev => ({
+                          ...prev,
+                          [index]: { ...prev[index], isAvailable: checked, dayOfWeek: index }
+                        }));
+                      }}
+                    />
+                  </div>
+                );
+              })}
             </CardContent>
           </Card>
         </TabsContent>

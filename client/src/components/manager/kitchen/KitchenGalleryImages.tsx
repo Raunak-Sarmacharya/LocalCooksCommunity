@@ -1,27 +1,38 @@
 import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
+import { tt } from "@/i18n/common-ns";
 
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Upload, Loader2, X, RefreshCw } from "@/components/ui/manager-icons";
 import { useToast } from "@/hooks/use-toast";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
 import { auth } from "@/lib/firebase";
-import { Button } from "@/components/ui/button";
-import { ImageWithReplace } from "@/components/ui/image-with-replace";
-import { cn } from "@/lib/utils";
-import { tt } from "@/i18n/common-ns";
+import { Progress } from "@/components/ui/progress";
+import {
+    ACCEPTED_IMAGE_TYPES,
+    GalleryPhotoField,
+} from "@/components/manager/kitchen/KitchenPhotoFields";
 
 interface KitchenGalleryImagesProps {
     kitchenId: number;
     galleryImages: string[];
     locationId: number;
+    /** The cover, drawn as the first cell of the same grid. */
+    coverSlot?: React.ReactNode;
 }
 
+/**
+ * A kitchen's gallery, rendered with the same field the Photos tab uses so the
+ * onboarding card and the settings tab cannot drift apart.
+ *
+ * This wrapper owns only persistence: upload, the gallery PUT, and deleting the
+ * replaced/removed object from R2.
+ */
 export function KitchenGalleryImages({
     kitchenId,
     galleryImages,
-    locationId
+    locationId,
+    coverSlot,
 }: KitchenGalleryImagesProps) {
   
     const { toast } = useToast();
@@ -30,11 +41,7 @@ export function KitchenGalleryImages({
 
     const { uploadFile, isUploading, uploadProgress } = useSessionFileUpload({
         maxSize: 4.5 * 1024 * 1024,
-        allowedTypes: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'],
-        onSuccess: async (response) => {
-            const newGalleryImages = [...currentGalleryImages, response.url];
-            await updateGalleryImages(newGalleryImages);
-        },
+        allowedTypes: ACCEPTED_IMAGE_TYPES,
         onError: (error) => {
             toast({ title: mt("uploadFailed2"),
                 description: error,
@@ -87,24 +94,19 @@ export function KitchenGalleryImages({
         }
     };
 
-    const handleRemoveImage = async (imageUrl: string) => {
-        const newGalleryImages = currentGalleryImages.filter(img => img !== imageUrl);
-        await updateGalleryImages(newGalleryImages);
-
-        // Delete from R2
+    /** Drop the object from storage. Non-fatal: the gallery row is already saved. */
+    const deleteFromR2 = async (imageUrl: string) => {
         try {
             const currentFirebaseUser = auth.currentUser;
             if (!currentFirebaseUser) return;
 
             const token = await currentFirebaseUser.getIdToken();
-            const headers: HeadersInit = {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-            };
-
             await fetch('/api/manager/files', {
                 method: 'DELETE',
-                headers,
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
                 credentials: 'include',
                 body: JSON.stringify({ fileUrl: imageUrl }),
             });
@@ -113,101 +115,48 @@ export function KitchenGalleryImages({
         }
     };
 
-    const handleReplaceImage = async (oldUrl: string, newUrl: string) => {
-        const newGalleryImages = currentGalleryImages.map(img => img === oldUrl ? newUrl : img);
-        await updateGalleryImages(newGalleryImages);
-
-        // Delete old image from R2
-        try {
-            const currentFirebaseUser = auth.currentUser;
-            if (!currentFirebaseUser) return;
-
-            const token = await currentFirebaseUser.getIdToken();
-            const headers: HeadersInit = {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-            };
-
-            await fetch('/api/manager/files', {
-                method: 'DELETE',
-                headers,
-                credentials: 'include',
-                body: JSON.stringify({ fileUrl: oldUrl }),
-            });
-        } catch (error) {
-            logger.error('Error deleting old file from R2:', error);
+    /** Upload a batch, then save the gallery once rather than once per file. */
+    const uploadMany = async (files: File[]) => {
+        const uploaded: string[] = [];
+        for (const file of files) {
+            const result = await uploadFile(file, "public/kitchens");
+            if (result?.url) uploaded.push(result.url);
+        }
+        if (uploaded.length > 0) {
+            await updateGalleryImages([...currentGalleryImages, ...uploaded]);
         }
     };
 
-    return (
-        <div className="space-y-4">
-            {/* Existing Gallery Images */}
-            {currentGalleryImages.length > 0 && (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    {currentGalleryImages.map((imageUrl, index) => (
-                        <ImageWithReplace
-                            key={index}
-                            imageUrl={imageUrl}
-                            onImageChange={(newUrl) => {
-                                if (newUrl) {
-                                    handleReplaceImage(imageUrl, newUrl);
-                                } else {
-                                    handleRemoveImage(imageUrl);
-                                }
-                            }}
-                            onRemove={() => handleRemoveImage(imageUrl)}
-                            alt={`Gallery image ${index + 1}`}
-                            className="h-32 object-cover rounded-lg"
-                            containerClassName="w-full"
-                            aspectRatio="1/1"
-                            showReplaceButton={true}
-                            showRemoveButton={true}
-                        />
-                    ))}
-                </div>
-            )}
+    const replaceImage = async (oldUrl: string, file: File) => {
+        const result = await uploadFile(file, "public/kitchens");
+        if (!result?.url) return;
+        await updateGalleryImages(currentGalleryImages.map(img => (img === oldUrl ? result.url : img)));
+        await deleteFromR2(oldUrl);
+    };
 
-            {/* Upload Area using Standardized Styles */}
-            <div
-                className={cn(
-                    "border-2 border-dashed border-border rounded-lg p-6 hover:border-primary/50 transition-colors bg-muted/20",
-                    isUploading && "opacity-50 cursor-not-allowed"
-                )}
-            >
-                <input
-                    type="file"
-                    accept="image/jpeg,image/jpg,image/png,image/webp"
-                    onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                            uploadFile(file, "public/kitchens");
-                            e.target.value = ''; // Reset input
-                        }
-                    }}
-                    className="hidden"
-                    id={`gallery-upload-${kitchenId}`}
-                    disabled={isUploading}
-                />
-                <label
-                    htmlFor={`gallery-upload-${kitchenId}`}
-                    className="flex flex-col items-center justify-center cursor-pointer"
-                >
-                    {isUploading ? (
-                        <>
-                            <Loader2 className="h-8 w-8 text-primary animate-spin mb-2" />
-                            <span className="text-sm text-muted-foreground font-medium">Uploading... {Math.round(uploadProgress)}%</span>
-                        </>
-                    ) : (
-                        <>
-                            <div className="p-3 bg-primary/10 rounded-full mb-3">
-                                <Upload className="h-6 w-6 text-primary" />
-                            </div>
-                            <span className="text-sm font-medium text-foreground mb-1">{mt("clickToAddGalleryImage")}</span>
-                            <span className="text-xs text-muted-foreground">{mt("jPGPNGWebPMax45MB")}</span>
-                        </>
-                    )}
-                </label>
-            </div>
-        </div>
+    const removeImage = async (imageUrl: string) => {
+        await updateGalleryImages(currentGalleryImages.filter(img => img !== imageUrl));
+        await deleteFromR2(imageUrl);
+    };
+
+    return (
+        <GalleryPhotoField
+            images={currentGalleryImages}
+            coverSlot={coverSlot}
+            onSelectFiles={(files) => void uploadMany(files)}
+            onReplace={(oldUrl, file) => void replaceImage(oldUrl, file)}
+            onRemove={(imageUrl) => void removeImage(imageUrl)}
+            disabled={isUploading}
+            progress={isUploading ? (
+                <div className="mb-4 space-y-1.5">
+                    <Progress value={uploadProgress} />
+                    <p className="text-xs text-muted-foreground">
+                        {mt("uploading")} {Math.round(uploadProgress)}%
+                    </p>
+                </div>
+            ) : null}
+        />
     );
 }
+
+export default KitchenGalleryImages;

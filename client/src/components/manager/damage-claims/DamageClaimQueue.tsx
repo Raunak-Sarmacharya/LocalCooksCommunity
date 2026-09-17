@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DateField } from "@/components/ui/date-field";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -683,10 +684,12 @@ function CreateClaimSheet({ onCreated }: { onCreated: () => void }) {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>{mt("damageDate")}</Label>
-                <Input
-                  type="date"
+                {/* A damage date is in the past by definition — no lower bound. */}
+                <DateField
                   value={formData.damageDate}
-                  onChange={(e) => setFormData({ ...formData, damageDate: e.target.value })}
+                  onChange={(damageDate) => setFormData({ ...formData, damageDate })}
+                  placeholder={mt("damageDate")}
+                  minToday={false}
                 />
               </div>
 

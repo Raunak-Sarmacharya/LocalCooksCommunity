@@ -1,14 +1,11 @@
-import { useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef } from "react";
 import { mt } from "@/i18n/manager";
+import { tt } from "@/i18n/common-ns";
 import { CheckCircle, ClipboardList } from "@/components/ui/manager-icons";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ApplicationRequirementsWizard } from "@/components/manager/requirements";
 import type { ApplicationRequirementsWizardHandle } from "@/components/manager/requirements";
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
 import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter";
-import type { WizardStep } from "@/components/manager/requirements/types";
-
-const WIZARD_STEP_ORDER: WizardStep[] = ['step2'];
 
 export default function ApplicationRequirementsStep() {
   
@@ -19,26 +16,37 @@ export default function ApplicationRequirementsStep() {
     isFirstStep,
     hasRequirements,
     refreshRequirements,
-    skipCurrentStep
+    setUnsavedChanges,
+    registerStepSave,
+    saveAndExit,
+    isSubmitting,
   } = useManagerOnboarding();
 
-  // Track the current wizard tab
-  const [currentWizardStep, setCurrentWizardStep] = useState<WizardStep>('step2');
   const [isSaving, setIsSaving] = useState(false);
+  // Mirror of the wizard's internal dirty flag. `wizardRef.current` is a ref, so
+  // reading it during render never re-renders this component — the CTA below would
+  // stay disabled forever on a location with no saved requirements row yet.
+  const [wizardDirty, setWizardDirty] = useState(false);
   const wizardRef = useRef<ApplicationRequirementsWizardHandle>(null);
-  const topRef = useRef<HTMLDivElement>(null);
 
-  // [ENTERPRISE] Scroll to top of this step when wizard tab changes
-  const scrollToTop = useCallback(() => {
-    // scrollIntoView on the step container — works inside any scrollable parent
-    topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, []);
+  // Let the wizard's unsaved-changes guard speak for this step.
+  useEffect(() => {
+    setUnsavedChanges(wizardDirty);
+  }, [wizardDirty, setUnsavedChanges]);
+
+  useEffect(() => {
+    registerStepSave(async () => {
+      try {
+        await wizardRef.current?.save();
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    return () => registerStepSave(null);
+  }, [registerStepSave]);
 
   if (!selectedLocationId) return null;
-
-  const currentStepIndex = WIZARD_STEP_ORDER.indexOf(currentWizardStep);
-  const isLastWizardStep = currentStepIndex === WIZARD_STEP_ORDER.length - 1;
-  const isFirstWizardStep = currentStepIndex === 0;
 
   const handleContinue = async () => {
     // [ENTERPRISE] Double-click guard
@@ -57,74 +65,32 @@ export default function ApplicationRequirementsStep() {
       setIsSaving(false);
     }
 
-    if (isLastWizardStep) {
-      // On last wizard tab, refresh and proceed to next onboarding step
-      if (refreshRequirements) {
-        await refreshRequirements();
-      }
-      setTimeout(() => {
-        handleNext();
-      }, 100);
-    } else {
-      // Move to next wizard tab and scroll to top
-      const nextStep = WIZARD_STEP_ORDER[currentStepIndex + 1];
-      setCurrentWizardStep(nextStep);
-      // Slight delay to let React render the new tab content before scrolling
-      requestAnimationFrame(() => scrollToTop());
+    // Re-check the saved state so the stepper and sidebar see the new record,
+    // then hand off to the next onboarding step.
+    if (refreshRequirements) {
+      await refreshRequirements();
     }
+    setTimeout(() => {
+      handleNext();
+    }, 100);
   };
-
-  const handleBackNavigation = () => {
-    if (isFirstWizardStep) {
-      // On first wizard tab, go back to previous onboarding step
-      handleBack();
-    } else {
-      // Move to previous wizard tab and scroll to top
-      const prevStep = WIZARD_STEP_ORDER[currentStepIndex - 1];
-      setCurrentWizardStep(prevStep);
-      requestAnimationFrame(() => scrollToTop());
-    }
-  };
-
-  const handleWizardStepChange = (step: WizardStep, _isLastStep: boolean) => {
-    setCurrentWizardStep(step);
-    // Scroll to top when user clicks a tab directly
-    requestAnimationFrame(() => scrollToTop());
-  };
-
-  // [ENTERPRISE] Consistent button labels:
-  // - Non-last tab: always "Next Tab" (tab navigation is never gated)
-  // - Last tab + unsaved: "Save & Continue"
-  // - Last tab + saved: "Continue to Next Step"
-  const getNextLabel = () => {
-    if (!isLastWizardStep) return mt("nextTab");
-    if (!hasRequirements) return mt("saveAndContinue");
-    return mt("continueToNextStep");
-  };
-
-  // [ENTERPRISE] Only disable the button on the LAST wizard tab when requirements
-  // haven't been saved yet AND there are no unsaved changes to save.
-  // Tab navigation between step1/step2/facility is NEVER gated.
-  const isNextDisabled = isLastWizardStep && !hasRequirements && !wizardRef.current?.hasUnsavedChanges;
 
   return (
-    <div ref={topRef} className="space-y-6 animate-in fade-in duration-500">
-      {/* Status Alert */}
-      {hasRequirements ? (
-        <Alert className="border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-emerald-900/50">
-          <CheckCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-          <AlertDescription className="text-sm text-emerald-700 dark:text-emerald-300">
-            <span className="font-medium">{mt("requirementsSaved2")}</span> — {mt("modifyBelowOrContinue")}
-          </AlertDescription>
-        </Alert>
-      ) : (
-        <Alert className="border-amber-200 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-900/50">
-          <ClipboardList className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-          <AlertDescription className="text-sm text-amber-700 dark:text-amber-300">
-            <span className="font-medium">{mt("configureRequirements2")}</span> — {mt("saveSettingsToContinue")}
-          </AlertDescription>
-        </Alert>
-      )}
+    <div className="space-y-6 animate-in fade-in duration-500">
+      {/* Status line — what the chef will see, and what this step still needs */}
+      <div className="flex items-start gap-3 rounded-xl border border-border bg-muted/40 px-4 py-3">
+        {hasRequirements ? (
+          <CheckCircle className="mt-px h-4 w-4 shrink-0 text-muted-foreground" />
+        ) : (
+          <ClipboardList className="mt-px h-4 w-4 shrink-0 text-muted-foreground" />
+        )}
+        <p className="text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">
+            {hasRequirements ? mt("requirementsSaved2") : mt("configureRequirements2")}
+          </span>
+          {` — ${hasRequirements ? mt("modifyBelowOrContinue") : mt("saveSettingsToContinue")}`}
+        </p>
+      </div>
 
       {/* Requirements Wizard - Compact mode for onboarding */}
       <ApplicationRequirementsWizard
@@ -133,21 +99,19 @@ export default function ApplicationRequirementsStep() {
         onSaveSuccess={refreshRequirements}
         compact
         hideNavigation
-        autoSaveOnStepChange
-        hideUnsavedChangesAction
-        activeStepOverride={currentWizardStep}
-        onStepChange={handleWizardStepChange}
+        onDirtyChange={setWizardDirty}
       />
 
       <OnboardingNavigationFooter
         onNext={handleContinue}
-        onBack={handleBackNavigation}
-        showBack={!isFirstStep || !isFirstWizardStep}
-        nextLabel={getNextLabel()}
-        isNextDisabled={isNextDisabled}
+        onBack={handleBack}
+        onSaveAndExit={() => void saveAndExit()}
+        showBack={!isFirstStep}
+        nextLabel={wizardDirty ? mt("saveAndContinue") : tt("continue")}
+        isNextDisabled={!hasRequirements && !wizardDirty}
         isLoading={isSaving}
+        isSavingAndExiting={isSubmitting}
       />
     </div>
   );
 }
-

@@ -25,6 +25,7 @@ export const AlertCircle = managerIcon("mdi:alert-circle-outline");
 export const AlertTriangle = managerIcon("mdi:alert-outline");
 export const AlignLeft = managerIcon("mdi:format-align-left");
 export const Archive = managerIcon("mdi:archive-outline");
+export const ArrowDown = managerIcon("mdi:arrow-down");
 export const ArrowRight = managerIcon("mdi:arrow-right");
 export const ArrowUpDown = managerIcon("mdi:swap-vertical");
 export const BadgeCheck = managerIcon("mdi:badge-account-outline");

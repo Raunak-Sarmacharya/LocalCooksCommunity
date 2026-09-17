@@ -1,26 +1,51 @@
-import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
 /**
  * Application Requirements Wizard
- * Enterprise-grade step-by-step configuration for chef application requirements
- * Reusable component for both manager settings and onboarding flow
+ *
+ * Configures the half of the chef application a manager owns — the "Kitchen
+ * Documents" (tier 2) requirements. The "Request to apply" half is
+ * platform-wide and set by Local Cooks admins, so it is not editable here.
+ *
+ * The surface is deliberately single-pane: one card stack, one primary action.
+ * The page hosting it already names the surface, so this component renders no
+ * heading, no step strip and no footer beyond the save action.
  */
 
-import { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
+import { useState, useEffect, useCallback, useImperativeHandle, useMemo, useRef, forwardRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { Save, Loader2, ChevronRight, ChevronLeft, CheckCircle2, ClipboardList, Settings2, Building2, AlertCircle } from "@/components/ui/manager-icons";
+import { Loader2, AlertCircle } from "@/components/ui/manager-icons";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 
 
 import { RequirementsStepTwo } from "./RequirementsStepTwo";
-import { LocationRequirements, WizardStep, WIZARD_STEPS } from "./types";
+import { LocationRequirements } from "./types";
+
+/**
+ * Structural equality.
+ *
+ * The requirements payload contains arrays (the custom-field list), so an
+ * identity check would call two equal values different whenever a re-render
+ * rebuilds them — which is exactly how a "dirty" flag gets stuck on.
+ */
+export function isSameValue(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+
+  const aKeys = Object.keys(a as Record<string, unknown>);
+  const bKeys = Object.keys(b as Record<string, unknown>);
+  if (aKeys.length !== bKeys.length) return false;
+
+  return aKeys.every(
+    (key) =>
+      Object.prototype.hasOwnProperty.call(b, key) &&
+      isSameValue((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]),
+  );
+}
 
 export interface ApplicationRequirementsWizardHandle {
   /** Trigger a save of the current requirements state. Returns a promise that resolves when save completes. */
@@ -31,27 +56,15 @@ export interface ApplicationRequirementsWizardHandle {
 
 interface ApplicationRequirementsWizardProps {
   locationId: number;
-  locationName?: string;
   onSaveSuccess?: () => void;
   /** Compact mode for embedding in onboarding flow */
   compact?: boolean;
-  /** Hide navigation if parent controls it */
+  /** Hide the save footer when the parent owns the action */
   hideNavigation?: boolean;
-  /** Initial step to show */
-  initialStep?: WizardStep;
-  /** Callback when active step changes */
-  onStepChange?: (step: WizardStep, isLastStep: boolean) => void;
-  /** Controlled active step (if provided, component becomes controlled) */
-  activeStepOverride?: WizardStep;
-  /** Auto-save when step changes (for onboarding flow where navigation is hidden) */
-  autoSaveOnStepChange?: boolean;
-  /** Hide the action button in the unsaved changes banner when the parent owns saving */
-  hideUnsavedChangesAction?: boolean;
+  /** Notify the parent when the dirty state changes — the parent cannot read the
+   *  imperative ref during render, so it needs a state signal to gate its own CTA. */
+  onDirtyChange?: (dirty: boolean) => void;
 }
-
-const STEP_ICONS: Record<WizardStep, React.ReactNode> = {
-  step2: <Settings2 className="h-5 w-5" />,
-};
 
 async function getAuthHeaders(): Promise<HeadersInit> {
   const currentFirebaseUser = auth.currentUser;
@@ -67,44 +80,21 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 
 export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsWizardHandle, ApplicationRequirementsWizardProps>(function ApplicationRequirementsWizard({
   locationId,
-  locationName,
   onSaveSuccess,
   compact = false,
   hideNavigation = false,
-  initialStep = 'step2',
-  onStepChange,
-  activeStepOverride,
-  autoSaveOnStepChange = false,
-  hideUnsavedChangesAction = false,
+  onDirtyChange,
 }, ref) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
-  const [activeStep, setActiveStepInternal] = useState<WizardStep>(activeStepOverride ?? initialStep);
-  
-  // Sync with controlled prop when provided
-  useEffect(() => {
-    if (activeStepOverride !== undefined) {
-      setActiveStepInternal(activeStepOverride);
-    }
-  }, [activeStepOverride]);
-  
-  // Wrapper to notify parent of step changes
-  const setActiveStep = (step: WizardStep) => {
-    setActiveStepInternal(step);
-    const stepIndex = WIZARD_STEPS.findIndex(s => s.id === step);
-    const isLast = stepIndex === WIZARD_STEPS.length - 1;
-    onStepChange?.(step, isLast);
-  };
-  // [ENTERPRISE] Ref for scroll-to-top on tab change
-  const containerRef = useRef<HTMLDivElement>(null);
-  const scrollToTop = useCallback(() => {
-    containerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, []);
 
   const [requirements, setRequirements] = useState<Partial<LocationRequirements>>({});
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [completedSteps, setCompletedSteps] = useState<Set<WizardStep>>(new Set());
+  /**
+   * What the server currently holds. The working copy above is compared against
+   * this to decide whether anything is actually unsaved — a change that is
+   * toggled back to its original value is not a change.
+   */
+  const [baseline, setBaseline] = useState<Partial<LocationRequirements>>({});
 
   // Fetch current requirements
   const { data, isLoading, error } = useQuery<LocationRequirements>({
@@ -121,19 +111,41 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
     enabled: !!locationId,
   });
 
+  /**
+   * The last server payload this form was seeded from. A refetch that returns
+   * the same values must not overwrite edits in progress — react-query refetches
+   * on window focus, so a manager who tabs away mid-edit would otherwise come
+   * back to a silently reverted form.
+   */
+  const seededRef = useRef<LocationRequirements | undefined>(undefined);
+
   // Initialize requirements from fetched data
   useEffect(() => {
-    if (data) {
-      setRequirements(data);
-      setHasUnsavedChanges(false);
-      // Mark steps as completed if they have been configured
-      const completed = new Set<WizardStep>();
-      if (data.id && data.id > 0) {
-        completed.add('step2');
-      }
-      setCompletedSteps(completed);
-    }
+    if (!data) return;
+    if (seededRef.current && isSameValue(seededRef.current, data)) return;
+    seededRef.current = data;
+    setRequirements(data);
+    setBaseline(data);
   }, [data]);
+
+  /**
+   * Derived, never latched. Comparing field-by-field is what lets a toggle that
+   * is flipped back read as clean again.
+   */
+  const isDirty = useMemo(() => {
+    const keys = new Set([...Object.keys(baseline), ...Object.keys(requirements)]);
+    for (const key of Array.from(keys)) {
+      const current = (requirements as Record<string, unknown>)[key];
+      const saved = (baseline as Record<string, unknown>)[key];
+      if (!isSameValue(current, saved)) return true;
+    }
+    return false;
+  }, [requirements, baseline]);
+
+  // Report the derived state upward — the parent cannot read the ref during render.
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
 
   // Save mutation
   const saveMutation = useMutation({
@@ -158,22 +170,17 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
       }
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (_result, updates) => {
       queryClient.invalidateQueries({ queryKey: [`/api/manager/locations/${locationId}/requirements`] });
       queryClient.invalidateQueries({ queryKey: [`location-${locationId}`], exact: false });
-      setHasUnsavedChanges(false);
-      
-      // Mark current step as completed
-      setCompletedSteps(prev => {
-        const newSet = new Set(prev);
-        newSet.add(activeStep);
-        return newSet;
-      });
-      
+      // Advance the baseline to what was just persisted, so the save button
+      // clears immediately instead of flickering until the refetch lands.
+      setBaseline(prev => ({ ...prev, ...updates }));
+
       toast({ title: mt("requirementsSaved"),
         description: mt("yourApplicationRequirementsHaveBeenUpdatedSuccessfully"),
       });
-      
+
       onSaveSuccess?.();
     },
     onError: (error: Error) => {
@@ -186,10 +193,6 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
 
   const handleRequirementsChange = useCallback((updates: Partial<LocationRequirements>) => {
     setRequirements(prev => ({ ...prev, ...updates }));
-  }, []);
-
-  const handleUnsavedChange = useCallback(() => {
-    setHasUnsavedChanges(true);
   }, []);
 
   const handleSave = useCallback(() => {
@@ -206,57 +209,15 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
         });
       });
     },
-    hasUnsavedChanges,
-  }), [saveMutation, requirements, hasUnsavedChanges]);
-
-  // Track previous step for auto-save on step change
-  const prevStepRef = useRef<WizardStep | null>(null);
-  
-  // Auto-save when step changes (for onboarding flow where navigation is hidden)
-  useEffect(() => {
-    if (!autoSaveOnStepChange) return;
-    
-    // Only trigger save if step actually changed and we have unsaved changes
-    if (prevStepRef.current !== null && prevStepRef.current !== activeStep && hasUnsavedChanges) {
-      logger.info('[ApplicationRequirementsWizard] Auto-saving on step change');
-      handleSave();
-    }
-    
-    prevStepRef.current = activeStep;
-  }, [activeStep, autoSaveOnStepChange, hasUnsavedChanges, handleSave]);
-
-  const goToStep = (step: WizardStep) => {
-    setActiveStep(step);
-    // [ENTERPRISE] Scroll to top when switching tabs
-    requestAnimationFrame(() => scrollToTop());
-  };
-
-  const goToNextStep = () => {
-    const currentIndex = WIZARD_STEPS.findIndex(s => s.id === activeStep);
-    if (currentIndex < WIZARD_STEPS.length - 1) {
-      setActiveStep(WIZARD_STEPS[currentIndex + 1].id);
-      requestAnimationFrame(() => scrollToTop());
-    }
-  };
-
-  const goToPrevStep = () => {
-    const currentIndex = WIZARD_STEPS.findIndex(s => s.id === activeStep);
-    if (currentIndex > 0) {
-      setActiveStep(WIZARD_STEPS[currentIndex - 1].id);
-      requestAnimationFrame(() => scrollToTop());
-    }
-  };
-
-  const currentStepIndex = WIZARD_STEPS.findIndex(s => s.id === activeStep);
-  const isFirstStep = currentStepIndex === 0;
-  const isLastStep = currentStepIndex === WIZARD_STEPS.length - 1;
+    hasUnsavedChanges: isDirty,
+  }), [saveMutation, requirements, isDirty]);
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-16">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-8 w-8 animate-spin text-teal-600" />
-          <p className="text-sm text-slate-500">{mt("loadingRequirements")}</p>
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">{mt("loadingRequirements")}</p>
         </div>
       </div>
     );
@@ -264,184 +225,31 @@ export const ApplicationRequirementsWizard = forwardRef<ApplicationRequirementsW
 
   if (error) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <div className="h-12 w-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-            <AlertCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
-          </div>
-          <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{mt("failedToLoadRequirements")}</p>
-          <p className="text-xs text-slate-500 max-w-sm">{(error as Error).message}</p>
-        </div>
+      <div className="flex flex-col items-center gap-2 py-16 text-center">
+        <AlertCircle className="h-6 w-6 text-destructive" />
+        <p className="text-sm font-medium text-foreground">{mt("failedToLoadRequirements")}</p>
+        <p className="max-w-sm text-xs text-muted-foreground">{(error as Error).message}</p>
       </div>
     );
   }
 
   return (
-    <div ref={containerRef} className={cn('space-y-6', compact && 'space-y-4')}>
-      {/* Header with Location Name */}
-      {!compact && locationName && (
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">{mt("navApplicationRequirements")}</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{mt("configureRequirementsFor")}<span className="font-medium">{locationName}</span>
-            </p>
-          </div>
-          {hasUnsavedChanges && (
-            <Badge variant="warning">
-              <div className="w-1.5 h-1.5 rounded-full bg-warning mr-1.5 animate-pulse" />{mt("unsavedChanges")}</Badge>
-          )}
-        </div>
-      )}
+    <div className={cn('space-y-6', compact && 'space-y-4')}>
+      <RequirementsStepTwo
+        requirements={requirements}
+        onRequirementsChange={handleRequirementsChange}
+      />
 
-      {/* Step Navigation - Notion-style Tabs */}
-      <Tabs value={activeStep} onValueChange={(value) => goToStep(value as WizardStep)} className="w-full">
-        {WIZARD_STEPS.length > 1 && (
-          <TabsList className="w-full p-1 bg-slate-100/60 dark:bg-slate-800/40 rounded-lg border border-slate-200/50 dark:border-slate-700/50 gap-1">
-            {WIZARD_STEPS.map((step, index) => {
-            const isActive = step.id === activeStep;
-            const isCompleted = completedSteps.has(step.id);
-            const stepNumber = index + 1;
-            const showStepNumber = false;
-            
-            return (
-              <TabsTrigger
-                key={step.id}
-                value={step.id}
-                className={cn(
-                  'relative flex items-center gap-3 px-3 py-2.5 rounded-md',
-                  isActive 
-                    ? 'bg-white dark:bg-slate-900 shadow-sm' 
-                    : 'hover:bg-white/50 dark:hover:bg-slate-800/50',
-                  'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-primary/40'
-                )}
-              >
-                {/* Icon with completion indicator */}
-                <div className="relative flex-shrink-0">
-                  <div
-                    className={cn(
-                      'flex items-center justify-center h-8 w-8 rounded-lg',
-                      isActive && 'bg-brand-primary text-white',
-                      !isActive && isCompleted && 'bg-rose-100 dark:bg-rose-900/30 text-brand-primary',
-                      !isActive && !isCompleted && 'bg-slate-200/80 dark:bg-slate-700/60 text-slate-500 dark:text-slate-400'
-                    )}
-                  >
-                    {STEP_ICONS[step.id]}
-                  </div>
-                  {isCompleted && !isActive && (
-                    <div className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-green-500 border-2 border-white dark:border-slate-900 flex items-center justify-center">
-                      <CheckCircle2 className="h-2.5 w-2.5 text-white" />
-                    </div>
-                  )}
-                </div>
-
-                {/* Labels */}
-                <div className="flex flex-col items-start text-left min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    {showStepNumber && (
-                      <span
-                        className={cn(
-                          'text-[10px] font-semibold uppercase tracking-wide',
-                          isActive ? 'text-brand-primary' : 'text-slate-400 dark:text-slate-500'
-                        )}
-                      >
-                        Step {stepNumber}
-                      </span>
-                    )}
-                    <span
-                      className={cn(
-                        'text-[13px] font-medium truncate',
-                        isActive ? 'text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-400'
-                      )}
-                    >
-                      {step.title}
-                    </span>
-                  </div>
-                  <span
-                    className={cn(
-                      'text-[11px] truncate w-full',
-                      isActive ? 'text-slate-500 dark:text-slate-400' : 'text-slate-400 dark:text-slate-500'
-                    )}
-                  >
-                    {step.description}
-                  </span>
-                </div>
-
-                {/* Active indicator */}
-                {isActive && (
-                  <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-brand-primary rounded-full" />
-                )}
-              </TabsTrigger>
-            );
-          })}
-          </TabsList>
-        )}
-      </Tabs>
-
-      {/* Unsaved Changes Banner */}
-      {hasUnsavedChanges && (
-        <div className="flex items-center justify-between gap-4 p-4 rounded-xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40">
-          <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-lg bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center">
-              <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-amber-800 dark:text-amber-200">{mt("youHaveUnsavedChanges")}</p>
-              <p className="text-xs text-amber-700 dark:text-amber-300">{mt("saveYourChangesToMakeThemVisibleToApplicants")}</p>
-            </div>
-          </div>
-          {!hideUnsavedChangesAction && (
-            <StatusButton
-              onClick={handleSave}
-              status={saveMutation.isPending ? "loading" : "idle"}
-              size="sm"
-              labels={{ idle: tt("saveNow"), loading: mt("savingShort"), success: mt("saved") }}
-            />
-          )}
-        </div>
-      )}
-
-      {/* Step Content */}
-      <div className="min-h-[400px]">
-
-        {activeStep === 'step2' && (
-          <RequirementsStepTwo
-            requirements={requirements}
-            onRequirementsChange={handleRequirementsChange}
-            onUnsavedChange={handleUnsavedChange}
+      {/* One save for the whole page, present only while something is unsaved —
+          the page stays quiet at rest. Kept mounted through the success
+          animation, like the Booking Policies page. */}
+      {!hideNavigation && (isDirty || saveMutation.isPending) && (
+        <div className="flex items-center justify-end border-t border-border pt-6">
+          <StatusButton
+            onClick={handleSave}
+            status={saveMutation.isPending ? "loading" : "idle"}
+            labels={{ idle: mt("saveChanges"), loading: mt("savingShort"), success: mt("saved") }}
           />
-        )}
-      </div>
-
-      {/* Navigation Footer */}
-      {!hideNavigation && (
-        <div className={cn("flex items-center pt-6 border-t border-slate-200 dark:border-slate-700", WIZARD_STEPS.length > 1 ? "justify-between" : "justify-end")}>
-          {WIZARD_STEPS.length > 1 && (
-            <Button
-              onClick={goToPrevStep}
-              disabled={isFirstStep}
-              variant="outline"
-              className="gap-2"
-            >
-              <ChevronLeft className="h-4 w-4" />{mt("previous")}</Button>
-          )}
-
-          <div className="flex items-center gap-3">
-            <StatusButton
-              onClick={handleSave}
-              status={saveMutation.isPending ? "loading" : "idle"}
-              disabled={!hasUnsavedChanges}
-              variant={hasUnsavedChanges ? 'default' : 'outline'}
-              labels={{ idle: hasUnsavedChanges ? mt("saveChanges") : tt("save"), loading: mt("savingShort"), success: mt("saved") }}
-            />
-
-            {!isLastStep && (
-              <Button
-                onClick={goToNextStep}
-                className="gap-2"
-              >{mt("nextStep")}<ChevronRight className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
         </div>
       )}
     </div>

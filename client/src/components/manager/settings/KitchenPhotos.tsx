@@ -44,25 +44,13 @@ import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 import { resolveImageUrl } from "@/lib/resolve-image-url";
+import {
+  ACCEPTED_IMAGE_TYPES,
+  MAX_IMAGE_BYTES,
+  OVERLAY_ACTION,
+  CoverPhotoField,
+} from "@/components/manager/kitchen/KitchenPhotoFields";
 import { cn } from "@/lib/utils";
-
-const MAX_IMAGE_BYTES = 4.5 * 1024 * 1024;
-const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
-
-/**
- * The global stylesheet forces `min-height: 44px` on every `<button>` (see
- * `index.css`, "Mobile-friendly button size"), and that selector out-specifies a
- * plain utility — so a 32px icon button renders 32 wide by 44 tall, i.e. an
- * oval. These resets need `!` to win. `min-w` is reset too because the same
- * stylesheet adds `min-width: 44px` under 480px.
- */
-const SQUARE_RESET = "!min-h-0 !min-w-0";
-
-/** Small circular icon action that sits on top of a photo. */
-const OVERLAY_ACTION = cn(
-  SQUARE_RESET,
-  "inline-flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm transition-colors hover:bg-black/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 disabled:pointer-events-none disabled:opacity-50",
-);
 
 /** Revealed on hover and — importantly — on keyboard focus. */
 const OVERLAY_REVEAL =
@@ -244,8 +232,8 @@ export default function KitchenPhotos({ locationId, kitchen }: KitchenPhotosProp
   );
 
   const replaceCover = useCallback(
-    async (files: FileList | null) => {
-      const file = files?.[0];
+    async (files: FileList | File[] | null) => {
+      const file = Array.from(files ?? [])[0];
       if (!file) return;
       setBatch({ done: 0, total: 1 });
       try {
@@ -427,77 +415,15 @@ export default function KitchenPhotos({ locationId, kitchen }: KitchenPhotosProp
             </div>
           )}
 
-          {/* Cover photo. Deliberately wider than a gallery tile so the
-              hierarchy is obvious, and it uses exactly the tiles' control
-              language — a "Cover" chip and a ⋯ menu in the same corners — so
-              the two sections read as one system, not two designs. */}
-          <section className="flex flex-col gap-4 sm:flex-row sm:items-start">
-            <div className="w-full shrink-0 sm:w-96">
-              {coverKey ? (
-                <div className="group relative overflow-hidden rounded-xl border bg-muted/30">
-                  <div className="aspect-[16/9]">
-                    <SmartImage
-                      src={coverKey}
-                      alt={mt("coverPhoto")}
-                      className="h-full w-full object-cover"
-                    />
-                  </div>
-                  <span className="pointer-events-none absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm">
-                    <Star className="h-3 w-3" />
-                    {mt("coverPhotoBadge")}
-                  </span>
-                  <DropdownMenu modal={false}>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        type="button"
-                        className={cn(
-                          OVERLAY_ACTION,
-                          "absolute right-2 top-2 opacity-80 data-[state=open]:opacity-100 group-hover:opacity-100",
-                        )}
-                        aria-label={mt("photoActions")}
-                      >
-                        <MoreHorizontal className="h-4 w-4" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-56">
-                      <DropdownMenuItem
-                        disabled={batch !== null}
-                        onSelect={() => coverInputRef.current?.click()}
-                        className="gap-2 focus:bg-muted focus:text-foreground"
-                      >
-                        <ImagePlus className="h-4 w-4 shrink-0" />
-                        {mt("replaceCoverPhoto")}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        disabled={batch !== null}
-                        onSelect={() => void setCover(null)}
-                        className="gap-2 text-destructive focus:bg-destructive/10 focus:text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4 shrink-0" />
-                        {mt("removeCoverPhoto")}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  disabled={batch !== null}
-                  onClick={() => coverInputRef.current?.click()}
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    void replaceCover(event.dataTransfer.files);
-                  }}
-                  className="flex aspect-[16/9] w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-muted/20 text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
-                >
-                  <ImagePlus className="h-6 w-6" />
-                  <span className="text-sm font-medium text-foreground">{mt("addCoverPhoto")}</span>
-                  <span className="text-xs">{mt("jpgPngWebpMaxSize")}</span>
-                </button>
-              )}
-            </div>
-
+          {/* Cover photo — the shared field, so the onboarding wizard renders
+              exactly the same control. */}
+          <CoverPhotoField
+            value={kitchen.imageUrl}
+            onSelectFile={(file) => void replaceCover([file])}
+            onRemove={() => void setCover(null)}
+            disabled={batch !== null}
+            className="w-full sm:w-96"
+          >
             <div className="min-w-0 flex-1">
               <Label>{mt("coverPhoto")}</Label>
               <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
@@ -518,7 +444,7 @@ export default function KitchenPhotos({ locationId, kitchen }: KitchenPhotosProp
                 </li>
               </ul>
             </div>
-          </section>
+          </CoverPhotoField>
 
           <Separator className="my-4" />
 

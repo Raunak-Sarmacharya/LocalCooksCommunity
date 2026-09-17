@@ -9,7 +9,7 @@ import { tt } from "@/i18n/common-ns";
  */
 
 import React, { useState, useMemo } from "react";
-import { Info, Plus, CheckCircle, Loader2, Search, Check, ChevronDown, ChevronUp, X, DollarSign, Package, Flame, Calendar, Snowflake, UtensilsCrossed, SprayCan, PlusCircle, SearchX } from "@/components/ui/manager-icons";
+import { CheckCircle, Loader2, Search, Check, ChevronDown, ChevronUp, X, Package, Flame, Calendar, Snowflake, UtensilsCrossed, SprayCan, SearchX, ArrowRight } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { Input } from "@/components/ui/input";
@@ -18,9 +18,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { SettingsRow } from "@/components/manager/settings/SettingsRow";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
+import { useLocation } from "wouter";
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
 import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter";
 import { EQUIPMENT_CATEGORIES, type EquipmentTemplate, type EquipmentCategoryId } from "@/lib/equipment-templates";
@@ -54,9 +56,12 @@ export default function EquipmentListingsStep() {
     setSelectedKitchenId,
     equipmentForm: { listings, isLoading, refresh: refreshListings },
     handleNext,
-    handleBack 
+    handleBack,
+    saveAndExit,
+    isSubmitting,
   } = useManagerOnboarding();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedCategories, setExpandedCategories] = useState<string[]>(['cooking', 'food-prep']);
@@ -244,56 +249,59 @@ export default function EquipmentListingsStep() {
 
   return (
     <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
-      <div>
-        <h3 className="text-lg font-semibold mb-1">{mt("equipmentListingsOptional")}</h3>
-        <p className="text-sm text-gray-600">{mt("selectEquipmentAvailableInYourKitchenYouCanMarkItemsAsInclud")}</p>
-      </div>
-
-      <div className="bg-gradient-to-r from-rose-50 to-pink-50 border-2 border-rose-200/50 rounded-xl p-5 shadow-sm">
-        <div className="flex items-start gap-3">
-          <Info className="h-5 w-5 text-[#F51042] flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-gray-700">
-            <p className="font-bold mb-2 text-gray-900">{mt("whyListEquipment")}</p>
-            <p>{mt("equipmentListingsHelpText")}</p>
-          </div>
-        </div>
-      </div>
+      {/* The shell already titles this step — one line of what to do is enough. */}
+      <p className="max-w-lg text-sm text-muted-foreground">
+        {mt("selectEquipmentAvailableInYourKitchenYouCanMarkItemsAsInclud")}
+      </p>
 
       {kitchens.length === 0 ? (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <p className="text-sm text-yellow-800">{mt("noKitchensFoundPleaseCreateAKitchenFirst")}</p>
-        </div>
+        <p className="rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+          {mt("noKitchensFoundPleaseCreateAKitchenFirst")}
+        </p>
       ) : (
         <div className="space-y-4">
-          <div>
-            <Label>{mt("selectKitchen")}</Label>
+          <SettingsRow id="equipment-kitchen" label={mt("selectKitchen")}>
             <Select
               value={selectedKitchenId?.toString() || ""}
               onValueChange={(val) => setSelectedKitchenId(parseInt(val))}
             >
-              <SelectTrigger className="mt-1"><SelectValue placeholder={mt("selectKitchen")} /></SelectTrigger>
+              <SelectTrigger id="equipment-kitchen" className="w-64">
+                <SelectValue placeholder={mt("selectKitchen")} />
+              </SelectTrigger>
               <SelectContent>
                 {kitchens.map(k => <SelectItem key={k.id} value={k.id.toString()}>{k.name}</SelectItem>)}
               </SelectContent>
             </Select>
-          </div>
+          </SettingsRow>
 
           {selectedKitchenId && (
             <>
               {/* Existing Equipment */}
               {isLoading ? (
-                <div className="flex justify-center p-4"><Loader2 className="animate-spin text-gray-400" /></div>
+                <div className="flex justify-center p-4"><Loader2 className="animate-spin text-muted-foreground" /></div>
               ) : listings.length > 0 && (
-                <div className="border rounded-lg p-4 bg-green-50 border-green-200 space-y-2">
-                  <div className="flex items-center gap-2 mb-2">
-                    <CheckCircle className="h-5 w-5 text-green-600" />
-                    <h4 className="font-semibold text-gray-900">{mt("activeEquipmentCount", { count: listings.length })}</h4>
+                <div className="rounded-xl border border-border p-4 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4 text-muted-foreground" />
+                      <h4 className="text-sm font-medium text-foreground">{mt("activeEquipmentCount", { count: listings.length })}</h4>
+                    </div>
+                    {/* Editing existing listings lives in the dashboard — say so, or a
+                        completed step reads as a dead end. */}
+                    <button
+                      type="button"
+                      onClick={() => setLocation("/manager/dashboard?view=kitchens&section=equipment")}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                    >
+                      {mt("manageInDashboard")}
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     {listings.map(l => (
-                      <div key={l.id} className="bg-white rounded p-2 border border-green-200 text-sm">
+                      <div key={l.id} className="rounded-md border border-border bg-muted/30 p-2 text-sm">
                         <p className="font-medium truncate">{l.equipmentType || l.name}</p>
-                        <p className="text-xs text-gray-600">
+                        <p className="text-xs text-muted-foreground">
                           {l.availabilityType === 'rental' ? `$${(Number(l.sessionRate) / 100).toFixed(2)}${mt("perSession")}` : mt("included")}
                         </p>
                       </div>
@@ -316,7 +324,7 @@ export default function EquipmentListingsStep() {
               <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
                 {/* Equipment Selection */}
                 <div className="lg:col-span-3">
-                  <div className="border rounded-lg bg-gray-50">
+                  <div className="rounded-xl border border-border bg-muted/30">
                     <ScrollArea className="h-[350px]">
                       <div className="p-2 space-y-1">
                         {filteredCategories.map((category) => (
@@ -329,7 +337,7 @@ export default function EquipmentListingsStep() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                className="w-full justify-between p-2 h-auto font-medium hover:bg-white"
+                                className="w-full justify-between p-2 h-auto font-medium hover:bg-muted/60"
                               >
                                 <span className="flex items-center gap-2 text-sm">
                                   <CategoryIcon iconName={category.iconName} className="h-4 w-4 text-muted-foreground" />
@@ -361,13 +369,13 @@ export default function EquipmentListingsStep() {
                                       className={cn(
                                         "flex items-center gap-2 p-2 rounded-md border text-left transition-all text-xs",
                                         isSelected && "border-primary bg-primary/5 ring-1 ring-primary",
-                                        isAlreadyListed && "opacity-50 cursor-not-allowed bg-gray-100",
-                                        !isSelected && !isAlreadyListed && "bg-white hover:border-primary/50"
+                                        isAlreadyListed && "opacity-50 cursor-not-allowed bg-muted",
+                                        !isSelected && !isAlreadyListed && "bg-card hover:border-primary/50"
                                       )}
                                     >
                                       <div className={cn(
                                         "flex items-center justify-center w-4 h-4 rounded border flex-shrink-0",
-                                        isSelected ? "bg-primary border-primary" : "border-gray-300"
+                                        isSelected ? "bg-primary border-primary" : "border-input"
                                       )}>
                                         {isSelected && <Check className="h-2.5 w-2.5 text-white" />}
                                       </div>
@@ -469,10 +477,11 @@ export default function EquipmentListingsStep() {
 
                 {/* Configuration Panel */}
                 <div className="lg:col-span-2">
-                  <div className="border rounded-lg p-3 bg-white sticky top-4">
+                  <div className="rounded-xl border border-border bg-card p-3 sticky top-4">
                     <div className="flex items-center justify-between mb-3">
-                      <h4 className="font-medium text-sm flex items-center gap-2">
-                        <DollarSign className="h-4 w-4" />{mt("configure")}</h4>
+                      <h4 className="text-sm font-medium">
+                        {mt("configure")}
+                      </h4>
                       {selectedEquipmentCount > 0 && (
                         <Badge variant="default" className="text-xs">{selectedEquipmentCount}</Badge>
                       )}
@@ -487,7 +496,7 @@ export default function EquipmentListingsStep() {
                       <ScrollArea className="h-[350px]">
                         <div className="space-y-3 pr-2">
                           {Object.entries(selectedEquipment).map(([templateId, equipment]) => (
-                            <div key={templateId} className="p-3 border rounded-lg space-y-3 bg-gray-50">
+                            <div key={templateId} className="p-3 rounded-lg border border-border space-y-3 bg-muted/40">
                               <div className="flex items-start justify-between">
                                 <div className="flex-1 min-w-0">
                                   <Input 
@@ -605,6 +614,8 @@ export default function EquipmentListingsStep() {
       <OnboardingNavigationFooter
         onNext={handleNext}
         onBack={handleBack}
+        onSaveAndExit={() => void saveAndExit()}
+        isSavingAndExiting={isSubmitting}
       />
     </div>
   );

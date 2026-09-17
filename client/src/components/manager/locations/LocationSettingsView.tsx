@@ -669,7 +669,7 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
 
                         {/* APP REQUIREMENTS TAB */}
                         <TabsContent value="application-requirements">
-                            <LocationRequirementsSettings locationId={location.id} locationName={location.name} />
+                            <LocationRequirementsSettings locationId={location.id} />
                         </TabsContent>
 
                         {/* LOCATION TAB */}

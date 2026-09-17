@@ -8,11 +8,25 @@ const ScrollArea = React.forwardRef<
   React.ElementRef<typeof ScrollAreaPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root> & {
     showScrollIndicators?: boolean;
+    /**
+     * Access the scrolling viewport itself. The Root is `overflow-hidden`, so
+     * anything that needs to read or set scrollTop (e.g. resetting to the top
+     * when content changes) must go through this rather than the outer ref.
+     */
+    viewportRef?: React.Ref<HTMLDivElement>;
   }
->(({ className, children, showScrollIndicators = true, ...props }, ref) => {
+>(({ className, children, showScrollIndicators = true, viewportRef: externalViewportRef, ...props }, ref) => {
   const [canScrollTop, setCanScrollTop] = React.useState(false);
   const [canScrollBottom, setCanScrollBottom] = React.useState(false);
-  const viewportRef = React.useRef<HTMLDivElement>(null);
+  const viewportRef = React.useRef<HTMLDivElement | null>(null);
+
+  // Feed the same node to our internal ref and any caller-supplied one.
+  const attachViewport = React.useCallback((node: HTMLDivElement | null) => {
+    viewportRef.current = node;
+    if (!externalViewportRef) return;
+    if (typeof externalViewportRef === 'function') externalViewportRef(node);
+    else (externalViewportRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
+  }, [externalViewportRef]);
 
   const checkScroll = React.useCallback(() => {
     if (!viewportRef.current) return;
@@ -44,8 +58,8 @@ const ScrollArea = React.forwardRef<
       className={cn("relative overflow-hidden", className)}
       {...props}
     >
-      <ScrollAreaPrimitive.Viewport 
-        ref={viewportRef}
+      <ScrollAreaPrimitive.Viewport
+        ref={attachViewport}
         className="h-full w-full rounded-[inherit]"
         onScroll={checkScroll}
       >

@@ -1,22 +1,73 @@
 import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { useFirebaseAuth } from "@/hooks/use-auth";
-import { auth } from "@/lib/firebase";
-import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
-import { motion, AnimatePresence } from "framer-motion";
-import { ShieldCheck, Loader2, ArrowRight, ArrowDown, ScrollText, Lock, CheckCircle2, AlertCircle } from "lucide-react";
-import { useState, useEffect, useRef, useCallback } from "react";
-import { useLocation, Redirect } from "wouter";
-import { useQueryClient } from "@tanstack/react-query";
-import TermsContent from "@/components/legal/TermsContent";
-import { getChefPostAuthPath } from "@/config/chef-onboarding-steps";
-import PrivacyContent from "@/components/legal/PrivacyContent";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
+import { Progress } from "@/components/ui/progress";
+import {
+  AlertCircle,
+  ArrowDown,
+  Check,
+  CheckCircle2,
+  ChevronRight,
+  FileText,
+  Home,
+  Loader2,
+  Lock,
+  LogOut,
+} from "@/components/ui/manager-icons";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { auth } from "@/lib/firebase";
+import locoRedLogo from "@assets/LoCo Red.png";
+import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
+import { getChefPostAuthPath } from "@/config/chef-onboarding-steps";
+import PrivacyContent from "@/components/legal/PrivacyContent";
+import TermsContent from "@/components/legal/TermsContent";
 import { postTermsRedirect } from "@/lib/post-terms-redirect";
+import { cn } from "@/lib/utils";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Redirect, useLocation } from "wouter";
+import { useQueryClient } from "@tanstack/react-query";
+
+type DocumentKey = "terms" | "privacy";
+
+const DOCUMENT_ORDER: DocumentKey[] = ["terms", "privacy"];
+
+/**
+ * Keeps the closing marker clear of the action bar before a document counts as
+ * read. Generous on purpose: over-shooting only asks for a few extra pixels of
+ * scroll, whereas under-shooting would mark a document read while its last
+ * lines are still hidden behind the bar.
+ */
+const END_OF_DOCUMENT_INSET = 96;
+
+interface DocumentMeta {
+  /** Tab label and the noun used in status copy. */
+  label: string;
+  title: string;
+  description: string;
+  agreement: string;
+  agreementHint: string;
+}
+
+const DOCUMENTS: Record<DocumentKey, DocumentMeta> = {
+  terms: {
+    label: "Terms of Service",
+    title: "Local Cooks Platform Terms of Service",
+    description:
+      "The agreement between you and Jawrophi Delivery Inc. covering bookings, payments, liability and conduct on the platform.",
+    agreement: "I have read and agree to the Terms of Service",
+    agreementHint: "Required to keep using the platform",
+  },
+  privacy: {
+    label: "Privacy Policy",
+    title: "Local Cooks Privacy Policy",
+    description:
+      "What we collect, why we collect it, who we share it with, and how long we keep it.",
+    agreement: "I have read and agree to the Privacy Policy",
+    agreementHint: "Acknowledges our data processing practices",
+  },
+};
 
 /** Component wrapper around the pure {@link postTermsRedirect} helper. */
 function resolvePostTermsRedirect(
@@ -31,22 +82,136 @@ function resolvePostTermsRedirect(
   });
 }
 
+/**
+ * A single agreement row.
+ *
+ * Mirrors the metrics and locked treatment of the manager settings
+ * `SettingsRow` (same padding, same 12px hint line, same dimmed row plus lock
+ * glyph when a control is deliberately inert), but leads with the checkbox:
+ * consent reads as one sentence with the box it belongs to, so the control
+ * cannot sit in a right-hand column detached from its label.
+ */
+function AgreementRow({
+  id,
+  checked,
+  disabled,
+  documentLabel,
+  label,
+  hint,
+  onCheckedChange,
+}: {
+  id: string;
+  checked: boolean;
+  disabled: boolean;
+  /** Names the document in the copy, so the row always talks about its own. */
+  documentLabel: string;
+  label: string;
+  hint: string;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  // `disabled` is the single source of truth for the locked state. Deriving the
+  // copy from it means the row can never go on claiming a document is unread
+  // once the reading gate has cleared.
+  const locked = disabled;
+  // Draw the eye to a box the reader has earned but not yet ticked — this is
+  // the only thing standing between them and the primary action.
+  const needsAttention = !disabled && !checked;
+
+  return (
+    <div className={cn("flex items-start gap-3 px-4 py-4", locked && "opacity-60")}>
+      <div className="relative mt-0.5 flex items-center justify-center">
+        <Checkbox
+          id={id}
+          checked={checked}
+          disabled={disabled}
+          onCheckedChange={(value) => onCheckedChange(value === true)}
+          className={cn(
+            needsAttention && "animate-pulse ring-2 ring-primary ring-offset-2",
+          )}
+        />
+        {needsAttention && (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-0 -m-1 animate-ping rounded-full border border-primary/50"
+          />
+        )}
+      </div>
+
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <Label
+            htmlFor={id}
+            className={cn(
+              "text-sm font-medium",
+              disabled ? "cursor-not-allowed text-muted-foreground" : "cursor-pointer",
+            )}
+          >
+            {label}
+          </Label>
+          {needsAttention && (
+            <span className="animate-pulse rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
+              Click to check
+            </span>
+          )}
+        </div>
+
+        {/* Three states, so the line under the box always says what to do next
+            rather than repeating a reason the reader has already satisfied. */}
+        {locked ? (
+          <p className="mt-0.5 flex items-start gap-1 text-xs text-muted-foreground">
+            <Lock className="mt-0.5 h-3 w-3 shrink-0" />
+            {`Read the ${documentLabel} first`}
+          </p>
+        ) : checked ? (
+          <p className="mt-0.5 flex items-start gap-1 text-xs text-muted-foreground">
+            <Check className="mt-0.5 h-3 w-3 shrink-0" />
+            {`Agreed to the ${documentLabel}`}
+          </p>
+        ) : (
+          <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function TermsAcceptanceScreen() {
-  const { user, refreshUserData } = useFirebaseAuth();
+  const { user, refreshUserData, logout } = useFirebaseAuth();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  
-  const [activeTab, setActiveTab] = useState("terms");
-  const [termsRead, setTermsRead] = useState(false);
-  const [privacyRead, setPrivacyRead] = useState(false);
-  const [termsAccepted, setTermsAccepted] = useState(false);
-  const [privacyAccepted, setPrivacyAccepted] = useState(false);
 
-  const termsRef = useRef<HTMLDivElement>(null);
-  const privacyRef = useRef<HTMLDivElement>(null);
+  const [activeTab, setActiveTab] = useState<DocumentKey>("terms");
+  const [read, setRead] = useState<Record<DocumentKey, boolean>>({
+    terms: false,
+    privacy: false,
+  });
+  const [accepted, setAccepted] = useState<Record<DocumentKey, boolean>>({
+    terms: false,
+    privacy: false,
+  });
+
+  /** The scrolling viewport on the right — the reading gate measures against it. */
+  const scrollRef = useRef<HTMLDivElement>(null);
+  /** Closing marker of whichever document is currently mounted. */
+  const endOfDocumentRef = useRef<HTMLDivElement>(null);
+  const isFirstRender = useRef(true);
+  /**
+   * True while the document continues below the fold. Drives the bottom fade —
+   * a cue that there is more to read, without the arrow the floating "scroll to
+   * bottom" pill already carries.
+   */
+  const [canScrollMore, setCanScrollMore] = useState(false);
+
+  const updateScrollFade = useCallback(() => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    // 2px slack absorbs sub-pixel rounding at the very bottom.
+    setCanScrollMore(scroller.scrollTop + scroller.clientHeight < scroller.scrollHeight - 2);
+  }, []);
 
   useEffect(() => {
     if (user?.termsAccepted && user?.termsVersion === CURRENT_POLICY_VERSION) {
@@ -54,39 +219,83 @@ function TermsAcceptanceScreen() {
     }
   }, [user, setLocation]);
 
-  const handleScroll = useCallback((ref: React.RefObject<HTMLDivElement>, setRead: (read: boolean) => void) => {
-    const el = ref.current;
-    if (!el) return;
-    
-    const { scrollTop, scrollHeight, clientHeight } = el;
-    
-    // Handle non-scrollable content
-    if (scrollHeight <= clientHeight + 1) {
-      setRead(true);
+  /**
+   * Reading gate.
+   *
+   * The document counts as read once its closing marker scrolls into the right
+   * column's viewport, clear of the action bar. A document short enough to fit
+   * on screen therefore passes on arrival.
+   */
+  useEffect(() => {
+    if (read[activeTab]) return;
+
+    const root = scrollRef.current;
+    const marker = endOfDocumentRef.current;
+    if (!root || !marker) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setRead((prev) => (prev[activeTab] ? prev : { ...prev, [activeTab]: true }));
+        }
+      },
+      { root, rootMargin: `0px 0px -${END_OF_DOCUMENT_INSET}px 0px`, threshold: 0 },
+    );
+    observer.observe(marker);
+    return () => observer.disconnect();
+  }, [activeTab, read]);
+
+  /**
+   * Returning the reader to the top of the document they just switched to.
+   *
+   * Runs as a layout effect, so the scroll position is already reset before the
+   * observer above is created. Without that, switching from a long document to
+   * a shorter one would leave the viewport parked at the bottom, the shorter
+   * document's closing marker would land in view, and it would be marked read
+   * without ever being shown.
+   */
+  useLayoutEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
       return;
     }
-    
-    const progress = Math.min(100, Math.round((scrollTop / (scrollHeight - clientHeight)) * 100));
-    
-    if (progress > 95) {
-      setRead(true);
-    }
-  }, []);
+    scrollRef.current?.scrollTo({ top: 0, behavior: "auto" });
+  }, [activeTab]);
 
+  /**
+   * Keep the bottom fade honest. A ResizeObserver catches both the tab switch
+   * (a new document of a different length) and late-loading content, so the cue
+   * never lingers on a document that has already been fully revealed.
+   */
   useEffect(() => {
-    // Initial check for short content
-    const checkInitialRead = () => {
-      if (termsRef.current) handleScroll(termsRef, setTermsRead);
-      if (privacyRef.current) handleScroll(privacyRef, setPrivacyRead);
-    };
-    
-    // Small delay to ensure content is rendered
-    const timer = setTimeout(checkInitialRead, 500);
-    return () => clearTimeout(timer);
-  }, [activeTab, handleScroll]);
+    updateScrollFade();
+
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+
+    const observer = new ResizeObserver(() => updateScrollFade());
+    observer.observe(scroller);
+    if (scroller.firstElementChild) observer.observe(scroller.firstElementChild);
+
+    return () => observer.disconnect();
+  }, [updateScrollFade, activeTab]);
+
+  const changeTab = useCallback((next: DocumentKey) => setActiveTab(next), []);
+
+  /**
+   * "Scroll to bottom to read" — jumps the viewport to the end of the document
+   * and clears the gate. Kept as an explicit affordance so a reader who cannot
+   * scroll (or has already read the text elsewhere) is never stuck.
+   */
+  const scrollToBottom = useCallback(() => {
+    const scroller = scrollRef.current;
+    if (scroller) {
+      scroller.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" });
+    }
+    setRead((prev) => (prev[activeTab] ? prev : { ...prev, [activeTab]: true }));
+  }, [activeTab]);
 
   const handleSubmit = async () => {
-    if (!termsRead || !privacyRead) return;
     setIsSubmitting(true);
     setError(null);
 
@@ -165,374 +374,397 @@ function TermsAcceptanceScreen() {
     return <Redirect to={fallback} replace />;
   }
 
-  const allRead = termsRead && privacyRead;
-  const allAccepted = termsAccepted && privacyAccepted;
-  
-  const canContinueToNext = (activeTab === "terms" && termsRead && termsAccepted && !privacyRead) || 
-                            (activeTab === "privacy" && privacyRead && privacyAccepted && !termsRead);
+  const allRead = read.terms && read.privacy;
+  const allAccepted = accepted.terms && accepted.privacy;
+  const canSubmit = allRead && allAccepted;
+
+  const activeRead = read[activeTab];
+  const activeAccepted = accepted[activeTab];
+  // This document is settled but the other one has not been opened yet — the
+  // primary action moves the reader on rather than submitting.
+  const canAdvance = activeRead && activeAccepted && !allRead;
+  const actionEnabled = (canSubmit || canAdvance) && !isSubmitting && !success;
+
+  const otherTab: DocumentKey = activeTab === "terms" ? "privacy" : "terms";
+  const reviewedCount = DOCUMENT_ORDER.filter((key) => read[key]).length;
+  const reviewedPercent = (reviewedCount / DOCUMENT_ORDER.length) * 100;
+
+  const buttonLabel = isSubmitting
+    ? "Saving…"
+    : success
+      ? "Redirecting…"
+      : canSubmit
+        ? "I Agree & Continue"
+        : canAdvance
+          ? `Continue to ${DOCUMENTS[otherTab].label}`
+          : !activeRead
+            ? `Read the ${DOCUMENTS[activeTab].label} to continue`
+            : "Accept both agreements to continue";
 
   const handleMainAction = () => {
-    if (allRead && allAccepted) {
-      handleSubmit();
-    } else if (activeTab === "terms" && termsRead && termsAccepted) {
-      setActiveTab("privacy");
-    } else if (activeTab === "privacy" && privacyRead && privacyAccepted) {
-      setActiveTab("terms");
+    if (canSubmit) {
+      void handleSubmit();
+      return;
     }
+    if (canAdvance) changeTab(otherTab);
   };
 
+  const handleSignOut = () => {
+    void logout();
+  };
+
+  const renderDocument = (key: DocumentKey) => {
+    const meta = DOCUMENTS[key];
+
+    return (
+      <Card>
+        <CardHeader className="p-4 pb-2 md:p-6 md:pb-3">
+          <CardTitle className="text-lg">{meta.title}</CardTitle>
+          <CardDescription className="mt-1">{meta.description}</CardDescription>
+        </CardHeader>
+        <CardContent className="px-4 pb-10 pt-2 md:px-6">
+          <div className="terms-legal-content mx-auto max-w-none">
+            {key === "terms" ? <TermsContent /> : <PrivacyContent />}
+          </div>
+          {/* Closing marker for the reading gate — see the observer above. */}
+          <div ref={endOfDocumentRef} aria-hidden className="h-px w-full" />
+        </CardContent>
+      </Card>
+    );
+  };
+
+  /**
+   * One row per document — the only document switcher on the page, so there is
+   * no tab strip competing with it. Rendered in the left column, and again
+   * below the mobile page header because that column is hidden under `lg`.
+   */
+  const documentList = (
+    <nav className="space-y-1">
+      {DOCUMENT_ORDER.map((key) => {
+        const meta = DOCUMENTS[key];
+        const isRead = read[key];
+        const isAccepted = accepted[key];
+        const isActive = activeTab === key;
+
+        return (
+          <button
+            key={key}
+            type="button"
+            onClick={() => changeTab(key)}
+            aria-current={isActive ? "true" : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors",
+              isActive ? "bg-muted" : "hover:bg-muted/50",
+            )}
+          >
+            <FileText
+              className={cn(
+                "h-4 w-4 shrink-0",
+                isActive ? "text-foreground" : "text-muted-foreground",
+              )}
+            />
+
+            <div className="min-w-0 flex-1">
+              <span
+                className={cn(
+                  "block truncate text-sm font-medium",
+                  isActive ? "text-foreground" : "text-muted-foreground",
+                )}
+              >
+                {meta.label}
+              </span>
+              <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                {isAccepted ? "Accepted" : isRead ? "Reviewed" : "Not read yet"}
+              </span>
+            </div>
+
+            {isAccepted ? (
+              <Check className="h-4 w-4 shrink-0 text-foreground" />
+            ) : isRead ? (
+              <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-primary" />
+            ) : null}
+          </button>
+        );
+      })}
+    </nav>
+  );
+
   return (
-    <div className="relative h-screen w-full bg-slate-50 flex items-center justify-center px-4 overflow-hidden font-sans">
-      {/* Premium Background Elements */}
-      <AnimatedBackgroundOrbs variant="both" intensity="normal" className="opacity-30" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-primary/5 via-transparent to-transparent pointer-events-none" />
-      
-      <div className="w-full max-w-5xl relative z-10 max-h-[90vh] flex flex-col">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.98, y: 20 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-          className="flex-1 flex flex-col min-h-0"
-        >
-          <Card className="flex-1 flex flex-col shadow-[0_20px_50px_rgba(0,0,0,0.08),0_0_0_1px_rgba(255,255,255,0.5)] border-none bg-white/80 backdrop-blur-2xl rounded-[2rem] overflow-hidden min-h-0">
-            <CardContent className="p-0 flex-1 flex flex-col min-h-0">
-              <div className="grid grid-cols-1 lg:grid-cols-12 flex-1 min-h-0">
-                
-                {/* Brand Sidebar */}
-                <div className="hidden lg:flex lg:col-span-4 bg-primary/5 p-10 flex-col justify-between relative overflow-hidden border-r border-gray-100">
-                  {/* Decorative Elements */}
-                  <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full blur-[100px] -mr-32 -mt-32 opacity-50" />
-                  
-                  <div className="relative z-10">
-                    <div className="inline-flex items-center justify-center w-16 h-16 bg-primary text-white rounded-2xl shadow-lg shadow-primary/20 mb-10">
-                      <ShieldCheck className="h-8 w-8" />
+    <div className="flex h-screen w-full overflow-hidden bg-background">
+      {/* Left column — describes the page. Mirrors the manager onboarding
+          sidebar: brand block, progress, then a row per item in the flow. */}
+      <aside className="hidden w-80 shrink-0 flex-col border-r border-border bg-gradient-to-b from-muted/40 to-background lg:flex xl:w-96">
+        <div className="border-b border-border p-6">
+          <div className="flex items-center gap-3">
+            {/* Decorative: the wordmark beside it already names the brand. */}
+            <img
+              src={locoRedLogo}
+              alt=""
+              className="h-10 w-10 shrink-0 object-contain"
+            />
+            <div className="min-w-0">
+              <p className="font-logo text-lg leading-none tracking-tight text-[#F51042]">
+                Local Cooks
+              </p>
+              <h1 className="mt-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                Review &amp; Agreement
+              </h1>
+            </div>
+          </div>
+
+          <p className="mt-5 text-sm leading-relaxed text-muted-foreground">
+            Please review both policies, then scroll to the bottom and check both boxes to continue.
+          </p>
+
+          <div className="mt-5 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-medium text-muted-foreground">Progress</span>
+              <span className="font-semibold text-primary">
+                {reviewedCount} of {DOCUMENT_ORDER.length} reviewed
+              </span>
+            </div>
+            <Progress value={reviewedPercent} className="h-2 bg-muted" />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4">{documentList}</div>
+      </aside>
+
+      {/* Right column — the content. */}
+      <main className="flex h-screen flex-1 flex-col overflow-hidden">
+        <header className="z-20 flex h-16 shrink-0 items-center justify-between gap-4 border-b border-border bg-background/85 px-4 backdrop-blur-md md:px-6">
+          <nav className="flex min-w-0 items-center gap-2 text-sm">
+            <button
+              type="button"
+              onClick={() => setLocation("/dashboard")}
+              aria-label="Dashboard"
+              className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <Home className="h-4 w-4" />
+            </button>
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/50" />
+            <span className="shrink-0 font-medium text-muted-foreground">
+              Review &amp; Agreement
+            </span>
+            <ChevronRight className="hidden h-4 w-4 shrink-0 text-muted-foreground/50 sm:block" />
+            <span className="hidden truncate font-medium text-foreground sm:block">
+              {DOCUMENTS[activeTab].label}
+            </span>
+          </nav>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSignOut}
+            disabled={isSubmitting}
+            className="shrink-0 gap-2"
+          >
+            <LogOut className="h-4 w-4" />
+            <span className="hidden sm:inline">Sign out</span>
+          </Button>
+        </header>
+
+        <div className="relative flex-1 overflow-hidden">
+          <div ref={scrollRef} onScroll={updateScrollFade} className="h-full overflow-y-auto">
+            <div className="p-4 pb-24 md:p-10 md:pb-28 lg:p-12 lg:pb-28">
+              <div className="mx-auto w-full max-w-3xl">
+                {/* Page header for viewports without the left column. */}
+                <div className="mb-6 lg:hidden">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={locoRedLogo}
+                      alt=""
+                      className="h-10 w-10 shrink-0 object-contain"
+                    />
+                    <div className="min-w-0">
+                      {/* Not an h1: the left column's heading is always in the DOM,
+                          this is only its stand-in while that column is hidden. */}
+                      <p className="text-lg font-semibold tracking-tight text-foreground">
+                        Review &amp; Agreement
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {reviewedCount} of {DOCUMENT_ORDER.length} documents reviewed
+                      </p>
                     </div>
-                    <h1 className="text-2xl font-semibold text-slate-900 leading-tight mb-4 tracking-tight">
-                      Review & Agreement
-                    </h1>
-                    <p className="text-sm text-slate-500 leading-relaxed mb-10">
-                      To continue using the platform, please review our updated policies. Your security and privacy are our top priorities.
-                    </p>
-                    
-                    {/* Removed redundant sidebar links */}
                   </div>
-                  
-                  <div className="relative z-10">
-                    <div className="p-4 bg-white/40 rounded-2xl border border-white/50 backdrop-blur-sm">
-                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.2em] mb-1">Last Updated</p>
-                      <p className="text-sm text-gray-700 font-semibold">May 2026 • {CURRENT_POLICY_VERSION}</p>
-                    </div>
-                  </div>
+                  <Progress value={reviewedPercent} className="mt-4 h-2 bg-muted" />
+                  {/* The left column is hidden here, so its document list moves in
+                      — without it there would be no way to switch documents. */}
+                  <div className="mt-4">{documentList}</div>
                 </div>
 
-                {/* Main Content Area */}
-                <div className="lg:col-span-8 p-6 md:p-10 flex flex-col h-full bg-white/40 min-h-0">
-                  {/* Mobile Header - Only visible on small screens */}
-                  <div className="lg:hidden mb-8">
-                    <h2 className="text-xl font-semibold text-slate-900 tracking-tight mb-2">Review & Agreement</h2>
-                    <p className="text-xs text-slate-500 font-medium">Please review our latest policies to continue.</p>
-                  </div>
+                {renderDocument(activeTab)}
 
-                  <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
-                    <TabsList className="w-full bg-slate-100/50 p-1.5 rounded-2xl mb-6 border border-slate-200/50">
-                      <TabsTrigger value="terms" className="flex-1 rounded-xl py-3 data-[state=active]:bg-white data-[state=active]:shadow-[0_2px_10px_rgba(0,0,0,0.05)] text-sm font-semibold transition-all duration-300">
-                        Terms of Service
-                      </TabsTrigger>
-                      <TabsTrigger value="privacy" className="flex-1 rounded-xl py-3 data-[state=active]:bg-white data-[state=active]:shadow-[0_2px_10px_rgba(0,0,0,0.05)] text-sm font-semibold transition-all duration-300">
-                        Privacy Policy
-                      </TabsTrigger>
-                    </TabsList>
-
-                    <div className="flex-1 relative mb-6 min-h-0">
-                      <div className="h-full relative overflow-hidden rounded-2xl border border-slate-200/50 bg-white/50">
-                        <AnimatePresence mode="wait">
-                          <motion.div
-                            key={activeTab}
-                            initial={{ opacity: 0, x: 10 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: -10 }}
-                            transition={{ duration: 0.3, ease: "easeOut" }}
-                            className="h-full"
-                          >
-                            <div 
-                              ref={activeTab === 'terms' ? termsRef : privacyRef}
-                              onScroll={() => handleScroll(activeTab === 'terms' ? termsRef : privacyRef, activeTab === 'terms' ? setTermsRead : setPrivacyRead)}
-                              className="h-full overflow-y-auto custom-scrollbar px-6 md:px-10 pt-8 pb-16"
-                            >
-                              <div className="premium-legal-content max-w-2xl mx-auto">
-                                {activeTab === 'terms' ? <TermsContent /> : <PrivacyContent />}
-                              </div>
-                            </div>
-                            
-                            {/* Visual Scroll Fades */}
-                            <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-white to-transparent pointer-events-none" />
-                            <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-white to-transparent pointer-events-none" />
-                          </motion.div>
-                        </AnimatePresence>
-
-                        {/* Integrated Status Footer - Inside the content container */}
-                        <div className="absolute bottom-0 left-0 right-0 py-3 bg-slate-50/80 backdrop-blur-md border-t border-slate-100 flex items-center justify-center z-20">
-                          <AnimatePresence mode="wait">
-                            {((activeTab === 'terms' && !termsRead) || (activeTab === 'privacy' && !privacyRead)) ? (
-                              <motion.div 
-                                key="need-scroll"
-                                initial={{ opacity: 0, y: 5 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -5 }}
-                                className="flex items-center"
-                              >
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="flex items-center gap-2 text-primary hover:text-primary/80 hover:bg-primary/5 rounded-full h-8 px-4 border border-primary/20 bg-white/50 shadow-sm transition-all"
-                                  onClick={() => {
-                                    const isTerms = activeTab === 'terms';
-                                    const ref = isTerms ? termsRef : privacyRef;
-                                    if (ref.current) {
-                                      ref.current.scrollTo({
-                                        top: ref.current.scrollHeight,
-                                        behavior: 'smooth'
-                                      });
-                                    }
-                                    if (isTerms) setTermsRead(true);
-                                    else setPrivacyRead(true);
-                                  }}
-                                >
-                                  <ArrowDown className="h-3.5 w-3.5 animate-bounce" />
-                                  <span className="text-[11px] font-bold tracking-wide uppercase">Scroll to bottom to read</span>
-                                </Button>
-                              </motion.div>
-                            ) : (
-                              <motion.div 
-                                key="is-read"
-                                initial={{ opacity: 0, scale: 0.98 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                className="flex items-center gap-2 text-green-600"
-                              >
-                                <CheckCircle2 className="h-3.5 h-3.5" />
-                                <span className="text-[11px] font-bold tracking-wide uppercase">Documentation Reviewed</span>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-6">
-                      {/* Minimal shadcn Acceptance Area */}
-                      <div className="bg-slate-50/50 rounded-2xl border border-slate-100 p-6 space-y-4">
-                        <div className="flex items-start space-x-3 group cursor-pointer">
-                          <div className="relative flex items-center justify-center">
-                            <Checkbox 
-                              id="terms-check" 
-                              checked={termsAccepted} 
-                              onCheckedChange={(checked) => {
-                                if (termsRead) {
-                                  setTermsAccepted(checked as boolean);
-                                  if (checked && !privacyAccepted) {
-                                    setTimeout(() => setActiveTab("privacy"), 300);
-                                  }
-                                }
-                              }}
-                              disabled={!termsRead}
-                              className={`mt-0.5 border-slate-300 data-[state=checked]:bg-primary data-[state=checked]:border-primary transition-all duration-300 ${termsRead && !termsAccepted ? 'ring-2 ring-primary ring-offset-2 animate-pulse' : ''}`}
-                            />
-                            {termsRead && !termsAccepted && (
-                              <div className="absolute inset-0 -m-1 rounded-full border border-primary/50 animate-ping pointer-events-none" />
-                            )}
-                          </div>
-                          <div className="grid gap-1.5 leading-none">
-                            <div className="flex items-center gap-2">
-                              <Label 
-                                htmlFor="terms-check" 
-                                className={`text-sm font-semibold leading-tight cursor-pointer transition-colors ${!termsRead ? 'text-slate-400' : 'text-slate-700 group-hover:text-primary'}`}
-                              >
-                                I agree to the Terms of Service
-                              </Label>
-                              {termsRead && !termsAccepted && (
-                                <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full animate-pulse">Click to Check</span>
-                              )}
-                            </div>
-                            <p className="text-[11px] text-slate-500 font-medium">
-                              Required agreement for platform usage
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-start space-x-3 group cursor-pointer">
-                          <div className="relative flex items-center justify-center">
-                            <Checkbox 
-                              id="privacy-check" 
-                              checked={privacyAccepted} 
-                              onCheckedChange={(checked) => {
-                                if (privacyRead) {
-                                  setPrivacyAccepted(checked as boolean);
-                                  if (checked && !termsAccepted) {
-                                    setTimeout(() => setActiveTab("terms"), 300);
-                                  }
-                                }
-                              }}
-                              disabled={!privacyRead}
-                              className={`mt-0.5 border-slate-300 data-[state=checked]:bg-primary data-[state=checked]:border-primary transition-all duration-300 ${privacyRead && !privacyAccepted ? 'ring-2 ring-primary ring-offset-2 animate-pulse' : ''}`}
-                            />
-                            {privacyRead && !privacyAccepted && (
-                              <div className="absolute inset-0 -m-1 rounded-full border border-primary/50 animate-ping pointer-events-none" />
-                            )}
-                          </div>
-                          <div className="grid gap-1.5 leading-none">
-                            <div className="flex items-center gap-2">
-                              <Label 
-                                htmlFor="privacy-check" 
-                                className={`text-sm font-semibold leading-tight cursor-pointer transition-colors ${!privacyRead ? 'text-slate-400' : 'text-slate-700 group-hover:text-primary'}`}
-                              >
-                                I agree to the Privacy Policy
-                              </Label>
-                              {privacyRead && !privacyAccepted && (
-                                <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full animate-pulse">Click to Check</span>
-                              )}
-                            </div>
-                            <p className="text-[11px] text-slate-500 font-medium">
-                              Acknowledgment of data processing practices
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Final Submit / Guidance Button */}
-                      <div className="relative">
-                        {error && (
-                          <motion.div 
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className="absolute -top-14 left-0 right-0 p-3 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 text-red-600 text-xs font-semibold"
-                          >
-                            <AlertCircle className="h-4 w-4" />
-                            {error}
-                          </motion.div>
-                        )}
-                        <Button
-                          onClick={handleMainAction}
-                          disabled={(!allRead && !canContinueToNext) || (!allAccepted && !canContinueToNext) || isSubmitting || success}
-                          className="w-full py-7 rounded-2xl text-base font-bold shadow-xl shadow-primary/20 hover:shadow-2xl hover:shadow-primary/30 transition-all duration-300 relative overflow-hidden group bg-primary text-white"
-                        >
-                          <AnimatePresence mode="wait">
-                            {isSubmitting ? (
-                              <motion.div key="submitting" className="flex items-center gap-3">
-                                <Loader2 className="h-5 w-5 animate-spin" />
-                                Processing acceptance...
-                              </motion.div>
-                            ) : success ? (
-                              <motion.div key="success" className="flex items-center gap-3">
-                                Redirecting...
-                              </motion.div>
-                            ) : (
-                              <motion.div key="action" className="flex items-center gap-3">
-                                {allRead && allAccepted ? (
-                                  <>I Agree & Continue</>
-                                ) : !allRead ? (
-                                  <>{activeTab === 'terms' ? 'Read Terms to Proceed' : 'Read Privacy to Proceed'}</>
-                                ) : (
-                                  <>Complete Both Agreements</>
-                                )}
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                          
-                          {/* Shimmer effect */}
-                          {(allRead || canContinueToNext) && !isSubmitting && !success && (
-                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:animate-shimmer pointer-events-none" />
-                          )}
-                        </Button>
-                      </div>
-                    </div>
-                  </Tabs>
-                </div>
+                <Card className="mt-6">
+                  <CardHeader className="p-4 pb-2 md:p-6 md:pb-3">
+                    <CardTitle className="text-lg">Your agreement</CardTitle>
+                  </CardHeader>
+                  <CardContent className="divide-y divide-border p-0">
+                    <AgreementRow
+                      id="accept-terms-check"
+                      checked={accepted.terms}
+                      disabled={!read.terms}
+                      documentLabel={DOCUMENTS.terms.label}
+                      label={DOCUMENTS.terms.agreement}
+                      hint={DOCUMENTS.terms.agreementHint}
+                      onCheckedChange={(checked) => {
+                        setAccepted((prev) => ({ ...prev, terms: checked }));
+                        if (checked && !accepted.privacy) {
+                          setTimeout(() => changeTab("privacy"), 400);
+                        }
+                      }}
+                    />
+                    <AgreementRow
+                      id="accept-privacy-check"
+                      checked={accepted.privacy}
+                      disabled={!read.privacy}
+                      documentLabel={DOCUMENTS.privacy.label}
+                      label={DOCUMENTS.privacy.agreement}
+                      hint={DOCUMENTS.privacy.agreementHint}
+                      onCheckedChange={(checked) => {
+                        setAccepted((prev) => ({ ...prev, privacy: checked }));
+                        if (checked && !accepted.terms) {
+                          setTimeout(() => changeTab("terms"), 400);
+                        }
+                      }}
+                    />
+                  </CardContent>
+                </Card>
               </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-      </div>
-      
-      <style dangerouslySetInnerHTML={{ __html: `
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 5px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #e2e8f0;
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: #cbd5e1;
-        }
-        @keyframes shimmer {
-          100% { transform: translateX(100%); }
-        }
-        .animate-shimmer {
-          animation: shimmer 1.5s infinite linear;
-        }
+            </div>
+          </div>
 
-        .premium-legal-content {
-          font-family: 'Inter', -apple-system, sans-serif;
-          font-size: 0.875rem !important;
-          line-height: 1.7 !important;
-          color: #475569 !important;
-          letter-spacing: -0.01em !important;
-        }
-        
-        .premium-legal-content {
+          {/* Bottom fade — the document continues below. Fade only: the floating
+              pill below already carries the arrow and the action. */}
+          <div
+            aria-hidden
+            className={cn(
+              "pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-background via-background/85 to-transparent transition-opacity duration-300",
+              canScrollMore ? "opacity-100" : "opacity-0",
+            )}
+          />
+
+          {/* Reading status, pinned to the foot of the document viewport on the
+              content side. It belongs to the document, not to the primary
+              action, so it stays out of the action bar below. */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-4">
+            <div className="pointer-events-auto">
+              {activeRead ? (
+                <span className="inline-flex items-center gap-2 rounded-full border border-border bg-background/90 px-4 py-1.5 text-muted-foreground backdrop-blur-md">
+                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                  <span className="text-[11px] font-bold uppercase tracking-wide">
+                    Documentation reviewed
+                  </span>
+                </span>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={scrollToBottom}
+                  className="h-8 gap-2 rounded-full border border-primary/20 bg-background/80 px-4 text-primary backdrop-blur-md hover:bg-primary/10 hover:text-primary"
+                >
+                  <ArrowDown className="h-3.5 w-3.5 animate-bounce" />
+                  <span className="text-[11px] font-bold uppercase tracking-wide">
+                    Scroll to bottom to read
+                  </span>
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Action bar — one primary action, nothing competing with it. */}
+        <div className="z-20 shrink-0 border-t border-border bg-background/85 backdrop-blur-md">
+          <div className="px-4 py-3 md:px-6">
+            {error && (
+              <div className="mb-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs font-medium text-destructive">
+                <AlertCircle className="mt-px h-4 w-4 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <div className="flex justify-end">
+              <Button
+                onClick={handleMainAction}
+                disabled={!actionEnabled}
+                className="w-full sm:w-auto sm:min-w-[14rem]"
+              >
+                {isSubmitting ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Check className="mr-2 h-4 w-4" />
+                )}
+                {buttonLabel}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+        .terms-legal-content {
           font-family: inherit;
-          color: #334155;
-          line-height: 1.6;
         }
 
-        .premium-legal-content h1 {
+        .terms-legal-content h1 {
           display: none !important;
         }
-        
-        .premium-legal-content h2 {
+
+        .terms-legal-content h2 {
           font-size: 1.125rem !important;
           font-weight: 700 !important;
           margin-top: 2.5rem !important;
           margin-bottom: 1.25rem !important;
-          color: #0f172a !important;
+          color: hsl(var(--foreground)) !important;
           letter-spacing: -0.02em !important;
         }
-        
-        .premium-legal-content p, .premium-legal-content li {
+
+        .terms-legal-content h3 {
+          font-size: 1rem !important;
+          font-weight: 600 !important;
+          margin-top: 1.75rem !important;
+          margin-bottom: 0.75rem !important;
+          color: hsl(var(--foreground)) !important;
+        }
+
+        .terms-legal-content p,
+        .terms-legal-content li {
           font-size: 0.875rem !important;
           margin-bottom: 1rem !important;
-          color: #475569 !important;
+          color: hsl(var(--muted-foreground)) !important;
         }
-        
-        .premium-legal-content hr {
+
+        .terms-legal-content hr {
           margin: 2rem 0 !important;
           border: none;
           height: 1px;
-          background: #f1f5f9;
+          background: hsl(var(--border));
         }
 
-        .premium-legal-content strong {
-          color: #0f172a !important;
+        .terms-legal-content strong {
+          color: hsl(var(--foreground)) !important;
           font-weight: 600 !important;
         }
 
-        .premium-legal-content ul, .premium-legal-content ol {
+        .terms-legal-content ul,
+        .terms-legal-content ol {
           padding-left: 1.25rem !important;
           margin-bottom: 1.25rem !important;
         }
 
-        .premium-legal-content blockquote {
-          background: #f8fafc;
+        .terms-legal-content blockquote {
+          background: hsl(var(--muted));
           border-radius: 0.75rem;
           padding: 1.25rem;
           font-style: italic;
-          border-left: 4px solid #e2e8f0;
+          border-left: 4px solid hsl(var(--border));
           margin: 1.5rem 0;
         }
-      `}} />
+      `,
+        }}
+      />
     </div>
   );
 }

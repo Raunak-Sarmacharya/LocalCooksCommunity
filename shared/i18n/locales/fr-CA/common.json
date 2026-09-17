@@ -314,5 +314,6 @@
   "kitchenServiceEarnDesc": "Monetize your unused kitchen hours",
   "chefPartnerLink": "For chefs",
   "chefPartnerLinkDesc": "Sell food or book prep space at chef.localcooks.ca",
-  "phoneVerificationRequired": "Les numéros de téléphone doivent être vérifiés par code avant d’être associés à votre compte."
+  "phoneVerificationRequired": "Les numéros de téléphone doivent être vérifiés par code avant d’être associés à votre compte.",
+  "selectDate": "Sélectionner une date"
 }

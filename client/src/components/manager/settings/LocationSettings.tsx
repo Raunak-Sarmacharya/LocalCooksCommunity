@@ -99,13 +99,13 @@ export default function LocationSettings({ location, onSave, embedded = false }:
               <Textarea id="location-description" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Provide a description of this location to display publicly" rows={4} />
             </div>
             <div className="space-y-1.5 md:col-span-2">
-              <Label htmlFor="location-logo">Location logo</Label>
+              <Label htmlFor="location-logo">Business logo</Label>
               <div className="flex items-center gap-3 rounded-lg border p-3">
                 <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
                   {logoUrl && !logoFile ? <img src={getR2ProxyUrl(logoUrl)} alt={`${location.name} logo`} className="h-full w-full object-cover" /> : <ImageIcon className="h-5 w-5 text-muted-foreground" />}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <SettingsFileUpload id="location-logo" accept="image/jpeg,image/png,image/webp" file={logoFile} label="Choose location logo" hint="JPG, PNG or WebP · max 4.5 MB" disabled={isUploading} onChange={setLogoFile} />
+                  <SettingsFileUpload id="location-logo" accept="image/jpeg,image/png,image/webp" file={logoFile} label="Choose logo" hint="JPG, PNG or WebP · max 4.5 MB" disabled={isUploading} onChange={setLogoFile} />
                 </div>
               </div>
             </div>

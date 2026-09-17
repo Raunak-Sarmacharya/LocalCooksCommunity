@@ -1,7 +1,6 @@
-import React from "react";
 import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import StripeConnectSetup from "@/components/manager/StripeConnectSetup";
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
 import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter";
@@ -11,7 +10,7 @@ import { auth } from "@/lib/firebase";
 
 export default function PaymentSetupStep() {
   
-  const { handleNext, handleBack, isFirstStep, isStripeOnboardingComplete, skipCurrentStep } = useManagerOnboarding();
+  const { handleNext, handleBack, isFirstStep, isStripeOnboardingComplete, saveAndExit, isSubmitting } = useManagerOnboarding();
   const { user: firebaseUser } = useFirebaseAuth();
 
   const { data: stripeStatus } = useQuery({
@@ -46,18 +45,20 @@ export default function PaymentSetupStep() {
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       {/* Stripe Connect Setup */}
-      <Card className="border-slate-200/60 dark:border-slate-700/60 shadow-sm">
-        <CardContent className="pt-6">
+      <Card>
+        <div className="p-5">
           <StripeConnectSetup />
-        </CardContent>
+        </div>
       </Card>
 
       <OnboardingNavigationFooter
         onNext={handleNext}
         onBack={handleBack}
+        onSaveAndExit={() => void saveAndExit()}
         showBack={!isFirstStep}
         isNextDisabled={!isStripeOnboardingComplete}
         nextLabel={isStripeOnboardingComplete ? tt("continue") : getDisabledLabel()}
+        isSavingAndExiting={isSubmitting}
       />
     </div>
   );

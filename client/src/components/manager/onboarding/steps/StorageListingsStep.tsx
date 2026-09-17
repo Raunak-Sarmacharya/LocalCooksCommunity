@@ -2,7 +2,7 @@ import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
 import React, { useState, useMemo } from "react";
-import { Info, Plus, CheckCircle, Loader2, Search, Package, Thermometer, Snowflake, Check, PlusCircle, SearchX, ChevronDown, ChevronUp, X, DollarSign, AlertTriangle } from "@/components/ui/manager-icons";
+import { CheckCircle, Loader2, Search, Package, Thermometer, Snowflake, Check, SearchX, ChevronDown, ChevronUp, X, ArrowRight } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { Input } from "@/components/ui/input";
@@ -13,8 +13,10 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { SettingsRow } from "@/components/manager/settings/SettingsRow";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
+import { useLocation } from "wouter";
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
 import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter";
 import { cn } from "@/lib/utils";
@@ -53,9 +55,12 @@ export default function StorageListingsStep() {
     setSelectedKitchenId,
     storageForm: { listings, isLoading, refresh: refreshListings },
     handleNext,
-    handleBack
+    handleBack,
+    saveAndExit,
+    isSubmitting,
   } = useManagerOnboarding();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedCategories, setExpandedCategories] = useState<string[]>(['dry', 'cold', 'freezer']);
@@ -250,38 +255,51 @@ export default function StorageListingsStep() {
     <div className="space-y-6 animate-in fade-in duration-500">
 
       {kitchens.length === 0 ? (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <p className="text-sm text-yellow-800">{mt("noKitchensFoundPleaseCreateAKitchenFirst")}</p>
-        </div>
+        <p className="rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+          {mt("noKitchensFoundPleaseCreateAKitchenFirst")}
+        </p>
       ) : (
         <div className="space-y-4">
-          <div>
-            <Label>{mt("selectKitchen")}</Label>
+          <SettingsRow id="storage-kitchen" label={mt("selectKitchen")}>
             <Select
               value={selectedKitchenId?.toString() || ""}
               onValueChange={(val) => setSelectedKitchenId(parseInt(val))}
             >
-              <SelectTrigger className="mt-1"><SelectValue placeholder={mt("selectKitchen")} /></SelectTrigger>
+              <SelectTrigger id="storage-kitchen" className="w-64">
+                <SelectValue placeholder={mt("selectKitchen")} />
+              </SelectTrigger>
               <SelectContent>
                 {kitchens.map(k => <SelectItem key={k.id} value={k.id.toString()}>{k.name}</SelectItem>)}
               </SelectContent>
             </Select>
-          </div>
+          </SettingsRow>
 
           {selectedKitchenId && (
             <>
               {isLoading ? (
-                <div className="flex justify-center p-4"><Loader2 className="animate-spin text-gray-400" /></div>
+                <div className="flex justify-center p-4"><Loader2 className="animate-spin text-muted-foreground" /></div>
               ) : listings.length > 0 ? (
-                <div className="border rounded-lg p-4 bg-green-50 border-green-200 space-y-2">
-                  <div className="flex items-center gap-2 mb-2">
-                    <CheckCircle className="h-5 w-5 text-green-600" />
-                    <h4 className="font-semibold text-gray-900">{mt("activeListingsCount", { count: listings.length })}</h4>
+                <div className="rounded-xl border border-border p-4 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4 text-muted-foreground" />
+                      <h4 className="text-sm font-medium text-foreground">{mt("activeListingsCount", { count: listings.length })}</h4>
+                    </div>
+                    {/* Editing existing listings lives in the dashboard — say so, or a
+                        completed step reads as a dead end. */}
+                    <button
+                      type="button"
+                      onClick={() => setLocation("/manager/dashboard?view=kitchens&section=storage")}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                    >
+                      {mt("manageInDashboard")}
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                   {listings.map(l => (
-                    <div key={l.id} className="bg-white rounded p-3 border border-green-200">
+                    <div key={l.id} className="rounded-md border border-border bg-muted/30 p-3">
                       <p className="font-medium">{l.name}</p>
-                      <p className="text-xs text-gray-600">{l.storageType} • ${(Number(l.basePrice || 0) / 100).toFixed(2)}{mt("perDay")}</p>
+                      <p className="text-xs text-muted-foreground">{l.storageType} • ${(Number(l.basePrice || 0) / 100).toFixed(2)}{mt("perDay")}</p>
                     </div>
                   ))}
                 </div>
@@ -297,13 +315,13 @@ export default function StorageListingsStep() {
               <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
                 {/* Storage Selection */}
                 <div className="lg:col-span-3">
-                  <div className="border rounded-lg bg-gray-50">
+                  <div className="rounded-xl border border-border bg-muted/30">
                     <ScrollArea className="h-[350px]">
                       <div className="p-2 space-y-1">
                         {filteredCategories.map((category) => (
                           <Collapsible key={category.id} open={expandedCategories.includes(category.id)} onOpenChange={() => toggleCategory(category.id)}>
                             <CollapsibleTrigger asChild>
-                              <Button variant="ghost" size="sm" className="w-full justify-between p-2 h-auto font-medium hover:bg-white">
+                              <Button variant="ghost" size="sm" className="w-full justify-between p-2 h-auto font-medium hover:bg-muted/60">
                                 <span className="flex items-center gap-2 text-sm">
                                   <StorageCategoryIcon iconName={category.iconName} className="h-4 w-4 text-muted-foreground" />
                                   {category.name}
@@ -327,13 +345,13 @@ export default function StorageListingsStep() {
                                       className={cn(
                                         "flex items-start gap-2 p-2 rounded-md border text-left transition-all text-xs w-full",
                                         isSelected && "border-primary bg-primary/5 ring-1 ring-primary",
-                                        isAlreadyListed && "opacity-50 cursor-not-allowed bg-gray-100",
-                                        !isSelected && !isAlreadyListed && "bg-white hover:border-primary/50"
+                                        isAlreadyListed && "opacity-50 cursor-not-allowed bg-muted",
+                                        !isSelected && !isAlreadyListed && "bg-card hover:border-primary/50"
                                       )}
                                     >
                                       <div className={cn(
                                         "flex items-center justify-center w-4 h-4 rounded border flex-shrink-0 mt-0.5",
-                                        isSelected ? "bg-primary border-primary" : "border-gray-300"
+                                        isSelected ? "bg-primary border-primary" : "border-input"
                                       )}>
                                         {isSelected && <Check className="h-2.5 w-2.5 text-white" />}
                                       </div>
@@ -343,7 +361,7 @@ export default function StorageListingsStep() {
                                           {isAlreadyListed && <Badge variant="secondary" className="text-[10px]">{mt("listed")}</Badge>}
                                         </div>
                                         <p className="text-[10px] text-muted-foreground mt-0.5">{template.description}</p>
-                                        <p className="text-[10px] text-blue-600 mt-0.5">~${template.suggestedDailyRate}/day</p>
+                                        <p className="text-[10px] text-muted-foreground mt-0.5">~${template.suggestedDailyRate}/day</p>
                                       </div>
                                     </button>
                                   );
@@ -358,7 +376,7 @@ export default function StorageListingsStep() {
                           <Card className="border-dashed border-primary/50 bg-primary/5 m-2">
                             <CardHeader className="pb-2 pt-3 px-3">
                               <CardTitle className="text-sm flex items-center gap-2">
-                                <SearchX className="h-4 w-4" />{mt("noMatchingStorageFound")}</CardTitle>
+                                {mt("noMatchingStorageFound")}</CardTitle>
                               <CardDescription className="text-xs">{mt("addCustomStorage")}</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-2 px-3 pb-3">
@@ -409,8 +427,8 @@ export default function StorageListingsStep() {
                               
                               {/* Overstay Penalty Configuration */}
                               <div className="border-t pt-2 mt-2">
-                                <h4 className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1">
-                                  <AlertTriangle className="h-3 w-3 text-orange-500" />{mt("navOverstayPenalties")}</h4>
+                                <h4 className="text-xs font-semibold text-foreground mb-2">
+                                  {mt("navOverstayPenalties")}</h4>
                                 <div className="grid grid-cols-3 sm:grid-cols-3 gap-2">
                                   <div className="space-y-1">
                                     <Label className="text-[10px]">{mt("graceD")}</Label>
@@ -444,10 +462,10 @@ export default function StorageListingsStep() {
 
                 {/* Configuration Panel */}
                 <div className="lg:col-span-2">
-                  <div className="border rounded-lg p-3 bg-white sticky top-4">
+                  <div className="rounded-xl border border-border bg-card p-3 sticky top-4">
                     <div className="flex items-center justify-between mb-3">
                       <h4 className="font-medium text-sm flex items-center gap-2">
-                        <DollarSign className="h-4 w-4" />{mt("configure")}</h4>
+                        {mt("configure")}</h4>
                       {selectedStorageCount > 0 && (
                         <Badge variant="default" className="text-xs">{selectedStorageCount}</Badge>
                       )}
@@ -462,7 +480,7 @@ export default function StorageListingsStep() {
                       <ScrollArea className="h-[350px]">
                         <div className="space-y-3 pr-2">
                           {Object.entries(selectedStorage).map(([templateId, storage]) => (
-                            <div key={templateId} className="p-3 border rounded-lg space-y-3 bg-gray-50">
+                            <div key={templateId} className="p-3 rounded-lg border border-border space-y-3 bg-muted/40">
                               <div className="flex items-start justify-between">
                                 <div className="flex-1 min-w-0">
                                   <Input 
@@ -555,8 +573,8 @@ export default function StorageListingsStep() {
                                 </div>
                                 {/* Overstay Penalty Configuration */}
                                 <div className="border-t pt-2 mt-2">
-                                  <h4 className="text-[10px] font-semibold text-gray-700 mb-1.5 flex items-center gap-1">
-                                    <AlertTriangle className="h-3 w-3 text-orange-500" />{mt("penalties")}</h4>
+                                  <h4 className="text-[10px] font-semibold text-foreground mb-1.5">
+                                    {mt("penalties")}</h4>
                                   <div className="grid grid-cols-3 gap-1.5">
                                     <div className="space-y-0.5">
                                       <Label className="text-[10px] text-muted-foreground">{mt("grace")}</Label>
@@ -600,7 +618,9 @@ export default function StorageListingsStep() {
       <OnboardingNavigationFooter
         onNext={handleNext}
         onBack={handleBack}
+        onSaveAndExit={() => void saveAndExit()}
         isNextDisabled={kitchens.length === 0}
+        isSavingAndExiting={isSubmitting}
       />
     </div>
   );

@@ -13,6 +13,8 @@ import { z } from "zod";
 import { phoneNumberSchema, normalizePhoneNumber, isValidNorthAmericanPhone } from "@shared/phone-validation";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { tt } from "@/i18n/common-ns";
+import { DateField } from "@/components/ui/date-field";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -1704,11 +1706,13 @@ export default function KitchenApplicationForm({
                                   }
                                 } else if (field.type === 'date') {
                                   inputElement = (
-                                    <Input
-                                      {...formField}
-                                      type="date"
-                                      className="h-11"
-                                      value={formField.value as string || ''}
+                                    <DateField
+                                      value={(formField.value as string) || ''}
+                                      onChange={formField.onChange}
+                                      placeholder={tt("selectDate")}
+                                      // Applicant-supplied dates may be in the past.
+                                      minToday={false}
+                                      className="h-11 w-full"
                                     />
                                   );
                                 } else if (field.type === 'file' || field.type === 'cloudflare_upload') {
@@ -2356,11 +2360,13 @@ export default function KitchenApplicationForm({
                                       }
                                     } else if (field.type === 'date') {
                                       inputElement = (
-                                        <Input
-                                          {...formField}
-                                          type="date"
-                                          className="h-11"
-                                          value={formField.value as string || ''}
+                                        <DateField
+                                          value={(formField.value as string) || ''}
+                                          onChange={formField.onChange}
+                                          placeholder={tt("selectDate")}
+                                          // Applicant-supplied dates may be in the past.
+                                          minToday={false}
+                                          className="h-11 w-full"
                                         />
                                       );
                                     } else if (field.type === 'file' || field.type === 'cloudflare_upload') {

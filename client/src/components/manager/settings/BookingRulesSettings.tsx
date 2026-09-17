@@ -48,6 +48,23 @@ interface BookingRulesSettingsProps {
   onDirtyChange?: (dirty: boolean) => void;
   /** Lets the arrival-timing card link across to the check-in/check-out page. */
   onNavigate?: (view: 'settings-checkin-checkout') => void;
+  /**
+   * Drop the arrival-timing card entirely.
+   *
+   * Onboarding embeds this on the Availability step to make managers aware of
+   * the policies they are setting; the arrival window belongs to the
+   * check-in/check-out page, and offering it mid-setup invites the question of
+   * which of the two is authoritative.
+   */
+  hideArrivalTimings?: boolean;
+  /**
+   * Drop the Terms & Conditions card.
+   *
+   * Onboarding collects the terms on the Business step, so showing the upload
+   * again on Availability asks the manager to do the same job twice and leaves
+   * them unsure which upload counts.
+   */
+  hideTerms?: boolean;
 }
 
 /** Shape of the arrival-timing values, which are owned by the check-in/check-out endpoint. */
@@ -71,7 +88,7 @@ export interface BookingPoliciesHandle {
 }
 
 const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSettingsProps>(
-  function BookingRulesSettings({ location, onSave, onDirtyChange, onNavigate }, ref) {
+  function BookingRulesSettings({ location, onSave, onDirtyChange, onNavigate, hideArrivalTimings = false, hideTerms = false }, ref) {
     const { toast } = useToast();
     const queryClient = useQueryClient();
 
@@ -303,6 +320,8 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
           </CardContent>
         </Card>
 
+        {!hideArrivalTimings && (
+          <>
         {/* Arrival timing. These two values also appear on the check-in/check-out
             page, which is intentional — both pages read and write the same
             query-cached field, so a manager never has to leave the page they are
@@ -402,6 +421,11 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
           </CardContent>
         </Card>
 
+          </>
+        )}
+
+        {!hideTerms && (
+          <>
         {/* Terms & Conditions — saves on upload, independent of the policy save action */}
         <Card>
           <CardHeader className="p-4 pb-3">
@@ -476,6 +500,8 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
             )}
           </CardContent>
         </Card>
+          </>
+        )}
       </div>
     );
   },

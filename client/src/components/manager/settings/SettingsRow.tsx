@@ -35,6 +35,11 @@ interface SettingsRowProps {
   /** Wires the label to its control for click-to-focus and screen readers. */
   id?: string;
   label: string;
+  /**
+   * Marks the row with the `*` the page's FormLegend explains. Communication
+   * only — the caller still owns enforcing it.
+   */
+  required?: boolean;
   /** One short line of context. Omit when the label already says it. */
   hint?: string;
   /** Longer explanation, revealed from the ⓘ next to the label. */
@@ -71,6 +76,7 @@ interface SettingsRowProps {
 export function SettingsRow({
   id,
   label,
+  required = false,
   hint,
   help,
   layout = "inline",
@@ -81,7 +87,10 @@ export function SettingsRow({
   const locked = Boolean(disabledReason);
 
   const heading = (
-    <div className="min-w-0">
+    // `flex-1` matters: with `flex-wrap`, a long hint would otherwise give the
+    // heading a max-content basis, push the control onto a second line, and
+    // `justify-between` would then park that control on the *left*.
+    <div className="min-w-0 flex-1">
       <div className="flex items-center gap-1">
         <Label
           htmlFor={id}
@@ -89,6 +98,11 @@ export function SettingsRow({
         >
           {label}
         </Label>
+        {required ? (
+          <span aria-hidden className="text-sm text-destructive">
+            *
+          </span>
+        ) : null}
         {help ? <RowHelp label={label}>{help}</RowHelp> : null}
       </div>
       {locked ? (

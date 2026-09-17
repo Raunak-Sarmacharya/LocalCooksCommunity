@@ -386,7 +386,7 @@ export default function LocationEditModal({
                             <ImageWithReplace
                               imageUrl={field.value || undefined}
                               onImageChange={(newUrl) => field.onChange(newUrl || "")}
-                              alt="Location logo"
+                              alt="Personalized logo for your business"
                               className="w-full max-w-xs"
                               containerClassName="w-full max-w-xs"
                               aspectRatio="1/1"

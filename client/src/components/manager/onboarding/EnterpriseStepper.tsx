@@ -2,9 +2,8 @@ import React, { useMemo } from 'react';
 import { mt } from "@/i18n/manager";
 import { useManagerOnboarding } from "./ManagerOnboardingContext";
 import { cn } from "@/lib/utils";
-import { Check, Circle, MapPin, Calendar, ClipboardList, CreditCard, Clock, Package, CookingPot, PartyPopper, Handshake, ClipboardCheck, Lock } from "@/components/ui/manager-icons";
+import { Check, Circle, MapPin, Calendar, ClipboardList, CreditCard, Clock, Package, CookingPot, PartyPopper, Handshake, Lock } from "@/components/ui/manager-icons";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import Logo from "@/components/ui/logo";
@@ -22,6 +21,13 @@ const STEP_ICONS: Record<string, React.ElementType> = {
     'completion-summary': PartyPopper,
 };
 
+/**
+ * Onboarding sidebar.
+ *
+ * One row per step: a single leading glyph, the label, and a trailing state word.
+ * No tinted tiles, no gradient fills, no pulse — the row background is the only
+ * thing that marks the current step, which keeps the list readable at a glance.
+ */
 const EnterpriseStepper = () => {
     const {
         visibleSteps,
@@ -46,21 +52,21 @@ const EnterpriseStepper = () => {
 
     return (
         <TooltipProvider delayDuration={300}>
-            <div className="h-full flex flex-col bg-gradient-to-b from-slate-50 to-white dark:from-slate-950 dark:to-slate-900">
-                {/* Premium Header with Logo */}
-                <div className="p-6 border-b border-slate-200/80 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm">
-                    <div className="flex items-center gap-3 mb-4">
+            <div className="flex h-full flex-col bg-background">
+                {/* Brand + progress */}
+                <div className="border-b border-border p-6">
+                    <div className="flex items-center gap-3">
                         <Logo variant="brand" className="h-10 w-auto" />
-                        <div className="flex flex-col justify-center">
+                        <div className="flex min-w-0 flex-col justify-center">
                             <span className="font-logo text-lg leading-none text-[#F51042] tracking-tight font-normal">{mt("localCooks")}</span>
-                            <span className="text-[10px] font-sans font-medium text-gray-500/80 uppercase tracking-wider mt-0.5 leading-none">{mt("shellForKitchens")}</span>
+                            <span className="text-[10px] font-sans font-medium text-muted-foreground uppercase tracking-wider mt-0.5 leading-none">{mt("shellForKitchens")}</span>
                         </div>
                     </div>
 
                     {/* Progress Indicator */}
-                    <div className="space-y-2">
+                    <div className="mt-5 space-y-2">
                         <div className="flex items-center justify-between text-xs">
-                            <span className="text-slate-600 dark:text-slate-400 font-medium">{mt("progress")}</span>
+                            <span className="text-muted-foreground font-medium">{mt("progress")}</span>
                             <span className="text-primary font-semibold">
                                 {mt("requiredStepsCount", {
                                     completed: progressStats.completed,
@@ -70,24 +76,31 @@ const EnterpriseStepper = () => {
                         </div>
                         <Progress 
                             value={progressStats.percentage} 
-                            className="h-2 bg-slate-100 dark:bg-slate-800"
+                            className="h-2 bg-muted"
                         />
                     </div>
                 </div>
 
                 {/* Steps Navigation */}
                 <ScrollArea className="flex-1">
-                    <div className="p-4 space-y-1">
+                    <nav className="space-y-1 p-3">
                         {visibleSteps.map((step: any, index: number) => {
                             const isActive = index === currentStepIndex;
                             const isCompleted = completedSteps[step.id];
                             const isOptional = step.metadata?.isOptional;
                             const label = step.metadata?.label || step.payload?.title;
                             const StepIcon = STEP_ICONS[step.id] || Circle;
-                            
+
                             // Determine if step is accessible (completed or current or previous completed)
                             const isPreviousComplete = index > 0 ? completedSteps[visibleSteps[index - 1]?.id] : true;
                             const isAccessible = isCompleted || isActive || (index === 0) || isPreviousComplete;
+
+                            // The trailing tick carries completion, so the glyph
+                            // keeps each step's own icon — a check in both slots
+                            // said the same thing twice and cost the row its
+                            // identity. Lock still wins: an unreachable step must
+                            // not look reachable.
+                            const Glyph = !isAccessible ? Lock : StepIcon;
 
                             return (
                                 <Tooltip key={step.id}>
@@ -99,74 +112,52 @@ const EnterpriseStepper = () => {
                                                 }
                                             }}
                                             disabled={!isAccessible}
+                                            aria-current={isActive ? "true" : undefined}
                                             className={cn(
-                                                "w-full relative flex items-center gap-3 p-3 rounded-xl transition-all duration-200 group text-left",
-                                                isActive && "bg-primary/5 dark:bg-primary/10 border border-primary/20 shadow-sm",
-                                                !isActive && isCompleted && "hover:bg-slate-50 dark:hover:bg-slate-800/50",
-                                                !isActive && !isCompleted && isAccessible && "hover:bg-slate-50 dark:hover:bg-slate-800/50",
+                                                "w-full relative flex items-center gap-3 p-3 rounded-xl transition-colors text-left",
+                                                // Every reachable row must *read* as reachable: without an
+                                                // explicit pointer, a completed row looks like a disabled one.
+                                                isAccessible && "cursor-pointer",
+                                                isActive
+                                                    ? "bg-muted"
+                                                    : isAccessible && "hover:bg-muted/50",
                                                 !isAccessible && "opacity-50 cursor-not-allowed"
                                             )}
                                         >
-                                            {/* Step Indicator */}
-                                            <div className={cn(
-                                                "relative w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-all duration-300",
-                                                isCompleted && "bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-lg shadow-emerald-500/25",
-                                                isActive && !isCompleted && "bg-gradient-to-br from-primary to-primary/90 shadow-lg shadow-primary/25",
-                                                !isActive && !isCompleted && "bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                                            <Glyph
+                                                className={cn(
+                                                    "w-4 h-4 shrink-0",
+                                                    isActive ? "text-foreground" : "text-muted-foreground"
+                                                )}
+                                            />
+
+                                            <span className={cn(
+                                                "flex-1 min-w-0 truncate text-sm font-medium transition-colors",
+                                                isActive ? "text-foreground" : "text-muted-foreground"
                                             )}>
-                                                {isCompleted ? (
-                                                    <Check className="w-5 h-5 text-white" strokeWidth={2.5} />
-                                                ) : isActive ? (
-                                                    <StepIcon className="w-5 h-5 text-white" />
-                                                ) : !isAccessible ? (
-                                                    <Lock className="w-4 h-4 text-slate-400 dark:text-slate-500" />
-                                                ) : (
-                                                    <StepIcon className="w-5 h-5 text-slate-400 dark:text-slate-500" />
-                                                )}
-                                                
-                                                {/* Active Pulse */}
-                                                {isActive && !isCompleted && (
-                                                    <span className="absolute inset-0 rounded-xl bg-primary/20 animate-ping" style={{ animationDuration: '2s' }} />
-                                                )}
-                                            </div>
+                                                {label}
+                                            </span>
 
-                                            {/* Content */}
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex items-center gap-2">
-                                                    <span className={cn(
-                                                        "text-sm font-medium truncate transition-colors",
-                                                        isActive && "text-primary dark:text-primary",
-                                                        isCompleted && !isActive && "text-slate-700 dark:text-slate-300",
-                                                        !isActive && !isCompleted && "text-slate-600 dark:text-slate-400"
-                                                    )}>
-                                                        {label}
-                                                    </span>
-                                                    {isOptional && (
-                                                        <Badge 
-                                                            variant="outline" 
-                                                            className={cn(
-                                                                "text-[10px] px-1.5 py-0 h-4 font-normal border-slate-200 dark:border-slate-700",
-                                                                isCompleted ? "bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400" : "text-slate-500"
-                                                            )}
-                                                        >
-                                                            {isCompleted ? mt("doneBadge") : mt("optional")}
-                                                        </Badge>
-                                                    )}
-                                                </div>
-                                                {/* Subtle description for active step */}
-                                                {isActive && step.payload?.description && (
-                                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-                                                        {step.payload.description}
-                                                    </p>
-                                                )}
-                                            </div>
-
-                                            {/* Completion checkmark for non-optional completed */}
-                                            {isCompleted && !isOptional && (
-                                                <div className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center">
-                                                    <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" strokeWidth={3} />
-                                                </div>
-                                            )}
+                                            {/*
+                                              * A tick instead of the word "Done": the glyph is
+                                              * read at a glance and keeps the trailing slot
+                                              * quiet, so the labels stay the loudest thing in
+                                              * the row.
+                                              *
+                                              * "Optional" stays a word. It is a label rather
+                                              * than a state — a manager needs to know a step
+                                              * *may* be skipped, and no icon carries that.
+                                              */}
+                                            {isCompleted ? (
+                                                <Check
+                                                    className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                                                    aria-hidden
+                                                />
+                                            ) : isOptional ? (
+                                                <span className="shrink-0 text-[11px] text-muted-foreground">
+                                                    {mt("optional")}
+                                                </span>
+                                            ) : null}
                                         </button>
                                     </TooltipTrigger>
                                     {!isAccessible && (
@@ -175,20 +166,14 @@ const EnterpriseStepper = () => {
                                 </Tooltip>
                             );
                         })}
-                    </div>
+                    </nav>
                 </ScrollArea>
 
-                {/* Footer Info */}
-                <div className="p-4 border-t border-slate-200/80 dark:border-slate-800 bg-gradient-to-r from-slate-50 to-white dark:from-slate-900 dark:to-slate-900">
-                    <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200/50 dark:border-amber-800/30">
-                        <div className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center shrink-0">
-                            <ClipboardCheck className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                        </div>
-                        <div>
-                            <p className="text-xs font-medium text-amber-800 dark:text-amber-300">{mt("almostThere")}</p>
-                            <p className="text-[11px] text-amber-700/80 dark:text-amber-400/80 mt-0.5">{mt("completeRequiredStepsToStartAcceptingBookings")}</p>
-                        </div>
-                    </div>
+                {/* Footer note — one line, no callout box */}
+                <div className="border-t border-border p-4">
+                    <p className="text-[11px] leading-relaxed text-muted-foreground">
+                        {mt("completeRequiredStepsToStartAcceptingBookings")}
+                    </p>
                 </div>
             </div>
         </TooltipProvider>

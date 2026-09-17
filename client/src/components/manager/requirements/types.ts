@@ -56,26 +56,6 @@ export interface LocationRequirements {
   materials_description?: string;
 }
 
-export type WizardStep = 'step2';
-
-export interface StepConfig {
-  id: WizardStep;
-  title: string;
-  description: string;
-  icon: string;
-  explanation: string;
-}
-
-export const WIZARD_STEPS: StepConfig[] = [
-  {
-    id: 'step2',
-    title: 'Kitchen Specific Requirements',
-    description: 'Kitchen-specific requirements for chefs to operate in your facility',
-    icon: 'settings-2',
-    explanation: `**What is this?**\n\nConfigure the documents and information required specifically for this location.\n\n**Best Practices:**\n- Request food establishment license if legally required in your jurisdiction\n- Insurance documentation protects both parties\n- Use custom fields for location-specific requirements`
-  }
-];
-
 export interface FieldGroupConfig {
   title: string;
   description: string;
@@ -170,6 +150,38 @@ export const STEP2_BUILT_IN_FIELDS: FieldGroupConfig[] = [
       { key: 'tier2_kitchen_experience_required', label: 'Kitchen Experience Description', description: 'Description of their commercial kitchen experience' },
     ]
   },
+];
+
+/**
+ * Common requests a kitchen manager can ask a chef for, offered by the "choose
+ * from common requests" picker, mirroring the common-task list on the
+ * check-in/check-out page: the blank label field is the biggest source of
+ * friction, so the usual asks are one tap away.
+ *
+ * The list is written from the chef's side of the table — the things a kitchen
+ * manager actually needs from someone booking their kitchen, phrased the way a
+ * chef would read them. Compliance paperwork beyond the built-in licence and
+ * insurance rows is deliberately not here: those already have their own rows.
+ *
+ * `key` is an i18n key rather than literal copy, so the picker reads in the
+ * manager's language. Once picked, the resolved text is written into the
+ * field's `label` — the same free-text field a manager would have typed into.
+ */
+export const COMMON_REQUIREMENT_FIELDS: {
+  key: string;
+  type: CustomField['type'];
+  required?: boolean;
+}[] = [
+  { key: 'commonFieldBusinessRegistration', type: 'file' },
+  { key: 'commonFieldMenuDescription', type: 'textarea' },
+  { key: 'commonFieldStaffCount', type: 'number' },
+  { key: 'commonFieldWeeklyHours', type: 'text' },
+  { key: 'commonFieldPreferredStartDate', type: 'date' },
+  { key: 'commonFieldStorageNeeds', type: 'text' },
+  { key: 'commonFieldEquipmentBringing', type: 'textarea' },
+  { key: 'commonFieldAllergensHandled', type: 'text' },
+  { key: 'commonFieldDeliveryVehicle', type: 'text' },
+  { key: 'commonFieldOnsiteContact', type: 'text' },
 ];
 
 export const CUSTOM_FIELD_TYPES = [

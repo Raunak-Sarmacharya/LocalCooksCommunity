@@ -1,137 +1,130 @@
-import React from "react";
 import { mt } from "@/i18n/manager";
-import { ArrowRight, Building, Calendar, Clock, CreditCard, Package, Wrench } from "@/components/ui/manager-icons";
+import {
+  ArrowRight,
+  Briefcase,
+  CalendarDays,
+  Clock,
+  CookingPot,
+} from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
-import { cn } from "@/lib/utils";
 
-const SETUP_STEPS = [
-  {
-    icon: Building,
-    titleKey: "welcomeStepBusinessTitle",
-    descKey: "welcomeStepBusinessDesc",
-    required: true,
-  },
-  {
-    icon: Calendar,
-    titleKey: "welcomeStepKitchenTitle",
-    descKey: "welcomeStepKitchenDesc",
-    required: true,
-  },
-  {
-    icon: Clock,
-    titleKey: "welcomeStepAvailabilityTitle",
-    descKey: "welcomeStepAvailabilityDesc",
-    required: true,
-  },
-  {
-    icon: CreditCard,
-    titleKey: "welcomeStepPaymentsTitle",
-    descKey: "welcomeStepPaymentsDesc",
-    required: true,
-  },
-  {
-    icon: Package,
-    titleKey: "welcomeStepStorageTitle",
-    descKey: "welcomeStepStorageDesc",
-    required: false,
-  },
-  {
-    icon: Wrench,
-    titleKey: "welcomeStepEquipmentTitle",
-    descKey: "welcomeStepEquipmentDesc",
-    required: false,
-  },
+/**
+ * Welcome step.
+ *
+ * One short page that introduces the work ahead. The sidebar already lists
+ * every step in order, so we don't repeat that list here — instead we show
+ * the *first three* required steps as preview cards (icon + title + one-line
+ * description + step number) so the user knows the shape of what they're
+ * walking into. Two exits: "Let's start" advances, "Maybe later" saves the
+ * seen-state and sends the user to the dashboard so they can resume later.
+ */
+const PREVIEW_STEPS = [
+  { Icon: Briefcase, titleKey: "welcomeStepBusinessTitle", descKey: "welcomeStepBusinessDesc" },
+  { Icon: CookingPot, titleKey: "welcomeStepKitchenTitle", descKey: "welcomeStepKitchenDesc" },
+  { Icon: CalendarDays, titleKey: "welcomeStepAvailabilityTitle", descKey: "welcomeStepAvailabilityDesc" },
 ] as const;
 
 export default function WelcomeStep() {
-  const { handleNext } = useManagerOnboarding();
+  const { handleNext, saveAndExit, isSubmitting } = useManagerOnboarding();
 
   return (
-    <div className="animate-in fade-in duration-500">
-      <div className="text-center mb-8">
-        <h2 className="text-lg font-medium text-slate-900 dark:text-slate-100 tracking-tight mb-1">{mt("letSSetUpYourKitchen")}</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">{mt("aFewQuickStepsToGetYourSpaceReadyForChefsToDiscoverAndBook")}</p>
-      </div>
-
-      <div className="flex items-center justify-center gap-2 mb-8">
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-xs">
-          <Clock className="w-3.5 h-3.5" />
-          <span>{mt("about5Minutes")}</span>
-        </div>
-      </div>
-
-      <div className="grid gap-2 mb-10">
-        {SETUP_STEPS.map((step, index) => (
-          <StepCard
-            key={step.titleKey}
-            icon={step.icon}
-            title={mt(step.titleKey)}
-            description={mt(step.descKey)}
-            required={step.required}
-            index={index}
-          />
-        ))}
-      </div>
-
-      <div className="flex flex-col items-center gap-4">
-        <Button
-          size="lg"
-          onClick={() => handleNext()}
-          className={cn(
-            "h-12 px-8 text-base font-medium",
-            "",
-            "shadow-sm hover:shadow-md transition-all duration-200"
-          )}
-        >{mt("getStarted")}<ArrowRight className="ml-2 w-4 h-4" />
-        </Button>
-        <p className="text-xs text-slate-400 dark:text-slate-500">{mt("youCanSaveAndContinueAnytime")}</p>
-      </div>
-    </div>
-  );
-}
-
-interface StepCardProps {
-  icon: React.ElementType;
-  title: string;
-  description: string;
-  required: boolean;
-  index: number;
-}
-
-function StepCard({ icon: Icon, title, description, required }: StepCardProps) {
-  return (
-    <div
-      className={cn(
-        "group flex items-center gap-3 p-3 rounded-lg transition-all duration-200",
-        "hover:bg-slate-50 dark:hover:bg-slate-800/50"
-      )}
-    >
-      <div className={cn(
-        "w-8 h-8 rounded-md flex items-center justify-center shrink-0",
-        required
-          ? "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
-          : "bg-slate-50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500"
-      )}>
-        <Icon className="w-4 h-4" />
-      </div>
-
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className={cn(
-            "text-sm font-medium",
-            required ? "text-slate-700 dark:text-slate-300" : "text-slate-500 dark:text-slate-400"
-          )}>
-            {title}
-          </span>
-          {!required && (
-            <span className="text-[10px] text-slate-400 dark:text-slate-500">{mt("optional")}</span>
-          )}
-        </div>
-        <p className="text-xs text-slate-400 dark:text-slate-500">
-          {description}
+    <div className="mx-auto flex max-w-xl animate-in fade-in flex-col gap-8 duration-500">
+      {/*
+       * Header — eyebrow + headline + description + time pill.
+       * The headline uses two lines so a short bold first line leads the eye
+       * to a softer second line (mirrors the reference layout).
+       */}
+      <header className="space-y-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+          {mt("welcomeEyebrow")}
         </p>
-      </div>
+
+        <h2 className="text-4xl font-semibold leading-[1.05] tracking-tight text-foreground sm:text-5xl">
+          {mt("welcomeHeadline")}
+          <span className="block text-4xl sm:text-4xl text-foreground/60">{mt("welcomeHeadlineAccent")}</span>
+        </h2>
+   
+
+        <p className="max-w-md text-base leading-relaxed text-muted-foreground">
+          {mt("aFewQuickStepsToGetYourSpaceReadyForChefsToDiscoverAndBook")}
+        </p>
+
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
+          <Clock className="h-3.5 w-3.5" aria-hidden />
+          {mt("welcomeTimeEstimate")}
+        </span>
+      </header>
+
+      {/*
+       * Step preview cards. The numbered badge on the right mirrors the
+       * reference image — it shows the user *which* step this card refers to,
+       * so the welcome page reads as a preview rather than a duplicate of the
+       * sidebar list.
+       */}
+      <ol className="space-y-3">
+        {PREVIEW_STEPS.map(({ Icon, titleKey, descKey }, index) => (
+          <li
+            key={titleKey}
+            className="flex items-start gap-4 rounded-2xl border border-border bg-card px-4 py-3.5 shadow-sm transition-colors hover:bg-muted/40"
+          >
+            <span
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"
+              aria-hidden
+            >
+              <Icon className="h-5 w-5" />
+            </span>
+
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-foreground">{mt(titleKey)}</p>
+              <p className="mt-0.5 text-sm text-muted-foreground">{mt(descKey)}</p>
+            </div>
+
+            <span
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border text-xs font-medium text-muted-foreground"
+              aria-hidden
+            >
+              {index + 1}
+            </span>
+          </li>
+        ))}
+      </ol>
+
+      {/*
+       * Footer — separated by a thin divider so the page reads as
+       * (intro + preview) above and (decide + act) below. The "Maybe later"
+       * button uses saveAndExit() so the user can leave the wizard with their
+       * progress persisted and come back to the same step later.
+       */}
+      <footer className="mt-2 flex flex-col gap-4 border-t border-border pt-6 sm:flex-row sm:items-center sm:justify-between">
+        <p className="max-w-xs text-xs leading-relaxed text-muted-foreground">
+          {mt("welcomeUpdateLater")}
+        </p>
+
+        <div className="flex items-center gap-3">
+          <Button
+            type="button"
+            variant="ghost"
+            size="lg"
+            onClick={() => void saveAndExit()}
+            disabled={isSubmitting}
+            className="text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            {mt("welcomeMaybeLater")}
+          </Button>
+
+          <Button
+            type="button"
+            size="lg"
+            onClick={() => void handleNext()}
+            disabled={isSubmitting}
+            className="gap-2"
+          >
+            {mt("welcomeLetsStart")}
+            <ArrowRight className="h-4 w-4" aria-hidden />
+          </Button>
+        </div>
+      </footer>
     </div>
   );
 }

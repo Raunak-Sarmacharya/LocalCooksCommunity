@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { Input } from "@/components/ui/input";
 import { CurrencyInput } from "@/components/ui/currency-input";
+import { DateField } from "@/components/ui/date-field";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -884,11 +885,13 @@ export function PendingStorageCheckouts() {
               {/* Damage Date */}
               <div className="space-y-1.5">
                 <Label htmlFor="damage-date">{mt("dateOfDamageIssue")}</Label>
-                <Input
+                {/* A damage date is in the past by definition — no lower bound. */}
+                <DateField
                   id="damage-date"
-                  type="date"
                   value={claimForm.damageDate}
-                  onChange={(e) => setClaimForm(prev => ({ ...prev, damageDate: e.target.value }))}
+                  onChange={(damageDate) => setClaimForm(prev => ({ ...prev, damageDate }))}
+                  placeholder={mt("dateOfDamageIssue")}
+                  minToday={false}
                 />
               </div>
 
