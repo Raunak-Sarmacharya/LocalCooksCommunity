@@ -356,6 +356,7 @@ export const locations = pgTable("locations", {
   // Kitchen license update workflow (new license submissions from managers)
   kitchenLicensePendingUrl: text("kitchen_license_pending_url"), // URL to new license awaiting admin approval
   kitchenLicensePendingSubmittedAt: timestamp("kitchen_license_pending_submitted_at"), // When new license was submitted
+  kitchenLicensePendingExpiry: date("kitchen_license_pending_expiry"), // Expiry on the pending document; kitchenLicenseExpiry keeps describing the live one
   kitchenLicenseCurrentUrl: text("kitchen_license_current_url"), // Currently active/approved license URL
   kitchenLicensePreviousUrl: text("kitchen_license_previous_url"), // Previous license for audit trail
   // Kitchen terms and policies (uploaded alongside license)

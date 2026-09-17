@@ -4,6 +4,7 @@ import { Router, Request, Response } from 'express';
 import { requireFirebaseAuthWithUser, requireManager } from '../firebase-auth-middleware';
 import { normalizeImageUrl } from './utils';
 import { updateLocationRequirementsSchema } from '@shared/schema';
+import { licenseAllowsBookings } from '@shared/kitchen-license';
 import { fromZodError } from 'zod-validation-error';
 
 
@@ -60,9 +61,12 @@ router.get('/public/locations', async (req: Request, res: Response) => {
             const maxRate = rates.length > 0 ? Math.max(...rates) : null;
 
             // Determine if location can accept bookings:
-            // - Kitchen license must be approved
+            // - The license on file must still be VALID — approved and not past its
+            //   expiry date. `pending_update` counts as valid, because a renewal
+            //   submitted before the current license lapses must not interrupt
+            //   bookings. Only a lapsed document stops the listing.
             // - Must have at least one active kitchen
-            const isApproved = location.kitchenLicenseStatus === 'approved';
+            const isApproved = licenseAllowsBookings(location);
             const hasActiveKitchens = locationKitchens.some(k => k.isActive);
             const canAcceptBookings = isApproved && hasActiveKitchens;
 
@@ -188,9 +192,9 @@ router.get('/public/kitchens', async (req: Request, res: Response) => {
             };
 
             // Determine if kitchen can accept bookings:
-            // - Location must have approved kitchen license
+            // - The location's license must still be valid (approved, not expired)
             // - Kitchen must be active
-            const isLocationApproved = location.kitchenLicenseStatus === 'approved';
+            const isLocationApproved = licenseAllowsBookings(location);
             const canAcceptBookings = isLocationApproved && kitchen.isActive;
 
             // Get custom onboarding link if exists
@@ -309,9 +313,9 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
         }));
 
         // Determine if location can accept applications/bookings:
-        // - Kitchen license must be approved
+        // - The license on file must still be valid (approved, not expired)
         // - Must have at least one active kitchen
-        const isLicenseApproved = location.kitchenLicenseStatus === 'approved';
+        const isLicenseApproved = licenseAllowsBookings(location);
         const hasActiveKitchens = sanitizedKitchens.length > 0;
         const canAcceptApplications = isLicenseApproved && hasActiveKitchens;
 

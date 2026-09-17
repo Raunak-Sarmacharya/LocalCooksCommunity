@@ -150,6 +150,10 @@
       "schedule": "0 6 * * *"
     },
     {
+      "path": "/api/detect-license-expiry",
+      "schedule": "0 7 * * *"
+    },
+    {
       "path": "/api/chef/cron/seller-reports?period=weekly",
       "schedule": "0 8 * * 1"
     },

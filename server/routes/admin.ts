@@ -997,6 +997,7 @@ router.put("/locations/:id/kitchen-license", requireFirebaseAuthWithUser, requir
                 kitchenLicenseStatus: locations.kitchenLicenseStatus,
                 kitchenLicensePendingUrl: locations.kitchenLicensePendingUrl,
                 kitchenLicenseCurrentUrl: locations.kitchenLicenseCurrentUrl,
+                kitchenLicensePendingExpiry: locations.kitchenLicensePendingExpiry,
             })
             .from(locations)
             .where(eq(locations.id, locationId))
@@ -1022,9 +1023,15 @@ router.put("/locations/:id/kitchen-license", requireFirebaseAuthWithUser, requir
                 // Promote pending license to current/active
                 updateData.kitchenLicenseUrl = currentLocation.kitchenLicensePendingUrl;
                 updateData.kitchenLicenseCurrentUrl = currentLocation.kitchenLicensePendingUrl;
+                // The promoted document's expiry becomes the governing expiry. Only
+                // overwrite when we actually have one — never blank a known date.
+                if (currentLocation.kitchenLicensePendingExpiry) {
+                    updateData.kitchenLicenseExpiry = currentLocation.kitchenLicensePendingExpiry;
+                }
                 // Clear pending fields
                 updateData.kitchenLicensePendingUrl = null;
                 updateData.kitchenLicensePendingSubmittedAt = null;
+                updateData.kitchenLicensePendingExpiry = null;
                 
                 logger.info(
                     `[Admin] Approved license update for location ${locationId}. ` +
@@ -1039,6 +1046,7 @@ router.put("/locations/:id/kitchen-license", requireFirebaseAuthWithUser, requir
                 // Clear pending fields, keep current license active
                 updateData.kitchenLicensePendingUrl = null;
                 updateData.kitchenLicensePendingSubmittedAt = null;
+                updateData.kitchenLicensePendingExpiry = null;
                 // Revert status to what it was before (approved if there was a current license)
                 updateData.kitchenLicenseStatus = currentLocation.kitchenLicenseUrl ? 'approved' : 'rejected';
                 

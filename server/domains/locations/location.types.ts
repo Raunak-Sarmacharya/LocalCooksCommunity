@@ -57,6 +57,7 @@ export interface UpdateLocationDTO {
   kitchenLicenseUploadedAt?: Date;
   kitchenLicensePendingUrl?: string | null;
   kitchenLicensePendingSubmittedAt?: Date | null;
+  kitchenLicensePendingExpiry?: string | null;
   kitchenTermsUrl?: string | null;
   kitchenTermsUploadedAt?: Date;
 }
@@ -101,6 +102,7 @@ export interface LocationDTO {
   kitchenLicenseApprovedAt: Date | null;
   kitchenLicenseFeedback: string | null;
   kitchenLicenseExpiry: string | null;
+  kitchenLicensePendingExpiry?: string | null;
   kitchenTermsUrl: string | null;
   kitchenTermsUploadedAt: Date | null;
   createdAt: Date;

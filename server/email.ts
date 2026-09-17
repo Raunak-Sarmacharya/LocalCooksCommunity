@@ -6200,6 +6200,128 @@ export const generateKitchenLicenseSubmittedAdminEmail = (data: {
   };
 };
 
+/**
+ * Reminder that a manager's kitchen license is approaching (or has passed) its
+ * expiry date.
+ *
+ * One generator for all three stages rather than three near-identical ones — the
+ * only things that differ are the subject, the badge and the two sentences of
+ * framing, so they are table-driven below.
+ *
+ * Cadence mirrors Airbnb's published rule ("we ask that hosts reverify 30 days
+ * prior to expiration … if your document(s) expire, we'll pause the listing"):
+ * a 30-day heads-up, a 7-day escalation, and a notice on the day it lapses.
+ * Sending is made idempotent by the caller via a tracking id of
+ * (stage, locationId, expiry), so each window sends exactly once.
+ */
+export const generateKitchenLicenseExpiringEmail = (data: {
+  managerEmail: string;
+  managerName: string;
+  locationName: string;
+  locationId: number;
+  stage: "30_day" | "7_day" | "expired";
+  /** YYYY-MM-DD as stored in the `date` column. */
+  expiryDate: string;
+  daysLeft: number;
+}): EmailContent => {
+  const firstName = data.managerName.split(" ")[0];
+  const dashboardUrl = `${getDashboardUrl("kitchen")}?view=settings-license`;
+
+  // Formatted from parts, not from `new Date("YYYY-MM-DD")` — that parses as UTC
+  // midnight and renders a day early west of Greenwich.
+  const [y, m, d] = data.expiryDate.slice(0, 10).split("-").map(Number);
+  const formattedExpiry = new Date(y, m - 1, d).toLocaleDateString("en-CA", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  const days = data.daysLeft;
+
+  const copy = {
+    "30_day": {
+      subject: `Your kitchen license expires on ${formattedExpiry} — ${data.locationName}`,
+      headline: "Your kitchen license needs renewing",
+      badge: { label: "Action needed", bg: "#fffbeb", fg: "#b45309", border: "#fde68a" },
+      lead: `Your commercial kitchen license for <strong>${data.locationName}</strong> expires on <strong>${formattedExpiry}</strong> — ${days} days from now.`,
+      body: `Renewing ahead of the date keeps your listing live the whole time. Upload the new document now and your current license keeps working until we finish reviewing the replacement, so you won't lose any bookings while you wait.`,
+      plain: `Your commercial kitchen license for ${data.locationName} expires on ${formattedExpiry} (${days} days from now).\n\nRenewing ahead of the date keeps your listing live the whole time. Upload the new document now and your current license keeps working until we finish reviewing the replacement.`,
+    },
+    "7_day": {
+      subject: `${days} days left to renew your kitchen license — ${data.locationName}`,
+      headline: "One week left on your kitchen license",
+      badge: { label: "Expires soon", bg: "#fffbeb", fg: "#b45309", border: "#fde68a" },
+      lead: `Your commercial kitchen license for <strong>${data.locationName}</strong> expires on <strong>${formattedExpiry}</strong> — ${days} days from now.`,
+      body: `Once it expires we have to pause <strong>${data.locationName}</strong> and chefs won't be able to book it until a valid license is approved. Upload the renewal now and your current license stays active through the review, so nothing stops.`,
+      plain: `Your commercial kitchen license for ${data.locationName} expires on ${formattedExpiry} (${days} days from now).\n\nOnce it expires we have to pause ${data.locationName} and chefs won't be able to book it until a valid license is approved. Upload the renewal now and your current license stays active through the review.`,
+    },
+    expired: {
+      subject: `Your kitchen license has expired — ${data.locationName} is paused`,
+      headline: "Your kitchen license has expired",
+      badge: { label: "Listing paused", bg: "#fef2f2", fg: "#b91c1c", border: "#fecaca" },
+      lead: `Your commercial kitchen license for <strong>${data.locationName}</strong> expired on <strong>${formattedExpiry}</strong>.`,
+      body: `We've paused <strong>${data.locationName}</strong> so no new bookings can come in, and it is hidden from chefs searching for a kitchen. Upload the renewed license and we'll review it — most reviews finish within 1–2 business days, and your listing goes live again as soon as it's approved.`,
+      plain: `Your commercial kitchen license for ${data.locationName} expired on ${formattedExpiry}.\n\nWe've paused ${data.locationName} so no new bookings can come in, and it is hidden from chefs searching for a kitchen. Upload the renewed license and we'll review it — most reviews finish within 1-2 business days, and your listing goes live again as soon as it's approved.`,
+    },
+  }[data.stage];
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${copy.subject}</title>
+  ${getUniformEmailStyles()}
+</head>
+<body>
+  <div class="email-container">
+    <div class="header">
+      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
+    </div>
+    <div class="content">
+      <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${firstName},</h2>
+      <p class="message" style="margin-bottom: 20px;">${copy.lead}</p>
+      <p class="message" style="margin-bottom: 20px;">${copy.body}</p>
+      <div style="margin: 16px 0 4px 0; text-align: center;">
+        <span style="display: inline-block; padding: 4px 12px; background: ${copy.badge.bg}; color: ${copy.badge.fg}; border: 1px solid ${copy.badge.border}; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">${copy.badge.label}</span>
+      </div>
+      <div style="margin: 16px 0 0 0; text-align: center;">
+        <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Upload Renewed License</a>
+      </div>
+      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0; text-align: center;">A valid commercial kitchen license is required for your kitchen to accept bookings. If you have questions about what counts, just reply to this email or contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
+      <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
+        <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin: 4px 0 0 0;">The Local Cooks Team</p>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="divider"></div>
+      <p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  const text = `Hi ${firstName},
+
+${copy.plain}
+
+Upload renewed license: ${dashboardUrl}
+
+Best regards,
+The Local Cooks Team
+
+© ${new Date().getFullYear()} Local Cooks`;
+
+  return {
+    to: data.managerEmail,
+    subject: copy.subject,
+    text,
+    html,
+  };
+};
+
 // ===================================
 // DAMAGE CLAIM NOTIFICATION EMAILS
 // ===================================

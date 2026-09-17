@@ -6616,6 +6616,10 @@ router.get(
           (loc as any).kitchenLicensePendingSubmittedAt ||
           (loc as any).kitchen_license_pending_submitted_at ||
           null,
+        kitchenLicensePendingExpiry:
+          (loc as any).kitchenLicensePendingExpiry ||
+          (loc as any).kitchen_license_pending_expiry ||
+          null,
         // Kitchen terms and policies fields
         kitchenTermsUrl:
           (loc as any).kitchenTermsUrl ||
@@ -7006,7 +7010,17 @@ router.put(
         updates.kitchenLicenseStatus = kitchenLicenseStatus || null;
       }
       if (kitchenLicenseExpiry !== undefined) {
-        updates.kitchenLicenseExpiry = kitchenLicenseExpiry || null;
+        // A queued replacement must NOT overwrite the expiry that describes the
+        // document still governing the listing. Writing it to kitchenLicenseExpiry
+        // would make the date stop matching the live document — a license expiring
+        // in 5 days plus a 2028 replacement would silently cancel the "expiring
+        // soon" warning even though nothing had been approved. The new date rides
+        // with the pending document and is promoted on admin approval.
+        if (updates.kitchenLicensePendingUrl != null) {
+          updates.kitchenLicensePendingExpiry = kitchenLicenseExpiry || null;
+        } else {
+          updates.kitchenLicenseExpiry = kitchenLicenseExpiry || null;
+        }
       }
 
       // Handle kitchen terms and policies

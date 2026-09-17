@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { applications, emailLogs, users } from "@shared/schema";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { logger } from "../logger";
 
 export type EmailLogStatus = "sent" | "failed" | "skipped_duplicate";
@@ -184,6 +184,34 @@ export async function logOutgoingEmail(input: OutgoingEmailLogInput): Promise<vo
     } catch (err) {
       logger.error(`[EmailLog] Failed to persist log for ${email}:`, err);
     }
+  }
+}
+
+/**
+ * Whether an email with this tracking id has already been sent successfully.
+ *
+ * `sendEmail`'s own duplicate guard is an in-process `Map`, which on Vercel means one
+ * memory space per invocation. A daily cron job starts cold every time, so that guard
+ * can never suppress a repeat across runs — the durable equivalent has to read the
+ * rows `sendEmail` already writes into email_logs.
+ *
+ * Only `sent` counts: a `failed` row must stay retryable, and a `skipped_duplicate`
+ * row is itself the record of a suppressed send.
+ */
+export async function hasSentTrackingId(trackingId: string): Promise<boolean> {
+  if (!trackingId) return false;
+  try {
+    const [row] = await db
+      .select({ id: emailLogs.id })
+      .from(emailLogs)
+      .where(and(eq(emailLogs.trackingId, trackingId), eq(emailLogs.status, "sent")))
+      .limit(1);
+    return !!row;
+  } catch (err) {
+    logger.error(`[EmailLog] Failed to check tracking id ${trackingId}:`, err);
+    // Fail closed. If the check itself is broken, skipping one reminder is far
+    // cheaper than mailing the same manager every single day.
+    return true;
   }
 }
 
