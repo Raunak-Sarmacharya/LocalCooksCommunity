@@ -6,6 +6,7 @@ import { locationService } from "../locations/location.service";
 import { applicationService } from "../applications/application.service";
 import { db } from "../../db";
 import { applications, locations, chefLocationAccess, chefKitchenApplications } from "@shared/schema";
+import { licenseAllowsBookings } from "@shared/kitchen-license";
 import { eq, and, asc, desc } from "drizzle-orm";
 
 export class ChefService {
@@ -67,7 +68,53 @@ export class ChefService {
         });
     }
 
+    /**
+     * Whether this chef may create a booking at this location.
+     *
+     * Two independent things must both hold: the chef's own access, and the location's
+     * kitchen licence still being valid. They are combined here because this is the one
+     * choke point both chef booking routes already pass through — a licence check written
+     * separately into each route is exactly how one of them ends up missing it.
+     *
+     * Airbnb's rule for a lapsed licence is "You cannot host a reservation without valid
+     * license(s)". Only NEW bookings are refused: bookings that already exist are left
+     * alone, so a chef who is already confirmed is never stranded by the manager's
+     * renewal paperwork.
+     */
     async getApplicationStatusForBooking(chefId: number, locationId: number) {
+        const status = await this.resolveApplicationAccess(chefId, locationId);
+        if (!status.canBook) return status;
+
+        const [location] = await db
+            .select({
+                kitchenLicenseUrl: locations.kitchenLicenseUrl,
+                kitchenLicenseStatus: locations.kitchenLicenseStatus,
+                kitchenLicenseExpiry: locations.kitchenLicenseExpiry,
+                kitchenLicensePendingUrl: locations.kitchenLicensePendingUrl,
+                kitchenLicensePendingExpiry: locations.kitchenLicensePendingExpiry,
+            })
+            .from(locations)
+            .where(eq(locations.id, locationId))
+            .limit(1);
+
+        if (!location || !licenseAllowsBookings(location)) {
+            logger.info(
+                `[Booking] Refused a new booking: chef ${chefId} is approved for location ` +
+                    `${locationId}, but its kitchen licence is not currently valid.`,
+            );
+            return {
+                hasApplication: true,
+                status: 'license_invalid',
+                canBook: false,
+                message:
+                    'This kitchen is not accepting bookings right now. Any bookings you already have are unaffected.',
+            };
+        }
+
+        return status;
+    }
+
+    private async resolveApplicationAccess(chefId: number, locationId: number) {
         // Check multiple sources for booking access:
         // 1. chef_location_access table (new tiered application system - Tier 2+)
         // 2. chef_kitchen_applications table (new tiered application system)

@@ -3161,7 +3161,14 @@ export default function KitchenPreviewPage() {
   const hasApplication = locationHasApplication || Boolean(listApplication);
   const kitchenDisplay =
     application?.status ? getKitchenDisplayStatus(application, tChef) : null;
-  const canBook = locationCanBook || kitchenDisplay?.actionKind === "book";
+  // A location whose kitchen licence is no longer valid accepts no new bookings, whatever
+  // the chef's own application says. `locationCanBook` and `kitchenDisplay.actionKind`
+  // only describe the chef's side of the relationship (approved + tier >= 3), so the
+  // location gate has to be ANDed in here — otherwise the "Book" handlers and the
+  // "Ready to book" chip keep offering a booking that the server now refuses.
+  const locationAcceptsBookings = locationData?.canAcceptApplications !== false;
+  const canBook =
+    locationAcceptsBookings && (locationCanBook || kitchenDisplay?.actionKind === "book");
   // Seller applications (/applications) and kitchen applications
   // (/api/firebase/chef/kitchen-applications) are independent paths.
   //
@@ -3700,7 +3707,9 @@ export default function KitchenPreviewPage() {
         size="sm"
         variant={ctaSpec.variant === "outline" ? "outline" : "default"}
         className={cn("shrink-0 font-semibold", previewApplyCtaClass(ctaSpec.variant))}
-        disabled={ctaSpec.kind === "pending" || ctaSpec.kind === "loading"}
+        disabled={
+          ctaSpec.kind === "pending" || ctaSpec.kind === "loading" || ctaSpec.kind === "closed"
+        }
         onClick={() => {
           if (requireDatesForApply && !datesOk) {
             setCalendarOpen(true);
@@ -3772,7 +3781,15 @@ export default function KitchenPreviewPage() {
             <div className="flex items-start justify-between gap-3">
               <h1 className="min-w-0 text-xl sm:text-2xl font-bold text-gray-900">{location.name}</h1>
 
-              {location.kitchenLicenseStatus === "approved" ? (
+              {/* One chip, answering the only question this slot is asked: can I book here?
+                  When the answer is no, that is what belongs here — a "Licensed kitchen"
+                  badge sitting next to a closed listing reads as a contradiction. Same
+                  wording as the discover card, so the two surfaces agree. */}
+              {location.canAcceptApplications === false ? (
+                <InfoChip tone="progress" className="shrink-0">
+                  {t("applyFlowComingSoonBadge", "Coming Soon")}
+                </InfoChip>
+              ) : location.kitchenLicenseStatus === "approved" ? (
                 <InfoChip
                   tone="success"
                   className="shrink-0"
@@ -3789,9 +3806,6 @@ export default function KitchenPreviewPage() {
                 defaultValue: `${kitchens.length} ${kitchens.length === 1 ? "kitchen" : "kitchens"}`,
               })}{" "}
               {t("kitchensAtThisLocationSuffix", "at this location")}
-              {location.canAcceptApplications === false
-                ? ` · ${t("notAcceptingNewApplicationsYet", "Not accepting new applications yet")}`
-                : ""}
             </p>
           </div>
         </div>
@@ -4021,7 +4035,10 @@ export default function KitchenPreviewPage() {
                 requireDatesForProceed={requireDatesForApply}
                 proceedVariant={ctaSpec?.variant ?? "default"}
                 proceedDisabled={
-                  !ctaSpec || ctaSpec.kind === "pending" || ctaSpec.kind === "loading"
+                  !ctaSpec ||
+                  ctaSpec.kind === "pending" ||
+                  ctaSpec.kind === "loading" ||
+                  ctaSpec.kind === "closed"
                 }
                 showPrimaryCta={showDateGatedApplyCta}
                 calendarOpen={calendarOpen}

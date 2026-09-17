@@ -51,6 +51,23 @@ export function resolvePreviewPrimaryCta(args: {
     };
   }
 
+  // The location itself is not taking bookings — its kitchen licence is no longer valid.
+  // This MUST be checked before `canBook`: an approved chef's `canBook` is derived purely
+  // from their own application row (status "approved" + tier >= 3) and knows nothing about
+  // the location, so it stays true after the licence lapses. This used to `return null`,
+  // which removed the CTA from the page entirely — leaving the availability calendar on
+  // screen with no way to act on it and no explanation why. A disabled "Coming Soon"
+  // button matches the discover-card chip and the preview header chip, so all three
+  // surfaces agree.
+  if (!canAcceptApplications) {
+    return {
+      label: t("applyFlowComingSoonBadge", "Coming Soon"),
+      kind: "closed",
+      requireDates: false,
+      variant: "outline",
+    };
+  }
+
   if (canBook || display?.actionKind === "book") {
     return {
       label: t("bookThisKitchen", "Book"),
@@ -86,8 +103,6 @@ export function resolvePreviewPrimaryCta(args: {
       variant: "default",
     };
   }
-
-  if (!canAcceptApplications) return null;
 
   return {
     label: t("requestToApply", "Request to apply"),
