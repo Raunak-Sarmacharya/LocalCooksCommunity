@@ -26,9 +26,9 @@ import {
   AlertTriangle,
   ArrowRight,
   Camera,
-  CheckCircle2,
+  Check,
   ClipboardCheck,
-  Copy,
+  Duplicate,
   GripVertical,
   Info,
   Lightbulb,
@@ -36,15 +36,13 @@ import {
   Lock,
   LogIn,
   LogOut,
+  MessageSquare,
   Pencil,
   PlaylistPlus,
   Plus,
   Trash2,
   Undo2,
   X,
-  Eye,
-  Calendar,
-  Upload,
 } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,14 +50,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { FormLegend } from "@/components/ui/form-legend";
 import {
   Sheet,
   SheetContent,
@@ -315,25 +311,33 @@ type Scope = "checkin" | "checkout" | "photo";
  * the three scopes need three different accent colours, which the primitive
  * does not model. A plain button with an explicit accent keeps the colour
  * system honest and matches the badge colours chefs see downstream.
+ *
+ * Every chip uses the SAME treatment in its `on` state — a filled tint plus a
+ * matching ring — so no chip reads as "more selected" than another, and the
+ * one-way lock (an item must belong to at least one flow) is expressed by a
+ * small lock glyph on the disabled chip instead of by draining its colour.
+ * Previously each scope had a different `on` recipe (emerald vs primary vs
+ * amber) and the locked chip was dimmed to 60% opacity, which made a
+ * legitimately-active scope look half-selected.
  */
 const SCOPE_STYLES: Record<
   Scope,
   { on: string; off: string; icon: typeof LogIn; labelKey: string }
 > = {
   checkin: {
-    on: "border-emerald-300 bg-emerald-50 text-emerald-800",
+    on: "border-emerald-300 bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200",
     off: "border-border bg-background text-muted-foreground hover:bg-muted",
     icon: LogIn,
     labelKey: "checkIn",
   },
   checkout: {
-    on: "border-primary/40 bg-primary/10 text-primary",
+    on: "border-rose-300 bg-rose-50 text-rose-800 ring-1 ring-rose-200",
     off: "border-border bg-background text-muted-foreground hover:bg-muted",
     icon: LogOut,
     labelKey: "checkOut",
   },
   photo: {
-    on: "border-amber-300 bg-amber-50 text-amber-800",
+    on: "border-amber-300 bg-amber-50 text-amber-800 ring-1 ring-amber-200",
     off: "border-border bg-background text-muted-foreground hover:bg-muted",
     icon: Camera,
     labelKey: "photo",
@@ -416,107 +420,123 @@ function ChecklistRow({
         "group relative rounded-lg border bg-card transition-colors",
         isDragging
           ? "border-primary/60 shadow-lg ring-1 ring-primary/20"
-          : "hover:border-border",
+          : "hover:border-border/80 hover:bg-muted/[0.35]",
       )}
     >
+      {/*
+        Single top-aligned row. Everything on the left is one fixed-width rail
+        (handle + number) so the text fields start at exactly the same x on every
+        row, and the actions column is pinned to the top rather than centred —
+        the row grows when a note is added, and a vertically-centred action set
+        would drift downward as it did.
+      */}
       <div className="flex items-start gap-2 p-2.5">
         {/* Drag handle. The only grab surface, so the text field stays usable. */}
-        <TooltipProvider delayDuration={300}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                aria-label={mt("dragToReorder")}
-                onPointerDown={(event) => onDragStart(index, event)}
-                onPointerMove={onDragMove}
-                onPointerUp={onDragEnd}
-                onKeyDown={(event) => {
-                  if (event.key === "ArrowUp") {
-                    event.preventDefault();
-                    onMove(index, -1);
-                  } else if (event.key === "ArrowDown") {
-                    event.preventDefault();
-                    onMove(index, 1);
-                  }
-                }}
-                className={cn(
-                  "mt-1 shrink-0 cursor-grab touch-none rounded text-muted-foreground/50 transition-colors",
-                  "hover:text-foreground focus-visible:text-foreground focus-visible:outline-none",
-                  "focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing",
-                  "!min-h-0 !min-w-0 p-0.5",
-                )}
-              >
-                <GripVertical className="size-4" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="text-xs">
-              {mt("dragOrUseArrowKeys")}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        <div className="flex shrink-0 items-center gap-1 pt-0.5">
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={mt("dragToReorder")}
+                  onPointerDown={(event) => onDragStart(index, event)}
+                  onPointerMove={onDragMove}
+                  onPointerUp={onDragEnd}
+                  onKeyDown={(event) => {
+                    if (event.key === "ArrowUp") {
+                      event.preventDefault();
+                      onMove(index, -1);
+                    } else if (event.key === "ArrowDown") {
+                      event.preventDefault();
+                      onMove(index, 1);
+                    }
+                  }}
+                  className={cn(
+                    "shrink-0 cursor-grab touch-none rounded text-muted-foreground/40 transition-colors",
+                    "hover:text-foreground focus-visible:text-foreground focus-visible:outline-none",
+                    "focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing",
+                    "!min-h-0 !min-w-0 p-0.5",
+                  )}
+                >
+                  <GripVertical className="size-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">
+                {mt("dragOrUseArrowKeys")}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <span className="w-4 shrink-0 text-center text-[11px] font-medium tabular-nums text-muted-foreground/50">
+            {index + 1}
+          </span>
+        </div>
 
         {/* Primary field + optional note */}
-        <div className="min-w-0 flex-1 space-y-1.5">
-          <div className="flex items-center gap-1.5">
-            <span className="w-4 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground/60">
-              {index + 1}
-            </span>
-            <Input
-              ref={labelRef}
-              value={item.label}
-              onChange={(e) => onUpdate(item.id, { ...item, label: e.target.value })}
-              placeholder={mt("eGWipeDownAllCounters")}
-              aria-label={mt("item")}
-              className={cn(
-                "h-8 border-transparent bg-transparent px-2 text-sm font-medium shadow-none",
-                "hover:border-input focus-visible:border-input focus-visible:bg-background",
-              )}
-            />
-          </div>
+        <div className="min-w-0 flex-1">
+          <Input
+            ref={labelRef}
+            value={item.label}
+            onChange={(e) => onUpdate(item.id, { ...item, label: e.target.value })}
+            placeholder={mt("eGWipeDownAllCounters")}
+            aria-label={mt("item")}
+            className={cn(
+              "h-8 border-transparent bg-transparent px-2 text-sm font-medium shadow-none",
+              "hover:border-input focus-visible:border-input focus-visible:bg-background",
+            )}
+          />
 
-          {noteOpen ? (
-            <div className="flex items-center gap-1.5 pl-[22px]">
-              <Pencil className="size-3 shrink-0 text-muted-foreground/60" />
-              <Input
-                value={item.description || ""}
-                onChange={(e) =>
-                  onUpdate(item.id, {
-                    ...item,
-                    description: e.target.value || undefined,
-                  })
-                }
-                placeholder={mt("optionalHintForChefs")}
-                aria-label={mt("optionalHintForChefs")}
-                autoFocus={!item.description}
-                className="h-7 border-transparent bg-transparent px-2 text-xs text-muted-foreground shadow-none hover:border-input focus-visible:border-input focus-visible:bg-background"
-              />
+          {/*
+            Note slot. Both states reserve the same 26px line and begin at the
+            same left edge as the label above, so revealing a note does not
+            shift the row or introduce a third indent level.
+          */}
+          <div className="mt-0.5 flex h-[26px] items-center gap-1 pl-2">
+            {noteOpen ? (
+              <>
+                <Pencil className="size-3 shrink-0 text-muted-foreground/50" />
+                <Input
+                  value={item.description || ""}
+                  onChange={(e) =>
+                    onUpdate(item.id, {
+                      ...item,
+                      description: e.target.value || undefined,
+                    })
+                  }
+                  placeholder={mt("optionalHintForChefs")}
+                  aria-label={mt("optionalHintForChefs")}
+                  autoFocus={!item.description}
+                  className="h-6 border-transparent bg-transparent px-1 text-xs text-muted-foreground shadow-none hover:border-input focus-visible:border-input focus-visible:bg-background"
+                />
+                <button
+                  type="button"
+                  aria-label={mt("removeNote")}
+                  title={mt("removeNote")}
+                  onClick={() => {
+                    setNoteOpen(false);
+                    onUpdate(item.id, { ...item, description: undefined });
+                  }}
+                  className="!min-h-0 !min-w-0 shrink-0 rounded p-1 text-muted-foreground/50 transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <X className="size-3" />
+                </button>
+              </>
+            ) : (
               <button
                 type="button"
-                aria-label={mt("removeNote")}
-                onClick={() => {
-                  setNoteOpen(false);
-                  onUpdate(item.id, { ...item, description: undefined });
-                }}
-                className="!min-h-0 !min-w-0 shrink-0 rounded p-1 text-muted-foreground/60 transition-colors hover:text-foreground"
+                onClick={() => setNoteOpen(true)}
+                className="!min-h-0 !min-w-0 inline-flex items-center gap-1 rounded px-1 py-0.5 text-[11px] font-medium text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
               >
-                <X className="size-3" />
+                <Plus className="size-3" />
+                {mt("addNote")}
               </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setNoteOpen(true)}
-              className="ml-[22px] inline-flex items-center gap-1 rounded px-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <Plus className="size-3" />
-              {mt("addNote")}
-            </button>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Scope chips */}
         <div
-          className="flex shrink-0 items-center gap-1"
+          className="flex shrink-0 items-center gap-1 pt-0.5"
           role="group"
           aria-label={mt("appliesTo")}
         >
@@ -545,11 +565,14 @@ function ChecklistRow({
                         "!min-h-0 !min-w-0 inline-flex items-center gap-1 rounded-full border px-2 py-1",
                         "text-[11px] font-medium transition-colors",
                         active ? config.on : config.off,
-                        locked && "cursor-not-allowed opacity-60",
+                        // The locked chip keeps its full active colour — it is a
+                        // real, applied scope. Only the affordance changes.
+                        locked && "cursor-not-allowed",
                       )}
                     >
                       <ScopeIcon className="size-3" />
                       <span className="hidden sm:inline">{mt(config.labelKey)}</span>
+                      {locked && <Lock className="size-2.5 opacity-55" />}
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="top" className="max-w-[220px] text-xs">
@@ -576,7 +599,7 @@ function ChecklistRow({
         </div>
 
         {/* Row actions — revealed on hover/focus so the resting row stays calm */}
-        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+        <div className="flex shrink-0 items-center gap-0.5 pt-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
           <Button
             type="button"
             variant="ghost"
@@ -586,7 +609,7 @@ function ChecklistRow({
             aria-label={mt("duplicateItem")}
             title={mt("duplicateItem")}
           >
-            <Copy className="size-3.5" />
+            <Duplicate className="size-3.5" />
           </Button>
           <Button
             type="button"
@@ -669,24 +692,59 @@ function PresetPicker({
 // ─── Restore snackbar ────────────────────────────────────────────────────────
 
 /**
+ * How long the undo affordance stays available after a delete. Shared by the
+ * dismissal timer and the countdown so the two can never disagree.
+ */
+const UNDO_WINDOW_MS = 6000;
+
+/**
  * Undo affordance after a delete. Deletes are instant and unconfirmed — a
  * confirmation dialog on every row is heavier than the action deserves, and a
  * five-second window with a one-tap restore covers the genuine misclick.
+ *
+ * It previously borrowed the checklist row's own chrome (muted fill, grey
+ * border, plain text button), so it read as one more list item rather than as a
+ * transient system message, and was easy to miss entirely. It now announces
+ * itself with a colour the row language never uses (sky, not emerald/rose/amber),
+ * and carries a live countdown ring so its five-second life is visible.
  */
-function UndoBar({ onUndo, label }: { onUndo: () => void; label: string }) {
+function UndoBar({
+  onUndo,
+  label,
+  seconds,
+}: {
+  onUndo: () => void;
+  label: string;
+  seconds: number;
+}) {
+  const [remaining, setRemaining] = useState(seconds);
+  useEffect(() => {
+    setRemaining(seconds);
+    const id = setInterval(() => setRemaining((r) => Math.max(0, r - 1)), 1000);
+    return () => clearInterval(id);
+  }, [seconds, label]);
+
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/60 px-3 py-2">
-      <p className="min-w-0 truncate text-xs text-muted-foreground">{label}</p>
-      <Button
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex items-center gap-3 rounded-lg border border-sky-200 bg-sky-50 py-1.5 pl-3 pr-1.5 shadow-sm"
+    >
+      <Undo2 className="size-3.5 shrink-0 text-sky-600" />
+      <p className="min-w-0 flex-1 truncate text-xs font-medium text-sky-900">{label}</p>
+      <button
         type="button"
-        variant="ghost"
-        size="sm"
         onClick={onUndo}
-        className="h-7 shrink-0 bg-transparent px-2 text-xs hover:bg-muted"
+        className="!min-h-0 !min-w-0 shrink-0 rounded-md border border-sky-300 bg-white px-2 py-1 text-xs font-semibold text-sky-800 transition-colors hover:bg-sky-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
       >
-        <Undo2 className="size-3.5 mr-1" />
         {tt("undo")}
-      </Button>
+      </button>
+      <span
+        aria-hidden
+        className="w-3 shrink-0 text-center text-[11px] tabular-nums text-sky-600"
+      >
+        {remaining}
+      </span>
     </div>
   );
 }
@@ -694,25 +752,30 @@ function UndoBar({ onUndo, label }: { onUndo: () => void; label: string }) {
 // ─── Chef View Preview (matches KitchenCheckinTracker) ───────────────────────
 
 /**
- * Chef-facing preview, rendered live off the editor's own state.
+ * Review surface for one flow — a read-only recap of everything the manager has
+ * configured, so they can read it top to bottom and confirm it is right.
  *
- * It is fully interactive — tasks tick, photo slots accept files — because the
- * two questions a manager actually has here ("what does the chef get?" and "how
- * much work is this?") are both answered faster by using the thing than by
- * reading a picture of it. Nothing is uploaded: photo URLs stay in local state
- * and the object URLs are revoked when the preview closes.
+ * This replaces an interactive simulation of the chef's screen. The simulation
+ * was answering the wrong question: a manager here is not asking "what does
+ * this look like", they are asking "did I get this right" — and that is a
+ * reading task, not a clicking one. It also carried content the manager cannot
+ * configure (a fabricated booking slot, a hard-coded smart-lock code), which is
+ * noise dressed as information, and being interactive it let a manager tick
+ * boxes and leave believing they had changed something.
  *
- * The booking header is the only invented part — a manager has no booking in
- * front of them when configuring a kitchen — so it is labelled as sample data
- * rather than dressed up as real.
+ * The governing principle is the one Baymard states for review steps: a review
+ * page is a summary of known facts, and should introduce nothing new. So this
+ * shows committed configuration only, in a fixed order, with no controls other
+ * than the one action that matters — jump back to the field and change it.
  */
-function ChefPreviewSheet({
+function ReviewSheet({
   open,
   onOpenChange,
   stage,
   instructions,
   smartLockInstructions,
   items,
+  onEditSection,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
@@ -720,318 +783,231 @@ function ChefPreviewSheet({
   instructions: string | null;
   smartLockInstructions: string | null;
   items: UnifiedChecklistItem[];
-}) {
-  /** Item ids the manager has ticked while trying the preview. */
-  const [checked, setChecked] = useState<Set<string>>(new Set());
-  /** Requirement id → stand-in photos, for "uploaded" demo slots. */
-  const [photos, setPhotos] = useState<Record<string, string[]>>({});
-
-  // Each open starts a fresh trial — otherwise the previous kitchen's ticks are
-  // still on screen and the preview reads as real saved progress.
-  useEffect(() => {
-    if (!open) return;
-    setChecked(new Set());
-    setPhotos({});
-  }, [open, stage]);
-
-  const filledItems = items.filter(
-    (i) =>
-      i.label.trim() &&
-      (stage === "checkin" ? i.requiredOnCheckin : i.requiredOnCheckout),
-  );
-  const photoItems = filledItems.filter((i) => i.photoRequired);
-  const hasInstructions = !!instructions;
-  const hasSmartLock = stage === "checkin" && !!smartLockInstructions;
-  const hasContent = filledItems.length > 0;
-
-  const allTasksTicked = filledItems.every((i) => checked.has(i.id));
-  const allPhotosAdded = photoItems.every((i) => (photos[i.id]?.length ?? 0) > 0);
-  const canSubmit = hasContent && allTasksTicked && allPhotosAdded;
-
-  const toggleItem = (id: string) => {
-    setChecked((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
   /**
-   * Stand-in photo. The chef-side uploader holds uploaded URLs only, so a "
-   * ticked" slot is all the preview needs to show the progress state — no file
-   * picker, no upload, nothing to clean up.
+   * Takes the manager to the section they want to change. Review surfaces are
+   * where people catch their own mistakes, and Baymard's guidance is explicit
+   * that they must not be forced to navigate back through the whole form to fix
+   * one — so every block here has a way back.
    */
-  const addPhoto = (id: string) => {
-    setPhotos((prev) => ({ ...prev, [id]: [...(prev[id] ?? []), `preview-${Date.now()}`] }));
-  };
+  onEditSection: (target: ReviewEditTarget) => void;
+}) {
+  const isCheckin = stage === "checkin";
 
-  const stageTitle = stage === "checkin" ? mt("kitchenCheckInTitle") : mt("kitchenCheckOutTitle");
+  const flowItems = items.filter(
+    (i) => i.label.trim() && (isCheckin ? i.requiredOnCheckin : i.requiredOnCheckout),
+  );
+  const photoItems = flowItems.filter((i) => i.photoRequired);
+  const hasInstructions = !!instructions;
+  const hasSmartLock = isCheckin && !!smartLockInstructions;
+
+  const StageIcon = isCheckin ? LogIn : LogOut;
+
+  const nothingConfigured = flowItems.length === 0 && !hasInstructions && !hasSmartLock;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
-        {/* Header */}
-        <SheetHeader className="border-b px-4 py-3 pr-12 text-left">
-          <SheetTitle className="flex items-center gap-2 text-base">
-            <LogIn className="size-4 text-muted-foreground" />
-            {stageTitle}
-          </SheetTitle>
-          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-            <Badge variant="outline" className="text-[11px] font-normal">
-              {mt("previewBookingTime")}
-            </Badge>
-            <Badge variant="outline" className="border-primary/30 bg-primary/5 text-[11px] font-normal text-primary">
-              <Eye className="mr-1 size-2.5" />
-              {mt("previewChefPov")}
-            </Badge>
+      {/*
+        `hideClose` drops the primitive's floating X and the footer's close
+        button becomes the only way out, so the exit is one labelled control in
+        the place the eye already is rather than a chrome glyph in the corner.
+        Wider than the default sheet on large screens because this is a reading
+        surface, not a form — a line of prose wants a book measure, not a phone
+        column, and the two-up checklist stays scannable at this width.
+      */}
+      <SheetContent
+        hideClose
+        className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-lg lg:max-w-2xl"
+      >
+        {/* One header block instead of a title stack plus a counts strip: the
+            counts belong to the reading order, not to the chrome above it. */}
+        <SheetHeader className="space-y-0 border-b px-5 py-4 text-left">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <SheetTitle className="flex items-center gap-2 text-base font-medium">
+                <StageIcon className="size-4 shrink-0 text-muted-foreground" />
+                {isCheckin ? mt("reviewCheckinTitle") : mt("reviewCheckoutTitle")}
+              </SheetTitle>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                {isCheckin ? mt("reviewCheckinSubtitle") : mt("reviewCheckoutSubtitle")}
+              </p>
+            </div>
+            {/* The one loud thing in the sheet: it answers "how much is this?"
+                before a single row is read. */}
+            <span className="shrink-0 pt-0.5 text-2xl font-semibold tabular-nums leading-none">
+              {flowItems.length}
+            </span>
           </div>
         </SheetHeader>
 
-        {/* Trial notice — what is real here and what is not */}
-        <div className="flex items-start gap-2 border-b bg-muted/40 px-4 py-2 text-[10px] leading-snug text-muted-foreground">
-          <Info className="mt-0.5 size-3 shrink-0" />
-          <p>
-            {mt("previewInteractiveNote")}{" "}
-            <span className="text-muted-foreground/80">{mt("previewSampleDataNote")}</span>
-          </p>
-        </div>
-
-        {/* Body */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-          {!hasContent ? (
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {nothingConfigured ? (
             <div className="rounded-lg border border-dashed px-6 py-12 text-center">
               <ClipboardCheck className="mx-auto mb-2 size-6 text-muted-foreground/40" />
-              <p className="text-sm font-medium">{mt("previewEmptyTitle")}</p>
+              <p className="text-sm font-medium">{mt("reviewEmptyTitle")}</p>
               <p className="mx-auto mt-1 max-w-[240px] text-[10px] leading-snug text-muted-foreground/80">
-                {mt("previewEmptyHint")}
+                {isCheckin ? mt("reviewEmptyHintCheckin") : mt("reviewEmptyHintCheckout")}
               </p>
             </div>
           ) : (
-            <div className="space-y-4">
-              <FormLegend className="mb-0" />
-
-              {/* Step timeline, mirroring the tracker's pre-check-in state */}
-              <ol className="space-y-3">
-                <PreviewStep
-                  done
-                  title={stage === "checkin" ? mt("previewStepCheckIn") : mt("previewStepCheckout")}
-                  description={
-                    stage === "checkin" ? mt("previewStepArrive") : mt("previewStepSubmitPhotos")
-                  }
-                  icon={<LogIn className="size-3.5" />}
-                />
-                <PreviewStep
-                  active
-                  title={mt("previewStepInProgress")}
-                  description={mt("previewStepUseKitchen")}
-                  icon={<Calendar className="size-3.5" />}
-                />
-              </ol>
-
-              {/* Manager instructions */}
+            <div className="space-y-3">
+              {/* Notes first — they are the thing a chef reads before doing
+                  anything, and they are the part most easily forgotten when
+                  someone configured the page weeks ago. */}
               {hasInstructions && (
-                <div className="rounded-lg border p-3">
-                  <p className="mb-1 text-xs font-medium">{mt("instructionsFromManager")}</p>
-                  <p className="whitespace-pre-line text-xs text-muted-foreground">
+                <ReviewBlock
+                  icon={<MessageSquare className="size-3.5" />}
+                  title={isCheckin ? mt("arrivalInstructionsTitle") : mt("departureInstructionsTitle")}
+                  onEdit={() => onEditSection("instructions")}
+                >
+                  <p className="whitespace-pre-wrap text-xs leading-relaxed text-foreground">
                     {instructions}
                   </p>
-                </div>
+                </ReviewBlock>
               )}
 
-              {/* Smart lock, check-in only */}
               {hasSmartLock && (
-                <div className="space-y-2 rounded-lg border p-3">
-                  <div className="flex items-center gap-1.5">
-                    <Lock className="size-3.5 text-muted-foreground" />
-                    <p className="text-xs font-medium">{mt("smartLockAccess")}</p>
-                  </div>
-                  <p className="whitespace-pre-line text-xs text-muted-foreground">
+                <ReviewBlock
+                  icon={<Lock className="size-3.5" />}
+                  title={mt("smartLockInstructions")}
+                  onEdit={() => onEditSection("instructions")}
+                >
+                  <p className="whitespace-pre-wrap text-xs leading-relaxed text-foreground">
                     {smartLockInstructions}
                   </p>
-                  <div className="flex items-center gap-2 rounded-md border bg-muted/50 p-2">
-                    <span className="font-mono text-lg font-bold tracking-[0.2em]">A1B2C3</span>
-                    <span className="ml-auto text-[10px] text-muted-foreground">
-                      {mt("sampleCode")}
-                    </span>
-                  </div>
-                </div>
+                </ReviewBlock>
               )}
 
-              {/* The task list itself */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <Label className="text-sm font-medium">{mt("checklist")}</Label>
-                  <Badge variant="outline" className="text-[10px] font-normal">
-                    {mt("previewTaskCount", { count: filledItems.length })}
-                  </Badge>
-                </div>
-                {filledItems.map((item, index) => {
-                  const isChecked = checked.has(item.id);
-                  return (
-                    <label
-                      key={item.id}
-                      className={cn(
-                        "flex cursor-pointer items-start gap-2.5 rounded-lg border p-2 transition-colors",
-                        isChecked ? "border-border bg-muted/40" : "bg-background hover:bg-muted/50",
-                      )}
-                    >
-                      <Checkbox
-                        checked={isChecked}
-                        onCheckedChange={() => toggleItem(item.id)}
-                        className="mt-0.5"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <span className={cn("text-sm", isChecked && "text-muted-foreground line-through")}>
-                          <span className="mr-1.5 font-medium tabular-nums text-muted-foreground">
-                            {index + 1}.
-                          </span>
-                          {item.label}
-                          <span className="ml-0.5 text-destructive">*</span>
-                        </span>
-                        {item.description && (
-                          <p className="mt-0.5 text-xs text-muted-foreground">{item.description}</p>
-                        )}
-                      </div>
-                    </label>
-                  );
-                })}
-              </div>
-
-              {/* Photo slots — click to add a stand-in photo */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <Label className="flex items-center gap-1.5 text-sm font-medium">
-                    <Camera className="size-3.5" />
-                    {mt("photosRequired")}
-                  </Label>
-                  <Badge variant="outline" className="text-[10px] font-normal">
-                    {photoItems.length > 0
-                      ? mt("previewPhotoCount", { count: photoItems.length })
-                      : mt("previewNoPhotos")}
-                  </Badge>
-                </div>
-                {photoItems.length === 0 ? (
-                  <p className="rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
-                    {mt("previewNoPhotos")}
+              <ReviewBlock
+                icon={<ListChecks className="size-3.5" />}
+                title={mt("checklist")}
+                onEdit={() => onEditSection("checklist")}
+              >
+                {flowItems.length === 0 ? (
+                  <p className="text-xs italic text-muted-foreground">
+                    {mt("reviewNoTasks")}
                   </p>
                 ) : (
-                  photoItems.map((item) => {
-                    const urls = photos[item.id] ?? [];
-                    const has = urls.length > 0;
-                    return (
-                      <div
-                        key={`preview-photo-${item.id}`}
-                        className={cn(
-                          "space-y-2 rounded-lg border p-3 transition-colors",
-                          has ? "border-emerald-300/60 bg-emerald-50/40" : "border-border",
-                        )}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="min-w-0 flex-1 truncate text-sm font-medium">
-                            {item.label}
-                            <span className="ml-0.5 text-destructive">*</span>
-                          </p>
-                          {has && (
-                            <span className="flex shrink-0 items-center gap-1 text-[11px] text-emerald-700">
-                              <CheckCircle2 className="size-3" />
-                              {urls.length}/3
-                            </span>
+                  /* A divide-y list rather than a boxed card per row: at this
+                     width the separator does the work a border was doing, and
+                     the rows read as one continuous list instead of a stack of
+                     controls. Row padding is what makes it scannable. */
+                  <ol className="divide-y divide-border/60">
+                    {flowItems.map((item, index) => (
+                      <li key={item.id} className="flex items-start gap-3 py-2 first:pt-0.5 last:pb-0.5">
+                        {/* A static glyph, not a Checkbox: a control here would
+                            invite a click that changes nothing. */}
+                        <span className="mt-px w-4 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground/60">
+                          {index + 1}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs leading-relaxed text-foreground">{item.label}</p>
+                          {item.description && (
+                            <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+                              {item.description}
+                            </p>
                           )}
                         </div>
-                        {!has && (
-                          <button
-                            type="button"
-                            onClick={() => addPhoto(item.id)}
-                            className="!min-h-0 flex w-full flex-col items-center justify-center rounded-lg border-2 border-dashed border-border px-4 py-4 transition-colors hover:border-primary/50"
-                          >
-                            <Upload className="mb-1 size-5 text-muted-foreground" />
-                            <span className="text-[11px] text-muted-foreground">
-                              {mt("chefUploadsThisPhoto")}
-                            </span>
-                          </button>
+                        {item.photoRequired && (
+                          <span className="mt-0.5 inline-flex shrink-0 items-center gap-1 text-[10px] font-medium text-amber-700">
+                            <Camera className="size-2.5" />
+                            {mt("reviewPhotoRequiredTag")}
+                          </span>
                         )}
-                      </div>
-                    );
-                  })
+                      </li>
+                    ))}
+                  </ol>
                 )}
-              </div>
-
-              {/* Notes */}
-              <div className="space-y-1">
-                <Label className="text-sm font-medium">{mt("previewNotesLabel")}</Label>
-                <Textarea
-                  rows={2}
-                  placeholder={
-                    stage === "checkin"
-                      ? mt("optionalCheckInNotes")
-                      : mt("checkoutNotesPlaceholder")
-                  }
-                />
-              </div>
+              </ReviewBlock>
             </div>
           )}
         </div>
 
-        {/* Footer — the real gate, reproduced */}
-        {hasContent && (
-          <div className="space-y-2 border-t px-4 py-3">
-            {/* There is no submit in a preview, and there should not be — the
-                button exists to show the gate, so it is deliberately inert. */}
-            <Button className="w-full" size="lg" disabled={!canSubmit} type="button">
-              {stage === "checkin" ? (
-                <LogIn className="mr-2 size-4" />
-              ) : (
-                <LogOut className="mr-2 size-4" />
-              )}
-              {stage === "checkin" ? mt("previewSubmitCheckIn") : mt("previewSubmitCheckout")}
-            </Button>
-            <p className="text-center text-[10px] leading-snug text-muted-foreground">
-              {canSubmit ? mt("previewGateNote") : mt("previewTryHint")}
-            </p>
-            <p className="text-center text-[10px] leading-snug text-muted-foreground/70">
-              {mt("chefSubmitGateNote")}
-            </p>
-          </div>
-        )}
+        {/* One labelled exit. It replaces the primitive's floating X, so the
+            way out is named rather than a glyph in the corner — and it is the
+            only control in the sheet, which is what keeps a review surface
+            feeling like a read rather than a form. */}
+        <div className="border-t px-5 py-3">
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full sm:w-auto"
+            onClick={() => onOpenChange(false)}
+          >
+            {mt("close")}
+          </Button>
+        </div>
       </SheetContent>
     </Sheet>
   );
 }
 
-/** One row of the preview's step timeline. */
-function PreviewStep({
-  title,
-  description,
+/** Which part of the page the review sheet should scroll back to. */
+type ReviewEditTarget = "instructions" | "checklist";
+
+/**
+ * Sends the manager from the review sheet back to the field they want to fix.
+ *
+ * Runs a frame late on purpose. The sheet is a modal, so while it is mounted it
+ * holds a focus trap and the page beneath it is inert — scrolling in the same
+ * tick as the close would move the page while it is still covered, and Radix
+ * restores focus on unmount, which would fight a scroll started simultaneously.
+ * One frame lets the close commit first, so the movement is visible.
+ */
+function scrollToReviewTarget(stage: Stage, target: ReviewEditTarget) {
+  requestAnimationFrame(() => {
+    const panel = document.querySelector<HTMLElement>(`[data-stage-panel="${stage}"]`);
+    if (!panel) return;
+    const anchor =
+      target === "instructions"
+        ? panel.querySelector<HTMLElement>("[data-review-anchor='instructions']")
+        : panel;
+    (anchor ?? panel).scrollIntoView({ behavior: "smooth", block: "center" });
+    // Focus the panel, not the anchor: a container is a legitimate focus target
+    // and will not pull focus out of a field the manager is about to type in.
+    panel.focus({ preventScroll: true });
+  });
+}
+
+/**
+ * One titled group inside the review sheet.
+ *
+ * Every block carries its own Edit affordance rather than one at the foot of
+ * the sheet, because a single global "edit" forces the manager to work out
+ * where the thing they want lives. Naming the destination is the whole value
+ * of a review step.
+ *
+ * The group label is sentence-case at normal weight, not a bold uppercase
+ * eyebrow. The eyebrow style fights a reading surface: five shouting labels
+ * read as five competing headings, which is the opposite of scannable.
+ */
+function ReviewBlock({
   icon,
-  done,
-  active,
+  title,
+  onEdit,
+  children,
 }: {
-  title: string;
-  description: string;
   icon: React.ReactNode;
-  done?: boolean;
-  active?: boolean;
+  title: string;
+  onEdit: () => void;
+  children: React.ReactNode;
 }) {
   return (
-    <li className="flex gap-3">
-      <span
-        className={cn(
-          "flex size-7 shrink-0 items-center justify-center rounded-full border",
-          done
-            ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-            : active
-              ? "border-primary/40 bg-primary/10 text-primary"
-              : "border-border bg-muted text-muted-foreground",
-        )}
-      >
-        {icon}
-      </span>
-      <div className="min-w-0 pt-0.5">
-        <p className="text-sm font-medium">{title}</p>
-        <p className="text-xs text-muted-foreground">{description}</p>
-      </div>
-    </li>
+    <section className="rounded-xl border">
+      <header className="flex items-center justify-between gap-2 px-3.5 py-2">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="shrink-0 text-muted-foreground">{icon}</span>
+          <span className="truncate text-xs font-medium text-foreground">{title}</span>
+        </span>
+        <button
+          type="button"
+          onClick={onEdit}
+          className="!min-h-0 !min-w-0 shrink-0 rounded px-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+        >
+          {mt("editInstructions")}
+        </button>
+      </header>
+      <div className="border-t border-border/60 px-3.5 py-2.5">{children}</div>
+    </section>
   );
 }
 
@@ -1054,6 +1030,14 @@ interface StageHeaderProps {
   itemCount: number;
   photoCount: number;
   onOpenPreview: () => void;
+  /**
+   * Moves focus off the switch after the flow is toggled. See the note in
+   * `CheckinCheckoutSettings` for why: a switch that is off-screen steals the
+   * page scroll when it takes focus.
+   */
+  onToggleClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  onToggleMouseDown: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  onToggleKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
 }
 
 /**
@@ -1082,6 +1066,9 @@ function StageHeader({
   itemCount,
   photoCount,
   onOpenPreview,
+  onToggleClick,
+  onToggleMouseDown,
+  onToggleKeyDown,
 }: StageHeaderProps) {
   const title = stage === "checkin" ? mt("checkInStage") : mt("checkOutStage");
   const StageIcon = stage === "checkin" ? LogIn : LogOut;
@@ -1090,11 +1077,128 @@ function StageHeader({
   const hasInstructions = !!instructions;
   const hasSmartLockInstructions = hasSmartLock && !!smartLockInstructions;
 
-  const [detailsOpen, setDetailsOpen] = useState(hasInstructions || hasSmartLockInstructions);
+  /**
+   * Whether the notes editor is open.
+   *
+   * Starts closed, always: the read state is the correct default once notes
+   * exist, and the empty state is the correct default when they do not. This
+   * must NOT be seeded from `instructions`, because on first mount those props
+   * are still empty — the settings query has not resolved — so seeding would
+   * read `false` and never correct itself, and seeding from a later value would
+   * re-open the editor under the manager mid-edit.
+   */
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
+  /**
+   * Notes are edited against a local draft and only pushed up on Save.
+   *
+   * Writing straight through to the parent would mean `hasInstructions` turns
+   * true on the first keystroke, which flips this panel out of its empty state
+   * and changes what Save means under the user's hands. A draft keeps the two
+   * states honest: the read state shows what has been committed, the editor
+   * shows what is being typed, and Save is the only thing that moves one to the
+   * other.
+   *
+   * `smartLockDraft` rides along because it lives inside the same disclosure —
+   * committing it separately would let a manager save one half of a form they
+   * filled in as a unit.
+   */
+  const [draft, setDraft] = useState(() => instructions ?? "");
+  const [smartLockDraft, setSmartLockDraft] = useState(() => smartLockInstructions ?? "");
+  const [savedAt, setSavedAt] = useState(0);
+
+  /**
+   * The last committed values this component knows about, used to tell a
+   * server hydration apart from a user edit.
+   *
+   * The previous approach inferred "is the user typing?" from
+   * `draft !== instructions`, which is wrong in both directions: on first mount
+   * an incoming saved note looks exactly like an unsaved edit (empty draft vs.
+   * non-empty prop), so the sync effect bailed out and the editor sat there
+   * showing a placeholder instead of the note. Comparing against what this
+   * component last *saw committed* is unambiguous — a change in that value is
+   * hydration and must be adopted; a change in the draft with a steady
+   * committed value is the user typing and must be preserved.
+   */
+  const lastCommittedRef = useRef({
+    instructions: instructions ?? "",
+    smartLock: smartLockInstructions ?? "",
+  });
+
+  // Adopt committed values whenever they actually change underneath us. On the
+  // very first run this is a genuine hydration (empty initial state → server
+  // values), so the drafts are filled in and no edit is lost, because nothing
+  // has been typed yet.
   useEffect(() => {
-    if (hasInstructions || hasSmartLockInstructions) setDetailsOpen(true);
-  }, [hasInstructions, hasSmartLockInstructions]);
+    const next = {
+      instructions: instructions ?? "",
+      smartLock: smartLockInstructions ?? "",
+    };
+    const prev = lastCommittedRef.current;
+    if (prev.instructions === next.instructions && prev.smartLock === next.smartLock) return;
+    lastCommittedRef.current = next;
+    setDraft(next.instructions);
+    setSmartLockDraft(next.smartLock);
+  }, [instructions, smartLockInstructions]);
+
+  /** True once the manager has typed something the committed value lacks. */
+  const notesDirty =
+    draft !== (instructions ?? "") || smartLockDraft !== (smartLockInstructions ?? "");
+
+  const commitNotes = useCallback(() => {
+    const next = draft.trim();
+    const nextLock = hasSmartLock ? smartLockDraft.trim() : "";
+
+    /**
+     * Record the committed values *before* pushing them up, and synchronously.
+     *
+     * `onInstructionsChange` is a parent state update, so the new props do not
+     * arrive until the next render — but `setDetailsOpen(false)` below takes
+     * effect immediately. Without this line the sync effect would see "committed
+     * changed" on the following render and reset the drafts, and the panel would
+     * flash the editor back open in the window between the two. Writing the ref
+     * first collapses that window to nothing: the effect sees the values it just
+     * caused and correctly does nothing.
+     */
+    lastCommittedRef.current = { instructions: next, smartLock: nextLock };
+
+    onInstructionsChange(next || null);
+    if (hasSmartLock) onSmartLockInstructionsChange(nextLock || null);
+
+    setDraft(next);
+    setSmartLockDraft(nextLock);
+    setSavedAt(Date.now());
+    setDetailsOpen(false);
+  }, [
+    draft,
+    smartLockDraft,
+    hasSmartLock,
+    onInstructionsChange,
+    onSmartLockInstructionsChange,
+  ]);
+
+  const cancelNotes = useCallback(() => {
+    setDraft(instructions ?? "");
+    setSmartLockDraft(smartLockInstructions ?? "");
+    setDetailsOpen(false);
+  }, [instructions, smartLockInstructions]);
+
+  /**
+   * In edit mode Escape must mean one thing on every field: discard. Notes are
+   * the only field here that cannot undo itself keystroke-by-keystroke, so it
+   * needs the explicit exit. The disclosure only closes if nothing was typed —
+   * otherwise the manager can lose a paragraph to a stray Escape and have no
+   * way to tell where it went.
+   */
+  const onNotesKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      if (notesDirty) cancelNotes();
+      else setDetailsOpen(false);
+    },
+    [notesDirty, cancelNotes],
+  );
 
   // A flow with nothing in it will do nothing for the chef, which is worth
   // saying before they save and wonder.
@@ -1102,8 +1206,10 @@ function StageHeader({
 
   return (
     <div
+      data-stage-panel={stage}
+      tabIndex={-1}
       className={cn(
-        "rounded-lg border p-3 transition-colors",
+        "rounded-lg border p-3 transition-colors focus:outline-none",
         enabled ? "border-border bg-card" : "border-dashed border-border bg-muted/30",
       )}
     >
@@ -1162,6 +1268,9 @@ function StageHeader({
         <Switch
           checked={enabled}
           onCheckedChange={onEnabledChange}
+          onMouseDown={onToggleMouseDown}
+          onClick={onToggleClick}
+          onKeyDown={onToggleKeyDown}
           aria-label={enabled ? mt("disableStage", { stage: title }) : mt("enableStage", { stage: title })}
         />
       </div>
@@ -1190,7 +1299,7 @@ function StageHeader({
               manager actually comes here to type — so it is the full-width,
               always-labelled field. The preview below it is only a way to
               check the work, and is sized as the secondary action. */}
-          <div className="mt-3 border-t pt-3">
+          <div className="mt-3 border-t pt-3" data-review-anchor="instructions" onKeyDown={onNotesKeyDown}>
             {detailsOpen ? (
               <div className="space-y-2">
                 <div>
@@ -1204,13 +1313,6 @@ function StageHeader({
                         {mt("optionalLabel")}
                       </span>
                     </Label>
-                    <button
-                      type="button"
-                      onClick={() => setDetailsOpen(false)}
-                      className="!min-h-0 !min-w-0 rounded px-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-                    >
-                      {mt("hide")}
-                    </button>
                   </div>
                   {/*
                     This is not where tasks go. A checklist item is a checkbox the
@@ -1224,8 +1326,8 @@ function StageHeader({
                   </p>
                   <Textarea
                     id={`${stage}-instructions`}
-                    value={instructions || ""}
-                    onChange={(e) => onInstructionsChange(e.target.value || null)}
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
                     placeholder={
                       stage === "checkin"
                         ? mt("arrivalInstructionsPlaceholder")
@@ -1252,14 +1354,100 @@ function StageHeader({
                     </div>
                     <Textarea
                       id="smart-lock-instructions"
-                      value={smartLockInstructions || ""}
-                      onChange={(e) => onSmartLockInstructionsChange(e.target.value || null)}
+                      value={smartLockDraft}
+                      onChange={(e) => setSmartLockDraft(e.target.value)}
                       placeholder={mt("smartLockAccessPlaceholder")}
                       rows={2}
                       className="bg-background text-xs"
                     />
                   </div>
                 )}
+
+                {/*
+                  The commit pair. Previously the only exit was "Hide", which
+                  reads as "close this" and says nothing about whether the text
+                  was kept — the manager had to guess. Save makes the model
+                  explicit, Cancel is the honest escape hatch, and the pair sits
+                  where the eye already is after typing.
+
+                  Save is disabled on an untouched draft: with nothing changed
+                  there is nothing to commit, and an always-live button invites
+                  a click that appears to do nothing.
+                */}
+                <div className="flex items-center justify-end gap-1.5 pt-0.5">
+                  <button
+                    type="button"
+                    onClick={cancelNotes}
+                    className="!min-h-0 !min-w-0 rounded px-1.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    {mt("cancel")}
+                  </button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={commitNotes}
+                    disabled={!notesDirty}
+                    className="!min-h-0 h-7 gap-1.5 rounded-md px-2 text-[11px]"
+                  >
+                    <Check className="size-3" />
+                    {mt("saveNotes")}
+                  </Button>
+                </div>
+              </div>
+            ) : hasInstructions ? (
+              /*
+                The read state, which is what the manager sees most of the time.
+                It is a calm summary of committed text rather than a disabled
+                textarea, and it stays visible — no collapsing into a one-line
+                teaser. Notes are the reason a chef gets the access details
+                right, so hiding them behind a click trades a little tidiness
+                for a real chance the manager forgets what they wrote.
+
+                Edit is revealed on hover but never hidden entirely (it dims
+                instead), because a purely hover-only affordance is invisible on
+                touch. One label for the whole block rather than one per field:
+                they commit together, so they edit together.
+              */
+              <div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+                    {stage === "checkin" ? mt("arrivalInstructionsTitle") : mt("departureInstructionsTitle")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSavedAt(0);
+                      setDetailsOpen(true);
+                    }}
+                    className="!min-h-0 !min-w-0 inline-flex items-center gap-1 rounded px-1 text-[11px] font-medium text-muted-foreground opacity-70 transition-opacity hover:text-foreground hover:opacity-100"
+                  >
+                    <Pencil className="size-3" />
+                    {mt("editInstructions")}
+                  </button>
+                </div>
+
+                <div className="mt-1.5 rounded-md border border-border bg-muted/30 px-2.5 py-2">
+                  <div className="flex items-start gap-2">
+                    <p className="min-w-0 flex-1 whitespace-pre-wrap text-xs leading-relaxed text-foreground">
+                      {instructions}
+                    </p>
+                    {savedAt > 0 && (
+                      <span className="inline-flex shrink-0 items-center gap-0.5 pt-px text-[10px] font-medium text-emerald-600">
+                        <Check className="size-2.5" />
+                        {mt("notesSaved")}
+                      </span>
+                    )}
+                  </div>
+
+                  {hasSmartLockInstructions && (
+                    <div className="mt-2 flex items-start gap-1.5 border-t border-border/60 pt-2">
+                      <Lock className="mt-px size-3 shrink-0 text-muted-foreground" />
+                      <p className="min-w-0 flex-1 whitespace-pre-wrap text-[11px] leading-relaxed text-muted-foreground">
+                        {smartLockInstructions}
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
               /* Notes are empty. This is still the primary writing surface, so
@@ -1300,19 +1488,19 @@ function StageHeader({
             )}
           </div>
 
-          {/* Preview entry — deliberately the quiet action on this panel. The
+          {/* Review entry — deliberately the quiet action on this panel. The
               notes field above is what the manager is here to write; this only
-              opens a check. Kept as a plain text button so it stays discoverable
-              without competing with the field for attention. */}
+              opens a read-back. Kept as a plain text button so it stays
+              discoverable without competing with the field for attention. */}
           <div className="mt-2 flex justify-end">
             <button
               type="button"
               onClick={onOpenPreview}
-              title={mt("previewChefViewHint")}
+              title={mt("reviewOpenHint")}
               className="!min-h-0 !min-w-0 inline-flex items-center gap-1 rounded px-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
             >
-              <Eye className="size-3" />
-              {mt("previewChefView")}
+              <ListChecks className="size-3" />
+              {stage === "checkin" ? mt("reviewCheckinCta") : mt("reviewCheckoutCta")}
               <ArrowRight className="size-3" />
             </button>
           </div>
@@ -1403,7 +1591,7 @@ function ChecklistList({
     setRemoved({ item: current[index], index });
     onItemsChangeRef.current(current.filter((i) => i.id !== id));
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
-    undoTimerRef.current = setTimeout(() => setRemoved(null), 6000);
+    undoTimerRef.current = setTimeout(() => setRemoved(null), UNDO_WINDOW_MS);
   }, []);
 
   const undoRemove = useCallback(() => {
@@ -1623,6 +1811,7 @@ function ChecklistList({
       {removed && (
         <UndoBar
           label={mt("itemRemoved", { label: removed.item.label || mt("item") })}
+          seconds={Math.round(UNDO_WINDOW_MS / 1000)}
           onUndo={undoRemove}
         />
       )}
@@ -1631,16 +1820,36 @@ function ChecklistList({
           which already offers a way out. */}
       {items.length > 0 && (
         <div className="space-y-2 pt-0.5">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={addItem}
-            className="h-8 w-full rounded-lg text-xs shadow-none hover:translate-y-0 hover:shadow-none"
-          >
-            <Plus className="mr-1.5 size-3.5" />
-            {mt("addChecklistItem")}
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addItem}
+              className="h-8 flex-1 rounded-lg text-xs shadow-none hover:translate-y-0 hover:shadow-none"
+            >
+              <Plus className="mr-1.5 size-3.5" />
+              {mt("addChecklistItem")}
+            </Button>
+            {/* Sits beside the add button, not only in the empty state, so the
+                preset list stays one tap away however long the list has grown. */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 flex-1 rounded-lg text-xs shadow-none hover:translate-y-0 hover:shadow-none"
+                >
+                  <PlaylistPlus className="mr-1.5 size-3.5" />
+                  {mt("startFromCommonTasks")}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-auto p-1.5">
+                <PresetPicker onPick={addPreset} existingLabels={existingLabels} />
+              </PopoverContent>
+            </Popover>
+          </div>
           <p className="flex items-center justify-center gap-1 text-[11px] text-muted-foreground">
             <Lightbulb className="size-3" />
             {mt("scopeLegend")}
@@ -1672,6 +1881,10 @@ export interface KitchenCheckinCheckoutEditorProps {
    * equipped with a smart door.
    */
   smartLockAvailable: boolean;
+  /** Forwarded to both flow switches — see `StageHeaderProps.onToggleClick`. */
+  onFlowToggleClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  onFlowToggleMouseDown: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  onFlowToggleKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
 }
 
 export function KitchenCheckinCheckoutEditor({
@@ -1688,10 +1901,32 @@ export function KitchenCheckinCheckoutEditor({
   smartLockInstructions,
   onSmartLockInstructionsChange,
   smartLockAvailable,
+  onFlowToggleClick,
+  onFlowToggleMouseDown,
+  onFlowToggleKeyDown,
 }: KitchenCheckinCheckoutEditorProps) {
   const [previewStage, setPreviewStage] = useState<Stage | null>(null);
   /** Which slice of the shared list is on screen. Editing is never restricted. */
   const [itemFilter, setItemFilter] = useState<ItemFilter>("all");
+
+  /**
+   * Takes the manager from the review sheet back to the thing they want to
+   * change, and closes the sheet on the way. The whole point of a review
+   * surface is that catching a mistake there should cost one click, not a
+   * walk back through the page — leaving the sheet open would just put a
+   * panel between them and the field.
+   *
+   * The target is scrolled to *after* the close, in a frame, because the sheet
+   * is a modal: scrolling underneath it while it is still mounted does nothing
+   * the manager can see, and Radix restores focus on unmount which would fight
+   * a scroll started in the same tick.
+   */
+  const handleEditSection = useCallback((target: ReviewEditTarget) => {
+    setPreviewStage((stage) => {
+      if (stage) scrollToReviewTarget(stage, target);
+      return null;
+    });
+  }, []);
 
   const checkinItemCount = useMemo(
     () => items.filter((i) => i.requiredOnCheckin).length,
@@ -1767,6 +2002,9 @@ export function KitchenCheckinCheckoutEditor({
             itemCount={checkinItemCount}
             photoCount={checkinPhotoCount}
             onOpenPreview={() => setPreviewStage("checkin")}
+            onToggleClick={onFlowToggleClick}
+            onToggleMouseDown={onFlowToggleMouseDown}
+            onToggleKeyDown={onFlowToggleKeyDown}
           />
           <StageHeader
             stage="checkout"
@@ -1780,6 +2018,9 @@ export function KitchenCheckinCheckoutEditor({
             itemCount={checkoutItemCount}
             photoCount={checkoutPhotoCount}
             onOpenPreview={() => setPreviewStage("checkout")}
+            onToggleClick={onFlowToggleClick}
+            onToggleMouseDown={onFlowToggleMouseDown}
+            onToggleKeyDown={onFlowToggleKeyDown}
           />
         </div>
 
@@ -1848,8 +2089,10 @@ export function KitchenCheckinCheckoutEditor({
         </div>
       </CardContent>
 
-      {/* Chef-view preview — side Sheet mirroring KitchenCheckinTracker */}
-      <ChefPreviewSheet
+      {/* Review surface — a read-only recap of this flow, so the manager can
+          read it back and confirm it is right. See ReviewSheet for why this
+          replaced an interactive simulation of the chef's screen. */}
+      <ReviewSheet
         open={previewStage !== null}
         onOpenChange={(o) => {
           if (!o) setPreviewStage(null);
@@ -1858,10 +2101,11 @@ export function KitchenCheckinCheckoutEditor({
         instructions={
           previewStage === "checkout" ? checkoutInstructions : checkinInstructions
         }
-        // Hide smart-lock preview when the admin hasn't enabled the capability
-        // on any kitchen at this location — chefs won't see it either.
+        // The review must not show a capability the chef will not get: when no
+        // kitchen here has a smart lock, it is hidden from chefs too.
         smartLockInstructions={smartLockAvailable ? smartLockInstructions : null}
         items={items}
+        onEditSection={handleEditSection}
       />
     </Card>
   );

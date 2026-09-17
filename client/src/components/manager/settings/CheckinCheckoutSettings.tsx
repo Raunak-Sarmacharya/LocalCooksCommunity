@@ -14,7 +14,7 @@
  * two can never disagree about whether work is at risk.
  */
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import { mt } from "@/i18n/manager";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { MutableRefObject, Ref } from "react";
@@ -23,6 +23,7 @@ import {
   ArrowRight,
   Calendar,
   Clock,
+  Info,
   Loader2,
 } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
@@ -102,6 +103,39 @@ interface CheckinCheckoutSettingsProps {
   onNavigate?: (view: "settings-booking-rules") => void;
 }
 
+/**
+ * Collapses the pinned bar to zero height on the frame it is hidden.
+ *
+ * The bar is always in the layout so the scroll container keeps a constant
+ * height — see the note where it is rendered. Hiding it therefore has to happen
+ * mechanically: this reads the bar's own measured height and commits it as the
+ * max-height for one frame, so nothing about the bar's box changes, then
+ * releases it on the next frame so the geometry is identical in every respect.
+ * Revealing skips the lock entirely, because showing the bar is the one
+ * transition that cannot disturb scroll.
+ *
+ * Runs both branches inside a single effect so no resize can be observed
+ * between them.
+ */
+function usePinchOnHide(
+  ref: React.RefObject<HTMLDivElement | null>,
+  hidden: boolean,
+) {
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (!hidden) {
+      el.style.maxHeight = "";
+      return;
+    }
+    el.style.maxHeight = `${el.getBoundingClientRect().height}px`;
+    const frame = requestAnimationFrame(() => {
+      el.style.maxHeight = "0px";
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [ref, hidden]);
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function CheckinCheckoutSettings({
@@ -143,6 +177,7 @@ export default function CheckinCheckoutSettings({
   // Items are held in a single unified list; split into server-side
   // checkinItems / checkoutItems arrays on save.
   const [checkinEnabled, setCheckinEnabled] = useState(false);
+  const stickyBarRef = useRef<HTMLDivElement>(null);
   const [checkoutEnabled, setCheckoutEnabled] = useState(false);
   const [items, setItems] = useState<UnifiedChecklistItem[]>([]);
   const [checkinInstructions, setCheckinInstructions] = useState<string | null>(null);
@@ -219,6 +254,40 @@ export default function CheckinCheckoutSettings({
   const problems = useMemo(() => findUnifiedItemProblems(items), [items]);
 
   const hasProblems = problems.empty.length > 0 || problems.unassigned.length > 0;
+
+  /**
+   * Items assigned to a flow the manager has switched off.
+   *
+   * This is not an error — the items are saved, and the manager can turn the
+   * flow on at any time — so it must not block Save or dress itself up as one.
+   * It is, however, the one state where "saved successfully" and "the chef
+   * sees nothing" are both true, and the manager has no way to notice from
+   * this page. Warning is therefore worth the pixels; a modal is not. A
+   * confirmation dialog is reserved for destructive, irreversible actions,
+   * and the industry guidance is explicit that confirming routine saves
+   * trains people to dismiss reflexively, which costs the warnings that
+   * matter. An inline advisory says the same thing without that tax.
+   *
+   * Counted against the live toggles rather than the saved ones, so the
+   * message describes what the next Save will actually produce.
+   */
+  const dormantFlows = useMemo(() => {
+    const dormant = (on: boolean, scope: "checkin" | "checkout") =>
+      on
+        ? 0
+        : items.filter(
+            (i) =>
+              i.label.trim() &&
+              (scope === "checkin" ? i.requiredOnCheckin : i.requiredOnCheckout),
+          ).length;
+
+    return {
+      checkin: dormant(checkinEnabled, "checkin"),
+      checkout: dormant(checkoutEnabled, "checkout"),
+    };
+  }, [items, checkinEnabled, checkoutEnabled]);
+
+  const hasDormantFlows = dormantFlows.checkin > 0 || dormantFlows.checkout > 0;
 
   // Arrival timings are meaningless without at least one flow to be on time for.
   const timingsLocked = arrivalTimingsLocked(data ?? undefined);
@@ -303,6 +372,67 @@ export default function CheckinCheckoutSettings({
     else (saveRef as MutableRefObject<CheckinCheckoutHandle | null>).current = handle;
   }, [saveRef, saveAction.execute]);
 
+  /**
+   * Toggling a flow is done through a `<Switch>`, and clicking it focuses it.
+   * When that switch is above the visible part of the scroll container — which
+   * it is as soon as the manager has scrolled down past the two flow panels —
+   * the browser scrolls the newly focused element into view. Measured with the
+   * container at scrollTop 600 and the switch off-screen above: a plain
+   * `element.click()` leaves the scroll position alone, but `element.focus()`
+   * drives scrollTop to 0, a 600px jump. So focus, not the content change, is
+   * the whole cause — the toggle re-renders *after* focus has already moved,
+   * which is why it looks like the toggle did it.
+   *
+   * `preventDefault()` on mousedown stops the browser taking focus on press.
+   * The event is still allowed to become a click, so `onCheckedChange` fires
+   * normally. Blocking the default here rather than repairing the scroll
+   * afterwards matters: once scrollTop has been clamped to 0 there is nothing
+   * left for scroll anchoring to compensate with.
+   *
+   * Focus is then handed to the panel the manager just acted on, so the
+   * focused element is a real container rather than `<body>` (a focused element
+   * that unmounts would silently drop focus, which is worse for assistive
+   * tech). `preventScroll` keeps that handoff from nudging the container again.
+   */
+  const focusAfterToggle = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      const panel = event.currentTarget.closest("[data-stage-panel]");
+      if (!(panel instanceof HTMLElement)) return;
+      panel.focus({ preventScroll: true });
+    },
+    [],
+  );
+
+  /**
+   * Stops the browser focusing the switch on press. See the note above — this is
+   * the line that actually prevents the scroll jump. It must run on mousedown
+   * and must not call `stopPropagation`, so the press still becomes a click and
+   * the switch still toggles.
+   */
+  const preventToggleFocusScroll = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+    },
+    [],
+  );
+
+  /**
+   * Keyboard activation never focused the switch through a pointer press, so it
+   * has no scroll to suppress — it only needs the same focus handoff that the
+   * pointer path performs, keeping both routes identical.
+   */
+  const onFlowKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLButtonElement>) => {
+      if (event.target !== event.currentTarget) return;
+      if (event.key === " " || event.key === "Enter") focusAfterToggle(event as unknown as React.MouseEvent<HTMLButtonElement>);
+    },
+    [focusAfterToggle],
+  );
+
+  // The pinned bar is never unmounted — it is collapsed in place so the scroll
+  // container cannot resize while the manager is scrolling.
+  usePinchOnHide(stickyBarRef, !isDirty);
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -355,6 +485,34 @@ export default function CheckinCheckoutSettings({
         </div>
       )}
 
+      {/* Advisory, not an error: the configuration is valid and Save works.
+          Amber rather than red so it never reads as a failure, and it names
+          the flow and the count instead of asking "are you sure?" — the
+          manager's next move is clear from the sentence itself. Hidden while
+          a real problem is blocking Save, because two stacked banners turn
+          into a wall of warnings and the blocking one is the one that matters. */}
+      {!hasProblems && hasDormantFlows && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/70 p-3">
+          <Info className="mt-0.5 size-4 shrink-0 text-amber-600" />
+          <div className="space-y-0.5 text-xs text-amber-900">
+            {dormantFlows.checkin > 0 && (
+              <p>
+                {mt("checklistDormantCheckin", {
+                  count: dormantFlows.checkin,
+                })}
+              </p>
+            )}
+            {dormantFlows.checkout > 0 && (
+              <p>
+                {mt("checklistDormantCheckout", {
+                  count: dormantFlows.checkout,
+                })}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Checklist editor */}
       <KitchenCheckinCheckoutEditor
         items={items}
@@ -363,6 +521,9 @@ export default function CheckinCheckoutSettings({
         onCheckinEnabledChange={setCheckinEnabled}
         checkoutEnabled={checkoutEnabled}
         onCheckoutEnabledChange={setCheckoutEnabled}
+        onFlowToggleClick={focusAfterToggle}
+        onFlowToggleMouseDown={preventToggleFocusScroll}
+        onFlowToggleKeyDown={onFlowKeyDown}
         checkinInstructions={checkinInstructions}
         onCheckinInstructionsChange={setCheckinInstructions}
         checkoutInstructions={checkoutInstructions}
@@ -507,12 +668,26 @@ export default function CheckinCheckoutSettings({
         <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
       </button>
 
-      {/* Sticky save bar. The header Save is the primary action and stays for
-          consistency with the other settings pages, but on a page whose content
-          is a long editable list it can be scrolled far out of view — so while
-          something is unsaved, a pinned bar mirrors it next to the work. */}
-      {isDirty && (
-        <div className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card/95 px-3 py-2 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-card/80">
+      {/* Pinned action bar.
+       *
+       * This is the page's scroll "pincher": it is always in the layout, at a
+       * fixed 58px, and only the content inside it changes. Mounting it only
+       * while dirty would resize the scroll container at the exact moment a
+       * toggle fires, which moves content relative to the scrollbar and is the
+       * second half of the jump this page used to have. A constant-height slot
+       * means no content change on this page can ever resize the container.
+       *
+       * The collapse itself is a one-frame layout effect rather than a sibling
+       * component, so the cause and effect are visible in one place: the height
+       * is read from the DOM before the paint that reveals it, and locked to 0
+       * for that frame. Both branches go through this effect, so a resize can
+       * never land between them. */}
+      <div
+        ref={stickyBarRef}
+        aria-hidden={!isDirty}
+        className="sticky bottom-0 z-10 -mx-1 h-[58px] overflow-hidden"
+      >
+        <div className="flex h-[58px] flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card/95 px-3 py-2 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-card/80">
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <AlertTriangle className="size-3.5 text-amber-500" />
             {mt("unsavedChanges")}
@@ -548,7 +723,7 @@ export default function CheckinCheckoutSettings({
             />
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

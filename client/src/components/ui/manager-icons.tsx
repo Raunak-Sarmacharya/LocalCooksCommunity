@@ -1,8 +1,10 @@
 import type { ComponentType } from "react";
 import { addCollection, Icon, type IconProps } from "@iconify/react";
 import { icons as mdiIcons } from "@iconify-json/mdi";
+import { icons as famiconsIcons } from "@iconify-json/famicons";
 
 addCollection(mdiIcons);
+addCollection(famiconsIcons);
 
 type ManagerIconProps = Omit<IconProps, "icon"> & {
   absoluteStrokeWidth?: boolean;
@@ -62,6 +64,7 @@ export const Copy = managerIcon("mdi:content-copy");
 export const CreditCard = managerIcon("mdi:credit-card-outline");
 export const DollarSign = managerIcon("mdi:currency-usd");
 export const Download = managerIcon("mdi:download");
+export const Duplicate = managerIcon("famicons:duplicate-outline");
 export const Edit = managerIcon("mdi:pencil-outline");
 export const Edit2 = Edit;
 export const Edit3 = Edit;
