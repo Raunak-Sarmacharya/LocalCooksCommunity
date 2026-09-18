@@ -77,17 +77,8 @@ export default function KitchenAuthShowcase() {
       aria-label="Why commercial kitchens use LocalCooks"
       className="relative hidden min-h-screen overflow-hidden px-7 py-8 lg:flex lg:h-screen lg:min-h-0 lg:w-[58%] xl:px-12"
     >
-      {/* A single soft light source sitting behind the scene, so the red field recedes and the cards
-          read as lit from behind. This replaces two circles pinned at fixed offsets that related to
-          nothing in the composition — one element instead of two, and it has a reason to exist. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(120% 82% at 55% 54%, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.055) 42%, rgba(255,255,255,0) 72%)",
-        }}
-      />
+      <div className="absolute -left-20 top-12 h-64 w-64 rounded-full bg-white/10 blur-sm" />
+      <div className="absolute right-[5%] top-[38%] h-80 w-80 rounded-full bg-white/[0.07]" />
 
       <div className="relative mx-auto flex w-full max-w-[790px] flex-col justify-center lg:h-full">
         <motion.div {...reveal(0.06, -18)}>
