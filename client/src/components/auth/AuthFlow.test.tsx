@@ -142,4 +142,33 @@ describe("AuthFlow recovery methods", () => {
 
     expect(await screen.findByRole("button", { name: "Google alternatives" })).toBeInTheDocument();
   });
+
+  it("gives a single-method account a way back from the login step", async () => {
+    // One method means no onTryAnotherWay, which used to leave `login` with no
+    // exit at all — reloading the page was the only way back to the identifier.
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ state: "existing", methods: ["email-link"], maskedEmail: "li***@example.com", maskedPhone: null }),
+    }));
+    render(<AuthFlow onGoogleSignIn={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Start email" }));
+    expect(await screen.findByText("Email link auto send")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Login alternatives" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Back/ }));
+    expect(screen.getByRole("button", { name: "Start email" })).toBeInTheDocument();
+  });
+
+  it("never shows both escapes at once on the login step", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ state: "existing", methods: ["email-link", "password"], maskedEmail: "li***@example.com", maskedPhone: null }),
+    }));
+    render(<AuthFlow onGoogleSignIn={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Start email" }));
+    expect(await screen.findByRole("button", { name: "Login alternatives" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Back/ })).not.toBeInTheDocument();
+  });
 });

@@ -18,6 +18,7 @@ import { useLocation } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import KitchenAuthShowcase from "@/components/auth/KitchenAuthShowcase";
 import AuthLoadingScreen from "@/components/auth/AuthLoadingScreen";
+import { clearLastAccount, getLastAccount, type LastAccount } from "@/lib/last-account";
 import { useAuthTransition } from "@/components/auth/AuthTransition";
 import { AUTH_GATE_TIMEOUT_MS } from "@/config/auth-timing";
 import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
@@ -34,9 +35,18 @@ export default function ManagerLogin() {
   const { user, loading, authPhase, refreshUserData, signInWithGoogle, updateUserVerification } = useFirebaseAuth();
   const { begin: beginHandoff, end: endHandoff } = useAuthTransition();
   const queryClient = useQueryClient();
-  const [authStep, setAuthStep] = useState<AuthFlowStep>(() =>
-    new URLSearchParams(window.location.search).get("tab") === "register" ? "register" : "identifier"
-  );
+  // Read once, synchronously, so the card can be the first thing painted. This
+  // is browser-local only — it must never become a lookup, or the page would
+  // become an account-enumeration oracle.
+  const [lastAccount, setLastAccount] = useState<LastAccount | null>(() => getLastAccount());
+  const [authStep, setAuthStep] = useState<AuthFlowStep>(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("tab") === "register") return "register";
+    // A post-verification or post-reset arrival carries its own landing step.
+    // Starting on the card would flash it and then swap to the success banner.
+    if (params.get("message") || params.get("verified")) return "identifier";
+    return lastAccount ? "welcome-back" : "identifier";
+  });
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
   // Covers the gap after Google's account picker returns: signInWithGoogle sets
   // authPhase back to `ready` before finishAuthentication can raise the handoff,
@@ -488,7 +498,7 @@ export default function ManagerLogin() {
                 transition={{ duration: reduceMotion ? 0 : 0.2, ease: "easeOut" }}
                 className="w-full"
               >
-                {!showEmailVerification && authStep !== "phone-otp" && authStep !== "google-hint" && authStep !== "methods" && (
+                {!showEmailVerification && authStep !== "phone-otp" && authStep !== "google-hint" && authStep !== "methods" && authStep !== "welcome-back" && (
                   <div className="mb-6">
                     <h1 className="text-3xl font-bold tracking-[-0.03em] text-gray-950">
                       {authStep === "register"
@@ -569,6 +579,11 @@ export default function ManagerLogin() {
                   <AuthFlow
                     step={authStep}
                     onStepChange={setAuthStep}
+                    lastAccount={lastAccount}
+                    onDismissLastAccount={() => {
+                      clearLastAccount();
+                      setLastAccount(null);
+                    }}
                     loginProps={{
                       onSuccess: async () => {
                         await finishAuthentication();

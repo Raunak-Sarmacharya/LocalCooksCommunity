@@ -11,6 +11,7 @@ import { User, UserWithFlags } from "@shared/schema";
 import { createDuplicateAccountError, isDuplicateAccountError } from "@/lib/registration-error";
 import { isPhoneAuthInProgress } from "@/lib/phone-registration";
 import { createMissingProfileError, rememberAuthMethod } from "@/lib/login-challenge";
+import { LAST_ACCOUNT_KEY, getLastAccount } from "@/lib/last-account";
 import { normalizePhoneNumber } from "@shared/phone-validation";
 // See the ladder documented there: this is the outermost (longest) auth timeout.
 import { AUTH_PHASE_TIMEOUT_MS } from "@/config/auth-timing";
@@ -665,6 +666,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Keep uid-scoped kitchen preview walkthrough so the same account is not toured again.
       const walkthroughFlags: [string, string][] = [];
       const authMethodHint = localStorage.getItem('localcooks-auth-method-hint');
+      // Also kept across sign-out: offering the last account back on the next
+      // visit is the entire point of the welcome-back card, and the record is
+      // browser-local. "Not you?" is the user-facing way to remove it.
+      const lastAccountRecord = localStorage.getItem(LAST_ACCOUNT_KEY);
       try {
         for (let i = 0; i < localStorage.length; i++) {
           const key = localStorage.key(i);
@@ -679,6 +684,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         for (const [key, val] of walkthroughFlags) localStorage.setItem(key, val);
         if (authMethodHint) localStorage.setItem('localcooks-auth-method-hint', authMethodHint);
+        if (lastAccountRecord) localStorage.setItem(LAST_ACCOUNT_KEY, lastAccountRecord);
       } catch {
         // ignore
       }
@@ -719,8 +725,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     logger.info('📊 AUTH PHASE: idle → authenticating (Google sign-in)');
     try {
       const provider = new GoogleAuthProvider();
+      // `login_hint` pre-selects the account this browser last used, so the
+      // chooser costs one confirming click instead of a hunt. Google ignores it
+      // when it matches no active session, so sending it is never harmful — and
+      // it is only sent on sign-in, never registration, where hinting a
+      // previous identity would be wrong.
+      const hintedAccount = isRegistration ? null : getLastAccount();
       provider.setCustomParameters({
-        prompt: 'select_account'
+        prompt: 'select_account',
+        ...(hintedAccount ? { login_hint: hintedAccount.email } : {}),
       });
 
       if (isRegistration) {
@@ -757,7 +770,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setPendingSync(false);
           setPendingRegistration(false);
           await refreshUserData();
-          await rememberAuthMethod(result.user.email, 'google');
+          await rememberAuthMethod(result.user.email, 'google', result.user.displayName);
           setAuthPhase('ready');
           return 'existing';
         }
@@ -807,7 +820,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setPendingSync(false);
           setPendingRegistration(false);
           await refreshUserData();
-          await rememberAuthMethod(googleUser.email, 'google');
+          await rememberAuthMethod(googleUser.email, 'google', googleUser.displayName);
           setAuthPhase('ready');
           return 'registered';
         } else {
@@ -849,7 +862,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // User exists in backend - sign in successful
           logger.info('✅ GOOGLE SIGN-IN - User exists, completing sign-in');
           setPendingSync(true);
-          await rememberAuthMethod(user.email, 'google');
+          await rememberAuthMethod(user.email, 'google', user.displayName);
           return 'existing';
         } else if (response.status === 404) {
           // User doesn't exist in backend - they need to register

@@ -445,10 +445,14 @@ dev/shot-anim.mjs
 dev/shot-listings-full.mjs
 dev/shot-listings.mjs
 dev/shot-login.mjs
+dev/shot-welcome.mjs
 dev/shot.mjs
 dev/verify-listings.sh
 dev/verify-login.sh
 dev/verify-ui.sh
+dev/verify-welcome.sh
+dev/welcome-harness.tsx
+dev/welcome.html
 dev/zoom-panel.mjs
 docs/storage-equipment-per-kitchen-analysis.md
 graphify-out/.graphify_labels.json

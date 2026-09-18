@@ -8,10 +8,12 @@ import PhoneOtpChallenge from "./PhoneOtpChallenge";
 import AuthMethodChooser from "./AuthMethodChooser";
 import EnhancedLoginForm from "./EnhancedLoginForm";
 import EnhancedRegisterForm from "./EnhancedRegisterForm";
+import WelcomeBackCard from "./WelcomeBackCard";
 import { getRememberedAuthMethod, isMissingProfileError, resolveAuthIdentifier, resolveIdentifierStep, type LoginChallenge } from "@/lib/login-challenge";
+import type { LastAccount } from "@/lib/last-account";
 import type { AuthAccountState, AuthMethod } from "@shared/auth-resolution";
 
-export type AuthFlowStep = "identifier" | "login" | "register" | "google-hint" | "phone-otp" | "methods" | "account-help";
+export type AuthFlowStep = "welcome-back" | "identifier" | "login" | "register" | "google-hint" | "phone-otp" | "methods" | "account-help";
 type ActiveAuthMethod = AuthMethod;
 
 type LoginFormProps = ComponentProps<typeof EnhancedLoginForm>;
@@ -33,6 +35,14 @@ export interface AuthFlowProps {
   footer?: ReactNode;
   /** Set false in flows that must not switch identity mid-way (kitchen applications). */
   allowBack?: boolean;
+  /**
+   * The account this browser last signed in with. Supplying it enables the
+   * `welcome-back` step; omit it and the flow is byte-for-byte what it was, so
+   * the other three hosts are unaffected.
+   */
+  lastAccount?: LastAccount | null;
+  /** The visitor rejected the remembered account. The owner clears its record. */
+  onDismissLastAccount?: () => void;
 }
 
 export default function AuthFlow({
@@ -46,6 +56,8 @@ export default function AuthFlow({
   onPhoneNewUser,
   footer,
   allowBack = true,
+  lastAccount = null,
+  onDismissLastAccount,
 }: AuthFlowProps) {
   const { t } = useTranslation("auth");
   const [ownStep, setOwnStep] = useState<AuthFlowStep>(initialStep);
@@ -132,29 +144,64 @@ export default function AuthFlow({
     go(method === "google" ? "google-hint" : method === "phone" ? "phone-otp" : "login");
   };
 
+  const continueWithRememberedAccount = async () => {
+    if (!lastAccount) return;
+    if (lastAccount.method === "google") {
+      // Straight into the popup — the visitor already told us which account.
+      await handleGoogleSignIn();
+      return;
+    }
+    // For the email-based methods, reuse the identifier-first routing verbatim
+    // rather than adding a second code path. It re-resolves the account
+    // server-side and picks the correct challenge, so a stale local record
+    // self-corrects instead of dead-ending.
+    setEmail(lastAccount.email);
+    setPhone("");
+    await chooseEmailEntryStep(lastAccount.email);
+  };
+
   const hasAlternativeMethod = availableMethods.some((method) => method !== activeMethod);
   let content: ReactNode = null;
 
+  const identifierContent = (
+    <IdentifierGate
+      onEmailKnown={async (knownEmail) => {
+        setEmail(knownEmail);
+        setPhone("");
+        await chooseEmailEntryStep(knownEmail);
+      }}
+      onPhoneKnown={async (knownPhone) => {
+        setPhone(knownPhone);
+        setEmail("");
+        applyResolution(await resolveAuthIdentifier(knownPhone));
+        setPhoneFromMethods(false);
+        setActiveMethod("phone");
+        go(resolveIdentifierStep("phone"));
+      }}
+      onGoogleSignIn={handleGoogleSignIn}
+    />
+  );
+
   switch (step) {
-    case "identifier":
-      content = (
-        <IdentifierGate
-          onEmailKnown={async (knownEmail) => {
-            setEmail(knownEmail);
-            setPhone("");
-            await chooseEmailEntryStep(knownEmail);
+    case "welcome-back":
+      content = lastAccount ? (
+        <WelcomeBackCard
+          account={lastAccount}
+          onContinue={continueWithRememberedAccount}
+          onNotYou={() => {
+            onDismissLastAccount?.();
+            go("identifier");
           }}
-          onPhoneKnown={async (knownPhone) => {
-            setPhone(knownPhone);
-            setEmail("");
-            applyResolution(await resolveAuthIdentifier(knownPhone));
-            setPhoneFromMethods(false);
-            setActiveMethod("phone");
-            go(resolveIdentifierStep("phone"));
-          }}
-          onGoogleSignIn={handleGoogleSignIn}
         />
+      ) : (
+        // Defensive: the step is only entered when a record exists, but never
+        // render an empty card if the owner cleared it mid-flight.
+        identifierContent
       );
+      break;
+
+    case "identifier":
+      content = identifierContent;
       break;
 
     case "google-hint":
@@ -246,8 +293,16 @@ export default function AuthFlow({
       break;
   }
 
-  // phone-otp and google-hint ship their own escape hatches.
-  const showBack = allowBack && step === "register";
+  // phone-otp and google-hint ship their own escape hatches, and account-help
+  // renders its own "use a different email or phone number" button.
+  //
+  // `login` normally reaches `methods` through onTryAnotherWay, which is only
+  // passed when a second method exists. A single-method account (email-link
+  // only, or password only) therefore had no route back to the identifier step
+  // at all — reloading the page was the only exit. Show the back control in
+  // exactly that case, so the two escapes never appear together.
+  const showBack =
+    allowBack && (step === "register" || (step === "login" && !hasAlternativeMethod));
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">

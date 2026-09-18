@@ -3,6 +3,7 @@ import {
   isAuthMethod,
   type AuthAccountResolution,
 } from "@shared/auth-resolution";
+import { rememberLastAccount } from "./last-account";
 
 /** Identifier-first challenges supported by the shared flow. */
 export type LoginChallenge = "email-link" | "password" | "forgot-password";
@@ -29,8 +30,17 @@ async function fingerprintEmail(email: string): Promise<string> {
  * A same-browser convenience hint, never an account-discovery mechanism.
  * The server remains deliberately non-enumerable; this only remembers a method
  * after that browser completed authentication successfully.
+ *
+ * This is the single choke point for both records. The welcome-back card's
+ * record is written here too, so the two can never disagree about which account
+ * this browser last used — and a future sign-in path cannot silently forget to
+ * write one of them.
  */
-export async function rememberAuthMethod(email: string | null | undefined, method: RememberedAuthMethod): Promise<void> {
+export async function rememberAuthMethod(
+  email: string | null | undefined,
+  method: RememberedAuthMethod,
+  displayName?: string | null,
+): Promise<void> {
   const normalizedEmail = email?.trim().toLowerCase();
   if (!normalizedEmail || typeof window === "undefined") return;
   try {
@@ -42,6 +52,7 @@ export async function rememberAuthMethod(email: string | null | undefined, metho
   } catch {
     // Authentication must continue when storage is blocked or unavailable.
   }
+  await rememberLastAccount({ email: normalizedEmail, displayName, method });
 }
 
 export async function getRememberedAuthMethod(email: string): Promise<RememberedAuthMethod | null> {
