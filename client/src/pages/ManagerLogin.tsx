@@ -97,8 +97,18 @@ export default function ManagerLogin() {
    * The address a failed Google attempt was for. AuthFlow is unmounted by the
    * loading gate, so its own `email` state cannot survive to pre-fill the
    * register step; the host re-seeds it on remount instead.
+   *
+   * Also seeds a post-verification arrival. That link carries `verified=true` and nothing
+   * else — deliberately, so an address is never put in a URL — so the visitor used to land on
+   * an empty field and have to retype the address they had just proved. This browser is the
+   * one that registered the account, so the remembered account IS that address.
    */
-  const [attemptedIdentifier, setAttemptedIdentifier] = useState("");
+  const [attemptedIdentifier, setAttemptedIdentifier] = useState(() =>
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("verified") === "true"
+      ? (lastAccount?.email ?? "")
+      : "",
+  );
   
   // ENTERPRISE FIX: Lift loading overlay state to parent so it persists across auth state changes
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
@@ -437,10 +447,20 @@ export default function ManagerLogin() {
       logger.info('📧 EMAIL VERIFICATION SUCCESS detected in URL');
       setSuccessMessageType('email-verified');
       setShowSuccessMessage(true);
-      setAuthStep('login');
-      
+      // Deliberately does NOT set the step.
+      //
+      // It used to force `login`, which fought the `authStep` initializer above: that one
+      // returns `identifier` for `?verified` precisely so a post-verification arrival lands
+      // on the app's real entry point. Forcing `login` instead put the visitor on an EMPTY
+      // sign-in form — the address is not carried by the link, so there was nothing to sign
+      // in with — under a "← Back" arrow that had nowhere useful to go and that no other
+      // auth state shows. The initializer's answer stands: `identifier`, with the success
+      // banner above it.
+      //
+      // `password-reset-success` still forces `login`: there the next step genuinely is to
+      // sign in with the password that was just set.
       window.history.replaceState({}, document.title, window.location.pathname);
-      
+
       setTimeout(() => {
         setShowSuccessMessage(false);
       }, 10000);

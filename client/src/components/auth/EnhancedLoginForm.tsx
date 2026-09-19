@@ -42,16 +42,7 @@ interface EnhancedLoginFormProps {
   showChallengeSwitcher?: boolean;
   autoSendEmailLink?: boolean;
   onTryAnotherWay?: () => void;
-  /**
-   * Reports whether the form is showing a terminal "we have sent you something" state.
-   *
-   * The host renders a "← Back" arrow above the login card for single-method accounts, and
-   * in this state that arrow competes with the named escape below it and reads as a wizard
-   * step. Suppressing it here is what lets this state follow the same convention as the
-   * register step and `EmailVerificationScreen`: no arrow, one named way out.
-   */
-  onSentStateChange?: (isSent: boolean) => void;
-  /** The named way out of this state — routes back to the identifier gate. */
+  /** The named way out of this form — routes back to the identifier gate. */
   onUseDifferentEmail?: () => void;
 }
 
@@ -102,7 +93,6 @@ export default function EnhancedLoginForm({
   showChallengeSwitcher = true,
   autoSendEmailLink = false,
   onTryAnotherWay,
-  onSentStateChange,
   onUseDifferentEmail,
 }: EnhancedLoginFormProps) {
   const { t } = useTranslation("auth");
@@ -127,16 +117,6 @@ export default function EnhancedLoginForm({
     const timer = window.setInterval(() => setEmailLinkCooldown((value) => Math.max(0, value - 1)), 1000);
     return () => window.clearInterval(timer);
   }, [emailLinkCooldown]);
-
-  /**
-   * Tell the host when this form is showing the sent state, so it can drop the "← Back" arrow
-   * it would otherwise render above us. The cleanup reports `false` so the arrow is restored
-   * if this form unmounts while the state was up.
-   */
-  useEffect(() => {
-    onSentStateChange?.(showMagicLinkNudge);
-    return () => onSentStateChange?.(false);
-  }, [showMagicLinkNudge, onSentStateChange]);
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -633,6 +613,29 @@ export default function EnhancedLoginForm({
                 {t("createAccountLink", "Create an account")}
               </button>
             </motion.div>
+          )}
+
+          {/*
+            The way out of this form, named. It replaces the "← Back" arrow the host used to
+            render above the card for single-method accounts: an arrow above a form reads as a
+            wizard step, says nothing about where it goes, and had nowhere useful to land
+            anyway (it returned to the gate this form was reached from). Wording it around the
+            problem — and putting it BELOW the actions — is the same treatment the register
+            step and `EmailVerificationScreen` already use.
+          */}
+          {onUseDifferentEmail && (
+            <motion.p variants={itemVariants} className="text-center text-sm text-slate-600">
+              {t("wrongEmailPrompt", "Wrong email?")}{" "}
+              <button
+                type="button"
+                onClick={onUseDifferentEmail}
+                // index.css forces min-height/min-width 44px on EVERY button, which would blow
+                // this inline link out of its line.
+                className="!min-h-0 !min-w-0 font-medium text-[#E00A38] underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
+              >
+                {t("useDifferentEmail", "Use a different email")}
+              </button>
+            </motion.p>
           )}
         </form>
       </motion.div>

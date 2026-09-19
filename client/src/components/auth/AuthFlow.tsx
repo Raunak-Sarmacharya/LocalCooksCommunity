@@ -131,12 +131,6 @@ export default function AuthFlow({
   const [availableMethods, setAvailableMethods] = useState<AuthMethod[]>([]);
   const [phoneFromMethods, setPhoneFromMethods] = useState(false);
   const [autoSendEmailLink, setAutoSendEmailLink] = useState(false);
-  /**
-   * True while the login card is showing its "we sent you a link" state. That state carries
-   * its own named escape, so the host's "← Back" arrow is suppressed while it is up — see
-   * `showBack` below. Reported by `EnhancedLoginForm` because the sent state is internal to it.
-   */
-  const [loginSent, setLoginSent] = useState(false);
   const step = controlledStep ?? ownStep;
 
   const go = (next: AuthFlowStep) => {
@@ -431,8 +425,13 @@ export default function AuthFlow({
           showChallengeSwitcher={false}
           autoSendEmailLink={autoSendEmailLink}
           onTryAnotherWay={hasAlternativeMethod ? () => go("methods") : undefined}
-          onSentStateChange={setLoginSent}
-          onUseDifferentEmail={() => go("identifier")}
+          // Exactly ONE escape, never two. `onTryAnotherWay` is the escape when a second method
+          // exists; when it does not, the named "Wrong email? Use a different email" link takes
+          // its place — which is the job the "← Back" arrow used to do. Gating it here rather
+          // than in the form keeps that policy in one place, and keeps the invariant the test
+          // suite already asserts: a single-method account always has a way out, and an account
+          // with alternatives never has two.
+          onUseDifferentEmail={hasAlternativeMethod ? undefined : () => go("identifier")}
           onChallengeChange={(challenge) => {
             if (challenge === "email-link" || challenge === "password") setActiveMethod(challenge);
           }}
@@ -526,39 +525,18 @@ export default function AuthFlow({
       break;
   }
 
-  // phone-otp and google-hint ship their own escape hatches, and account-help
-  // renders its own "use a different email or phone number" button.
+  // There is no "← Back" control any more, anywhere in this flow.
   //
-  // `login` reaches `methods` through onTryAnotherWay, which is only passed when
-  // a second method exists — so a single-method account (email-link only, or
-  // password only) had no route back to the identifier step at all. Show the back
-  // control in exactly that case.
-  //
-  // `register` no longer uses it: it carries an explicit "Already have an
-  // account? Log in" link instead, which names the destination.
-  //
-  // `loginSent` suppresses it in the email-link sent state. That state now carries its own
-  // named escape ("Wrong email? Use a different email"), so an arrow above it would be a
-  // second, wordless route to the same place — and the one control that made the state look
-  // like a wizard step rather than a destination.
-  const showBack =
-    allowBack && step === "login" && !hasAlternativeMethod && !loginSent;
+  // It existed only for `step === "login"` on a single-method account, which had no other
+  // route back to the identifier gate. But an arrow above a form reads as a wizard step, says
+  // nothing about where it goes, and — in the moment the sign-in link is being sent — sat
+  // above a greyed-out button, which is what made that state look broken. Every login-form
+  // state now carries a NAMED escape below its actions instead ("Wrong email? Use a different
+  // email"), the same treatment `register` and `EmailVerificationScreen` already use. See
+  // `onUseDifferentEmail` in `EnhancedLoginForm`.
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      {showBack && (
-        <div className="shrink-0 pb-1">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => go("identifier")}
-            className="-ml-4 text-slate-500 h-8"
-          >
-            &larr; {t("back", "Back")}
-          </Button>
-        </div>
-      )}
       <div className="min-h-0 flex-1 overflow-y-auto pt-2">{content}</div>
       {footer ? <div className="shrink-0 pt-3">{footer}</div> : null}
     </div>

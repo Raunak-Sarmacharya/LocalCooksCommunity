@@ -136,7 +136,14 @@ export default function ChangePassword({ onSuccess, embedded = false, onModeReso
     treatPasswordAsKnown,
     // A failed read must not deadlock on the spinner, so fall back to the
     // pre-flag behaviour (provider-derived) instead of guessing "unset".
-    passwordSetByUser: profile?.passwordSetByUser ?? (profileUnavailable ? true : null),
+    //
+    // A read that SUCCEEDED but did not carry the flag is equally unanswerable, and it used to
+    // deadlock: `undefined ?? null` is null, and null means "not loaded yet", so the section spun
+    // for ever. The server always sends it (the profile handler spreads the whole row), so this
+    // was only reachable from a mock — which is exactly how it went unnoticed. Same fallback,
+    // because "set a password" offered to someone who already has one is the worse mistake.
+    passwordSetByUser:
+      profile?.passwordSetByUser ?? (profileUnavailable || profile !== undefined ? true : null),
   });
 
   const isPlaceholderPassword = profile?.passwordSetByUser === false;

@@ -51,11 +51,14 @@ vi.mock("./AuthMethodChooser", () => ({
 }));
 
 vi.mock("./EnhancedLoginForm", () => ({
-  default: ({ initialEmail, autoSendEmailLink, onTryAnotherWay }: { initialEmail: string; autoSendEmailLink?: boolean; onTryAnotherWay?: () => void }) => (
+  // Both escapes are surfaced, because the invariant under test is WHICH ONE AuthFlow passes —
+  // the real component renders whichever it is given. See `onUseDifferentEmail` in AuthFlow.
+  default: ({ initialEmail, autoSendEmailLink, onTryAnotherWay, onUseDifferentEmail }: { initialEmail: string; autoSendEmailLink?: boolean; onTryAnotherWay?: () => void; onUseDifferentEmail?: () => void }) => (
     <div>
       <span>Login target {initialEmail}</span>
       {autoSendEmailLink ? <span>Email link auto send</span> : null}
       {onTryAnotherWay ? <button onClick={onTryAnotherWay}>Login alternatives</button> : null}
+      {onUseDifferentEmail ? <button onClick={onUseDifferentEmail}>Use a different email</button> : null}
     </div>
   ),
 }));
@@ -159,6 +162,10 @@ describe("AuthFlow recovery methods", () => {
   it("gives a single-method account a way back from the login step", async () => {
     // One method means no onTryAnotherWay, which used to leave `login` with no
     // exit at all — reloading the page was the only way back to the identifier.
+    //
+    // The exit is now a NAMED link rather than a "← Back" arrow: an arrow above a form reads as
+    // a wizard step, says nothing about where it goes, and sat above a washed-out button in the
+    // moment the sign-in link was being sent.
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ state: "existing", methods: ["email-link"], maskedEmail: "li***@example.com", maskedPhone: null }),
@@ -169,7 +176,10 @@ describe("AuthFlow recovery methods", () => {
     expect(await screen.findByText("Email link auto send")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Login alternatives" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /Back/ }));
+    // No arrow anywhere in the flow any more.
+    expect(screen.queryByRole("button", { name: /Back/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Use a different email" }));
     expect(screen.getByRole("button", { name: "Start email" })).toBeInTheDocument();
   });
 
@@ -183,6 +193,8 @@ describe("AuthFlow recovery methods", () => {
     fireEvent.click(screen.getByRole("button", { name: "Start email" }));
     expect(await screen.findByRole("button", { name: "Login alternatives" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Back/ })).not.toBeInTheDocument();
+    // With an alternative method to try, the address escape must NOT also be offered.
+    expect(screen.queryByRole("button", { name: "Use a different email" })).not.toBeInTheDocument();
   });
 
   it("sends a Google sign-in with no profile to the explicit register step, never provisioning", async () => {

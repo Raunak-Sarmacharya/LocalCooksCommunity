@@ -462,7 +462,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       } else if (duplicateAccount) {
         errorMessage = t(
           "errEmailExists",
-          "An account already exists for this email address. Sign in instead, or use a different email."
+          "An account already exists for this email address. Sign in with it instead — you can add Google to it afterwards from your profile."
         );
       } else if (e.message.includes('too-many-requests')) {
         errorMessage = t("errTooManyAttempts", "Too many attempts. Please wait a few minutes before trying again.");
@@ -560,7 +560,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       } else if (duplicateAccount) {
         errorMessage = t(
           "errEmailExists",
-          "An account already exists for this email address. Sign in instead, or use a different email."
+          "An account already exists for this email address. Sign in with it instead — you can add Google to it afterwards from your profile."
         );
       } else if (e.message.includes('popup-closed-by-user')) {
         errorMessage = 'Registration was cancelled. Please try again.';

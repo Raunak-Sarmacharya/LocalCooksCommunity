@@ -13,6 +13,7 @@ import { User, Loader2, KeyRound } from "@/components/ui/manager-icons";
 import ManagerHeader from "@/components/layout/ManagerHeader";
 import ChangePassword from "@/components/auth/ChangePassword";
 import PhoneSignInSettings from "@/components/auth/PhoneSignInSettings";
+import GoogleSignInSettings from "@/components/auth/GoogleSignInSettings";
 import EmailVerificationCard from "@/components/auth/EmailVerificationCard";
 import { useEmailSectionFocus } from "@/hooks/use-email-section-focus";
 import { PHONE_AUTH_ENABLED } from "@/lib/feature-flags";
@@ -344,6 +345,13 @@ export default function ManagerProfile() {
                     }}
                   />
                 )}
+                {/* Sits with the other sign-in methods, next to the phone row.
+                    Whether Google could be used before this depended on the user's email DOMAIN —
+                    Firebase links accounts itself only when both sides are "trusted", and Google
+                    counts as trusted only for `@gmail.com` — so this makes a real capability
+                    deliberate. `ManagerProfileSettings` (embedded in the booking dashboard)
+                    carries the same row, so both surfaces agree. */}
+                <GoogleSignInSettings />
               </ContactInfoCard>
             </div>
 
