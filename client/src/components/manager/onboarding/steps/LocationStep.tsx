@@ -1,13 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useManagerOnboarding, type LocationDraftFields } from "../ManagerOnboardingContext";
 import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
-import { FileText, ExternalLink } from "@/components/ui/manager-icons";
+import { FileText, ExternalLink, Lock } from "@/components/ui/manager-icons";
 import { DateField } from "@/components/ui/date-field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
+import PhoneSignInSettings from "@/components/auth/PhoneSignInSettings";
+import { auth } from "@/lib/firebase";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { normalizePhoneNumber, formatPhoneForDisplay } from "@shared/phone-validation";
 import {
   ACCEPTED_IMAGE_TYPES,
   LogoPhotoField,
@@ -92,6 +97,8 @@ export default function LocationStep() {
   } = useManagerOnboarding();
 
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { user: firebaseUser } = useFirebaseAuth();
 
   // Logo upload — same hook + folder convention the kitchen cover uses.
   const { uploadFile: uploadLogoFile } = useSessionFileUpload({
@@ -141,6 +148,14 @@ export default function LocationStep() {
   const hasLicenseOnFile = Boolean(licenseUrl);
   const hasTermsOnFile = Boolean(termsUrl);
   /**
+   * A licence is on file, or one was chosen in this session and not yet uploaded.
+   * Either way a date describes it, and the date is not optional: a licence with no
+   * expiry is a document nobody can act on — it cannot be approved, and nothing can
+   * warn the manager before it lapses. The Manager Portal has always refused to save
+   * one without a date; this step was the last place that let it through.
+   */
+  const licenseNeedsExpiry = Boolean(licenseForm.file || licenseUrl);
+  /**
    * Same shape as the Booking Policies page: with something on file the row
    * stands alone until "Replace" is chosen, which is what reveals the upload
    * field below it.
@@ -184,16 +199,79 @@ export default function LocationStep() {
     }
   };
 
-  // Validation based on preferred contact method
-  const isContactValid = () => {
-    const method = locationForm.preferredContactMethod;
-    if (method === "email") return !!locationForm.contactEmail;
-    if (method === "phone") return !!locationForm.contactPhone;
-    return !!locationForm.contactEmail && !!locationForm.contactPhone;
-  };
-
-  const needsEmail = locationForm.preferredContactMethod === "email" || locationForm.preferredContactMethod === "both";
+  /*
+   * The contact email is no longer conditional. It is the account address, it is not
+   * editable here, and platform notifications now follow it — so it is always present
+   * and always in use, and the old per-method email/phone requirement collapsed into
+   * the one question that is still open: is the phone proved?
+   */
   const needsPhone = locationForm.preferredContactMethod === "phone" || locationForm.preferredContactMethod === "both";
+
+  /**
+   * The number the ACCOUNT holds. `users.phone_number` is the only place a manager's
+   * phone lives — no account here has ever linked one to Firebase — and the auth user
+   * is that same row, so this needs no request of its own.
+   *
+   * Coerced to `""` rather than left nullable: `normalizePhoneNumber` returns null for
+   * an unusable number, and null === null would read as "these two match" in the
+   * comparison below.
+   */
+  const accountPhone = normalizePhoneNumber(firebaseUser?.phoneNumber) || "";
+  /**
+   * A number proved during THIS visit. It has to be local state rather than the auth
+   * user: linking a phone does not change the uid, so the auth context never re-reads
+   * the row and would keep reporting a just-verified number as unproved.
+   */
+  const [linkedPhone, setLinkedPhone] = useState("");
+  const verifiedPhone =
+    normalizePhoneNumber(linkedPhone) || (firebaseUser?.phoneVerified ? accountPhone : "");
+
+  /**
+   * Proved means the account holds THIS number as a credential.
+   *
+   * Comparing the two is what makes editing the field invalidate the proof. A bare
+   * `phoneVerified` flag would carry the account's verdict over to whatever the
+   * manager typed next — and a preferred contact method is only worth anything when
+   * the number behind it is one they can actually be reached on.
+   */
+  const isPhoneVerified =
+    verifiedPhone !== "" && normalizePhoneNumber(locationForm.contactPhone) === verifiedPhone;
+
+  /** Everything the phone half of this part needs, in one place for both gates. */
+  const phoneSatisfied = !needsPhone || isPhoneVerified;
+
+  /**
+   * Persist the proved number to the account.
+   *
+   * The Firebase link alone cannot sign anyone in: `auth-method-hints` finds the
+   * account by looking the number up in `users.phone_number`, and this route refuses
+   * any number Firebase has not just proved. Both halves are required — the same pair
+   * the profile page writes.
+   */
+  const handlePhoneLinked = async (phone: string) => {
+    setLinkedPhone(phone);
+    locationForm.setContactPhone(phone);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error("no token");
+      const response = await fetch("/api/manager/profile", {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+      if (!response.ok) throw new Error(String(response.status));
+      queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
+    } catch {
+      // The number IS proved — Firebase holds the credential — so failing the
+      // verification here would be a lie. But without this write the account cannot be
+      // found from that number at sign-in, so it must not pass silently either.
+      toast({
+        title: mt("phoneVerifiedNotSaved"),
+        description: mt("phoneVerifiedNotSavedDesc"),
+        variant: "destructive",
+      });
+    }
+  };
 
   /** What each part owns. Part 0 must satisfy the create endpoint's name + address. */
   const partFields = useMemo((): Partial<LocationDraftFields>[] => [
@@ -207,14 +285,16 @@ export default function LocationStep() {
       preferredContactMethod: locationForm.preferredContactMethod,
       contactEmail: locationForm.contactEmail,
       contactPhone: locationForm.contactPhone,
-      notificationEmail: locationForm.notificationEmail,
-      notificationPhone: locationForm.notificationPhone,
+      // Notification targets follow the contact details. There is no longer any UI
+      // for them, so sending the state they used to be edited into would write a
+      // value the manager can no longer see. Same rule as the full save.
+      notificationEmail: locationForm.contactEmail,
+      notificationPhone: locationForm.contactPhone,
     },
     {},
   ], [
     locationForm.name, locationForm.address, locationForm.logoUrl, locationForm.description,
     locationForm.preferredContactMethod, locationForm.contactEmail, locationForm.contactPhone,
-    locationForm.notificationEmail, locationForm.notificationPhone,
   ]);
 
   const partSignature = useMemo(
@@ -262,10 +342,11 @@ export default function LocationStep() {
         locationForm.description.trim()
       );
     }
-    if (part === 1) return isContactValid();
+    if (part === 1) return Boolean(locationForm.contactEmail) && phoneSatisfied;
     return Boolean(
       (licenseForm.file || licenseForm.uploadedUrl || hasExistingLicense) &&
-      (termsForm.file || termsForm.uploadedUrl || hasExistingTerms)
+      (termsForm.file || termsForm.uploadedUrl || hasExistingTerms) &&
+      licenseForm.expiryDate
     );
   };
 
@@ -425,104 +506,98 @@ export default function LocationStep() {
 
       {/* ---------------------------------------------------------------- Part 2 */}
       {activePart === 1 && (
-        <>
-          {/*
-            * No card header here: the part heading above already says "How
-            * should we reach you?", so a nested "Primary Contact" title and its
-            * subtitle repeated it. The rows speak for themselves.
-            */}
-          <Card>
-            <CardContent className="divide-y divide-border p-0">
-              <SettingsRow
-                label={mt("preferredContactMethod")}
-                help={mt("thisIsHowWeLlReachYouForAccountRelatedMattersAndSupportInqui")}
+        <Card>
+          <CardContent className="divide-y divide-border p-0">
+            <SettingsRow
+              label={mt("preferredContactMethod")}
+              hint={mt("platformNotificationsGoToYourContactEmail")}
+              help={mt("thisIsHowWeLlReachYouForAccountRelatedMattersAndSupportInqui")}
+            >
+              <RadioGroup
+                value={locationForm.preferredContactMethod}
+                onValueChange={(value) => locationForm.setPreferredContactMethod(value as "email" | "phone" | "both")}
+                className="flex flex-wrap gap-2"
               >
-                <RadioGroup
-                  value={locationForm.preferredContactMethod}
-                  onValueChange={(value) => locationForm.setPreferredContactMethod(value as "email" | "phone" | "both")}
-                  className="flex flex-wrap gap-2"
-                >
-                  <label htmlFor="contact-method-email" className={contactOptionClass(locationForm.preferredContactMethod === "email")}>
-                    <RadioGroupItem value="email" id="contact-method-email" className="shrink-0" />
-                    <span className="text-sm">{mt("email")}</span>
-                  </label>
-                  <label htmlFor="contact-method-phone" className={contactOptionClass(locationForm.preferredContactMethod === "phone")}>
-                    <RadioGroupItem value="phone" id="contact-method-phone" className="shrink-0" />
-                    <span className="text-sm">{mt("phone")}</span>
-                  </label>
-                  <label htmlFor="contact-method-both" className={contactOptionClass(locationForm.preferredContactMethod === "both")}>
-                    <RadioGroupItem value="both" id="contact-method-both" className="shrink-0" />
-                    <span className="text-sm">{mt("both")}</span>
-                  </label>
-                </RadioGroup>
-              </SettingsRow>
+                <label htmlFor="contact-method-email" className={contactOptionClass(locationForm.preferredContactMethod === "email")}>
+                  <RadioGroupItem value="email" id="contact-method-email" className="shrink-0" />
+                  <span className="text-sm">{mt("email")}</span>
+                </label>
+                <label htmlFor="contact-method-phone" className={contactOptionClass(locationForm.preferredContactMethod === "phone")}>
+                  <RadioGroupItem value="phone" id="contact-method-phone" className="shrink-0" />
+                  <span className="text-sm">{mt("phone")}</span>
+                </label>
+                <label htmlFor="contact-method-both" className={contactOptionClass(locationForm.preferredContactMethod === "both")}>
+                  <RadioGroupItem value="both" id="contact-method-both" className="shrink-0" />
+                  <span className="text-sm">{mt("both")}</span>
+                </label>
+              </RadioGroup>
+            </SettingsRow>
 
-              <SettingsRow
-                id="contact-email"
-                label={mt("contactEmail")}
-                required={needsEmail}
-                className={cn(locationForm.preferredContactMethod === "phone" && "opacity-50")}
-              >
-                <Input
-                  id="contact-email"
-                  type="email"
-                  placeholder={mt("youBusinessCom")}
-                  value={locationForm.contactEmail}
-                  onChange={(e) => locationForm.setContactEmail(e.target.value)}
-                  disabled={locationForm.preferredContactMethod === "phone"}
-                  className="w-64"
-                />
-              </SettingsRow>
+            {/*
+              * Read-only on purpose. The address belongs to the ACCOUNT, and the
+              * notification target now follows it, so a second editable copy here could
+              * only drift from the one that actually receives mail. Changing it is a
+              * Settings action, where the verification round-trip already lives.
+              *
+              * Stacked, and a value rather than a disabled input: the sentence explaining
+              * why it is locked does not fit beside a 256px field — at 430px wide it
+              * wrapped to six lines and the address overflowed behind it. A locked value
+              * should not be dressed as a text box either.
+              */}
+            <SettingsRow
+              id="contact-email"
+              label={mt("contactEmail")}
+              required
+              layout="stacked"
+              hint={mt("contactEmailLockedHint")}
+            >
+              <p className="flex items-start gap-1.5 text-sm font-medium text-foreground">
+                <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <span className="break-all">{locationForm.contactEmail}</span>
+              </p>
+            </SettingsRow>
 
+            {/*
+              * One phone surface, not two. When the phone is a contact channel the
+              * verification form REPLACES the plain field, so there is never a number
+              * sitting in an input that nothing has confirmed. The form keeps the
+              * duplicate-number pre-flight and the SMS consent that live on the profile
+              * page — see PhoneSignInSettings.
+              *
+              * Stacked in both states, so the row does not change shape as the number
+              * goes from unproved to proved.
+              */}
+            {needsPhone ? (
               <SettingsRow
                 id="contact-phone"
                 label={mt("contactPhone")}
-                required={needsPhone}
-                className={cn(locationForm.preferredContactMethod === "email" && "opacity-50")}
+                required
+                layout="stacked"
+                hint={mt("contactPhoneVerifyHint")}
               >
-                <Input
-                  id="contact-phone"
-                  type="tel"
-                  placeholder="+1 (555) 000-0000"
-                  value={locationForm.contactPhone}
-                  onChange={(e) => locationForm.setContactPhone(e.target.value)}
-                  disabled={locationForm.preferredContactMethod === "email"}
-                  className="w-64"
+                <PhoneSignInSettings
+                  layout="form"
+                  initialPhone={locationForm.contactPhone}
+                  /* The account's proved number, so the row and the Continue gate agree.
+                     The component cannot see `users.phone_verified_at`; without this it
+                     would offer to verify a number that is already usable. */
+                  provedPhone={verifiedPhone}
+                  onPhoneLinked={handlePhoneLinked}
                 />
               </SettingsRow>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="p-4 pb-2">
-              <CardTitle className="text-base">{mt("platformNotifications")}</CardTitle>
-              <CardDescription>{mt("whereYouLlReceiveBookingUpdatesAndChefApplications")}</CardDescription>
-            </CardHeader>
-            <CardContent className="divide-y divide-border p-0">
-              <SettingsRow id="notification-email" label={mt("notificationEmail")} hint={mt("defaultsToYourContactEmail")}>
-                <Input
-                  id="notification-email"
-                  type="email"
-                  placeholder={mt("bookingsBusinessCom")}
-                  value={locationForm.notificationEmail}
-                  onChange={(e) => locationForm.setNotificationEmail(e.target.value)}
-                  className="w-64"
-                />
+            ) : locationForm.contactPhone ? (
+              /* Not a contact channel, so it is informational: the number the account
+                 holds, shown the way it was before this step owned the verification.
+                 Omitted entirely when there is no number, rather than rendering an empty
+                 row that reads as broken. */
+              <SettingsRow id="contact-phone" label={mt("contactPhone")} layout="stacked" className="opacity-50">
+                <p className="text-sm text-muted-foreground">
+                  {formatPhoneForDisplay(locationForm.contactPhone)}
+                </p>
               </SettingsRow>
-
-              <SettingsRow id="notification-phone" label={mt("notificationPhone")} hint={mt("optional")}>
-                <Input
-                  id="notification-phone"
-                  type="tel"
-                  placeholder="+1 (555) 000-0000"
-                  value={locationForm.notificationPhone}
-                  onChange={(e) => locationForm.setNotificationPhone(e.target.value)}
-                  className="w-64"
-                />
-              </SettingsRow>
-            </CardContent>
-          </Card>
-        </>
+            ) : null}
+          </CardContent>
+        </Card>
       )}
 
       {/* ---------------------------------------------------------------- Part 3 */}
@@ -574,8 +649,8 @@ export default function LocationStep() {
                 <SettingsRow
                   id="license-expiry-date"
                   label={mt("licenseExpirationDate")}
-                  required={Boolean(licenseForm.file)}
-                  hint={licenseForm.file ? mt("requiredEnterTheDateWhenThisLicenseExpires") : undefined}
+                  required={licenseNeedsExpiry}
+                  hint={licenseNeedsExpiry ? mt("requiredEnterTheDateWhenThisLicenseExpires") : undefined}
                 >
                   {/*
                     * The shared date field, the same picker the dashboard
@@ -646,21 +721,13 @@ export default function LocationStep() {
             ? mt("saveAndContinue")
             : tt("continue")
         }
-        isNextDisabled={
-          isSubmitting ||
-          isSavingPart ||
-          (activePart < PART_COUNT - 1 && !partIsValid(activePart)) ||
-          (activePart === PART_COUNT - 1 && (
-            isSubmitting ||
-            !locationForm.name ||
-            !locationForm.address ||
-            !locationForm.logoUrl ||
-            !locationForm.description.trim() ||
-            !isContactValid() ||
-            (!licenseForm.file && !licenseForm.uploadedUrl && !hasExistingLicense) ||
-            (!termsForm.file && !termsForm.uploadedUrl && !hasExistingTerms)
-          ))
-        }
+        /*
+         * One gate, not two. The final part used to repeat every check from
+         * `partIsValid` inline, which is how the expiry date came to be required on
+         * the earlier parts and forgotten on the one that actually submits the
+         * licence — the rule lived in two places and only one of them had it.
+         */
+        isNextDisabled={isSubmitting || isSavingPart || !partIsValid(activePart)}
       />
     </div>
   );

@@ -17,6 +17,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { createLocationSchema, CreateLocationFormValues } from "@/schemas/locationSchema";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { FormLegend } from "@/components/ui/form-legend";
+import { DateField } from "@/components/ui/date-field";
 
 interface CreateLocationDialogProps {
     open: boolean;
@@ -36,6 +37,7 @@ export function CreateLocationDialog({
     const queryClient = useQueryClient();
 
     const [licenseFile, setLicenseFile] = useState<File | null>(null);
+    const [licenseExpiryDate, setLicenseExpiryDate] = useState("");
     const [termsFile, setTermsFile] = useState<File | null>(null);
     const [isUploadingLicense, setIsUploadingLicense] = useState(false);
     const [isUploadingTerms, setIsUploadingTerms] = useState(false);
@@ -54,6 +56,7 @@ export function CreateLocationDialog({
     const resetForm = () => {
         form.reset();
         setLicenseFile(null);
+        setLicenseExpiryDate("");
         setTermsFile(null);
     };
 
@@ -79,6 +82,19 @@ export function CreateLocationDialog({
             if (!termsFile) {
                 toast({ title: mt("termsPoliciesRequired"),
                     description: mt("pleaseUploadYourKitchenTermsAndPoliciesDocument"),
+                    variant: "destructive",
+                });
+                setIsCreating(false);
+                return;
+            }
+
+            // A licence with no expiry cannot be reviewed, approved, or warned about
+            // before it lapses — the Kitchen License page has always refused to save one,
+            // and this dialog was the one surface that let a document through without a
+            // date. Required alongside the file, not after it.
+            if (!licenseExpiryDate) {
+                toast({ title: mt("expirationDateRequired"),
+                    description: mt("pleaseProvideAnExpirationDateForTheLicense"),
                     variant: "destructive",
                 });
                 setIsCreating(false);
@@ -159,6 +175,7 @@ export function CreateLocationDialog({
                 body: JSON.stringify({
                     kitchenLicenseUrl: licenseUrl,
                     kitchenLicenseStatus: 'pending',
+                    kitchenLicenseExpiry: licenseExpiryDate,
                     kitchenTermsUrl: termsUrl,
                 }),
             });
@@ -263,6 +280,17 @@ export function CreateLocationDialog({
                                     </FormItem>
                                 )}
                             />
+                        </div>
+
+                        <div className="space-y-2">
+                            <FormLabel>{mt("licenseExpirationDate")}<span className="text-destructive">*</span></FormLabel>
+                            <DateField
+                                id="new-location-license-expiry"
+                                value={licenseExpiryDate}
+                                onChange={setLicenseExpiryDate}
+                                placeholder={mt("licenseExpirationDate")}
+                            />
+                            <p className="text-[0.8rem] text-muted-foreground">{mt("requiredEnterTheDateWhenThisLicenseExpires")}</p>
                         </div>
 
                         <div className="space-y-2">

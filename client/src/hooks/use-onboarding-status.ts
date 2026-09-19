@@ -109,6 +109,38 @@ export function invalidateOnboardingStatus(queryClient: QueryClient): void {
     }
 }
 
+/**
+ * Whether the sidebar should carry the "Getting started" checklist.
+ *
+ * The dashboard banner and this checklist read the same status, so they have to agree — and
+ * they did not. The gate required a SELECTED LOCATION for the setup banner to reach the
+ * checklist, while the banner itself has no such requirement. A manager who left the wizard
+ * at step one ("Maybe later") has a verified email and no location, so BOTH clauses failed:
+ *
+ *   profile step complete  -> first clause false   (they registered, so the email is verified)
+ *   no selectedLocation    -> second clause false  (the wizard never created one)
+ *
+ * …and the checklist was hidden while the banner directly above it said "Continue setup".
+ * The manager with nothing set up yet is precisely the one who needs the checklist.
+ *
+ * `improvementSteps` (logo, cover photo, kitchen descriptions) stay location-scoped — they
+ * are about a listing, and there is no listing to improve without a location.
+ */
+export function shouldShowSidebarGuidance(input: {
+  isLoading: boolean;
+  setupSteps: ManagerSetupStep[];
+  hasSelectedLocation: boolean;
+  showSetupBanner: boolean;
+  improvementStepCount: number;
+}): boolean {
+  if (input.isLoading) return false;
+  return (
+    input.setupSteps.some((step) => step.id === "profile" && !step.complete) ||
+    input.showSetupBanner ||
+    (input.hasSelectedLocation && input.improvementStepCount > 0)
+  );
+}
+
 export function useOnboardingStatus(locationId?: number): OnboardingStatus {
     const { user: firebaseUser } = useFirebaseAuth();
 

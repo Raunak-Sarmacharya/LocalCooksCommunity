@@ -5,57 +5,184 @@ import {
   CheckCircle,
   Plus,
   Edit2,
-  ChevronDown,
-  ChevronUp,
   Clock,
   Image as ImageIcon,
 } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { CARD_RADIUS, Card, CardContent } from "@/components/ui/card";
-import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { SettingsRow } from "@/components/manager/settings/SettingsRow";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { NumericInput } from "@/components/ui/numeric-input";
-import { KitchenGalleryImages } from "@/components/manager/kitchen/KitchenGalleryImages";
 import { KitchenPhotoPlaceholder } from "@/components/kitchen/KitchenPhotoPlaceholder";
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
 import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter";
-import { UnsavedChangesDialog } from "@/components/manager/UnsavedChangesDialog";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
 import {
   ACCEPTED_IMAGE_TYPES,
   CoverPhotoField,
-  CoverPhotoTile,
 } from "@/components/manager/kitchen/KitchenPhotoFields";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { SmartImage } from "@/components/ui/smart-image";
 import { FormLegend } from "@/components/ui/form-legend";
+// The dashboard's own inventory surfaces. Parts 2 and 3 render them with `embedded`,
+// which drops their duplicate heading and un-pins their commit bar — one implementation
+// in two placements, so the wizard cannot drift from My Kitchens.
+import { EquipmentListingContent } from "@/pages/EquipmentListingManagement";
+import { StorageListingContent } from "@/pages/StorageListingManagement";
+import { useScrollToTopOnChange } from "@/hooks/use-scroll-to-top-on-change";
 
-
-/** The fields the inline editor and the create form both own. */
-interface KitchenDraft {
-  name: string;
-  description: string;
-  hourlyRate: string;
-  dailyRate: string;
-  minimumBookingHours: string;
-  imageUrl: string;
-}
 
 /**
- * Something the manager asked for that would hide the inline editor: collapsing
- * its card, editing another kitchen, or starting a new one.
+ * The step, in three parts that save as they go.
+ *
+ * Part 1 is the kitchen itself and is what the step exists for. Parts 2 and 3 are
+ * equipment and storage — both OPTIONAL, and both things a manager can add later from
+ * My Kitchens. They live here because a manager is already thinking about the space they
+ * just described, and because two optional steps of their own made the wizard nine
+ * screens long for something most managers skip.
  */
-type PendingKitchenIntent =
-  | { kind: 'collapse' }
-  | { kind: 'edit'; kitchen: any }
-  | { kind: 'create' };
+const PART_COUNT = 3;
+
+/**
+ * The screen after the last part.
+ *
+ * Not a fourth PART — the dots stay at three, because the work is three things — but a
+ * separate screen rather than a card hanging off the bottom of the storage inventory. The
+ * manager finished the parts; the review is where they see what they finished before
+ * moving on to Availability.
+ */
+const SUMMARY_PART = PART_COUNT;
+
+/** How many names the summary lists per section before it stops and counts the rest. */
+const RECAP_CAP = 4;
+
+/**
+ * What the three parts produced, shown at the end of the last one.
+ *
+ * Read-only on purpose. It is a report of the step, so each section offers Edit — which
+ * goes back to the part that owns the thing — rather than an expander holding a second
+ * copy of every form. Two editors for one record is how a page ends up disagreeing with
+ * itself, and the manager already has one place per field.
+ *
+ * Lists are capped: someone with forty equipment listings needs the shape of what they
+ * set up, not the inventory, which is what My Kitchens is for.
+ */
+function ListingSummary({
+  kitchen,
+  equipment,
+  storage,
+  onEdit,
+}: {
+  kitchen: any;
+  equipment: string[];
+  storage: string[];
+  onEdit: (part: number) => void;
+}) {
+  const hourly = formatCentsAsDollars(kitchen?.hourlyRate);
+  const daily = formatCentsAsDollars(kitchen?.dailyRate);
+  const photos = kitchen ? collectKitchenPhotos(kitchen) : [];
+
+  const cap = (items: string[]) =>
+    `${items.slice(0, RECAP_CAP).join(", ")}${
+      items.length > RECAP_CAP ? ` +${items.length - RECAP_CAP}` : ""
+    }`;
+
+  const sections = [
+    { key: "equipment", label: mt("kitchenPartEquipmentTitle"), items: equipment, part: 1 },
+    { key: "storage", label: mt("kitchenPartStorageTitle"), items: storage, part: 2 },
+  ];
+
+  return (
+    <Card
+      className={cn(
+        "overflow-hidden border-0 shadow-[0_8px_30px_rgba(44,44,44,0.07)] ring-1 ring-[#2C2C2C]/[0.05]",
+        CARD_RADIUS,
+      )}
+    >
+      <KitchenListingGallery photos={photos} kitchenName={kitchen?.name ?? ""} />
+
+      <div className="flex flex-wrap items-start justify-between gap-3 p-4 sm:p-5">
+        <div className="min-w-0">
+          <h3 className="truncate text-lg font-bold tracking-tight text-[#1A1A1A] sm:text-xl">
+            {kitchen?.name}
+          </h3>
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm">
+            <span className={cn("tabular-nums font-bold", hourly ? "text-[#F51042]" : "text-muted-foreground")}>
+              {hourly ? `${hourly}/hr` : mt("notSet")}
+            </span>
+            {daily ? (
+              <>
+                <span className="text-muted-foreground/50" aria-hidden>·</span>
+                <span className="tabular-nums font-medium text-foreground">{daily}/day</span>
+              </>
+            ) : null}
+            <span className="text-muted-foreground/50" aria-hidden>·</span>
+            <span className="inline-flex items-center gap-1 text-muted-foreground">
+              <ImageIcon className="h-3.5 w-3.5" />
+              {photos.length > 0 ? mt("photoCount", { count: photos.length }) : mt("notSet")}
+            </span>
+          </div>
+        </div>
+        {/*
+          * Named for what it edits, and dressed EXACTLY like the section buttons below it.
+          * Three "Edit" actions in one card that do not look alike read as three different
+          * kinds of thing — and an outlined one at the top made the kitchen look like the
+          * only editable part. Same variant, same colour, same weight: one action, three rows.
+          *
+          * The name is per-section because three buttons reading just "Edit" are useless to a
+          * screen reader, which reads them out of context as three identical controls.
+          */}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-1.5 text-muted-foreground hover:text-foreground"
+          aria-label={`${mt("editSection")} ${kitchen?.name ?? ""}`}
+          onClick={() => onEdit(0)}
+        >
+          <Edit2 className="h-3.5 w-3.5" />
+          {mt("editSection")}
+        </Button>
+      </div>
+
+      <div className="divide-y divide-border border-t border-border">
+        {sections.map((section) => (
+          <div key={section.key} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3 sm:px-5">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">{section.label}</p>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                {section.items.length === 0 ? mt("kitchenRecapSkipped") : cap(section.items)}
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 text-muted-foreground hover:text-foreground"
+              aria-label={`${mt("editSection")} ${section.label}`}
+              onClick={() => onEdit(section.part)}
+            >
+              <Edit2 className="h-3.5 w-3.5" />
+              {mt("editSection")}
+            </Button>
+          </div>
+        ))}
+      </div>
+
+      <div className="border-t border-border bg-muted/30 px-4 py-3.5 sm:px-5">
+        <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <CheckCircle className="h-4 w-4 shrink-0 text-emerald-600" />
+          {mt("kitchenRecapTitle")}
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground">{mt("kitchenRecapBody")}</p>
+      </div>
+    </Card>
+  );
+}
+
 
 /** Cover first, then gallery — same order chefs see on the listing page. */
 function collectKitchenPhotos(kitchen: any, coverOverride?: string): string[] {
@@ -190,307 +317,6 @@ function KitchenListingGallery({
     </div>
   );
 }
-
-// Enterprise-grade Kitchen Card Component
-interface KitchenCardProps {
-  kitchen: any;
-  isExpanded: boolean;
-  onToggle: () => void;
-  /** This card is the one being edited. */
-  isEditing: boolean;
-  draft: KitchenDraft;
-  onDraftChange: (patch: Partial<KitchenDraft>) => void;
-  /** Edit draft differs from the values the card opened with. */
-  isDirty: boolean;
-  isSaving: boolean;
-  onStartEdit: () => void;
-  onCancelEdit: () => void;
-  onSaveEdit: () => void;
-  /**
-   * Called instead of collapsing when the editor holds unsaved changes, so the
-   * manager is asked to save or discard them first.
-   */
-  onDirtyCollapseAttempt: () => void;
-  onCoverSelect: (file: File) => void;
-  locationId: number | null;
-}
-
-function KitchenCard({
-  kitchen,
-  isExpanded,
-  onToggle,
-  isEditing,
-  draft,
-  onDraftChange,
-  isDirty,
-  isSaving,
-  onStartEdit,
-  onCancelEdit,
-  onSaveEdit,
-  onDirtyCollapseAttempt,
-  onCoverSelect,
-  locationId,
-}: KitchenCardProps) {
-  const photos = collectKitchenPhotos(
-    kitchen,
-    isEditing ? draft.imageUrl : undefined,
-  );
-  const hasImage = photos.length > 0;
-  const hourly = formatCentsAsDollars(kitchen.hourlyRate);
-  const daily = formatCentsAsDollars(kitchen.dailyRate);
-  const photoCount = photos.length;
-
-  /**
-   * What the summary cannot show, so the card can say so without being opened.
-   * Only the fields a listing genuinely needs — a missing daily rate is a
-   * choice, not an omission.
-   */
-  const missingDetails = [
-    !kitchen.description?.trim(),
-    !hasImage,
-    !kitchen.hourlyRate,
-  ].filter(Boolean).length;
-
-  const statusBadge = (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm backdrop-blur-sm",
-        missingDetails > 0
-          ? "bg-white/95 text-amber-800 ring-1 ring-amber-200/80"
-          : "bg-white/95 text-emerald-800 ring-1 ring-emerald-200/80",
-      )}
-    >
-      {missingDetails > 0 ? (
-        mt("kitchenDetailsMissing", { count: missingDetails })
-      ) : (
-        <>
-          <CheckCircle className="h-3.5 w-3.5" />
-          {mt("kitchenListingComplete")}
-        </>
-      )}
-    </span>
-  );
-
-  const handleToggle = () => {
-    // Collapsing hides the editor, so unsaved changes need save-or-discard first.
-    if (isEditing && isDirty) {
-      onDirtyCollapseAttempt();
-      return;
-    }
-    onToggle();
-  };
-
-  return (
-    <Card
-      className={cn(
-        "overflow-hidden border-0 shadow-[0_8px_30px_rgba(44,44,44,0.07)] ring-1 ring-[#2C2C2C]/[0.05]",
-        CARD_RADIUS,
-      )}
-    >
-      <Collapsible open={isExpanded} onOpenChange={() => { if (!isEditing) onToggle(); }}>
-        {/* Photos lead — same hierarchy as the public kitchen listing. */}
-        <KitchenListingGallery
-          photos={photos}
-          kitchenName={isEditing ? draft.name || kitchen.name : kitchen.name}
-          badge={statusBadge}
-        />
-
-        <div className="space-y-4 p-4 sm:p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              {isEditing ? (
-                <Input
-                  value={draft.name}
-                  onChange={(e) => onDraftChange({ name: e.target.value })}
-                  aria-label={mt("kitchenName")}
-                  placeholder={mt("eGMainKitchenPrepAreaBakeryStation")}
-                  className="h-10 max-w-md text-lg font-semibold"
-                />
-              ) : (
-                <h3 className="truncate text-lg font-bold tracking-tight text-[#1A1A1A] sm:text-xl">
-                  {kitchen.name}
-                </h3>
-              )}
-
-              {!isEditing && (
-                <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm">
-                  <span
-                    className={cn(
-                      "tabular-nums font-bold",
-                      hourly ? "text-[#F51042]" : "text-muted-foreground",
-                    )}
-                  >
-                    {hourly ? `${hourly}/hr` : mt("notSet")}
-                  </span>
-                  {daily ? (
-                    <>
-                      <span className="text-muted-foreground/50" aria-hidden>·</span>
-                      <span className="tabular-nums font-medium text-foreground">
-                        {daily}/day
-                      </span>
-                    </>
-                  ) : null}
-                  <span className="text-muted-foreground/50" aria-hidden>·</span>
-                  <span className="inline-flex items-center gap-1 text-muted-foreground">
-                    <Clock className="h-3.5 w-3.5" />
-                    {kitchen.minimumBookingHours
-                      ? `${kitchen.minimumBookingHours} ${mt("hoursSuffix")}`
-                      : mt("notSet")}
-                  </span>
-                  <span className="text-muted-foreground/50" aria-hidden>·</span>
-                  <span className="inline-flex items-center gap-1 text-muted-foreground">
-                    <ImageIcon className="h-3.5 w-3.5" />
-                    {photoCount > 0
-                      ? mt("photoCount", { count: photoCount })
-                      : mt("notSet")}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            <div className="flex shrink-0 items-center gap-1.5">
-              {isEditing ? (
-                isDirty ? (
-                  <>
-                    <StatusButton
-                      status={isSaving ? "loading" : "idle"}
-                      onClick={onSaveEdit}
-                      disabled={!draft.name.trim() || !draft.description.trim()}
-                      labels={{ idle: mt("saveChanges"), loading: mt("savingShort"), success: mt("saved") }}
-                    />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={onCancelEdit}
-                      disabled={isSaving}
-                      className="text-muted-foreground"
-                    >{mt("cancel")}</Button>
-                  </>
-                ) : (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={onCancelEdit}
-                    disabled={isSaving}
-                    className="text-muted-foreground hover:bg-muted hover:text-foreground"
-                  >{mt("close")}</Button>
-                )
-              ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 border-border bg-white text-foreground shadow-sm hover:bg-muted"
-                  onClick={onStartEdit}
-                >
-                  <Edit2 className="h-3.5 w-3.5" />
-                  {mt("editDetails")}
-                </Button>
-              )}
-              <button
-                type="button"
-                aria-label={isExpanded ? mt("collapseCard") : mt("expandCard")}
-                onClick={handleToggle}
-                className={cn(
-                  "flex h-9 w-9 !min-h-0 !min-w-0 items-center justify-center rounded-full border border-border bg-white shadow-sm transition-colors hover:bg-muted",
-                  isExpanded && "bg-muted",
-                )}
-              >
-                {isExpanded ? (
-                  <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                ) : (
-                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <CollapsibleContent>
-          <div className="border-t border-border">
-            {isEditing ? (
-              <div className="divide-y divide-border">
-                <SettingsRow
-                  id={`kitchen-edit-description-${kitchen.id}`}
-                  label={mt("description")}
-                  required
-                  layout="stacked"
-                  hint={mt("describeYourKitchenSpaceEquipmentAndWhatMakesItSpecialForChe")}
-                >
-                  <Textarea
-                    id={`kitchen-edit-description-${kitchen.id}`}
-                    value={draft.description}
-                    onChange={(e) => onDraftChange({ description: e.target.value })}
-                    rows={3}
-                    className="max-w-lg resize-none"
-                  />
-                </SettingsRow>
-
-                <SettingsRow id={`kitchen-edit-rate-${kitchen.id}`} label={mt("hourlyRateCAD")} required>
-                  <CurrencyInput
-                    id={`kitchen-edit-rate-${kitchen.id}`}
-                    value={draft.hourlyRate}
-                    onValueChange={(value) => onDraftChange({ hourlyRate: value })}
-                    placeholder="25.00"
-                    className="w-32"
-                  />
-                </SettingsRow>
-
-                <SettingsRow id={`kitchen-edit-daily-${kitchen.id}`} label={mt("dailyRateCAD")}>
-                  <CurrencyInput
-                    id={`kitchen-edit-daily-${kitchen.id}`}
-                    value={draft.dailyRate}
-                    onValueChange={(value) => onDraftChange({ dailyRate: value })}
-                    placeholder="150.00"
-                    className="w-32"
-                  />
-                </SettingsRow>
-
-                <SettingsRow id={`kitchen-edit-minimum-${kitchen.id}`} label={mt("minimumBooking")}>
-                  <NumericInput
-                    id={`kitchen-edit-minimum-${kitchen.id}`}
-                    value={draft.minimumBookingHours}
-                    onValueChange={(value) => onDraftChange({ minimumBookingHours: value })}
-                    placeholder="1"
-                    suffix={mt("hoursSuffix")}
-                    className="w-32"
-                  />
-                </SettingsRow>
-              </div>
-            ) : (
-              <div className="px-4 py-4 sm:px-5">
-                <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{mt("description")}</Label>
-                <p className="mt-1.5 text-sm leading-relaxed text-foreground">
-                  {kitchen.description || mt("noDescriptionProvidedYet")}
-                </p>
-              </div>
-            )}
-
-            {isEditing && (
-              <div className="border-t border-border p-4 sm:p-5">
-                <Label className="mb-3 block text-xs font-medium uppercase tracking-wide text-muted-foreground">{mt("photos")}</Label>
-                <KitchenGalleryImages
-                  kitchenId={kitchen.id}
-                  galleryImages={kitchen.galleryImages || []}
-                  locationId={locationId as number}
-                  coverSlot={
-                    <CoverPhotoTile
-                      value={draft.imageUrl}
-                      onSelectFile={onCoverSelect}
-                      onRemove={() => onDraftChange({ imageUrl: '' })}
-                      className="sm:col-span-2"
-                    />
-                  }
-                />
-              </div>
-            )}
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
-    </Card>
-  );
-}
-
-
 export default function CreateKitchenStep() {
   
   const {
@@ -502,6 +328,9 @@ export default function CreateKitchenStep() {
     handleBack,
     isFirstStep,
     selectedLocationId,
+    selectedKitchenId,
+    equipmentForm,
+    storageForm,
     setUnsavedChanges,
     registerStepSave,
     saveAndExit,
@@ -522,7 +351,6 @@ export default function CreateKitchenStep() {
   // Which kitchen the form is editing; null means the form is creating a new one.
   const [editingKitchenId, setEditingKitchenId] = useState<number | null>(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
-  const [expandedKitchenId, setExpandedKitchenId] = useState<number | null>(null);
   /**
    * The kitchen's values at the moment the edit form opened, serialised. The
    * Save button compares the live fields against this so it only appears once
@@ -530,13 +358,10 @@ export default function CreateKitchenStep() {
    * unsaved work.
    */
   const [editSnapshot, setEditSnapshot] = useState<string | null>(null);
-  /**
-   * Something the manager asked for that would hide the inline editor. Held here
-   * while the editor has unsaved changes, so the dialog can offer save or
-   * discard first. Without it, collapsing, switching cards or starting a new
-   * kitchen would silently drop the edits.
-   */
-  const [pendingIntent, setPendingIntent] = useState<PendingKitchenIntent | null>(null);
+  /** Which of the three parts is showing. Part 0 owns the kitchen itself. */
+  const [activePart, setActivePart] = useState(0);
+  // Continuing to a shorter part used to leave you mid-page.
+  const scrollRef = useScrollToTopOnChange(activePart);
 
 
   // LOCAL state for form fields — prevents context re-renders causing focus loss on every keystroke.
@@ -569,7 +394,13 @@ export default function CreateKitchenStep() {
   // Ref to signal that we want to create the kitchen after syncing local → context
   const pendingCreateRef = useRef(false);
 
-  /** Load an existing kitchen into the inline editor and open its card. */
+  /**
+   * Load an existing kitchen into the form and start tracking it for changes.
+   *
+   * This is what makes part 0 an EDITOR rather than a one-shot create form: the summary's
+   * Edit action, and simply arriving on the part with a kitchen already there, both land
+   * here. The snapshot is what the footer's Save compares against.
+   */
   const handleStartEdit = (kitchen: any) => {
     // Seed from one object so the snapshot and the form fields can never drift:
     // both are built from `seed`, in the same key order.
@@ -591,31 +422,38 @@ export default function CreateKitchenStep() {
     setLocalImageUrl(seed.imageUrl);
     setLocalFeatures(seed.features);
     setEditSnapshot(JSON.stringify(seed));
-    // Editing happens inside this card, so make sure it is open. The separate
-    // form below is create-only now.
-    setExpandedKitchenId(kitchen.id);
   };
 
-  /** Leave the inline editor without saving. */
+  /** Leave the editor without saving. */
   const handleCancelEdit = () => {
     setEditingKitchenId(null);
     setEditSnapshot(null);
   };
 
+  /**
+   * Part 0 shows a kitchen's details as an editable form, so load the kitchen in.
+   *
+   * Runs ONCE per kitchen, keyed on its id: re-running on every render would overwrite
+   * whatever the manager is typing, and re-running whenever `kitchens` changes identity
+   * would do the same immediately after a save.
+   */
+  const seededKitchenId = useRef<number | null>(null);
+  useEffect(() => {
+    const kitchen = kitchens[0];
+    if (activePart !== 0 || !kitchen || seededKitchenId.current === kitchen.id) return;
+    seededKitchenId.current = kitchen.id;
+    // The kitchen exists now, so the form is driven by that rather than by the create
+    // flag — and leaving the flag set would make `formHasContent` report unsaved work for
+    // ever, since a create form with anything in it counts as dirty.
+    setShowCreate(false);
+    handleStartEdit(kitchen);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePart, kitchens]);
+
   const closeForm = () => {
     setEditingKitchenId(null);
     setEditSnapshot(null);
     setShowCreate(false);
-  };
-
-  /** One setter for the inline editor's six fields. */
-  const handleDraftChange = (patch: Partial<KitchenDraft>) => {
-    if (patch.name !== undefined) setLocalName(patch.name);
-    if (patch.description !== undefined) setLocalDescription(patch.description);
-    if (patch.hourlyRate !== undefined) setLocalHourlyRate(patch.hourlyRate);
-    if (patch.dailyRate !== undefined) setLocalDailyRate(patch.dailyRate);
-    if (patch.minimumBookingHours !== undefined) setLocalMinHours(patch.minimumBookingHours);
-    if (patch.imageUrl !== undefined) setLocalImageUrl(patch.imageUrl);
   };
 
   // Flush local state to context and then create. Create-only: edits are saved
@@ -675,49 +513,59 @@ export default function CreateKitchenStep() {
     features: localFeatures,
   });
 
-  /** Carry out an intent that hides the editor. */
-  const applyIntent = (intent: PendingKitchenIntent) => {
-    setPendingIntent(null);
-    if (intent.kind === 'collapse') {
-      setExpandedKitchenId(null);
-      return;
-    }
-    if (intent.kind === 'edit') {
-      handleStartEdit(intent.kitchen);
-      return;
-    }
-    handleCancelEdit();
-    setShowCreate(true);
-  };
-
   /**
-   * Run an intent now, or park it behind the unsaved-changes dialog when the
-   * editor holds edits. Every route that would hide the editor goes through
-   * here, so none of them can drop the draft on the floor.
-   */
-  const requestIntent = (intent: PendingKitchenIntent) => {
-    if (editingKitchenId !== null && isEditDirty) {
-      setPendingIntent(intent);
-      return;
-    }
-    applyIntent(intent);
-  };
-
-  /**
-   * Continue is "Save & continue" while the inline editor holds changes.
+   * Continue, part by part.
    *
-   * Advancing used to call `handleNext` directly, which left the edit behind —
-   * the button promised to save and didn't. On failure we stay put rather than
-   * advancing, because moving on would strand the edits on a card the manager
-   * has already left; the toast explains what went wrong.
+   * Part 0 owns the inline editor, so the button saves it before moving — advancing used
+   * to call `handleNext` directly, which left the edit behind. Parts 1 and 2 have nothing
+   * to save of their own: their content is the dashboard inventory, which writes as it
+   * goes. Only the LAST part advances the wizard.
    */
-  const handleContinue = async () => {
-    if (editingKitchenId !== null && isEditDirty) {
+  const handlePartContinue = async () => {
+    if (activePart === 0 && editingKitchenId !== null && isEditDirty) {
       const saved = await handleSaveEdit();
       if (!saved) return;
     }
+    // The review screen is last; only IT moves the wizard on.
+    if (activePart < SUMMARY_PART) {
+      setActivePart((part) => part + 1);
+      return;
+    }
     await handleNext();
   };
+
+  const handlePartBack = () => {
+    if (activePart === 0) {
+      handleBack();
+      return;
+    }
+    setActivePart((part) => Math.max(part - 1, 0));
+  };
+
+  /** Whether the kitchen this step is about exists yet. Part 0 is the only part that cares. */
+  const hasKitchen = kitchens.length > 0;
+
+  /**
+   * The kitchen parts 2 and 3 hang their listings on. The wizard creates one kitchen and
+   * the context auto-selects the first, so this is normally the one just created; the
+   * fallback covers the frame before that selection lands.
+   */
+  const listingKitchenId = selectedKitchenId ?? (kitchens[0]?.id ?? null);
+
+  /** Names for the recap, capped there. Both listing shapes are tolerated. */
+  const equipmentNames = (equipmentForm?.listings ?? []).map(
+    (l: any) => l.equipmentType || l.name || mt("untitledItem"),
+  );
+  const storageNames = (storageForm?.listings ?? []).map(
+    (l: any) => l.name || mt("untitledItem"),
+  );
+
+  const partHeading = [
+    { title: mt("kitchenPartListingTitle"), description: mt("kitchenPartListingDesc") },
+    { title: mt("kitchenPartEquipmentTitle"), description: mt("kitchenPartEquipmentDesc") },
+    { title: mt("kitchenPartStorageTitle"), description: mt("kitchenPartStorageDesc") },
+    { title: mt("kitchenSummaryTitle"), description: mt("kitchenSummaryDesc") },
+  ][activePart];
 
   /**
    * Unsaved work in this step, from either surface:
@@ -765,12 +613,26 @@ export default function CreateKitchenStep() {
     localImageUrl,
   ]);
 
-  // After ctxData updates from handleCreate, fire createKitchen once
+  // After ctxData updates from handleCreate, fire createKitchen once, then move on.
+  //
+  // Create AND continue. Staying on the form with a Continue button made the button's job
+  // ambiguous — the kitchen was already made, so "Continue" read as "did that work?" — and
+  // it left the manager staring at a form they had finished. Creating it is the answer, so
+  // the step moves to what goes in the kitchen.
   useEffect(() => {
-    if (pendingCreateRef.current) {
-      pendingCreateRef.current = false;
-      createKitchen();
-    }
+    if (!pendingCreateRef.current) return;
+    pendingCreateRef.current = false;
+    void (async () => {
+      try {
+        await createKitchen();
+        // Clear the create flag: a create form holding anything counts as unsaved work, so
+        // leaving it set would report changes that no longer exist.
+        setShowCreate(false);
+        setActivePart(1);
+      } catch {
+        // `createKitchen` raises its own toast; staying on the form is the honest response.
+      }
+    })();
   }, [ctxData]);
 
   // Expose a data object matching the old shape for the JSX below
@@ -785,63 +647,49 @@ export default function CreateKitchenStep() {
     features: localFeatures,
   };
 
-  const handleToggleExpand = (kitchenId: number) => {
-    setExpandedKitchenId(prev => prev === kitchenId ? null : kitchenId);
-  };
-
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      {/* Existing Kitchens - Success State */}
-      {kitchens.length > 0 && (
-        <div className="space-y-4">
-          <div className="flex items-start gap-3 rounded-2xl border border-border/80 bg-muted/30 px-4 py-3.5">
-            <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-            <p className="text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">
-                {kitchens.length} kitchen{kitchens.length > 1 ? 's' : ''} configured
-              </span>
-              {' '}— This is how chefs will see your space. Edit details anytime, or expand for the full description.
-            </p>
-          </div>
-
-          {/* Kitchen Cards */}
-          <div className="space-y-4">
-            {kitchens.map((kitchen: any) => (
-              <KitchenCard
-                key={kitchen.id}
-                kitchen={kitchen}
-                isExpanded={expandedKitchenId === kitchen.id}
-                onToggle={() => handleToggleExpand(kitchen.id)}
-                isEditing={editingKitchenId === kitchen.id}
-                draft={{
-                  name: localName,
-                  description: localDescription,
-                  hourlyRate: localHourlyRate,
-                  dailyRate: localDailyRate,
-                  minimumBookingHours: localMinHours,
-                  imageUrl: localImageUrl,
-                }}
-                onDraftChange={handleDraftChange}
-                isDirty={isEditDirty}
-                isSaving={isSavingEdit}
-                onStartEdit={() => requestIntent({ kind: 'edit', kitchen })}
-                onCancelEdit={handleCancelEdit}
-                onSaveEdit={() => void handleSaveEdit()}
-                onDirtyCollapseAttempt={() => requestIntent({ kind: 'collapse' })}
-                onCoverSelect={(file) => void uploadCover(file)}
-                locationId={selectedLocationId as number}
-              />
-            ))}
-          </div>
-
-          {/*
-           * No "add another" here. Onboarding sets up one kitchen to get the
-           * manager live; further kitchens are created from My Kitchens on the
-           * dashboard, which is where they are managed anyway.
-           */}
+    <div ref={scrollRef} className="space-y-6 animate-in fade-in duration-500">
+      {/* Part progress — three dots, so the manager always knows how much is left. */}
+      <div className="flex items-center gap-3">
+        <div
+          className="flex items-center gap-1.5"
+          role="group"
+          aria-label={mt("businessStepProgress", { current: Math.min(activePart + 1, PART_COUNT), total: PART_COUNT })}
+        >
+          {Array.from({ length: PART_COUNT }, (_, index) => (
+            <span
+              key={index}
+              aria-hidden
+              className={cn(
+                "h-1.5 rounded-full transition-all duration-300",
+                index === activePart
+                  ? "w-6 bg-primary"
+                  : index < activePart
+                    ? "w-1.5 bg-primary/50"
+                    : "w-1.5 bg-muted-foreground/25",
+              )}
+            />
+          ))}
         </div>
-      )}
+        <span className="text-xs text-muted-foreground">
+          {mt("businessStepProgress", { current: Math.min(activePart + 1, PART_COUNT), total: PART_COUNT })}
+        </span>
+      </div>
 
+      <div className="space-y-1">
+        <h2 className="text-lg font-semibold tracking-tight text-foreground">{partHeading.title}</h2>
+        <p className="text-sm text-muted-foreground">{partHeading.description}</p>
+      </div>
+
+      {activePart === 0 && (
+        <>
+      {/*
+       * No finished-kitchen card here. The collage used to appear the moment the kitchen
+       * was created, which put the step's most elaborate surface in the middle of the flow
+       * and then repeated it. It now appears once, at the end, alongside what parts 2 and 3
+       * added — and the form below is what this part is: the fields, editable, with the
+       * footer's Save & continue when anything changed.
+       */}
       {/* Empty State - Enterprise Design */}
       {kitchens.length === 0 && !showCreate && (
         <Card className={cn(
@@ -854,14 +702,19 @@ export default function CreateKitchenStep() {
             </div>
             <h3 className="mb-2 text-lg font-bold text-[#1A1A1A]">{mt("createYourKitchenSpace")}</h3>
             <p className="mx-auto mb-6 max-w-sm text-sm leading-relaxed text-muted-foreground">{mt("setUpYourFirstKitchenToStartReceivingBookingRequestsFromChef")}</p>
-            <Button onClick={() => requestIntent({ kind: 'create' })} size="lg">
+            <Button onClick={() => setShowCreate(true)} size="lg">
               <Plus className="mr-2 h-4 w-4" />{mt("createKitchenSpace")}</Button>
           </CardContent>
         </Card>
       )}
 
-      {/* Create Kitchen Form - Enterprise Design */}
-      {showCreate && (
+      {/*
+       * The form is this part, open either because the manager asked to create one or
+       * because a kitchen already exists and this is where its details live. Coming back
+       * to it from the summary's Edit lands here, pre-filled, with the footer offering
+       * "Save & continue" the moment anything changes.
+       */}
+      {(showCreate || hasKitchen) && (
         <Card className={cn(
           "animate-in fade-in zoom-in-95 border-0 duration-200 shadow-[0_8px_30px_rgba(44,44,44,0.07)] ring-1 ring-[#2C2C2C]/[0.05]",
           CARD_RADIUS,
@@ -903,13 +756,28 @@ export default function CreateKitchenStep() {
               layout="stacked"
               hint={mt("aGreatCoverPhotoHelpsAttractMoreChefsToYourSpace")}
             >
-              <CoverPhotoField
-                value={data.imageUrl}
-                onSelectFile={(file) => void uploadCover(file)}
-                onRemove={() => setLocalImageUrl('')}
-                disabled={isCreating}
-                className="w-full max-w-md"
-              />
+              {/*
+                * A field, not a gallery. At `max-w-md` the 16:9 preview stood 252px tall —
+                * taller than the five rows around it put together, which is why this row
+                * read as a section of its own. `max-w-xs` keeps a real preview of the crop
+                * at 180px and lets the form read as one column.
+                */}
+              <div>
+                <CoverPhotoField
+                  value={data.imageUrl}
+                  onSelectFile={(file) => void uploadCover(file)}
+                  onRemove={() => setLocalImageUrl('')}
+                  disabled={isCreating}
+                  className="w-full max-w-xs"
+                />
+                {/*
+                  * The cover is the one photo onboarding asks for: it is what search
+                  * results show, and a listing cannot go live without it. The gallery is
+                  * real work with no gate on it, so it belongs where a manager has time
+                  * for it rather than in the middle of setup.
+                  */}
+                <p className="mt-2 text-xs text-muted-foreground">{mt("addMorePhotosFromMyKitchens")}</p>
+              </div>
             </SettingsRow>
 
             <SettingsRow id="kitchen-rate" label={mt("hourlyRateCAD")} required>
@@ -932,7 +800,13 @@ export default function CreateKitchenStep() {
               />
             </SettingsRow>
 
-            <SettingsRow id="kitchen-minimum" label={mt("minimumBooking")}>
+            {/*
+              * Required, and one hour is the floor. Zero is not a minimum booking — it is
+              * the absence of one, and it reached the database as a real value because the
+              * blank field was sent as `parseInt('') || 0`. A booking with no minimum is a
+              * booking the manager never agreed to.
+              */}
+            <SettingsRow id="kitchen-minimum" label={mt("minimumBooking")} required>
               <NumericInput
                 id="kitchen-minimum"
                 value={data.minimumBookingHours}
@@ -942,7 +816,7 @@ export default function CreateKitchenStep() {
                     return;
                   }
                   const parsed = parseInt(val, 10);
-                  if (!isNaN(parsed) && parsed >= 0 && parsed <= 24) {
+                  if (!isNaN(parsed) && parsed >= 1 && parsed <= 24) {
                     setLocalMinHours(String(parsed));
                   }
                 }}
@@ -953,61 +827,93 @@ export default function CreateKitchenStep() {
             </SettingsRow>
           </CardContent>
 
-            {/* Action Buttons — this form only ever creates. */}
-            <div className="flex gap-3 border-t border-border p-4">
-              <StatusButton
-                status={isCreating ? "loading" : "idle"}
-                onClick={handleCreate}
-                disabled={!data.name.trim() || !data.description.trim() || !data.imageUrl || !data.hourlyRate}
-                className="flex-1"
-                labels={{ idle: mt("createKitchen"), loading: mt("creating"), success: mt("created") }}
-              />
-              <Button
-                variant="outline"
-                onClick={closeForm}
-                disabled={isCreating}
-                className="text-muted-foreground"
-              >{mt("cancel")}</Button>
-            </div>
+            {/*
+              * Create-mode actions only. Once the kitchen exists this form is an editor,
+             * and the footer owns the save — one action surface, and it already reads
+             * "Save & continue" the moment anything changed.
+             */}
+            {!hasKitchen && (
+              <div className="flex gap-3 border-t border-border p-4">
+                <StatusButton
+                  status={isCreating ? "loading" : "idle"}
+                  onClick={handleCreate}
+                  disabled={
+                    !data.name.trim() ||
+                    !data.description.trim() ||
+                    !data.imageUrl ||
+                    !data.hourlyRate ||
+                    // 1 is the floor — see the field above.
+                    !(parseInt(data.minimumBookingHours, 10) >= 1)
+                  }
+                  className="flex-1"
+                  labels={{ idle: mt("createKitchenAndContinue"), loading: mt("creating"), success: mt("created") }}
+                />
+                <Button
+                  variant="outline"
+                  onClick={closeForm}
+                  disabled={isCreating}
+                  className="text-muted-foreground"
+                >{mt("cancel")}</Button>
+              </div>
+            )}
         </Card>
       )}
 
-      {/*
-       * Collapsing a card is what hides its editor, so unsaved changes have to be
-       * resolved first. Same three-way choice the wizard and the dashboard tabs
-       * use, so the decision never depends on where the manager is.
-       */}
-      <UnsavedChangesDialog
-        open={pendingIntent !== null}
-        onOpenChange={(open) => { if (!open) setPendingIntent(null); }}
-        description={mt("kitchenCardUnsavedChangesDescription")}
-        isSaving={isSavingEdit}
-        onDiscard={() => {
-          const intent = pendingIntent;
-          handleCancelEdit();
-          setPendingIntent(null);
-          if (intent) applyIntent(intent);
-        }}
-        onSave={async () => {
-          const intent = pendingIntent;
-          const saved = await handleSaveEdit();
-          // On failure the dialog stays open — the toast already explains why.
-          if (!saved) return;
-          setPendingIntent(null);
-          if (intent) applyIntent(intent);
-        }}
-      />
+        </>
+      )}
 
-      {/* Navigation Footer */}
-      {!showCreate && (
+      {/*
+       * Parts 2 and 3 are the dashboard's own inventory surfaces, rendered `embedded` so
+       * they drop their duplicate heading and un-pin their commit bar. The part heading
+       * above is what names them, and its description carries the two things a manager
+       * needs to hear when they have nothing to add: this is optional, and My Kitchens
+       * will still be there later.
+       */}
+      {activePart === 1 && (
+        <EquipmentListingContent
+          embedded
+          selectedLocationId={selectedLocationId}
+          selectedKitchenId={listingKitchenId}
+        />
+      )}
+
+      {activePart === 2 && (
+        <StorageListingContent
+          embedded
+          selectedLocationId={selectedLocationId}
+          selectedKitchenId={listingKitchenId}
+        />
+      )}
+
+      {/*
+       * The review, on its own screen after the three parts. It used to hang off the bottom
+       * of the storage inventory, which buried it: the manager finished the work and the
+       * step's closing statement was below the fold of an inventory they had just edited.
+       */}
+      {activePart === SUMMARY_PART && (
+        <ListingSummary
+          kitchen={kitchens[0]}
+          equipment={equipmentNames}
+          storage={storageNames}
+          onEdit={(part) => setActivePart(part)}
+        />
+      )}
+
+      {/*
+       * Navigation Footer. Hidden only while part 0's create form is open — that form
+       * has its own Create / Cancel pair, and two footers would compete.
+       */}
+      {!(activePart === 0 && showCreate) && (
         <OnboardingNavigationFooter
-          onNext={() => void handleContinue()}
-          onBack={handleBack}
+          onNext={() => void handlePartContinue()}
+          onBack={handlePartBack}
           onSaveAndExit={() => void saveAndExit()}
-          showBack={!isFirstStep}
-          // The label has to match what the button does — it saves first now.
-          nextLabel={isEditDirty ? mt("saveAndContinue") : tt("continue")}
-          isNextDisabled={kitchens.length === 0 || isSavingEdit}
+          showBack={!isFirstStep || activePart > 0}
+          // The label has to match what the button does — part 0 saves the editor first.
+          nextLabel={activePart === 0 && isEditDirty ? mt("saveAndContinue") : tt("continue")}
+          // Only part 0 can block: parts 2 and 3 are optional by design, so an empty
+          // inventory is a valid answer rather than an unfinished one.
+          isNextDisabled={isSavingEdit || (activePart === 0 && kitchens.length === 0)}
           isLoading={isSavingEdit}
           isSavingAndExiting={isSubmitting}
         />

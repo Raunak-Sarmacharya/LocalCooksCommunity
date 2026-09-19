@@ -2750,6 +2750,11 @@ router.post(
         features,
         imageUrl,
         hourlyRate,
+        // A kitchen can be priced hourly, daily, or both, and the schema, the repository and
+        // the pricing endpoint all support `dailyRate`. This handler was the one link that
+        // dropped it, so a daily rate typed during onboarding was silently discarded — and
+        // the field then looked "cleared" because the form re-read the kitchen it had made.
+        dailyRate,
         currency,
         minimumBookingHours,
       } = req.body;
@@ -2769,14 +2774,20 @@ router.post(
       if (hourlyRate !== undefined && (typeof hourlyRate !== "number" || hourlyRate <= 0)) {
         return res.status(400).json({ error: "Hourly rate must be a positive number" });
       }
+      // Optional, and the client sends `undefined` rather than 0 when it is left blank.
+      if (dailyRate !== undefined && (typeof dailyRate !== "number" || dailyRate <= 0)) {
+        return res.status(400).json({ error: "Daily rate must be a positive number" });
+      }
       if (
         minimumBookingHours !== undefined &&
         (typeof minimumBookingHours !== "number" ||
           !Number.isInteger(minimumBookingHours) ||
-          minimumBookingHours < 0 ||
+          // Was `< 0`, so the API accepted a minimum booking of zero. Zero hours is not a
+          // minimum — it is the absence of one, and it reached the column as a real value.
+          minimumBookingHours < 1 ||
           minimumBookingHours > 24)
       ) {
-        return res.status(400).json({ error: "Minimum booking hours must be a whole number between 0 and 24" });
+        return res.status(400).json({ error: "Minimum booking hours must be a whole number between 1 and 24" });
       }
 
       const created = await kitchenService.createKitchen({
@@ -2787,6 +2798,7 @@ router.post(
         amenities: features || [],
         isActive: true, // Auto-activate
         hourlyRate,
+        dailyRate,
         currency: currency || "CAD",
         minimumBookingHours: minimumBookingHours ?? 1,
         pricingModel: "hourly",
@@ -6701,6 +6713,21 @@ router.post(
         return res.status(400).json({ error: "Name and address are required" });
       }
 
+      // A kitchen license cannot be created without a date of expiry. Nothing can
+      // review it, approve it, or warn the manager before it lapses, so the document
+      // is not usable on its own — every manager surface already requires the date,
+      // and this is the check that makes that a rule rather than a convention.
+      //
+      // Deliberately scoped to a licence being SUPPLIED here. It is not a rule on the
+      // column, because a location whose licence predates this check still has to be
+      // able to re-save the rest of its details.
+      if (kitchenLicenseUrl && !kitchenLicenseExpiry) {
+        return res.status(400).json({
+          error:
+            "A license expiry date is required when uploading a kitchen license.",
+        });
+      }
+
       // Multiple locations per manager are now supported
       // Each location requires its own kitchen license approval before bookings can be accepted
 
@@ -6961,6 +6988,25 @@ router.put(
       const isPendingUpdate = currentStatus === 'pending_update';
       // 'pending' = initial submission not yet approved — manager can replace in-place
       const isInitialPending = currentStatus === 'pending';
+
+      // A licence cannot be uploaded without a date of expiry — same reason as the
+      // create route: nothing can review or warn about a document with no end date.
+      //
+      // Scoped to a NEW document, compared against what is stored, and NOT a blanket
+      // rule. A location whose licence predates this check sends the URL it already
+      // has back on every re-save (the wizard always includes it), and rejecting that
+      // would lock the manager out of finishing onboarding over a date they never had
+      // a chance to enter.
+      if (
+        kitchenLicenseUrl &&
+        !kitchenLicenseExpiry &&
+        kitchenLicenseUrl !== currentLocation?.kitchenLicenseUrl
+      ) {
+        return res.status(400).json({
+          error:
+            "A license expiry date is required when uploading a kitchen license.",
+        });
+      }
 
       if (kitchenLicenseUrl !== undefined) {
         if (kitchenLicenseUrl) {

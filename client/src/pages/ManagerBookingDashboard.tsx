@@ -10,7 +10,7 @@ import { DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { useLocation } from "wouter";
 import 'react-calendar/dist/Calendar.css';
 import { useManagerDashboard } from "../hooks/use-manager-dashboard";
-import { useOnboardingStatus, invalidateOnboardingStatus } from "@/hooks/use-onboarding-status";
+import { useOnboardingStatus, invalidateOnboardingStatus, shouldShowSidebarGuidance } from "@/hooks/use-onboarding-status";
 import { toast } from "@/hooks/use-toast";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
@@ -791,11 +791,13 @@ export default function ManagerBookingDashboard() {
     window.dispatchEvent(new PopStateEvent("popstate"));
   };
 
-  const showSidebarGuidance = !isLoadingOnboardingStatus
-    && (
-      setupSteps.some((step) => step.id === 'profile' && !step.complete) ||
-      (!!selectedLocation && (showSetupBanner || improvementSteps.length > 0))
-    );
+  const showSidebarGuidance = shouldShowSidebarGuidance({
+    isLoading: isLoadingOnboardingStatus,
+    setupSteps,
+    hasSelectedLocation: !!selectedLocation,
+    showSetupBanner,
+    improvementStepCount: improvementSteps.length,
+  });
 
   return (
     <DashboardLayout

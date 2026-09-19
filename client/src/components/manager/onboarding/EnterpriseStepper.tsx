@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { mt } from "@/i18n/manager";
 import { useManagerOnboarding } from "./ManagerOnboardingContext";
 import { cn } from "@/lib/utils";
-import { Check, Circle, MapPin, Calendar, ClipboardList, CreditCard, Clock, Package, CookingPot, PartyPopper, Handshake, Lock } from "@/components/ui/manager-icons";
+import { Check, Circle, MapPin, ClipboardList, CreditCard, Clock, CookingPot, PartyPopper, Handshake, Lock } from "@/components/ui/manager-icons";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -12,12 +12,12 @@ import Logo from "@/components/ui/logo";
 const STEP_ICONS: Record<string, React.ElementType> = {
     'welcome': Handshake,
     'location': MapPin,
-    'create-kitchen': Calendar,
+    // A listing, not a calendar — 'create-kitchen' now holds the kitchen, its equipment
+    // and its storage, and the Calendar glyph was the only one that said nothing about it.
+    'create-kitchen': CookingPot,
     'application-requirements': ClipboardList,
     'payment-setup': CreditCard,
     'availability': Clock,
-    'storage-listings': Package,
-    'equipment-listings': CookingPot,
     'completion-summary': PartyPopper,
 };
 

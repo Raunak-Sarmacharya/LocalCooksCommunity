@@ -44,14 +44,16 @@ export const steps: any[] = [
         id: 'create-kitchen',
         type: 'CUSTOM_COMPONENT',
         metadata: {
-            label: 'Kitchen Space',
+            // Short for the stepper; the page heading below carries the full name.
+            // The Business step sets the same pair ('Business' / 'Business Details').
+            label: 'Kitchen listing',
             isOptional: false,
             canSkip: false
         },
         payload: {
             componentKey: 'create-kitchen',
-            title: 'Create Kitchen',
-            description: 'Set up your first kitchen space',
+            title: 'Your kitchen listing',
+            description: 'The kitchen chefs will book — and equipment or storage, if you have any to offer.',
         },
         nextStep: 'availability'
     },
@@ -83,38 +85,20 @@ export const steps: any[] = [
             title: 'Application Requirements',
             description: 'Configure chef application fields',
         },
-        nextStep: 'equipment-listings'
-    },
-    {
-        id: 'equipment-listings',
-        type: 'CUSTOM_COMPONENT',
-        metadata: {
-            label: 'Equipment',
-            isOptional: true,
-            canSkip: true
-        },
-        payload: {
-            componentKey: 'equipment-listings',
-            title: 'Equipment Listings',
-            description: 'Add equipment options',
-        },
-        nextStep: 'storage-listings'
-    },
-    {
-        id: 'storage-listings',
-        type: 'CUSTOM_COMPONENT',
-        metadata: {
-            label: 'Storage',
-            isOptional: true,
-            canSkip: true
-        },
-        payload: {
-            componentKey: 'storage-listings',
-            title: 'Storage Listings',
-            description: 'Add storage options',
-        },
         nextStep: 'payment-setup'
     },
+    /*
+     * 'equipment-listings' and 'storage-listings' were steps here. Both were optional and
+     * both only ever asked for data that hangs off a KITCHEN, so they are now parts 2 and 3
+     * of 'create-kitchen' — see LocationStep for the same three-part shape on the Business
+     * step. The wizard is seven steps instead of nine, and a manager meets equipment and
+     * storage at the moment they are thinking about the kitchen they describe, rather than
+     * four steps later.
+     *
+     * Nothing that decides "is onboarding done" ever read them: `requiredStepOrder` and
+     * `TASK_STEP_IDS` in ManagerOnboardingContext, the setup banner's missing/improvement
+     * lists, and the getting-started checklist all excluded them already.
+     */
     {
         id: 'payment-setup',
         type: 'CUSTOM_COMPONENT',

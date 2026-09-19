@@ -84,11 +84,62 @@ export async function checkPhoneAvailable(phone: string, idToken: string): Promi
   }
 }
 
+/**
+ * Record the number that was just proved, in the column that is the record.
+ *
+ * `linkWithPhoneNumber` + OTP sets the Firebase `phoneNumber` CLAIM, and the sign-in
+ * gate honours that claim — which is why a proved number already works without this
+ * call. But the claim is a cache on a token, while `users.phone_verified_at` is the
+ * maintained record (`GET /api/user/profile` and `auth-method-hints` both report
+ * `phoneVerified` from the column OR the claim). Leaving the column NULL means the
+ * proof depends entirely on the claim surviving, and nothing records WHEN it happened.
+ *
+ * Deliberately here rather than in each caller: the profile page and the onboarding
+ * wizard are two doors onto the same action, and a write that only one of them makes
+ * is how the column came to be empty for every proved number in the first place.
+ * The endpoint is idempotent — the timestamp is written once and never overwritten.
+ */
+async function recordProvedPhone(idToken: string): Promise<void> {
+  try {
+    await fetch("/api/sync-verification-status", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${idToken}`, "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    // Best effort, and never surfaced: the number IS proved and usable, so reporting a
+    // failed mirror as a failed verification would be a lie. The next sign-in syncs it.
+    logger.warn("Could not record the proved phone number", error);
+  }
+}
+
 interface PhoneSignInSettingsProps {
   /** Render without wrapping Card/section — parent controls layout */
   embedded?: boolean;
+  /**
+   * `row` (default) — the profile pages' full row: icon, status pill, value, action.
+   * `form` — the bare form, for a parent that already owns the label and the
+   * surrounding row (the onboarding wizard's Business step).
+   *
+   * Only the shell differs. The send path, the SMS consent and the duplicate-number
+   * pre-flight are the same code, so neither layout can bypass the other's rules.
+   */
+  layout?: "row" | "form";
   /** Pre-fill the phone input (e.g. from DB profile) */
   initialPhone?: string;
+  /**
+   * The number the ACCOUNT is already known to have proved, when the caller can tell us.
+   *
+   * `linkedPhone` above is the FIREBASE credential on the user object this session
+   * happens to be holding, and that is not the whole story: `phone_verified_at` is the
+   * record the server trusts, and an account can hold a proved number whose credential
+   * is absent here. Without this the row renders "verify this number" for a number that
+   * is already usable — the same defect the profile page shipped once already, telling
+   * the holder "No phone number added" about a number on their own account.
+   *
+   * Counted only when it matches `initialPhone`: a proved number is proof of ONE number,
+   * so a caller that also lets the field be edited invalidates it simply by editing it.
+   */
+  provedPhone?: string;
   /** Called after OTP verification succeeds and phone is linked to Firebase UID */
   onPhoneLinked?: (phone: string) => void | Promise<void>;
   /** Called after phone is unlinked from Firebase UID */
@@ -97,7 +148,9 @@ interface PhoneSignInSettingsProps {
 
 export default function PhoneSignInSettings({
   embedded = false,
+  layout = "row",
   initialPhone,
+  provedPhone,
   onPhoneLinked,
   onPhoneUnlinked,
 }: PhoneSignInSettingsProps) {
@@ -118,10 +171,15 @@ export default function PhoneSignInSettings({
     setLinkedPhone(auth.currentUser?.phoneNumber || "");
   }, [firebaseUser?.uid]);
 
-  // Sync initialPhone prop when it changes (e.g. after profile fetch)
+  // Sync initialPhone prop when it changes (e.g. after profile fetch).
+  //
+  // Converted to the DISPLAY format, for the same reason `startAdding` does it: a raw
+  // `+17096318480` sitting in an editable field reads like a database value rather than
+  // the number the manager recognises, and `normalizePhoneNumber` strips non-digits
+  // anyway — so the formatted text normalises back to exactly the same E.164 string.
   useEffect(() => {
     if (initialPhone && !linkedPhone) {
-      setPhone(initialPhone);
+      setPhone(formatPhoneForDisplay(initialPhone));
     }
   }, [initialPhone, linkedPhone]);
 
@@ -232,6 +290,8 @@ export default function PhoneSignInSettings({
       setIsAdding(false);
       setSmsConsent(false);
       clearVerifier();
+      const token = await auth.currentUser?.getIdToken();
+      if (token) await recordProvedPhone(token);
       // Notify parent so it can sync verified phone to DB
       await onPhoneLinked?.(verifiedPhone);
     } catch (verifyError: any) {
@@ -305,8 +365,19 @@ export default function PhoneSignInSettings({
   // until it has been proved, so it is tracked separately from `linkedPhone`, and
   // the row is explicit about which of the two it is showing.
   const storedPhone = normalizePhoneNumber(initialPhone || "") || "";
+  /**
+   * The number this row should treat as proved.
+   *
+   * Two sources, and they must be reconciled HERE rather than left to disagree: the
+   * credential on the current user object, and the account's own record handed in by the
+   * caller. A credential wins outright; the account's record counts only when it
+   * describes the SAME number as the field, so editing the field takes the proof away.
+   */
+  const accountProvedPhone = normalizePhoneNumber(provedPhone || "") || "";
+  const provedNumber =
+    linkedPhone || (accountProvedPhone && accountProvedPhone === storedPhone ? accountProvedPhone : "");
   const rowState = resolvePhoneRowState({
-    linkedPhone,
+    linkedPhone: provedNumber,
     hasPendingCode: !!confirmation,
     storedPhone,
   });
@@ -331,7 +402,7 @@ export default function PhoneSignInSettings({
 
   const value =
     rowState === "verified"
-      ? formatPhoneForDisplay(linkedPhone)
+      ? formatPhoneForDisplay(provedNumber)
       : rowState === "code-sent"
         ? formatPhoneForDisplay(phone)
         : rowState === "unverified"
@@ -557,6 +628,125 @@ export default function PhoneSignInSettings({
     </ContactVerificationRow>
   );
 
+  /**
+   * The bare form, for a parent that already owns the label and the row.
+   *
+   * The form opens straight away rather than behind an "Add phone number" button —
+   * there is no action slot here to put that button in, and the parent only renders
+   * this once the manager has asked for phone contact.
+   *
+   * There is no Remove: the wizard gates Continue on a proved number, and removing a
+   * credential is not an action that step offers. Changing a number that is already
+   * proved stays on the profile page, exactly like the contact email.
+   */
+  const formLayout = rowState === "verified" ? (
+    <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
+      <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
+        <Check className="size-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+        {formatPhoneForDisplay(provedNumber)}
+      </span>
+      <span className="text-muted-foreground">{statusLabel}</span>
+    </p>
+  ) : confirmation ? (
+    <div className="w-full max-w-sm space-y-3">
+      <div className="space-y-2">
+        <Label htmlFor="onboarding-phone-code" className="text-xs font-medium">
+          Verification code
+        </Label>
+        <Input
+          id="onboarding-phone-code"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          maxLength={6}
+          value={code}
+          onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
+          disabled={busy}
+          className="tracking-[0.35em]"
+        />
+        <p className="text-xs text-muted-foreground">
+          Enter the 6-digit code we sent to {formatPhoneForDisplay(phone)}.
+        </p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          size="sm"
+          className={PRIMARY_ROW_ACTION}
+          onClick={verifyCode}
+          disabled={busy || code.length !== 6}
+        >
+          {busy && <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />}
+          Verify phone
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className={QUIET_ROW_ACTION}
+          onClick={() => {
+            setConfirmation(null);
+            setCode("");
+            clearVerifier();
+          }}
+          disabled={busy}
+        >
+          Use a different number
+        </Button>
+      </div>
+      {error ? (
+        <p role="alert" className="text-sm text-destructive">{error}</p>
+      ) : null}
+    </div>
+  ) : (
+    <div className="w-full max-w-sm space-y-3">
+      <div className="space-y-2">
+        <Input
+          id="onboarding-phone-number"
+          type="tel"
+          autoComplete="tel"
+          value={phone}
+          onChange={(event) => setPhone(event.target.value)}
+          placeholder="(416) 555-0123"
+          disabled={busy}
+        />
+        <p className="text-xs text-muted-foreground">US and Canadian numbers only.</p>
+      </div>
+      <label className="flex items-start gap-2 text-xs text-muted-foreground">
+        <input
+          type="checkbox"
+          checked={smsConsent}
+          onChange={(event) => setSmsConsent(event.target.checked)}
+          className="mt-0.5"
+          disabled={busy}
+        />
+        {/* One sentence, one line — the consent `sendCode` refuses to send without.
+            Folding the rate disclosure in here as well orphaned "rates may apply." onto a
+            second line mid-sentence, so it keeps its own line, as on the profile row. */}
+        <span>I agree to receive a one-time authentication text.</span>
+      </label>
+      <p className="pl-[1.35rem] text-[11px] leading-snug text-muted-foreground">
+        Message and data rates may apply.
+      </p>
+      <div id={recaptchaId.current} className="absolute h-0 w-0" aria-hidden="true" />
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          size="sm"
+          className={PRIMARY_ROW_ACTION}
+          onClick={sendCode}
+          disabled={busy}
+        >
+          {busy && <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />}
+          Send code
+        </Button>
+      </div>
+      {error ? (
+        <p role="alert" className="text-sm text-destructive">{error}</p>
+      ) : null}
+    </div>
+  );
+
+  if (layout === "form") return formLayout;
   if (embedded) return row;
 
   return <ContactInfoCard>{row}</ContactInfoCard>;

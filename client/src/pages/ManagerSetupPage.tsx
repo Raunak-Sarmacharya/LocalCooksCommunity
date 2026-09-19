@@ -123,10 +123,20 @@ function ManagerSetupPageContent() {
                             </Tooltip>
                             <ChevronRight className="w-4 h-4 text-muted-foreground/50" />
                             <span className="font-medium text-muted-foreground">{t("managerSetupWizard")}</span>
-                            <ChevronRight className="w-4 h-4 text-muted-foreground/50" />
-                            <span className="text-foreground font-medium">
-                                {currentStepData?.title || t("loading", { ns: "common" })}
-                            </span>
+                            {/*
+                             * No step crumb on the welcome step. It would read
+                             * "Setup Wizard › Welcome" on a page the manager reaches straight
+                             * after the manager welcome screen — the same redundancy the
+                             * heading block below skips this step for.
+                             */}
+                            {currentStepData?.componentKey !== 'welcome' && (
+                                <>
+                                    <ChevronRight className="w-4 h-4 text-muted-foreground/50" />
+                                    <span className="text-foreground font-medium">
+                                        {currentStepData?.title || t("loading", { ns: "common" })}
+                                    </span>
+                                </>
+                            )}
                         </nav>
                     </div>
 

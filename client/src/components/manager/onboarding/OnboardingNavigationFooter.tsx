@@ -6,6 +6,16 @@ import { StatusButton } from "@/components/ui/status-button";
 import { ChevronLeft, LogOut, SkipForward } from "@/components/ui/manager-icons";
 import { cn } from "@/lib/utils";
 
+/**
+ * Footer action size: 40px, and the `!` is load-bearing.
+ *
+ * `index.css` applies `min-h-[44px]` to EVERY `button`, unlayered — so `size` alone can never
+ * go below 44px, which is why `lg` (48px) and `default` (44px) both read as oversized here.
+ * `md:!min-h-0` releases that floor from `md` up and leaves the mobile touch target alone.
+ * `WelcomeStep` imports the same value, so all nine steps share one footer height.
+ */
+export const FOOTER_ACTION = "!h-10 md:!min-h-0";
+
 interface OnboardingNavigationFooterProps {
     onNext: () => void;
     onBack?: () => void;
@@ -69,7 +79,7 @@ export function OnboardingNavigationFooter({
                     variant="ghost"
                     onClick={onBack}
                     disabled={isBackDisabled || isAnyActionPending}
-                    className="gap-2 text-muted-foreground hover:text-foreground hover:bg-muted"
+                    className={cn(FOOTER_ACTION, "gap-2 text-muted-foreground hover:text-foreground hover:bg-muted")}
                 >
                     <ChevronLeft className="w-4 h-4" />
                     {backLabel}
@@ -85,7 +95,7 @@ export function OnboardingNavigationFooter({
                         variant="ghost"
                         onClick={onSkip}
                         disabled={isAnyActionPending}
-                        className="gap-2 text-muted-foreground hover:text-foreground"
+                        className={cn(FOOTER_ACTION, "gap-2 text-muted-foreground hover:bg-muted hover:text-foreground")}
                     >
                         {skipLabel}
                         <SkipForward className="w-4 h-4" />
@@ -96,7 +106,7 @@ export function OnboardingNavigationFooter({
                         variant="ghost"
                         onClick={() => onSaveAndExit()}
                         disabled={isAnyActionPending}
-                        className="gap-2 text-muted-foreground hover:text-foreground"
+                        className={cn(FOOTER_ACTION, "gap-2 text-muted-foreground hover:bg-muted hover:text-foreground")}
                         title={saveAndExitLabel}
                     >
                         <LogOut className="w-4 h-4" aria-hidden />
@@ -107,8 +117,7 @@ export function OnboardingNavigationFooter({
                     onClick={onNext}
                     disabled={isNextDisabled}
                     status={isLoading ? "loading" : "idle"}
-                    size="lg"
-                    className={cn("min-w-[140px] font-semibold")}
+                    className={cn(FOOTER_ACTION, "min-w-[140px] font-semibold")}
                     labels={{ idle: nextLabel, loading: mt("savingShort"), success: mt("saved") }}
                 />
             </div>

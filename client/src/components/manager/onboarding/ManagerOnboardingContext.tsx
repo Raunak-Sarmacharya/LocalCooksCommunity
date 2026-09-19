@@ -24,14 +24,20 @@ const generateSubmissionId = (): string => {
 
 // Step ID mapping for backwards compatibility with legacy numeric format in database
 // MUST match the order in onboarding-steps.ts
+//
+// 5 and 6 are deliberately MISSING. They were 'equipment-listings' and 'storage-listings'
+// until those merged into 'create-kitchen' (2026-09-19). The numbers are not reused:
+// rows written before the merge are keyed `step_5` / `step_6`, and handing those numbers
+// to payment-setup / completion-summary would decode a manager's stored progress as two
+// steps they never took. A number with no entry here is DROPPED by the normaliser below,
+// which is the right outcome — those two only ever recorded "the manager has seen this
+// optional step", and the step no longer exists to be seen.
 const STEP_ID_MAP: Record<string, number> = {
   'welcome': 0,
   'location': 1,
   'create-kitchen': 2,
   'availability': 3,
   'application-requirements': 4,
-  'equipment-listings': 5,
-  'storage-listings': 6,
   'payment-setup': 7,
   'completion-summary': 8
 };
@@ -394,13 +400,13 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
 
   // [ENTERPRISE] Compute completedSteps based on ACTUAL DATA existence ONLY
   // This ensures the sidebar shows correct completion state based on real conditions
-  // 
-  // REQUIRED for bookings: Location, Kitchen Space, Availability, Requirements, Payment
-  // OPTIONAL: Equipment, Storage
+  //
+  // REQUIRED for bookings: Location, Kitchen listing, Availability, Requirements, Payment
+  // (Equipment and Storage are optional parts OF the kitchen listing, not steps — they
+  // never had a completion row here beyond "seen" tracking, which is gone with them.)
   //
   // NOTE: We do NOT include dbCompletedSteps here for required steps.
   // Required steps are ONLY marked complete when actual data exists.
-  // Optional steps can use dbCompletedSteps for "seen" tracking.
   const completedSteps = useMemo((): Record<string, boolean> => {
     const result: Record<string, boolean> = {};
 
@@ -464,14 +470,6 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       result['payment-setup'] = true;
     }
 
-    // Optional steps: Keep from dbCompletedSteps for "seen" tracking only
-    if (dbCompletedSteps['storage-listings'] || existingStorageListings.length > 0) {
-      result['storage-listings'] = true;
-    }
-    if (dbCompletedSteps['equipment-listings'] || existingEquipmentListings.length > 0) {
-      result['equipment-listings'] = true;
-    }
-
     /*
      * The summary is a report, not a task — but it is still one of the required
      * rows, and nothing above ever marks it. Without this the counter could
@@ -496,7 +494,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     return result;
   }, [userData, locations, selectedLocationId, kitchens.length,
     hasRequirements, hasAvailability, isStripeOnboardingComplete,
-    dbCompletedSteps, existingStorageListings.length, existingEquipmentListings.length, isAddingLocation]);
+    dbCompletedSteps, isAddingLocation]);
 
   // Build visible steps: show all steps, but skip welcome if returning user with location
   let visibleStepsFiltered = [...steps];
@@ -549,6 +547,21 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       setContactEmail(accountEmail);
     }
   }, [firebaseUser?.email, isLoadingLocations, locations.length, notificationEmail, contactEmail]);
+
+  // The phone the manager gave at registration.
+  //
+  // `users.phone_number` is the only place it lives — no account in this project has
+  // ever linked a phone to Firebase — and the auth user already carries it, so this
+  // costs no extra request. It fills the field for a brand-new location AND for one
+  // whose stored contact phone is blank, because the number describes the MANAGER,
+  // not the location.
+  //
+  // Guarded on emptiness only: once the field holds anything, including something the
+  // manager typed, this never overwrites it.
+  useEffect(() => {
+    if (contactPhone || !firebaseUser?.phoneNumber) return;
+    setContactPhone(firebaseUser.phoneNumber);
+  }, [firebaseUser?.phoneNumber, contactPhone]);
 
   // Listen for manual trigger from Help Center or other parts of the app
   useEffect(() => {
@@ -1226,13 +1239,6 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
 
       const token = await auth.currentUser?.getIdToken();
 
-      let phone = notificationPhone;
-      if (phone) {
-        const p = optionalPhoneNumberSchema.safeParse(phone);
-        if (!p.success) throw new Error(tt("invalidPhone"));
-        phone = p.data || "";
-      }
-
       let contactPhoneValidated = contactPhone;
       if (contactPhoneValidated) {
         const cp = optionalPhoneNumberSchema.safeParse(contactPhoneValidated);
@@ -1240,11 +1246,23 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         contactPhoneValidated = cp.data || "";
       }
 
+      // Notification targets follow the contact details.
+      //
+      // The Business step stopped asking for them when the Platform Notifications
+      // card was removed, and its Preferred Contact Method row now says notifications
+      // go to the contact email. Sending the old state instead would leave a location
+      // notifying an address the manager can no longer see or change from this step —
+      // and, for an existing location, would silently restore a value they had since
+      // changed elsewhere.
+      //
+      // ponytail: `notificationEmail`/`notificationPhone` state survives only because
+      // it is still mirrored here and loaded from the location. Delete both when the
+      // columns are dropped.
       const body: any = {
         name: locationName,
         address: locationAddress,
-        notificationEmail,
-        notificationPhone: phone,
+        notificationEmail: contactEmail,
+        notificationPhone: contactPhoneValidated,
         contactEmail,
         contactPhone: contactPhoneValidated,
         preferredContactMethod,
@@ -1488,7 +1506,10 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
             ? undefined
             : Math.round(parseFloat(kitchenFormData.dailyRate) * 100),
           currency: kitchenFormData.currency,
-          minimumBookingHours: parseInt(kitchenFormData.minimumBookingHours, 10) || 0,
+          // `|| 0` sent a blank field to the database as a REAL zero — a minimum booking of
+          // nothing, which is the absence of the setting rather than a value. One hour is
+          // the floor everywhere else, so it is the fallback here too.
+          minimumBookingHours: Math.max(1, parseInt(kitchenFormData.minimumBookingHours, 10) || 1),
         })
       });
       if (!res.ok) throw new Error(tt("failedToCreateKitchen"));

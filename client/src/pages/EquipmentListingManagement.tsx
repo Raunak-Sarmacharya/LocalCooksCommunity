@@ -416,10 +416,19 @@ export default function EquipmentListingManagement() {
 
 export function EquipmentListingContent({
   selectedLocationId,
-  selectedKitchenId
+  selectedKitchenId,
+  embedded = false
 }: {
   selectedLocationId: number | null,
-  selectedKitchenId: number | null
+  selectedKitchenId: number | null,
+  /**
+   * Rendered INSIDE another surface that already supplies the page furniture — the
+   * onboarding wizard's kitchen-listing step, whose part heading already says what this
+   * is. Drops the duplicate heading and un-pins the commit bar, because the wizard has
+   * its own footer directly below it. Everything else is the same component: one
+   * implementation, two placements, so the wizard cannot drift from My Kitchens.
+   */
+  embedded?: boolean
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -1103,7 +1112,12 @@ export function EquipmentListingContent({
         </div>
 
         {/* Sticky bar: the scope and the commit action never scroll away. */}
-        <div className="sticky bottom-0 z-10 space-y-3 rounded-lg border bg-background/95 p-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className={cn(
+          "z-10 space-y-3 rounded-lg border bg-background/95 p-3 backdrop-blur supports-[backdrop-filter]:bg-background/80",
+          // Two bars pinned to the bottom of one scroll area read as a stack, so inside
+          // a host surface this one is static and the host's footer owns the bottom.
+          !embedded && "sticky bottom-0",
+        )}>
           {isAdd ? (
             <KitchenScopeField
               kitchens={kitchens}
@@ -1148,19 +1162,29 @@ export function EquipmentListingContent({
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-base font-medium">{mt("equipmentInventory")}</h2>
+                {/* The host's heading already names this, so only the count and the
+                    kitchen it belongs to survive — the two things it does not say. */}
+                {!embedded && <h2 className="text-base font-medium">{mt("equipmentInventory")}</h2>}
                 {visibleListings.length > 0 && <Badge variant="count">{visibleListings.length}</Badge>}
                 {selectedKitchen && (
                   <span className="text-xs text-muted-foreground">{selectedKitchen.name}</span>
                 )}
               </div>
-              <p className="mt-0.5 text-xs text-muted-foreground">{mt("equipmentTabHint")}</p>
+              {!embedded && <p className="mt-0.5 text-xs text-muted-foreground">{mt("equipmentTabHint")}</p>}
             </div>
           </div>
-          <Button onClick={openAdd}>
-            <Plus className="mr-2 h-4 w-4" />
-            {mt("addEquipment")}
-          </Button>
+          {/*
+            * One "Add" affordance at a time, and never a second brand CTA beside the
+            * host's own. Inside the wizard: when the inventory is empty the empty state
+            * below already offers the action, and when it is not, this one steps back to
+            * an outline so the step's Continue stays the only filled button.
+            */}
+          {(!embedded || visibleListings.length > 0) && (
+            <Button variant={embedded ? "outline" : "default"} onClick={openAdd}>
+              <Plus className="mr-2 h-4 w-4" />
+              {mt("addEquipment")}
+            </Button>
+          )}
         </div>
 
         {isLoading ? (
@@ -1170,7 +1194,9 @@ export function EquipmentListingContent({
             <Wrench className="mx-auto h-10 w-10 opacity-20" />
             <h3 className="mt-3 text-sm font-medium">{mt("noEquipmentListedYet")}</h3>
             <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">{mt("equipmentEmptyBody")}</p>
-            <Button className="mt-4" onClick={openAdd}>
+            {/* Outline inside a host surface: the step's Continue is the filled action
+                there, and a second brand CTA makes the manager choose between two. */}
+            <Button className="mt-4" variant={embedded ? "outline" : "default"} onClick={openAdd}>
               <Plus className="mr-2 h-4 w-4" />
               {mt("addEquipment")}
             </Button>

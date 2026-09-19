@@ -8,16 +8,22 @@ import {
 } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
+// Same constant the shared footer uses, so all nine steps are one footer height rather than
+// two that drift. See the comment there for why the `!` is required.
+import { FOOTER_ACTION } from "../OnboardingNavigationFooter";
 
 /**
- * Welcome step.
+ * Welcome step — the first screen of the setup wizard.
  *
- * One short page that introduces the work ahead. The sidebar already lists
- * every step in order, so we don't repeat that list here — instead we show
- * the *first three* required steps as preview cards (icon + title + one-line
- * description + step number) so the user knows the shape of what they're
- * walking into. Two exits: "Let's start" advances, "Maybe later" saves the
- * seen-state and sends the user to the dashboard so they can resume later.
+ * NO "WELCOME" COPY. The manager reaches this straight after the welcome screen
+ * (`manager-welcome-screen.tsx`), so an eyebrow reading "Welcome to LocalCooks" — and a
+ * breadcrumb ending in "Welcome" — said it for the third time. The headline carries the page.
+ *
+ * Header type scale, deliberately three steps and no more:
+ *   headline   30/36px  semibold
+ *   support    18/20px  muted
+ *   body       14px     muted
+ * The headline used to run 48px into a 36px accent, which is what read as unfinished.
  */
 const PREVIEW_STEPS = [
   { Icon: Briefcase, titleKey: "welcomeStepBusinessTitle", descKey: "welcomeStepBusinessDesc" },
@@ -29,28 +35,22 @@ export default function WelcomeStep() {
   const { handleNext, saveAndExit, isSubmitting } = useManagerOnboarding();
 
   return (
-    <div className="mx-auto flex max-w-xl animate-in fade-in flex-col gap-8 duration-500">
-      {/*
-       * Header — eyebrow + headline + description + time pill.
-       * The headline uses two lines so a short bold first line leads the eye
-       * to a softer second line (mirrors the reference layout).
-       */}
-      <header className="space-y-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
-          {mt("welcomeEyebrow")}
-        </p>
-
-        <h2 className="text-4xl font-semibold leading-[1.05] tracking-tight text-foreground sm:text-5xl">
+    <div className="mx-auto flex max-w-xl animate-in fade-in flex-col gap-10 duration-500">
+      <header className="space-y-3">
+        {/* `h1`: the shell skips its heading block for the welcome step, so this is the
+            page's only heading — it was still starting at level 2. */}
+        <h1 className="text-3xl font-semibold leading-tight tracking-tight text-foreground sm:text-4xl">
           {mt("welcomeHeadline")}
-          <span className="block text-4xl sm:text-4xl text-foreground/60">{mt("welcomeHeadlineAccent")}</span>
-        </h2>
-   
+        </h1>
 
-        <p className="max-w-md text-base leading-relaxed text-muted-foreground">
+        <p className="text-lg text-muted-foreground sm:text-xl">{mt("welcomeHeadlineAccent")}</p>
+
+        <p className="max-w-md text-sm leading-relaxed text-muted-foreground">
           {mt("aFewQuickStepsToGetYourSpaceReadyForChefsToDiscoverAndBook")}
         </p>
 
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
+        {/* Same chip treatment the shell uses for the business name on every other step. */}
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-2.5 py-1 text-xs font-medium text-muted-foreground">
           <Clock className="h-3.5 w-3.5" aria-hidden />
           {mt("welcomeTimeEstimate")}
         </span>
@@ -91,39 +91,33 @@ export default function WelcomeStep() {
       </ol>
 
       {/*
-       * Footer — separated by a thin divider so the page reads as
-       * (intro + preview) above and (decide + act) below. The "Maybe later"
-       * button uses saveAndExit() so the user can leave the wizard with their
-       * progress persisted and come back to the same step later.
+       * Footer: the divider and the actions, nothing else.
+       *
+       * There used to be a reassurance line on the left ("you can change this later…"). It
+       * wrapped in EVERY locale — at `text-xs` that sentence needs ~360px and the slot only
+       * has ~200px next to the buttons — so it always orphaned its last word onto a second
+       * line. "Maybe later" already says it, so the line is gone.
        */}
-      <footer className="mt-2 flex flex-col gap-4 border-t border-border pt-6 sm:flex-row sm:items-center sm:justify-between">
-        <p className="max-w-xs text-xs leading-relaxed text-muted-foreground">
-          {mt("welcomeUpdateLater")}
-        </p>
+      <footer className="flex items-center justify-end gap-2 border-t border-border pt-6">
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => void saveAndExit()}
+          disabled={isSubmitting}
+          className={`${FOOTER_ACTION} text-muted-foreground hover:bg-muted hover:text-foreground`}
+        >
+          {mt("welcomeMaybeLater")}
+        </Button>
 
-        <div className="flex items-center gap-3">
-          <Button
-            type="button"
-            variant="ghost"
-            size="lg"
-            onClick={() => void saveAndExit()}
-            disabled={isSubmitting}
-            className="text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
-            {mt("welcomeMaybeLater")}
-          </Button>
-
-          <Button
-            type="button"
-            size="lg"
-            onClick={() => void handleNext()}
-            disabled={isSubmitting}
-            className="gap-2"
-          >
-            {mt("welcomeLetsStart")}
-            <ArrowRight className="h-4 w-4" aria-hidden />
-          </Button>
-        </div>
+        <Button
+          type="button"
+          onClick={() => void handleNext()}
+          disabled={isSubmitting}
+          className={`${FOOTER_ACTION} min-w-[140px] gap-2 font-semibold`}
+        >
+          {mt("welcomeLetsStart")}
+          <ArrowRight className="h-4 w-4" aria-hidden />
+        </Button>
       </footer>
     </div>
   );

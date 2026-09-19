@@ -60,12 +60,30 @@ export default function AddressAutocomplete({
   const containerRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const justSelectedRef = useRef(false);
+  /**
+   * Whether the text in the box came from the keyboard.
+   *
+   * A value set from OUTSIDE — a restored draft, a prefilled field, a parent
+   * clearing it — used to run through the same debounce as a keystroke. So
+   * remounting a step that already had an address fired a lookup on mount and
+   * popped the list open by itself, with the address the user had already chosen
+   * sitting in it. Nothing should appear until they type.
+   */
+  const userTypedRef = useRef(false);
+  /**
+   * The last value this component emitted, so its echo back through `value` is
+   * not mistaken for a change from outside. Without it, a parent that re-renders
+   * with the same string would look like a prefill and disarm the next lookup.
+   */
+  const lastEmittedRef = useRef<string | null>(null);
 
   // Debounce the input to prevent excessive API calls
   const debouncedInput = useDebounce(inputValue, 300);
 
   // Sync external value changes
   useEffect(() => {
+    if (value === lastEmittedRef.current) return;
+    userTypedRef.current = false;
     setInputValue(value);
   }, [value]);
 
@@ -77,6 +95,10 @@ export default function AddressAutocomplete({
         justSelectedRef.current = false;
         return;
       }
+
+      // Only typing opens the list — see `userTypedRef`. Nothing to reset here
+      // either: an external value must not cost a re-render on its way past.
+      if (!userTypedRef.current) return;
 
       if (!debouncedInput || debouncedInput.length < 3) {
         setPredictions([]);
@@ -140,10 +162,20 @@ export default function AddressAutocomplete({
   }, [debouncedInput]);
 
   const handleInputChange = (newValue: string) => {
+    lastEmittedRef.current = newValue;
+    userTypedRef.current = true;
     setInputValue(newValue);
     if (validationError) setValidationError(null);
     onChange(newValue);
   };
+
+  /** A chosen address is not typing: it must not re-open the list either. */
+  const emit = useCallback((nextValue: string, lat?: number, lng?: number) => {
+    lastEmittedRef.current = nextValue;
+    userTypedRef.current = false;
+    setInputValue(nextValue);
+    onChange(nextValue, lat, lng);
+  }, [onChange]);
 
   const handleSelectPlace = useCallback(async (place: Prediction) => {
     // Mark that we just selected to prevent dropdown from reopening
@@ -166,8 +198,7 @@ export default function AddressAutocomplete({
         const errData = await response.json().catch(() => ({}));
         setValidationError(errData.message || `Address must be within ${province}.`);
         // Reset input so the user picks again
-        setInputValue('');
-        onChange('');
+        emit('');
         return;
       }
 
@@ -181,24 +212,21 @@ export default function AddressAutocomplete({
         const formattedAddress = data.result.formatted_address || place.description;
         const lat = data.result.geometry?.location?.lat;
         const lng = data.result.geometry?.location?.lng;
-        setInputValue(formattedAddress);
-        onChange(formattedAddress, lat, lng);
+        emit(formattedAddress, lat, lng);
       } else {
         // Fallback to description if details fail
-        setInputValue(place.description);
-        onChange(place.description);
+        emit(place.description);
       }
     } catch (error) {
       logger.error('Error fetching place details:', error);
       // Fallback to description
-      setInputValue(place.description);
-      onChange(place.description);
+      emit(place.description);
     } finally {
       setPredictions([]);
       setIsOpen(false);
       setIsLoading(false);
     }
-  }, [onChange, province]);
+  }, [emit, province]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {

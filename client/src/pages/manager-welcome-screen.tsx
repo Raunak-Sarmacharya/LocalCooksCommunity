@@ -110,8 +110,9 @@ const NAV_ICONS = [
  * every booking"). Two of them are the capabilities the login panel states; the rest are
  * surfaces the login panel does not mention, because this screen has the room to show that
  * the platform is more than bookings. Every one is verifiable in the repo:
- * storage and equipment listings (`onboarding/steps/StorageListingsStep`,
- * `EquipmentListingsStep`), hourly/daily rates (`schema.ts` `hourlyRate` / `dailyRate`),
+ * storage and equipment listings (`pages/StorageListingManagement`,
+ * `EquipmentListingManagement` — also parts 2 and 3 of the wizard's kitchen step),
+ * hourly/daily rates (`schema.ts` `hourlyRate` / `dailyRate`),
  * tax kept by the manager (`schema.ts` `taxAmount`).
  */
 const RULES = [

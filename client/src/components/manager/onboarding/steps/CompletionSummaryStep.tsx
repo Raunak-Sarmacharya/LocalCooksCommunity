@@ -120,7 +120,9 @@ export default function CompletionSummaryStep() {
             stepId: 'payment-setup'
         });
 
-        // 7. Equipment (Optional)
+        // 7. Equipment (Optional) — a PART of the kitchen listing step, not a step of
+        // its own, so the row stays (it reports what was added) but its action lands
+        // on the step that owns it.
         const hasEquipment = equipmentForm?.listings?.length > 0;
         items.push({
             id: "equipment",
@@ -128,10 +130,10 @@ export default function CompletionSummaryStep() {
             status: hasEquipment ? 'complete' : 'skipped',
             isRequired: false,
             description: hasEquipment ? mt("onboardingListingsCount", { count: equipmentForm.listings.length }) : mt("optional"),
-            stepId: 'equipment-listings'
+            stepId: 'create-kitchen'
         });
 
-        // 8. Storage (Optional)
+        // 8. Storage (Optional) — same.
         const hasStorage = storageForm?.listings?.length > 0;
         items.push({
             id: "storage",
@@ -139,7 +141,7 @@ export default function CompletionSummaryStep() {
             status: hasStorage ? 'complete' : 'skipped',
             isRequired: false,
             description: hasStorage ? mt("onboardingListingsCount", { count: storageForm.listings.length }) : mt("optional"),
-            stepId: 'storage-listings'
+            stepId: 'create-kitchen'
         });
 
         return items;
