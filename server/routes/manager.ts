@@ -3882,6 +3882,18 @@ router.put(
               error: "Phone must be verified via OTP before saving. Please complete the verification flow.",
             });
           }
+          // A phone is a login identifier, so it resolves to exactly one account.
+          // Firebase only blocks a number that is ALREADY a credential on another
+          // user, so a number that merely sits on somebody's profile passes the
+          // check above — and would then fail the unique index as an opaque 500,
+          // after an SMS had been sent and the number linked to THIS account.
+          // Ask the database first and answer cleanly.
+          if (await userService.isPhoneTakenByAnother(normalized, user.id)) {
+            return res.status(409).json({
+              code: "PHONE_EXISTS",
+              error: "That phone number is already linked to another Local Cooks account.",
+            });
+          }
           profileUpdates.phone = normalized;
         } else {
           profileUpdates.phone = null;

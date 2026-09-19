@@ -24,7 +24,8 @@ import { saveRegistrationName } from "@/lib/registration-identity";
 import { sendVerificationEmailWithFallback } from "@/lib/send-verification-email";
 import { startEmailVerification } from "@/lib/email-verification-api";
 import { deleteUser, signOut, updateProfile } from "firebase/auth";
-import { isDuplicateAccountError } from "@/lib/registration-error";
+import { duplicateAccountKind } from "@/lib/registration-error";
+import { isPendingGoogleRegistration, setGoogleRegistrationActive } from "@/lib/pending-google-registration";
 import type { PublicRegistrationRole } from "@/hooks/use-auth";
 import PhoneOtpChallenge from "./PhoneOtpChallenge";
 import { getSellerJourneyDraft } from "@/lib/seller-journey";
@@ -124,7 +125,7 @@ const itemVariants = {
 export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, onRegistrationStart, onRegistrationComplete, onRegistrationError, onSwitchToLogin, forceApplying, hideApplyingToggle, reviewAfterRegistration, onPreviousStep, accountType = 'chef', showTermsInline = false, initialTermsAccepted = false, animateEntrance = true, initialEmail }: EnhancedRegisterFormProps) {
   const { t } = useTranslation("auth");
   const registerSchema = useRegisterSchema();
-  const { user: authUser, signup, signInWithGoogle, loading, error, updateUserVerification, refreshUserData } = useFirebaseAuth();
+  const { user: authUser, signup, signInWithGoogle, authenticateWithGoogle, syncUserWithBackend, loading, error, updateUserVerification, refreshUserData } = useFirebaseAuth();
   const [authState, setAuthState] = useState<AuthState>('idle');
   const [formError, setFormError] = useState<string | null>(null);
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
@@ -134,6 +135,53 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
   const [step, setStep] = useState(1);
   const [isApplying, setIsApplying] = useState(!!forceApplying);
   const [acceptedTerms, setAcceptedTerms] = useState(initialTermsAccepted);
+  /**
+   * Set once "Continue with Google" has authenticated, holding the identity Google
+   * gave us. While it is set the form is in Google mode: the name is prefilled but
+   * still editable, the email is Google's and therefore locked, and the phone is
+   * still required.
+   *
+   * NOTHING is provisioned until the visitor submits. That is the whole point — this
+   * used to create an account, with no phone and no confirmation, the instant the
+   * popup returned.
+   */
+  const [googleProfile, setGoogleProfile] = useState<{ email: string; displayName: string } | null>(null);
+  /**
+   * The name shown while in Google mode.
+   *
+   * Held here rather than only in react-hook-form because `AnimatedInput` renders its
+   * `value` prop straight onto the input — an uncontrolled field registered with
+   * `form.register` therefore does not display a value set later with `form.setValue`.
+   * Both are kept in step: this drives what is on screen, the form drives validation.
+   */
+  const [googleName, setGoogleName] = useState("");
+
+  // Re-seed Google mode after the host's loading gate has replaced the card and
+  // unmounted this form. The Firebase session survives that (the SDK persists it) and
+  // the marker still names the uid, so the identity can be rebuilt rather than lost —
+  // without this the visitor comes back to an EMPTY form with no sign that Google was
+  // ever used, and the account would then be created under whatever they retyped.
+  useEffect(() => {
+    const current = auth.currentUser;
+    if (!current?.email || !isPendingGoogleRegistration(current.uid)) return;
+    const displayName = current.displayName?.trim() || current.email.split('@')[0];
+    setGoogleProfile({ email: current.email, displayName });
+    setGoogleName(displayName);
+    form.setValue('displayName', displayName, { shouldValidate: true });
+    form.setValue('email', current.email, { shouldValidate: true });
+    // Mount-only: afterwards the popup handler is the only writer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // While this form is on screen in Google mode the attempt is NOT abandoned — the
+  // visitor is mid-registration. Releasing the claim on unmount is what lets a
+  // leftover marker mean "they walked away", and get the session cleared on their
+  // next visit. Without this the auth-state handler signs them out the instant the
+  // popup returns, mid-registration.
+  useEffect(() => {
+    setGoogleRegistrationActive(googleProfile ? auth.currentUser?.uid ?? null : null);
+    return () => setGoogleRegistrationActive(null);
+  }, [googleProfile]);
   const [phoneVerifiedUid, setPhoneVerifiedUid] = useState<string | null>(() => {
     const currentUser = auth.currentUser;
     return isPhoneAuthInProgress() && currentUser?.phoneNumber ? currentUser.uid : null;
@@ -266,6 +314,39 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
         window.localStorage.setItem('pendingRegistrationData', JSON.stringify(cleanData));
       }
 
+      if (googleProfile) {
+        // GOOGLE MODE. The popup already established the session, so this provisions
+        // against it rather than creating a second identity — and only now, once the
+        // visitor has confirmed their name and supplied a phone.
+        const googleUser = auth.currentUser;
+        if (!googleUser || googleUser.email !== googleProfile.email) {
+          throw new Error("Your Google session expired. Please continue with Google again.");
+        }
+
+        // The name is editable, and `syncUserWithBackend` reads it from the Firebase
+        // user — so the edit has to be pushed there first or it would be silently
+        // discarded and the account would be created under the Google name.
+        await updateProfile(googleUser, { displayName: data.displayName });
+        await googleUser.reload();
+        saveRegistrationName(data.email, data.displayName);
+
+        // No verification link here: Google owns the address and has already proved
+        // it, so the server records it as verified from the token's claim.
+        await syncUserWithBackend(
+          googleUser,
+          accountType,
+          true,
+          initialTermsAccepted || (showTermsInline && acceptedTerms),
+          data.phone,
+        );
+
+        setAuthState('success');
+        await onRegistrationComplete?.(data.email, data);
+        await onSuccess?.();
+        setShowLoadingOverlay(false);
+        return;
+      }
+
       if (phoneVerifiedUid) {
         const phoneUser = auth.currentUser;
         if (!phoneUser || phoneUser.uid !== phoneVerifiedUid || !phoneUser.phoneNumber) {
@@ -358,13 +439,22 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       setAuthState('error');
 
       // Handle Firebase-specific errors with user-friendly messages via custom alerts
-      const duplicateAccount = isDuplicateAccountError(e);
+      const duplicateKind = duplicateAccountKind(e);
+      const duplicateAccount = duplicateKind !== null;
       const errorTitle = duplicateAccount
         ? t("accountAlreadyExistsTitle", "Account already exists")
         : t("registrationFailedTitle", "Registration Failed");
       let errorMessage = "";
 
-      if (duplicateAccount && phoneVerifiedUid) {
+      if (duplicateKind === "phone") {
+        // Name the field that actually collided. Reporting a taken phone number
+        // as a taken email address points the visitor at the one input that is
+        // fine, and they loop: retry the same number with yet another address.
+        errorMessage = t(
+          "errPhoneExists",
+          "That phone number is already linked to a Local Cooks account. Sign in with it instead, or use a different number."
+        );
+      } else if (duplicateAccount && phoneVerifiedUid) {
         errorMessage = t(
           "errPhoneEmailExists",
           "This email already has a Local Cooks account. Sign in with your usual method instead."
@@ -397,66 +487,77 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
     }
   };
 
+  /**
+   * "Continue with Google" on the register step.
+   *
+   * Authenticates and STOPS. Google supplies the name and the already-verified
+   * address, but the visitor still has to confirm the name and supply the phone
+   * number, so the account is created only when they submit the form.
+   *
+   * Creating it here is what produced accounts with a name and an address but no
+   * phone, silently, with no confirmation step — and with no way to sign in with a
+   * number later.
+   */
   const handleGoogleSignIn = async () => {
-    if (showTermsInline && !acceptedTerms) {
-      showAlert({
-        title: t("termsRequiredTitle", "Please accept the terms"),
-        description: t("termsRequiredDescription", "You must accept the Terms & Conditions and Privacy Policy to create an account."),
-        type: "warning",
-      });
-      return;
-    }
     // NOTE: Don't call setHasAttemptedLogin here - only call it after successful registration
     // via onSuccess() callback. Calling it here causes the useEffect in EnhancedAuthPage to
     // run before the user profile exists, setting hasCheckedUser.current = true prematurely.
     setFormError(null);
 
+    // Tell the host a registration is in flight, so its loading gate says "Creating your
+    // account..." rather than "Signing you in..." — the gate outranks this form's own
+    // overlay, so the host is the only place that copy can be fixed.
+    onRegistrationStart?.();
+
     setAuthState('loading');
     setShowLoadingOverlay(true);
 
     try {
-      // Start Google registration
-      const googleOutcome = await signInWithGoogle(
-        true,
-        accountType,
-        initialTermsAccepted || (showTermsInline && acceptedTerms),
-      );
+      const identity = await authenticateWithGoogle();
 
-      const googleUser = auth.currentUser;
-      if (googleOutcome === 'registered' && googleUser?.email) {
-        saveRegistrationName(googleUser.email, googleUser.displayName || googleUser.email.split('@')[0]);
+      if (identity.existing) {
+        // This Google account already has a LocalCooks profile, so there is nothing to
+        // create — hand off so the host can finish the sign-in.
+        setAuthState('success');
+        logger.info('✅ Google account already registered - completing as sign-in');
+        await onSuccess?.();
+        setShowLoadingOverlay(false);
+        return;
       }
 
-      setAuthState('success');
-
-      // ENTERPRISE FIX: Don't use hard redirect (window.location.href) for managers
-      // Hard redirects cause full page reloads which lose React state and can cause
-      // race conditions with Firebase auth state initialization on the target page.
-      // Instead, call onSuccess() and let the parent component handle navigation
-      // via React state management (useEffect with proper dependencies).
-      // 
-      // For Google Sign-In, users are typically already email-verified, so we
-      // call onSuccess() immediately to trigger the parent's redirect logic.
-      // The parent (ManagerLogin.tsx or EnhancedAuthPage.tsx) will:
-      // 1. Set hasAttemptedLogin to true
-      // 2. Refresh user data via React Query
-      // 3. The useEffect will detect the authenticated manager and redirect
-      logger.info('🎯 Google registration complete - calling onSuccess to trigger parent redirect');
-      await onSuccess?.();
+      // GOOGLE MODE. The name and address are prefilled; the phone is still empty and
+      // still required, so the form cannot be submitted without one. Nothing is
+      // written to the application database until that happens.
+      setGoogleProfile({ email: identity.email, displayName: identity.displayName });
+      setGoogleName(identity.displayName);
+      form.setValue('displayName', identity.displayName, { shouldValidate: true });
+      form.setValue('email', identity.email, { shouldValidate: true });
+      setAuthState('idle');
       setShowLoadingOverlay(false);
+      // Back on the form, so nothing is being created any more. `onRegistrationError` is
+      // the host's "registration is no longer in flight" signal — no error occurred, but
+      // the gate must stop claiming an account is being made.
+      onRegistrationError?.();
+      logger.info('🔵 Google identity captured — awaiting the phone number before creating the account');
 
     } catch (e: any) {
       setShowLoadingOverlay(false);
       setAuthState('error');
 
       // Handle Google registration errors with user-friendly messages via custom alerts
-      const duplicateAccount = isDuplicateAccountError(e);
+      const duplicateKind = duplicateAccountKind(e);
+      const duplicateAccount = duplicateKind !== null;
       const errorTitle = duplicateAccount
         ? t("accountAlreadyExistsTitle", "Account already exists")
         : t("registrationFailedTitle", "Registration Failed");
       let errorMessage = "";
 
-      if (duplicateAccount) {
+      if (duplicateKind === "phone") {
+        errorMessage = t(
+          "errPhoneExists",
+          "That phone number is already linked to a Local Cooks account. Sign in with it instead, or use a different number."
+        );
+      } else if (duplicateAccount) {
         errorMessage = t(
           "errEmailExists",
           "An account already exists for this email address. Sign in instead, or use a different email."
@@ -619,7 +720,6 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
               logger.error("Error checking verification status:", err);
             }
           }}
-          onVerifyPhone={() => setShowPhoneFallback(true)}
         />
       </>
     );
@@ -697,10 +797,20 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
                 validationState={getFieldValidationState('displayName')}
                 error={form.formState.errors.displayName?.message}
                 {...form.register('displayName', {
-                  onChange: () => {
+                  onChange: (event: { target: { value: string } }) => {
+                    // Keep the visible value in step while in Google mode — see the
+                    // note on `googleName`.
+                    if (googleProfile) setGoogleName(event.target.value);
                     if (authState === 'error') setAuthState('idle');
                   }
                 })}
+                // Google supplies the name, but it stays EDITABLE — the visitor may
+                // want it written differently from their Google profile.
+                // The `key` remounts the input when the mode flips: React refuses to
+                // let one element change from uncontrolled to controlled, and this is
+                // exactly that transition.
+                key={googleProfile ? "google-name" : "manual-name"}
+                {...(googleProfile ? { value: googleName } : {})}
               />
 
               {/* Email Field */}
@@ -716,7 +826,29 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
                     if (authState === 'error') setAuthState('idle');
                   }
                 })}
+                // Locked in Google mode. The address comes from the Google account and
+                // is the one the server verifies from the token, so letting it be edited
+                // would display a value that is quietly ignored — the account would be
+                // created under the Google address regardless.
+                // Google's address is shown but not editable — see the note above.
+                // The `key` remounts the input when the mode flips (uncontrolled →
+                // controlled), which React otherwise warns about.
+                key={googleProfile ? "google-email" : "manual-email"}
+                {...(googleProfile ? { value: googleProfile.email } : {})}
+                disabled={!!googleProfile}
               />
+              {googleProfile && (
+                <p className="-mt-2 text-xs leading-relaxed text-muted-foreground">
+                  {/* Kept short deliberately: the longer wording ("This address comes
+                      from your Google account, which has already verified it." — 74
+                      chars) wraps at this width, and an orphaned final word reads as a
+                      layout bug. */}
+                  {t(
+                    "googleEmailLocked",
+                    "From your Google account, which is already verified."
+                  )}
+                </p>
+              )}
               
               {/* Phone Field */}
               <AnimatedInput
@@ -752,30 +884,44 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
               {/* Form Legend placed at the end of content for registration */}
               <FormLegend className="mt-4 mb-2" />
 
-              {/* Terms & Conditions — placed just above action buttons */}
-              {showTermsInline && (
-                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                  <div className="flex items-start gap-3">
-                    <input
-                      id="registration-terms"
-                      type="checkbox"
-                      checked={acceptedTerms}
-                      onChange={(event) => setAcceptedTerms(event.target.checked)}
-                      className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
-                    />
-                    <label htmlFor="registration-terms" className="cursor-pointer text-sm leading-relaxed text-gray-700">
-                      {t("termsCheckboxPrefix", "I agree to the")}{' '}
-                      <a href="/terms" target="_blank" rel="noopener noreferrer" className="font-medium text-blue-600 hover:underline">
-                        {t("termsLink", "Terms & Conditions")}
-                      </a>{' '}
-                      {t("termsAndSeparator", "and")}{' '}
-                      <a href="/privacy" target="_blank" rel="noopener noreferrer" className="font-medium text-blue-600 hover:underline">
-                        {t("privacyLink", "Privacy Policy")}
-                      </a>.
-                    </label>
-                  </div>
-                </div>
-              )}
+              {/*
+                A STATEMENT, not a checkbox, and never recorded on the visitor's behalf.
+                Acceptance happens when the flow takes them to the terms — see the note
+                in server/routes.ts: "never record acceptance merely because an account
+                was created". This exists so arriving there is not a surprise: it says up
+                front what creating an account means, and links to the real pages rather
+                than to an acceptance dialog.
+
+                It used to sit behind `showTermsInline`, which NO caller ever passed, so
+                the manager login's Create Account section said nothing at all.
+              */}
+              <p className="mt-4 text-center text-xs leading-relaxed text-muted-foreground">
+                {t("termsCreateNotice", "By creating an account you agree to our")}{' '}
+                <a
+                  href="/terms"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-[#E00A38] underline-offset-4 hover:underline"
+                >
+                  {/* "Terms" rather than "Terms & Conditions": the full name pushes the
+                      sentence to 78 characters, which wraps "Policy" onto a second line
+                      at this width. The link still opens the real Terms & Conditions page. */}
+                  {t("termsShortLink", "Terms")}
+                </a>{' '}
+                {/* Notice-specific keys, NOT the shared `termsAndSeparator` /
+                    `privacyLink`: those carry "et notre" / "та нашою", which belong to
+                    the old "I agree to the X and our Y" sentence and read as broken
+                    grammar in this one. */}
+                {t("termsNoticeJoin", "and")}{' '}
+                <a
+                  href="/privacy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-[#E00A38] underline-offset-4 hover:underline"
+                >
+                  {t("termsNoticePrivacy", "Privacy Policy")}
+                </a>.
+              </p>
 
               {/* Step actions — Previous + Next when parent provides wizard navigation */}
               {isApplying ? (

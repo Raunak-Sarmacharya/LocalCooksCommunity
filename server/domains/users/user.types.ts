@@ -49,6 +49,10 @@ export interface UpdateUserDTO {
   pendingEmailExpiresAt?: Date | null;
   pendingEmailSentAt?: Date | null;
   emailVerifiedAt?: Date | null;
+  // Phone verification loop — see migrations/0039_add_phone_verified_at.sql.
+  // Written by POST /api/sync-verification-status when Firebase reports a proved
+  // phone number; never settable from a client-supplied body.
+  phoneVerifiedAt?: Date | null;
   has_seen_welcome?: boolean;
   welcomeEmailSentAt?: Date; // Track when welcome email was sent (idempotency)
   managerOnboardingCompleted?: boolean;
@@ -86,6 +90,11 @@ export interface UserDTO {
   pendingEmailSentAt: Date | null;
   pendingEmailExpiresAt: Date | null;
   emailVerifiedAt: Date | null;
+  /**
+   * When this phone number was proved to belong to this account (null = never).
+   * The sign-in gate reads this: an unverified number may not receive an OTP.
+   */
+  phoneVerifiedAt: Date | null;
   has_seen_welcome: boolean;
   isChef: boolean;
   isManager: boolean;

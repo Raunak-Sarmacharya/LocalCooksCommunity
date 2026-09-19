@@ -6,6 +6,7 @@ import { db } from "../../db";
 import { eq } from "drizzle-orm";
 import { hashPassword } from "../../passwordUtils";
 import { DomainError, UserErrorCodes } from "../../shared/errors/domain-error";
+import { nationalPhoneDigits } from "@shared/phone-validation";
 import { randomBytes } from "node:crypto";
 
 export class UserService {
@@ -26,6 +27,42 @@ export class UserService {
 
   async getUserByUsername(username: string): Promise<User | null> {
     return this.repo.findByUsername(username);
+  }
+
+  /**
+   * Resolves the account that owns a phone number, or null.
+   *
+   * A phone number is a LOGIN identifier here (`resolveAuthIdentifier` accepts
+   * one, and phone OTP exists), so it has to resolve to exactly one account.
+   * Two accounts sharing a number make the lookup ambiguous, and an OTP would
+   * then prove control of the number without proving which account it belongs
+   * to. Firebase enforces one user per linked number, so a duplicate in this
+   * table is a state that can never be reconciled — only one of the two can ever
+   * be phone-loginable, while both display the number as theirs.
+   */
+  async getUserByPhoneNumber(phone: string | null | undefined): Promise<User | null> {
+    const digits = nationalPhoneDigits(phone);
+    if (!digits) return null;
+    return this.repo.findByPhoneNationalDigits(digits);
+  }
+
+  /**
+   * Whether a phone number already belongs to a DIFFERENT account.
+   *
+   * A phone is a LOGIN identifier, so it must resolve to exactly one account
+   * (`users_phone_number_national_unique` enforces that). Callers have to ask this
+   * BEFORE writing the number: the index would otherwise fail the write with an
+   * opaque error, and on the profile page that failure would come AFTER an SMS had
+   * been sent and the number linked to this Firebase user — leaving Firebase
+   * holding a number the database refuses, which is a state that cannot be
+   * reconciled and blocks the real owner from ever attaching it.
+   *
+   * The caller's OWN number is not "taken": re-saving or re-verifying a number you
+   * already hold is legitimate.
+   */
+  async isPhoneTakenByAnother(phone: string | null | undefined, userId: number): Promise<boolean> {
+    const owner = await this.getUserByPhoneNumber(phone);
+    return !!owner && owner.id !== userId;
   }
 
   async getUserByFirebaseUid(uid: string): Promise<User | null> {
@@ -67,7 +104,11 @@ export class UserService {
         isVerified: data.isVerified,
         isChef: data.role === 'chef',
         isManager: data.role === 'manager',
-        has_seen_welcome: data.role === 'manager',
+        // NOT `role === 'manager'`. Managers were being recorded as having seen a
+        // welcome screen that did not exist, so the column tracked nothing for them.
+        // They now have one (client/src/pages/manager-welcome-screen.tsx) and it is
+        // recorded honestly, when they actually dismiss it.
+        has_seen_welcome: false,
         termsAccepted: data.termsAccepted,
         termsAcceptedAt: data.termsAccepted ? new Date() : null,
         termsVersion: data.termsAccepted ? data.termsVersion : null,

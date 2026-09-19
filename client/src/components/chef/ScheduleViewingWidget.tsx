@@ -100,7 +100,7 @@ export function ScheduleViewingWidget({
 }: ScheduleViewingWidgetProps) {
   const queryClient = useQueryClient();
   const { t } = useTranslation("kitchen");
-  const { user, refreshUserData, signInWithGoogle } = useFirebaseAuth();
+  const { user, refreshUserData, signInWithGoogle, discardPendingGoogleRegistration } = useFirebaseAuth();
   const { guard, gate } = useEmailVerificationGuard();
   const [, setLocation] = useLocation();
   const isAuthenticated = !!user;
@@ -668,6 +668,10 @@ export function ScheduleViewingWidget({
             }
           },
         }}
+        // Leaving the register step for the identifier step abandons a Google
+        // registration started there, and that path has no page load — so the load-time
+        // sweep cannot see it.
+        onDiscardPendingGoogleRegistration={() => void discardPendingGoogleRegistration()}
         onGoogleSignIn={async () => {
           await signInWithGoogle();
           await refreshUserData();

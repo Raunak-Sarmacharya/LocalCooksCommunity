@@ -134,7 +134,6 @@ export default function SellerJourneyDialog({ open, onOpenChange }: { open: bool
                 await new Promise((resolve) => setTimeout(resolve, 100));
                 window.location.reload();
               }}
-              onVerifyPhone={stage === "verify" ? () => setStage("phone-verify") : undefined}
             />
             {error && <p role="alert" className="mt-4 text-center text-sm font-medium text-red-600">{error}</p>}
             </div>

@@ -3,14 +3,20 @@ import { auth, db } from "@/lib/firebase";
 import { getAuthIntent } from "@/lib/auth-intent";
 import { sendVerificationEmailWithFallback } from "@/lib/send-verification-email";
 import { queryClient } from "@/lib/queryClient";
-import { createUserWithEmailAndPassword, getAdditionalUserInfo, GoogleAuthProvider, isSignInWithEmailLink, onAuthStateChanged, sendEmailVerification, signInWithEmailAndPassword, signInWithEmailLink, signInWithPopup, signOut, updateProfile } from "firebase/auth";
+import { createUserWithEmailAndPassword, deleteUser, getAdditionalUserInfo, GoogleAuthProvider, isSignInWithEmailLink, onAuthStateChanged, sendEmailVerification, signInWithEmailAndPassword, signInWithEmailLink, signInWithPopup, signOut, updateProfile } from "firebase/auth";
 import { doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { createContext, ReactNode, useContext, useEffect, useState, useRef, useCallback } from "react";
 import { getSubdomainFromHostname, getRoleLoginOrigin } from "@shared/subdomain-utils";
 import { User, UserWithFlags } from "@shared/schema";
-import { createDuplicateAccountError, isDuplicateAccountError } from "@/lib/registration-error";
+import { duplicateAccountErrorFromResponse, isDuplicateAccountError } from "@/lib/registration-error";
 import { isPhoneAuthInProgress } from "@/lib/phone-registration";
 import { createMissingProfileError, rememberAuthMethod } from "@/lib/login-challenge";
+import {
+  clearPendingGoogleRegistration,
+  isAbandonedGoogleRegistration,
+  markPendingGoogleRegistration,
+  pendingGoogleRegistration,
+} from "@/lib/pending-google-registration";
 import { LAST_ACCOUNT_KEY, getLastAccount } from "@/lib/last-account";
 import { normalizePhoneNumber } from "@shared/phone-validation";
 // See the ladder documented there: this is the outermost (longest) auth timeout.
@@ -67,6 +73,28 @@ interface AuthContextType {
   signup: (email: string, password: string, displayName?: string, accountType?: PublicRegistrationRole, termsAccepted?: boolean, phoneNumber?: string) => Promise<void>;
   logout: () => Promise<void>;
   signInWithGoogle: (isRegistration?: boolean, accountType?: PublicRegistrationRole, termsAccepted?: boolean, profile?: { displayName: string; phoneNumber: string }) => Promise<'existing' | 'registered'>;
+  /**
+   * Authenticate with Google and STOP — nothing is provisioned.
+   *
+   * The register step uses this so the visitor can confirm their name and supply the
+   * phone number BEFORE anything is written. `signInWithGoogle(..., isRegistration)`
+   * provisions immediately, which is how a Google signup used to create an account
+   * with no phone at all and no confirmation step.
+   *
+   * `existing` is true when the Google account already has a LocalCooks profile, in
+   * which case the caller should complete the sign-in rather than collect details.
+   *
+   * Deliberately does NOT touch `loading` or `authPhase`: those drive the host's
+   * loading gate, which REPLACES the card and unmounts the register form — losing the
+   * very values this call exists to prefill. The caller shows its own busy state.
+   */
+  authenticateWithGoogle: () => Promise<{ existing: boolean; email: string; displayName: string }>;
+  /**
+   * Abandon an in-flight Google registration immediately — see the note on the
+   * implementation. Used when the visitor navigates away from the register step without
+   * a page load, which the load-time sweep cannot see.
+   */
+  discardPendingGoogleRegistration: () => Promise<void>;
   sendEmailLink: (email: string) => Promise<void>;
   handleEmailLinkSignIn: () => Promise<void>;
   isUserVerified: (user: AuthUser | null) => boolean;
@@ -190,6 +218,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const result = await response.json();
         logger.info('✅ SYNC SUCCESS:', result);
 
+        // The account exists now, so any "attempt in flight" marker is spent. Leaving
+        // it would sign the visitor out on their next visit.
+        if (isRegistration) clearPendingGoogleRegistration();
+
         // Registration is complete only after Neon accepts the account. Mirror
         // the non-authoritative profile here so every registration path,
         // including Google + linked phone, writes the same Firestore document.
@@ -232,9 +264,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // Non-JSON responses continue through the existing generic failure path.
           }
 
-          if (response.status === 409 || errorPayload?.code === "EMAIL_EXISTS") {
-            throw createDuplicateAccountError(errorPayload?.message || errorPayload?.error);
-          }
+          // WHICH identifier collided has to survive this layer. The server
+          // already says so — `PHONE_EXISTS` or `EMAIL_EXISTS` — and this used to
+          // accept only the email code and hand the result to a builder that
+          // hardcoded `EMAIL_EXISTS` anyway. Between the two, a taken phone number
+          // reached the form labelled as a taken email address, pointing the
+          // visitor at the one field that was fine.
+          const duplicateError = duplicateAccountErrorFromResponse(response.status, errorPayload);
+          if (duplicateError) throw duplicateError;
         }
         return false;
       }
@@ -322,6 +359,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               hasSyncedThisSession.current = true;
             } else {
               logger.info('🔥 NEW USER - No backend profile found, will need to sync');
+
+              // A "Continue with Google" registration that was never confirmed must
+              // not leave the visitor signed in. `authenticateWithGoogle` marks the
+              // attempt before anything is provisioned; if the marker is still there
+              // when a profileless session appears, the form was abandoned — so clear
+              // the session instead of leaving someone signed in to an account that
+              // does not exist and cannot be finished.
+              //
+              // Deliberately keyed on that marker rather than on "profileless sessions
+              // are invalid": round 7 established that a pre-existing Firebase identity
+              // with no profile is an interrupted registration and keeps its recovery
+              // route. Only an attempt this flow started is signed out here.
+              if (isAbandonedGoogleRegistration(firebaseUser.uid)) {
+                const pending = pendingGoogleRegistration();
+                logger.info('🚪 Abandoned Google registration — clearing it');
+                clearPendingGoogleRegistration();
+                try {
+                  if (pending?.createdIdentity) {
+                    // THIS attempt created the identity, so remove it. Merely signing out
+                    // would leave a Firebase Auth user with no profile, and
+                    // `/api/firebase/auth-method-hints` finds that uid and reports
+                    // `profile-incomplete` for ever after — so the visitor's own address
+                    // is later offered "Continue with Google" and an email link for an
+                    // account that does not exist and can never complete.
+                    await deleteUser(firebaseUser);
+                    logger.info('✅ Rolled back the abandoned Google identity');
+                  } else {
+                    await auth.signOut();
+                  }
+                } catch (cleanupError) {
+                  // Most likely auth/requires-recent-login. Signing out is the weaker
+                  // outcome but still better than leaving a live session behind.
+                  logger.warn('Could not delete the abandoned Google identity; signing out instead', cleanupError);
+                  await auth.signOut().catch(() => undefined);
+                }
+                return;
+              }
             }
           } catch (error) {
             logger.error('❌ BACKEND USER FETCH ERROR:', error);
@@ -718,6 +792,89 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  /**
+   * Authenticate with Google and STOP — see the contract on AuthContextType.
+   *
+   * The popup necessarily leaves a Firebase session behind; nothing else is written.
+   * No application account is created, so the visitor still has to confirm their
+   * details before one exists.
+   */
+  const authenticateWithGoogle = async () => {
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+
+    const result = await signInWithPopup(auth, provider);
+    const googleUser = result.user;
+
+    if (!googleUser.email) {
+      await auth.signOut();
+      throw new Error('No email found in Google account');
+    }
+
+    // Neon is authoritative for whether an account exists. Firebase's `isNewUser`
+    // describes the Google identity in Firebase, not a LocalCooks profile.
+    const token = await googleUser.getIdToken();
+    const response = await fetch('/api/user/profile', {
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    });
+
+    if (response.status !== 404 && !response.ok) {
+      await auth.signOut();
+      throw new Error('Unable to verify your account. Please try again.');
+    }
+
+    const existing = response.ok;
+    if (!existing) {
+      // Nothing is provisioned yet, so this is an attempt in flight. Mark it: walking
+      // away from the form must not leave the visitor signed in to an account that was
+      // never created — and must not leave the Firebase identity behind either.
+      //
+      // `isNewUser` describes whether the POPUP created this Firebase identity, which
+      // is what decides whether an abandonment DELETES it or merely signs out of it.
+      markPendingGoogleRegistration({
+        uid: googleUser.uid,
+        email: googleUser.email,
+        createdIdentity: getAdditionalUserInfo(result)?.isNewUser === true,
+      });
+    }
+
+    return {
+      existing,
+      email: googleUser.email,
+      displayName: googleUser.displayName?.trim() || googleUser.email.split('@')[0],
+    };
+  };
+
+  /**
+   * Abandon an in-flight Google registration NOW, rather than waiting for the next
+   * auth-state pass.
+   *
+   * The register step's "Already have an account? Log in" link leaves WITHOUT a page
+   * load, so the load-time sweep never runs and the orphaned Firebase identity — the
+   * thing that makes the address resolve as `profile-incomplete` and be offered sign-in
+   * routes it can never complete — survives. Explicit navigation is safe to hook here:
+   * unlike the loading gate, it does not unmount the flow mid-registration.
+   *
+   * A no-op unless the current session really is the pending attempt.
+   */
+  const discardPendingGoogleRegistration = async () => {
+    const current = auth.currentUser;
+    const pending = pendingGoogleRegistration();
+    if (!current || !pending || pending.uid !== current.uid) return;
+    clearPendingGoogleRegistration();
+    try {
+      if (pending.createdIdentity) {
+        await deleteUser(current);
+        logger.info('✅ Discarded the pending Google registration and its identity');
+      } else {
+        await auth.signOut();
+      }
+    } catch (error) {
+      logger.warn('Could not discard the pending Google registration cleanly', error);
+      await auth.signOut().catch(() => undefined);
+    }
+  };
+
   const signInWithGoogle = async (isRegistration = false, accountType: PublicRegistrationRole = 'chef', termsAccepted = false, profile?: { displayName: string; phoneNumber: string }) => {
     setError(null);
     setLoading(true);
@@ -867,7 +1024,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else if (response.status === 404) {
           // User doesn't exist in backend - they need to register
           logger.info('❌ User does not exist in backend - needs to register');
-          await auth.signOut();
+
+          // Roll back the Firebase identity this attempt just created.
+          //
+          // A Google sign-in CREATES a Firebase Auth user as a side effect, so
+          // merely signing out leaves one behind. That orphan has no LocalCooks
+          // profile, yet `/api/firebase/auth-method-hints` finds the Firebase uid
+          // and resolves it as `profile-incomplete` for ever after — so the same
+          // address is later offered a sign-in route it can never complete, and
+          // anyone can inflate the Firebase user table by picking an account we
+          // do not know. The registration branch already deletes on failure; this
+          // path did not.
+          //
+          // Only an identity created by THIS attempt is deleted. A pre-existing
+          // Firebase user with no profile is a genuinely interrupted
+          // registration, and must keep its recovery route.
+          if (getAdditionalUserInfo(result)?.isNewUser === true) {
+            try {
+              await user.delete();
+              logger.info('✅ Rolled back the Firebase identity created by this attempt');
+            } catch (deleteError) {
+              logger.error('❌ Failed to roll back the Firebase identity:', deleteError);
+              await auth.signOut();
+            }
+          } else {
+            await auth.signOut();
+          }
+
           throw createMissingProfileError(user.email);
         } else {
           // Some other error
@@ -1285,6 +1468,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signup,
         logout,
         signInWithGoogle,
+        authenticateWithGoogle,
+        discardPendingGoogleRegistration,
         sendEmailLink,
         handleEmailLinkSignIn,
         isUserVerified,

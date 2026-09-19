@@ -7,7 +7,17 @@ import { rememberLastAccount } from "./last-account";
 
 /** Identifier-first challenges supported by the shared flow. */
 export type LoginChallenge = "email-link" | "password" | "forgot-password";
-export type IdentifierStep = "login" | "phone-otp";
+
+/**
+ * The step a phone identifier may proceed to.
+ *
+ * `phone-unknown`    — no account holds this number.
+ * `phone-unverified` — an account holds it, but has never proved it, so it is
+ *                      not yet a usable sign-in method.
+ * `portal-rejected`  — the account exists and is fine, but may not use the
+ *                      portal that asked.
+ */
+export type PhoneEntryStep = "phone-otp" | "phone-unknown" | "phone-unverified" | "portal-rejected";
 
 export type RememberedAuthMethod = "google" | "email-link" | "password";
 
@@ -74,13 +84,23 @@ export async function getRememberedAuthMethod(email: string): Promise<Remembered
 /**
  * Resolve application-account state and display-safe recovery hints. Full
  * linked identifiers never leave the server.
+ *
+ * `portal` names the portal asking, so portal authority can be settled before
+ * any credential is issued. Omitting it runs no portal gate, which is what the
+ * chef portal and the auth modal do today.
  */
-export async function resolveAuthIdentifier(identifier: string): Promise<AuthAccountResolution> {
+export async function resolveAuthIdentifier(
+  identifier: string,
+  portal?: "manager" | "chef",
+): Promise<AuthAccountResolution> {
   try {
     const response = await fetch("/api/firebase/auth-method-hints", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ identifier: identifier.trim().toLowerCase() }),
+      body: JSON.stringify({
+        identifier: identifier.trim().toLowerCase(),
+        ...(portal ? { portal } : {}),
+      }),
     });
     if (!response.ok) return EMPTY_AUTH_RESOLUTION;
     const data = await response.json() as Partial<AuthAccountResolution>;
@@ -90,6 +110,14 @@ export async function resolveAuthIdentifier(identifier: string): Promise<AuthAcc
     return {
       state,
       methods: Array.isArray(data.methods) ? data.methods.filter(isAuthMethod) : [],
+      // Tri-state on purpose: only an explicit `false` means unverified. A
+      // missing or malformed value stays `null`, so a bad response can never
+      // divert every returning user into the verification flow.
+      emailVerified: typeof data.emailVerified === "boolean" ? data.emailVerified : null,
+      // Tri-state for the same reason, and the consumer treats `null` as "do not
+      // offer phone sign-in" rather than "not verified" — see resolvePhoneEntryStep.
+      phoneVerified: typeof data.phoneVerified === "boolean" ? data.phoneVerified : null,
+      portalAllowed: typeof data.portalAllowed === "boolean" ? data.portalAllowed : null,
       maskedEmail: typeof data.maskedEmail === "string" ? data.maskedEmail : null,
       maskedPhone: typeof data.maskedPhone === "string" ? data.maskedPhone : null,
       linkedEmail: typeof data.linkedEmail === "string" ? data.linkedEmail : null,
@@ -103,8 +131,26 @@ export async function resolveAuthIdentifier(identifier: string): Promise<AuthAcc
 /** Backward-compatible alias for callers that only consume recovery hints. */
 export const getRecoveryMethodHints = resolveAuthIdentifier;
 
-export function resolveIdentifierStep(kind: "email" | "phone"): IdentifierStep {
-  return kind === "phone" ? "phone-otp" : "login";
+/**
+ * Which step a PHONE identifier may proceed to.
+ *
+ * Replaces `resolveIdentifierStep`, which returned "phone-otp" unconditionally.
+ * Because of that, ANY number — registered to someone else, or registered to
+ * nobody — was sent an SMS and then landed on a signup form. A chef's number
+ * reached "Finish signing up" instead of the wrong-portal refusal, and an
+ * unverified number was treated as a usable sign-in method.
+ *
+ * Order matters. Portal authority is settled FIRST, so an account we are about to
+ * refuse never receives an SMS at all. And only an explicit `true` opens the
+ * method: unlike email there is no free fallback here, because an SMS is a real
+ * message to a real person and it mints a Firebase identity — so an answer we
+ * could not read has to fail closed.
+ */
+export function resolvePhoneEntryStep(resolution: AuthAccountResolution): PhoneEntryStep {
+  if (resolution.portalAllowed === false) return "portal-rejected";
+  if (resolution.state === "new") return "phone-unknown";
+  if (resolution.phoneVerified !== true) return "phone-unverified";
+  return "phone-otp";
 }
 
 export const MISSING_PROFILE_ERROR = "LOCALCOOKS_PROFILE_NOT_FOUND";

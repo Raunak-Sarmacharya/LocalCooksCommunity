@@ -15,6 +15,12 @@ export default defineConfig({
         alias: {
             '@': path.resolve(__dirname, './client/src'),
             '@shared': path.resolve(__dirname, './shared'),
+            // `vite.config.ts` resolves this, so shipped components import from
+            // `attached_assets/` freely (`components/ui/logo.tsx`,
+            // `pages/TermsAcceptanceScreen.tsx`). Without it here, any test that
+            // transitively imports one of those fails to even load — the whole suite
+            // reports "0 test" and the component silently becomes untestable.
+            '@assets': path.resolve(__dirname, './attached_assets'),
         },
     },
 })

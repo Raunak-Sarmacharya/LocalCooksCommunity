@@ -21,6 +21,27 @@ export class UserRepository {
   }
 
   /**
+   * Finds the account that already owns a phone number, compared on the **last
+   * ten digits** so `+1 (709) 655-5123`, `7096555123` and `17096555123` are all
+   * the same number. Normalising in SQL rather than trusting the column means a
+   * row written before phones were normalised is still matched — the guard is
+   * only worth having if it cannot be walked around by formatting.
+   *
+   * This costs a scan instead of an index lookup. That is acceptable for a
+   * registration-time check (and registration is rate-limited), and migration
+   * 0034 adds a unique index over the identical expression so the database
+   * enforces the same rule without the scan.
+   */
+  async findByPhoneNationalDigits(digits: string): Promise<User | null> {
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(sql`right(regexp_replace(${users.phoneNumber}, '[^0-9]', '', 'g'), 10) = ${digits}`)
+      .limit(1);
+    return user || null;
+  }
+
+  /**
    * Resolves the account that owns an in-flight email confirmation token.
    * The raw token never reaches the database — only its SHA-256 digest does.
    */

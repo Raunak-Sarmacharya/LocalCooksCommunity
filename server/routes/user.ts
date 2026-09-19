@@ -6,6 +6,7 @@ import { sendEmail, generateWelcomeEmail } from "../email";
 import { getFirebaseUserByEmail } from "../firebase-setup";
 import { CURRENT_POLICY_VERSION } from "@shared/policy-config";
 import { buildEmailVerificationStatus } from "../email-verification";
+import { normalizePhoneNumber } from "@shared/phone-validation";
 
 
 const router = Router();
@@ -45,7 +46,16 @@ router.get("/profile", requireFirebaseAuthWithUser, async (req: Request, res: Re
     const responseUser = {
       ...safeUser,
       is_verified: user.isVerified,
-      phoneVerified: typeof req.firebaseUser?.phone_number === "string" && req.firebaseUser.phone_number.length > 0,
+      // A phone is a LOGIN identifier here, so this flag is what the sign-in gate
+      // and `hasVerifiedPhone` read. The Firebase claim alone is not enough: it is
+      // empty for every account in this project, because the phone has never been
+      // linked as a credential, so it reported "not verified" even for a number
+      // the holder had proved. `phoneVerifiedAt` is the maintained record; the
+      // claim is still honoured for a future flow that links one. Same rule as the
+      // auth-method-hints endpoint, so the two cannot disagree.
+      phoneVerified:
+        user.phoneVerifiedAt != null ||
+        (typeof req.firebaseUser?.phone_number === "string" && req.firebaseUser.phone_number.length > 0),
       // Email is the primary identifier, so surface it as a first-class field
       // instead of leaving every client to guess at `username`. The registration
       // address is carried here even before it is verified, which is what lets
@@ -57,6 +67,35 @@ router.get("/profile", requireFirebaseAuthWithUser, async (req: Request, res: Re
   } catch (error) {
     logger.error("Error fetching user profile:", error);
     res.status(500).json({ error: "Failed to fetch user profile" });
+  }
+});
+
+/**
+ * POST /api/user/phone-availability
+ *
+ * Whether a phone number can be attached to the CALLER's account.
+ *
+ * This exists so the profile page can refuse a duplicate BEFORE sending an SMS.
+ * The database stays authoritative — the unique index and the write guard both
+ * enforce it — but discovering the conflict only at save time is far too late: by
+ * then a text has already gone out and the number has been linked to THIS Firebase
+ * user, so the real owner can never attach it. Asking first keeps that cost at zero.
+ *
+ * Never reveals WHOSE account holds the number — only whether the caller may use it.
+ */
+router.post("/phone-availability", requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+  try {
+    const user = req.neonUser!;
+    const raw = typeof req.body?.phone === "string" ? req.body.phone : "";
+    const phone = normalizePhoneNumber(raw);
+    if (!phone) {
+      return res.status(400).json({ error: "A valid phone number is required" });
+    }
+    const taken = await userService.isPhoneTakenByAnother(phone, user.id);
+    return res.json({ available: !taken });
+  } catch (error) {
+    logger.error("Error checking phone availability:", error);
+    return res.status(500).json({ error: "Could not check that phone number" });
   }
 });
 
@@ -284,7 +323,28 @@ router.post("/sync-verification-status", requireFirebaseAuthWithUser, async (req
     } else {
       logger.info(`⚠️ Firebase email not verified - no action taken`);
     }
-    
+
+    // Mirror a PROVED phone number into `phone_verified_at`. This is what turns a
+    // number into a usable sign-in method: the auth-method-hints gate refuses any
+    // number without it, so if this write never happens, phone sign-in stays shut
+    // for the account for ever.
+    //
+    // The Firebase claim IS the proof — it exists only once an OTP has been
+    // confirmed against this account — so no separate verification call is needed
+    // and a caller cannot assert a number it does not actually hold. Idempotent:
+    // the timestamp is written once and never overwritten.
+    const firebasePhoneNumber =
+      typeof req.firebaseUser?.phone_number === "string" ? req.firebaseUser.phone_number : "";
+    let phoneVerificationUpdated = false;
+    if (firebasePhoneNumber && user.phoneVerifiedAt == null) {
+      logger.info(`📱 Recording proved phone number for user ${user.id}`);
+      const updatedUser = await userService.updateUser(user.id, { phoneVerifiedAt: new Date() });
+      if (updatedUser) {
+        user = updatedUser;
+        phoneVerificationUpdated = true;
+      }
+    }
+
     // Return comprehensive status for debugging
     res.json({
       success: true,
@@ -293,6 +353,7 @@ router.post("/sync-verification-status", requireFirebaseAuthWithUser, async (req
       firebaseVerified: firebaseEmailVerified,
       databaseVerified: user.isVerified,
       verificationUpdated,
+      phoneVerificationUpdated,
       welcomeEmailSent,
       welcomeEmailPreviouslySent: !!user.welcomeEmailSentAt && !welcomeEmailSent
     });

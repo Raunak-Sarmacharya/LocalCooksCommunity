@@ -1129,37 +1129,6 @@ export default function TermsContent() {
         <li>&#10003; Understand that failure to comply may result in account suspension, termination, and legal liability</li>
         <li>&#10003; Agree to submit disputes to binding arbitration rather than court litigation</li>
       </ul>
-
-      <p className="text-center font-bold mt-12 mb-4">END OF TERMS &amp; CONDITIONS</p>
-
-      <div className="bg-gray-50 p-6 rounded-lg border border-gray-200 mt-8">
-        <h3 className="text-lg font-bold mb-2">Questions? Contact Local Cooks:</h3>
-        <p className="text-sm mb-1"><strong>Jawrophi Delivery Inc.</strong> operating as &ldquo;Local Cooks&rdquo;</p>
-        <p className="text-sm mb-1"><strong>Email:</strong> support@localcook.shop</p>
-        <p className="text-sm mb-1"><strong>Phone:</strong> +1 (709)-631-8480</p>
-        <p className="text-sm mb-1"><strong>Website:</strong> www.localcooks.ca</p>
-        <p className="text-sm"><strong>Mailing Address:</strong> 4 Priscilla Place, Paradise, Newfoundland and Labrador, A1L 1E6, Canada</p>
-
-        <p className="text-xs text-gray-500 mt-4 italic">
-          Document Version: 1.0 &nbsp;|&nbsp; Effective Date: 01-02-2026 &nbsp;|&nbsp; Last Updated: 01-05-2026 &nbsp;|&nbsp; Jurisdiction: Newfoundland &amp; Labrador, Canada
-        </p>
-      </div>
-
-      <div className="mt-8 p-4 border-l-4 border-yellow-400 bg-yellow-50 text-xs text-gray-700">
-        <p className="font-bold mb-2 uppercase text-yellow-800">Important Disclaimer</p>
-        <p className="mb-2">These Terms &amp; Conditions are provided as a template for Local Cooks and should be reviewed by a lawyer licensed in Newfoundland &amp; Labrador before use. This document is not legal advice. Specific food safety, tax, insurance, and liability laws vary by jurisdiction and may change. Local Cooks must ensure full compliance with current legislation, including but not limited to:</p>
-        <ul className="list-disc pl-6 mb-2">
-          <li>Food Premises Act and Regulations (Service NL)</li>
-          <li>Health and Community Services Act (NL)</li>
-          <li>Consumer Protection Act (NL)</li>
-          <li>Personal Information Protection Act (NL)</li>
-          <li>Building Code (National, as adopted in NL)</li>
-          <li>Human Rights Act (NL)</li>
-          <li>GST/HST legislation (Canada Revenue Agency)</li>
-          <li>PIPEDA (Personal Information Protection and Electronic Documents Act)</li>
-        </ul>
-        <p>Consult with legal counsel, insurance brokers, food safety experts, and tax professionals before launching the platform.</p>
-      </div>
     </div>
   );
 }

@@ -59,8 +59,8 @@ import { UserService } from "./domains/users/user.service";
 import { CURRENT_POLICY_VERSION } from "@shared/policy-config";
 import { normalizePhoneNumber } from "@shared/phone-validation";
 import { resolveRegistrationEmail, validateNewRegistrationProfile } from "./registration-profile";
-import type { AuthAccountResolution, AuthMethod } from "@shared/auth-resolution";
-import { maskRecoveryEmail, maskRecoveryPhone, resolveAuthAccountState, resolveAuthMethods } from "./auth-account-resolution";
+import { EMPTY_AUTH_RESOLUTION, type AuthAccountResolution, type AuthMethod } from "@shared/auth-resolution";
+import { maskRecoveryEmail, maskRecoveryPhone, resolveAuthAccountState, resolveAuthMethods, resolveEmailVerified, resolvePhoneAccountState, resolvePortalAllowed, type AuthPortal } from "./auth-account-resolution";
 
 // Note: Express Request.user type is already defined by @types/passport
 // We use type assertions where needed for isChef properties
@@ -458,25 +458,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const email = /^\S+@\S+\.\S+$/.test(rawIdentifier) ? rawIdentifier : null;
     const phone = email ? null : normalizePhoneNumber(rawIdentifier);
     if (!email && !phone) {
-      return res.status(400).json({ state: "unavailable", methods: [], maskedEmail: null, maskedPhone: null, linkedEmail: null, linkedPhone: null });
+      return res.status(400).json({ ...EMPTY_AUTH_RESOLUTION });
     }
+    // Which portal is asking, so portal authority can be settled BEFORE any
+    // credential is issued. Optional: without it no portal gate runs and the
+    // caller keeps its existing post-authentication check.
+    const portal: AuthPortal | null =
+      req.body?.portal === "manager" || req.body?.portal === "chef" ? req.body.portal : null;
 
     try {
       const { getAuth } = await import("firebase-admin/auth");
       const { initializeFirebaseAdmin } = await import("./firebase-setup");
       const firebaseApp = initializeFirebaseAdmin();
-      if (!firebaseApp) return res.json({ state: "unavailable", methods: [], maskedEmail: null, maskedPhone: null, linkedEmail: null, linkedPhone: null });
+      if (!firebaseApp) return res.json({ ...EMPTY_AUTH_RESOLUTION });
 
       const firebaseUser = email
         ? await getAuth(firebaseApp).getUserByEmail(email).catch(() => null)
         : await getAuth(firebaseApp).getUserByPhoneNumber(phone!).catch(() => null);
-      const neonUser = email
-        ? await userService.getUserByUsername(email)
-        : firebaseUser
-          ? await userService.getUserByFirebaseUid(firebaseUser.uid)
-          : null;
 
-      const state = resolveAuthAccountState(firebaseUser?.uid || null, neonUser?.firebaseUid || null);
+      // PHONES RESOLVE FROM THE DATABASE, not from Firebase. No account in this
+      // project has ever linked a phone as a credential — 175 Firebase users, zero
+      // with a `phoneNumber`, and `getUserByPhoneNumber` returned user-not-found
+      // for every number held in `users`. So the Firebase-first lookup above can
+      // never match a real number, and a registered number used to resolve as
+      // unknown and be sent to the signup form instead of its own account. Firebase
+      // is still consulted as a fallback, so a future flow that does link a phone
+      // keeps working.
+      let neonUser = email
+        ? await userService.getUserByUsername(email)
+        : phone
+          ? await userService.getUserByPhoneNumber(phone)
+          : null;
+      if (!neonUser && firebaseUser) {
+        neonUser = await userService.getUserByFirebaseUid(firebaseUser.uid);
+      }
+
+      // A phone asks a different question — "does an account own this number?" —
+      // and it has to be answered from the database, so it gets its own rule.
+      const state = email
+        ? resolveAuthAccountState(firebaseUser?.uid || null, neonUser?.firebaseUid || null)
+        : resolvePhoneAccountState({
+            databaseAccount: neonUser,
+            firebaseUid: firebaseUser?.uid || null,
+          });
       const methods: AuthMethod[] = state === "existing" || state === "profile-incomplete"
         ? resolveAuthMethods({
             email: firebaseUser?.email,
@@ -486,10 +510,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
           })
         : [];
 
-      const resolvedEmail = firebaseUser?.email || (email ? neonUser?.username : null) || null;
+      // `neonUser.username` is the confirmed-email mirror, so it also answers for a
+      // PHONE identifier — which is what lets a visitor whose number is not yet
+      // usable be told which address to sign in with instead (masked).
+      const resolvedEmail = firebaseUser?.email || neonUser?.username || null;
+      const emailVerified = resolveEmailVerified({
+        state,
+        firebaseEmailVerified: firebaseUser?.emailVerified,
+        neonIsVerified: neonUser?.isVerified,
+      });
       const resolution: AuthAccountResolution = {
         state,
         methods,
+        emailVerified,
+        // Read from the database, NOT from the Firebase claim alone. The claim is
+        // empty for every account here because the phone was never linked as a
+        // credential, so it would report "not verified" even for a number the
+        // account holder had proved. `phone_verified_at` is the column the sync
+        // endpoint maintains and is the record the gate trusts; the claim is
+        // honoured too, and deliberately the SAME rule the profile endpoint uses,
+        // so the two can never disagree about whether a phone is verified.
+        phoneVerified:
+          state === "existing" && neonUser
+            ? neonUser.phoneVerifiedAt != null || Boolean(firebaseUser?.phoneNumber)
+            : null,
+        portalAllowed: resolvePortalAllowed({ portal, account: neonUser }),
         maskedEmail: maskRecoveryEmail(resolvedEmail),
         maskedPhone: maskRecoveryPhone(firebaseUser?.phoneNumber),
         // These targets let the client execute a linked fallback immediately.
@@ -501,7 +546,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.json(resolution);
     } catch (error) {
       logger.warn("Unable to resolve Firebase recovery method hints", error);
-      return res.json({ state: "unavailable", methods: [], maskedEmail: null, maskedPhone: null, linkedEmail: null, linkedPhone: null });
+      return res.json({ ...EMPTY_AUTH_RESOLUTION });
     }
   });
 
@@ -893,6 +938,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Create new user - no existing user found
       const finalRole: 'chef' | 'manager' = accountType;
+
+      // A phone number is a LOGIN identifier here — `resolveAuthIdentifier`
+      // accepts one and phone OTP exists — so it must resolve to exactly one
+      // account, the same rule email gets directly above. Without this, two
+      // accounts can claim one number, and because Firebase only ever links a
+      // number to one user, one of them can never be phone-loginable while both
+      // show the number as theirs. The two cannot be reconciled later without
+      // deciding whose account is real.
+      //
+      // Trade-off, stated rather than hidden: a uniqueness check is an
+      // enumeration oracle for phone numbers. That is accepted here because the
+      // email check already answers the same question for addresses, the route
+      // is behind `authLimiter`, and a registration that fails has to say why or
+      // the visitor is stuck in a loop. The response never says WHOSE account
+      // holds the number.
+      const existingByPhone = await userService.getUserByPhoneNumber(registrationProfile.phoneNumber);
+      if (existingByPhone) {
+        logger.info('⚠️ Registration blocked: that phone number already belongs to another account');
+        return res.status(409).json({
+          error: "Phone number already registered",
+          code: "PHONE_EXISTS",
+          message: "That phone number is already linked to a LocalCooks account. Sign in with it instead, or use a different number.",
+        });
+      }
+
       logger.info(`📝 Creating new public ${finalRole} account: ${registrationEmail}`);
       const newUser = await userService.createPublicFirebaseUser({
         username: registrationEmail,

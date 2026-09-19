@@ -38,6 +38,7 @@ export default function EnhancedAuthPage() {
     signInWithGoogle,
     authPhase,
     updateUserVerification,
+    discardPendingGoogleRegistration,
   } = useFirebaseAuth();
   const { begin: beginHandoff, end: endHandoff } = useAuthTransition();
   const [authStep, setAuthStep] = useState<AuthFlowStep>(() =>
@@ -770,6 +771,10 @@ export default function EnhancedAuthPage() {
                   onRegistrationComplete: handleRegistrationComplete,
                   onRegistrationError: handleRegistrationError,
                 }}
+                // Leaving the register step for the identifier step abandons a Google
+                // registration started there, and that path has no page load — so the
+                // load-time sweep cannot see it.
+                onDiscardPendingGoogleRegistration={() => void discardPendingGoogleRegistration()}
                 onGoogleSignIn={async () => {
                   // Public Google entry is idempotent: existing users sign in;
                   // Firebase-only users are provisioned immediately as chefs.

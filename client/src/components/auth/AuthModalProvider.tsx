@@ -243,7 +243,7 @@ export function useAuthModal() {
 
 export function AuthModalProvider({ children }: { children: ReactNode }) {
   const { t } = useTranslation(["kitchen", "auth"]);
-  const { user, updateUserVerification, loading: authLoading, signInWithGoogle } = useFirebaseAuth();
+  const { user, updateUserVerification, loading: authLoading, signInWithGoogle, discardPendingGoogleRegistration } = useFirebaseAuth();
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
   const [isOpen, setIsOpen] = useState(false);
@@ -1350,6 +1350,10 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
                       forceApplying: options.requireApplication,
                       onPreviousStep: canStepBack ? goApplyBack : undefined,
                     }}
+                    // Leaving the register step for the identifier step abandons a Google
+                    // registration started there, and that path has no page load — so the
+                    // load-time sweep cannot see it.
+                    onDiscardPendingGoogleRegistration={() => void discardPendingGoogleRegistration()}
                     onGoogleSignIn={async () => {
                       await signInWithGoogle(false);
                       if (!options.requireApplication) closeAuthModal();

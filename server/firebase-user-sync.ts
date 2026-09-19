@@ -99,8 +99,10 @@ export async function syncFirebaseUserToNeon(params: {
       throw new Error(`Invalid role: ${role}. Valid roles are: admin, manager, chef`);
     }
 
-    // Admins and managers should skip the welcome screen
-    const hasSeenWelcome = finalRole === 'admin' || finalRole === 'manager';
+    // Admins still skip it. Managers no longer do: they have a welcome screen of their
+    // own now (client/src/pages/manager-welcome-screen.tsx), so writing true here would
+    // record them as having seen a screen they were never shown.
+    const hasSeenWelcome = finalRole === 'admin';
 
     const userData: CreateUserData = {
       username: email, // Always use email as username to ensure consistency

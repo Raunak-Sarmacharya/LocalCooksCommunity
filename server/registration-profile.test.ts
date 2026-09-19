@@ -24,13 +24,28 @@ describe("new registration profile requirements", () => {
       provider: "email",
       submittedPhone: "(604) 555-0123",
     })).toEqual({ ok: true, displayName: "Grace Hopper", phoneNumber: "+16045550123" });
-  });
 
-  it("uses Google profile identity without requiring a phone up front", () => {
     expect(validateNewRegistrationProfile({
       displayName: "Google Chef",
       provider: "google",
-    })).toEqual({ ok: true, displayName: "Google Chef" });
+      submittedPhone: "(709) 631-8480",
+    })).toEqual({ ok: true, displayName: "Google Chef", phoneNumber: "+17096318480" });
+  });
+
+  // Google used to be EXEMPT from the phone requirement, and that exemption is how a
+  // "Continue with Google" signup produced an account with a name and an address but
+  // no number — silently, with no confirmation step.
+  it("requires a phone for Google registration too", () => {
+    expect(validateNewRegistrationProfile({
+      displayName: "Google Chef",
+      provider: "google",
+    })).toEqual({ ok: false, error: "A valid phone number is required" });
+
+    expect(validateNewRegistrationProfile({
+      displayName: "Google Chef",
+      provider: "google",
+      submittedPhone: "not-a-number",
+    })).toEqual({ ok: false, error: "A valid phone number is required" });
   });
 
   it("accepts a saved email for a phone-verified registration", () => {

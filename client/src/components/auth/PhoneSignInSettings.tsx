@@ -5,7 +5,7 @@ import {
   RecaptchaVerifier,
   unlink,
 } from "firebase/auth";
-import { Check, Clock, Loader2, Phone, XCircle } from "lucide-react";
+import { AlertCircle, Check, Clock, Loader2, Phone, XCircle } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { logger } from "@/lib/logger";
@@ -23,6 +23,62 @@ import {
 
 function maskPhone(phone: string): string {
   return phone.length > 4 ? `••• ••• ${phone.slice(-4)}` : phone;
+}
+
+/** Which of the four states the phone row is in. */
+export type PhoneRowState = "verified" | "code-sent" | "unverified" | "empty";
+
+/**
+ * Decide the phone row's state.
+ *
+ * This row used to be driven by the Firebase credential ALONE (`linkedPhone`), so a
+ * number stored on the account but never proved was INVISIBLE: the holder saw "No
+ * phone number added", could not tell which number needed verifying, and the "Add
+ * phone number" button invited them to retype a number they had already given.
+ *
+ * Priority order matters:
+ *   verified   — a Firebase phone credential, so it is usable to sign in.
+ *   code-sent  — an OTP is outstanding; the code form is the only thing to show.
+ *   unverified — the number is on the account but has never been proved. Visible
+ *                and actionable, but NOT presented as verified.
+ *   empty      — nothing on file.
+ */
+export function resolvePhoneRowState(input: {
+  linkedPhone: string;
+  hasPendingCode: boolean;
+  storedPhone: string;
+}): PhoneRowState {
+  if (input.linkedPhone) return "verified";
+  if (input.hasPendingCode) return "code-sent";
+  if (input.storedPhone) return "unverified";
+  return "empty";
+}
+
+/** The verdict from the availability check. `unknown` means we could not tell. */
+export type PhoneAvailability = "available" | "taken" | "unknown";
+
+/**
+ * Ask the server whether this number may be attached to the signed-in account.
+ *
+ * `unknown` is deliberately distinct from `taken`: one means "somebody else owns
+ * it" and the other means "we could not find out", and they need different copy.
+ * Both BLOCK the send — a number we could not clear is one we must not text, since
+ * the Firebase link would outlive a rejected save and lock the real owner out.
+ */
+export async function checkPhoneAvailable(phone: string, idToken: string): Promise<PhoneAvailability> {
+  try {
+    const response = await fetch("/api/user/phone-availability", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${idToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ phone }),
+    });
+    if (!response.ok) return "unknown";
+    const data = await response.json() as { available?: unknown };
+    if (typeof data.available !== "boolean") return "unknown";
+    return data.available ? "available" : "taken";
+  } catch {
+    return "unknown";
+  }
 }
 
 interface PhoneSignInSettingsProps {
@@ -102,6 +158,20 @@ export default function PhoneSignInSettings({
       const token = await user.getIdTokenResult();
       if (!hasRecentFirebaseAuth(token.claims.auth_time)) {
         setError("For security, sign out and sign back in before adding a phone.");
+        return;
+      }
+
+      // Refuse a number that ANOTHER account already holds, BEFORE sending anything.
+      // Learning this at save time is far too late: the text has gone out and the
+      // number is now linked to THIS Firebase user, so the real owner can never
+      // attach it. Fails CLOSED — if we cannot check, we do not send.
+      const availability = await checkPhoneAvailable(normalized, token.token);
+      if (availability === "taken") {
+        setError("That phone number is already linked to another Local Cooks account. Use a different number.");
+        return;
+      }
+      if (availability === "unknown") {
+        setError("We could not check that number just now. Please try again in a moment.");
         return;
       }
 
@@ -207,37 +277,72 @@ export default function PhoneSignInSettings({
     clearVerifier();
   };
 
-  const tone: ContactTone = linkedPhone
-    ? "verified"
-    : confirmation
-      ? "pending"
-      : "empty";
+  /**
+   * Open the inline form. `prefill` is the number being PROVED (so fixing one digit
+   * is an edit) or `""` when the intent is a different number entirely.
+   *
+   * Both routes go through the form rather than sending straight away, because the
+   * form carries the SMS-consent checkbox and a one-time text must not be sent
+   * without it.
+   */
+  const startAdding = (prefill: string) => {
+    setPhone(prefill);
+    setError(null);
+    setIsAdding(true);
+  };
 
-  const statusLabel = linkedPhone
-    ? "Verified"
-    : confirmation
-      ? "Code sent"
-      : "Not added";
+  // The number held on the ACCOUNT (`users.phone_number`). It is NOT a credential
+  // until it has been proved, so it is tracked separately from `linkedPhone`, and
+  // the row is explicit about which of the two it is showing.
+  const storedPhone = normalizePhoneNumber(initialPhone || "") || "";
+  const rowState = resolvePhoneRowState({
+    linkedPhone,
+    hasPendingCode: !!confirmation,
+    storedPhone,
+  });
 
-  const value = linkedPhone
-    ? formatPhoneForDisplay(linkedPhone)
-    : confirmation
-      ? formatPhoneForDisplay(phone)
-      : "No phone number added";
+  const tone: ContactTone =
+    rowState === "verified"
+      ? "verified"
+      : rowState === "code-sent"
+        ? "pending"
+        : rowState === "unverified"
+          ? "action"
+          : "empty";
+
+  const statusLabel =
+    rowState === "verified"
+      ? "Verified"
+      : rowState === "code-sent"
+        ? "Code sent"
+        : rowState === "unverified"
+          ? "Not verified"
+          : "Not added";
+
+  const value =
+    rowState === "verified"
+      ? formatPhoneForDisplay(linkedPhone)
+      : rowState === "code-sent"
+        ? formatPhoneForDisplay(phone)
+        : rowState === "unverified"
+          ? formatPhoneForDisplay(storedPhone)
+          : "No phone number added";
 
   let secondary: string;
   let description: string;
-  if (linkedPhone) {
+  if (rowState === "verified") {
     secondary = "Verified";
-    description =
-      "You can use this number to sign in .";
-  } else if (confirmation) {
+    description = "You can use this number to sign in.";
+  } else if (rowState === "code-sent") {
     secondary = "Code sent";
     description = `Enter the 6-digit code we sent to ${formatPhoneForDisplay(phone)}.`;
+  } else if (rowState === "unverified") {
+    secondary = "Not verified";
+    description =
+      "This number is on your account but has not been verified yet, so it cannot sign you in. Verify it to also use it for sign-in.";
   } else {
     secondary = "Not added";
-    description =
-      "Add a mobile number for booking . It is verified with a one-time code.";
+    description = "Add a mobile number for booking. It is verified with a one-time code.";
   }
 
   const addForm = (
@@ -336,10 +441,12 @@ export default function PhoneSignInSettings({
       id="phone-verification"
       labelId="phone-verification-heading"
       icon={
-        linkedPhone ? (
+        rowState === "verified" ? (
           <Check className="size-4" />
-        ) : tone === "pending" ? (
+        ) : rowState === "code-sent" ? (
           <Clock className="size-4" />
+        ) : rowState === "unverified" ? (
+          <AlertCircle className="size-4" />
         ) : (
           <Phone className="size-4" />
         )
@@ -360,7 +467,7 @@ export default function PhoneSignInSettings({
         </>
       }
       actions={
-        linkedPhone ? (
+        rowState === "verified" ? (
           <Button
             type="button"
             size="sm"
@@ -375,14 +482,28 @@ export default function PhoneSignInSettings({
             )}
             Remove
           </Button>
-        ) : confirmation || isAdding ? undefined : (
-          <Button type="button" size="sm" onClick={() => setIsAdding(true)}>
+        ) : confirmation || isAdding ? undefined
+        : rowState === "unverified" ? (
+          <>
+            {/* The number is already on the account, so proving it is the likelier
+                intent than replacing it. Both open the same form — which is what
+                keeps the SMS-consent checkbox in the path — but "Verify" pre-fills
+                the number being proved while "Change" clears it. */}
+            <Button type="button" size="sm" onClick={() => startAdding(storedPhone)} disabled={busy}>
+              Verify this number
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => startAdding("")} disabled={busy}>
+              Change number
+            </Button>
+          </>
+        ) : (
+          <Button type="button" size="sm" onClick={() => startAdding("")}>
             Add phone number
           </Button>
         )
       }
     >
-      {linkedPhone ? null : confirmation ? codeForm : isAdding ? addForm : null}
+      {rowState === "verified" ? null : confirmation ? codeForm : isAdding ? addForm : null}
     </ContactVerificationRow>
   );
 

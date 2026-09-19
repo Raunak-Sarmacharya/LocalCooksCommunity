@@ -95,6 +95,17 @@ export const users = pgTable("users", {
   pendingEmailSentAt: timestamp("pending_email_sent_at"),
   // Audit trail for the confirmed address (null while never verified).
   emailVerifiedAt: timestamp("email_verified_at"),
+  // Phone verification loop. A phone number is a LOGIN IDENTIFIER here, not just
+  // a contact detail, so it may only be offered as a sign-in method once its
+  // owner has proved control of it. Null means "never verified" — and that is the
+  // state of every existing row, deliberately: no phone in this project has ever
+  // been linked as a Firebase credential, so none has been proved.
+  //
+  // This column, not the Firebase user record, is what the sign-in gate reads.
+  // Firebase holds no phone for any account (verified 2026-09-18: 175 Firebase
+  // users, zero with a `phoneNumber`), so `getUserByPhoneNumber` can never answer
+  // and the database is the only possible source of truth.
+  phoneVerifiedAt: timestamp("phone_verified_at"),
   has_seen_welcome: boolean("has_seen_welcome").default(false).notNull(),
   welcomeEmailSentAt: timestamp("welcome_email_sent_at"), // Track when welcome email was sent (null = not sent, prevents duplicates)
   // Support dual roles - users can be both chef and manager

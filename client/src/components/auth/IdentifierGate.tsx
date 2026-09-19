@@ -12,6 +12,13 @@ interface IdentifierGateProps {
   onEmailKnown: (email: string) => void | Promise<void>;
   onPhoneKnown: (phone: string) => void | Promise<void>;
   onGoogleSignIn: () => void | Promise<void>;
+  /**
+   * Pre-fills the field on mount. The gate is unmounted whenever the step
+   * changes, so this re-applies on every return — which is the point: coming
+   * back to correct an address should let the visitor EDIT it rather than retype
+   * it from nothing. Empty on a cold start.
+   */
+  initialIdentifier?: string;
 }
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -20,9 +27,10 @@ export default function IdentifierGate({
   onEmailKnown,
   onPhoneKnown,
   onGoogleSignIn,
+  initialIdentifier = "",
 }: IdentifierGateProps) {
   const { t } = useTranslation("auth");
-  const [identifier, setIdentifier] = useState("");
+  const [identifier, setIdentifier] = useState(initialIdentifier);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const phoneMode = identifier.length > 0 && !identifier.includes("@") && /^[+\d\s().-]+$/.test(identifier);

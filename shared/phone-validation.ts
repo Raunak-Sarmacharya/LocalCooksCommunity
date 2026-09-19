@@ -58,6 +58,23 @@ export const normalizePhoneNumber = (phone: string | null | undefined): string |
 };
 
 /**
+ * The ten significant digits of a North American number, or null.
+ *
+ * This is the form two phone numbers must be compared in. `+1 (709) 655-5123`,
+ * `7096555123` and `17096555123` are the same subscriber, so comparing raw
+ * strings — or even full digit strings — reports them as different and lets a
+ * second account claim a number that is already taken.
+ *
+ * Mirrored by the SQL expression in migration 0034 and by
+ * `UserRepository.findByPhoneNationalDigits`, so the application guard and the
+ * database constraint agree exactly.
+ */
+export const nationalPhoneDigits = (phone: string | null | undefined): string | null => {
+  const digits = (phone ?? '').replace(/\D/g, '');
+  return digits.length >= 10 ? digits.slice(-10) : null;
+};
+
+/**
  * Validates if a phone number is in valid North American format
  * Can accept either a raw phone string or an already-normalized string
  */

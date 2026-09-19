@@ -1,16 +1,13 @@
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
-import { ArrowLeft, Clock, Mail, Phone, RefreshCw, CheckCircle2, Loader2 } from "lucide-react";
+import { CheckCircle2, Clock, Loader2, Mail, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
-import AnimatedButton from "./AnimatedButton";
-import { EmailContinueHint, getEmailContinueMessage } from "./EmailContinueHint";
 
 interface EmailVerificationScreenProps {
   email: string;
   onResend: () => Promise<void>;
   onGoBack: () => void;
   onCheckVerified?: () => Promise<boolean | void>;
-  onVerifyPhone?: () => void;
   resendLoading?: boolean;
   mode?: "verification" | "magic-link";
 }
@@ -20,38 +17,40 @@ const containerVariants = {
   visible: {
     opacity: 1,
     y: 0,
-    transition: {
-      duration: 0.4,
-      staggerChildren: 0.1
-    }
-  }
+    transition: { duration: 0.4, staggerChildren: 0.1 },
+  },
 };
 
 const itemVariants = {
   hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0 }
+  visible: { opacity: 1, y: 0 },
 };
 
-const emailIconVariants = {
-  idle: { scale: 1 },
-  bounce: {
-    scale: [1, 1.1, 1],
-    transition: {
-      duration: 1,
-      repeat: Infinity,
-      repeatDelay: 2
-    }
-  }
-};
-
+/**
+ * The "we emailed you a link" screen, shared by registration, magic-link sign-in
+ * and password reset.
+ *
+ * Rebuilt to the card's own language. It used to be a template in the middle of
+ * a bespoke product: a 96px blue-gradient circle with an infinite bounce, an
+ * off-palette emerald CTA, three different button treatments, an amber "Next
+ * step" box that duplicated the copy above it, and enough height to make the
+ * card scroll on an ordinary laptop. Everything below now matches the welcome
+ * back card and the alert dialogs — brand tinted chip, one primary CTA in the
+ * product red, one outline secondary, one compact line of help text.
+ *
+ * There is deliberately NO phone escape hatch. Email is the primary identifier
+ * and the only channel we can reliably reach an account on, so registration must
+ * not be completable by proving a phone instead — that would hand out a working
+ * session for an account whose email is still unproven. Phone verification
+ * returns later, as an additional method offered during onboarding.
+ */
 export default function EmailVerificationScreen({
   email,
   onResend,
   onGoBack,
   onCheckVerified,
-  onVerifyPhone,
   resendLoading = false,
-  mode = "verification"
+  mode = "verification",
 }: EmailVerificationScreenProps) {
   const [resendCount, setResendCount] = useState(0);
   const [resendDisabled, setResendDisabled] = useState(false);
@@ -79,85 +78,39 @@ export default function EmailVerificationScreen({
       setResendDisabled(true);
       setResendCount(prev => prev + 1);
       await onResend();
-    } catch (error) {
-      setResendError('Failed to resend verification email. Please try again later.');
+    } catch {
+      setResendError('Failed to resend the email. Please try again later.');
       setResendDisabled(false);
       setResendTimer(0);
     }
   };
 
+  const isMagicLink = mode === "magic-link";
+
   return (
-    <motion.div
-      className="w-full max-w-md mx-auto"
-      variants={containerVariants}
-      initial="hidden"
-      animate="visible"
-    >
-      {/* Back Button */}
-      <Button
-        variant="ghost"
-        onClick={onGoBack}
-        className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-8"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        <span>Change email or login</span>
-      </Button>
-
-      {/* Email Icon */}
-      <motion.div
-        variants={itemVariants}
-        className="flex justify-center mb-8"
-      >
-        <motion.div
-          className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center"
-          variants={emailIconVariants}
-          initial="idle"
-          animate="bounce"
+    <motion.div className="w-full" variants={containerVariants} initial="hidden" animate="visible">
+      {/* Brand-tinted chip, matching the welcome-back avatar and the alert icons. */}
+      <motion.div variants={itemVariants} className="mb-5 flex justify-center">
+        <span
+          aria-hidden
+          className="flex h-16 w-16 items-center justify-center rounded-full bg-[#FCE3E9]"
         >
-          <Mail className="w-12 h-12 text-blue-600" />
-        </motion.div>
+          <Mail className="h-7 w-7 text-[#F51042]" />
+        </span>
       </motion.div>
 
-      {/* Title and Description */}
-      <motion.div variants={itemVariants} className="text-center mb-8">
-        <h2 className="text-2xl font-bold text-gray-900 mb-3">
-          Check your email
-        </h2>
-        <p className="text-gray-600 leading-relaxed">
-          {mode === "magic-link" 
-            ? "We sent a sign-in link to:" 
-            : "We sent a verification link to:"}
+      <motion.div variants={itemVariants} className="mb-6 text-center">
+        <h2 className="text-2xl font-bold tracking-[-0.03em] text-gray-950">Check your email</h2>
+        <p className="mt-2.5 text-sm leading-relaxed text-gray-600">
+          {isMagicLink ? "We sent a sign-in link to" : "We sent a verification link to"}
         </p>
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.3 }}
-          className="mt-2 p-3 bg-gray-50 rounded-lg border"
-        >
-          <span className="font-semibold text-gray-900">{email}</span>
-        </motion.div>
+        <p className="mt-1 break-all text-sm font-medium text-gray-950">{email}</p>
       </motion.div>
 
-      {/* Instructions */}
-      <motion.div variants={itemVariants} className="text-center mb-6">
-        <p className="text-gray-600 text-sm leading-relaxed">
-          {mode === "magic-link"
-            ? "Open the email on this device and tap the link to sign in and continue where you left off."
-            : "Open the email and tap the link to verify your account and continue."}
-        </p>
-        {resendCount > 0 && (
-          <p className="text-sm text-gray-500 mt-2">
-            {mode === "magic-link"
-              ? resendCount === 1 ? 'Sign-in link resent — check your inbox and spam folder.' : `Sign-in link resent ${resendCount} times.`
-              : resendCount === 1 ? 'Verification email resent — check your inbox and spam folder.' : `Verification email resent ${resendCount} times.`}
-          </p>
-        )}
-      </motion.div>
-
-      {/* Action Buttons */}
-      <motion.div variants={itemVariants} className="flex flex-col gap-4">
-        {mode !== "magic-link" && (
+      <motion.div variants={itemVariants} className="space-y-3">
+        {!isMagicLink && (
           <Button
+            type="button"
             onClick={async () => {
               if (isChecking) return;
               setIsChecking(true);
@@ -178,79 +131,103 @@ export default function EmailVerificationScreen({
               }
             }}
             disabled={isChecking}
-            className="w-full bg-[#10b981] hover:bg-[#059669] text-white flex items-center justify-center gap-2 h-12 rounded-md font-medium transition-colors"
+            className="w-full bg-[#E00A38] text-white hover:bg-[#C00930]"
           >
             {isChecking ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
-              <CheckCircle2 className="w-5 h-5" />
+              <CheckCircle2 className="mr-2 h-4 w-4" />
             )}
             {isChecking ? "Checking..." : "I have verified my email"}
           </Button>
         )}
-        
-        <AnimatedButton
+
+        <Button
+          type="button"
+          variant="outline"
           onClick={handleResend}
           disabled={resendDisabled || resendLoading}
-          className="w-full flex items-center justify-center gap-2 h-12 bg-white text-gray-700 border hover:bg-gray-50 hover:text-gray-900 font-medium"
+          className="w-full border-slate-200"
         >
           {resendLoading ? (
             <>
-              <RefreshCw className="w-4 h-4 animate-spin" />
+              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
               Sending...
             </>
           ) : resendDisabled ? (
             <>
-              <Clock className="w-4 h-4" />
+              <Clock className="mr-2 h-4 w-4" />
               Wait {resendTimer}s to resend
             </>
           ) : (
             <>
-              <RefreshCw className="w-4 h-4" />
-              {mode === "magic-link" ? "Resend sign-in link" : "Resend verification email"}
+              <RefreshCw className="mr-2 h-4 w-4" />
+              {isMagicLink ? "Resend sign-in link" : "Resend verification email"}
             </>
           )}
-        </AnimatedButton>
-
-        {mode !== "magic-link" && onVerifyPhone && (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onVerifyPhone}
-            className="h-12 w-full gap-2"
-          >
-            <Phone className="h-4 w-4" />
-            Verify phone instead
-          </Button>
-        )}
+        </Button>
       </motion.div>
 
-      {/* Error Message */}
-      {resendError && (
-        <motion.div
+      {(resendError || verificationError) && (
+        <motion.p
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mt-4 text-center text-red-600 text-sm"
-        >
-          {resendError}
-        </motion.div>
-      )}
-
-      {verificationError && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mt-4 text-center text-red-600 text-sm"
           role="alert"
+          className="mt-4 text-center text-sm text-red-600"
         >
-          {verificationError}
-        </motion.div>
+          {resendError ?? verificationError}
+        </motion.p>
       )}
 
-      <EmailContinueHint
-        variant={mode === "magic-link" ? "sign-in" : "verify"}
-        className="mt-8"
-      />
+      {/*
+        Two balanced lines, each its own sentence. As one paragraph the pair
+        wrapped into a long line plus a two-word orphan ("promotions folder."),
+        which is what made it look untidy.
+
+        It also grows and takes the brand tint once a resend has happened: if the
+        visitor missed this the first time, the second attempt is exactly when it
+        needs to catch the eye.
+      */}
+      <div
+        className={
+          resendCount > 0
+            ? "mt-5 rounded-xl bg-[#FFF0F3] px-4 py-3 text-center text-sm leading-relaxed text-slate-700"
+            : "mt-5 text-center text-xs leading-relaxed text-slate-500"
+        }
+      >
+        {resendCount > 0 && (
+          <p className="font-medium text-[#E00A38]">
+            {isMagicLink ? "Sign-in link" : "Verification email"} sent again.
+          </p>
+        )}
+        <p>{isMagicLink ? "Open the link on this device to sign in." : "Open the link in your email to continue."}</p>
+        <p className="mt-1">Nothing yet? Check your spam or promotions folder.</p>
+      </div>
+
+      {/*
+        The escape hatch lives BELOW the actions, worded around the problem, and
+        is a plain text link rather than a back arrow.
+
+        A "← Change email or login" control at the top reads as a wizard step,
+        competes with the primary action, and — because it navigated to the
+        sign-in step — landed people on a second screen with its OWN back button,
+        so they could walk backwards through two half-states to get nowhere. It
+        also says nothing about what the visitor actually wants, which is to fix
+        the address. The destination now pre-fills it so they edit rather than
+        retype.
+      */}
+      <p className="mt-5 text-center text-sm text-slate-600">
+        Wrong email?{" "}
+        <button
+          type="button"
+          onClick={onGoBack}
+          // index.css forces min-height/min-width 44px on EVERY button, which
+          // would blow this inline link out of its line.
+          className="!min-h-0 !min-w-0 font-medium text-[#E00A38] underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
+        >
+          Use a different email
+        </button>
+      </p>
     </motion.div>
   );
 }
