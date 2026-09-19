@@ -10,13 +10,44 @@ import { mt } from "@/i18n/manager";
 import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, CreditCard, CheckCircle2, AlertCircle, ExternalLink, Clock, ShieldAlert, Ban } from "@/components/ui/manager-icons";
+import { Loader2, CreditCard, ExternalLink, Clock, ShieldAlert } from "@/components/ui/manager-icons";
 import { toast } from "@/hooks/use-toast";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { tt } from "@/i18n/common-ns";
+
+/**
+ * Card-level actions.
+ *
+ * The app's pill, at `h-9` (via `size="sm"`) rather than the 44px `index.css` forces on
+ * EVERY button — `min-height` beats `height`, so `md:!min-h-0` is what lets a shorter
+ * button exist at all, scoped to `md:` so the mobile touch target keeps its floor.
+ *
+ * And never full-width. A CTA stretched the whole width of a settings card is what made
+ * "Connect with Stripe" read as a landing page instead of as one setting among several.
+ * (The row-level hierarchy on the profile page lives in `ContactVerificationRow`.)
+ */
+const CARD_ACTION = "md:!min-h-0 shadow-none hover:shadow-none hover:translate-y-0";
+const CARD_ACTION_QUIET = "md:!min-h-0 text-muted-foreground hover:text-foreground";
+
+/**
+ * The state heading plus the Stripe mark.
+ *
+ * Three states render this identical block, and it carried `slate-*` colours with `dark:`
+ * variants while every other card on the page uses the semantic tokens — so it did not
+ * follow the theme the rest of the page does.
+ */
+function StripeHeading({ title, subtitle }: { title: string; subtitle: string }) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <div className="min-w-0">
+        <h3 className="font-semibold text-foreground">{title}</h3>
+        <p className="text-sm text-muted-foreground">{subtitle}</p>
+      </div>
+      <img src="/stripe-logo.png" alt="Stripe" className="mt-0.5 h-5 shrink-0 opacity-90" />
+    </div>
+  );
+}
 
 export default function StripeConnectSetup() {
   
@@ -42,6 +73,21 @@ export default function StripeConnectSetup() {
     },
     enabled: !!firebaseUser,
     staleTime: 1000 * 30, // Cache for 30 seconds
+    // Opening this tab MUST re-read the connection state.
+    //
+    // Stripe onboarding does not happen in one step — the manager is sent to Stripe, comes
+    // back, may be asked for more documents, and the account then sits in a verification
+    // queue. So the status is the whole point of this screen, and serving a cached answer
+    // would show "Connect with Stripe" to someone who has already connected.
+    //
+    // `staleTime` alone was not enough: Radix unmounts an inactive `TabsContent`, so the
+    // component remounts on every visit — but a remount within the 30s window is still
+    // "fresh", and the query client's global default is `staleTime: Infinity`. `"always"`
+    // makes the remount authoritative regardless of either.
+    //
+    // Per-observer, so this does NOT make the dashboard's `useOnboardingStatus` (which
+    // reads the same key) refetch on its own schedule.
+    refetchOnMount: "always",
   });
 
   // Also fetch user profile for account ID display (fallback)
@@ -354,9 +400,9 @@ export default function StripeConnectSetup() {
   // Managers need to know up front that Stripe's processing fee comes out of each
   // booking before the transfer lands in their account (see stripe-transfer-service).
   const payoutFeeNote = (
-    <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 px-3 py-2.5 space-y-1">
-      <p className="text-xs font-medium text-slate-700 dark:text-slate-200">{mt("howPayoutsWork")}</p>
-      <p className="text-xs text-slate-500 dark:text-slate-400">
+    <div className="space-y-1 rounded-xl border bg-muted/40 px-3 py-2.5">
+      <p className="text-xs font-medium text-foreground">{mt("howPayoutsWork")}</p>
+      <p className="text-xs text-muted-foreground">
         {mt("howPayoutsWorkBody")}
         {serviceFeePercentage
           ? ` ${mt("howPayoutsWorkServiceFeeNote", { percent: serviceFeePercentage })}`
@@ -366,47 +412,42 @@ export default function StripeConnectSetup() {
   );
 
   if (isLoading) {
+    // Bare spinner, not a Card: BOTH hosts already supply the card (the onboarding
+    // wizard via `PaymentSetupStep`, the profile tab via its own shell), so this used
+    // to render a card inside a card.
     return (
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex items-center justify-center py-8">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
     );
   }
 
   // Not connected - show create account button
   if (!hasStripeAccount) {
     return (
-      <div className="space-y-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <div>
-              <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{mt("connectPayments")}</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400">{mt("receivePaymentsDirectlyToYourBank")}</p>
-            </div>
-          </div>
-          <img src="/stripe-logo.png" alt="Stripe" className="h-6" />
+      <div className="space-y-4">
+        <StripeHeading title={mt("connectPayments")} subtitle={mt("receivePaymentsDirectlyToYourBank")} />
+
+        <div>
+          <Button
+            size="sm"
+            className={CARD_ACTION}
+            onClick={handleCreateAccount}
+            disabled={createAccountMutation.isPending}
+          >
+            {createAccountMutation.isPending ? (
+              <>
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />{mt("creatingAccount")}</>
+            ) : (
+              <>
+                <CreditCard className="mr-1.5 h-4 w-4" />{mt("connectWithStripe")}</>
+            )}
+          </Button>
+          <p className="mt-2 text-xs text-muted-foreground">
+            {mt("secureSetupOpensNewTab")}
+          </p>
         </div>
-        
-        <Button 
-          onClick={handleCreateAccount}
-          disabled={createAccountMutation.isPending}
-          className="w-full"
-        >
-          {createAccountMutation.isPending ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />{mt("creatingAccount")}</>
-          ) : (
-            <>
-              <CreditCard className="mr-2 h-4 w-4" />{mt("connectWithStripe")}</>
-          )}
-        </Button>
-        <p className="text-xs text-slate-400 text-center">
-          {mt("secureSetupOpensNewTab")}
-        </p>
+
         {payoutFeeNote}
       </div>
     );
@@ -418,29 +459,21 @@ export default function StripeConnectSetup() {
     if (isOnboardingComplete) {
       // Onboarding complete - show success state
       return (
-        <div className="space-y-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <div>
-                <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{mt("paymentsConnected")}</h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400">{mt("readyToReceivePayments")}</p>
-              </div>
-            </div>
-            <img src="/stripe-logo.png" alt="Stripe" className="h-6" />
-          </div>
-          
-          <Button 
+        <div className="space-y-4">
+          <StripeHeading title={mt("paymentsConnected")} subtitle={mt("readyToReceivePayments")} />
+
+          <Button
+            size="sm"
+            className={CARD_ACTION}
             onClick={handleAccessDashboard}
-            variant="outline"
-            className="w-full"
             disabled={getDashboardLinkMutation.isPending}
           >
             {getDashboardLinkMutation.isPending ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />{mt("opening")}</>
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />{mt("opening")}</>
             ) : (
               <>
-                <ExternalLink className="mr-2 h-4 w-4" />{mt("viewStripeDashboard")}</>
+                <ExternalLink className="mr-1.5 h-4 w-4" />{mt("viewStripeDashboard")}</>
             )}
           </Button>
           {payoutFeeNote}
@@ -538,62 +571,57 @@ export default function StripeConnectSetup() {
       const ButtonIcon = config.buttonIcon;
 
       return (
-        <div className="space-y-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <div>
-                <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{config.title}</h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400">{config.subtitle}</p>
-              </div>
-            </div>
-            <img src="/stripe-logo.png" alt="Stripe" className="h-6" />
-          </div>
-          
+        <div className="space-y-4">
+          <StripeHeading title={config.title} subtitle={config.subtitle} />
+
           {stage === 'pending_verification' && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
-              <Clock className="h-4 w-4 text-blue-500 animate-pulse" />
+            <div className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 dark:border-blue-800 dark:bg-blue-950/20">
+              <Clock className="h-4 w-4 shrink-0 text-blue-500 animate-pulse" />
               <p className="text-xs text-blue-700 dark:text-blue-300">{mt("stripeIsReviewingYourSubmittedInformationThisUsuallyTakesAFe")}</p>
             </div>
           )}
 
           {stage === 'past_due' && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800">
-              <ShieldAlert className="h-4 w-4 text-red-500" />
+            <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 dark:border-red-800 dark:bg-red-950/20">
+              <ShieldAlert className="h-4 w-4 shrink-0 text-red-500" />
               <p className="text-xs text-red-700 dark:text-red-300">{mt("someRequiredInformationIsOverduePleaseUpdateItToKeepYourAcco")}</p>
             </div>
           )}
 
-          <Button 
-            onClick={handleAccessDashboard}
-            variant={stage === 'past_due' || stage === 'rejected' ? 'destructive' : 'default'}
-            className="w-full"
-            disabled={getDashboardLinkMutation.isPending}
-          >
-            {getDashboardLinkMutation.isPending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {config.buttonLoadingLabel}
-              </>
-            ) : (
-              <>
-                <ButtonIcon className="mr-2 h-4 w-4" />
-                {config.buttonLabel}
-              </>
-            )}
-          </Button>
-          
-          <p className="text-xs text-slate-400 text-center">{config.helpText}</p>
+          <div>
+            <Button
+              size="sm"
+              className={CARD_ACTION}
+              onClick={handleAccessDashboard}
+              variant={stage === 'past_due' || stage === 'rejected' ? 'destructive' : 'default'}
+              disabled={getDashboardLinkMutation.isPending}
+            >
+              {getDashboardLinkMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  {config.buttonLoadingLabel}
+                </>
+              ) : (
+                <>
+                  <ButtonIcon className="mr-1.5 h-4 w-4" />
+                  {config.buttonLabel}
+                </>
+              )}
+            </Button>
 
-          <Button 
+            <p className="mt-2 text-xs text-muted-foreground">{config.helpText}</p>
+          </div>
+
+          <Button
             variant="ghost"
+            size="sm"
+            className={CARD_ACTION_QUIET}
             onClick={() => checkStatusMutation.mutate()}
             disabled={checkStatusMutation.isPending}
-            className="w-full text-slate-500"
-            size="sm"
           >
             {checkStatusMutation.isPending ? (
               <>
-                <Loader2 className="mr-2 h-3 w-3 animate-spin" />{mt("checking")}</>
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />{mt("checking")}</>
             ) : (
               mt("alreadyCompletedRefreshStatus")
             )}

@@ -10,7 +10,7 @@ import { DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { useLocation } from "wouter";
 import 'react-calendar/dist/Calendar.css';
 import { useManagerDashboard } from "../hooks/use-manager-dashboard";
-import { useOnboardingStatus } from "@/hooks/use-onboarding-status";
+import { useOnboardingStatus, invalidateOnboardingStatus } from "@/hooks/use-onboarding-status";
 import { toast } from "@/hooks/use-toast";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
@@ -320,6 +320,15 @@ export default function ManagerBookingDashboard() {
       setPendingCheckinCheckoutView(view);
       return;
     }
+    // A manager completes onboarding steps from the pages the sidebar links to — upload the
+    // license, add a kitchen, set availability, connect Stripe — and none of that remounts
+    // `useOnboardingStatus`, so `refetchOnMount` alone would never notice. Re-reading here
+    // covers every one of those surfaces from a single place, rather than relying on each
+    // step's own save handler to remember (which is where the coverage was patchy: the
+    // profile and location keys were invalidated, the kitchens / availability /
+    // requirements keys were not).
+    invalidateOnboardingStatus(queryClient);
+
     setActiveView(nextView);
     const url = new URL(window.location.href);
     if (legacySection) {

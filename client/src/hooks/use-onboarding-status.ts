@@ -1,6 +1,6 @@
 import { logger } from "@/lib/logger";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { hasVerifiedEmail } from "@/lib/auth-verification";
 import { auth } from "@/lib/firebase"; // Keep direct auth import for token if needed, or rely on useFirebaseAuth
@@ -55,11 +55,65 @@ export function buildManagerSetupSteps(status: {
     ];
 }
 
+/**
+ * How the onboarding state stays current.
+ *
+ * The global QueryClient default is `staleTime: Infinity`, so every query below used to
+ * be fetched exactly ONCE per session and never again. But a manager completes onboarding
+ * steps FROM the dashboard (upload the license, add a kitchen, connect Stripe), so the
+ * setup banner has to be able to see those land.
+ *
+ *   refetchOnMount: "always"  — a dashboard remount re-reads the state instead of trusting
+ *                               a cache that may predate the manager's last action.
+ *   refetchOnWindowFocus      — covers returning from a step that runs in another tab
+ *                               (Stripe onboarding is exactly that).
+ *
+ * Both are safe to add ONLY because `isLoading` below no longer keys off `isFetching`: a
+ * background revalidation now updates the data without ever flashing the loading state.
+ * Adding these while `isFetching` still drove the banner would have made the flicker worse.
+ */
+const ONBOARDING_QUERY_OPTIONS = {
+    staleTime: 1000 * 30,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+} as const;
+
+/**
+ * Every query key this hook reads, so a caller can refresh the whole picture at once.
+ * Prefixes on purpose — `invalidateQueries` matches by key prefix, so this catches the
+ * uid/locationId-suffixed variants without repeating them here.
+ */
+export const ONBOARDING_QUERY_KEYS = [
+    "/api/user/profile",
+    "/api/manager/stripe-connect/status",
+    "locationDetails",
+    "managerKitchens",
+    "locationAvailabilityStatus",
+    "locationRequirements",
+] as const;
+
+/**
+ * Re-read the onboarding state.
+ *
+ * A manager completes these steps from the PAGES the sidebar links to — upload the
+ * license, add a kitchen, set availability, configure requirements, connect Stripe — and
+ * none of that remounts this hook, so `refetchOnMount` alone would never see it. Calling
+ * this on navigation covers every one of those surfaces from a single place, instead of
+ * remembering to invalidate inside each step's own save handler (which is where the
+ * coverage was patchy: `/api/user/profile` and `locationDetails` were wired up, the
+ * kitchens / availability / requirements keys were not).
+ */
+export function invalidateOnboardingStatus(queryClient: QueryClient): void {
+    for (const queryKey of ONBOARDING_QUERY_KEYS) {
+        void queryClient.invalidateQueries({ queryKey: [queryKey] });
+    }
+}
+
 export function useOnboardingStatus(locationId?: number): OnboardingStatus {
     const { user: firebaseUser } = useFirebaseAuth();
 
     // 1. Fetch User Profile (Global) - ALWAYS fetch to check manager_onboarding_completed
-    const { data: userData, isFetching: isFetchingUser } = useQuery({
+    const { data: userData, isLoading: isLoadingUser } = useQuery({
         queryKey: ["/api/user/profile", firebaseUser?.uid],
         queryFn: async () => {
             if (!firebaseUser) return null;
@@ -72,6 +126,7 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
             return res.json();
         },
         enabled: !!firebaseUser,
+        ...ONBOARDING_QUERY_OPTIONS,
     });
 
     // [ENTERPRISE OPTIMIZATION] Check if onboarding is already marked complete in the database
@@ -90,7 +145,7 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
 
     // 2. Fetch Location Details (License) - ALWAYS fetch for license status banner
     // This is a lightweight call needed even after onboarding is complete
-    const { data: locationData, isFetching: isFetchingLocation } = useQuery({
+    const { data: locationData, isLoading: isLoadingLocation } = useQuery({
         queryKey: ['locationDetails', locationId],
         queryFn: async () => {
             if (!locationId) return null;
@@ -103,6 +158,7 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
             return locations.find((l: any) => l.id === locationId);
         },
         enabled: !!locationId,
+        ...ONBOARDING_QUERY_OPTIONS,
     });
 
     // [ENTERPRISE OPTIMIZATION] Skip Stripe, Kitchens, Availability, Requirements queries
@@ -111,7 +167,7 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
 
     // Fetch Stripe Connect status from dedicated endpoint (queries Stripe API for real status)
     // SKIP when onboarding is complete - Stripe status was already verified during onboarding
-    const { data: stripeConnectStatus, isFetching: isFetchingStripe } = useQuery({
+    const { data: stripeConnectStatus, isLoading: isLoadingStripe } = useQuery({
         queryKey: ['/api/manager/stripe-connect/status', firebaseUser?.uid],
         queryFn: async () => {
             if (!firebaseUser) return null;
@@ -124,12 +180,14 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
             return res.json();
         },
         enabled: !!firebaseUser && !shouldSkipDetailedQueries,
-        staleTime: 1000 * 30, // Cache for 30 seconds
+        // This is the SAME endpoint the Payments tab reads, so it shares one policy —
+        // the 30s staleTime that used to sit here now lives in ONBOARDING_QUERY_OPTIONS.
+        ...ONBOARDING_QUERY_OPTIONS,
     });
 
     // 3. Fetch Kitchens (Pricing & Count)
     // SKIP when onboarding is complete
-    const { data: kitchens, isFetching: isFetchingKitchens } = useQuery({
+    const { data: kitchens, isLoading: isLoadingKitchens } = useQuery({
         queryKey: ['managerKitchens', locationId],
         queryFn: async () => {
             if (!locationId) return [];
@@ -141,11 +199,12 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
             return res.json();
         },
         enabled: !!locationId,
+        ...ONBOARDING_QUERY_OPTIONS,
     });
 
     // 4. Fetch Availability (Check if any kitchen has days set)
     // SKIP when onboarding is complete - this is the most expensive query (multiple requests)
-    const { data: availabilityData, isFetching: isFetchingAvailability } = useQuery({
+    const { data: availabilityData, isLoading: isLoadingAvailability } = useQuery({
         queryKey: ['locationAvailabilityStatus', locationId, kitchens?.map((k: any) => k.id)],
         queryFn: async () => {
             if (!kitchens?.length) return false;
@@ -168,13 +227,14 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
             return false;
         },
         enabled: !!locationId && !!kitchens?.length && !shouldSkipDetailedQueries,
+        ...ONBOARDING_QUERY_OPTIONS,
     });
 
     const hasAvailability = shouldSkipDetailedQueries ? true : !!availabilityData;
 
     // 5. Fetch Requirements Status
     // SKIP when onboarding is complete
-    const { data: requirementsData, isFetching: isFetchingRequirements } = useQuery({
+    const { data: requirementsData, isLoading: isLoadingRequirements } = useQuery({
         queryKey: ['locationRequirements', locationId],
         queryFn: async () => {
             if (!locationId) return null;
@@ -187,6 +247,7 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
             return res.json();
         },
         enabled: !!locationId && !shouldSkipDetailedQueries,
+        ...ONBOARDING_QUERY_OPTIONS,
     });
 
     const hasRequirements = shouldSkipDetailedQueries ? true : !!(requirementsData && Number(requirementsData.id) > 0);
@@ -275,13 +336,20 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
     // This banner still shows even after onboarding is marked complete in DB
     const showLicenseReviewBanner = (isOnboardingMarkedComplete || isOnboardingComplete) && hasPendingLicense;
 
-    // Simplified loading state when onboarding is complete
-    const isLoading = shouldSkipDetailedQueries 
-        ? (isFetchingUser || (!!locationId && (isFetchingLocation || isFetchingKitchens)))
-        : (isFetchingUser || isFetchingStripe || (!!locationId && (
-            isFetchingLocation ||
-            isFetchingKitchens ||
-            (!!kitchens?.length && (isFetchingAvailability || isFetchingRequirements))
+    // "Loading" means WE DO NOT HAVE THE DATA YET — not "a request is in flight".
+    //
+    // This read `isFetching`, which is true during ANY background refetch. So every time
+    // one of these queries revalidated — an invalidation from another surface, a window
+    // refocus, a stale window expiring — `isLoading` flipped true for a moment and the
+    // dashboard's onboarding banner unmounted and came straight back. That is the flicker.
+    // `isLoading` is `isPending && isFetching`, i.e. the FIRST load only, which is what a
+    // loading state is supposed to mean.
+    const isLoading = shouldSkipDetailedQueries
+        ? (isLoadingUser || (!!locationId && (isLoadingLocation || isLoadingKitchens)))
+        : (isLoadingUser || isLoadingStripe || (!!locationId && (
+            isLoadingLocation ||
+            isLoadingKitchens ||
+            (!!kitchens?.length && (isLoadingAvailability || isLoadingRequirements))
         )));
 
     // Debug logging for final values

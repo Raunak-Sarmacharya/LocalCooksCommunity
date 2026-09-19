@@ -62,8 +62,30 @@ export default function DashboardLayout({
                 managerImprovementSteps={managerImprovementSteps}
                 onImproveManagerListing={onImproveManagerListing}
             />
-            <SidebarInset className="min-w-0 overflow-x-hidden">
-                <header className="flex h-16 shrink-0 items-center justify-between gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 border-b px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 min-w-0">
+            {/*
+              The app frame is viewport-height, and `<main>` below is the scroll container.
+
+              It used to be `min-w-0 overflow-x-hidden` with no height. Two consequences:
+              the inset grew with its content so the WINDOW scrolled instead of `<main>`;
+              and `overflow-x-hidden` forces the computed `overflow-y` to `auto`, which
+              makes this element a scroll container — so the header's `sticky top-0` was
+              resolving against a box that never scrolls. The header therefore scrolled
+              away with the page.
+
+              `h-svh` matches the fixed `h-svh` sidebar this sits next to, and makes the
+              header a plain `shrink-0` flex child that cannot scroll at all.
+            */}
+            <SidebarInset className="min-w-0 h-svh overflow-hidden">
+                {/*
+                  Constant height. It used to shrink to `h-12` when the sidebar collapsed
+                  (`group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12`) with a
+                  `transition-[width,height]` animating it. Collapsing the nav is a change
+                  to the SIDE of the screen; it should not resize the top bar or reflow the
+                  controls in it — the search field and the Support / notifications buttons
+                  all got vertically squeezed for no reason. `sticky` is kept as a fallback
+                  in case the shell's height constraint above is ever relaxed.
+                */}
+                <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 min-w-0">
                     <div className="flex items-center gap-2 min-w-0">
                         <SidebarTrigger className="-ml-1 shrink-0" />
                         <Separator orientation="vertical" className="mr-2 h-4 shrink-0" />

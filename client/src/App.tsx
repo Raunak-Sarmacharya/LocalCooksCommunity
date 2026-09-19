@@ -8,7 +8,7 @@ import { AuthTransitionProvider } from "@/components/auth/AuthTransition";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { HelmetProvider } from "react-helmet-async";
 import { lazy, useEffect } from "react";
-import { Route, Switch, useLocation } from "wouter";
+import { Redirect, Route, Switch, useLocation } from "wouter";
 import { auth } from "./lib/firebase";
 import { queryClient } from "./lib/queryClient";
 import { useSubdomain } from "@/hooks/use-subdomain";
@@ -60,7 +60,6 @@ const UnsubscribePage = lazy(() => import("@/pages/UnsubscribePage"));
 
 // Kitchen Booking System components
 const ManagerChangePassword = lazy(() => import("@/pages/ManagerChangePassword"));
-const ManagerProfile = lazy(() => import("@/pages/ManagerProfile"));
 const KitchenAvailabilityManagement = lazy(() => import("@/pages/KitchenAvailabilityManagement"));
 const ManagerBookingsPanel = lazy(() => import("@/pages/ManagerBookingsPanel"));
 const KitchenBookingCalendar = lazy(() => import("@/pages/KitchenBookingCalendar"));
@@ -297,10 +296,15 @@ function Router() {
         <Route path="/manager" component={ManagerLanding} />
         <Route path="/manager/login" component={ManagerLogin} />
         <Route path="/manager/change-password" component={ManagerChangePassword} />
+        {/* `/manager/profile` used to render a second, standalone implementation of
+            the profile screen that nothing in the app linked to, so it drifted from
+            the real one (no avatar, no Location/Payments/Notifications tabs, a dead
+            Edit button). The manager's profile is `activeView === 'profile'` inside
+            the dashboard; this keeps old bookmarks and emails landing somewhere real. */}
         <Route path="/manager/profile">
           {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
             <ManagerProtectedRoute>
-              <ManagerProfile />
+              <Redirect to="/manager/dashboard?view=profile" replace />
             </ManagerProtectedRoute>
           ) : null}
         </Route>

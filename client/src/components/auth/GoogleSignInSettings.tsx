@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { GoogleAuthProvider, linkWithPopup, onAuthStateChanged } from "firebase/auth";
-import { AlertCircle, Check, Loader2, Link2 } from "lucide-react";
+import { AlertCircle, Loader2 } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { logger } from "@/lib/logger";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import GoogleIcon from "./GoogleIcon";
 import {
   ContactStatusPill,
   ContactVerificationRow,
+  PRIMARY_ROW_ACTION,
   type ContactTone,
 } from "@/components/profile/ContactVerificationRow";
 
@@ -165,33 +166,36 @@ export default function GoogleSignInSettings() {
       tone={tone}
       badges={<ContactStatusPill tone={tone}>{statusLabel}</ContactStatusPill>}
       value={linked ? (address ?? "Google account") : undefined}
-      description={
+      help={
         linked
           ? "Sign in with Google or with your current method — both reach this account."
           : "Connect Google to sign in with one tap. Your current sign-in method keeps working."
       }
       actions={
         linked ? null : (
-          <Button type="button" size="sm" onClick={handleConnect} disabled={busy}>
-            {busy ? (
-              <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />
-            ) : (
-              <Link2 className="mr-1.5 size-3.5" aria-hidden="true" />
-            )}
+          // The only action on the row, so it is the primary — and text-only like every
+          // other row action, since the G mark is already this row's own icon.
+          <Button
+            type="button"
+            size="sm"
+            className={PRIMARY_ROW_ACTION}
+            onClick={handleConnect}
+            disabled={busy}
+          >
+            {busy && <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />}
             {busy ? "Connecting…" : "Connect Google"}
           </Button>
         )
       }
     >
+      {/* Only the failure needs a line of its own. "Google is connected to this
+          account." used to sit here too, under a pill that already said
+          "Connected" — a third line that made the row the tallest on the page
+          to repeat what the row had already told you. */}
       {error ? (
         <p role="alert" className="flex items-start gap-1.5 text-sm text-destructive">
           <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
           {error}
-        </p>
-      ) : linked ? (
-        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Check className="size-3.5 shrink-0" aria-hidden="true" />
-          Google is connected to this account.
         </p>
       ) : null}
     </ContactVerificationRow>

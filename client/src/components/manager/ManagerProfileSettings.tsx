@@ -1,6 +1,8 @@
 import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
-import { useState, useEffect, useRef, useCallback } from "react";
+import i18n from "@/i18n";
+import { useState, useEffect, useCallback } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
@@ -8,10 +10,7 @@ import { updateProfile } from "firebase/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Loader2, Shield, Camera, Building2, Edit3 } from "@/components/ui/manager-icons";
+import { Loader2, KeyRound } from "@/components/ui/manager-icons";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
 import ChangePassword from "@/components/auth/ChangePassword";
@@ -20,15 +19,21 @@ import GoogleSignInSettings from "@/components/auth/GoogleSignInSettings";
 import EmailVerificationCard from "@/components/auth/EmailVerificationCard";
 import { useEmailSectionFocus } from "@/hooks/use-email-section-focus";
 import { isEmailSectionFocused } from "@/lib/email-verification-nav";
-import { ContactInfoCard } from "@/components/profile/ContactVerificationRow";
+import {
+    ContactInfoCard,
+    ContactStatusPill,
+    ContactVerificationRow,
+    PRIMARY_ROW_ACTION,
+    QUIET_ROW_ACTION,
+    type ContactTone,
+} from "@/components/profile/ContactVerificationRow";
 import { PHONE_AUTH_ENABLED } from "@/lib/feature-flags";
-import { useFileUpload } from "@/hooks/useFileUpload";
-import { cn } from "@/lib/utils";
+import { SettingsRow } from "@/components/manager/settings/SettingsRow";
+import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import StripeConnectSetup from "@/components/manager/StripeConnectSetup";
 import NotificationsSettings from "@/components/manager/settings/NotificationsSettings";
 import LocationSettings from "@/components/manager/settings/LocationSettings";
-import { InfoChip } from "@/components/chef/info-chip";
 
 interface ManagerProfileSettingsProps {
     location?: {
@@ -48,54 +53,82 @@ interface ManagerProfileSettingsProps {
     onSaveNotificationSettings?: (updates: any) => Promise<unknown>;
 }
 
+/**
+ * Every tab value this page understands.
+ *
+ * `account` is NOT free to rename: `emailVerificationHref()` builds
+ * `/manager/dashboard?view=profile&focus=email&tab=account` and
+ * `email-verification-nav.test.ts` asserts that string. It is the tab that holds
+ * the email card, so the value stays even though the label is now "Sign-in & security".
+ */
+const KNOWN_TABS = ["profile", "account", "location", "payments", "notifications", "teams"] as const;
+
+const CARD = "overflow-hidden rounded-[1.35rem] border bg-card";
+
+/**
+ * Row-action hierarchy lives in `ContactVerificationRow` as `PRIMARY_ROW_ACTION` /
+ * `QUIET_ROW_ACTION` / `DANGER_ROW_ACTION`, so every row on the page ranks its actions
+ * the same way instead of each file guessing.
+ */
+
+function CardHead({ title, description }: { title: string; description: string }) {
+    return (
+        <div className="border-b px-5 py-4">
+            <h3 className="font-semibold text-foreground">{title}</h3>
+            <p className="text-sm text-muted-foreground">{description}</p>
+        </div>
+    );
+}
+
+/**
+ * The Location and Notifications tabs both need a location to edit. When the manager
+ * has none — they have not finished onboarding — the old copy was a dead end that
+ * told them to "Select a Location" with nothing to select. This offers the one action
+ * that actually resolves the state.
+ */
+function NoKitchenYet() {
+    const [, setLocation] = useLocation();
+    return (
+        <div className="rounded-[1.35rem] border border-dashed bg-card p-10 text-center">
+            <h3 className="font-semibold text-foreground">{mt("noKitchenTitle")}</h3>
+            <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">{mt("noKitchenDesc")}</p>
+            <Button className="mt-5" onClick={() => setLocation("/manager/setup")}>
+                {mt("addYourKitchen")}
+            </Button>
+        </div>
+    );
+}
+
 export default function ManagerProfileSettings({
     location,
     onSaveLocationSettings,
     notificationLocation,
     onSaveNotificationSettings,
 }: ManagerProfileSettingsProps = {}) {
-  
+
     const { toast } = useToast();
     const queryClient = useQueryClient();
     const { user: firebaseUser, refreshUserData } = useFirebaseAuth();
-    const fileInputRef = useRef<HTMLInputElement>(null);
     const emailSectionHighlighted = useEmailSectionFocus();
 
-    const [username, setUsername] = useState("");
-    const [email, setEmail] = useState("");
     const [phone, setPhone] = useState("");
     const [displayName, setDisplayName] = useState("");
-    const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-    const [isEditingProfile, setIsEditingProfile] = useState(false);
+    const [savedDisplayName, setSavedDisplayName] = useState("");
+    // The password form is revealed on request rather than sitting open — it is an
+    // optional SECOND way in, so it should read as an offer, not as an unfinished form.
+    const [isEditingPassword, setIsEditingPassword] = useState(false);
     const [activeTab, setActiveTab] = useState(() => {
         // A deep link to the email section wins over any remembered tab, otherwise
         // "verify your email" could land the manager on Payments with no card in sight.
         if (isEmailSectionFocused()) return "account";
         const params = new URLSearchParams(window.location.search);
         const legacyView = params.get("view");
-        const tab = legacyView === "payments"
-            ? "payments"
-            : legacyView === "notification-settings"
-                ? "notifications"
-                : params.get("tab");
-        return tab === "password" || tab === "payments" || tab === "notifications" || tab === "location" ? tab : "account";
-    });
-
-    // Avatar upload hook
-    const { uploadFile, isUploading } = useFileUpload({
-        maxSize: 2 * 1024 * 1024,
-        allowedTypes: ['image/jpeg', 'image/png', 'image/webp'],
-        onSuccess: (response) => {
-            setAvatarUrl(response.url);
-            // Save avatar URL to profile
-            updateProfileMutation.mutate({ avatarUrl: response.url });
-        },
-        onError: (error) => {
-            toast({ title: mt("uploadFailed2"),
-                description: error,
-                variant: 'destructive',
-            });
-        },
+        if (legacyView === "payments") return "payments";
+        if (legacyView === "notification-settings") return "notifications";
+        const tab = params.get("tab");
+        // "password" was a tab of its own before security was grouped under one roof.
+        if (tab === "password") return "account";
+        return tab && (KNOWN_TABS as readonly string[]).includes(tab) ? tab : "profile";
     });
 
     // Fetch manager profile
@@ -149,53 +182,51 @@ export default function ManagerProfileSettings({
 
                 if (!response.ok) {
                     if (response.status === 404) {
-                        return { phone: null, displayName: null, profileImageUrl: null, stripeConnectStatus: 'not_started', locations: [] };
+                        return { phone: null, displayName: null, stripeConnectStatus: 'not_started', locations: [] };
                     }
                     throw new Error(`Failed to fetch manager profile: ${response.status}`);
                 }
 
                 return response.json();
             } catch (error) {
-                return { phone: null, displayName: null, profileImageUrl: null, stripeConnectStatus: 'not_started', locations: [] };
+                return { phone: null, displayName: null, stripeConnectStatus: 'not_started', locations: [] };
             }
         },
         enabled: !!user && user.role === 'manager',
     });
 
-    // Initialize form fields
-    // Priority for displayName: Firebase Auth > managerProfile > user record
+    // Initialize form fields.
+    //
+    // displayName priority: Firebase Auth > managerProfile > user record.
+    // `savedDisplayName` is the baseline the Save button compares against, so it is
+    // set from the same resolved value rather than re-derived later.
     useEffect(() => {
-        if (user) {
-            setUsername(user.username || "");
-            // `username` holds the registration email; the profile API has no
-            // dedicated `email` column, so without this fallback the field renders
-            // blank for every phone-first account.
-            setEmail(user.email || user.username || firebaseUser?.email || "");
-        }
-        // Set displayName with priority: Firebase Auth displayName first
-        const firebaseDisplayName = auth.currentUser?.displayName;
-        if (firebaseDisplayName) {
-            setDisplayName(firebaseDisplayName);
-        } else if (managerProfile?.displayName) {
-            setDisplayName(managerProfile.displayName);
-        } else if (user?.displayName || user?.fullName) {
-            setDisplayName(user.displayName || user.fullName || "");
-        }
-        if (managerProfile) {
-            setPhone(managerProfile.phone || "");
-            if (managerProfile.profileImageUrl) {
-                setAvatarUrl(managerProfile.profileImageUrl);
-            }
+        const resolved =
+            auth.currentUser?.displayName ||
+            managerProfile?.displayName ||
+            user?.displayName ||
+            user?.fullName ||
+            "";
+        setDisplayName(resolved);
+        setSavedDisplayName(resolved);
+
+        // `users.phone_number` is the source of truth for a number that is on the
+        // ACCOUNT, and `managerProfileData.phone` is only written by the verified save
+        // flow — so a number that was stored but never linked to Firebase lives ONLY
+        // on the user row. Falling back to it is what keeps the phone row from
+        // reporting "No phone number added" for a number the manager can see in their
+        // own account. (The retired `/manager/profile` page had this fallback; this
+        // surface — the one managers actually use — did not.)
+        if (managerProfile || user) {
+            setPhone(managerProfile?.phone || user?.phoneNumber || "");
         }
     }, [user, managerProfile, firebaseUser]);
 
     // Update profile mutation
     const updateProfileMutation = useMutation({
         mutationFn: async (profileData: {
-            username?: string;
             displayName?: string;
             phone?: string;
-            avatarUrl?: string;
         }) => {
             const currentFirebaseUser = auth.currentUser;
             if (!currentFirebaseUser) throw new Error(mt("notAuthenticated"));
@@ -230,7 +261,6 @@ export default function ManagerProfileSettings({
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["/api/manager/profile"] });
             queryClient.invalidateQueries({ queryKey: ["/api/user/profile", firebaseUser?.uid] });
-            setIsEditingProfile(false);
             void refreshUserData();
             toast({ title: mt("profileUpdated"),
                 description: mt("yourChangesHaveBeenSavedSuccessfully"),
@@ -246,43 +276,41 @@ export default function ManagerProfileSettings({
 
     const saveProfileAction = useStatusButton(
         useCallback(async () => {
-            await updateProfileMutation.mutateAsync({
-                username: username !== user?.username ? username : undefined,
-                displayName: displayName || undefined,
-            });
-        }, [updateProfileMutation, username, user?.username, displayName]),
+            await updateProfileMutation.mutateAsync({ displayName: displayName.trim() });
+        }, [updateProfileMutation, displayName]),
     );
-
-
-    const handleAvatarClick = () => {
-        fileInputRef.current?.click();
-    };
-
-    const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            await uploadFile(file);
-        }
-    };
 
     const handleTabChange = (tab: string) => {
         setActiveTab(tab);
         const url = new URL(window.location.href);
-        if (tab === "account") url.searchParams.delete("tab");
+        if (tab === "profile") url.searchParams.delete("tab");
         else url.searchParams.set("tab", tab);
         window.history.replaceState({}, "", url);
     };
 
-    // Get initials for avatar fallback
-    const getInitials = () => {
-        if (displayName) {
-            return displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-        }
-        if (email) {
-            return email[0].toUpperCase();
-        }
-        return 'U';
+    const isProfileDirty = displayName.trim() !== savedDisplayName.trim();
+
+    // `passwordSetByUser` is the database record, not the form's own guess at which
+    // mode to show — so the pill cannot disagree with whether a password really exists.
+    const passwordSet = user?.passwordSetByUser === true;
+    const passwordTone: ContactTone = passwordSet ? "verified" : "empty";
+
+    const closePasswordForm = () => {
+        setIsEditingPassword(false);
+        // Setting a password does not invalidate this page's queries, so re-read the
+        // record when the form closes or the pill would still say "Not set".
+        queryClient.invalidateQueries({ queryKey: ["/api/user/profile", firebaseUser?.uid] });
     };
+
+    const memberSince = (() => {
+        const createdAt = user?.createdAt;
+        if (!createdAt) return null;
+        const date = new Date(createdAt);
+        if (Number.isNaN(date.getTime())) return null;
+        return mt("memberSince", {
+            date: new Intl.DateTimeFormat(i18n.language, { month: "long", year: "numeric" }).format(date),
+        });
+    })();
 
     if (isLoadingProfile || isLoadingDetails) {
         return (
@@ -296,82 +324,19 @@ export default function ManagerProfileSettings({
     }
 
     return (
-        <div className="relative mx-auto max-w-4xl space-y-8 pb-10">
+        <div className="relative mx-auto max-w-4xl space-y-6 pb-10">
             {/* Page Header */}
-            <div className="flex items-start sm:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold tracking-tight text-slate-900">{mt("cmdProfileSettings")}</h1>
-                    <p className="text-muted-foreground mt-1">{mt("manageYourAccountDetailsAndSecurityPreferences")}</p>
-                </div>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsEditingProfile(!isEditingProfile)}
-                    className="shrink-0 bg-white"
-                >
-                    <Edit3 className="h-4 w-4 mr-2" />
-                    {isEditingProfile ? mt("cancel") : mt("editProfile")}
-                </Button>
-            </div>
-
-            {/* Profile Hero Card */}
-            <div className="relative overflow-hidden rounded-[1.35rem] border bg-card">
-                <div className="absolute inset-x-0 top-0 h-20 bg-[linear-gradient(180deg,hsl(173_63%_34%_/_0.1),transparent)]" />
-
-                <div className="relative flex flex-col items-center gap-3 p-4 sm:flex-row">
-                    {/* Avatar */}
-                    <div className="relative group shrink-0">
-                        <Avatar className="h-[4.5rem] w-[4.5rem] border-2 border-background shadow-sm ring-2 ring-primary/20">
-                            <AvatarImage src={avatarUrl || undefined} alt={displayName} />
-                            <AvatarFallback className="bg-primary/10 text-primary text-2xl font-semibold">
-                                {getInitials()}
-                            </AvatarFallback>
-                        </Avatar>
-                        <button
-                            onClick={handleAvatarClick}
-                            disabled={isUploading}
-                            className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 text-white opacity-0 transition-opacity group-hover:opacity-100 cursor-pointer"
-                        >
-                            {isUploading ? (
-                                <Loader2 className="h-6 w-6 animate-spin" />
-                            ) : (
-                                <Camera className="h-6 w-6" />
-                            )}
-                        </button>
-                        <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept="image/jpeg,image/png,image/webp"
-                            onChange={handleAvatarChange}
-                            className="hidden"
-                        />
-                        {/* Online indicator */}
-                        <div className="absolute bottom-0 right-0 h-4 w-4 rounded-full bg-emerald-500 border-2 border-background" />
-                    </div>
-
-                    {/* Profile Info */}
-                    <div className="min-w-0 flex-1 text-center sm:text-left">
-                        <p className="text-sm font-medium leading-none text-primary">Local Cooks</p>
-                        <h2 className="mt-1 truncate text-xl font-semibold tracking-tight text-foreground">{displayName || mt("yourName")}</h2>
-                        <div className="mt-1.5 flex flex-wrap items-center justify-center gap-2 text-sm sm:justify-start">
-                            <span className="truncate text-muted-foreground">{email}</span>
-                            <InfoChip tone="neutral" icon={<Building2 />}>
-                                {mt("kitchenManager")}
-                            </InfoChip>
-                            <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
-                                <Shield className="h-3 w-3 mr-1" />{mt("verified")}</Badge>
-                        </div>
-                    </div>
-                </div>
+            <div>
+                <h1 className="text-2xl font-bold tracking-tight text-foreground">{mt("cmdProfileSettings")}</h1>
+                <p className="text-muted-foreground mt-1">{mt("manageYourAccountDetailsAndSecurityPreferences")}</p>
             </div>
 
             <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
                 <TabsList className="h-auto w-full justify-start gap-0 overflow-x-auto rounded-none border-b bg-transparent p-0">
                     {[
-                        ["account", mt("personalInformation")],
+                        ["profile", mt("shellProfile")],
+                        ["account", mt("tabSignInSecurity")],
                         ["location", mt("navLocation")],
-                        ["password", mt("security")],
-
                         ["payments", mt("paymentsPayouts")],
                         ["notifications", mt("notificationSettings")],
                         ["teams", mt("navTeams")],
@@ -386,79 +351,57 @@ export default function ManagerProfileSettings({
                     ))}
                 </TabsList>
 
-                <TabsContent value="account" className="mt-6 focus-visible:ring-0">
-            <div className="space-y-6">
-                <div className="space-y-6">
-                    {/* Personal Details Card */}
-                    <div className="overflow-hidden rounded-[1.35rem] border bg-card">
-                        <div className="border-b px-5 py-4">
-                            <div className="flex items-center gap-3">
-                                <div>
-                                    <h3 className="font-semibold text-foreground">{mt("personalInformation")}</h3>
-                                    <p className="text-sm text-muted-foreground">{mt("yourPublicProfileDetails")}</p>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2">
-                            {/* Username */}
-                            <div className="space-y-2">
-                                <Label htmlFor="username" className="text-sm font-medium text-slate-700">{mt("username")}</Label>
-                                <Input
-                                    id="username"
-                                    value={username}
-                                    onChange={(e) => setUsername(e.target.value)}
-                                    placeholder={mt("johndoe")}
-                                    disabled={!isEditingProfile}
-                                    className={cn(
-                                        "h-11 transition-colors",
-                                        !isEditingProfile && "bg-slate-50 border-slate-200"
-                                    )}
-                                />
-                            </div>
+                {/* ── Profile: who you are, and how the app speaks to you ──────── */}
+                <TabsContent value="profile" className="mt-6 focus-visible:ring-0">
+                    <div className={CARD}>
+                        <CardHead title={mt("shellProfile")} description={mt("profileSectionDesc")} />
 
-                            {/* Display Name */}
-                            <div className="space-y-2">
-                                <Label htmlFor="displayName" className="text-sm font-medium text-slate-700">{mt("displayName")}</Label>
+                        {/* `SettingsRow` owns the label/hint/control layout, and the card's
+                            own `divide-y` separates the rows — so this card needs no
+                            per-field headings and no body padding. */}
+                        <div className="divide-y divide-border">
+                            <SettingsRow
+                                id="displayName"
+                                label={mt("displayName")}
+                                hint={mt("yourNameAsItAppearsToOthers")}
+                                layout="stacked"
+                            >
                                 <Input
                                     id="displayName"
                                     value={displayName}
                                     onChange={(e) => setDisplayName(e.target.value)}
                                     placeholder={mt("johnDoe")}
-                                    disabled={!isEditingProfile}
-                                    className={cn(
-                                        "h-11 transition-colors",
-                                        !isEditingProfile && "bg-slate-50 border-slate-200"
-                                    )}
+                                    className="h-11 max-w-md"
                                 />
-                            </div>
+                            </SettingsRow>
 
-                            {/* Save Button */}
-                            {isEditingProfile && (
-                                <div className="flex justify-end border-t pt-4 sm:col-span-2">
-                                    <StatusButton
-                                        status={saveProfileAction.status}
-                                        onClick={saveProfileAction.execute}
-                                        labels={{ idle: mt("saveChanges"), loading: mt("saving"), success: mt("saved") }}
-                                    />
-                                </div>
+                            <SettingsRow label={mt("language")} hint={mt("languageHint")}>
+                                <LanguageSwitcher size="sm" />
+                            </SettingsRow>
+                        </div>
+
+                        {/* One save control per card, and it only appears once there is
+                            something to save — the old page mixed a global Edit toggle
+                            with always-live sections, which is what made it read as
+                            having edit buttons everywhere. */}
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-t px-5 py-4">
+                            <p className="text-xs text-muted-foreground">{memberSince}</p>
+                            {(isProfileDirty || saveProfileAction.status !== "idle") && (
+                                <StatusButton
+                                    status={saveProfileAction.status}
+                                    onClick={saveProfileAction.execute}
+                                    disabled={!isProfileDirty || !displayName.trim()}
+                                    labels={{ idle: mt("saveChanges"), loading: mt("saving"), success: mt("saved") }}
+                                />
                             )}
                         </div>
                     </div>
+                </TabsContent>
 
-                    {/* Contact Details Card — email and phone share one matched list */}
-                    <div className="overflow-hidden rounded-[1.35rem] border bg-card">
-                        <div className="border-b px-5 py-4">
-                            <h3 className="font-semibold text-foreground">
-                                {mt("contactInformation", { defaultValue: "Contact information" })}
-                            </h3>
-                            <p className="text-sm text-muted-foreground">
-                                {mt("contactInformationDesc", {
-                                    defaultValue:
-                                        "Where we send booking confirmations, payout notices and account security alerts.",
-                                })}
-                            </p>
-                        </div>
+                {/* ── Sign-in & security: every way into the account ───────────── */}
+                <TabsContent value="account" className="mt-6 focus-visible:ring-0">
+                    <div className={CARD}>
+                        <CardHead title={mt("signInMethods")} description={mt("signInSecurityDesc")} />
                         <ContactInfoCard className="rounded-none border-0">
                             <EmailVerificationCard
                                 embedded
@@ -486,48 +429,86 @@ export default function ManagerProfileSettings({
                                     }}
                                 />
                             )}
-                            {/* Sits with the other sign-in methods, next to the phone row.
-                                Whether Google could be used before this depended on the user's
+                            {/* Whether Google could be used before this depended on the user's
                                 email DOMAIN — Firebase links accounts itself only when both
                                 sides are "trusted", and Google counts as trusted only for
                                 `@gmail.com`. So this makes a real capability deliberate. */}
                             <GoogleSignInSettings />
+
+                            {/* The password is a sign-in method like the other three, so it is
+                                a row in the same list rather than a card of its own. The form
+                                stays closed until asked for: it is an OPTION to add a second
+                                way in, and two empty fields on arrival read as an unfinished
+                                task. */}
+                            <ContactVerificationRow
+                                id="security-password"
+                                labelId="security-password-label"
+                                icon={<KeyRound className="size-4" />}
+                                label={mt("security")}
+                                tone={passwordTone}
+                                badges={
+                                    <ContactStatusPill tone={passwordTone}>
+                                        {passwordSet ? mt("passwordSet") : mt("passwordNotSet")}
+                                    </ContactStatusPill>
+                                }
+                                help={mt("passwordSectionDesc")}
+                                actions={
+                                    isEditingPassword ? undefined : (
+                                        // Not having a password is the row's outstanding
+                                        // state, so SETTING one is the primary. Changing an
+                                        // existing one is routine, so it drops to quiet.
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant={passwordSet ? "ghost" : "default"}
+                                            className={passwordSet ? QUIET_ROW_ACTION : PRIMARY_ROW_ACTION}
+                                            onClick={() => setIsEditingPassword(true)}
+                                        >
+                                            {passwordSet ? mt("changePassword") : mt("setPassword")}
+                                        </Button>
+                                    )
+                                }
+                            >
+                                {isEditingPassword ? (
+                                    <div className="max-w-md rounded-xl border bg-background p-4">
+                                        <ChangePassword role="manager" embedded />
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="ghost"
+                                            className={`mt-4 ${QUIET_ROW_ACTION}`}
+                                            onClick={closePasswordForm}
+                                        >
+                                            {mt("cancel")}
+                                        </Button>
+                                    </div>
+                                ) : null}
+                            </ContactVerificationRow>
                         </ContactInfoCard>
                     </div>
-
-                </div>
-
-            </div>
                 </TabsContent>
 
+                {/* ── Location ─────────────────────────────────────────────────── */}
                 <TabsContent value="location" className="mt-6 focus-visible:ring-0">
                     {location && onSaveLocationSettings ? (
                         <LocationSettings location={location} onSave={onSaveLocationSettings} embedded />
                     ) : (
-                        <div className="rounded-[1.35rem] border border-dashed bg-card p-10 text-center">
-                            <h3 className="font-semibold text-foreground">{mt("selectALocation")}</h3>
-                            <p className="mt-1 text-sm text-muted-foreground">{mt("chooseALocationToManageLocationSettings")}</p>
-                        </div>
+                        <NoKitchenYet />
                     )}
                 </TabsContent>
 
-                <TabsContent value="password" className="mt-6 focus-visible:ring-0">
-                    <div className="rounded-xl border bg-card p-6">
-                        <div className="mb-5">
-                            <div>
-                                <h3 className="font-semibold text-foreground">{mt("security")}</h3>
-                                <p className="text-sm text-muted-foreground">{mt("manageYourPasswordAndAccountSecurity")}</p>
-                            </div>
-                        </div>
-                        <ChangePassword role="manager" embedded />
+                {/* ── Payments ─────────────────────────────────────────────────── */}
+                <TabsContent value="payments" className="mt-6 focus-visible:ring-0">
+                    {/* The onboarding wizard already wraps this in a Card
+                        (`PaymentSetupStep`); this tab rendered it bare, which is why
+                        Payments looked unlike every other tab on the page. The component
+                        supplies its own state-dependent heading, so there is no CardHead. */}
+                    <div className={`${CARD} p-5`}>
+                        <StripeConnectSetup />
                     </div>
                 </TabsContent>
 
-
-                <TabsContent value="payments" className="mt-6 focus-visible:ring-0">
-                    <StripeConnectSetup />
-                </TabsContent>
-
+                {/* ── Notifications ────────────────────────────────────────────── */}
                 <TabsContent value="notifications" className="mt-6 focus-visible:ring-0">
                     {notificationLocation && onSaveNotificationSettings ? (
                         <NotificationsSettings
@@ -536,13 +517,11 @@ export default function ManagerProfileSettings({
                             embedded
                         />
                     ) : (
-                        <div className="rounded-[1.35rem] border border-dashed bg-card p-10 text-center">
-                            <h3 className="font-semibold text-foreground">{mt("selectALocation")}</h3>
-                            <p className="mt-1 text-sm text-muted-foreground">{mt("chooseALocationToManageNotificationSettings")}</p>
-                        </div>
+                        <NoKitchenYet />
                     )}
                 </TabsContent>
 
+                {/* ── Teams (placeholder) ──────────────────────────────────────── */}
                 <TabsContent value="teams" className="mt-6 focus-visible:ring-0">
                     <div className="space-y-4 rounded-[1.35rem] border border-dashed bg-card p-10 text-center">
                         <div>

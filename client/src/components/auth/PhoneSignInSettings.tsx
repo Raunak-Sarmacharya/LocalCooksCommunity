@@ -5,7 +5,7 @@ import {
   RecaptchaVerifier,
   unlink,
 } from "firebase/auth";
-import { AlertCircle, Check, Clock, Loader2, Phone, XCircle } from "lucide-react";
+import { AlertCircle, Check, Clock, Loader2, Phone } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { logger } from "@/lib/logger";
@@ -18,6 +18,9 @@ import {
   ContactInfoCard,
   ContactStatusPill,
   ContactVerificationRow,
+  DANGER_ROW_ACTION,
+  PRIMARY_ROW_ACTION,
+  QUIET_ROW_ACTION,
   type ContactTone,
 } from "@/components/profile/ContactVerificationRow";
 
@@ -278,15 +281,22 @@ export default function PhoneSignInSettings({
   };
 
   /**
-   * Open the inline form. `prefill` is the number being PROVED (so fixing one digit
-   * is an edit) or `""` when the intent is a different number entirely.
+   * Open the inline form. `prefill` is the number being PROVED, or `""` when there is
+   * nothing on file to prove.
    *
-   * Both routes go through the form rather than sending straight away, because the
-   * form carries the SMS-consent checkbox and a one-time text must not be sent
-   * without it.
+   * Every route goes through the form rather than sending straight away, because the
+   * form carries the SMS-consent checkbox and a one-time text must not be sent without
+   * it. The form is also the ONLY place the number can be edited, so `sendCode`'s
+   * pre-flight — the one that refuses a number another account already holds, and fails
+   * closed when it cannot check — stays on the single path every send takes.
+   *
+   * The pre-fill is converted to the DISPLAY format. A raw `+17096318480` sitting in an
+   * editable field reads like a database value rather than the number the manager
+   * recognises, and `normalizePhoneNumber` strips non-digits anyway, so the formatted
+   * text normalises back to exactly the same E.164 string.
    */
   const startAdding = (prefill: string) => {
-    setPhone(prefill);
+    setPhone(prefill ? formatPhoneForDisplay(prefill) : "");
     setError(null);
     setIsAdding(true);
   };
@@ -328,29 +338,49 @@ export default function PhoneSignInSettings({
           ? formatPhoneForDisplay(storedPhone)
           : "No phone number added";
 
-  let secondary: string;
-  let description: string;
+  // No `secondary`: the status pill directly above already says Verified / Code sent /
+  // Not verified / Not added, and repeating it on the value line was half the reason
+  // this row ran to four lines. The long explanation moves behind the ⓘ.
+  let description: string | undefined;
+  let help: string | undefined;
   if (rowState === "verified") {
-    secondary = "Verified";
-    description = "You can use this number to sign in.";
+    help = "You can use this number to sign in.";
   } else if (rowState === "code-sent") {
-    secondary = "Code sent";
+    // A live instruction, not an explanation — it stays in the row.
     description = `Enter the 6-digit code we sent to ${formatPhoneForDisplay(phone)}.`;
   } else if (rowState === "unverified") {
-    secondary = "Not verified";
-    description =
+    help =
       "This number is on your account but has not been verified yet, so it cannot sign you in. Verify it to also use it for sign-in.";
   } else {
-    secondary = "Not added";
-    description = "Add a mobile number for booking. It is verified with a one-time code.";
+    help = "Add a mobile number for booking. It is verified with a one-time code.";
   }
 
   const addForm = (
-    <div className="max-w-md space-y-3">
+    <div className="max-w-md space-y-3 rounded-xl border bg-background p-4">
       <div className="space-y-2">
-        <Label htmlFor="security-phone-number" className="text-xs font-medium">
-          Mobile number
-        </Label>
+        <div className="flex items-center justify-between gap-3">
+          <Label htmlFor="security-phone-number" className="text-xs font-medium">
+            Mobile number
+          </Label>
+          {/* Offered ONLY here, and only when there is a number to replace. "Change
+              number" used to sit beside "Verify this number" as a second button of
+              equal weight, which made proving a number and replacing it read as the
+              same action — so neither read as important.
+
+              It clears the field and does nothing else. The send still goes through
+              `sendCode`, which is the single place the duplicate-number pre-flight
+              lives, so nothing here can bypass it. */}
+          {phone ? (
+            <button
+              type="button"
+              onClick={() => setPhone("")}
+              disabled={busy}
+              className="!min-h-0 !min-w-0 inline-flex items-center rounded-md text-xs font-medium text-muted-foreground underline-offset-4 transition hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+            >
+              Change number
+            </button>
+          ) : null}
+        </div>
         <Input
           id="security-phone-number"
           type="tel"
@@ -370,14 +400,23 @@ export default function PhoneSignInSettings({
           className="mt-0.5"
           disabled={busy}
         />
-        <span>
-          I agree to receive a one-time authentication text. Message and data rates may
-          apply.
-        </span>
+        {/* One sentence, one line. It used to run on and wrap, orphaning "apply." onto
+            a second line — the rates disclosure is its own line instead. The checkbox
+            is untouched: `sendCode` refuses to send without it. */}
+        <span>I agree to receive a one-time authentication text.</span>
       </label>
+      <p className="pl-[1.35rem] text-[11px] leading-snug text-muted-foreground">
+        Message and data rates may apply.
+      </p>
       <div id={recaptchaId.current} className="absolute h-0 w-0" aria-hidden="true" />
-      <div className="flex flex-wrap items-center gap-2">
-        <Button type="button" size="sm" onClick={sendCode} disabled={busy}>
+      <div className="flex flex-wrap items-center gap-2 pt-1">
+        <Button
+          type="button"
+          size="sm"
+          className={PRIMARY_ROW_ACTION}
+          onClick={sendCode}
+          disabled={busy}
+        >
           {busy && <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />}
           Send code
         </Button>
@@ -385,6 +424,7 @@ export default function PhoneSignInSettings({
           type="button"
           size="sm"
           variant="ghost"
+          className={QUIET_ROW_ACTION}
           onClick={cancelAdding}
           disabled={busy}
         >
@@ -395,7 +435,7 @@ export default function PhoneSignInSettings({
   );
 
   const codeForm = (
-    <div className="max-w-md space-y-2">
+    <div className="max-w-md space-y-2 rounded-xl border bg-background p-4">
       <Label htmlFor="security-phone-code" className="text-xs font-medium">
         Verification code
       </Label>
@@ -413,6 +453,7 @@ export default function PhoneSignInSettings({
         <Button
           type="button"
           size="sm"
+          className={PRIMARY_ROW_ACTION}
           onClick={verifyCode}
           disabled={busy || code.length !== 6}
         >
@@ -423,6 +464,7 @@ export default function PhoneSignInSettings({
           type="button"
           size="sm"
           variant="ghost"
+          className={QUIET_ROW_ACTION}
           onClick={() => {
             setConfirmation(null);
             setCode("");
@@ -455,49 +497,57 @@ export default function PhoneSignInSettings({
       tone={tone}
       badges={<ContactStatusPill tone={tone}>{statusLabel}</ContactStatusPill>}
       value={value}
-      secondary={secondary}
+      help={help}
       description={
-        <>
-          <p>{description}</p>
-          {error ? (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          ) : null}
-        </>
+        description || error ? (
+          <>
+            {description ? <p>{description}</p> : null}
+            {error ? (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            ) : null}
+          </>
+        ) : undefined
       }
       actions={
         rowState === "verified" ? (
+          // Removing a credential is destructive, so it takes danger colour and never
+          // the weight of the primary beside it.
           <Button
             type="button"
             size="sm"
-            variant="outline"
+            variant="ghost"
+            className={DANGER_ROW_ACTION}
             onClick={handleUnlink}
             disabled={unlinking}
           >
-            {unlinking ? (
-              <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />
-            ) : (
-              <XCircle className="mr-1.5 size-3.5" aria-hidden="true" />
-            )}
+            {unlinking && <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />}
             Remove
           </Button>
         ) : confirmation || isAdding ? undefined
         : rowState === "unverified" ? (
-          <>
-            {/* The number is already on the account, so proving it is the likelier
-                intent than replacing it. Both open the same form — which is what
-                keeps the SMS-consent checkbox in the path — but "Verify" pre-fills
-                the number being proved while "Change" clears it. */}
-            <Button type="button" size="sm" onClick={() => startAdding(storedPhone)} disabled={busy}>
-              Verify this number
-            </Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => startAdding("")} disabled={busy}>
-              Change number
-            </Button>
-          </>
+          // ONE action, and the only one on the page that is filled: the number is
+          // already on the account, so proving it is the whole job of this row.
+          // Replacing it is a different intent and lives inside the form, beside the
+          // number itself. Two buttons of equal weight made "verify" and "change" read
+          // as the same thing, so neither read as important.
+          <Button
+            type="button"
+            size="sm"
+            className={PRIMARY_ROW_ACTION}
+            onClick={() => startAdding(storedPhone)}
+            disabled={busy}
+          >
+            Verify this number
+          </Button>
         ) : (
-          <Button type="button" size="sm" onClick={() => startAdding("")}>
+          <Button
+            type="button"
+            size="sm"
+            className={PRIMARY_ROW_ACTION}
+            onClick={() => startAdding("")}
+          >
             Add phone number
           </Button>
         )

@@ -8,7 +8,7 @@ import {
 } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { AlertCircle, Check, Loader2, Mail, Pencil } from "lucide-react";
+import { AlertCircle, Check, Loader2, Mail } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,8 @@ import {
   ContactInfoCard,
   ContactStatusPill,
   ContactVerificationRow,
+  PRIMARY_ROW_ACTION,
+  QUIET_ROW_ACTION,
   type ContactTone,
 } from "@/components/profile/ContactVerificationRow";
 import {
@@ -51,9 +53,11 @@ interface EmailVerificationCardProps {
 function formatVerifiedDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
+  // Short month on purpose: this string shares a line with the address, and
+  // "Verified February 27, 2026" pushes it onto a second line on narrow widths.
   return new Intl.DateTimeFormat(i18n.language, {
     day: "numeric",
-    month: "long",
+    month: "short",
     year: "numeric",
   }).format(date);
 }
@@ -234,6 +238,7 @@ export default function EmailVerificationCard({
     : t("emailCardUnverifiedHeading", "Verify your email address");
 
   let secondary: ReactNode | undefined;
+  let help: ReactNode | undefined;
   let description: ReactNode | undefined;
 
   if (viewState === "loading") {
@@ -261,49 +266,48 @@ export default function EmailVerificationCard({
           })
         : t("emailCardBadgeVerified", "Verified");
       if (!isEditing) {
-        description = t(
+        help = t(
           "emailCardChangeNotice",
           "Changing it requires verifying the new email first."
         );
       }
     } else if (isVerified && isChanging) {
       secondary = t("emailCardBadgePendingChange", "Change pending");
-      description = t(
+      help = t(
         "emailCardPendingChangeBody",
         "Waiting for {pendingEmail} to be confirmed. {email} stays active and verified until then.",
         { pendingEmail, email: emailOnFile ?? "" }
       );
     } else if (pendingEmail) {
       secondary = t("emailCardSecondaryLinkSent", "Link sent");
-      description = t(
+      help = t(
         "emailCardUnverifiedSentBody",
         "We sent a verification link to {email}. Until it is verified you cannot apply, request a tour, book, or receive notifications.",
         { email: pendingEmail }
       );
     } else if (emailOnFile) {
       secondary = t("emailCardSecondaryNotVerified", "Not verified");
-      description = t(
+      help = t(
         "emailCardUnverifiedBody",
         "Email is how we send booking confirmations and payout notices. Verify {email} to unlock the platform.",
         { email: emailOnFile }
       );
     } else {
       secondary = t("emailCardSecondaryNotAdded", "Not added");
-      description = t(
+      help = t(
         "emailCardAddAddressBody",
         "Add the email address we should use for booking confirmations and payout notices, then confirm it to unlock the platform."
       );
     }
 
     if (isBlockedState(viewState) && displayedEmail) {
+      // `help` may already be set; this warning must stay visible either way, so it
+      // is the description rather than something behind the ⓘ.
       description = (
-        <>
-          {description}
-          <p className="flex items-start gap-2 text-xs">
-            <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-            {t("emailCardGateNotice", "Actions are locked until this address is verified.")}
-          </p>
-        </>
+        <p className="flex items-start gap-2 text-xs">
+          <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+          {t("emailCardGateNotice", "Actions are locked until this address is verified.")}
+        </p>
       );
     }
   }
@@ -337,13 +341,17 @@ export default function EmailVerificationCard({
           : displayedEmail || t("emailCardNoAddress", "No email address yet")
       }
       secondary={secondary}
+      help={help}
       description={description}
       actions={
         viewState === "loading" || viewState === "error" || isEditing ? undefined : (
           <>
+            {/* Sending the link is what completes this row, so it is the primary and
+                the only filled button here. */}
             {!isVerified ? (
               <Button
                 size="sm"
+                className={PRIMARY_ROW_ACTION}
                 onClick={() =>
                   startMutation.mutate((pendingEmail ?? emailOnFile ?? "").toLowerCase())
                 }
@@ -363,11 +371,13 @@ export default function EmailVerificationCard({
             ) : null}
             <Button
               size="sm"
-              variant={isVerified ? "outline" : "ghost"}
+              variant="ghost"
+              className={QUIET_ROW_ACTION}
               onClick={beginEditing}
               disabled={isBusy}
             >
-              <Pencil className="mr-1.5 size-3.5" aria-hidden="true" />
+              {/* No pencil. Row actions are text-only everywhere — a pencil here and
+                  none on "Change number" is the inconsistency this page was carrying. */}
               {isVerified
                 ? t("emailCardChange", "Change email")
                 : t("emailCardUseDifferent", "Use a different email")}
@@ -376,6 +386,7 @@ export default function EmailVerificationCard({
               <Button
                 size="sm"
                 variant="ghost"
+                className={QUIET_ROW_ACTION}
                 onClick={() => cancelMutation.mutate()}
                 disabled={isBusy}
               >
@@ -422,13 +433,19 @@ export default function EmailVerificationCard({
                 )}
           </p>
           <div className="flex flex-wrap items-center gap-2 pt-1">
-            <Button size="sm" onClick={submitDraft} disabled={!canSubmit || isBusy}>
+            <Button
+              size="sm"
+              className={PRIMARY_ROW_ACTION}
+              onClick={submitDraft}
+              disabled={!canSubmit || isBusy}
+            >
               {isBusy && <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />}
               {t("emailCardEditSubmit", "Send verification link")}
             </Button>
             <Button
               size="sm"
               variant="ghost"
+              className={QUIET_ROW_ACTION}
               onClick={() => setIsEditing(false)}
               disabled={isBusy}
             >
