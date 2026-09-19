@@ -1,5 +1,10 @@
 import { logger } from "@/lib/logger";
-import { auth } from "./firebase";
+// `@/lib/firebase`, not `./firebase`: the alias is what lets the dev harnesses substitute a
+// shim for the real Firebase module (`dev/firebase-shim.ts`). A relative sibling import
+// bypasses it and drags the real module — and its `import.meta.env` read at import time —
+// into any bundle that reaches this file, so the shim silently stops working. Every other
+// importer in the repo (119 of them) uses the alias; this one was the exception.
+import { auth } from "@/lib/firebase";
 
 export class APIClient {
   private baseURL: string;

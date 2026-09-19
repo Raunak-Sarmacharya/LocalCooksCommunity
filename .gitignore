@@ -414,6 +414,9 @@ graphify-out/cost.json
 # The harness *sources* (dev/*.tsx, dev/*.ts, dev/*.mjs) stay tracked on purpose.
 dev/*.js
 dev/*.css
+dev/manager-guards-harness.tsx
+dev/manager-guards.html
+dev/shot-manager-guards.mjs
 dev/shots/
 .workbuddy-ai/memory/MEMORY.md
 .workbuddy-ai/memory/2026-09-16.md
@@ -470,6 +473,7 @@ dev/terms.html
 dev/verify-alert.sh
 dev/verify-listings.sh
 dev/verify-login.sh
+dev/verify-manager-guards.sh
 dev/verify-manager-login.sh
 dev/verify-manager-profile.sh
 dev/verify-terms.sh

@@ -9,6 +9,13 @@ const EMAIL_CODES = new Set([
   "EMAIL_EXISTS",
   "auth/email-already-in-use",
   "email-already-in-use",
+  // Google (or any federated provider) used on an address that already has an account. The
+  // message is `Firebase: Error (auth/account-exists-with-different-credential).`, which the
+  // text patterns below do NOT match, so without this the visitor was told "Unable to register
+  // with Google at this time. Please try again later." — advice that cannot work, because
+  // retrying is exactly what will keep failing. It is an email collision, and it was the one
+  // collision the app could not name.
+  "auth/account-exists-with-different-credential",
 ]);
 
 const PHONE_CODES = new Set([
@@ -59,6 +66,9 @@ export function duplicateAccountKind(error: unknown): DuplicateAccountKind | nul
     messageParts.includes("email-already-in-use") ||
     messageParts.includes("email already registered") ||
     messageParts.includes("email is already registered") ||
+    // The SDK puts this code on the error object, but matching the text as well keeps the
+    // two forms of the same failure in agreement — the rest of this function does the same.
+    messageParts.includes("account-exists-with-different-credential") ||
     // Legacy catch-all, kept on the side it has always been on rather than
     // silently reclassifying anything.
     messageParts.includes("account already exists")

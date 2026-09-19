@@ -6,6 +6,8 @@ import { mapPasswordSignInError, rememberAuthMethod, type LoginChallenge } from 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AnimatePresence, motion } from "framer-motion";
 import { Icon } from "@iconify/react";
+import { Mail } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -40,6 +42,17 @@ interface EnhancedLoginFormProps {
   showChallengeSwitcher?: boolean;
   autoSendEmailLink?: boolean;
   onTryAnotherWay?: () => void;
+  /**
+   * Reports whether the form is showing a terminal "we have sent you something" state.
+   *
+   * The host renders a "← Back" arrow above the login card for single-method accounts, and
+   * in this state that arrow competes with the named escape below it and reads as a wizard
+   * step. Suppressing it here is what lets this state follow the same convention as the
+   * register step and `EmailVerificationScreen`: no arrow, one named way out.
+   */
+  onSentStateChange?: (isSent: boolean) => void;
+  /** The named way out of this state — routes back to the identifier gate. */
+  onUseDifferentEmail?: () => void;
 }
 
 type AuthState = "idle" | "loading" | "success" | "error" | "email-verification";
@@ -89,6 +102,8 @@ export default function EnhancedLoginForm({
   showChallengeSwitcher = true,
   autoSendEmailLink = false,
   onTryAnotherWay,
+  onSentStateChange,
+  onUseDifferentEmail,
 }: EnhancedLoginFormProps) {
   const { t } = useTranslation("auth");
   const [challenge, setChallenge] = useState<LoginChallenge>(initialChallenge);
@@ -112,6 +127,16 @@ export default function EnhancedLoginForm({
     const timer = window.setInterval(() => setEmailLinkCooldown((value) => Math.max(0, value - 1)), 1000);
     return () => window.clearInterval(timer);
   }, [emailLinkCooldown]);
+
+  /**
+   * Tell the host when this form is showing the sent state, so it can drop the "← Back" arrow
+   * it would otherwise render above us. The cleanup reports `false` so the arrow is restored
+   * if this form unmounts while the state was up.
+   */
+  useEffect(() => {
+    onSentStateChange?.(showMagicLinkNudge);
+    return () => onSentStateChange?.(false);
+  }, [showMagicLinkNudge, onSentStateChange]);
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -302,36 +327,91 @@ export default function EnhancedLoginForm({
   if (challenge === "email-link" && showMagicLinkNudge) {
     const target = form.getValues("email");
     const maskedTarget = maskEmail(target);
+    /*
+     * Laid out to match `EmailVerificationScreen`, which is the same moment reached by the
+     * other door: brand-tinted chip, the same heading metrics, the address on ITS OWN LINE
+     * rather than inside the sentence, the spam hint as two balanced sentences, and one named
+     * way out below the actions.
+     *
+     * This state had been left behind on all five counts — a green chip where every other
+     * auth state is brand-tinted, a smaller heading, the address inline so the sentence broke
+     * around it, no spam hint at all once the account was confirmed, and the host's "← Back"
+     * arrow as its only escape. It is the LAST thing a returning single-method account sees,
+     * so it was also the worst place to look unlike the rest of the app.
+     */
     return (
-      <div className="mx-auto w-full max-w-md space-y-5 py-4 text-center" aria-live="polite">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50">
-          <Icon icon="mdi:email-check-outline" className="h-6 w-6 text-emerald-600" aria-hidden />
+      <div className="w-full" aria-live="polite">
+        <div className="mb-5 flex justify-center">
+          <span
+            aria-hidden
+            className="flex h-16 w-16 items-center justify-center rounded-full bg-[#FCE3E9]"
+          >
+            <Mail className="h-7 w-7 text-[#F51042]" />
+          </span>
         </div>
-        <div>
-          <h3 className="text-xl font-semibold text-slate-900">{t("signInEmailSentTitle", "Check your email")}</h3>
-          <p className="mt-2 text-sm leading-6 text-slate-600">
+
+        <div className="mb-6 text-center">
+          <h2 className="text-2xl font-bold tracking-[-0.03em] text-gray-950">
+            {t("signInEmailSentTitle", "Check your email")}
+          </h2>
+          <p className="mt-2.5 text-sm leading-relaxed text-gray-600">
             {accountConfirmed
-              ? t("signInEmailWaitingDesc", { defaultValue: "We sent a secure sign-in link to {email}. Open it to finish signing in.", email: maskedTarget })
-              : t("signInEmailSentDesc", "If an account exists for this email, a sign-in link has been sent. Check spam or promotions if it doesn't arrive within a few minutes.")}
+              ? t("signInEmailWaitingLead", "We sent a secure sign-in link to")
+              : t("signInEmailSentLead", "If an account exists for this email, we sent a secure sign-in link to")}
+          </p>
+          <p className="mt-1 break-all text-sm font-medium text-gray-950">{maskedTarget}</p>
+        </div>
+
+        <div className="space-y-3">
+          <AnimatedButton
+            type="button"
+            state={buttonState()}
+            loadingText={t("btnSendingLink", "Sending...")}
+            successText={t("btnEmailSent", "Email sent")}
+            errorText={t("btnTryAgain", "Try again")}
+            disabled={busy || emailLinkCooldown > 0}
+            onClick={() => void handleEmailLinkSubmit(form.getValues())}
+          >
+            {emailLinkCooldown > 0
+              ? t("resendEmailCountdown", { defaultValue: "Resend in {seconds}s", seconds: emailLinkCooldown })
+              : t("resendSignInLink", "Resend sign-in link")}
+          </AnimatedButton>
+
+          {onTryAnotherWay && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onTryAnotherWay}
+              disabled={busy}
+              className="w-full border-slate-200"
+            >
+              {t("tryAnotherWay", "Try another way")}
+            </Button>
+          )}
+        </div>
+
+        {/* Two balanced lines, each its own sentence — the same shape the verification screen
+            uses. As one paragraph this pair wrapped into a long line plus a two-word orphan. */}
+        <div className="mt-5 text-center text-xs leading-relaxed text-slate-500">
+          <p>{t("signInEmailOpenOnDevice", "Open the link on this device to sign in.")}</p>
+          <p className="mt-1">
+            {t("signInEmailSpamHint", "Nothing yet? Check your spam or promotions folder.")}
           </p>
         </div>
-        <AnimatedButton
-          type="button"
-          state={buttonState()}
-          loadingText={t("btnSendingLink", "Sending...")}
-          successText={t("btnEmailSent", "Email sent")}
-          errorText={t("btnTryAgain", "Try again")}
-          disabled={busy || emailLinkCooldown > 0}
-          onClick={() => void handleEmailLinkSubmit(form.getValues())}
-        >
-          {emailLinkCooldown > 0
-            ? t("resendEmailCountdown", { defaultValue: "Resend in {seconds}s", seconds: emailLinkCooldown })
-            : t("resendSignInLink", "Resend sign-in link")}
-        </AnimatedButton>
-        {onTryAnotherWay && (
-          <button type="button" onClick={onTryAnotherWay} disabled={busy} className="w-full text-sm font-medium text-[#E00A38] underline underline-offset-4 disabled:opacity-50">
-            {t("tryAnotherWay", "Try another way")}
-          </button>
+
+        {onUseDifferentEmail && (
+          <p className="mt-5 text-center text-sm text-slate-600">
+            {t("wrongEmailPrompt", "Wrong email?")}{" "}
+            <button
+              type="button"
+              onClick={onUseDifferentEmail}
+              // index.css forces min-height/min-width 44px on EVERY button, which would blow
+              // this inline link out of its line.
+              className="!min-h-0 !min-w-0 font-medium text-[#E00A38] underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
+            >
+              {t("useDifferentEmail", "Use a different email")}
+            </button>
+          </p>
         )}
       </div>
     );

@@ -10,6 +10,7 @@ import AuthLoadingScreen from "@/components/auth/AuthLoadingScreen";
 import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
 import ManagerOnboardingWizard from "./ManagerOnboardingWizard";
 import { requiresEmailVerification } from "@/lib/auth-verification";
+import { needsWelcomeScreen } from "@/lib/manager-welcome";
 import EmailVerificationGate from "@/components/auth/EmailVerificationGate";
 
 interface ManagerProtectedRouteProps {
@@ -155,6 +156,22 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
   if (!isManager) {
     logger.info('ManagerProtectedRoute - User is not a manager, redirecting');
     return <Redirect to="/" />;
+  }
+
+  // ── The welcome screen, before every other gate ──────────────────────────────
+  // It is a state of `ManagerLogin`, not a route of its own, so an un-welcomed manager is
+  // sent back to the login route to meet it.
+  //
+  // THIS is the root cause of the whole "the welcome screen was skipped" family. This
+  // component is what bounces a manager who has not accepted the Terms to `/accept-terms`,
+  // and it knew nothing about `has_seen_welcome` — so any registration that reached a
+  // manager route before the welcome had been shown went straight to the legal page. The
+  // Google signup did it, the verification link did it, and the "I have verified my email"
+  // button did it. Those three doors were each fixed where they were found; this closes the
+  // room, so a fourth door cannot be opened by a future change to any single flow.
+  if (needsWelcomeScreen(user)) {
+    logger.info('ManagerProtectedRoute - Welcome screen not seen, returning to it');
+    return <Redirect to="/manager/login" />;
   }
 
   // An unverified email is no longer a redirect. Sending the manager back to the

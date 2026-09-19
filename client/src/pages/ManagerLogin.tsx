@@ -28,6 +28,7 @@ import { AUTH_GATE_TIMEOUT_MS } from "@/config/auth-timing";
 import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
 import { getSubdomainOriginForEnvironment } from "@shared/subdomain-utils";
 import { clearSellerJourneyDraft } from "@/lib/seller-journey";
+import { needsWelcomeScreen } from "@/lib/manager-welcome";
 import { useCustomAlerts } from "@/components/ui/custom-alerts";
 
 export default function ManagerLogin() {
@@ -287,7 +288,7 @@ export default function ManagerLogin() {
     // A brand-new manager meets the welcome screen BEFORE the legal step: a warm moment
     // before a cold one. Shown only when the server says they have not seen it, so it
     // appears exactly once per account.
-    if (refreshedUser.hasSeenWelcome === false) {
+    if (needsWelcomeScreen(refreshedUser)) {
       endHandoff();
       setShowLoadingOverlay(false);
       setShowWelcome(true);
@@ -531,6 +532,26 @@ export default function ManagerLogin() {
       const isManager = userMetaData.role === 'manager' || userMetaData.isManager;
       
       if (isManager && hasVerifiedContact(user, userMetaData)) {
+        // ── The email-verification landing ────────────────────────────────────
+        // The verification link's continueUrl is `/manager/login?verified=true`
+        // (`server/routes.ts`), so a manager who confirms their address from the email
+        // arrives HERE, already signed in and verified. Sending them straight on to
+        // `/manager/dashboard` skipped the welcome screen and let `ManagerProtectedRoute`
+        // bounce them to `/accept-terms` — the same failure the Google registration path
+        // had, on a different door.
+        //
+        // The welcome screen comes before the dashboard wherever the manager enters, so
+        // this branch handles the link, and also a reload or a return visit after closing
+        // the tab on the welcome screen. `has_seen_welcome` stays false until they dismiss
+        // it, so this cannot fire twice for one account.
+        if (needsWelcomeScreen(userMetaData)) {
+          logger.info('👋 Manager has not seen the welcome screen — showing it before the dashboard');
+          hasRedirected.current = true;
+          endHandoff();
+          setShowWelcome(true);
+          return;
+        }
+
         logger.info('✅ Manager has a verified contact - continuing');
         hasRedirected.current = true;
         beginHandoff(

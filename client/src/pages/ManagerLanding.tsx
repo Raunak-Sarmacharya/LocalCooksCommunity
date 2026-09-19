@@ -158,7 +158,13 @@ export default function ManagerLanding() {
 
   // If logged in as manager, redirect to dashboard
   if (isManager) {
-    // Check if they need to accept terms first
+    // The welcome screen comes FIRST — it is a state of `ManagerLogin`, so an un-welcomed
+    // manager is sent back there to meet it.
+    if (needsWelcomeScreen(user as any)) {
+      return <Redirect to="/manager/login" />;
+    }
+
+    // Then the legal step.
     const needsTermsAcceptance =
       !(user as any)?.termsAccepted ||
       !(user as any)?.termsVersion ||
@@ -168,10 +174,13 @@ export default function ManagerLanding() {
       return <Redirect to="/accept-terms?redirect=/manager/dashboard" />;
     }
 
-    // Check if they need to change password
-    if ((user as any)?.has_seen_welcome === false) {
-      return <Redirect to="/manager/change-password" />;
-    }
+    // NOTE: a "send them to /manager/change-password" branch used to sit here, guarded on
+    // `has_seen_welcome === false` under a comment about changing a password. There is no
+    // password-change flag anywhere in the codebase, so the branch could never express what
+    // it claimed; what it actually did was dump a manager who had not dismissed the welcome
+    // screen onto the change-password page. The capability itself is unaffected — it is
+    // embedded in the manager profile settings (`ManagerProfileSettings` renders
+    // `ChangePassword`).
     return <Redirect to="/manager/dashboard" />;
   }
 

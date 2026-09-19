@@ -131,6 +131,12 @@ export default function AuthFlow({
   const [availableMethods, setAvailableMethods] = useState<AuthMethod[]>([]);
   const [phoneFromMethods, setPhoneFromMethods] = useState(false);
   const [autoSendEmailLink, setAutoSendEmailLink] = useState(false);
+  /**
+   * True while the login card is showing its "we sent you a link" state. That state carries
+   * its own named escape, so the host's "← Back" arrow is suppressed while it is up — see
+   * `showBack` below. Reported by `EnhancedLoginForm` because the sent state is internal to it.
+   */
+  const [loginSent, setLoginSent] = useState(false);
   const step = controlledStep ?? ownStep;
 
   const go = (next: AuthFlowStep) => {
@@ -425,6 +431,8 @@ export default function AuthFlow({
           showChallengeSwitcher={false}
           autoSendEmailLink={autoSendEmailLink}
           onTryAnotherWay={hasAlternativeMethod ? () => go("methods") : undefined}
+          onSentStateChange={setLoginSent}
+          onUseDifferentEmail={() => go("identifier")}
           onChallengeChange={(challenge) => {
             if (challenge === "email-link" || challenge === "password") setActiveMethod(challenge);
           }}
@@ -528,8 +536,13 @@ export default function AuthFlow({
   //
   // `register` no longer uses it: it carries an explicit "Already have an
   // account? Log in" link instead, which names the destination.
+  //
+  // `loginSent` suppresses it in the email-link sent state. That state now carries its own
+  // named escape ("Wrong email? Use a different email"), so an arrow above it would be a
+  // second, wordless route to the same place — and the one control that made the state look
+  // like a wizard step rather than a destination.
   const showBack =
-    allowBack && step === "login" && !hasAlternativeMethod;
+    allowBack && step === "login" && !hasAlternativeMethod && !loginSent;
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">

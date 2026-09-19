@@ -9,6 +9,7 @@ import { SiStripe } from "react-icons/si";
 import { ArrowRight, Check, Loader2 } from "lucide-react";
 import { useState } from "react";
 import Logo from "@/components/ui/logo";
+import { markWelcomeDismissed } from "@/lib/manager-welcome";
 import harbourKitchenImage from "@/assets/harbour-kitchen-hub.jpg";
 
 /**
@@ -171,6 +172,10 @@ export default function ManagerWelcomeScreen({ onContinue }: ManagerWelcomeScree
 
   const handleContinue = async () => {
     setIsCompleting(true);
+    // Record the dismissal for this session FIRST, whatever the server says. The write below
+    // is best-effort, and if it fails the server flag stays false — so without this the guard
+    // that put the reader here would send them straight back on the next navigation.
+    markWelcomeDismissed();
     try {
       const currentUser = auth.currentUser;
       if (currentUser) {

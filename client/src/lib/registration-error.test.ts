@@ -59,6 +59,20 @@ describe("duplicateAccountKind", () => {
     ).toBe("email");
     expect(duplicateAccountKind({ cause: { code: "PHONE_EXISTS" } })).toBe("phone");
   });
+
+  it("names the collision when Google is used on an address that already has an account", () => {
+    // Signing in with Google for an address that already has a password account is refused
+    // by Firebase, and the visitor was told to "try again later" — which cannot work.
+    expect(
+      duplicateAccountKind({ code: "auth/account-exists-with-different-credential" }),
+    ).toBe("email");
+    // The real SDK message, which the text patterns do not match on their own.
+    expect(
+      duplicateAccountKind(
+        new Error("Firebase: Error (auth/account-exists-with-different-credential)."),
+      ),
+    ).toBe("email");
+  });
 });
 
 describe("isDuplicateAccountError", () => {
