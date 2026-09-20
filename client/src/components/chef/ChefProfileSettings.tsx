@@ -8,15 +8,15 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Edit3, X, Info } from "lucide-react";
+import { Edit3, X, Info, KeyRound } from "lucide-react";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
 import ChangePassword from "@/components/auth/ChangePassword";
 import PhoneSignInSettings from "@/components/auth/PhoneSignInSettings";
+import GoogleSignInSettings from "@/components/auth/GoogleSignInSettings";
 import { PHONE_AUTH_ENABLED } from "@/lib/feature-flags";
 import { useTranslation } from "react-i18next";
 import { tt } from "@/i18n/common-ns";
-import type { PasswordFormMode } from "@/components/auth/password-form-mode";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { motion } from "framer-motion";
@@ -24,7 +24,14 @@ import { StatusDot } from "@/components/chef/ui";
 import { InfoChip } from "@/components/chef/info-chip";
 import EmailVerificationCard from "@/components/auth/EmailVerificationCard";
 import { useEmailSectionFocus } from "@/hooks/use-email-section-focus";
-import { ContactInfoCard } from "@/components/profile/ContactVerificationRow";
+import {
+  ContactInfoCard,
+  ContactStatusPill,
+  ContactVerificationRow,
+  PRIMARY_ROW_ACTION,
+  QUIET_ROW_ACTION,
+  type ContactTone,
+} from "@/components/profile/ContactVerificationRow";
 
 type EditableField = "displayName" | "username";
 
@@ -42,14 +49,32 @@ export default function ChefProfileSettings() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [editingField, setEditingField] = useState<EditableField | null>(null);
   const [draft, setDraft] = useState("");
-  const [passwordMode, setPasswordMode] = useState<PasswordFormMode>("loading");
+  // `passwordMode` / `onModeResolved` lived here. Both are gone: they existed only to feed the
+  // dynamic heading of the old Password TAB. The row reads `passwordSetByUser` from the profile
+  // instead, which is true on arrival rather than only after the form has been opened.
+  /**
+   * Which tab the page opens on, read ONCE from `?tab=`.
+   *
+   * `emailVerificationHref()` deep-links a verified reader straight to the email row, which lives
+   * on the `account` tab and NOT the default — so without this the arrival highlights a row nobody
+   * can see and reads as "nothing happened". Same mechanism as the manager profile.
+   */
+  const [activeTab, setActiveTab] = useState(() =>
+    new URLSearchParams(window.location.search).get("tab") === "account" ? "account" : "profile",
+  );
+  /**
+   * The password row's disclosure, mirroring the manager profile. The form is an OPTION to add a
+   * second way in, so two empty fields on arrival read as an unfinished task.
+   */
+  const [isEditingPassword, setIsEditingPassword] = useState(false);
+  const closePasswordForm = () => setIsEditingPassword(false);
+  // `passwordSet` / `passwordTone` are derived BELOW the profile query, because they read `user`.
+  // A derivation above it is a temporal-dead-zone crash — "Cannot access 'user' before
+  // initialization" — which the harness caught immediately.
 
-  const passwordHeading =
-    passwordMode === "set-link" || passwordMode === "set-update"
-      ? t("pfPasswordCreate", "Create password")
-      : passwordMode === "change"
-        ? t("pfPasswordUpdate", "Update password")
-        : t("pfPasswordTitle", "Password");
+  // `passwordHeading` lived here. It is gone on purpose: the password is now a ROW in the
+  // sign-in list, whose label is constant and whose state is the status pill — the manager
+  // profile's shape. A dynamic section heading was the price of the tab it used to sit in.
 
   const { data: user, isLoading: isLoadingProfile } = useQuery({
     queryKey: ["/api/user/profile", firebaseUser?.uid],
@@ -77,6 +102,16 @@ export default function ChefProfileSettings() {
     },
     enabled: !!firebaseUser,
   });
+
+  // `passwordSetByUser` is the DATABASE record, not the form's own guess at which mode to show —
+  // so the pill cannot disagree with whether a password really exists.
+  //
+  // Deriving this from `passwordMode` was wrong, and the harness caught it: `ChangePassword` only
+  // MOUNTS once the disclosure opens, so on arrival the mode is still "loading" and the row told an
+  // account that HAS a password that it had none. The manager reads the same field, for the same
+  // reason.
+  const passwordSet = user?.passwordSetByUser === true;
+  const passwordTone: ContactTone = passwordSet ? "verified" : "empty";
 
   const { data: chefProfile, isLoading: isLoadingDetails } = useQuery({
     queryKey: ["/api/chef/my-profile"],
@@ -388,23 +423,25 @@ export default function ChefProfileSettings() {
         </div>
       </motion.section>
 
-      <Tabs defaultValue="account" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="h-auto w-full justify-start gap-0 overflow-x-auto rounded-none border-b bg-transparent p-0">
+          <TabsTrigger
+            value="profile"
+            className="rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
+          >
+            {t("profileTabProfile", "Profile")}
+          </TabsTrigger>
+          {/* `account` is NOT free to rename: `emailVerificationHref()` builds `?tab=account`
+              for a chef as well as a manager, so this value is the deep link's contract. */}
           <TabsTrigger
             value="account"
             className="rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
           >
-            {t("profileTabAccount", "Account details")}
-          </TabsTrigger>
-          <TabsTrigger
-            value="security"
-            className="rounded-none border-b-2 border-transparent px-4 py-2.5 text-sm shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
-          >
-            {t("profileTabPassword", "Password")}
+            {t("profileTabSignInSecurity", "Sign-in & security")}
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="account" className="mt-6 space-y-6 focus-visible:ring-0">
+        <TabsContent value="profile" className="mt-6 space-y-6 focus-visible:ring-0">
           <Section
             title={t("profilePersonalInformation", "Personal Information")}
             description={t(
@@ -457,12 +494,18 @@ export default function ChefProfileSettings() {
               />
             </div>
           </Section>
+        </TabsContent>
 
+        {/* ── Sign-in & security: every way into the account ─────────────
+            One list of rows, exactly as the manager profile has it. The password used to sit
+            alone in a tab of its own, which made the one thing that IS a sign-in method look
+            like a separate feature. */}
+        <TabsContent value="account" className="mt-6 focus-visible:ring-0">
           <Section
-            title={t("profileContactInformation", "Contact information")}
+            title={t("profileSignInMethods", "Sign-in methods")}
             description={t(
-              "profileContactInformationDesc",
-              "Where we send booking confirmations, payout notices and account security alerts."
+              "profileSignInSecurityDesc",
+              "Every method below can sign you in. Add a second one so you always have a way back into your account."
             )}
             flush
           >
@@ -494,23 +537,61 @@ export default function ChefProfileSettings() {
                   }}
                 />
               )}
+              {/* Google is the third way in and was missing from this page ENTIRELY — the manager
+                  profile has had the row all along. The component takes no `role` and makes no
+                  fetch (it reads the current user's providers and calls `linkWithPopup`), so it is
+                  role-agnostic and drops in unchanged. */}
+              <GoogleSignInSettings />
+              {/* The password is a sign-in method like the other three, so it is a row in the same
+                  list rather than a tab of its own. The form stays closed until asked for: it is an
+                  OPTION to add a second way in, and two empty fields on arrival read as an
+                  unfinished task. */}
+              <ContactVerificationRow
+                id="security-password"
+                labelId="security-password-label"
+                icon={<KeyRound className="size-4" />}
+                label={t("profilePasswordRow", "Password")}
+                tone={passwordTone}
+                badges={
+                  <ContactStatusPill tone={passwordTone}>
+                    {passwordSet ? t("profilePasswordSet", "Set") : t("profilePasswordNotSet", "Not set")}
+                  </ContactStatusPill>
+                }
+                help={t(
+                  "profilePasswordHelp",
+                  "A password lets you sign in with your email address instead of Google or a text message."
+                )}
+                actions={
+                  isEditingPassword ? undefined : (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={passwordSet ? "ghost" : "default"}
+                      className={passwordSet ? QUIET_ROW_ACTION : PRIMARY_ROW_ACTION}
+                      onClick={() => setIsEditingPassword(true)}
+                    >
+                      {passwordSet
+                        ? t("profileChangePassword", "Change Password")
+                        : t("profileSetPassword", "Set password")}
+                    </Button>
+                  )
+                }
+              >
+                {isEditingPassword ? (
+                  <div className="max-w-md rounded-xl border bg-background p-4">
+                    <ChangePassword
+                      role="chef"
+                      embedded
+                      onSuccess={closePasswordForm}
+                      onCancel={closePasswordForm}
+                      cancelLabel={t("profileCancel", "Cancel")}
+                    />
+                  </div>
+                ) : null}
+              </ContactVerificationRow>
             </ContactInfoCard>
           </Section>
         </TabsContent>
-
-        <TabsContent value="security" className="mt-6 focus-visible:ring-0">
-          <Section
-            title={passwordHeading}
-            description={t("pfSecurityDesc")}
-          >
-            <ChangePassword
-              role="chef"
-              embedded
-              onModeResolved={setPasswordMode}
-            />
-          </Section>
-        </TabsContent>
-
 
       </Tabs>
     </div>

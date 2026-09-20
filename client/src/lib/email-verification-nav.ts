@@ -21,9 +21,15 @@ export function emailVerificationHref(role: string | null | undefined): string {
     view: "profile",
     [EMAIL_FOCUS_PARAM]: EMAIL_FOCUS_VALUE,
   });
+  // BOTH profile pages put the email row on their `account` tab, and neither opens there by
+  // default — so the deep link has to NAME the tab. Without it the highlight is applied to a row
+  // that is not on screen and the arrival reads as "nothing happened". Admin has no tabbed
+  // profile, so it gets neither the param nor a route it cannot serve.
+  if (role !== "admin") {
+    params.set("tab", "account");
+  }
   if (role === "manager") {
     // Manager profile is a tab inside the dashboard profile view.
-    params.set("tab", "account");
     return `/manager/dashboard?${params.toString()}`;
   }
   return `/dashboard?${params.toString()}`;

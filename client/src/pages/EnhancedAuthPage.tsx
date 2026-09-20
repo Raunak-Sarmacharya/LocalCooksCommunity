@@ -23,6 +23,8 @@ import EmailVerificationScreen from "@/components/auth/EmailVerificationScreen";
 import { useAuthTransition } from "@/components/auth/AuthTransition";
 import { AUTH_GATE_TIMEOUT_MS } from "@/config/auth-timing";
 import { sendVerificationEmailWithFallback } from "@/lib/send-verification-email";
+import { clearLastAccount, getLastAccount, type LastAccount } from "@/lib/last-account";
+import { useCustomAlerts } from "@/components/ui/custom-alerts";
 
 addCollection(mdiIcons);
 
@@ -41,10 +43,32 @@ export default function EnhancedAuthPage() {
     discardPendingGoogleRegistration,
   } = useFirebaseAuth();
   const { begin: beginHandoff, end: endHandoff } = useAuthTransition();
-  const [authStep, setAuthStep] = useState<AuthFlowStep>(() =>
-    new URLSearchParams(window.location.search).get("tab") === "register" ? "register" : "identifier"
-  );
+  // The same app-wide alert the manager portal raises its wrong-portal refusal with.
+  const { showAlert } = useCustomAlerts();
+  /**
+   * The browser's last account, for the welcome-back card.
+   *
+   * Declared BEFORE `authStep` because that initializer reads it, and purely local: it must
+   * never become a lookup, or this page turns into an account-enumeration oracle.
+   */
+  const [lastAccount, setLastAccount] = useState<LastAccount | null>(() => getLastAccount());
+  const [authStep, setAuthStep] = useState<AuthFlowStep>(() => {
+    if (new URLSearchParams(window.location.search).get("tab") === "register") return "register";
+    return lastAccount ? "welcome-back" : "identifier";
+  });
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
+  /**
+   * The address typed on the identifier gate, kept so it can be re-seeded when `AuthFlow`
+   * REMOUNTS. `AuthFlow`'s state does not survive the loading gate while `authStep` — owned
+   * here — does, so without this a chef comes back from the gate to a step whose data is gone.
+   */
+  const [attemptedIdentifier, setAttemptedIdentifier] = useState("");
+  /**
+   * True when the verification screen was opened by RESUMING an existing, unconfirmed account
+   * rather than by finishing a registration. The two need different exits — see the screen's
+   * `onCheckVerified` and `onGoBack`.
+   */
+  const [verificationResumed, setVerificationResumed] = useState(false);
   // Lifted out of EnhancedRegisterForm: the page gate used to unmount the form
   // the moment Firebase created the user, wiping the in-form verification screen
   // and leaving an empty auth form behind the loader.
@@ -545,6 +569,39 @@ export default function EnhancedAuthPage() {
     };
   }, []);
 
+  /**
+   * The one state that depends on NOTHING, so it is the only honest destination for a visitor
+   * whose flow has lost its footing. `AuthFlow`'s state does not survive the loading gate
+   * while `authStep` — owned here — does, so a step can outlive the data it needs.
+   */
+  const recoverToIdentifierStep = () => {
+    setAuthStep("identifier");
+    setAttemptedIdentifier("");
+  };
+
+  /**
+   * A manager (or admin) signing in on the CHEF portal.
+   *
+   * Says nothing about which portal the account DOES belong to, or what role it holds — only
+   * that this one is not it. The manager portal's refusal is worded the same way, for the same
+   * reason: the visitor already knows their own address, so naming the other portal would tell
+   * a stranger which addresses are registered and where. It is also raised BEFORE any SMS is
+   * sent, so a refused number never costs a message or mints a Firebase identity.
+   */
+  const showWrongPortalAlert = () => {
+    showAlert({
+      title: t("wrongPortalTitle", "This account can't book kitchens"),
+      description: t(
+        "wrongPortalBody",
+        "The account you're using isn't set up for the chef portal. Use the account you book with.",
+      ),
+      type: "warning",
+      confirmText: t("wrongPortalTryAnother", "Try a different account"),
+      secondaryText: t("wrongPortalBackHome", "Back to main page"),
+      onSecondary: () => setLocation("/"),
+    });
+  };
+
   const handleSuccess = async () => {
     logger.info('🎯 AUTH SUCCESS - Setting hasAttemptedLogin to true, hasUserMetaRef:', hasUserMetaRef.current);
     setHasAttemptedLogin(true);
@@ -745,17 +802,55 @@ export default function EnhancedAuthPage() {
               <EmailVerificationScreen
                 email={emailForVerification}
                 onResend={handleResendVerification}
-                onCheckVerified={handleCheckVerified}
+                // Only offer "I have verified my email" when there is a session to re-read.
+                // On the resume path the visitor is signed OUT — an unconfirmed account has no
+                // session — so the check could only ever report "not detected yet", even after
+                // they had verified. Omitting it makes the screen fall back to going back,
+                // which is the honest next step: sign in with the link in their inbox.
+                onCheckVerified={verificationResumed ? undefined : handleCheckVerified}
                 onGoBack={() => {
                   setShowEmailVerification(false);
                   setAwaitingEmailVerificationUi(false);
-                  setAuthStep("login");
+                  // ALWAYS the identifier gate, never the sign-in step. The gate is the one
+                  // state that depends on nothing; the sign-in step carries a back control of
+                  // its own, so "use a different email" became a two-screen detour through
+                  // half-states that got the visitor nowhere. The manager card's behaviour,
+                  // mirrored — this was the pre-fix version on the chef side.
+                  recoverToIdentifierStep();
+                  setVerificationResumed(false);
                 }}
               />
             ) : (
               <AuthFlow
                 step={authStep}
-                onStepChange={setAuthStep}
+                onStepChange={(step) => {
+                  setAuthStep(step);
+                  // Only the register step wants the remembered address; carrying it anywhere
+                  // else would re-fill a field the visitor deliberately moved away from.
+                  if (step !== "register") setAttemptedIdentifier("");
+                }}
+                initialIdentifier={attemptedIdentifier}
+                lastAccount={lastAccount}
+                onDismissLastAccount={() => {
+                  clearLastAccount();
+                  setLastAccount(null);
+                }}
+                onUnverifiedAccount={(unverifiedEmail) => {
+                  // Resume the flow the visitor is already in. The account exists but its
+                  // address is unconfirmed, so the next step is the confirmation screen — NOT
+                  // a passwordless sign-in link, which arrives as a different email with
+                  // different copy and drops the resend / "check again" affordances. This is
+                  // the manager card's behaviour, mirrored.
+                  setEmailForVerification(unverifiedEmail);
+                  setVerificationResumed(true);
+                  setShowEmailVerification(true);
+                }}
+                // Settles portal authority BEFORE a phone OTP is sent, so a manager's number is
+                // refused without an SMS leaving the building and without a Firebase identity
+                // being minted for an account we were about to reject. AuthFlow puts the card
+                // back on the gate itself; the host owns the alert.
+                portal="chef"
+                onPortalRejected={showWrongPortalAlert}
                 loginProps={{
                   onSuccess: handleSuccess,
                   setHasAttemptedLogin: setHasAttemptedLogin,

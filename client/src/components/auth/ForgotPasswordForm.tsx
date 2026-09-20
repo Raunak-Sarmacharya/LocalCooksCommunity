@@ -70,6 +70,15 @@ export default function ForgotPasswordForm({
 
   const isManager = effectiveRole === 'manager';
 
+  /**
+   * Whether the host already knows which address this is for.
+   *
+   * BOTH routes into this form know it — the password challenge carries the address the visitor
+   * just identified with, and the profile settings' escape is for the signed-in account — so the
+   * field is pre-filled. Only the standalone `/forgot-password` page arrives empty.
+   */
+  const isAddressKnown = initialEmail.trim().length > 0;
+
   const form = useForm<ForgotPasswordFormData>({
     resolver: zodResolver(forgotPasswordSchema),
     defaultValues: { email: initialEmail },
@@ -129,9 +138,11 @@ export default function ForgotPasswordForm({
           {embedded ? "Forgot password?" : "Reset your password"}
         </h2>
         <p className="text-gray-600 text-sm">
-          {isManager
-            ? "Enter your username and we'll send you a link to reset your password — or set one up for the first time."
-            : "Enter your email and we'll send a link to reset your password, or set one up if you haven't yet."}
+          {/* ONE line, no em dash, and no role-dependent variant.
+              The address is either already on screen or typed into the field directly below, so
+              "Enter your username and we'll send you a link…" was telling the visitor what the form
+              already showed — and it ran to two unbalanced lines with an em dash in the middle. */}
+          We'll email you a link to set your password.
         </p>
       </motion.div>
 
@@ -139,9 +150,21 @@ export default function ForgotPasswordForm({
       <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
         <motion.div variants={itemVariants}>
           <AnimatedInput
-            type={isManager ? "text" : "email"}
-            label={isManager ? "Username" : "Email Address"}
-            placeholder={isManager ? "Enter your username" : "Enter your email"}
+            // `email` for every portal, not `text` for managers: this field only ever holds an
+            // address, and `type="text"` gave phones the wrong keyboard and no browser hint.
+            type="email"
+            label="Email"
+            placeholder="Enter your email"
+            // READ-ONLY whenever the host already knows the address, which is both routes into this
+            // form. This is NOT tidiness. OWASP WSTG-ATHN-09: an editable primary identifier here
+            // BYPASSES the re-authentication the change-password form exists to enforce — someone on
+            // an unattended session points the reset at an address they control and takes the
+            // account over, which is the exact bypass the current-password field prevents.
+            //
+            // The standalone /forgot-password page passes no address, so there it stays editable.
+            readOnly={isAddressKnown}
+            aria-readonly={isAddressKnown || undefined}
+            className={isAddressKnown ? "bg-muted text-muted-foreground" : undefined}
             error={form.formState.errors.email?.message}
             {...form.register('email')}
           />

@@ -10,7 +10,9 @@ import {
 
 describe("emailVerificationHref", () => {
   it("deep-links a chef to the email card on the chef dashboard", () => {
-    expect(emailVerificationHref("chef")).toBe("/dashboard?view=profile&focus=email");
+    // The chef's profile is tabbed too, and the email row is NOT on its default tab, so the tab
+    // has to be named for exactly the same reason it is for a manager.
+    expect(emailVerificationHref("chef")).toBe("/dashboard?view=profile&focus=email&tab=account");
   });
 
   it("adds the account tab for a manager, whose profile is tabbed", () => {
@@ -18,6 +20,10 @@ describe("emailVerificationHref", () => {
     expect(href.startsWith("/manager/dashboard?")).toBe(true);
     expect(href).toContain("tab=account");
     expect(href).toContain(`${EMAIL_FOCUS_PARAM}=${EMAIL_FOCUS_VALUE}`);
+  });
+
+  it("leaves the tab off for an admin, whose profile is not tabbed", () => {
+    expect(emailVerificationHref("admin")).not.toContain("tab=");
   });
 
   it("treats an unknown or absent role as a chef rather than inventing a route", () => {
