@@ -471,16 +471,21 @@ export default function ManagerProfileSettings({
                             >
                                 {isEditingPassword ? (
                                     <div className="max-w-md rounded-xl border bg-background p-4">
-                                        <ChangePassword role="manager" embedded />
-                                        <Button
-                                            type="button"
-                                            size="sm"
-                                            variant="ghost"
-                                            className={`mt-4 ${QUIET_ROW_ACTION}`}
-                                            onClick={closePasswordForm}
-                                        >
-                                            {mt("cancel")}
-                                        </Button>
+                                        <ChangePassword
+                                            role="manager"
+                                            embedded
+                                            // Closing on success is the point of the panel: it is an
+                                            // OPTION to add a second way in, so once the password is
+                                            // saved there is nothing left to do inside it. Leaving it
+                                            // open made the visitor hunt for `Cancel` to dismiss a
+                                            // form that had already finished.
+                                            onSuccess={closePasswordForm}
+                                            // `Cancel` is handed in rather than rendered here: the form
+                                            // owns the submit, so only it can put the two on one line.
+                                            // The label stays localised by this page.
+                                            onCancel={closePasswordForm}
+                                            cancelLabel={mt("cancel")}
+                                        />
                                     </div>
                                 ) : null}
                             </ContactVerificationRow>

@@ -416,6 +416,11 @@ export default function AuthFlow({
       content = (
         <EnhancedLoginForm
           {...loginProps}
+          // Stated explicitly rather than left to the form's hostname fallback: this flow
+          // already knows which portal it is, and the password-reset it can open picks its
+          // endpoint from that. On `localhost` the fallback answers `chef`, so a manager
+          // resetting a password in dev reached the chef endpoint and the chef wording.
+          portal={portal}
           initialEmail={email}
           initialChallenge={loginChallenge}
           availableChallenges={availableMethods

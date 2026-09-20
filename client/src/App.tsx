@@ -97,6 +97,18 @@ const LoadingSpinner = () => {
 
 
 
+/**
+ * The current path WITH its query string, for the subdomain redirects below.
+ *
+ * They used to build `${origin}${path}` from the ROUTE PATTERN, which silently dropped
+ * `window.location.search`. Several arrivals carry their whole meaning in the query —
+ * a password-reset landing (`?message=password-reset-success`) and an email-verification
+ * landing (`?verified=true`) — so whenever such a link was opened on a host that needed
+ * redirecting, the redirect threw away the banner telling the reader what had just
+ * happened and what to do next. They landed on a bare sign-in form instead.
+ */
+const pathWithQuery = (path: string) => `${path}${window.location.search}`;
+
 // Subdomain-aware route wrapper
 function SubdomainRoute({ path, component, subdomain, children, ...props }: {
   path: string;
@@ -128,7 +140,7 @@ function SubdomainRoute({ path, component, subdomain, children, ...props }: {
         const targetUrl = `${getSubdomainOriginForEnvironment(targetSubdomain, window.location.hostname, {
           port: window.location.port,
           protocol: window.location.protocol,
-        })}${path}`;
+        })}${pathWithQuery(path)}`;
         window.location.href = targetUrl;
       }
     }
@@ -194,7 +206,7 @@ function Router() {
       window.location.href = `${getSubdomainOriginForEnvironment('chef', window.location.hostname, {
         port: window.location.port,
         protocol: window.location.protocol,
-      })}${path}`;
+      })}${pathWithQuery(path)}`;
       return;
     }
 
@@ -204,7 +216,7 @@ function Router() {
       window.location.href = `${getSubdomainOriginForEnvironment('kitchen', window.location.hostname, {
         port: window.location.port,
         protocol: window.location.protocol,
-      })}${path}`;
+      })}${pathWithQuery(path)}`;
       return;
     }
   }, [subdomain, location]);

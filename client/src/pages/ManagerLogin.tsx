@@ -44,14 +44,40 @@ export default function ManagerLogin() {
   // is browser-local only — it must never become a lookup, or the page would
   // become an account-enumeration oracle.
   const [lastAccount, setLastAccount] = useState<LastAccount | null>(() => getLastAccount());
+  // The query this arrival carried, read BEFORE the effect that parses `?message=` strips it.
+  // Only the initializers below may rely on it: they run once, on mount.
+  const arrivalParams = typeof window !== "undefined"
+    ? new URLSearchParams(window.location.search)
+    : new URLSearchParams();
   const [authStep, setAuthStep] = useState<AuthFlowStep>(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("tab") === "register") return "register";
+    if (arrivalParams.get("tab") === "register") return "register";
     // A post-verification or post-reset arrival carries its own landing step.
     // Starting on the card would flash it and then swap to the success banner.
-    if (params.get("message") || params.get("verified")) return "identifier";
+    if (arrivalParams.get("message") || arrivalParams.get("verified")) return "identifier";
     return lastAccount ? "welcome-back" : "identifier";
   });
+  /**
+   * True when this arrival came back from a PASSWORD RESET, which must not be routed onward.
+   *
+   * The two email-action landings look alike and are not:
+   *
+   *   `?verified=true`  the session is LIVE and valid, so the arrival effect's job is to
+   *                     route them onward — welcome screen, then Terms, then the dashboard.
+   *                     Nothing is lost by not showing the banner.
+   *   `?message=password-reset-success`
+   *                     the session is DEAD: a reset revokes the refresh token, though the
+   *                     client keeps reporting the persisted user until a refresh fails. So
+   *                     the effect used to send them to `/manager/dashboard` on top of the
+   *                     only screen that says "sign in with your new password" — into a
+   *                     dashboard whose API calls were about to start failing.
+   *
+   * Captured in a state initializer so it survives the effect that strips the query, and
+   * because the arrival effect runs in the SAME commit as the one that parses `?message=`,
+   * so a value set by that effect would still read as `false` on the first pass.
+   */
+  const [arrivedFromPasswordReset] = useState(
+    () => arrivalParams.get("message") === "password-reset-success",
+  );
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
   // Covers the gap after Google's account picker returns: signInWithGoogle sets
   // authPhase back to `ready` before finishAuthentication can raise the handoff,
@@ -547,7 +573,13 @@ export default function ManagerLogin() {
     //
     // This effect is now only for a visitor who ARRIVES already signed in, which is what
     // its name and the `hasRedirected` ref were always describing.
-    const midFlow = hasAttemptedLogin || showWelcome;
+    //
+    // `arrivedFromPasswordReset` is the third exclusion, and it is not the same case as the
+    // other two: that arrival has a session which is already dead, so routing it onward
+    // discarded the only screen explaining what happened and what to do next. A
+    // `?verified=true` arrival is deliberately NOT excluded — its session is live and this
+    // effect is what carries it to the welcome screen.
+    const midFlow = hasAttemptedLogin || showWelcome || arrivedFromPasswordReset;
     if (!loading && !userMetaLoading && user && userMetaData && location === '/manager/login' && !hasRedirected.current && !midFlow) {
       const isManager = userMetaData.role === 'manager' || userMetaData.isManager;
       
@@ -602,7 +634,7 @@ export default function ManagerLogin() {
     if (!user || location !== '/manager/login') {
       hasRedirected.current = false;
     }
-  }, [loading, userMetaLoading, user, userMetaData, location, setLocation, beginHandoff, endHandoff, showAlert, t, hasAttemptedLogin, showWelcome]);
+  }, [loading, userMetaLoading, user, userMetaData, location, setLocation, beginHandoff, endHandoff, showAlert, t, hasAttemptedLogin, showWelcome, arrivedFromPasswordReset]);
 
   // ENTERPRISE: Show appropriate loading state based on auth phase
   // This prevents the login form from flashing during Google sign-in
@@ -611,15 +643,32 @@ export default function ManagerLogin() {
   // Show loading spinner when auth is in progress OR when login was attempted but profile hasn't loaded yet
   const isAwaitingProfile = hasAttemptedLogin && !!user && !userMetaData;
   const isCompletingPhoneRegistration = isPhoneAuthInProgress();
+  /**
+   * The card is waiting out an attempt it started ITSELF — a password sign-in, not a
+   * handoff.
+   *
+   * `loading` and `authPhase` go busy for ANY auth operation, including one the card
+   * owns and can already show a spinner for: `EnhancedLoginForm` renders its own
+   * `LoadingOverlay`. Letting the gate answer to those flags UNMOUNTS `AuthFlow`, which
+   * destroys `email`, `methods` and `accountState` while `authStep` — owned here —
+   * survives. On a FAILED password sign-in that is exactly what the visitor is left
+   * with: the gate drops, `AuthFlow` remounts with its defaults, and the `login` step
+   * paints an empty "Email Address or Username" box under a "Continue with email"
+   * button with a "Wrong email?" escape. Nothing on that card can sign them in, and the
+   * password field they were typing in is gone.
+   *
+   * Google and registration keep the gate, because those really do hand off — a popup,
+   * a provisioning round trip — and each already carries its own flag.
+   */
+  const cardOwnsTheAttempt = hasAttemptedLogin && !googleAuthPending && !isRegistering;
   const isGateActive =
     !showEmailVerification &&
     !isCompletingPhoneRegistration &&
-    (loading ||
-      isInitialLoad ||
+    (isInitialLoad ||
       userMetaLoading ||
-      isAuthenticating ||
       isAwaitingProfile ||
-      googleAuthPending);
+      googleAuthPending ||
+      (!cardOwnsTheAttempt && (loading || isAuthenticating)));
 
   // Same escape hatch the chef page has. `isAwaitingProfile` in particular can
   // hold indefinitely if the profile request never resolves, and a manager

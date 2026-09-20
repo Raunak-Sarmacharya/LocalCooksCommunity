@@ -11,9 +11,15 @@ import { z } from "zod";
 import { toast } from "@/hooks/use-toast";
 import { useTranslation } from "react-i18next";
 import { auth } from "@/lib/firebase";
-import { EmailAuthProvider, linkWithCredential, reauthenticateWithCredential, updatePassword } from "firebase/auth";
-import { cn } from "@/lib/utils";
+import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from "firebase/auth";
 import { resolvePasswordFormMode, type PasswordFormMode } from "./password-form-mode";
+// The row-action hierarchy every row on the profile pages ranks its actions by. Reused
+// rather than restated so this panel's buttons cannot drift from its siblings'.
+import { PRIMARY_ROW_ACTION, QUIET_ROW_ACTION } from "@/components/profile/ContactVerificationRow";
+// The app's ONE password-reset surface, reused rather than reimplemented — see the escape
+// in `ChangePasswordForm`. A second place that POSTs to the reset endpoint is how the two
+// would drift.
+import ForgotPasswordForm from "./ForgotPasswordForm";
 import { useQuery } from "@tanstack/react-query";
 
 // ─── Helpers ────────────────────────────────────────────
@@ -66,9 +72,26 @@ interface ChangePasswordProps {
   embedded?: boolean;
   /** Fires once the form mode is known (never "loading") and again if it changes mid-session. */
   onModeResolved?: (mode: Exclude<PasswordFormMode, "loading">) => void;
+  /**
+   * Render a `Cancel` beside the submit, in the row-action hierarchy the profile page
+   * uses.
+   *
+   * The action lives here rather than in the host because the submit does: a panel whose
+   * primary button is rendered by one component and whose `Cancel` is rendered by
+   * another cannot put them on the same line, and stacking them is what made this form's
+   * buttons look unlike every other row on the page. `PhoneSignInSettings` already owns
+   * both of its own, so this mirrors it.
+   */
+  onCancel?: () => void;
+  /**
+   * The `Cancel` label. Passed in because the HOST localises it — the manager profile
+   * passes `mt("cancel")` ("Annuler" / "Скасувати"), and this component is shared with
+   * the chef and admin surfaces, which have their own namespaces.
+   */
+  cancelLabel?: string;
 }
 
-export default function ChangePassword({ onSuccess, embedded = false, onModeResolved }: ChangePasswordProps) {
+export default function ChangePassword({ role, onSuccess, embedded = false, onModeResolved, onCancel, cancelLabel = "Cancel" }: ChangePasswordProps) {
   const [hasLinkedPassword, setHasLinkedPassword] = useState(false);
   const [treatPasswordAsKnown, setTreatPasswordAsKnown] = useState(false);
   // undefined = still loading token claim; null = unavailable
@@ -180,7 +203,15 @@ export default function ChangePassword({ onSuccess, embedded = false, onModeReso
   }
 
   if (mode === "change") {
-    return <ChangePasswordForm onSuccess={onSuccess} embedded={embedded} />;
+    return (
+      <ChangePasswordForm
+        onSuccess={onSuccess}
+        embedded={embedded}
+        onCancel={onCancel}
+        cancelLabel={cancelLabel}
+        role={role}
+      />
+    );
   }
 
   return (
@@ -190,6 +221,8 @@ export default function ChangePassword({ onSuccess, embedded = false, onModeReso
       isPlaceholderPassword={isPlaceholderPassword}
       embedded={embedded}
       onSuccess={markPasswordKnown}
+      onCancel={onCancel}
+      cancelLabel={cancelLabel}
     />
   );
 }
@@ -198,12 +231,21 @@ export default function ChangePassword({ onSuccess, embedded = false, onModeReso
 function ChangePasswordForm({
   onSuccess,
   embedded = false,
+  onCancel,
+  cancelLabel = "Cancel",
+  role,
 }: {
   onSuccess?: () => void;
   embedded?: boolean;
+  onCancel?: () => void;
+  cancelLabel?: string;
+  /** Forwarded to `ForgotPasswordForm` so the reset it opens calls the right endpoint. */
+  role?: 'chef' | 'manager' | 'admin';
 }) {
   const { t } = useTranslation("chef");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  /** The escape has been taken: show the reset flow instead of this form. */
+  const [showReset, setShowReset] = useState(false);
 
   const form = useForm<ChangePasswordFormData>({
     resolver: zodResolver(changePasswordSchema),
@@ -221,6 +263,19 @@ function ChangePasswordForm({
     watched.newPassword.length >= 8 &&
     watched.confirmPassword === watched.newPassword &&
     watched.newPassword !== watched.currentPassword;
+
+  /**
+   * Whether to render the page's row-action shape.
+   *
+   * It follows the `Cancel`, because the two buttons have to match each other and a host
+   * only supplies one when it is rendering an action row. That is the manager profile,
+   * where the form is a disclosure inside a `ContactVerificationRow`.
+   *
+   * The CHEF profile nests this form permanently in a plain card — no disclosure, so no
+   * Cancel and no action row — and keeps its own full-width button. Gating on `embedded`
+   * alone would have restyled that page too, which nothing asked for and no harness covers.
+   */
+  const usesRowActions = embedded && onCancel !== undefined;
 
   const onSubmit = async (data: ChangePasswordFormData) => {
     setIsSubmitting(true);
@@ -280,6 +335,50 @@ function ChangePasswordForm({
     }
   };
 
+  /**
+   * The escape for someone who does not know the password this form is demanding.
+   *
+   * `resolvePasswordFormMode` returns `change` whenever the account HAS a password, and
+   * this form then asks for the current one. OWASP requires that check — an unlocked
+   * session on a shared machine must not be enough to take the account over — so the
+   * answer is not to relax it, it is to give a way out. Without one a manager who signed
+   * in with Google and has forgotten the password they set is simply stuck: the row
+   * offers nothing else, and no amount of retyping gets past it.
+   *
+   * It reuses `ForgotPasswordForm` VERBATIM — same component, same
+   * `/api/manager/forgot-password` endpoint, same branded email, same Firebase link — so
+   * there is still exactly one place that requests a reset.
+   *
+   * Doing it from INSIDE the dashboard is safe, which is not obvious: a Firebase password
+   * reset revokes the user's refresh tokens automatically ("the user is signed out and
+   * prompted to reauthenticate"), so the flow ends on the login screen exactly as it does
+   * from the sign-in screen. The copy has to say so, or being dropped out of a dashboard
+   * they were just using reads as a bug rather than as the reset working.
+   */
+  if (showReset) {
+    return (
+      <div className="space-y-4">
+        {/* ABOVE the form, not below it: the reset signs the user out, so the consequence
+            has to be read BEFORE the button that causes it, not after. */}
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          {t("pwForgotSignOutNotice")}
+        </p>
+        <ForgotPasswordForm
+          embedded
+          role={role}
+          initialEmail={auth.currentUser?.email ?? ""}
+          onGoBack={() => setShowReset(false)}
+          // Names where it goes. The form's own default is "Back to sign in", which is a lie
+          // from inside the dashboard.
+          backLabel={t("pwForgotBack")}
+          onSuccess={() => {
+            /* Stay on the success UI: it is the only place the next step is stated. */
+          }}
+        />
+      </div>
+    );
+  }
+
   const formBody = (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
@@ -322,17 +421,70 @@ function ChangePasswordForm({
             </FormItem>
           )}
         />
-        <Button
-          type="submit"
-          className={cn(embedded ? "w-full sm:w-auto" : "w-full")}
-          disabled={isSubmitting || !canSave}
-        >
-          {isSubmitting ? (
-            <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t("pwChanging")}</>
-          ) : (
-            <><KeyRound className="mr-2 h-4 w-4" />{t("pwChangePassword")}</>
-          )}
-        </Button>
+        {/*
+          Embedded: the page's row-action hierarchy, exactly as `PhoneSignInSettings`
+          renders its inline editor — the completing action in PRIMARY, a text-only
+          `Cancel` on the SAME line. It used to keep the marketing CTA (brand-red pill
+          with a glow, `h-9`, hover lift) with `Cancel` stacked underneath on its own
+          line, which read as two mismatched buttons rather than one action row. The
+          `KeyRound` goes with it: no row action on this page carries a decorative icon.
+
+          Standalone (the `Card` form used by admin): unchanged, a full-width submit.
+        */}
+        {usesRowActions ? (
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <Button type="submit" size="sm" className={PRIMARY_ROW_ACTION} disabled={isSubmitting || !canSave}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />
+                  {t("pwChanging")}
+                </>
+              ) : (
+                t("pwChangePassword")
+              )}
+            </Button>
+            {onCancel ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className={QUIET_ROW_ACTION}
+                onClick={onCancel}
+                disabled={isSubmitting}
+              >
+                {cancelLabel}
+              </Button>
+            ) : null}
+          </div>
+        ) : (
+          <Button type="submit" className="w-full" disabled={isSubmitting || !canSave}>
+            {isSubmitting ? (
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t("pwChanging")}</>
+            ) : (
+              <><KeyRound className="mr-2 h-4 w-4" />{t("pwChangePassword")}</>
+            )}
+          </Button>
+        )}
+        {/*
+          The escape, BELOW the actions and as a plain inline text link — the same shape the
+          auth card uses for "Wrong email? Use a different email". Gated with the action row
+          rather than on `embedded`, because today the only host that renders one is the
+          manager profile; the chef nests this form permanently with no row to escape from.
+        */}
+        {usesRowActions ? (
+          <p className="text-sm text-slate-600">
+            {t("pwForgotPrompt")}{" "}
+            <button
+              type="button"
+              onClick={() => setShowReset(true)}
+              // index.css forces min-height/min-width 44px on EVERY button, which would
+              // blow this inline link out of its line.
+              className="!min-h-0 !min-w-0 font-medium text-[#E00A38] underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none"
+            >
+              {t("pwForgotAction")}
+            </button>
+          </p>
+        ) : null}
       </form>
     </Form>
   );
@@ -364,6 +516,8 @@ function SetPasswordForm({
   isPlaceholderPassword,
   onSuccess,
   embedded = false,
+  onCancel,
+  cancelLabel = "Cancel",
 }: {
   mode: "set-link" | "set-update";
   isGoogleUser: boolean;
@@ -371,6 +525,8 @@ function SetPasswordForm({
   isPlaceholderPassword: boolean;
   onSuccess?: () => void;
   embedded?: boolean;
+  onCancel?: () => void;
+  cancelLabel?: string;
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isEmailLinkSet = mode === "set-update";
@@ -388,6 +544,8 @@ function SetPasswordForm({
   const canSave =
     watched.newPassword.length >= 8 &&
     watched.confirmPassword === watched.newPassword;
+  /** See the same name in `ChangePasswordForm`. */
+  const usesRowActions = embedded && onCancel !== undefined;
 
   const onSubmit = async (data: SetPasswordFormData) => {
     setIsSubmitting(true);
@@ -398,20 +556,33 @@ function SetPasswordForm({
         throw new Error("You must be signed in to set a password");
       }
 
-      const userEmail = currentFirebaseUser.email;
-      if (!userEmail) {
+      if (!currentFirebaseUser.email) {
         throw new Error("No email associated with this account.");
       }
 
-      if (mode === "set-update") {
-        // Passwordless signup already linked a Firebase password provider with a
-        // server-generated secret the user never saw. Recent email-link auth lets
-        // us replace it without asking for that secret. Neon stays NOT NULL via sync.
-        await updatePassword(currentFirebaseUser, data.newPassword);
-      } else {
-        const credential = EmailAuthProvider.credential(userEmail, data.newPassword);
-        await linkWithCredential(currentFirebaseUser, credential);
-      }
+      // `updatePassword`, never `linkWithCredential` — for BOTH modes.
+      //
+      // Both calls add a password provider, but linking an EmailAuthProvider
+      // credential makes Firebase re-evaluate who vouches for the address and
+      // DEMOTE the account: `emailVerified` flips true -> false. Measured
+      // 2026-09-20 in this project on a disposable user —
+      //   linkWithCredential  emailVerified true -> false, providers [password]
+      //   updatePassword      emailVerified true -> true,  providers [password]
+      // Identical provider set, so the flag is the only difference.
+      //
+      // That is the whole reason a manager who registered with Google and then set a
+      // password lost the email sign-in path for good: `resolveEmailVerified` and the
+      // client's `hasVerifiedEmail` both read `emailVerified`, so the identifier gate
+      // diverted them to "Check your email" on every attempt. Only a Google account
+      // could reach this branch — it is the only kind with no password provider — and
+      // the feature had never been exercised before that account, so it was also the
+      // first and only one affected. There is no counter-evidence from other accounts:
+      // none of them has ever set a password from the profile page.
+      //
+      // `updatePassword` covers the placeholder-replacement case too, which is why
+      // the two modes are now one call. Either way Firebase requires a recent
+      // sign-in, and `auth/requires-recent-login` is already handled below.
+      await updatePassword(currentFirebaseUser, data.newPassword);
 
       await syncPasswordToNeon(data.newPassword);
 
@@ -499,17 +670,42 @@ function SetPasswordForm({
               </FormItem>
             )}
           />
-          <Button
-            type="submit"
-            className={cn(embedded ? "w-full sm:w-auto" : "w-full")}
-            disabled={isSubmitting || !canSave}
-          >
-            {isSubmitting ? (
-              <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving…</>
-            ) : (
-              <><ShieldCheck className="mr-2 h-4 w-4" />Set password</>
-            )}
-          </Button>
+          {/* Same action row as the change form, for the same reason — see `onCancel`
+              on the props. The `ShieldCheck` goes with the marketing CTA. */}
+          {usesRowActions ? (
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <Button type="submit" size="sm" className={PRIMARY_ROW_ACTION} disabled={isSubmitting || !canSave}>
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />
+                    Saving…
+                  </>
+                ) : (
+                  "Set password"
+                )}
+              </Button>
+              {onCancel ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className={QUIET_ROW_ACTION}
+                  onClick={onCancel}
+                  disabled={isSubmitting}
+                >
+                  {cancelLabel}
+                </Button>
+              ) : null}
+            </div>
+          ) : (
+            <Button type="submit" className="w-full" disabled={isSubmitting || !canSave}>
+              {isSubmitting ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving…</>
+              ) : (
+                <><ShieldCheck className="mr-2 h-4 w-4" />Set password</>
+              )}
+            </Button>
+          )}
         </form>
       </Form>
     </div>

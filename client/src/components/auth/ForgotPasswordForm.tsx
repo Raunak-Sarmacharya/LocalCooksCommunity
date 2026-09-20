@@ -24,6 +24,12 @@ interface ForgotPasswordFormProps {
   initialEmail?: string;
   /** Compact layout when embedded inside the login modal/page. */
   embedded?: boolean;
+  /**
+   * The back control's label. It names where it GOES, so it cannot be fixed: from the
+   * sign-in screen it returns to signing in, but the same form is also reachable from the
+   * manager profile's change-password form, where "Back to sign in" would be a lie.
+   */
+  backLabel?: string;
 }
 
 const containerVariants = {
@@ -49,6 +55,7 @@ export default function ForgotPasswordForm({
   role,
   initialEmail = "",
   embedded = false,
+  backLabel = "Back to sign in",
 }: ForgotPasswordFormProps) {
   const [formState, setFormState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -193,7 +200,7 @@ export default function ForgotPasswordForm({
             onClick={onGoBack}
             className="text-sm text-gray-600 hover:text-gray-900 font-medium"
           >
-            Back to sign in
+            {backLabel}
           </button>
         </motion.div>
       )}

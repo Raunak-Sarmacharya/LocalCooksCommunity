@@ -44,6 +44,16 @@ interface EnhancedLoginFormProps {
   onTryAnotherWay?: () => void;
   /** The named way out of this form — routes back to the identifier gate. */
   onUseDifferentEmail?: () => void;
+  /**
+   * Which portal this form is running in, so the password-reset flow it opens calls the
+   * right endpoint and shows the right copy.
+   *
+   * Without it `ForgotPasswordForm` falls back to sniffing `window.location.hostname` —
+   * which answers `chef` on `localhost`, so a manager resetting their password in dev hit
+   * the chef endpoint and the chef wording. The host already knows the answer; it should
+   * not be guessed from the URL.
+   */
+  portal?: "manager" | "chef";
 }
 
 type AuthState = "idle" | "loading" | "success" | "error" | "email-verification";
@@ -94,6 +104,7 @@ export default function EnhancedLoginForm({
   autoSendEmailLink = false,
   onTryAnotherWay,
   onUseDifferentEmail,
+  portal,
 }: EnhancedLoginFormProps) {
   const { t } = useTranslation("auth");
   const [challenge, setChallenge] = useState<LoginChallenge>(initialChallenge);
@@ -295,6 +306,8 @@ export default function EnhancedLoginForm({
     return (
       <ForgotPasswordForm
         embedded
+        // Stated, never sniffed. See `portal` on the props.
+        role={portal}
         initialEmail={form.getValues("email")}
         onGoBack={() => switchChallenge("password")}
         onSuccess={() => {

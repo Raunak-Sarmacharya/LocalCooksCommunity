@@ -23,6 +23,12 @@ const AnimatedInput = forwardRef<HTMLInputElement, AnimatedInputProps>(
     const hasValue = Boolean(value || internalValue);
     const fieldClassName = cn(
       "h-12",
+      // The auth card's field shape. `IdentifierGate` — the very next screen in this same
+      // flow — renders its field as `h-12 rounded-xl`, and `Input`'s own base is
+      // `rounded-md`, so every field on the card came out visibly squarer than the gate's.
+      // The password field was the most obvious because it is the one a visitor stares at
+      // while typing.
+      "rounded-xl",
       icon && "pl-10",
       validationState === 'invalid' && "border-destructive focus-visible:ring-destructive",
       className
