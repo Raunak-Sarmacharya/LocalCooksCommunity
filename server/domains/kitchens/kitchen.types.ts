@@ -6,6 +6,15 @@
 
 export type PricingModel = 'hourly' | 'daily' | 'weekly' | 'monthly-flat' | 'per-cubic-foot';
 
+/**
+ * The manager's publish state for a kitchen.
+ *
+ * A deliberate subset of the `listing_status` enum the schema shares with storage and equipment
+ * listings: `pending` / `approved` / `rejected` belong to that admin-review flow, and `inactive`
+ * would duplicate `isActive`. A kitchen only needs "not published yet" and "published".
+ */
+export type ListingStatus = 'draft' | 'active';
+
 export type StorageType = 'dry' | 'cold' | 'freezer';
 
 export type StoragePricingModel = 'monthly-flat' | 'per-cubic-foot' | 'hourly' | 'daily';
@@ -74,6 +83,14 @@ export interface KitchenDTO {
   galleryImages: string[];
   amenities: string[];
   isActive: boolean;
+  /**
+   * The manager's publish state, per kitchen. `draft` until they publish it.
+   *
+   * Separate from `isActive`, which is the admin's Hide/Show override — a kitchen reaches chefs only
+   * when both allow it. See `findAllActive` for the filter and
+   * `server/services/kitchen-listing-readiness-service.ts` for the gate.
+   */
+  listingStatus: ListingStatus;
   hourlyRate: number | null;
   dailyRate: number | null;
   currency: string;

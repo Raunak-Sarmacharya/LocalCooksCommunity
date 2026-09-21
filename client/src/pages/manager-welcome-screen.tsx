@@ -19,7 +19,12 @@ import harbourKitchenImage from "@/assets/harbour-kitchen-hub.jpg";
  * `ManagerOnboardingWizard` has a welcome step, but it lives inside the dashboard, i.e.
  * AFTER the Terms & Conditions gate. A new manager's first screen was therefore a legal
  * page. This is the warm moment that should come first, and dismissing it records
- * `has_seen_welcome`, which marks that wizard step complete so the two never both appear.
+ * `has_seen_welcome`, which is what lets the manager on into the wizard.
+ *
+ * It does NOT mark the wizard's own welcome STEP complete. Those are two different screens with two
+ * different jobs — this one introduces the product, the wizard's one lays out the work and offers
+ * "Maybe later" — and reading this flag as the step's completion skipped the step before the manager
+ * could act on it (and, because the skip ran in an effect, flashed it first).
  *
  * WHY IT SHOWS THE PRODUCT RATHER THAN DESCRIBING IT
  * Research on welcome screens is consistent on this point:

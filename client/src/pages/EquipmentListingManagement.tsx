@@ -603,7 +603,9 @@ export function EquipmentListingContent({
       for (const row of rows) if (row.id != null) byId.set(row.id, row);
     }
     for (const row of listings) if (row.id != null) byId.set(row.id, row);
-    return [...byId.values()];
+    // `Array.from`, not a spread: `tsconfig.json` sets no `target`, so iterating a MapIterator
+    // with `[...]` needs `--downlevelIteration`. Same pattern as `server/storage.ts`.
+    return Array.from(byId.values());
   }, [allKitchenListings, listings]);
 
   /** The row being deleted is hidden straight away; the API call waits for the undo window. */

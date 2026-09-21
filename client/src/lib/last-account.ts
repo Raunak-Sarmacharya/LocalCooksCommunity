@@ -124,9 +124,10 @@ function parseRecord(raw: string | null): LastAccount | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as Partial<LastAccount>;
-    const expired =
-      typeof parsed.savedAt !== "number" || Date.now() - parsed.savedAt > MAX_AGE_MS;
-    if (expired || typeof parsed.email !== "string" || !parsed.email) return null;
+    // Kept as its own guard rather than folded into an `expired` const: only a `return` here
+    // narrows `parsed.savedAt` to `number` for the record built below.
+    if (typeof parsed.savedAt !== "number" || Date.now() - parsed.savedAt > MAX_AGE_MS) return null;
+    if (typeof parsed.email !== "string" || !parsed.email) return null;
     if (
       parsed.method !== "google" &&
       parsed.method !== "email-link" &&

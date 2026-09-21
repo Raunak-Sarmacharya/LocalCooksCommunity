@@ -26,17 +26,24 @@ export const steps: any[] = [
          * real work made the rail read "n of 7 required" for a job that is five tasks, and a row
          * called "Welcome" with a tick against it is not a thing anybody did.
          *
-         * OnboardJS draws the same line in its own reference flow — its intro is `INFORMATION` and
-         * its closing screen is `CONFIRMATION`, while a screen you fill in is `CUSTOM_COMPONENT` —
-         * and the library's validator treats those two types as payload-less screens rather than
-         * components. The type is set accordingly; `isTask` is what the rail and the fraction read,
-         * because "is this work" is a different question from "what kind of screen is this".
+         * `type` stays CUSTOM_COMPONENT, and that is load-bearing. The OnboardJS docs are explicit
+         * (docs.onboardjs.com/steps/typed-steps): INFORMATION is the DEFAULT type and its payload is
+         * `{ title, mainText, ctaButtonText }`, while CUSTOM_COMPONENT is the type that renders a
+         * component from `payload.componentKey` — which is exactly what this step and
+         * `completion-summary` do. Typing them INFORMATION/CONFIRMATION said "not a task" with the
+         * wrong lever, and `CONFIRMATION` is not a documented step type at all. `isTask` is the lever
+         * for "not a task"; `type` describes how the screen is RENDERED.
          *
          * Neither screen is removed from the flow. They still frame the journey; they just stop
          * pretending to be tasks.
+         *
+         * This step is REACHABLE and stays that way — it is the wizard's entry screen, with a real
+         * "Maybe later". Do not confuse it with the standalone welcome SCREEN shown before the terms
+         * gate (`manager-welcome-screen.tsx`); they are different screens with different jobs, and
+         * the wizard's `welcome` must not be marked complete just because the screen was dismissed.
          */
         id: 'welcome',
-        type: 'INFORMATION',
+        type: 'CUSTOM_COMPONENT',
         metadata: {
             label: 'Welcome',
             isOptional: false,
@@ -51,17 +58,29 @@ export const steps: any[] = [
         nextStep: 'location'
     },
     {
+        /*
+         * "Business & licence", not "Business".
+         *
+         * The step collects three things: the business details, the contact information, and the
+         * commercial kitchen licence that an admin reviews before the manager goes live. Calling it
+         * "Business" hid the third — and it is the one that GATES going live, so a manager scanning
+         * the rail had no way to tell where the licence was collected. The dashboard's own checklist
+         * already names it separately ("Upload your license"), so the two disagreed.
+         *
+         * Same short-label / long-title split the availability step uses: the rail only fits about
+         * two words, the step title carries the full name.
+         */
         id: 'location',
         type: 'CUSTOM_COMPONENT',
         metadata: {
-            label: 'Business',
+            label: 'Business & licence',
             isOptional: false,
             canSkip: false
         },
         payload: {
             componentKey: 'location',
-            title: 'Business Details',
-            description: 'Set up your business information',
+            title: 'Business details & licence',
+            description: 'Your business details, contact information and kitchen licence',
         },
         nextStep: 'create-kitchen'
     },
@@ -152,10 +171,14 @@ export const steps: any[] = [
          *
          * It cannot meaningfully be "completed": it completes when every task above it does, so a
          * tick against it restated the whole list and a unit of progress for it was a unit nobody
-         * earned. `CONFIRMATION` is what the library calls this kind of screen.
+         * earned.
+         *
+         * `type` is CUSTOM_COMPONENT for the same reason as `welcome`: it renders a component from
+         * `payload.componentKey`, and `CONFIRMATION` is not one of the types the library documents
+         * (INFORMATION / SINGLE_CHOICE / MULTI_CHOICE / CUSTOM_COMPONENT).
          */
         id: 'completion-summary',
-        type: 'CONFIRMATION',
+        type: 'CUSTOM_COMPONENT',
         metadata: {
             label: 'Summary',
             isOptional: false,

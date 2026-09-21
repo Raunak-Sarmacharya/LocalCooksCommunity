@@ -8,7 +8,7 @@ import { logger } from "../../logger";
 
 import { db } from '../../db';
 import { kitchens, locations, kitchenDateOverrides, kitchenAvailability, kitchenBookings } from '@shared/schema';
-import { eq, and, desc, gte, lte, sql } from 'drizzle-orm';
+import { eq, and, asc, desc, gte, lte, sql } from 'drizzle-orm';
 import type { CreateKitchenDTO, UpdateKitchenDTO, KitchenDTO, KitchenWithLocationDTO, CreateKitchenOverrideDTO, UpdateKitchenOverrideDTO, KitchenOverrideDTO } from './kitchen.types';
 import { KitchenErrorCodes, DomainError } from '../../shared/errors/domain-error';
 
@@ -23,6 +23,13 @@ export class KitchenRepository {
     return {
       ...row,
       description: row.description || undefined,
+      // `listing_status` is the SHARED enum — storage and equipment listings review through
+      // `pending` / `approved` / `rejected` — but a kitchen is only ever WRITTEN as `draft` or
+      // `active` (the column defaults to `draft`; `POST /manager/kitchens/:id/listing-status` is the
+      // only writer). Translating it here makes `KitchenDTO.listingStatus` true by construction
+      // instead of asserting it with a cast, and mirrors what
+      // `kitchen-listing-readiness-service.ts` does when it builds the client payload.
+      listingStatus: row.listingStatus === "active" ? "active" : "draft",
       hourlyRate: row.hourlyRate ? parseFloat(row.hourlyRate) : null,
       dailyRate: row.dailyRate ? parseFloat(row.dailyRate) : null,
       galleryImages: (row.galleryImages as string[]) || [], // Ensure type safety for JSONB
@@ -59,7 +66,16 @@ export class KitchenRepository {
   }
 
   /**
-   * Find kitchens by location ID
+   * Find kitchens by location ID, in CREATION order.
+   *
+   * Ascending, not `desc(createdAt)`. This list is what the manager's kitchen switcher renders and
+   * what `kitchens[0]` is taken to mean — the location's first kitchen, i.e. the one onboarding set
+   * up. Newest-first made a newly added kitchen jump to the top and silently become that "first"
+   * kitchen, which is how adding a kitchen re-opened the onboarding Availability step: the step was
+   * re-evaluated against the new, empty kitchen instead of the one the manager had configured.
+   *
+   * `id` breaks ties so the order is deterministic. Chef-facing discovery is deliberately untouched —
+   * it reads `findActiveByLocationId` / `findAllActive`, not this.
    */
   async findByLocationId(locationId: number): Promise<KitchenDTO[]> {
     try {
@@ -67,7 +83,7 @@ export class KitchenRepository {
         .select()
         .from(kitchens)
         .where(eq(kitchens.locationId, locationId))
-        .orderBy(desc(kitchens.createdAt));
+        .orderBy(asc(kitchens.createdAt), asc(kitchens.id));
 
       return results.map(k => this.mapToDTO(k));
     } catch (error: any) {
@@ -108,14 +124,23 @@ export class KitchenRepository {
   }
 
   /**
-   * Find all active kitchens
+   * Find all kitchens a chef is allowed to see.
+   *
+   * Two independent switches, both must be on:
+   *   `listing_status` — the MANAGER has published it
+   *   `is_active`      — the ADMIN has not hidden it
+   *
+   * This one query is the chef-facing filter for every public kitchen surface: /public/locations,
+   * /public/kitchens, and the chef's own locations list all route through here. Filtering in the
+   * query rather than at each call site is what stops a new consumer from quietly reintroducing
+   * the leak this closes.
    */
   async findAllActive(): Promise<KitchenDTO[]> {
     try {
       const results = await db
         .select()
         .from(kitchens)
-        .where(eq(kitchens.isActive, true))
+        .where(and(eq(kitchens.isActive, true), eq(kitchens.listingStatus, "active")))
         .orderBy(desc(kitchens.createdAt));
 
       return results.map(k => this.mapToDTO(k));

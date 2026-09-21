@@ -30,7 +30,7 @@ import ManagerLocationsPage from "@/components/manager/ManagerLocationsPage";
 import ManagerRevenueDashboard from "./ManagerRevenueDashboard";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
 import LocationRequirementsSettings from "@/components/manager/LocationRequirementsSettings";
-import { LicenseSettings, BookingRulesSettings, LocationSettings, KitchensManagement, FacilityDocsSettings, CheckinCheckoutSettings, StorageCheckinCheckoutSettings } from "@/components/manager/settings";
+import { LicenseSettings, BookingRulesSettings, LocationSettings, KitchensManagement, KitchenListingReview, FacilityDocsSettings, CheckinCheckoutSettings, StorageCheckinCheckoutSettings } from "@/components/manager/settings";
 import type { BookingPoliciesHandle, CheckinCheckoutHandle, KitchensHandle } from "@/components/manager/settings";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -44,7 +44,7 @@ import { useManagerOnboarding } from "@/components/manager/onboarding/ManagerOnb
 import { OnboardingStatusBanner } from "@/components/manager/OnboardingStatusBanner";
 import { getManagerImprovementDestination } from "@/lib/manager-guidance";
 import NotificationCenter from "@/components/manager/NotificationCenter";
-import { legacyKitchenSection, type ManagerBreadcrumb } from "@/lib/manager-kitchens-navigation";
+import { legacyKitchenSection, resolveDestination, type KitchenSection, type ManagerBreadcrumb } from "@/lib/manager-kitchens-navigation";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { ChefPageHeader } from "@/components/chef/ui";
 import { Tab, TabGroup, TabList, TabPanel, TabPanels } from "@tremor/react";
@@ -148,7 +148,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 }
 
 
-type ViewType = 'my-locations' | 'overview' | 'bookings' | 'storage-bookings' | 'viewings' | 'availability' | 'tour-availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'revenue' | 'messages' | 'profile' | 'kitchens' | 'settings-license' | 'settings-booking-rules' | 'settings-facility-docs' | 'settings-location' | 'settings-checkin-checkout' | 'settings-storage-checkin-checkout' | 'application-requirements' | 'notifications' | 'notification-settings' | 'overstays' | 'damage-claims' | 'storage-checkouts' | 'support';
+type ViewType = 'my-locations' | 'overview' | 'bookings' | 'storage-bookings' | 'viewings' | 'availability' | 'tour-availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'revenue' | 'messages' | 'profile' | 'kitchens' | 'listing-review' | 'settings-license' | 'settings-booking-rules' | 'settings-facility-docs' | 'settings-location' | 'settings-checkin-checkout' | 'settings-storage-checkin-checkout' | 'application-requirements' | 'notifications' | 'notification-settings' | 'overstays' | 'damage-claims' | 'storage-checkouts' | 'support';
 
 
 export default function ManagerBookingDashboard() {
@@ -163,7 +163,7 @@ export default function ManagerBookingDashboard() {
   const [activeView, setActiveView] = useState<ViewType>(() => {
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
-    const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'storage-bookings', 'viewings', 'availability', 'tour-availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'notification-settings', 'overstays', 'damage-claims', 'storage-checkouts', 'support'];
+    const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'storage-bookings', 'viewings', 'availability', 'tour-availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'listing-review', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'notification-settings', 'overstays', 'damage-claims', 'storage-checkouts', 'support'];
     // Back-compat: redirect legacy 'settings-storage-checkout' URLs to the new combined page.
     if (view === 'settings-storage-checkout') {
       return 'settings-storage-checkin-checkout';
@@ -176,6 +176,26 @@ export default function ManagerBookingDashboard() {
     }
     return 'overview';
   });
+  /**
+   * The kitchen the publish review is for.
+   *
+   * Carried EXPLICITLY from the card that opens it, not read out of the URL. An earlier version read
+   * `window.location.search`, and that was wrong twice over: the app's URLs differ between
+   * environments, and `ManagerPageLayout` writes `kit` with `history.replaceState`, which never
+   * notifies wouter, so the router's idea of the URL and `window.location` can disagree.
+   *
+   * The URL is kept only as a FALLBACK, so a reload while the review is open still resolves a
+   * kitchen rather than falling back to "no kitchen selected".
+   */
+  const [reviewKitchenId, setReviewKitchenId] = useState<number | null>(null);
+  const kitchenForReview =
+    reviewKitchenId ??
+    (() => {
+      const raw = new URLSearchParams(window.location.search).get("kit");
+      const parsed = raw ? parseInt(raw, 10) : NaN;
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    })();
+
   const availabilityRef = useRef<KitchenAvailabilityManagementHandle>(null);
   const bypassAvailabilityGuard = useRef(false);
   const [availabilityDirty, setAvailabilityDirty] = useState(false);
@@ -264,7 +284,7 @@ export default function ManagerBookingDashboard() {
       const params = new URLSearchParams(window.location.search);
       const view = params.get('view');
       setDeepLinkConversationId(params.get("conversation"));
-      const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'storage-bookings', 'viewings', 'availability', 'tour-availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'notification-settings', 'overstays', 'damage-claims', 'storage-checkouts', 'support'];
+      const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'storage-bookings', 'viewings', 'availability', 'tour-availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'listing-review', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'settings-checkin-checkout', 'settings-storage-checkin-checkout', 'application-requirements', 'notifications', 'notification-settings', 'overstays', 'damage-claims', 'storage-checkouts', 'support'];
       // Back-compat: redirect legacy URL to the new combined page.
       if (view === 'settings-storage-checkout') {
         setActiveView('settings-storage-checkin-checkout');
@@ -296,12 +316,26 @@ export default function ManagerBookingDashboard() {
   // Centralised tab-change handler. Pushes the new view into browser history
   // so the back button walks through the user's tab journey instead of always
   // returning to whatever tab was last viewed before opening a sub-page.
-  const handleViewChange = (view: ViewType) => {
-    const legacySection = legacyKitchenSection(view);
+  const handleViewChange = (view: ViewType, kitchenId?: number, section?: KitchenSection) => {
+    // Remember which kitchen a task view belongs to. Held in state rather than the URL so opening
+    // the publish review never depends on the URL shape, which differs between environments.
+    if (kitchenId) setReviewKitchenId(kitchenId);
+    /*
+     * `resolveDestination` turns both spellings of a Kitchens-tab destination — an explicit
+     * `section`, and a legacy view alias — into the one shape `KitchensManagement` reads. A request
+     * that names only `"kitchens"` resolves to no section, i.e. "whatever tab the URL already held".
+     */
+    const targetSection = resolveDestination(view, section).section;
     const profileTab = view === 'payments' ? 'payments' : view === 'notification-settings' ? 'notifications' : null;
     const availabilityTab = view === 'tour-availability' ? 'tours' : null;
-    const nextView = availabilityTab ? 'availability' : profileTab ? 'profile' : legacySection ? 'kitchens' : view;
-    const isSameDestination = nextView === activeView && !availabilityTab && !profileTab && !legacySection;
+    const nextView = targetSection
+      ? 'kitchens'
+      : availabilityTab
+        ? 'availability'
+        : profileTab
+          ? 'profile'
+          : view;
+    const isSameDestination = nextView === activeView && !availabilityTab && !profileTab && !targetSection;
     if (isSameDestination) return;
     if (activeView === 'availability' && availabilityDirty && !bypassAvailabilityGuard.current) {
       setPendingAvailabilityView(view);
@@ -330,9 +364,9 @@ export default function ManagerBookingDashboard() {
 
     setActiveView(nextView);
     const url = new URL(window.location.href);
-    if (legacySection) {
+    if (targetSection) {
       url.searchParams.set('view', 'kitchens');
-      url.searchParams.set('section', legacySection);
+      url.searchParams.set('section', targetSection);
     } else if (nextView === 'overview') {
       url.searchParams.delete('view');
     } else {
@@ -417,6 +451,9 @@ export default function ManagerBookingDashboard() {
     "settings-booking-rules": mt("navBookingRules"),
     "settings-checkin-checkout": mt("navCheckinCheckout"),
     "damage-claims": mt("navDamageClaims"),
+    // The publish review is a task reached from a kitchen, not a sidebar destination — the
+    // breadcrumb is what tells the manager it belongs under My Kitchens.
+    "listing-review": mt("listingReviewPageTitle"),
   };
   const applicationChildLabel: Partial<Record<ViewType, string>> = {
     "application-requirements": mt("navApplicationRequirements"),
@@ -1024,6 +1061,12 @@ export default function ManagerBookingDashboard() {
           onConfigureRequirements={() => handleViewChange('application-requirements')}
           saveRef={kitchensSaveRef}
           onDirtyChange={setKitchensDirty}
+          /*
+           * A review row sends the manager here for ONE kitchen. Without this the tabbed section
+           * seeds itself from `kitchens[0]`, so a location holding several kitchens opens the wrong
+           * one — which is what every row on the publish review used to do.
+           */
+          initialKitchenId={reviewKitchenId ?? undefined}
         />
       )}
 
@@ -1032,6 +1075,23 @@ export default function ManagerBookingDashboard() {
           <Calendar className="h-16 w-16 text-gray-300 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("selectALocation")}</h3>
           <p className="text-gray-500">{mt("chooseALocationToManageKitchens")}</p>
+        </div>
+      )}
+
+      {activeView === 'listing-review' && kitchenForReview && (
+        <KitchenListingReview
+          kitchenId={kitchenForReview}
+          onNavigate={handleViewChange}
+          // Listing is the end of the task, so the manager lands back on the kitchen rather than
+          // being left staring at a page whose only action is now done.
+          onListed={() => handleViewChange('kitchens')}
+        />
+      )}
+
+      {activeView === 'listing-review' && !kitchenForReview && (
+        <div className="rounded-lg border bg-card p-12 text-center">
+          <h3 className="text-lg font-medium text-foreground">{mt("noKitchenSelected")}</h3>
+          <p className="mt-1 text-sm text-muted-foreground">{mt("pleaseSelectAKitchenFirst")}</p>
         </div>
       )}
 
@@ -1969,7 +2029,8 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       minimumBookingWindowHours: minimumBookingWindowHours,
       notificationEmail: notificationEmail || undefined,
       logoUrl: overrideLogoUrl !== undefined ? overrideLogoUrl : (logoUrl || undefined),
-      description: description || undefined,
+      // `description` is gone: `locations.description` was removed from the product on 2026-09-20,
+      // `updateLocationSettings` never forwarded it, and the column is not in the schema.
       customOnboardingLink: customOnboardingLink || undefined,
       timezone: timezone || DEFAULT_TIMEZONE,
     };

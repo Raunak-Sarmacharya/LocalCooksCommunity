@@ -11,6 +11,7 @@ import { Location, Kitchen, StorageListing, EquipmentListing } from "./types";
 import { optionalPhoneNumberSchema } from "@shared/phone-validation";
 import { useOnboarding } from "@onboardjs/react";
 import { steps } from "@/config/onboarding-steps";
+import { resumeBlockedBy } from "./resume-gate";
 import { Link, useLocation } from "wouter";
 
 // [ENTERPRISE] Generate unique submission ID using crypto API or fallback
@@ -135,6 +136,12 @@ interface ManagerOnboardingContextType {
   refreshRequirements?: () => Promise<void>;
 
   // Forms State
+  /**
+   * The Business step's form surface.
+   *
+   * `description` is deliberately absent: `locations.description` was removed from the product on
+   * 2026-09-20 (`shared/schema.ts`), and nothing reads a location description any more.
+   */
   locationForm: {
     name: string;
     address: string;
@@ -144,7 +151,6 @@ interface ManagerOnboardingContextType {
     contactPhone: string;
     preferredContactMethod: "email" | "phone" | "both";
     logoUrl: string;
-    description: string;
     setName: (val: string) => void;
     setAddress: (val: string) => void;
     setNotificationEmail: (val: string) => void;
@@ -153,7 +159,6 @@ interface ManagerOnboardingContextType {
     setContactPhone: (val: string) => void;
     setPreferredContactMethod: (val: "email" | "phone" | "both") => void;
     setLogoUrl: (val: string) => void;
-    setDescription: (val: string) => void;
   };
 
   licenseForm: {
@@ -426,10 +431,23 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   const completedSteps = useMemo((): Record<string, boolean> => {
     const result: Record<string, boolean> = {};
 
-    // Welcome is complete if user has seen it OR has existing location
-    // Check both snake_case and potential legacy/new field names for valid welcome flag
-    // Also check dbCompletedSteps for real-time updates within session
-    if (userData?.has_seen_welcome || userData?.has_seen_welcome_screen || locations.length > 0 || dbCompletedSteps['welcome']) {
+    /*
+     * Welcome is complete when the manager has a location (they are past setup), or when they have
+     * actually finished THIS step — recorded when they leave it.
+     *
+     * It deliberately does NOT read `has_seen_welcome`. That flag belongs to the standalone welcome
+     * SCREEN, which is a different thing: a screen shown before the terms gate that introduces the
+     * product. This is the wizard's own first STEP, which lists what setup involves and offers
+     * "Let's start" / "Maybe later".
+     *
+     * Reading the SCREEN's flag here marked the STEP complete before the manager had ever seen it, so
+     * the wizard skipped straight past it. And because that skip ran in an effect, the step was
+     * painted for a frame first — which is the flash. It also made "Maybe later" unreachable, since
+     * the manager was never given the chance to press it.
+     *
+     * `has_seen_welcome_screen` was the same mistake under a legacy name.
+     */
+    if (locations.length > 0 || dbCompletedSteps['welcome']) {
       result['welcome'] = true;
     }
 
@@ -510,7 +528,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     }
 
     return result;
-  }, [userData, locations, selectedLocationId, kitchens.length,
+  }, [locations, selectedLocationId, kitchens.length,
     hasRequirements, hasAvailability, isStripeOnboardingComplete,
     dbCompletedSteps, isAddingLocation]);
 
@@ -788,7 +806,12 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   // [ENTERPRISE FIX] Auto-skip to first incomplete step - runs ONCE when data is ready
   // We include completedSteps in deps but guard with hasPerformedInitialAutoSkip to run only once
   useEffect(() => {
-    if (!engine || !hasExistingLocation || isLoadingLocations || isAddingLocation) return;
+    /*
+     * One gate for "is the data this decision needs actually here", extracted so it can be tested —
+     * see `resume-gate.ts`, which also records why a manager with NO location must NOT be blocked.
+     * That block is what left a first-time manager parked on the welcome step for ever.
+     */
+    if (!engine) return;
 
     // [FIX] Only perform auto-skip logic ONCE per session (on initial load)
     // This prevents jarring auto-navigation when a user completes a step actively
@@ -806,30 +829,18 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       return;
     }
 
-    // [FIX] Wait for location to be auto-selected before making any skip decisions
-    // hasExistingLocation is true but selectedLocationId might not be set yet
-    if (!selectedLocationId) {
-      logger.info('[Onboarding] Waiting for location to be auto-selected...');
-      return;
-    }
-
-    // [FIX] Wait for critical data to load before making any skip decisions
-    // Kitchen data must be loaded to determine create-kitchen completion
-    if (!kitchensLoaded) {
-      logger.info('[Onboarding] Waiting for kitchens to load...');
-      return;
-    }
-    // Requirements depend on location (not kitchen), always wait
-    if (!requirementsLoaded) {
-      logger.info('[Onboarding] Waiting for requirements to load...');
-      return;
-    }
-    // Availability depends on selectedKitchenId — only wait if a kitchen is actually selected.
-    // If no kitchen is selected (0 kitchens, or 2+ without auto-select), proceed without
-    // availability data. The auto-skip will correctly identify create-kitchen or availability
-    // as incomplete based on kitchens.length and hasAvailability (which defaults to false).
-    if (selectedKitchenId && !availabilityLoaded) {
-      logger.info('[Onboarding] Waiting for availability to load...');
+    const blockedBy = resumeBlockedBy({
+      isLoadingLocations,
+      isAddingLocation,
+      locationCount: locations.length,
+      selectedLocationId,
+      kitchensLoaded,
+      requirementsLoaded,
+      availabilityLoaded,
+      kitchenCount: kitchens.length,
+    });
+    if (blockedBy) {
+      logger.info(`[Onboarding] Waiting for the resume decision: ${blockedBy}`);
       return;
     }
 
@@ -922,8 +933,8 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
 
     logger.info(`[Onboarding] User on incomplete step: ${currentId}, staying here`);
 
-  }, [engine, hasExistingLocation, isLoadingLocations, selectedLocationId, isAddingLocation,
-    kitchensLoaded, requirementsLoaded, availabilityLoaded, selectedKitchenId, completedSteps, currentStep?.id, locations, requestedStep]);
+  }, [engine, isLoadingLocations, selectedLocationId, isAddingLocation,
+    kitchensLoaded, requirementsLoaded, availabilityLoaded, selectedKitchenId, kitchens.length, completedSteps, currentStep?.id, locations, requestedStep]);
 
   // Load kitchens when location selected
   useEffect(() => {
@@ -992,12 +1003,25 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     loadListings();
   }, [selectedKitchenId]);
 
-  // Load Availability check [NEW]
+  /*
+   * Availability is a property of a KITCHEN, but this check belongs to the LOCATION's setup: the
+   * question the step answers is "can a chef book something here yet". So it reads the same rule the
+   * dashboard's setup checklist reads (`useOnboardingStatus`): true when ANY kitchen at this location
+   * has at least one open day.
+   *
+   * It used to check `selectedKitchenId` alone. The kitchen list arrives in creation order and the
+   * first one is auto-selected, so that was equivalent while a location had one kitchen — but the
+   * list used to be newest-first, so adding a kitchen made the NEW, empty one the subject of this
+   * check and flipped the step from done to not-done. Two definitions of one fact, disagreeing: the
+   * dashboard would not have flipped, and the per-kitchen rule that actually matters lives in the
+   * publish review, which refuses to list a kitchen with no opening hours.
+   */
+  const kitchenIds = kitchens.map((kitchen) => kitchen.id).join(",");
   useEffect(() => {
     const checkAvailability = async () => {
-      if (!selectedKitchenId) {
+      if (kitchens.length === 0) {
         setHasAvailability(false);
-        setAvailabilityLoaded(false); // Reset when no kitchen selected
+        setAvailabilityLoaded(false); // Reset when the location has no kitchens
         return;
       }
       setIsLoadingAvailability(true);
@@ -1006,16 +1030,19 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         const token = await auth.currentUser?.getIdToken();
         if (!token) return;
 
-        const res = await fetch(`/api/manager/availability/${selectedKitchenId}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        if (res.ok) {
+        for (const kitchen of kitchens) {
+          const res = await fetch(`/api/manager/availability/${kitchen.id}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (!res.ok) continue;
           const data = await res.json();
-          // Check if any day is set to available
-          const isSet = Array.isArray(data) && data.some((day: any) => day.isAvailable || day.is_available);
-          setHasAvailability(isSet);
+          // One open day anywhere is enough — this is the location's bookability, not one kitchen's.
+          if (Array.isArray(data) && data.some((day: any) => day.isAvailable || day.is_available)) {
+            setHasAvailability(true);
+            return;
+          }
         }
+        setHasAvailability(false);
       } catch (e) {
         logger.error("Failed to check availability", e);
       } finally {
@@ -1024,7 +1051,8 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       }
     };
     checkAvailability();
-  }, [selectedKitchenId]);
+    // Keyed on the ids, not on `kitchens`: that array is a fresh one on every fetch.
+  }, [kitchenIds]);
 
   // Load Requirements check [NEW] - checks if location_requirements record exists
   useEffect(() => {
@@ -1872,18 +1900,22 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     hasAvailability,
     availabilityLoaded,
     refreshAvailability: async () => {
-      // Refetch availability status after save
-      if (!selectedKitchenId) return;
+      // The same LOCATION-scoped rule as the check above. A save can therefore only ever turn the
+      // step ON — which is the point: finishing a step must not be undone by a later kitchen.
+      if (kitchens.length === 0) return;
       try {
         const token = await auth.currentUser?.getIdToken();
         if (!token) return;
-        const res = await fetch(`/api/manager/availability/${selectedKitchenId}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (res.ok) {
+        for (const kitchen of kitchens) {
+          const res = await fetch(`/api/manager/availability/${kitchen.id}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (!res.ok) continue;
           const data = await res.json();
-          const isSet = Array.isArray(data) && data.some((day: any) => day.isAvailable || day.is_available);
-          setHasAvailability(isSet);
+          if (Array.isArray(data) && data.some((day: any) => day.isAvailable || day.is_available)) {
+            setHasAvailability(true);
+            return;
+          }
         }
       } catch (e) {
         logger.error("Failed to refresh availability", e);
@@ -1991,25 +2023,23 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         logger.info('[Onboarding] Save & Exit from step:', stepId);
 
         /*
-         * Only write when the step actually holds something.
+         * The step record is written even when the step holds nothing — do not "optimise" this away.
          *
-         * This used to POST the step-tracking record unconditionally, so a manager who
-         * had changed nothing pressed "Save & exit" and watched it save — the button
-         * promised work that did not exist. The label follows the same flag, so what it
-         * says and what it does cannot drift apart.
+         * It is not only a note of what was saved. `ManagerProtectedRoute` reads
+         * `managerOnboardingStepsCompleted` as the "this manager has started onboarding" signal, and
+         * only then lets them reach the dashboard (`needsOnboarding` requires
+         * `!hasStartedOnboarding`). Skipping the write when `hasUnsavedChanges` was false therefore
+         * TRAPPED a manager on the welcome step: "Maybe later" navigated to the dashboard, which
+         * redirected straight back to /manager/setup because no step had ever been recorded — and
+         * pressing it again did the same thing, so the welcome screen appeared twice in a row.
          *
-         * Nothing depends on the record for a REQUIRED step: `completedSteps` is derived
-         * from live data, and the only place the stored flag is read at all is as a
-         * fallback for 'location' — which a manager leaving cleanly has already got.
+         * The comment that used to sit here claimed "the only place the stored flag is read at all is
+         * as a fallback for 'location'". That was wrong, and it is what made the early return look
+         * safe.
+         *
+         * The BUTTON is what must not overpromise, and it does not: its label follows
+         * `hasUnsavedChanges`, so a formless step offers "Maybe later" rather than "Save & exit".
          */
-        if (!hasUnsavedChanges) {
-          logger.info('[Onboarding] Save & Exit: nothing pending, leaving without a write');
-          setIsAddingLocation(false);
-          const locId = selectedLocationId || lastSubmittedLocationIdRef.current;
-          setLocation(locId ? `/manager/dashboard?locationId=${locId}` : '/manager/dashboard');
-          return;
-        }
-
         if (!token) {
           logger.warn('[Onboarding] No auth token for saveAndExit');
           const locId = selectedLocationId || lastSubmittedLocationIdRef.current;
@@ -2018,8 +2048,17 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         }
 
         // 1. Mark current step as "seen" via manager onboarding step tracking
-        // NOTE: has_seen_welcome is for CHEF onboarding only, not managers
-        // Managers use managerOnboardingStepsCompleted in user profile
+        //
+        // Two different records, do not confuse them:
+        //   - `managerOnboardingStepsCompleted` (what this writes) — which steps the manager has
+        //     been through in the wizard. `ManagerProtectedRoute` reads it as the "has started
+        //     onboarding" signal.
+        //   - `has_seen_welcome` — the standalone welcome SCREEN's flag
+        //     (`POST /api/user/seen-welcome`). It is NOT chef-only, and it does NOT mean this step
+        //     is done: the screen and the wizard's `welcome` step are different things, and the step
+        //     is completed only by leaving it (which is what this writes).
+        // A previous version of this comment claimed `has_seen_welcome` was chef-only, which is how
+        // the write below came to be skipped.
         if (stepId) {
           const response = await fetch("/api/manager/onboarding/step", {
             method: "POST",
@@ -2097,7 +2136,6 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       setLocationName("");
       setLocationAddress("");
       setLocationLogoUrl("");
-      setLocationDescription("");
       const accountEmail = firebaseUser?.email || "";
       setNotificationEmail(accountEmail);
       setNotificationPhone("");

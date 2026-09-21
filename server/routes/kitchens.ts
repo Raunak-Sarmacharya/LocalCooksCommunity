@@ -26,11 +26,13 @@ router.get("/chef/kitchens", requireChef, async (req: Request, res: Response) =>
         // Use the new KitchenService to fetch data
         const allKitchens = await kitchenService.getAllKitchensWithLocation();
 
-        // Filter only active kitchens (though the service might already filter, double check usage or keep consistent)
-        // The service method 'findAllWithLocation' in repo doesn't strictly filter 'active' in the SQL yet (based on repo outline),
-        // so we keep the filter here or rely on 'getAllActiveKitchens' if it supported location inclusion.
-        // Looking at repo, findAllWithLocation returns all. We should filter for active.
-        const activeKitchens = allKitchens.filter((kitchen) => kitchen.isActive);
+        // `findAllWithLocation` returns every kitchen, so the visibility filter lives here. Both
+        // switches must be on: the manager has published it (`listingStatus`) AND the admin has not
+        // hidden it (`isActive`). Filtering on `isActive` alone is what let an unfinished kitchen
+        // reach chefs — `isActive` defaults to true and only an admin can change it.
+        const activeKitchens = allKitchens.filter(
+            (kitchen) => kitchen.isActive && kitchen.listingStatus === "active",
+        );
 
         // Normalize image URLs for all kitchens
         const normalizedKitchens = activeKitchens.map((kitchen: any) => {

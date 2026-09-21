@@ -1,7 +1,7 @@
 import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
 import { DollarSign } from "@/components/ui/manager-icons";
-import { useState, useEffect, useCallback, useImperativeHandle, forwardRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useImperativeHandle, forwardRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +10,8 @@ import { NumericInput } from "@/components/ui/numeric-input";
 import { ManagerPageLayout } from "@/components/layout/ManagerPageLayout";
 import { SettingsRow } from "@/components/manager/settings/SettingsRow";
 import { apiGet, apiPut } from "@/lib/api";
+import { formatCurrency } from "@/lib/formatters";
+import { describeDailyRate, formatBreakEvenHours } from "@/lib/daily-rate-hint";
 
 /**
  * The platform bills in Canadian dollars only, so the manager never picks a
@@ -45,6 +47,12 @@ export interface KitchenPricingHandle {
 interface KitchenPricingContentProps {
   selectedLocationId: number | null;
   selectedKitchenId: number | null;
+  /**
+   * The location's hourly booking ceiling, or null when unknown.
+   *
+   * Used only to explain the daily rate — see `dailyRateHelp`.
+   */
+  dailyBookingLimit?: number | null;
   /** Reports unsaved-changes state so the shell can guard navigation away. */
   onDirtyChange?: (dirty: boolean) => void;
 }
@@ -76,10 +84,11 @@ export default function KitchenPricingManagement({ embedded = false }: { embedde
       description={mt("manageRatesAndBookingRequirements")}
       showKitchenSelector={true}
     >
-      {({ selectedLocationId, selectedKitchenId }) => (
+      {({ selectedLocationId, selectedKitchenId, dailyBookingLimit }) => (
         <KitchenPricingContent
           selectedLocationId={selectedLocationId}
           selectedKitchenId={selectedKitchenId}
+          dailyBookingLimit={dailyBookingLimit}
         />
       )}
     </ManagerPageLayout>
@@ -97,7 +106,7 @@ export const KitchenPricingContent = forwardRef<
   KitchenPricingHandle,
   KitchenPricingContentProps
 >(function KitchenPricingContent(
-  { selectedLocationId, selectedKitchenId, onDirtyChange },
+  { selectedLocationId, selectedKitchenId, dailyBookingLimit, onDirtyChange },
   ref,
 ) {
   const { toast } = useToast();
@@ -117,6 +126,41 @@ export const KitchenPricingContent = forwardRef<
   useEffect(() => {
     onDirtyChange?.(isDirty);
   }, [isDirty, onDirtyChange]);
+
+  /**
+   * The daily rate, explained against the hourly rate.
+   *
+   * The decision lives in `lib/daily-rate-hint` so it can be tested without a render; this only
+   * turns the answer into words.
+   *
+   * Shown as a persistent line under the row, NOT behind the ⓘ. It is a number the manager has to
+   * act on, and a popover is invisible to anyone who never opens it — and closes again the moment
+   * they move away, leaving them to hold the figure in working memory. The ⓘ on this row carries
+   * the static "what is this field" copy instead, matching the hourly row.
+   */
+  const dailyRateAdvisory = useMemo(():
+    | { tone: "info" | "warning"; text: string }
+    | undefined => {
+    const hint = describeDailyRate({
+      hourlyRate: pricing.hourlyRate,
+      dailyRate: pricing.dailyRate,
+      dailyBookingLimit,
+    });
+    if (hint.kind === "none") return undefined;
+
+    const breakEven = mt("dailyRateBreakEvenHours", {
+      hours: formatBreakEvenHours(hint.breakEvenHours),
+    });
+    if (hint.kind === "break-even") return { tone: "info", text: breakEven };
+
+    return {
+      tone: "warning",
+      text: `${breakEven} ${mt("dailyRateBelowHourlyCap", {
+        hours: hint.ceilingHours,
+        amount: formatCurrency(hint.ceilingCostCents),
+      })}`,
+    };
+  }, [pricing.hourlyRate, pricing.dailyRate, dailyBookingLimit]);
 
   const loadPricing = useCallback(async () => {
     if (!selectedKitchenId) return;
@@ -280,6 +324,8 @@ export const KitchenPricingContent = forwardRef<
           id="daily-rate"
           label={mt("dailyRate")}
           hint={mt("amountChargedPerDay")}
+          help={mt("dailyRateHelp")}
+          advisory={dailyRateAdvisory}
         >
           <CurrencyInput
             id="daily-rate"

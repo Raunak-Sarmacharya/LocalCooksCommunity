@@ -461,6 +461,18 @@ export const kitchens = pgTable("kitchens", {
   galleryImages: jsonb("gallery_images").default([]), // Array of image URLs for kitchen gallery carousel
   amenities: jsonb("amenities").default([]), // Array of amenities/features for the kitchen
   isActive: boolean("is_active").default(true).notNull(),
+  /**
+   * The MANAGER's publish state, per kitchen.
+   *
+   * Deliberately separate from `isActive`, which is the ADMIN's Hide/Show override (AdminManageLocations
+   * → PATCH /admin/kitchens/:id/toggle-visibility). Two flags, two owners: a manager publishing cannot
+   * silently undo an admin's hide, and an admin hiding cannot be mistaken for "not published yet".
+   * A kitchen reaches chefs only when BOTH allow it.
+   *
+   * Defaults to `draft`, so a kitchen is invisible until its manager publishes it — see
+   * migrations/0041_add_kitchen_listing_status.sql.
+   */
+  listingStatus: listingStatusEnum("listing_status").default("draft").notNull(),
   // Pricing fields (all prices stored as integers in cents to avoid floating-point precision issues)
   hourlyRate: numeric("hourly_rate"), // Base hourly rate in cents (e.g., 5000 = $50.00/hour)
   dailyRate: numeric("daily_rate"), // Base daily rate in cents; can coexist with hourlyRate
@@ -874,6 +886,8 @@ export const updateKitchenSchema = z.object({
   minimumBookingHours: z.number().int().min(0, "Minimum booking hours cannot be negative").max(24, "Minimum booking hours cannot exceed 24").optional(),
   pricingModel: z.enum(["hourly", "daily", "weekly"]).optional(),
   taxRatePercent: z.number().min(0).max(100).nullable().optional(),
+  // `listingStatus` is deliberately absent. It is written only by the publish endpoint, which enforces
+  // the readiness checklist — letting a generic kitchen update carry it would be a way around the gate.
 });
 
 export const insertKitchenAvailabilitySchema = createInsertSchema(kitchenAvailability, {

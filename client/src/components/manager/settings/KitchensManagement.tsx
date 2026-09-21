@@ -9,7 +9,7 @@ import { tt } from "@/i18n/common-ns";
 import { useState, useEffect, useCallback, useImperativeHandle, useRef } from "react";
 import type { Ref } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Storefront, Plus, Loader2, Package, Wrench, Image as Images, Clock, ClipboardCheck, Check, ChevronDown } from "@/components/ui/manager-icons";
+import { Storefront, Plus, Loader2, Package, Wrench, Image as Images, Clock, ClipboardCheck } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { useStatusButton } from "@/hooks/use-status-button";
@@ -20,17 +20,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { ImageWithReplace } from "@/components/ui/image-with-replace";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
-import { cn } from "@/lib/utils";
 import { ChefPageHeader } from "@/components/chef/ui";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { EquipmentListingContent } from "@/pages/EquipmentListingManagement";
 import { StorageListingContent } from "@/pages/StorageListingManagement";
 import KitchenDetailsPricing, { type KitchenDetailsPricingHandle } from "./KitchenDetailsPricing";
+import { KitchenListingStatus } from "./KitchenListingStatus";
+import { KitchenSwitcher } from "./KitchenSwitcher";
 import KitchenPhotos from "./KitchenPhotos";
-import { DEFAULT_KITCHEN_SECTION, kitchenSectionFromParams, type KitchenSection } from "@/lib/manager-kitchens-navigation";
+import { DEFAULT_KITCHEN_SECTION, kitchenSectionFromParams, type KitchenSection, type KitchensNavigationTarget } from "@/lib/manager-kitchens-navigation";
 import { UnsavedChangesDialog } from "@/components/manager/UnsavedChangesDialog";
 
 interface Kitchen {
@@ -58,7 +58,7 @@ interface Location {
 
 interface KitchensManagementProps {
   location: Location;
-  onNavigate: (view: 'availability') => void;
+  onNavigate: (view: KitchensNavigationTarget, kitchenId?: number) => void;
   onConfigureRequirements: () => void;
   /** Reports unsaved-changes state so the shell can guard navigation away. */
   onDirtyChange?: (dirty: boolean) => void;
@@ -68,6 +68,15 @@ interface KitchensManagementProps {
    * component body for a single handle.
    */
   saveRef?: Ref<KitchensHandle>;
+  /**
+   * Which kitchen to open on, when the manager arrived from a surface that named one — the publish
+   * review's rows, for instance.
+   *
+   * A SEED, not a controlled value: once the page is open the switcher owns the selection. An id
+   * that is not one of this location's kitchens is ignored rather than trusted, because the shell
+   * remembers the kitchen a review was opened for and the manager can then walk to another location.
+   */
+  initialKitchenId?: number;
 }
 
 export interface KitchensHandle {
@@ -92,7 +101,7 @@ const TAB_ICON = "h-4 w-4 shrink-0 transition-colors group-data-[state=active]:t
  *  `bg-accent`, which is pure white in both themes — hence the `bg-muted` override. */
 const HEADER_LINK = "rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground";
 
-export default function KitchensManagement({ location, onNavigate, onConfigureRequirements, onDirtyChange, saveRef }: KitchensManagementProps) {
+export default function KitchensManagement({ location, onNavigate, onConfigureRequirements, onDirtyChange, saveRef, initialKitchenId }: KitchensManagementProps) {
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -103,7 +112,7 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
   const [newKitchenHourlyRate, setNewKitchenHourlyRate] = useState('');
   const [newKitchenMinimumHours, setNewKitchenMinimumHours] = useState('1');
   const [isCreatingKitchen, setIsCreatingKitchen] = useState(false);
-  const [selectedKitchenId, setSelectedKitchenId] = useState<number | null>(null);
+  const [selectedKitchenId, setSelectedKitchenId] = useState<number | null>(initialKitchenId ?? null);
   const [activeSection, setActiveSection] = useState<KitchenSection>(getInitialKitchenSection);
 
   const detailsRef = useRef<KitchenDetailsPricingHandle>(null);
@@ -132,8 +141,18 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
     },
     enabled: !!location.id,
   });
-  const activeKitchenId = selectedKitchenId ?? kitchens[0]?.id ?? null;
-  const activeKitchen = kitchens.find((kitchen) => kitchen.id === activeKitchenId) ?? null;
+  /*
+   * The selection is honoured only when it names one of THIS location's kitchens. `initialKitchenId`
+   * is seeded by the shell, which remembers the kitchen a publish review was opened for — so it can
+   * be stale by the time the manager walks to another location. An id from elsewhere would leave the
+   * tabs pointing at a kitchen that is not in the list.
+   */
+  const selectedKitchen =
+    selectedKitchenId != null
+      ? kitchens.find((kitchen) => kitchen.id === selectedKitchenId) ?? null
+      : null;
+  const activeKitchen = selectedKitchen ?? kitchens[0] ?? null;
+  const activeKitchenId = activeKitchen?.id ?? null;
   const hourlyRateValue = Number.parseFloat(newKitchenHourlyRate);
   const newKitchenIncomplete = !newKitchenName.trim() || !newKitchenDescription.trim()
     || !newKitchenImageUrl || !(hourlyRateValue > 0);
@@ -302,6 +321,24 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
     }
   };
 
+  /**
+   * The kitchen switcher, rendered as the IDENTITY inside the listing-status banner rather than as a
+   * header control. The banner answers "which kitchen, and where does it stand", so the two belong on
+   * one line, and it keeps the status visible on every tab instead of only the Details tab.
+   *
+   * The control itself lives in `KitchenSwitcher` so the harness can render the REAL thing — a
+   * stand-in there could only ever confirm the copy, never the affordance. Switching is wrapped in
+   * `guardNavigation` at this call site because the unsaved-changes question belongs to this page.
+   */
+  const kitchenSwitcher = activeKitchen ? (
+    <KitchenSwitcher
+      kitchens={kitchens}
+      activeKitchenId={activeKitchen.id}
+      onSelect={(kitchenId) => guardNavigation(() => setSelectedKitchenId(kitchenId))}
+      onAddKitchen={() => setShowCreateKitchen(true)}
+    />
+  ) : null;
+
   return (
     <div className="space-y-6">
       <ChefPageHeader
@@ -315,53 +352,6 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
             <Button variant="ghost" size="sm" className={HEADER_LINK} onClick={() => onNavigate('availability')}>
               <Clock className="mr-1.5 h-4 w-4" />{mt("navAvailability")}
             </Button>
-
-            {/* Kitchen switcher. Always present — it is the only place the kitchen's
-                name appears when a location has a single kitchen, and it owns "Add
-                kitchen" so the page header keeps one subject and one control.
-
-                `modal={false}` because a modal menu wraps itself in react-remove-scroll,
-                which sets `overflow: hidden` on <body> and so makes the page scrollbar
-                vanish for as long as the menu is open. Non-modal leaves the page
-                scrollable; dismissal, Escape and keyboard navigation come from the menu's
-                own layer either way, so nothing else changes. */}
-            {activeKitchen && (
-              <DropdownMenu modal={false}>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className="inline-flex h-9 max-w-[16rem] items-center gap-2 rounded-lg border bg-background px-3 text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <span aria-hidden className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-primary/10 text-xs font-medium text-primary">
-                      {activeKitchen.name.trim().charAt(0).toUpperCase()}
-                    </span>
-                    <span className="truncate font-medium">{activeKitchen.name}</span>
-                    <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-60">
-                  <DropdownMenuLabel>{mt("kitchen")}</DropdownMenuLabel>
-                  {kitchens.map((kitchen) => (
-                    <DropdownMenuItem
-                      key={kitchen.id}
-                      onSelect={() => guardNavigation(() => setSelectedKitchenId(kitchen.id))}
-                      className="gap-2 focus:bg-muted focus:text-foreground"
-                    >
-                      <Check className={cn("h-4 w-4 shrink-0 text-primary", kitchen.id !== activeKitchenId && "opacity-0")} />
-                      <span className="truncate">{kitchen.name}</span>
-                    </DropdownMenuItem>
-                  ))}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onSelect={() => setShowCreateKitchen(true)}
-                    className="gap-2 focus:bg-muted focus:text-foreground"
-                  >
-                    <Plus className="h-4 w-4 shrink-0" />
-                    {mt("addKitchen")}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
 
             {/* Page-level save. Rendered only while something is unsaved, so the
                 header stays quiet at rest — the same convention as Booking Policies. */}
@@ -455,7 +445,24 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-5">
+        <>
+          {/*
+            The kitchen header and the section tabs are ONE panel, not two stacked blocks: the tab
+            bar's own bottom border is the header's divider, which is the entity-header shape GitHub
+            and Vercel use. Any gap between them makes the header float as a notice about the page
+            again, which is what it is not.
+
+            The header stays OUTSIDE the tabs on purpose: the listing status belongs to the KITCHEN,
+            so inside a tab it disappeared the moment a manager looked at Photos or Storage.
+          */}
+          {activeKitchen && (
+            <KitchenListingStatus
+              kitchenId={activeKitchen.id}
+              selector={kitchenSwitcher}
+              onNavigate={onNavigate}
+            />
+          )}
+
           <Tabs value={activeSection} onValueChange={handleSectionChange}>
             <TabsList className="mb-6 h-auto w-full justify-start gap-6 rounded-none border-b border-border bg-transparent p-0 text-muted-foreground">
               <TabsTrigger value="details" className={TAB_TRIGGER}>
@@ -498,7 +505,7 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
             </TabsContent>
 
           </Tabs>
-        </div>
+        </>
       )}
 
       {/*

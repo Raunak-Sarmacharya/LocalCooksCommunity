@@ -40,11 +40,11 @@ export type PhoneRowState = "verified" | "code-sent" | "unverified" | "empty";
  * phone number" button invited them to retype a number they had already given.
  *
  * Priority order matters:
- *   verified   — a Firebase phone credential, so it is usable to sign in.
- *   code-sent  — an OTP is outstanding; the code form is the only thing to show.
- *   unverified — the number is on the account but has never been proved. Visible
- *                and actionable, but NOT presented as verified.
- *   empty      — nothing on file.
+ *   verified:   a Firebase phone credential, so it is usable to sign in.
+ *   code-sent:  an OTP is outstanding; the code form is the only thing to show.
+ *   unverified: the number is on the account but has never been proved. Visible
+ *               and actionable, but NOT presented as verified.
+ *   empty:      nothing on file.
  */
 export function resolvePhoneRowState(input: {
   linkedPhone: string;
@@ -65,7 +65,7 @@ export type PhoneAvailability = "available" | "taken" | "unknown";
  *
  * `unknown` is deliberately distinct from `taken`: one means "somebody else owns
  * it" and the other means "we could not find out", and they need different copy.
- * Both BLOCK the send — a number we could not clear is one we must not text, since
+ * Both BLOCK the send. A number we could not clear is one we must not text, since
  * the Firebase link would outlive a rejected save and lock the real owner out.
  */
 export async function checkPhoneAvailable(phone: string, idToken: string): Promise<PhoneAvailability> {
@@ -88,7 +88,7 @@ export async function checkPhoneAvailable(phone: string, idToken: string): Promi
  * Record the number that was just proved, in the column that is the record.
  *
  * `linkWithPhoneNumber` + OTP sets the Firebase `phoneNumber` CLAIM, and the sign-in
- * gate honours that claim — which is why a proved number already works without this
+ * gate honours that claim, which is why a proved number already works without this
  * call. But the claim is a cache on a token, while `users.phone_verified_at` is the
  * maintained record (`GET /api/user/profile` and `auth-method-hints` both report
  * `phoneVerified` from the column OR the claim). Leaving the column NULL means the
@@ -97,7 +97,7 @@ export async function checkPhoneAvailable(phone: string, idToken: string): Promi
  * Deliberately here rather than in each caller: the profile page and the onboarding
  * wizard are two doors onto the same action, and a write that only one of them makes
  * is how the column came to be empty for every proved number in the first place.
- * The endpoint is idempotent — the timestamp is written once and never overwritten.
+ * The endpoint is idempotent: the timestamp is written once and never overwritten.
  */
 async function recordProvedPhone(idToken: string): Promise<void> {
   try {
@@ -113,11 +113,11 @@ async function recordProvedPhone(idToken: string): Promise<void> {
 }
 
 interface PhoneSignInSettingsProps {
-  /** Render without wrapping Card/section — parent controls layout */
+  /** Render without wrapping Card/section; parent controls layout */
   embedded?: boolean;
   /**
-   * `row` (default) — the profile pages' full row: icon, status pill, value, action.
-   * `form` — the bare form, for a parent that already owns the label and the
+   * `row` (default) is the profile pages' full row: icon, status pill, value, action.
+   * `form` is the bare form, for a parent that already owns the label and the
    * surrounding row (the onboarding wizard's Business step).
    *
    * Only the shell differs. The send path, the SMS consent and the duplicate-number
@@ -133,7 +133,7 @@ interface PhoneSignInSettingsProps {
    * happens to be holding, and that is not the whole story: `phone_verified_at` is the
    * record the server trusts, and an account can hold a proved number whose credential
    * is absent here. Without this the row renders "verify this number" for a number that
-   * is already usable — the same defect the profile page shipped once already, telling
+   * is already usable. The same defect the profile page shipped once already, telling
    * the holder "No phone number added" about a number on their own account.
    *
    * Counted only when it matches `initialPhone`: a proved number is proof of ONE number,
@@ -176,7 +176,7 @@ export default function PhoneSignInSettings({
   // Converted to the DISPLAY format, for the same reason `startAdding` does it: a raw
   // `+17096318480` sitting in an editable field reads like a database value rather than
   // the number the manager recognises, and `normalizePhoneNumber` strips non-digits
-  // anyway — so the formatted text normalises back to exactly the same E.164 string.
+  // anyway, so the formatted text normalises back to exactly the same E.164 string.
   useEffect(() => {
     if (initialPhone && !linkedPhone) {
       setPhone(formatPhoneForDisplay(initialPhone));
@@ -207,6 +207,14 @@ export default function PhoneSignInSettings({
       setError("Enter a valid US or Canadian phone number.");
       return;
     }
+    /*
+     * The SAME condition disables the Send button, in both layouts.
+     *
+     * This guard stays the single source of truth for the rule: a one-time text must never go out
+     * without consent, and it is what a future caller cannot bypass. The disabled state is what the
+     * manager actually sees, and it has to agree with the guard. A button that looks available and
+     * only explains itself after the click reads as broken rather than as not-yet-ready.
+     */
     if (!smsConsent) {
       setError("Confirm that we may send a one-time authentication text.");
       return;
@@ -225,7 +233,7 @@ export default function PhoneSignInSettings({
       // Refuse a number that ANOTHER account already holds, BEFORE sending anything.
       // Learning this at save time is far too late: the text has gone out and the
       // number is now linked to THIS Firebase user, so the real owner can never
-      // attach it. Fails CLOSED — if we cannot check, we do not send.
+      // attach it. Fails CLOSED: if we cannot check, we do not send.
       const availability = await checkPhoneAvailable(normalized, token.token);
       if (availability === "taken") {
         setError("That phone number is already linked to another Local Cooks account. Use a different number.");
@@ -243,7 +251,7 @@ export default function PhoneSignInSettings({
           await unlink(user, "phone");
           logger.info("Unlinked previous phone before re-linking new number");
         } catch (unlinkErr: any) {
-          // auth/no-such-provider means no phone linked — safe to continue
+          // auth/no-such-provider means no phone linked, so it is safe to continue
           if (unlinkErr?.code !== "auth/no-such-provider") {
             setError("Could not replace the existing phone. Try again.");
             return;
@@ -318,7 +326,7 @@ export default function PhoneSignInSettings({
       await onPhoneUnlinked?.();
     } catch (err: any) {
       if (err?.code === "auth/no-such-provider") {
-        // Already unlinked — sync state
+        // Already unlinked; sync state
         setLinkedPhone("");
         setPhone("");
         setIsAdding(false);
@@ -347,8 +355,8 @@ export default function PhoneSignInSettings({
    * Every route goes through the form rather than sending straight away, because the
    * form carries the SMS-consent checkbox and a one-time text must not be sent without
    * it. The form is also the ONLY place the number can be edited, so `sendCode`'s
-   * pre-flight — the one that refuses a number another account already holds, and fails
-   * closed when it cannot check — stays on the single path every send takes.
+   * pre-flight, the one that refuses a number another account already holds, and fails
+   * closed when it cannot check, stays on the single path every send takes.
    *
    * The pre-fill is converted to the DISPLAY format. A raw `+17096318480` sitting in an
    * editable field reads like a database value rather than the number the manager
@@ -417,7 +425,7 @@ export default function PhoneSignInSettings({
   if (rowState === "verified") {
     help = "You can use this number to sign in.";
   } else if (rowState === "code-sent") {
-    // A live instruction, not an explanation — it stays in the row.
+    // A live instruction, not an explanation, so it stays in the row.
     description = `Enter the 6-digit code we sent to ${formatPhoneForDisplay(phone)}.`;
   } else if (rowState === "unverified") {
     help =
@@ -436,7 +444,7 @@ export default function PhoneSignInSettings({
           {/* Offered ONLY here, and only when there is a number to replace. "Change
               number" used to sit beside "Verify this number" as a second button of
               equal weight, which made proving a number and replacing it read as the
-              same action — so neither read as important.
+              same action, so neither read as important.
 
               It clears the field and does nothing else. The send still goes through
               `sendCode`, which is the single place the duplicate-number pre-flight
@@ -472,7 +480,7 @@ export default function PhoneSignInSettings({
           disabled={busy}
         />
         {/* One sentence, one line. It used to run on and wrap, orphaning "apply." onto
-            a second line — the rates disclosure is its own line instead. The checkbox
+            a second line, so the rates disclosure is its own line instead. The checkbox
             is untouched: `sendCode` refuses to send without it. */}
         <span>I agree to receive a one-time authentication text.</span>
       </label>
@@ -486,7 +494,7 @@ export default function PhoneSignInSettings({
           size="sm"
           className={PRIMARY_ROW_ACTION}
           onClick={sendCode}
-          disabled={busy}
+          disabled={busy || !smsConsent}
         >
           {busy && <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />}
           Send code
@@ -631,8 +639,8 @@ export default function PhoneSignInSettings({
   /**
    * The bare form, for a parent that already owns the label and the row.
    *
-   * The form opens straight away rather than behind an "Add phone number" button —
-   * there is no action slot here to put that button in, and the parent only renders
+   * The form opens straight away rather than behind an "Add phone number" button.
+   * There is no action slot here to put that button in, and the parent only renders
    * this once the manager has asked for phone contact.
    *
    * There is no Remove: the wizard gates Continue on a proved number, and removing a
@@ -719,7 +727,7 @@ export default function PhoneSignInSettings({
           className="mt-0.5"
           disabled={busy}
         />
-        {/* One sentence, one line — the consent `sendCode` refuses to send without.
+        {/* One sentence, one line: the consent `sendCode` refuses to send without.
             Folding the rate disclosure in here as well orphaned "rates may apply." onto a
             second line mid-sentence, so it keeps its own line, as on the profile row. */}
         <span>I agree to receive a one-time authentication text.</span>
@@ -734,7 +742,7 @@ export default function PhoneSignInSettings({
           size="sm"
           className={PRIMARY_ROW_ACTION}
           onClick={sendCode}
-          disabled={busy}
+          disabled={busy || !smsConsent}
         >
           {busy && <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />}
           Send code

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { Info, Lock } from "@/components/ui/manager-icons";
+import { AlertTriangle, Info, Lock } from "@/components/ui/manager-icons";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -46,6 +46,45 @@ export function RowHelp({
   );
 }
 
+/**
+ * The full-width message beneath a row.
+ *
+ * `w-full` is what puts it on its own line: the inline row is a `flex-wrap` container, so a
+ * full-width child cannot share a line with the label and the control.
+ *
+ * Both tones are TINTED, never `text-muted-foreground`. The hint above it is already muted, so an
+ * advisory in the same grey reads as more subtext and gets skipped — which defeats the point of
+ * showing a number the manager has to act on.
+ *
+ * Both stay in the amber family so a manager reads one kind of message, not two; severity is
+ * carried by the shade and the icon instead of by a second hue. The softer tone is the readout,
+ * the deeper tone plus the icon is the one to fix.
+ *
+ * The `dark:` halves follow the convention the rest of the app already uses for tinted text
+ * (`text-amber-700 dark:text-amber-400`) — a light-mode-only shade goes muddy on a dark surface.
+ */
+const ADVISORY_TONE_CLASS: Record<"info" | "warning", string> = {
+  info: "text-amber-600 dark:text-amber-400",
+  warning: "text-amber-700 dark:text-amber-400",
+};
+
+function RowAdvisory({ advisory }: { advisory: NonNullable<SettingsRowProps["advisory"]> }) {
+  const isWarning = advisory.tone === "warning";
+  return (
+    <p
+      className={cn(
+        "flex w-full items-start gap-1.5 text-xs",
+        ADVISORY_TONE_CLASS[advisory.tone],
+      )}
+    >
+      {isWarning ? (
+        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      ) : null}
+      <span>{advisory.text}</span>
+    </p>
+  );
+}
+
 interface SettingsRowProps {
   /** Wires the label to its control for click-to-focus and screen readers. */
   id?: string;
@@ -61,6 +100,21 @@ interface SettingsRowProps {
   hint?: string;
   /** Longer explanation, revealed from the ⓘ next to the label. */
   help?: ReactNode;
+  /**
+   * A live message about the value currently in the control.
+   *
+   * Deliberately NOT the ⓘ. `hint` is static context and `help` is the optional explanation, but
+   * anything the manager has to ACT on has to be on screen: a popover is invisible to anyone who
+   * never opens it, and once opened it closes again, leaving the reader to hold the number in
+   * working memory. (NN/g, "Don't use tooltips for information that is vital to task completion.")
+   *
+   * Rendered full-width beneath the row so it sits with the control, not beside the label.
+   */
+  advisory?: {
+    /** `warning` adds the amber treatment and an icon; `info` stays muted. */
+    tone: "info" | "warning";
+    text: string;
+  };
   /**
    * `inline` — label left, control right, sized to its own content. Use for
    * short values: numbers, currency, toggles.
@@ -96,6 +150,7 @@ export function SettingsRow({
   required = false,
   hint,
   help,
+  advisory,
   layout = "inline",
   disabledReason,
   className,
@@ -136,6 +191,7 @@ export function SettingsRow({
       <div className={cn("px-4 py-3", locked && "opacity-60", className)}>
         {heading}
         <div className="mt-2">{children}</div>
+        {advisory ? <RowAdvisory advisory={advisory} /> : null}
       </div>
     );
   }
@@ -150,6 +206,7 @@ export function SettingsRow({
     >
       {heading}
       <div className="shrink-0">{children}</div>
+      {advisory ? <RowAdvisory advisory={advisory} /> : null}
     </div>
   );
 }

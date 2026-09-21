@@ -18,6 +18,14 @@ interface ManagerPageLayoutProps {
   children: (props: {
     selectedLocationId: number | null;
     selectedKitchenId: number | null;
+    /**
+     * The selected location's hourly booking ceiling, or null when no location is selected.
+     *
+     * Exposed because it is a policy the KITCHEN pricing page has to reason about: a day rate
+     * below `dailyBookingLimit × hourlyRate` is cheaper than the longest hourly booking, so the
+     * day rate stops being a discount and starts undercutting the hourly one.
+     */
+    dailyBookingLimit: number | null;
     isLoading: boolean;
   }) => React.ReactNode;
   title?: string;
@@ -94,6 +102,8 @@ export function ManagerPageLayout({
 
   // Derived state
   const availableKitchens = kitchens.filter(k => k.locationId === selectedLocationId);
+  const dailyBookingLimit =
+    locations.find(l => l.id === selectedLocationId)?.defaultDailyBookingLimit ?? null;
 
   // Filtering Logic Handlers
   const handleLocationChange = (val: string) => {
@@ -185,6 +195,7 @@ export function ManagerPageLayout({
                 {children({
                   selectedLocationId,
                   selectedKitchenId,
+                  dailyBookingLimit,
                   isLoading: isLoadingLocations || isLoadingKitchens
                 })}
               </div>

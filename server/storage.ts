@@ -87,6 +87,9 @@ export class MemStorage implements IStorage {
       facebookId: null,
       firebaseUid: null,
       phoneNumber: null,
+      // Migration 0039. Firebase holds no phone for any account, so an in-memory user has never
+      // proved one.
+      phoneVerifiedAt: null,
       isVerified: true,
       pendingEmail: null,
       pendingEmailTokenHash: null,
@@ -183,6 +186,8 @@ export class MemStorage implements IStorage {
       facebookId: insertUser.facebookId || null,
       firebaseUid: insertUser.firebaseUid || null,
       phoneNumber: (insertUser as any).phoneNumber || null,
+      // Registration never proves a phone, so a freshly created in-memory user has no proof stamp.
+      phoneVerifiedAt: null,
       isVerified: (insertUser as any).isVerified !== undefined ? (insertUser as any).isVerified : false,
       pendingEmail: null,
       pendingEmailTokenHash: null,

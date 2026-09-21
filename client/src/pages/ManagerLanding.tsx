@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Redirect, useLocation } from "wouter";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
+import { needsWelcomeScreen } from "@/lib/manager-welcome";
 import { CURRENT_POLICY_VERSION } from "@/config/policy-version";
 import { Building2, Loader2, Lock, ArrowRight, Calendar, Users, Settings } from "@/components/ui/manager-icons";
 import Logo from "@/components/ui/logo";

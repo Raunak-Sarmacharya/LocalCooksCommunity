@@ -12,6 +12,16 @@ export interface Location {
   id: number;
   name: string;
   address: string;
+  /**
+   * Booking policies, printed as values on the Availability step's review.
+   *
+   * All three are NOT NULL columns with defaults on `locations` (`shared/schema.ts`), but they are
+   * declared optional here because the review guards each with `!= null` — a location object can
+   * reach the step before those fields have been read.
+   */
+  cancellationPolicyHours?: number;
+  defaultDailyBookingLimit?: number;
+  minimumBookingWindowHours?: number;
   notificationEmail?: string;
   notificationPhone?: string;
   contactEmail?: string;

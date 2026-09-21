@@ -27,7 +27,11 @@ describe("NotificationsSettings", () => {
     fireEvent.change(screen.getByLabelText("Email Address"), {
       target: { value: "" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "SaveNotificationSettings" }));
+    // The real label, with its spaces. This used to be queried as "SaveNotificationSettings" —
+    // StatusButton renders its label one character per span, so the accessible name came out
+    // de-spaced and this test was quietly asserting that bug. StatusButton now sets an aria-label
+    // from the real string, so the name is what a screen reader would actually read out.
+    fireEvent.click(screen.getByRole("button", { name: "Save Notification Settings" }));
 
     await waitFor(() => {
       expect(onSave).toHaveBeenCalledWith({

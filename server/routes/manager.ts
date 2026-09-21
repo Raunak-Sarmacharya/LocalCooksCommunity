@@ -13,6 +13,7 @@ import {
 } from "drizzle-orm";
 import { format } from "date-fns";
 import { db } from "../db";
+import { buildKitchenReadiness } from "../services/kitchen-listing-readiness-service";
 import { resolveCapturedKitchenRate } from "@shared/kitchen-booking-rate";
 import { resolveKitchenTransactionTaxAndSubtotal } from "../services/revenue-transaction-tax";
 import { parseCentsField, parseCentsFieldOrZero } from "@shared/money-cents";
@@ -3455,6 +3456,112 @@ router.delete(
 );
 
 // Get kitchen pricing
+/**
+ * The publish review for one kitchen.
+ *
+ * Returns the whole checklist — what is done AND what is not — plus the current values, so the review
+ * screen can show a manager everything they have configured, not just the gaps. The two lists are kept
+ * apart on purpose: `requirements` block publishing, `recommendations` never do.
+ */
+router.get(
+  "/kitchens/:kitchenId/listing-readiness",
+  requireFirebaseAuthWithUser,
+  requireManager,
+  async (req: Request, res: Response) => {
+    try {
+      const user = req.neonUser!;
+      const kitchenId = parseInt(req.params.kitchenId);
+      if (isNaN(kitchenId) || kitchenId <= 0) {
+        return res.status(400).json({ error: "Invalid kitchen ID" });
+      }
+
+      const kitchen = await kitchenService.getKitchenById(kitchenId);
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
+      const location = await locationService.getLocationById(kitchen.locationId);
+      if (!location || location.managerId !== user.id) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const review = await buildKitchenReadiness(kitchenId);
+      if (!review) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
+      res.json(review);
+    } catch (error: any) {
+      logger.error("Error building kitchen listing readiness:", error);
+      res.status(500).json({ error: "Failed to build listing readiness" });
+    }
+  },
+);
+
+/**
+ * Publish or unpublish ONE kitchen.
+ *
+ * This is the only path that writes `listing_status`. Publishing re-derives the checklist from the
+ * database rather than trusting the client: the UI disables the button while requirements are open,
+ * but the gate has to hold against a direct request too.
+ *
+ * The 400 carries `missingRequirementIds` — ids, not a sentence, so the client owns the wording and
+ * the locale.
+ */
+router.post(
+  "/kitchens/:kitchenId/listing-status",
+  requireFirebaseAuthWithUser,
+  requireManager,
+  async (req: Request, res: Response) => {
+    try {
+      const user = req.neonUser!;
+      const kitchenId = parseInt(req.params.kitchenId);
+      if (isNaN(kitchenId) || kitchenId <= 0) {
+        return res.status(400).json({ error: "Invalid kitchen ID" });
+      }
+
+      const { status } = req.body ?? {};
+      if (status !== "draft" && status !== "active") {
+        return res.status(400).json({ error: "Status must be 'draft' or 'active'" });
+      }
+
+      const kitchen = await kitchenService.getKitchenById(kitchenId);
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
+      const location = await locationService.getLocationById(kitchen.locationId);
+      if (!location || location.managerId !== user.id) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      if (status === "active") {
+        const review = await buildKitchenReadiness(kitchenId);
+        if (!review) {
+          return res.status(404).json({ error: "Kitchen not found" });
+        }
+
+        if (!review.checklist.canPublish) {
+          return res.status(400).json({
+            error: "This kitchen is not ready to be listed",
+            missingRequirementIds: review.checklist.missingRequirementIds,
+          });
+        }
+      }
+
+      await db
+        .update(kitchens)
+        .set({ listingStatus: status, updatedAt: new Date() })
+        .where(eq(kitchens.id, kitchenId));
+
+      res.json({ listingStatus: status });
+    } catch (error: any) {
+      logger.error("Error updating kitchen listing status:", error);
+      res.status(500).json({ error: "Failed to update listing status" });
+    }
+  },
+);
+
 router.get(
   "/kitchens/:kitchenId/pricing",
   requireFirebaseAuthWithUser,

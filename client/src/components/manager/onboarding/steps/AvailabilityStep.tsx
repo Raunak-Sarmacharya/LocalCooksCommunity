@@ -361,6 +361,27 @@ const AvailabilityStep = () => {
                         </p>
                     </div>
 
+                    {/*
+                     * Why this part is required, and where to come back to.
+                     *
+                     * Availability is per-KITCHEN and a kitchen with no opening hours cannot be
+                     * listed — the publish review blocks it. The manager should hear that here,
+                     * where they can act on it, rather than discovering it at the publish attempt.
+                     * The same notice shape as the check-in/check-out note in part 2, and the same
+                     * "My Kitchens > X on your dashboard" wording, so the two read as one voice.
+                     */}
+                    <div className="flex items-start gap-3 rounded-xl border border-border bg-muted/40 px-4 py-3">
+                        <Calendar className="mt-px h-4 w-4 shrink-0 text-muted-foreground" />
+                        <div className="min-w-0">
+                            <p className="text-xs font-medium text-foreground">
+                                {mt("availabilityRequiredNoticeTitle")}
+                            </p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                                {mt("availabilityRequiredNoticeDesc")}
+                            </p>
+                        </div>
+                    </div>
+
                     {/* Availability Management — brings its own cards */}
                     {selectedLocationId ? (
                         <KitchenAvailabilityManagement

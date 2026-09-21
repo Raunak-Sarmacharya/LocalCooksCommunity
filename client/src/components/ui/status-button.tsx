@@ -79,10 +79,20 @@ export const StatusButton = forwardRef<HTMLButtonElement, StatusButtonProps>(
             className,
           )}
           disabled={disabled || isActive}
+          /*
+           * The label is rendered one character per `inline-block` span so it can animate, and
+           * assistive tech sees that as "R e v i e w & l i s t" — read out letter by letter. Naming
+           * the button from the real string and hiding the animation from the a11y tree fixes the
+           * announcement and makes the control findable by its name. Placed before `{...props}` so a
+           * caller can still override it.
+           */
+          aria-label={text}
           {...props}
         >
           {animate ? (
-            <span className="flex items-center justify-center">
+            /* Hidden from the a11y tree: the button's `aria-label` carries the name, and these
+               per-character spans would otherwise spell it out one letter at a time. */
+            <span className="flex items-center justify-center" aria-hidden="true">
               <AnimatePresence mode="popLayout" initial={false}>
                 {text.split("").map((char, i) => (
                   <motion.span

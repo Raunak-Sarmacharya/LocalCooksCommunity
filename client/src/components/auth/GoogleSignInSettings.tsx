@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { GoogleAuthProvider, linkWithPopup, onAuthStateChanged } from "firebase/auth";
+import { GoogleAuthProvider, linkWithPopup, onAuthStateChanged, type UserInfo } from "firebase/auth";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { logger } from "@/lib/logger";
@@ -36,15 +36,16 @@ import {
  * sign in" check.
  */
 function readGoogleLink(): boolean {
-  const providers = auth.currentUser?.providerData ?? [];
+  // `auth` is `any` in `lib/firebase.ts` (it may be null when Firebase is unconfigured), so the
+  // element type has to be named here or `provider` is implicitly `any`.
+  const providers: UserInfo[] = auth.currentUser?.providerData ?? [];
   return providers.some((provider) => provider.providerId === "google.com");
 }
 
 /** The linked address, for the row's value line. */
 function readGoogleAddress(): string | null {
-  const google = auth.currentUser?.providerData?.find(
-    (provider) => provider.providerId === "google.com",
-  );
+  const providers: UserInfo[] = auth.currentUser?.providerData ?? [];
+  const google = providers.find((provider) => provider.providerId === "google.com");
   return google?.email ?? auth.currentUser?.email ?? null;
 }
 
