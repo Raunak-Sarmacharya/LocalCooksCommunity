@@ -373,7 +373,10 @@ export const locations = pgTable("locations", {
   // Kitchen terms and policies (uploaded alongside license)
   kitchenTermsUrl: text("kitchen_terms_url"), // URL to uploaded kitchen terms & policies document
   kitchenTermsUploadedAt: timestamp("kitchen_terms_uploaded_at"), // When terms were uploaded
-  description: text("description"), // Description of the location
+  // `description` used to live here. Removed 2026-09-20: a location is an address that can hold
+  // several kitchens, and the only description a chef ever reads is the KITCHEN's — the location
+  // one was a second, near-duplicate paragraph the manager had to write by hand. The column still
+  // exists in the database; see migrations/0040_drop_locations_description.sql for the drop.
   customOnboardingLink: text("custom_onboarding_link"), // Custom link for onboarding
   
   // Location-level overstay penalty defaults (manager-controlled, used when storage listing doesn't have custom values)
@@ -757,7 +760,6 @@ export const insertLocationSchema = createInsertSchema(locations, {
   managerId: z.number().optional(),
   notificationEmail: z.string().email("Please enter a valid email address").optional(),
   notificationPhone: optionalPhoneNumberSchema, // Optional phone for SMS notifications
-  description: z.string().optional(),
   customOnboardingLink: z.string().optional(),
 }).omit({
   id: true,
@@ -772,7 +774,6 @@ export const updateLocationSchema = z.object({
   managerId: z.number().optional(),
   notificationEmail: z.string().email("Please enter a valid email address").optional(),
   notificationPhone: optionalPhoneNumberSchema, // Optional phone for SMS notifications
-  description: z.string().optional(),
   customOnboardingLink: z.string().optional(),
 });
 

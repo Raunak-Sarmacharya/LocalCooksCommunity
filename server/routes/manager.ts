@@ -6063,7 +6063,6 @@ router.put(
         logoUrl,
         brandImageUrl,
         timezone,
-        description,
         customOnboardingLink,
       } = req.body;
 
@@ -6357,14 +6356,6 @@ router.put(
           note: "Timezone is locked and cannot be changed",
         });
       }
-      if (description !== undefined) {
-        (updates as any).description =
-          description && description.trim() !== "" ? description.trim() : null;
-        logger.info("[PUT] Setting description:", {
-          raw: description,
-          processed: (updates as any).description,
-        });
-      }
       if (customOnboardingLink !== undefined) {
         (updates as any).customOnboardingLink =
           customOnboardingLink && customOnboardingLink.trim() !== ""
@@ -6492,7 +6483,6 @@ router.put(
           (updated as any).minimum_booking_window_hours ||
           1,
         timezone: (updated as any).timezone || DEFAULT_TIMEZONE,
-        description: (updated as any).description || null,
         customOnboardingLink:
           (updated as any).customOnboardingLink ||
           (updated as any).custom_onboarding_link ||
@@ -6597,7 +6587,6 @@ router.get(
           1,
         logoUrl: (loc as any).logoUrl || (loc as any).logo_url || null,
         timezone: (loc as any).timezone || DEFAULT_TIMEZONE,
-        description: (loc as any).description || null,
         customOnboardingLink:
           (loc as any).customOnboardingLink ||
           (loc as any).custom_onboarding_link ||
@@ -6700,7 +6689,6 @@ router.post(
         kitchenTermsUrl,
         logoUrl,
         brandImageUrl,
-        description,
       } = req.body;
 
       logger.info(
@@ -6781,7 +6769,6 @@ router.post(
         kitchenTermsUrl: kitchenTermsUrl || undefined,
         logoUrl: logoUrl || undefined,
         brandImageUrl: brandImageUrl || undefined,
-        description: description || undefined,
       });
 
       // Map snake_case to camelCase for consistent API response
@@ -6901,7 +6888,6 @@ router.put(
         kitchenTermsUrl,
         logoUrl,
         brandImageUrl,
-        description,
       } = req.body;
 
       const updates: any = {};
@@ -6909,7 +6895,6 @@ router.put(
       if (address !== undefined) updates.address = address;
       if (logoUrl !== undefined) updates.logoUrl = logoUrl || null;
       if (brandImageUrl !== undefined) updates.brandImageUrl = brandImageUrl || null;
-      if (description !== undefined) updates.description = description || null;
       if (notificationEmail !== undefined)
         updates.notificationEmail = notificationEmail || null;
 

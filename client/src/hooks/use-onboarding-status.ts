@@ -4,6 +4,7 @@ import { useQuery, type QueryClient } from "@tanstack/react-query";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { hasVerifiedEmail } from "@/lib/auth-verification";
 import { auth } from "@/lib/firebase"; // Keep direct auth import for token if needed, or rely on useFirebaseAuth
+import { mt } from "@/i18n/manager";
 
 export interface OnboardingStatus {
     isLoading: boolean;
@@ -33,9 +34,37 @@ export interface OnboardingStatus {
 
 export interface ManagerSetupStep {
     id: 'profile' | 'license' | 'kitchen' | 'availability' | 'requirements' | 'payments';
-    labelKey: 'onboardingProfileDetails' | 'onboardingKitchenLicense' | 'onboardingKitchenSpace' | 'onboardingAvailability' | 'onboardingChefRequirements' | 'onboardingPayments';
+    /**
+     * The short action phrase, e.g. "Upload your license".
+     *
+     * One label, used by BOTH the sidebar checklist and the dashboard banner. They used
+     * to hold separate lists — the checklist read `managerSetupStep*`, the banner held
+     * its own English sentences — and they could disagree: the checklist said "Verify
+     * your email address" while the banner said "Create a Kitchen" and its button went
+     * to the profile view. A step's name and its destination now come from one place.
+     */
+    labelKey: 'managerSetupStepProfile' | 'managerSetupStepLicense' | 'managerSetupStepKitchen' | 'managerSetupStepAvailability' | 'managerSetupStepRequirements' | 'managerSetupStepPayments';
     complete: boolean;
 }
+
+/**
+ * Which wizard step a dashboard setup step corresponds to.
+ *
+ * The licence is not its own wizard step — it is part three of the Business step, so
+ * "Upload your license" opens the Business step. `profile` is null because the dashboard
+ * already routes it to its own profile view rather than into the wizard.
+ *
+ * This map exists so the banner's destination is derived from the SAME list as its copy.
+ * The two used to be computed separately and could name different steps.
+ */
+export const SETUP_STEP_WIZARD_STEP: Record<ManagerSetupStep["id"], string | null> = {
+    profile: null,
+    license: 'location',
+    kitchen: 'create-kitchen',
+    availability: 'availability',
+    requirements: 'application-requirements',
+    payments: 'payment-setup',
+};
 
 export function buildManagerSetupSteps(status: {
     isProfileComplete?: boolean;
@@ -46,12 +75,12 @@ export function buildManagerSetupSteps(status: {
     isStripeComplete: boolean;
 }): ManagerSetupStep[] {
     return [
-        { id: 'profile', labelKey: 'onboardingProfileDetails', complete: status.isProfileComplete ?? true },
-        { id: 'license', labelKey: 'onboardingKitchenLicense', complete: status.hasUploadedLicense },
-        { id: 'kitchen', labelKey: 'onboardingKitchenSpace', complete: status.hasKitchens },
-        { id: 'availability', labelKey: 'onboardingAvailability', complete: status.hasAvailability },
-        { id: 'requirements', labelKey: 'onboardingChefRequirements', complete: status.hasRequirements },
-        { id: 'payments', labelKey: 'onboardingPayments', complete: status.isStripeComplete },
+        { id: 'profile', labelKey: 'managerSetupStepProfile', complete: status.isProfileComplete ?? true },
+        { id: 'license', labelKey: 'managerSetupStepLicense', complete: status.hasUploadedLicense },
+        { id: 'kitchen', labelKey: 'managerSetupStepKitchen', complete: status.hasKitchens },
+        { id: 'availability', labelKey: 'managerSetupStepAvailability', complete: status.hasAvailability },
+        { id: 'requirements', labelKey: 'managerSetupStepRequirements', complete: status.hasRequirements },
+        { id: 'payments', labelKey: 'managerSetupStepPayments', complete: status.isStripeComplete },
     ];
 }
 
@@ -342,15 +371,16 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
            hasAvailability &&
            hasRequirements);
 
-    // Missing steps for setup banner (only show if onboarding not complete)
-    const missingSteps: string[] = [];
-    if (!shouldSkipDetailedQueries) {
-        if (!hasUploadedLicense) missingSteps.push("Upload Kitchen License");
-        if (!hasKitchens) missingSteps.push("Create a Kitchen");
-        if (!hasAvailability) missingSteps.push("Set Availability");
-        if (!hasRequirements) missingSteps.push("Configure Application Requirements");
-        if (!isStripeComplete) missingSteps.push("Connect Stripe");
-    }
+    /*
+     * The banner's task line, read off the checklist instead of computed again.
+     *
+     * These were two parallel lists with their own order and their own copy, and they
+     * could disagree — see `ManagerSetupStep.labelKey`. Deriving it means the sentence
+     * the banner shows and the step its button opens can never describe different work.
+     */
+    const missingSteps: string[] = setupSteps
+        .filter((step) => !step.complete)
+        .map((step) => mt(step.labelKey));
 
     const improvementSteps: string[] = [];
     if (!locationData?.logoUrl && !locationData?.logo_url) improvementSteps.push("Add your location logo");

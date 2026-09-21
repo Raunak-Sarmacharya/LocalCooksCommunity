@@ -140,10 +140,10 @@ export async function searchGlobally(options: {
   const result = await pool.query<DatabaseSearchRow>(
     `WITH documents AS (
       SELECT 'location'::text AS type, l.id AS source_id, l.name AS title,
-        concat_ws(' ', l.address, l.description, l.cancellation_policy_message, l.overstay_policy_text) AS body,
-        coalesce(l.name, '') || ' ' || coalesce(l.address, '') || ' ' || coalesce(l.description, '') || ' ' ||
+        concat_ws(' ', l.address, l.cancellation_policy_message, l.overstay_policy_text) AS body,
+        coalesce(l.name, '') || ' ' || coalesce(l.address, '') || ' ' ||
           coalesce(l.cancellation_policy_message, '') || ' ' || coalesce(l.overstay_policy_text, '') AS searchable,
-        coalesce(l.name, '') || ' ' || coalesce(l.address, '') || ' ' || coalesce(l.description, '') || ' ' ||
+        coalesce(l.name, '') || ' ' || coalesce(l.address, '') || ' ' ||
           coalesce(l.cancellation_policy_message, '') || ' ' || coalesce(l.overstay_policy_text, '') AS indexed_searchable,
         CASE WHEN $2 = 'admin' THEN 'kitchen-management' WHEN $2 = 'manager' THEN 'my-locations' ELSE 'discover-kitchens' END AS view
       FROM locations l

@@ -65,6 +65,14 @@ interface BookingRulesSettingsProps {
    * them unsure which upload counts.
    */
   hideTerms?: boolean;
+  /**
+   * A caller-supplied line under the terms card's description.
+   *
+   * The onboarding availability step uses it to say the document is OPTIONAL and where to add it
+   * later. A note built in here would be wrong on the dashboard's own Booking Policies page, where
+   * "you can add this later from Booking Policies" is a loop — so the caller owns the words.
+   */
+  termsNote?: string;
 }
 
 /** Shape of the arrival-timing values, which are owned by the check-in/check-out endpoint. */
@@ -88,7 +96,7 @@ export interface BookingPoliciesHandle {
 }
 
 const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSettingsProps>(
-  function BookingRulesSettings({ location, onSave, onDirtyChange, onNavigate, hideArrivalTimings = false, hideTerms = false }, ref) {
+  function BookingRulesSettings({ location, onSave, onDirtyChange, onNavigate, hideArrivalTimings = false, hideTerms = false, termsNote }, ref) {
     const { toast } = useToast();
     const queryClient = useQueryClient();
 
@@ -433,6 +441,7 @@ const BookingRulesSettings = forwardRef<BookingPoliciesHandle, BookingRulesSetti
               <div>
                 <CardTitle className="text-lg">{mt("termsConditions")}</CardTitle>
                 <CardDescription>{mt("uploadTermsThatChefsMustAgreeToWhenBooking")}</CardDescription>
+                {termsNote ? <p className="mt-1 text-xs text-muted-foreground">{termsNote}</p> : null}
               </div>
               {hasTerms && !isReplacingTerms && (
                 <Button variant="outline" size="sm" onClick={() => setIsReplacingTerms(true)}>

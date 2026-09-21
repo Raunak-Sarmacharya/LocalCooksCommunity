@@ -91,10 +91,23 @@ function ManagerSetupPageContent() {
 
     return (
         <div className="min-h-screen w-full bg-background flex overflow-hidden">
-            {/* Left Sidebar */}
-            <aside className="hidden lg:flex w-80 border-r border-border bg-background z-20 flex-col h-screen">
-                <EnterpriseStepper />
-            </aside>
+            {/*
+              * Left Sidebar — hidden on Welcome.
+              *
+              * The rail answers "where am I in the work", and before the work starts there is no
+              * answer. Rendering it there put "0 of 5" and four padlocks next to a friendly intro,
+              * which reads as being locked out rather than as a plan ahead — the first thing a new
+              * manager saw was a wall of locks. Welcome already lists what is involved, so nothing
+              * is lost by waiting until the first real step to show progress.
+              *
+              * Summary keeps the rail: every row ticked and "5 of 5" is the closing confirmation.
+              * The condition is the same one this page already uses for its header chrome.
+              */}
+            {currentStepData?.componentKey !== 'welcome' && (
+                <aside className="hidden lg:flex w-80 border-r border-border bg-background z-20 flex-col h-screen">
+                    <EnterpriseStepper />
+                </aside>
+            )}
 
             {/* Main Content Area */}
             <main className="flex-1 flex flex-col h-screen overflow-hidden relative">

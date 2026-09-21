@@ -40,7 +40,6 @@ interface ManagerProfileSettingsProps {
         id: number;
         name: string;
         address: string;
-        description?: string | null;
         logoUrl?: string;
         timezone?: string;
     } | null;

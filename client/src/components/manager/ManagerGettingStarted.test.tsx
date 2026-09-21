@@ -29,11 +29,11 @@ beforeEach(() => {
 afterEach(cleanup);
 
 const steps: ManagerSetupStep[] = [
-  { id: "license", labelKey: "onboardingKitchenLicense", complete: true },
-  { id: "kitchen", labelKey: "onboardingKitchenSpace", complete: false },
-  { id: "availability", labelKey: "onboardingAvailability", complete: false },
-  { id: "requirements", labelKey: "onboardingChefRequirements", complete: false },
-  { id: "payments", labelKey: "onboardingPayments", complete: false },
+  { id: "license", labelKey: "managerSetupStepLicense", complete: true },
+  { id: "kitchen", labelKey: "managerSetupStepKitchen", complete: false },
+  { id: "availability", labelKey: "managerSetupStepAvailability", complete: false },
+  { id: "requirements", labelKey: "managerSetupStepRequirements", complete: false },
+  { id: "payments", labelKey: "managerSetupStepPayments", complete: false },
 ];
 
 describe("ManagerGettingStarted", () => {

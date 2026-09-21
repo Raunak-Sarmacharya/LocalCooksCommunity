@@ -38,6 +38,23 @@ router.get('/public/locations', async (req: Request, res: Response) => {
             const locationKitchens = allKitchens.filter(k => k.locationId === location.id);
             const featuredKitchen = locationKitchens.find(k => k.imageUrl) || locationKitchens[0];
 
+            /**
+             * The description a chef reads for this location.
+             *
+             * The location's own `description` column was removed (2026-09-20). A location is an
+             * address that can hold several kitchens, and the only description a chef ever reads
+             * is a KITCHEN's — the location one was a second, near-duplicate paragraph the manager
+             * had to type by hand. This card already shows one representative kitchen's photo, so
+             * it carries that same kitchen's words; it falls back to any kitchen here that has a
+             * description, so a location is never left with a blank line while a kitchen inside it
+             * has something to say.
+             *
+             * The response key stays `description` so every existing consumer keeps working.
+             */
+            const describedKitchen = featuredKitchen?.description
+                ? featuredKitchen
+                : locationKitchens.find(k => k.description);
+
             // Normalize image URLs
             const featuredKitchenImage = normalizeImageUrl(featuredKitchen?.imageUrl || null, req);
             const logoUrl = normalizeImageUrl(location.logoUrl || null, req);
@@ -83,7 +100,7 @@ router.get('/public/locations', async (req: Request, res: Response) => {
                 featured_kitchen_image: featuredKitchenImage, // compatibility
                 kitchenCount,
                 kitchen_count: kitchenCount, // compatibility
-                description: location.description || null,
+                description: describedKitchen?.description || null,
                 // New fields for enhanced discovery
                 amenities: uniqueAmenities,
                 minHourlyRate: minRate,
@@ -328,7 +345,10 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
             brand_image_url: brandImageUrl, // compatibility
             logoUrl,
             logo_url: logoUrl, // compatibility
-            description: location.description || null,
+            // Same rule as /public/locations: the location column is gone, so this is the first
+            // kitchen at the address that actually has a description. The preview page's own
+            // "About this kitchen" block reads the SELECTED kitchen, not this field.
+            description: sanitizedKitchens.find((k: any) => k.description)?.description || null,
             customOnboardingLink: location.customOnboardingLink || null,
             kitchens: sanitizedKitchens,
             // Kitchen terms and policies for chef applications

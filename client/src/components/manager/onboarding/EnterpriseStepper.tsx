@@ -36,19 +36,37 @@ const EnterpriseStepper = () => {
         goToStep,
     } = useManagerOnboarding();
 
+    /**
+     * The rail lists the WORK, and the progress fraction counts the same work.
+     *
+     * `welcome` and `completion-summary` are screens at the entry and exit of the flow, not tasks —
+     * see the note on `welcome` in `onboarding-steps.ts`. Listing them here made the rail read
+     * "n of 7 required" for a job that is five things to do, and gave a tick to a greeting.
+     *
+     * Both screens stay in the flow; they simply stop being rows. On Welcome the rail reads as the
+     * plan ahead ("0 of 5"), and on Summary every row is ticked and it reads as done — the two
+     * screens carry the framing themselves, which is why this needs no extra UI.
+     */
+    const railSteps = useMemo(
+        () => visibleSteps.filter((s: any) => s.metadata?.isTask !== false),
+        [visibleSteps],
+    );
+
+    /** By id, not by index: `railSteps` is a subset, so its indices do not line up with the engine's. */
+    const currentStepId = visibleSteps[currentStepIndex]?.id;
+
     // Calculate progress
     const progressStats = useMemo(() => {
-        const requiredSteps = visibleSteps.filter((s: any) => !s.metadata?.isOptional);
-        const completedRequired = requiredSteps.filter((s: any) => completedSteps[s.id]);
-        const percentage = requiredSteps.length > 0 
-            ? Math.round((completedRequired.length / requiredSteps.length) * 100) 
+        const completed = railSteps.filter((s: any) => completedSteps[s.id]);
+        const percentage = railSteps.length > 0
+            ? Math.round((completed.length / railSteps.length) * 100)
             : 0;
         return {
-            completed: completedRequired.length,
-            total: requiredSteps.length,
+            completed: completed.length,
+            total: railSteps.length,
             percentage
         };
-    }, [visibleSteps, completedSteps]);
+    }, [railSteps, completedSteps]);
 
     return (
         <TooltipProvider delayDuration={300}>
@@ -67,8 +85,8 @@ const EnterpriseStepper = () => {
                     <div className="mt-5 space-y-2">
                         <div className="flex items-center justify-between text-xs">
                             <span className="text-muted-foreground font-medium">{mt("progress")}</span>
-                            <span className="text-primary font-semibold">
-                                {mt("requiredStepsCount", {
+                            <span data-testid="wizard-rail-progress" className="text-primary font-semibold">
+                                {mt("onboardingStepCount", {
                                     completed: progressStats.completed,
                                     total: progressStats.total,
                                 })}
@@ -83,16 +101,16 @@ const EnterpriseStepper = () => {
 
                 {/* Steps Navigation */}
                 <ScrollArea className="flex-1">
-                    <nav className="space-y-1 p-3">
-                        {visibleSteps.map((step: any, index: number) => {
-                            const isActive = index === currentStepIndex;
+                    <nav data-testid="wizard-rail" className="space-y-1 p-3">
+                        {railSteps.map((step: any, index: number) => {
+                            const isActive = step.id === currentStepId;
                             const isCompleted = completedSteps[step.id];
                             const isOptional = step.metadata?.isOptional;
                             const label = step.metadata?.label || step.payload?.title;
                             const StepIcon = STEP_ICONS[step.id] || Circle;
 
                             // Determine if step is accessible (completed or current or previous completed)
-                            const isPreviousComplete = index > 0 ? completedSteps[visibleSteps[index - 1]?.id] : true;
+                            const isPreviousComplete = index > 0 ? completedSteps[railSteps[index - 1]?.id] : true;
                             const isAccessible = isCompleted || isActive || (index === 0) || isPreviousComplete;
 
                             // The trailing tick carries completion, so the glyph

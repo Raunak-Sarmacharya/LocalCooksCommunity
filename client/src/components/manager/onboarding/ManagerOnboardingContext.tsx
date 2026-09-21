@@ -57,7 +57,6 @@ export interface LocationDraftFields {
   name: string;
   address: string;
   logoUrl: string;
-  description: string;
   contactEmail: string;
   contactPhone: string;
   preferredContactMethod: "email" | "phone" | "both";
@@ -121,8 +120,18 @@ interface ManagerOnboardingContextType {
   isLoadingLocations: boolean;
   isStripeOnboardingComplete?: boolean;
   hasAvailability?: boolean;
+  /**
+   * Whether the availability check has actually returned.
+   *
+   * `hasAvailability` is false until it does, so a step that decides anything from it —
+   * "open on the review, this is already done" — must wait for this or it will decide on
+   * a flag that has not been read yet.
+   */
+  availabilityLoaded?: boolean;
   refreshAvailability?: () => Promise<void>; // [NEW] Trigger refresh after saving availability
   hasRequirements?: boolean;
+  /** Whether the requirements check has actually returned. Same rule as availability. */
+  requirementsLoaded?: boolean;
   refreshRequirements?: () => Promise<void>;
 
   // Forms State
@@ -213,6 +222,14 @@ interface ManagerOnboardingContextType {
    * failure so the caller can keep the user on the part they were editing.
    */
   saveLocationDraft: (fields: Partial<LocationDraftFields>) => Promise<boolean>;
+  /**
+   * Persist the whole location record WITHOUT advancing the wizard.
+   *
+   * The Business step's documents part saves through this and then shows its review
+   * screen, so the manager sees what they set before moving on. Resolves false on
+   * failure so the caller keeps them on the part they were editing.
+   */
+  saveLocationFull: () => Promise<boolean>;
   createKitchen: () => Promise<void>;
   uploadLicense: () => Promise<string | null>;
   startNewLocation: () => void;
@@ -254,7 +271,6 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   // Location Form State
   const [locationName, setLocationName] = useState("");
   const [locationLogoUrl, setLocationLogoUrl] = useState("");
-  const [locationDescription, setLocationDescription] = useState("");
   const [locationAddress, setLocationAddress] = useState("");
   const [notificationEmail, setNotificationEmail] = useState("");
   const [notificationPhone, setNotificationPhone] = useState("");
@@ -417,29 +433,30 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       result['welcome'] = true;
     }
 
-    // Location is complete if location exists AND is selected AND has required files (license + terms)
+    // Location is complete if location exists AND is selected AND carries the kitchen licence.
+    //
+    // It used to require the terms document as well. That upload moved to the Availability step
+    // (2026-09-20), so keeping it here would mean the Business step could NEVER complete: the
+    // manager uploads the licence, finishes the step, and the checklist never ticks it and its
+    // review never opens. The licence is the only document this step still collects.
     // [ENTERPRISE FIX] Check both camelCase and snake_case field names for compatibility
     // Also check dbCompletedSteps as fallback for in-session completion before data refresh
     if (selectedLocationId && locations.length > 0) {
       const loc = locations.find(l => l.id === selectedLocationId) as any;
       const hasLicense = loc?.kitchenLicenseUrl || loc?.kitchen_license_url;
-      const hasTerms = loc?.kitchenTermsUrl || loc?.kitchen_terms_url;
-      
+
       logger.info('[completedSteps] Location check:', {
         selectedLocationId,
         locFound: !!loc,
         hasLicense: !!hasLicense,
-        hasTerms: !!hasTerms,
         kitchenLicenseUrl: loc?.kitchenLicenseUrl,
         kitchen_license_url: loc?.kitchen_license_url,
-        kitchenTermsUrl: loc?.kitchenTermsUrl,
-        kitchen_terms_url: loc?.kitchen_terms_url,
         dbCompletedSteps: dbCompletedSteps['location']
       });
-      
-      // Primary check: actual data has both URLs
+
+      // Primary check: the licence is on the record
       // Secondary check: dbCompletedSteps marked true (handles race condition during save)
-      if ((hasLicense && hasTerms) || dbCompletedSteps['location']) {
+      if (hasLicense || dbCompletedSteps['location']) {
         result['location'] = true;
       }
     } else if (dbCompletedSteps['location'] && !isAddingLocation) {
@@ -480,7 +497,8 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
      * the total reachable and keeps it stable across reloads.
      */
     const TASK_STEP_IDS = [
-      'welcome',
+      // No 'welcome': it is a screen, not a task, and it is trivially true by this point anyway.
+      // Keeping it here made the Summary's own completion depend on a non-task.
       'location',
       'create-kitchen',
       'availability',
@@ -513,26 +531,41 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   const currentStepId = currentStep?.id;
   const currentVisibleStepIndex = visibleStepsFiltered.findIndex(step => step.id === currentStepId);
 
-  // AUTO-SKIP: Only skip welcome step for returning users with location
-  // [FIX] We no longer auto-skip payment-setup - users can view it even when complete
-  // This allows them to see their completed status and access Stripe dashboard
-  //
-  // The skip is an *entry* behaviour: a returning manager should not be parked on
-  // the welcome screen when they already have a location. It runs at most once per
-  // wizard entry, so a deliberate click on Welcome in the sidebar is honoured
-  // instead of being bounced straight forward again.
-  const hasAutoSkippedWelcome = useRef(false);
+  /*
+   * There used to be a second effect here that skipped Welcome by calling `next()`.
+   * It is GONE, deliberately — do not reinstate it.
+   *
+   * It duplicated the enterprise auto-resume below, which already advances off any
+   * completed step, and the two of them raced. `next()` moves the engine one step
+   * forward ('welcome' → 'location'), while the resume effect bails out if the step
+   * moved since entry — so whichever settled first decided where the manager landed.
+   * When the location / kitchen / requirements fetches happened to resolve together
+   * with the locations query, the manager was parked on the Business step no matter
+   * which step they actually needed. That is the bug where the dashboard banner named
+   * one step and the wizard opened another.
+   *
+   * One owner for the resume decision, and it is the effect below.
+   */
 
-  useEffect(() => {
-    if (!currentStepId || isCompleted) return;
-    if (!(hasExistingLocation && !isAddingLocation)) return;
-    if (String(currentStepId) !== 'welcome') return;
-    if (hasAutoSkippedWelcome.current) return;
-
-    hasAutoSkippedWelcome.current = true;
-    logger.info('[Onboarding] Auto-skipping welcome on entry');
-    next();
-  }, [currentStepId, isCompleted, hasExistingLocation, isAddingLocation, next]);
+  /*
+   * The step this entry was asked for, from `?step=` on the URL.
+   *
+   * The dashboard's "Continue setup" banner knows which step is missing, so it says so
+   * on the way in rather than letting the wizard derive it a second time. Two
+   * derivations of the same answer is exactly how the banner came to name one step
+   * while the wizard opened another. Read once, then removed from the URL so a refresh
+   * starts from the manager's real position.
+   */
+  const [requestedStep] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    const target = params.get('step');
+    if (!target) return null;
+    params.delete('step');
+    const remaining = params.toString();
+    window.history.replaceState(null, '', window.location.pathname + (remaining ? `?${remaining}` : ''));
+    return steps.some((step: any) => step.id === target) ? target : null;
+  });
 
   // ENTERPRISE FIX: Auto-redirect logic moved to ManagerProtectedRoute.tsx
   // This prevents the "flash" of dashboard content before onboarding redirect
@@ -591,14 +624,12 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   useEffect(() => {
     // Reset on mount (handles page-based flow at /manager/setup)
     hasPerformedInitialAutoSkip.current = false;
-    hasAutoSkippedWelcome.current = false;
     logger.info('[Onboarding] Component mounted - reset auto-skip flag');
   }, []); // Empty deps = runs once on mount
 
   useEffect(() => {
     if (isOpen) {
       hasPerformedInitialAutoSkip.current = false;
-      hasAutoSkippedWelcome.current = false;
       logger.info('[Onboarding] Wizard dialog opened - reset auto-skip flag');
     }
   }, [isOpen]);
@@ -646,7 +677,6 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       setLocationName(loc.name || "");
       setLocationAddress(loc.address || "");
       setLocationLogoUrl(loc.logoUrl || loc.logo_url || "");
-      setLocationDescription(loc.description || "");
       setNotificationEmail(loc.notificationEmail || loc.notification_email || "");
       setNotificationPhone(loc.notificationPhone || loc.notification_phone || "");
       // Contact fields
@@ -807,6 +837,25 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     const currentId = currentStep?.id;
     if (!currentId) return;
 
+    /*
+     * An explicit target wins over everything below.
+     *
+     * The dashboard banner already worked out which step is missing and named it in
+     * `?step=`. Re-deriving the same answer here is what let the banner say one thing
+     * and the wizard do another, so when the caller has told us where to go we go
+     * there and skip the guesswork. Placed before the entry-step check because that
+     * check exists to stop the DERIVED resume from overriding a deliberate move —
+     * this one IS the deliberate move.
+     */
+    if (requestedStep) {
+      hasPerformedInitialAutoSkip.current = true;
+      if (String(currentId) !== requestedStep) {
+        logger.info(`[Onboarding] Opening the requested step: ${currentId} → ${requestedStep}`);
+        engine.goToStep(requestedStep);
+      }
+      return;
+    }
+
     // Anything that moved us off the entry step was deliberate. Without this,
     // a save that advanced the flow (e.g. creating the first kitchen) could be
     // followed by this effect firing late and yanking the user to another step.
@@ -818,14 +867,15 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
 
     // [FIX] Wait for completedSteps to reflect the selected location data
     // This prevents race condition where auto-skip runs before completedSteps memo updates
-    // Only wait if the location actually has the required data (license + terms)
+    // Only wait if the location actually has the required data — the licence. The terms
+    // document is collected in the Availability step now, so waiting on it here would stall
+    // the auto-skip forever for anyone who has a licence but no terms on file yet.
     if (!completedSteps['location']) {
       const loc = locations.find(l => l.id === selectedLocationId) as any;
       const hasLicense = loc?.kitchenLicenseUrl || loc?.kitchen_license_url;
-      const hasTerms = loc?.kitchenTermsUrl || loc?.kitchen_terms_url;
-      
-      // If location has both URLs but completedSteps hasn't updated yet, wait
-      if (hasLicense && hasTerms) {
+
+      // If the licence is on the record but completedSteps hasn't updated yet, wait
+      if (hasLicense) {
         logger.info('[Onboarding] Waiting for completedSteps to reflect location data...');
         return;
       }
@@ -873,7 +923,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     logger.info(`[Onboarding] User on incomplete step: ${currentId}, staying here`);
 
   }, [engine, hasExistingLocation, isLoadingLocations, selectedLocationId, isAddingLocation,
-    kitchensLoaded, requirementsLoaded, availabilityLoaded, selectedKitchenId, completedSteps, currentStep?.id, locations]);
+    kitchensLoaded, requirementsLoaded, availabilityLoaded, selectedKitchenId, completedSteps, currentStep?.id, locations, requestedStep]);
 
   // Load kitchens when location selected
   useEffect(() => {
@@ -1141,16 +1191,24 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   // - Prevents double file uploads by checking uploadedUrl first
   // - Prevents duplicate location creation via lastSubmittedLocationIdRef
   // - Proper async state handling before navigation
-  const updateLocation = async () => {
+  /**
+   * Persist the whole location record. Resolves whether it succeeded, and NEVER advances.
+   *
+   * Advancing is the caller's job because the Business step's documents part saves through
+   * this and then returns to its review screen, where the manager sees what they set before
+   * moving on. `updateLocation` below is the advancing wrapper the wizard's own Continue
+   * uses — one implementation, two entry points.
+   */
+  const persistLocation = async (): Promise<boolean> => {
     if (!locationName || !locationAddress) {
       toast({ title: mt("error"), description: mt("missingLocationDetails"), variant: "destructive" });
-      return;
+      return false;
     }
 
     // [GUARD 1] Prevent concurrent submissions
     if (isSubmitting) {
       logger.info('[Onboarding] ⚠️ Submission already in progress, ignoring duplicate click');
-      return;
+      return false;
     }
 
     // [GUARD 2] Generate unique submission ID for this request
@@ -1184,7 +1242,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         if (!licenseExpiryDate) {
           toast({ title: mt("error"), description: mt("missingLicenseExpiry"), variant: "destructive" });
           setIsSubmitting(false);
-          return;
+          return false;
         }
         licenseUrl = await uploadLicense();
         logger.info('[Onboarding] License uploaded (fresh):', licenseUrl);
@@ -1234,7 +1292,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       // [GUARD 3] Check if submission was superseded
       if (submissionIdRef.current !== thisSubmissionId) {
         logger.info('[Onboarding] ⚠️ Submission superseded, aborting:', thisSubmissionId);
-        return;
+        return false;
       }
 
       const token = await auth.currentUser?.getIdToken();
@@ -1267,7 +1325,6 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         contactPhone: contactPhoneValidated,
         preferredContactMethod,
         logoUrl: locationLogoUrl,
-        description: locationDescription,
       };
       
       // Include license URL (pre-uploaded or freshly uploaded)
@@ -1353,7 +1410,6 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
                 name: locationName,
                 address: locationAddress,
                 logoUrl: locationLogoUrl,
-                description: locationDescription,
                 kitchenLicenseUrl: licenseUrl || loc.kitchenLicenseUrl || loc.kitchen_license_url,
                 kitchenTermsUrl: termsUrl || loc.kitchenTermsUrl || loc.kitchen_terms_url,
                 kitchenLicenseExpiry: licenseExpiryDate || loc.kitchenLicenseExpiry,
@@ -1378,7 +1434,6 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
               return [...oldData, {
                 ...data,
                 logoUrl: locationLogoUrl,
-                description: locationDescription,
                 kitchenLicenseUrl: licenseUrl,
                 kitchenTermsUrl: termsUrl,
                 kitchen_license_url: licenseUrl,
@@ -1405,7 +1460,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       // [GUARD 4] Final check - ensure this submission wasn't superseded
       if (submissionIdRef.current !== thisSubmissionId) {
         logger.info('[Onboarding] ⚠️ Submission superseded before navigation, aborting:', thisSubmissionId);
-        return;
+        return false;
       }
 
       toast({ title: mt("success"), description: mt("locationSaved") });
@@ -1414,14 +1469,20 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       setLicenseFile(null);
       setTermsFile(null);
       
-      next(); // Move to next step via OnboardJS
+      return true;
 
     } catch (e: any) {
-      logger.error('[Onboarding] Error in updateLocation:', e);
+      logger.error('[Onboarding] Error in persistLocation:', e);
       toast({ title: mt("error"), description: e.message, variant: "destructive" });
+      return false;
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  /** Save the whole record and move the wizard on. The Continue the steps call. */
+  const updateLocation = async () => {
+    if (await persistLocation()) next();
   };
 
   /**
@@ -1638,9 +1699,21 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     const stepId = currentStep?.id;
 
     if (stepId === 'location') {
-      await updateLocation(); // This saves AND moves next inside updateLocation currently
-      // refactor updateLocation to NOT move next, but return success?
-      // For now, let's keep the existing flow but ensure we don't double-fire updates.
+      /*
+       * Continue on a Business step that holds nothing new must not write.
+       *
+       * This used to call `updateLocation()` unconditionally — a full PUT, plus any
+       * outstanding file upload — every single time, including when a manager simply
+       * stepped back into a finished step and pressed Continue. That round-trip is what
+       * made revisiting the step feel like it was setting the location up again. The
+       * part-level saves already persist everything as it changes, so a clean step has
+       * nothing left to write.
+       */
+      if (!hasUnsavedChanges) {
+        next();
+        return;
+      }
+      await updateLocation();
       return;
     }
 
@@ -1797,6 +1870,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     kitchens, selectedKitchenId, setSelectedKitchenId, isLoadingLocations,
     isStripeOnboardingComplete,
     hasAvailability,
+    availabilityLoaded,
     refreshAvailability: async () => {
       // Refetch availability status after save
       if (!selectedKitchenId) return;
@@ -1816,6 +1890,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       }
     },
     hasRequirements,
+    requirementsLoaded,
     refreshRequirements: async () => {
       // Refetch requirements status after save
       if (!selectedLocationId) return;
@@ -1845,7 +1920,6 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       contactPhone, setContactPhone,
       preferredContactMethod, setPreferredContactMethod,
       logoUrl: locationLogoUrl, setLogoUrl: setLocationLogoUrl,
-      description: locationDescription, setDescription: setLocationDescription,
     },
     licenseForm: {
       file: licenseFile, setFile: setLicenseFile,
@@ -1854,6 +1928,12 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       uploadedUrl: licenseUploadedUrl,
       uploadFile: uploadLicenseFile
     },
+    // ponytail: the terms upload UI moved to the Availability step (BookingRulesSettings owns
+    // it there), so nothing calls `setFile`/`uploadFile` on this surface any more and `termsFile`
+    // is always null. It is deliberately left in place because `saveLocationFull` still READS it:
+    // it resolves the stored `kitchenTermsUrl` and re-sends it, which is what stops a Business-step
+    // save from looking like a deliberate removal of the terms. Collapse this surface (and the
+    // now-unreachable fresh-upload branch in `saveLocationFull`) when someone next opens that file.
     termsForm: {
       file: termsFile, setFile: setTermsFile,
       isUploading: uploadingTerms,
@@ -1899,22 +1979,43 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       }
     },
 
-    updateLocation, createKitchen, uploadLicense, saveLocationDraft,
+    updateLocation, createKitchen, uploadLicense, saveLocationDraft, saveLocationFull: persistLocation,
     
     // [ENTERPRISE] Save and Exit - Persists current step progress and navigates to dashboard
     // This allows users to exit at ANY step (including welcome) and resume later
     saveAndExit: async () => {
       try {
         const token = await auth.currentUser?.getIdToken();
+
+        const stepId = currentStep?.id;
+        logger.info('[Onboarding] Save & Exit from step:', stepId);
+
+        /*
+         * Only write when the step actually holds something.
+         *
+         * This used to POST the step-tracking record unconditionally, so a manager who
+         * had changed nothing pressed "Save & exit" and watched it save — the button
+         * promised work that did not exist. The label follows the same flag, so what it
+         * says and what it does cannot drift apart.
+         *
+         * Nothing depends on the record for a REQUIRED step: `completedSteps` is derived
+         * from live data, and the only place the stored flag is read at all is as a
+         * fallback for 'location' — which a manager leaving cleanly has already got.
+         */
+        if (!hasUnsavedChanges) {
+          logger.info('[Onboarding] Save & Exit: nothing pending, leaving without a write');
+          setIsAddingLocation(false);
+          const locId = selectedLocationId || lastSubmittedLocationIdRef.current;
+          setLocation(locId ? `/manager/dashboard?locationId=${locId}` : '/manager/dashboard');
+          return;
+        }
+
         if (!token) {
           logger.warn('[Onboarding] No auth token for saveAndExit');
           const locId = selectedLocationId || lastSubmittedLocationIdRef.current;
           setLocation(locId ? `/manager/dashboard?locationId=${locId}` : '/manager/dashboard');
           return;
         }
-
-        const stepId = currentStep?.id;
-        logger.info('[Onboarding] Save & Exit from step:', stepId);
 
         // 1. Mark current step as "seen" via manager onboarding step tracking
         // NOTE: has_seen_welcome is for CHEF onboarding only, not managers
@@ -2036,7 +2137,6 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
 
       // --- 6. Reset auto-skip refs so fresh navigation logic runs ---
       hasPerformedInitialAutoSkip.current = false;
-      hasAutoSkippedWelcome.current = false;
 
       // --- 7. Reset OnboardJS engine and navigate to 'location' step (skip welcome for secondary locations) ---
       if (engine) {

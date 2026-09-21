@@ -6,7 +6,6 @@ import { tt } from "@/i18n/common-ns";
 import { FileText, ExternalLink, Lock } from "@/components/ui/manager-icons";
 import { DateField } from "@/components/ui/date-field";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
 import PhoneSignInSettings from "@/components/auth/PhoneSignInSettings";
@@ -20,11 +19,13 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter";
+import { StepSummary } from "../StepSummary";
+import { useStepParts } from "../use-step-parts";
 import AddressAutocomplete from "@/components/ui/address-autocomplete";
 import { SettingsRow } from "@/components/manager/settings/SettingsRow";
 import { SettingsFileUpload } from "@/components/manager/settings/SettingsFileUpload";
 import { AuthenticatedDocumentLink } from "@/components/manager/settings/AuthenticatedDocumentLink";
-import { getDocumentFilename } from "@/lib/formatters";
+import { getDocumentFilename, truncateFilename } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { FormLegend } from "@/components/ui/form-legend";
@@ -71,7 +72,7 @@ function DocumentRow({
 /**
  * The Business step, in three parts that save as you go.
  *
- * Part 1 owns the identity fields (name, address, logo, description) and is what
+ * Part 1 owns the identity fields (name, address, logo) and is what
  * creates the location — the create endpoint requires name + address, both of
  * which live here. Parts 2 and 3 update the same record. Splitting it this way
  * means a manager who stops halfway keeps everything they typed, instead of
@@ -79,12 +80,22 @@ function DocumentRow({
  */
 const PART_COUNT = 3;
 
+/**
+ * The screen after the last part — the review, on its own, so a manager coming back to a
+ * step they have already finished sees what they set instead of the first form again.
+ *
+ * Not a fourth PART: the work is three things, so the dots stay at three. It is the
+ * kitchen listing step's shape, applied here so the two steps close the same way.
+ */
+const SUMMARY_PART = PART_COUNT;
+/** The part that owns the licence and the terms. Its save is the full-record one. */
+const DOCUMENTS_PART = 2;
+
 export default function LocationStep() {
 
   const {
     locationForm,
     licenseForm,
-    termsForm,
     selectedLocation,
     handleNext,
     handleBack,
@@ -92,8 +103,10 @@ export default function LocationStep() {
     isSubmitting,
     saveAndExit,
     saveLocationDraft,
+    saveLocationFull,
     setUnsavedChanges,
     registerStepSave,
+    completedSteps,
   } = useManagerOnboarding();
 
   const { toast } = useToast();
@@ -110,8 +123,17 @@ export default function LocationStep() {
     if (result?.url) locationForm.setLogoUrl(result.url);
   };
 
-  const [activePart, setActivePart] = useState(0);
   const [isSavingPart, setIsSavingPart] = useState(false);
+  /**
+   * A finished Business step opens on its review, not on the first form. `selectedLocation`
+   * is the readiness signal: completeness is derived from the fetched location, so before
+   * it arrives every step looks unfinished.
+   */
+  const { activePart, isSummary, editPart, goNext, goBack } = useStepParts({
+    isComplete: Boolean(completedSteps['location']),
+    isReady: Boolean(selectedLocation),
+    partCount: PART_COUNT,
+  });
   /**
    * Whether a stored document is being swapped out. Mirrors the Booking Policies
    * page: while something is on file we show the row plus a "Replace" action,
@@ -119,19 +141,11 @@ export default function LocationStep() {
    * the file it would replace never compete for attention.
    */
   const [isReplacingLicense, setIsReplacingLicense] = useState(false);
-  const [isReplacingTerms, setIsReplacingTerms] = useState(false);
-  /**
-   * The part's values at the moment it was opened. The primary button compares
-   * against this so it offers "Save & continue" only when something changed.
-   */
-  const [partSnapshot, setPartSnapshot] = useState<string | null>(null);
   // Continuing to a shorter part used to leave you mid-page.
   const scrollRef = useScrollToTopOnChange(activePart);
 
   const existingLicenseUrl = selectedLocation?.kitchenLicenseUrl || (selectedLocation as any)?.kitchen_license_url || null;
-  const existingTermsUrl = selectedLocation?.kitchenTermsUrl || (selectedLocation as any)?.kitchen_terms_url || null;
   const hasExistingLicense = !!existingLicenseUrl;
-  const hasExistingTerms = !!existingTermsUrl;
   /*
    * There used to be an `isReadOnly` here that hid Replace, the expiry date and
    * the upload fields once the step was complete. It made the finished state a
@@ -144,9 +158,7 @@ export default function LocationStep() {
   // A document uploaded in this session replaces the stored one in the row below,
   // so the two never describe the same file at once.
   const licenseUrl = licenseForm.uploadedUrl || existingLicenseUrl;
-  const termsUrl = termsForm.uploadedUrl || existingTermsUrl;
   const hasLicenseOnFile = Boolean(licenseUrl);
-  const hasTermsOnFile = Boolean(termsUrl);
   /**
    * A licence is on file, or one was chosen in this session and not yet uploaded.
    * Either way a date describes it, and the date is not optional: a licence with no
@@ -161,7 +173,6 @@ export default function LocationStep() {
    * field below it.
    */
   const showLicenseUpload = !hasLicenseOnFile || isReplacingLicense;
-  const showTermsUpload = !hasTermsOnFile || isReplacingTerms;
 
   const licenseStatus = selectedLocation?.kitchenLicenseStatus;
   const showLicenseStatus = Boolean(selectedLocation?.kitchenLicenseUrl)
@@ -179,21 +190,6 @@ export default function LocationStep() {
     } catch (error) {
       toast({ title: mt("uploadFailed2"),
         description: mt("failedToUploadLicenseFilePleaseTryAgain"),
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleTermsFile = async (file: File | null) => {
-    if (!file) return;
-    toast({ title: mt("uploadingTerms"), description: file.name });
-    try {
-      await termsForm.uploadFile(file);
-      setIsReplacingTerms(false);
-      toast({ title: mt("termsUploadedSuccessfully"), description: file.name });
-    } catch (error) {
-      toast({ title: mt("uploadFailed2"),
-        description: mt("failedToUploadTermsFilePleaseTryAgain"),
         variant: "destructive",
       });
     }
@@ -279,7 +275,6 @@ export default function LocationStep() {
       name: locationForm.name,
       address: locationForm.address,
       logoUrl: locationForm.logoUrl,
-      description: locationForm.description,
     },
     {
       preferredContactMethod: locationForm.preferredContactMethod,
@@ -293,44 +288,93 @@ export default function LocationStep() {
     },
     {},
   ], [
-    locationForm.name, locationForm.address, locationForm.logoUrl, locationForm.description,
+    locationForm.name, locationForm.address, locationForm.logoUrl,
     locationForm.preferredContactMethod, locationForm.contactEmail, locationForm.contactPhone,
   ]);
+
+  /**
+   * What the stored record already holds, in the same shape as `partFields`.
+   *
+   * Dirty is measured against THIS, not against a snapshot taken when the part opened.
+   * A mount-time snapshot compares the form to whatever the context happened to hold
+   * *before* it seeded the fields from the location — so simply arriving on the Business
+   * step read as unsaved work, the footer offered "Save & continue", and pressing it wrote
+   * a full update for a record nobody had touched. The record is the honest baseline: it
+   * is what "no changes" actually means, and it clears itself the moment a save lands
+   * because the save patches this same cached location.
+   */
+  const savedPartFields = useMemo((): Partial<LocationDraftFields>[] => [
+    {
+      name: selectedLocation?.name ?? "",
+      address: selectedLocation?.address ?? "",
+      logoUrl: selectedLocation?.logoUrl ?? "",
+    },
+    {
+      preferredContactMethod: selectedLocation?.preferredContactMethod ?? "email",
+      contactEmail: selectedLocation?.contactEmail ?? "",
+      contactPhone: selectedLocation?.contactPhone ?? "",
+      // Notification targets follow the contact details — same rule as `partFields`.
+      notificationEmail: selectedLocation?.contactEmail ?? "",
+      notificationPhone: selectedLocation?.contactPhone ?? "",
+    },
+    {},
+  ], [selectedLocation]);
 
   const partSignature = useMemo(
     () => JSON.stringify(partFields[activePart]),
     [partFields, activePart],
   );
+  const savedPartSignature = useMemo(
+    () => JSON.stringify(savedPartFields[activePart]),
+    [savedPartFields, activePart],
+  );
 
-  // Snapshot on entering a part. Also re-snapshots once a save settles, so the
-  // button returns to "Continue" the moment the work is actually persisted.
-  useEffect(() => {
-    setPartSnapshot(partSignature);
-    // Intentionally keyed on the part, not the signature: re-snapshotting on
-    // every keystroke would make the form permanently clean.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePart]);
+  /** The record's expiry, in the same form the context seeds the field with. */
+  const savedLicenseExpiry = useMemo(() => {
+    const raw = selectedLocation?.kitchenLicenseExpiry
+      || (selectedLocation as any)?.kitchen_license_expiry;
+    if (!raw) return "";
+    const parsed = new Date(raw);
+    return isNaN(parsed.getTime()) ? "" : parsed.toISOString().split("T")[0];
+  }, [selectedLocation]);
 
-  const isPartDirty = partSnapshot !== null && partSignature !== partSnapshot;
+  /**
+   * Whether the documents part holds anything the record does not.
+   *
+   * A chosen file is uploaded immediately, but the location only points at it once this
+   * step saves — so a fresh licence or terms document is real pending work, and so is a
+   * changed expiry date.
+   *
+   * `uploadedUrl` is null when nothing was chosen in this session, and that is "no change",
+   * NOT "different from what is on file". Comparing the two directly made a licence that
+   * was already on file read as unsaved work, so simply opening the part offered to save a
+   * record nobody had touched.
+   */
+  const documentsDirty =
+    (licenseForm.uploadedUrl != null && licenseForm.uploadedUrl !== existingLicenseUrl)
+    || licenseForm.expiryDate !== savedLicenseExpiry;
+
+  const isPartDirty = activePart === DOCUMENTS_PART
+    ? documentsDirty
+    : partSignature !== savedPartSignature;
 
   // Feed the wizard's unsaved-changes guard: only a part with real edits counts.
   useEffect(() => {
     setUnsavedChanges(isPartDirty);
   }, [isPartDirty, setUnsavedChanges]);
 
-  // Let the guard's "Save changes" persist the part the manager is on. Parts 1
-  // and 2 save as a draft; the final part is the existing full save.
+  // Let the guard's "Save changes" persist the part the manager is on. Parts 0 and 1 save
+  // as a draft; the documents part writes the whole record, exactly as its own Continue does.
   useEffect(() => {
     registerStepSave(async () => {
-      if (activePart >= PART_COUNT - 1) return false;
       if (!isPartDirty) return true;
-      const saved = await saveLocationDraft(partFields[activePart]);
-      if (saved) setPartSnapshot(partSignature);
-      return saved;
+      return activePart === DOCUMENTS_PART
+        ? saveLocationFull()
+        : saveLocationDraft(partFields[activePart]);
     });
     return () => registerStepSave(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [registerStepSave, activePart, isPartDirty, partSignature]);
+  }, [registerStepSave, activePart, isPartDirty, partSignature, documentsDirty]);
 
   /** Which part is still missing something required. */
   const partIsValid = (part: number): boolean => {
@@ -338,50 +382,83 @@ export default function LocationStep() {
       return Boolean(
         locationForm.name &&
         locationForm.address &&
-        locationForm.logoUrl &&
-        locationForm.description.trim()
+        locationForm.logoUrl
       );
     }
     if (part === 1) return Boolean(locationForm.contactEmail) && phoneSatisfied;
     return Boolean(
       (licenseForm.file || licenseForm.uploadedUrl || hasExistingLicense) &&
-      (termsForm.file || termsForm.uploadedUrl || hasExistingTerms) &&
       licenseForm.expiryDate
     );
   };
 
-  const goToNextPart = () => setActivePart((part) => Math.min(part + 1, PART_COUNT - 1));
+  /**
+   * Why this part is not finished, in one sentence.
+   *
+   * Two callers, one string: the footer states it under a disabled Continue, and `handlePartBack`
+   * shows it when it refuses to leave. They cannot end up explaining the same step differently.
+   */
+  const partIncompleteReason = (part: number): string => {
+    if (part === 0) return mt("businessPartDetailsIncomplete");
+    if (part === 1) return mt("businessPartContactIncomplete");
+    return mt("businessPartDocumentsIncomplete");
+  };
 
   /** Persist this part (only if it changed), then move on. */
   const handlePartContinue = async () => {
-    if (activePart < PART_COUNT - 1) {
-      if (!isPartDirty) {
-        goToNextPart();
+    // The review is the last screen; only IT moves the wizard on.
+    if (isSummary) {
+      await handleNext();
+      return;
+    }
+
+    if (isPartDirty) {
+      setIsSavingPart(true);
+      try {
+        const saved = activePart === DOCUMENTS_PART
+          ? await saveLocationFull()
+          : await saveLocationDraft(partFields[activePart]);
+        if (!saved) return;
+      } finally {
+        setIsSavingPart(false);
+      }
+    }
+
+    goNext();
+  };
+
+  /**
+   * Leaving a part is a commit boundary, exactly like Continue.
+   *
+   * Back used to walk away from the form and leave the draft behind, which let the review describe
+   * a state the record did not hold — clear the business name, press Back, and the review read
+   * "Not set" for a name that was still saved and still going to be. Back now does what Continue
+   * does minus the advance: it SAVES a changed part, and it refuses to leave one that is not
+   * valid, saying why. That keeps the review honest, and makes a required field impossible to
+   * strip out of a step that is already complete.
+   */
+  const handlePartBack = async () => {
+    if (!isSummary && isPartDirty) {
+      if (!partIsValid(activePart)) {
+        toast({
+          title: mt("stepNeedsAttentionTitle"),
+          description: partIncompleteReason(activePart),
+          variant: "destructive",
+        });
         return;
       }
       setIsSavingPart(true);
       try {
-        const saved = await saveLocationDraft(partFields[activePart]);
+        const saved = activePart === DOCUMENTS_PART
+          ? await saveLocationFull()
+          : await saveLocationDraft(partFields[activePart]);
         if (!saved) return;
-        setPartSnapshot(partSignature);
-        goToNextPart();
       } finally {
         setIsSavingPart(false);
       }
-      return;
     }
-
-    // Final part — the existing flow validates everything, tracks completion and
-    // advances the wizard.
-    await handleNext();
-  };
-
-  const handlePartBack = () => {
-    if (activePart === 0) {
-      handleBack();
-      return;
-    }
-    setActivePart((part) => Math.max(part - 1, 0));
+    if (goBack()) return;
+    handleBack();
   };
 
   const contactOptionClass = (selected: boolean) => cn(
@@ -395,13 +472,91 @@ export default function LocationStep() {
     { title: mt("businessPartDetailsTitle"), description: mt("businessPartDetailsDesc") },
     { title: mt("businessPartContactTitle"), description: mt("businessPartContactDesc") },
     { title: mt("businessPartDocumentsTitle"), description: mt("businessPartDocumentsDesc") },
+    { title: mt("businessSummaryTitle"), description: mt("businessSummaryDesc") },
   ][activePart];
+
+  /**
+   * The review reads the STORED RECORD, never the live form.
+   *
+   * A review reports what the manager has set, and what they have set is what is SAVED — each part
+   * commits on Continue, and the review's own Continue writes nothing. Reading the live form made
+   * the review describe a state that would never be persisted: clear the business name in part 1,
+   * press Back, and the review announced "Not set" for a name that was still on the record and
+   * still going to be saved. The kitchen listing review has always read the record, so this also
+   * makes the two steps agree.
+   *
+   * `handlePartBack` now refuses to leave a part while it is invalid, so the review cannot be
+   * reached with a half-finished edit either.
+   */
+  const saved = {
+    name: selectedLocation?.name || "",
+    address: selectedLocation?.address || "",
+    preferredContactMethod: selectedLocation?.preferredContactMethod || "email",
+    contactEmail: selectedLocation?.contactEmail || "",
+    contactPhone: selectedLocation?.contactPhone || "",
+  };
+  /** The record's phone counts as proved only while it still matches the proved number. */
+  const savedPhoneVerified =
+    saved.contactPhone !== "" && normalizePhoneNumber(saved.contactPhone) === verifiedPhone;
+
+  /**
+   * The review, grouped by the step's own three parts: one group per part, one Edit per group.
+   *
+   * The parts ARE the groups. Listing every field with its own Edit gave six buttons over
+   * three screens, which reads as six things to fix and hides the fact that half of them
+   * open the same one.
+   */
+  const summarySections = [
+    {
+      key: "details",
+      title: mt("onboardingBusinessDetails"),
+      part: 0,
+      rows: [
+        { key: "name", label: mt("businessName"), value: saved.name || mt("notSet") },
+        { key: "address", label: mt("businessAddress"), value: saved.address || mt("notSet") },
+      ],
+    },
+    {
+      key: "contact",
+      title: mt("contactInformation"),
+      part: 1,
+      rows: [
+        { key: "method", label: mt("preferredContactMethod"), value: mt(saved.preferredContactMethod) },
+        { key: "email", label: mt("contactEmail"), value: saved.contactEmail || mt("notSet") },
+        ...(saved.contactPhone
+          ? [{
+              key: "phone",
+              label: mt("contactPhone"),
+              value: savedPhoneVerified
+                ? formatPhoneForDisplay(saved.contactPhone)
+                : `${formatPhoneForDisplay(saved.contactPhone)} · ${mt("businessSummaryPhoneUnverified")}`,
+            }]
+          : []),
+      ],
+    },
+    {
+      key: "documents",
+      title: mt("businessPartDocumentsTitle"),
+      part: DOCUMENTS_PART,
+      rows: [
+        {
+          key: "license",
+          label: mt("commercialKitchenLicense"),
+          // A filename can be a whole sentence, and a review is a screen to scan. Shortened
+          // here, never in CSS: a value that wraps should grow its own line, not get chopped.
+          value: existingLicenseUrl
+            ? `${truncateFilename(getDocumentFilename(existingLicenseUrl)) || mt("licenseOnFile")}${savedLicenseExpiry ? ` · ${mt("businessSummaryExpires", { date: savedLicenseExpiry })}` : ""}`
+            : mt("notSet"),
+        },
+      ],
+    },
+  ];
 
   return (
     <div ref={scrollRef} className="space-y-6 animate-in fade-in duration-500">
       {/* Part progress — three dots, so the manager always knows how much is left. */}
       <div className="flex items-center gap-3">
-        <div className="flex items-center gap-1.5" role="group" aria-label={mt("businessStepProgress", { current: activePart + 1, total: PART_COUNT })}>
+        <div className="flex items-center gap-1.5" role="group" aria-label={mt("businessStepProgress", { current: Math.min(activePart + 1, PART_COUNT), total: PART_COUNT })}>
           {Array.from({ length: PART_COUNT }, (_, index) => (
             <span
               key={index}
@@ -418,7 +573,7 @@ export default function LocationStep() {
           ))}
         </div>
         <span className="text-xs text-muted-foreground">
-          {mt("businessStepProgress", { current: activePart + 1, total: PART_COUNT })}
+          {mt("businessStepProgress", { current: Math.min(activePart + 1, PART_COUNT), total: PART_COUNT })}
         </span>
       </div>
 
@@ -427,7 +582,9 @@ export default function LocationStep() {
         <p className="text-sm text-muted-foreground">{partHeading.description}</p>
       </div>
 
-      <FormLegend />
+      {/* Not on the review: nothing there is a field, so nothing there can be required.
+          The kitchen listing step already scopes its legend to the form for the same reason. */}
+      {!isSummary && <FormLegend />}
 
       {/* ---------------------------------------------------------------- Part 1 */}
       {activePart === 0 && (
@@ -483,23 +640,6 @@ export default function LocationStep() {
               />
             </SettingsRow>
 
-            <SettingsRow
-              id="location-description"
-              label={mt("locationDescription")}
-              required
-              layout="stacked"
-              hint={mt("locationDescriptionHint")}
-            >
-              <Textarea
-                id="location-description"
-                value={locationForm.description}
-                onChange={(event) => locationForm.setDescription(event.target.value)}
-                placeholder={mt("locationDescriptionPlaceholder")}
-                rows={4}
-                maxLength={500}
-                className="max-w-lg"
-              />
-            </SettingsRow>
           </CardContent>
         </Card>
       )}
@@ -667,67 +807,45 @@ export default function LocationStep() {
               </div>
           </Card>
 
-          <Card>
-            <CardHeader className="p-4 pb-2">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-1 text-base">
-                    {mt("termsPolicies")}
-                    {/* Required to continue, exactly like the licence — so it
-                        carries the same mark. */}
-                    <span aria-hidden className="text-sm text-destructive">*</span>
-                  </CardTitle>
-                  <CardDescription>{mt("houseRulesAndPoliciesChefsMustAgreeToBeforeBooking")}</CardDescription>
-                </div>
-                {hasTermsOnFile && !isReplacingTerms && (
-                  <Button variant="outline" size="sm" onClick={() => setIsReplacingTerms(true)}>
-                    {mt("replace")}
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3 p-4 pt-0">
-              {hasTermsOnFile && termsUrl && (
-                <DocumentRow url={termsUrl} fallbackLabel={mt("termsOnFile")} />
-              )}
-
-              {/* [ENTERPRISE] Read-only once the step is complete - no re-upload during onboarding */}
-              {showTermsUpload && (
-                <SettingsFileUpload
-                  id="terms-file"
-                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                  file={termsForm.file}
-                  label={mt("uploadTermsDocument2")}
-                  hint={mt("pDFJPGPNGOrDOCMax10MB")}
-                  disabled={termsForm.isUploading}
-                  onChange={handleTermsFile}
-                />
-              )}
-            </CardContent>
-          </Card>
         </>
+      )}
+
+      {/* ---------------------------------------------------------------- Review */}
+      {isSummary && (
+        <StepSummary
+          sections={summarySections}
+          onEdit={editPart}
+          noteTitle={mt("businessRecapTitle")}
+          noteBody={mt("businessRecapBody")}
+        />
       )}
 
       <OnboardingNavigationFooter
         onNext={() => void handlePartContinue()}
-        onBack={handlePartBack}
+        onBack={() => void handlePartBack()}
         onSaveAndExit={() => void saveAndExit()}
-        showBack={!isFirstStep || activePart > 0}
+        /*
+         * No Back on the review. Every part is already one click away through the Edit on
+         * its own group, and a Back button beside them is a second route to the same place
+         * that says nothing about which part it will open. It reads as "leave this step",
+         * which is the one thing it does not do.
+         */
+        showBack={!isSummary && (!isFirstStep || activePart > 0)}
         isLoading={isSavingPart || isSubmitting}
         isSavingAndExiting={isSubmitting}
-        // Nothing to save on the final part: the existing flow owns that save.
-        nextLabel={
-          activePart < PART_COUNT - 1 && isPartDirty
-            ? mt("saveAndContinue")
-            : tt("continue")
-        }
+        // The exit action only promises a save when there is one to make.
+        hasUnsavedWork={isPartDirty}
+        nextLabel={isPartDirty ? mt("saveAndContinue") : tt("continue")}
         /*
          * One gate, not two. The final part used to repeat every check from
          * `partIsValid` inline, which is how the expiry date came to be required on
          * the earlier parts and forgotten on the one that actually submits the
          * licence — the rule lived in two places and only one of them had it.
+         *
+         * The review is never gated: it is only reachable once the step is complete.
          */
-        isNextDisabled={isSubmitting || isSavingPart || !partIsValid(activePart)}
+        isNextDisabled={isSubmitting || isSavingPart || (activePart < SUMMARY_PART && !partIsValid(activePart))}
+        incompleteReason={!isSummary && !partIsValid(activePart) ? partIncompleteReason(activePart) : undefined}
       />
     </div>
   );

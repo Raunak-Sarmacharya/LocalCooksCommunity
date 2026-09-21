@@ -153,6 +153,35 @@ export function getDocumentFilename(url?: string | null): string {
 }
 
 /**
+ * A document's filename, short enough to sit on one line.
+ *
+ * An uploaded name can be a whole sentence — `IMG_20260114_101533-license-scan-final.pdf` —
+ * and a review screen is something to scan, not a file manager.
+ *
+ * The MIDDLE is what gets cut, not the end. The start of a name is usually what identifies
+ * the document, and the extension is what says which kind it is, so both ends are worth
+ * keeping; the machine-generated middle is the part nobody reads. Cutting the end instead
+ * would turn three scans of one licence into three identical lines.
+ *
+ * For REVIEWS only. The upload row, where the manager is confirming which file they just
+ * chose, keeps the full name — that is the one place the exact name matters.
+ *
+ * @param name - Filename (no path), as returned by `getDocumentFilename`
+ * @param max - Total characters to allow, extension included
+ */
+export function truncateFilename(name: string, max = 28): string {
+    if (!name || name.length <= max) return name;
+    const dot = name.lastIndexOf('.');
+    // A leading dot is not an extension, and neither is a "extension" twelve characters long.
+    const hasExt = dot > 0 && name.length - dot <= 6;
+    const ext = hasExt ? name.slice(dot) : '';
+    const stem = hasExt ? name.slice(0, dot) : name;
+    const room = Math.max(1, max - ext.length - 1);
+    const head = Math.ceil(room * 0.6);
+    return `${stem.slice(0, head)}…${stem.slice(stem.length - (room - head))}${ext}`;
+}
+
+/**
  * Format relative time (e.g., "2 days ago")
  * @param dateStr - ISO date string
  */

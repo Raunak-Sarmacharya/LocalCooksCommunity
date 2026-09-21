@@ -2,10 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
 import {
-  CheckCircle,
   Plus,
-  Edit2,
-  Clock,
   Image as ImageIcon,
 } from "@/components/ui/manager-icons";
 import { Button } from "@/components/ui/button";
@@ -19,6 +16,8 @@ import { NumericInput } from "@/components/ui/numeric-input";
 import { KitchenPhotoPlaceholder } from "@/components/kitchen/KitchenPhotoPlaceholder";
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
 import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter";
+import { StepSummary } from "../StepSummary";
+import { useStepParts } from "../use-step-parts";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
 import {
   ACCEPTED_IMAGE_TYPES,
@@ -92,26 +91,17 @@ function ListingSummary({
       items.length > RECAP_CAP ? ` +${items.length - RECAP_CAP}` : ""
     }`;
 
-  const sections = [
-    { key: "equipment", label: mt("kitchenPartEquipmentTitle"), items: equipment, part: 1 },
-    { key: "storage", label: mt("kitchenPartStorageTitle"), items: storage, part: 2 },
-  ];
+  const rowValue = (items: string[]) =>
+    items.length === 0 ? mt("kitchenRecapSkipped") : cap(items);
 
   return (
-    <Card
-      className={cn(
-        "overflow-hidden border-0 shadow-[0_8px_30px_rgba(44,44,44,0.07)] ring-1 ring-[#2C2C2C]/[0.05]",
-        CARD_RADIUS,
-      )}
-    >
-      <KitchenListingGallery photos={photos} kitchenName={kitchen?.name ?? ""} />
-
-      <div className="flex flex-wrap items-start justify-between gap-3 p-4 sm:p-5">
-        <div className="min-w-0">
-          <h3 className="truncate text-lg font-bold tracking-tight text-[#1A1A1A] sm:text-xl">
-            {kitchen?.name}
-          </h3>
-          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm">
+    <StepSummary
+      media={<KitchenListingGallery photos={photos} kitchenName={kitchen?.name ?? ""} />}
+      heading={{
+        title: kitchen?.name ?? "",
+        part: 0,
+        meta: (
+          <>
             <span className={cn("tabular-nums font-bold", hourly ? "text-[#F51042]" : "text-muted-foreground")}>
               {hourly ? `${hourly}/hr` : mt("notSet")}
             </span>
@@ -126,60 +116,28 @@ function ListingSummary({
               <ImageIcon className="h-3.5 w-3.5" />
               {photos.length > 0 ? mt("photoCount", { count: photos.length }) : mt("notSet")}
             </span>
-          </div>
-        </div>
-        {/*
-          * Named for what it edits, and dressed EXACTLY like the section buttons below it.
-          * Three "Edit" actions in one card that do not look alike read as three different
-          * kinds of thing — and an outlined one at the top made the kitchen look like the
-          * only editable part. Same variant, same colour, same weight: one action, three rows.
-          *
-          * The name is per-section because three buttons reading just "Edit" are useless to a
-          * screen reader, which reads them out of context as three identical controls.
-          */}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="gap-1.5 text-muted-foreground hover:text-foreground"
-          aria-label={`${mt("editSection")} ${kitchen?.name ?? ""}`}
-          onClick={() => onEdit(0)}
-        >
-          <Edit2 className="h-3.5 w-3.5" />
-          {mt("editSection")}
-        </Button>
-      </div>
-
-      <div className="divide-y divide-border border-t border-border">
-        {sections.map((section) => (
-          <div key={section.key} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3 sm:px-5">
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-foreground">{section.label}</p>
-              <p className="mt-0.5 text-sm text-muted-foreground">
-                {section.items.length === 0 ? mt("kitchenRecapSkipped") : cap(section.items)}
-              </p>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-1.5 text-muted-foreground hover:text-foreground"
-              aria-label={`${mt("editSection")} ${section.label}`}
-              onClick={() => onEdit(section.part)}
-            >
-              <Edit2 className="h-3.5 w-3.5" />
-              {mt("editSection")}
-            </Button>
-          </div>
-        ))}
-      </div>
-
-      <div className="border-t border-border bg-muted/30 px-4 py-3.5 sm:px-5">
-        <p className="flex items-center gap-2 text-sm font-medium text-foreground">
-          <CheckCircle className="h-4 w-4 shrink-0 text-emerald-600" />
-          {mt("kitchenRecapTitle")}
-        </p>
-        <p className="mt-1 text-sm text-muted-foreground">{mt("kitchenRecapBody")}</p>
-      </div>
-    </Card>
+          </>
+        ),
+      }}
+      sections={[
+        {
+          key: "equipment",
+          title: mt("kitchenPartEquipmentTitle"),
+          part: 1,
+          // The group's title is the row's label — no need to say it twice.
+          rows: [{ key: "items", value: rowValue(equipment) }],
+        },
+        {
+          key: "storage",
+          title: mt("kitchenPartStorageTitle"),
+          part: 2,
+          rows: [{ key: "items", value: rowValue(storage) }],
+        },
+      ]}
+      onEdit={onEdit}
+      noteTitle={mt("kitchenRecapTitle")}
+      noteBody={mt("kitchenRecapBody")}
+    />
   );
 }
 
@@ -359,7 +317,13 @@ export default function CreateKitchenStep() {
    */
   const [editSnapshot, setEditSnapshot] = useState<string | null>(null);
   /** Which of the three parts is showing. Part 0 owns the kitchen itself. */
-  const [activePart, setActivePart] = useState(0);
+  const { activePart, isSummary, editPart, goToPart, goNext, goBack } = useStepParts({
+    // `kitchens.length > 0` is both the completeness signal and the readiness one: it only
+    // becomes true once the fetch has landed, so there is nothing to wait for separately.
+    isComplete: kitchens.length > 0,
+    isReady: kitchens.length > 0,
+    partCount: PART_COUNT,
+  });
   // Continuing to a shorter part used to leave you mid-page.
   const scrollRef = useScrollToTopOnChange(activePart);
 
@@ -472,9 +436,33 @@ export default function CreateKitchenStep() {
     });
   };
 
+  /**
+   * The edit form's rules are the CREATE form's rules.
+   *
+   * Create mode refuses to submit without a name, description, cover photo, hourly rate and a
+   * minimum of at least one hour. Edit mode then rendered no gate at all — `handleSaveEdit` sent
+   * whatever the form held — so a kitchen that was already set up could have its price blanked and
+   * saved, which is how a completed step was allowed to become invalid. One rule set for both
+   * modes; the create button carries the same expression inline.
+   */
+  const editIsValid =
+    Boolean(localName.trim()) &&
+    Boolean(localDescription.trim()) &&
+    Boolean(localImageUrl) &&
+    Boolean(localHourlyRate) &&
+    parseInt(localMinHours, 10) >= 1;
+
   /** Save edits to a kitchen created earlier in this flow — no dashboard hop. */
   const handleSaveEdit = async (): Promise<boolean> => {
     if (editingKitchenId === null) return false;
+    if (!editIsValid) {
+      toast({
+        title: mt("stepNeedsAttentionTitle"),
+        description: mt("kitchenPartListingIncomplete"),
+        variant: "destructive",
+      });
+      return false;
+    }
     setIsSavingEdit(true);
     try {
       await updateKitchen(editingKitchenId, {
@@ -527,19 +515,26 @@ export default function CreateKitchenStep() {
       if (!saved) return;
     }
     // The review screen is last; only IT moves the wizard on.
-    if (activePart < SUMMARY_PART) {
-      setActivePart((part) => part + 1);
+    if (isSummary) {
+      await handleNext();
       return;
     }
-    await handleNext();
+    goNext();
   };
 
-  const handlePartBack = () => {
-    if (activePart === 0) {
-      handleBack();
-      return;
+  /**
+   * Leaving a part is a commit boundary, exactly like Continue — see `LocationStep` for the full
+   * reasoning. Back saves a changed part when it is valid and refuses to leave one that is not,
+   * so the review (which reads the saved record) can never describe a state the record does not
+   * hold, and a completed step cannot be stripped of a required field on the way out.
+   */
+  const handlePartBack = async () => {
+    if (activePart === 0 && editingKitchenId !== null && isEditDirty) {
+      const saved = await handleSaveEdit();
+      if (!saved) return;
     }
-    setActivePart((part) => Math.max(part - 1, 0));
+    if (goBack()) return;
+    handleBack();
   };
 
   /** Whether the kitchen this step is about exists yet. Part 0 is the only part that cares. */
@@ -628,7 +623,7 @@ export default function CreateKitchenStep() {
         // Clear the create flag: a create form holding anything counts as unsaved work, so
         // leaving it set would report changes that no longer exist.
         setShowCreate(false);
-        setActivePart(1);
+        goToPart(1);
       } catch {
         // `createKitchen` raises its own toast; staying on the form is the honest response.
       }
@@ -890,12 +885,12 @@ export default function CreateKitchenStep() {
        * of the storage inventory, which buried it: the manager finished the work and the
        * step's closing statement was below the fold of an inventory they had just edited.
        */}
-      {activePart === SUMMARY_PART && (
+      {isSummary && (
         <ListingSummary
           kitchen={kitchens[0]}
           equipment={equipmentNames}
           storage={storageNames}
-          onEdit={(part) => setActivePart(part)}
+          onEdit={editPart}
         />
       )}
 
@@ -906,14 +901,27 @@ export default function CreateKitchenStep() {
       {!(activePart === 0 && showCreate) && (
         <OnboardingNavigationFooter
           onNext={() => void handlePartContinue()}
-          onBack={handlePartBack}
+          onBack={() => void handlePartBack()}
           onSaveAndExit={() => void saveAndExit()}
-          showBack={!isFirstStep || activePart > 0}
+          /* No Back on the review: each group's Edit already opens the part it names, and
+             the kitchen's own heading Edit opens part 1. */
+          showBack={!isSummary && (!isFirstStep || activePart > 0)}
           // The label has to match what the button does — part 0 saves the editor first.
           nextLabel={activePart === 0 && isEditDirty ? mt("saveAndContinue") : tt("continue")}
+          // The exit action only promises a save when there is one to make.
+          hasUnsavedWork={formHasContent}
           // Only part 0 can block: parts 2 and 3 are optional by design, so an empty
           // inventory is a valid answer rather than an unfinished one.
-          isNextDisabled={isSavingEdit || (activePart === 0 && kitchens.length === 0)}
+          isNextDisabled={
+            isSavingEdit ||
+            (activePart === 0 && kitchens.length === 0) ||
+            // Only a form the manager has CHANGED into an invalid state blocks. A gap that was
+            // already there when the editor opened has nothing to save, so it blocks nothing.
+            (activePart === 0 && isEditDirty && !editIsValid)
+          }
+          incompleteReason={
+            activePart === 0 && isEditDirty && !editIsValid ? mt("kitchenPartListingIncomplete") : undefined
+          }
           isLoading={isSavingEdit}
           isSavingAndExiting={isSubmitting}
         />

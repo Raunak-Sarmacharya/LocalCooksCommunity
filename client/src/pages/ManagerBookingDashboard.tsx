@@ -10,7 +10,7 @@ import { DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { useLocation } from "wouter";
 import 'react-calendar/dist/Calendar.css';
 import { useManagerDashboard } from "../hooks/use-manager-dashboard";
-import { useOnboardingStatus, invalidateOnboardingStatus, shouldShowSidebarGuidance } from "@/hooks/use-onboarding-status";
+import { useOnboardingStatus, invalidateOnboardingStatus, shouldShowSidebarGuidance, SETUP_STEP_WIZARD_STEP } from "@/hooks/use-onboarding-status";
 import { toast } from "@/hooks/use-toast";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
@@ -95,7 +95,6 @@ interface Location {
   kitchenLicensePreviousUrl?: string;
   kitchenTermsUrl?: string;
   kitchenTermsUploadedAt?: string;
-  description?: string | null;
   customOnboardingLink?: string;
 }
 
@@ -590,7 +589,7 @@ export default function ManagerBookingDashboard() {
 
   // Update location settings mutation
   const updateLocationSettings = useMutation({
-    mutationFn: async ({ locationId, name, address, cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, notificationPhone, logoUrl, description, customOnboardingLink, timezone }: {
+    mutationFn: async ({ locationId, name, address, cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, notificationPhone, logoUrl, customOnboardingLink, timezone }: {
       locationId: number;
       name?: string;
       address?: string;
@@ -601,11 +600,10 @@ export default function ManagerBookingDashboard() {
       notificationEmail?: string;
       notificationPhone?: string;
       logoUrl?: string;
-      description?: string;
       customOnboardingLink?: string;
       timezone?: string;
     }) => {
-      const payload = { name, address, cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, notificationPhone, logoUrl, description, customOnboardingLink, timezone };
+      const payload = { name, address, cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, notificationPhone, logoUrl, customOnboardingLink, timezone };
       logger.info('📡 Sending PUT request to:', `/api/manager/locations/${locationId}/cancellation-policy`);
       logger.info('📡 Request body:', payload);
       logger.info('📡 LogoUrl in payload:', logoUrl, 'type:', typeof logoUrl);
@@ -681,9 +679,6 @@ export default function ManagerBookingDashboard() {
       if (payload.logoUrl !== undefined && payload.logoUrl !== (currentLocation?.logoUrl || '')) {
         changedFields.push('logo');
       }
-      if (payload.description !== undefined && payload.description !== (currentLocation?.description || '')) {
-        changedFields.push('publicProfile');
-      }
 
       // Remove duplicates
       const uniqueChangedFields = Array.from(new Set(changedFields));
@@ -707,9 +702,6 @@ export default function ManagerBookingDashboard() {
             break;
           case 'logo':
             successMessage = "Logo updated successfully";
-            break;
-          case 'publicProfile':
-            successMessage = "Public profile updated successfully";
             break;
         }
       } else if (uniqueChangedFields.length > 1) {
@@ -761,7 +753,13 @@ export default function ManagerBookingDashboard() {
 
   /* New Setup Handler — pass selected locationId so setup opens the correct location */
   const handleContinueSetup = () => {
-    if (setupSteps.find((step) => !step.complete)?.id === 'profile') {
+    const step = setupSteps.find((candidate) => !candidate.complete);
+
+    /*
+     * The profile row is the one setup step the wizard does not own — an unverified email
+     * is fixed in the dashboard's own profile view, so it never enters the wizard.
+     */
+    if (!step || step.id === "profile") {
       const url = new URL(window.location.href);
       url.searchParams.set('view', 'profile');
       url.searchParams.delete('tab');
@@ -769,8 +767,23 @@ export default function ManagerBookingDashboard() {
       setActiveView('profile');
       return;
     }
+
+    /*
+     * Tell the wizard which step the banner just named.
+     *
+     * The wizard can derive a resume point on its own, but deriving the same answer
+     * twice is how the banner came to say "Connect Stripe" and the wizard opened the
+     * Business step. The destination comes from the SAME list as the banner's copy, so
+     * the sentence and the step cannot describe different work.
+     */
+    const params = new URLSearchParams();
     const locId = selectedLocation?.id;
-    setLocation(locId ? `/manager/setup?locationId=${locId}` : '/manager/setup');
+    if (locId) params.set('locationId', String(locId));
+    const wizardStep = SETUP_STEP_WIZARD_STEP[step.id];
+    if (wizardStep) params.set('step', wizardStep);
+
+    const query = params.toString();
+    setLocation(`/manager/setup${query ? `?${query}` : ''}`);
   };
 
   const handleImprovementTask = (task: string) => {
@@ -1706,7 +1719,6 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
   
   const [notificationEmail, setNotificationEmail] = useState(location.notificationEmail || '');
   const [logoUrl, setLogoUrl] = useState(location.logoUrl || '');
-  const [description, setDescription] = useState(location.description || '');
   const [customOnboardingLink, setCustomOnboardingLink] = useState(location.customOnboardingLink || '');
   // Timezone is locked to Newfoundland - always use DEFAULT_TIMEZONE
   const timezone = DEFAULT_TIMEZONE;
@@ -1883,7 +1895,6 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       fullLocation: location
     });
     setNotificationEmail(savedEmail);
-    setDescription(location.description || '');
     setCustomOnboardingLink(location.customOnboardingLink || '');
     
     // Fetch overstay penalty defaults when location changes
@@ -2763,18 +2774,6 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
 
                 <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 md:p-6 space-y-4">
                   <div className="space-y-4">
-                    <div>
-                      <Label htmlFor="description" className="text-sm font-medium text-gray-900">{mt("publicDescription")}</Label>
-                      <textarea
-                        id="description"
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        placeholder={mt("welcomeToOurKitchenCommunityWeOfferStateOfTheArtFacilitiesFo")}
-                        className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[100px]"
-                      />
-                      <p className="text-xs text-gray-600 mt-1">{mt("aBriefOverviewOfYourLocationThatWillBeDisplayedToChefs")}</p>
-                    </div>
-
                     <div>
                       <Label htmlFor="customOnboardingLink" className="text-sm font-medium text-gray-900">{mt("customOnboardingLinkOptional")}</Label>
                       <Input

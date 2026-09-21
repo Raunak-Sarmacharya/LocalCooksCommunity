@@ -12,7 +12,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { SettingsFileUpload } from "./SettingsFileUpload";
@@ -22,7 +21,6 @@ interface Location {
   id: number;
   name: string;
   address: string;
-  description?: string | null;
   logoUrl?: string;
   timezone?: string;
 }
@@ -36,22 +34,20 @@ interface LocationSettingsProps {
 export default function LocationSettings({ location, onSave, embedded = false }: LocationSettingsProps) {
   const [name, setName] = useState(location.name);
   const [address, setAddress] = useState(location.address || '');
-  const [description, setDescription] = useState(location.description || '');
   const [logoUrl, setLogoUrl] = useState(location.logoUrl || '');
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const timezone = DEFAULT_TIMEZONE;
   const { uploadFile, isUploading } = useSessionFileUpload({
     allowedTypes: ['image/jpeg', 'image/png', 'image/webp'],
   });
-  const isDirty = name.trim() !== location.name || address.trim() !== (location.address || '') || description.trim() !== (location.description || '') || !!logoFile;
+  const isDirty = name.trim() !== location.name || address.trim() !== (location.address || '') || !!logoFile;
 
   useEffect(() => {
     setName(location.name);
     setAddress(location.address || '');
-    setDescription(location.description || '');
     setLogoUrl(location.logoUrl || '');
     setLogoFile(null);
-  }, [location.id, location.name, location.address, location.description, location.logoUrl]);
+  }, [location.id, location.name, location.address, location.logoUrl]);
 
   const saveAction = useStatusButton(
     useCallback(async () => {
@@ -61,9 +57,6 @@ export default function LocationSettings({ location, onSave, embedded = false }:
         locationId: location.id,
         name: name.trim(),
         address: address.trim(),
-        // Send an empty string so the backend can clear an existing description.
-        // `undefined` is intentionally ignored by the update route.
-        description: description.trim(),
         logoUrl: uploaded?.url || logoUrl || undefined,
         timezone: DEFAULT_TIMEZONE,
       });
@@ -71,7 +64,7 @@ export default function LocationSettings({ location, onSave, embedded = false }:
         setLogoUrl(uploaded.url);
         setLogoFile(null);
       }
-    }, [onSave, location.id, name, address, description, logoFile, logoUrl, uploadFile]),
+    }, [onSave, location.id, name, address, logoFile, logoUrl, uploadFile]),
   );
 
   return (
@@ -93,10 +86,6 @@ export default function LocationSettings({ location, onSave, embedded = false }:
             <div className="space-y-1.5">
               <Label htmlFor="location-address">{mt("address")}</Label>
               <Input id="location-address" value={address} onChange={(event) => setAddress(event.target.value)} placeholder="Street, city, province, postal code" />
-            </div>
-            <div className="space-y-1.5 md:col-span-2">
-              <Label htmlFor="location-description">Location Description</Label>
-              <Textarea id="location-description" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Provide a description of this location to display publicly" rows={4} />
             </div>
             <div className="space-y-1.5 md:col-span-2">
               <Label htmlFor="location-logo">Business logo</Label>

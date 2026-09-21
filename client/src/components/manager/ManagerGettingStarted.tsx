@@ -7,15 +7,21 @@ import { cn } from "@/lib/utils";
 import { mt } from "@/i18n/manager";
 import type { ManagerSetupStep } from "@/hooks/use-onboarding-status";
 
-/** Short action phrases for the popover + the icon each step already uses elsewhere
- *  (CompletionSummaryStep / EnterpriseStepper), so both checklists read alike. */
-const STEP_META: Record<ManagerSetupStep["id"], { Icon: ElementType; labelKey: string; iconClassName?: string }> = {
-  profile: { Icon: Mail, labelKey: "managerSetupStepProfile" },
-  license: { Icon: FileCheck, labelKey: "managerSetupStepLicense" },
-  kitchen: { Icon: Calendar, labelKey: "managerSetupStepKitchen" },
-  availability: { Icon: CalendarClock, labelKey: "managerSetupStepAvailability" },
-  requirements: { Icon: ClipboardList, labelKey: "managerSetupStepRequirements" },
-  payments: { Icon: SiStripe, labelKey: "managerSetupStepPayments", iconClassName: "size-3.5 text-stripe" },
+/**
+ * The icon each step already uses elsewhere (CompletionSummaryStep / EnterpriseStepper),
+ * so both checklists read alike.
+ *
+ * The LABEL deliberately is not here: it is `step.labelKey`, off the same list the
+ * dashboard banner reads. A second copy of the copy is how the two surfaces came to name
+ * different steps.
+ */
+const STEP_ICONS: Record<ManagerSetupStep["id"], { Icon: ElementType; iconClassName?: string }> = {
+  profile: { Icon: Mail },
+  license: { Icon: FileCheck },
+  kitchen: { Icon: Calendar },
+  availability: { Icon: CalendarClock },
+  requirements: { Icon: ClipboardList },
+  payments: { Icon: SiStripe, iconClassName: "size-3.5 text-stripe" },
 };
 
 interface ChecklistItem {
@@ -40,10 +46,10 @@ export function ManagerGettingStarted({ steps, improvementSteps = [], onSelectSt
 
   const checklistItems: ChecklistItem[] = [
     ...steps.map((step) => {
-      const meta = STEP_META[step.id];
+      const meta = STEP_ICONS[step.id];
       return {
         id: step.id,
-        title: mt(meta.labelKey),
+        title: mt(step.labelKey),
         complete: step.complete,
         Icon: meta.Icon,
         iconClassName: meta.iconClassName,

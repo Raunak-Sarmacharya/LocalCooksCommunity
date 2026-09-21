@@ -191,7 +191,6 @@ function LocationInfoSection({ location }: { location: any }) {
         <Field label="Name" value={location.name} />
         <Field label="Address" value={location.address} />
         <Field label="Timezone" value={location.timezone} />
-        <Field label="Description" value={location.description} />
         <Field label="Contact Email" value={location.contactEmail} />
         <Field label="Contact Phone" value={location.contactPhone} />
         <Field label="Notification Email" value={location.notificationEmail} />

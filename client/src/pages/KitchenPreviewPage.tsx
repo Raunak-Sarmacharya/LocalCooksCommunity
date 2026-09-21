@@ -2565,7 +2565,6 @@ interface KitchenDetailsSectionProps {
   kitchen: PublicKitchen;
   locationAddress?: string;
   locationName?: string;
-  locationDescription?: string | null;
   layout?: "tabs" | "stacked";
   addonsLoading?: boolean;
   hidePhotoCollage?: boolean;
@@ -2582,7 +2581,6 @@ function KitchenDetailsSection({
   kitchen,
   locationAddress,
   locationName,
-  locationDescription,
   layout = "tabs",
   addonsLoading = false,
   hidePhotoCollage = false,
@@ -2609,9 +2607,7 @@ function KitchenDetailsSection({
   const storageCount = kitchen.storage?.length || 0;
   const rateLabel = formatKitchenRate(kitchen);
   const { t } = useTranslation("kitchen");
-  const aboutCopy = isStacked
-    ? (kitchen.description || null)
-    : (kitchen.description || locationDescription || null);
+  const aboutCopy = kitchen.description || null;
 
   return (
     <motion.div
@@ -3762,6 +3758,7 @@ export default function KitchenPreviewPage() {
           <meta
             name="description"
             content={
+              selectedKitchen?.description ||
               location.description ||
               `See photos, hours, equipment, and pricing for ${location.name}.`
             }
@@ -4079,7 +4076,6 @@ export default function KitchenPreviewPage() {
                   }}
                   locationAddress={location.address}
                   locationName={location.name}
-                  locationDescription={location.description}
                   layout="stacked"
                   addonsLoading={isLoadingAddons}
                   hidePhotoCollage
