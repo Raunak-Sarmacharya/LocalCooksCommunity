@@ -3396,7 +3396,7 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
         }
 
         // Check if chef has an approved kitchen application for this location
-        const applicationStatus = await chefService.getApplicationStatusForBooking(chefId, kitchenLocationId);
+        const applicationStatus = await chefService.getApplicationStatusForBooking(chefId, kitchenLocationId, kitchenId);
         if (!applicationStatus.canBook) {
             return res.status(403).json({
                 error: applicationStatus.message,
@@ -3668,7 +3668,7 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
         }
 
         // Check if chef has an approved kitchen application for this location
-        const applicationStatus = await chefService.getApplicationStatusForBooking(chefId, kitchenLocationId1);
+        const applicationStatus = await chefService.getApplicationStatusForBooking(chefId, kitchenLocationId1, kitchenId);
 
         if (!applicationStatus.canBook) {
             return res.status(403).json({

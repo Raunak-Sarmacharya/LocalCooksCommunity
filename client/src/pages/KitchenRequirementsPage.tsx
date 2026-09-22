@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, Utensils, Building2, ArrowRight, Calendar } from "lucide-react";
+import { CheckCircle2, Utensils, Building2, ArrowRight, Calendar, Clock } from "lucide-react";
 import { KitchenNextStepsDescription } from "@/components/common/KitchenNextStepsDescription";
 import { useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -135,6 +135,28 @@ export default function KitchenRequirementsPage() {
         user && locationId ? Number(locationId) : null
     );
 
+    /**
+     * The manager has taken this location's kitchen off the listing.
+     *
+     * Read from the APPLICATION, which the server annotates with `locationListed` — not derived here
+     * from the published kitchen list. That list is a second fetch that can fail, and re-deriving the
+     * same fact on each surface is what let the chef dashboard go on offering Book for a delisted
+     * kitchen. One source, carried on the thing every surface already has.
+     *
+     * `=== false` and never falsiness: `undefined` means the server did not say (an older payload, or
+     * a read that failed), and that must behave exactly as it did before this field existed.
+     *
+     * The chef can still finish Step 2, and that is deliberate: the application is per LOCATION and
+     * does not read the listing, so blocking it would strand every in-flight chef the moment a manager
+     * paused for two weeks, and on relist they would all have to be re-prompted. The approval is a
+     * durable relationship with the kitchen; the delisting is the manager's temporary state.
+     *
+     * What must not happen is finishing and THEN discovering the wall. Nothing on this page mentioned
+     * the listing at all, so the state is stated up front instead.
+     */
+    const kitchenNotListed = (existingApplication as { locationListed?: boolean } | null | undefined)
+        ?.locationListed === false;
+
     // Step 1 is "done" when the chef has a non-rejected/non-cancelled application
     const isStep1Done = hasApplication &&
         existingApplication &&
@@ -217,6 +239,35 @@ export default function KitchenRequirementsPage() {
             animate={{ opacity: 1, y: 0 }}
             className="space-y-8"
         >
+            {/*
+              * Same shape as the booking-intent block below, and deliberately NEUTRAL: the tone lives
+              * in the icon, never in a tinted panel, so this reads as part of the product rather than
+              * as a framework alert (see components/ui/custom-alerts.tsx).
+              *
+              * Gated on `isStep1Done` because the copy addresses someone who HAS an application
+              * ("finish YOUR application"). `kitchenNotListed` is equally true for a visitor with no
+              * application at all, and telling them to finish one they never started is worse than
+              * saying nothing.
+              */}
+            {kitchenNotListed && isStep1Done && (
+                <div className="flex items-start sm:items-center gap-4 p-4 bg-muted/40 border border-border/50 rounded-lg">
+                    <div className="p-2 bg-background rounded-md shadow-sm border border-border/40 shrink-0">
+                        <Clock className="h-4 w-4 text-warning" />
+                    </div>
+                    <div className="flex-1 space-y-1">
+                        <p className="text-sm font-medium leading-none text-foreground">
+                            {t("kitchenNotTakingBookings", "This kitchen is not taking bookings right now")}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                            {t(
+                              "kitchenNotTakingBookingsFinish",
+                              "You can still finish your application. Booking opens again once the kitchen is listed."
+                            )}
+                        </p>
+                    </div>
+                </div>
+            )}
+
             {hasBookingIntent && (
                 <div className="flex items-start sm:items-center gap-4 p-4 bg-muted/40 border border-border/50 rounded-lg">
                     <div className="p-2 bg-background rounded-md shadow-sm border border-border/40 shrink-0">
@@ -253,11 +304,27 @@ export default function KitchenRequirementsPage() {
                         <Building2 className="h-3 w-3 mr-1" />
                         {t("kitchenApplication", "Kitchen Application")}
                     </Badge>
+                    {/*
+                     * `kitchen` first, then the LOCATION, and the location read is `locationData.name`.
+                     *
+                     * `/public/locations/:id/details` answers with a FLAT object —
+                     * `res.json({ id, name, slug, address, … })` — so the nested
+                     * `locationData.location.name` this used to read was ALWAYS undefined, and the first
+                     * operand never resolved. Harmless while the kitchen is listed, because
+                     * `kitchen.name` covered it; the moment the manager takes the listing down, `kitchen`
+                     * is undefined too and this page lost its own subject — falling all the way through
+                     * to the generic "Kitchen Requirements" with no address and no photo, which reads as
+                     * the wrong page rather than as a kitchen that is simply not advertised right now.
+                     *
+                     * Kitchen-first on purpose: that is what this page has always rendered when the
+                     * listing is up, so the reorder changes nothing that works today and only fills the
+                     * hole a delisted kitchen leaves.
+                     */}
                     <ChefPageHeader
-                        title={locationData?.location?.name || kitchen?.name || t('kitchenRequirements', 'Kitchen Requirements')}
+                        title={kitchen?.name || locationData?.name || t('kitchenRequirements', 'Kitchen Requirements')}
                         description={
-                            (locationData?.location?.address || kitchen?.address)
-                                ? `${locationData?.location?.address || kitchen?.address}`
+                            (kitchen?.address || locationData?.address)
+                                ? `${kitchen?.address || locationData?.address}`
                                 : undefined
                         }
                     />
@@ -344,7 +411,7 @@ export default function KitchenRequirementsPage() {
             {user && !isStep1Done && kitchen?.id && (
                 <ScheduleViewingWidget 
                     locationId={Number(locationId)} 
-                    locationName={locationData?.location?.name || kitchen?.name}
+                    locationName={kitchen?.name || locationData?.name}
                     targetedKitchenId={kitchen.id}
                     targetedKitchenName={kitchen?.name}
                     open={showTourModal}
@@ -387,7 +454,7 @@ export default function KitchenRequirementsPage() {
                         </>
                     ) : (
                         <>
-                            <h3 className="text-xl font-semibold mb-2">{t("readyToApplyForLocation", { defaultValue: "Ready to apply for {location}?", location: locationData?.location?.name || kitchen?.name || t('kitchenWord', 'this kitchen') })}</h3>
+                            <h3 className="text-xl font-semibold mb-2">{t("readyToApplyForLocation", { defaultValue: "Ready to apply for {location}?", location: kitchen?.name || locationData?.name || t('kitchenWord', 'this kitchen') })}</h3>
                             <p className="text-muted-foreground mb-6 max-w-md mx-auto">
                                 {t("ensureDocumentsReady", "Ensure you have these documents ready to speed up your verification process. The initial application takes about 5 minutes.")}
                             </p>
@@ -446,9 +513,12 @@ export default function KitchenRequirementsPage() {
                 onClick: () => setLocation("/dashboard?view=discover-kitchens"),
                 navId: "discover-kitchens" as const,
             },
-            { label: locationData?.location?.name || t("kitchenWord", "Kitchen") },
+            // No `kitchen` fallback here on purpose: a breadcrumb names WHERE you are, and its parent
+            // is already "Discover Kitchens". This read the same nested path the heading did, so it was
+            // always undefined — every chef, listed or not, saw the generic "Kitchen".
+            { label: locationData?.name || t("kitchenWord", "Kitchen") },
         ],
-        [t, setLocation, locationData?.location?.name]
+        [t, setLocation, locationData?.name]
     );
 
     const inShell = useChefShellChrome({

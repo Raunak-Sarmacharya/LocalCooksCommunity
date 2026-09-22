@@ -517,7 +517,10 @@ router.get("/public/kitchens/:kitchenId/month-availability", async (req: Request
         }
 
         const kitchen = await kitchenService.getKitchenById(kitchenId);
-        if (!kitchen || !kitchen.isActive) {
+        // Published by the manager AND not hidden by the admin — the same pair `findAllActive` applies.
+        // `isActive` alone is the ADMIN's switch and defaults to true, so on its own it let a kitchen
+        // the manager had never published serve its calendar and pricing to anyone who knew the id.
+        if (!kitchen || !kitchen.isActive || kitchen.listingStatus !== "active") {
             return res.status(404).json({ error: "Kitchen not found" });
         }
 
@@ -557,7 +560,10 @@ router.get("/public/kitchens/:kitchenId/slots", async (req: Request, res: Respon
         }
 
         const kitchen = await kitchenService.getKitchenById(kitchenId);
-        if (!kitchen || !kitchen.isActive) {
+        // Published by the manager AND not hidden by the admin — the same pair `findAllActive` applies.
+        // `isActive` alone is the ADMIN's switch and defaults to true, so on its own it let a kitchen
+        // the manager had never published serve its calendar and pricing to anyone who knew the id.
+        if (!kitchen || !kitchen.isActive || kitchen.listingStatus !== "active") {
             return res.status(404).json({ error: "Kitchen not found" });
         }
 
@@ -587,7 +593,10 @@ router.get("/public/kitchens/:kitchenId/booking-estimate", async (req: Request, 
         }
 
         const kitchen = await kitchenService.getKitchenById(kitchenId);
-        if (!kitchen || !kitchen.isActive) {
+        // Published by the manager AND not hidden by the admin — the same pair `findAllActive` applies.
+        // `isActive` alone is the ADMIN's switch and defaults to true, so on its own it let a kitchen
+        // the manager had never published serve its calendar and pricing to anyone who knew the id.
+        if (!kitchen || !kitchen.isActive || kitchen.listingStatus !== "active") {
             return res.status(404).json({ error: "Kitchen not found" });
         }
 

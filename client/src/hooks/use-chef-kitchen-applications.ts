@@ -13,6 +13,8 @@ interface KitchenApplicationWithLocation extends ChefKitchenApplication {
     logoUrl?: string;
     brandImageUrl?: string;
   } | null;
+  /** The server's `locationListed` flag. `undefined` means it did not say — test `=== false`. */
+  locationListed?: boolean;
 }
 
 interface KitchenAccessStatus {

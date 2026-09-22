@@ -98,6 +98,19 @@ router.get('/public/locations', async (req: Request, res: Response) => {
                 logo_url: logoUrl, // compatibility
                 featuredKitchenImage,
                 featured_kitchen_image: featuredKitchenImage, // compatibility
+                // The kitchen this card is FOR. The chef-facing card used to be titled with the
+                // LOCATION, so a location holding three kitchens produced one card named after the
+                // address and no kitchen at all — and once the manager could unpublish a kitchen,
+                // the card kept promising availability the address no longer had. The card now names
+                // this kitchen and links with `?kitchenId=`, so it opens on the kitchen it described.
+                // The location survives as the address line, and `kitchenCount` still tells the chef
+                // there is more than one kitchen here.
+                //
+                // camelCase only: this is a new field with no cached or external consumer, so the
+                // `_snake_case` compatibility alias its older neighbours carry would be dead weight.
+                featuredKitchen: featuredKitchen
+                    ? { id: featuredKitchen.id, name: featuredKitchen.name }
+                    : null,
                 kitchenCount,
                 kitchen_count: kitchenCount, // compatibility
                 description: describedKitchen?.description || null,
@@ -110,7 +123,16 @@ router.get('/public/locations', async (req: Request, res: Response) => {
                 // Kitchen terms and policies for chef applications
                 kitchenTermsUrl: location.kitchenTermsUrl || null
             };
-        });
+        })
+        // A location is only a chef-facing card when a kitchen at it is actually LISTED. `allLocations`
+        // is every row in `locations`, so without this a manager who has published nothing — or who has
+        // just taken their last listing down — still gets a card. `ChefLanding`'s `slice(0, 3)` makes
+        // that worse rather than better: the list is newest-first, so a brand-new unpublished location
+        // takes one of the three slots and pushes a published one off the end.
+        //
+        // `kitchenCount` is already the count of PUBLISHED kitchens (`allKitchens` is
+        // `getAllActiveKitchens`, i.e. `is_active AND listing_status = 'active'`), so it is the whole test.
+        .filter(location => location.kitchenCount > 0);
 
         res.json(publicLocations);
     } catch (error) {
@@ -275,8 +297,19 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
         
         const locationId = location.id;
 
-        // Get kitchens for this location (active only)
-        const activeKitchens = await kitchenService.getKitchensByLocationId(locationId, true);
+        // Kitchens a CHEF may see at this location.
+        //
+        // `getKitchensByLocationId(…, true)` filters on `is_active` only — the ADMIN's flag. The
+        // MANAGER's publish flag (`listing_status`) is a second, independent switch, and the repository
+        // method is shared with the portal and the admin routes, where a draft kitchen MUST stay
+        // visible, so the gate is applied here at the one chef-facing call site rather than inside the
+        // method. Without it this endpoint handed the preview page every draft kitchen at the address,
+        // and the page then defaulted to `kitchens[0]` — newest-first, i.e. usually the fresh draft the
+        // manager had not published.
+        const locationKitchens = await kitchenService.getKitchensByLocationId(locationId, true);
+        const activeKitchens = locationKitchens.filter(
+            (kitchen: any) => kitchen.listingStatus === "active"
+        );
 
         // Normalize location images
         const brandImageUrl = normalizeImageUrl(

@@ -347,6 +347,25 @@ export class KitchenService {
   }
 
   /**
+   * Which locations hold at least one kitchen a chef may see, as a Set for O(1) lookup.
+   *
+   * A Set rather than an array because every caller is asking "is THIS location listed?" about a
+   * different location, and an array would turn each question into a scan.
+   */
+  async getListedLocationIds(): Promise<Set<number>> {
+    try {
+      return new Set(await this.kitchenRepo.findListedLocationIds());
+    } catch (error: any) {
+      logger.error('[KitchenService] Error getting listed location ids:', error);
+      throw new DomainError(
+        KitchenErrorCodes.KITCHEN_NOT_FOUND,
+        'Failed to get listed locations',
+        500
+      );
+    }
+  }
+
+  /**
    * Get all kitchens
    */
   async getAllKitchens(): Promise<KitchenDTO[]> {

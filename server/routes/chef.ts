@@ -247,15 +247,15 @@ router.get("/locations", requireChef, async (req: Request, res: Response) => {
     try {
         // Get all locations with active kitchens for marketing purposes
         const allLocations = await locationService.getAllLocations();
-        // Use kitchenService to get all active kitchens directly
-        const activeKitchens = await kitchenService.getAllActiveKitchens();
 
-        const locationIdsWithKitchens = new Set(
-            activeKitchens.map((kitchen: any) => kitchen.locationId || kitchen.location_id).filter(Boolean)
-        );
+        // The one owner of "which locations hold a listed kitchen". This used to build the set inline
+        // from `getAllActiveKitchens()`, so the predicate existed both here and in the repository —
+        // while `/public/locations` (the chef landing page and Compare Kitchens) had no location
+        // filter at all, which is how unlisted locations reached chefs.
+        const listedLocationIds = await kitchenService.getListedLocationIds();
 
         const locationsWithKitchens = allLocations.filter((location: any) =>
-            locationIdsWithKitchens.has(location.id)
+            listedLocationIds.has(location.id)
         );
 
         logger.info(`[API] /api/chef/locations - Returning ${locationsWithKitchens.length} locations with active kitchens`);

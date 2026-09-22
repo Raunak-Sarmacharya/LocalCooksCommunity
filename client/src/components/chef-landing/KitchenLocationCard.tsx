@@ -21,6 +21,11 @@ export interface KitchenLocation {
     featuredKitchenImage: string | null;
     kitchenCount: number;
     description?: string | null;
+    /**
+     * The published kitchen this card represents. `null`/absent on a response that predates the
+     * field, in which case the card falls back to the location's own name.
+     */
+    featuredKitchen?: { id: number; name: string } | null;
 }
 
 interface KitchenLocationCardProps {
@@ -30,6 +35,24 @@ interface KitchenLocationCardProps {
 
 export function KitchenLocationCard({ location, navigate }: KitchenLocationCardProps) {
     const { t } = useTranslation("common");
+
+    /**
+     * This card describes ONE KITCHEN, not the address it sits at.
+     *
+     * A location can hold several kitchens, and each one is published or taken down separately by its
+     * manager — so a card titled with the location was naming something no chef can book, and it kept
+     * promising availability the address no longer had. The kitchen is the bookable unit, so it names
+     * the card.
+     *
+     * The link carries `?kitchenId=`, so the preview page opens on the same kitchen the card described
+     * instead of on whichever one happens to sort first. The address line still shows the location, and
+     * the "N Kitchens" badge still tells the chef there is more than one kitchen here.
+     */
+    const kitchenName = location.featuredKitchen?.name?.trim() || location.name;
+    const previewHref = `/kitchen-preview/${location.slug || location.id}${
+        location.featuredKitchen ? `?kitchenId=${location.featuredKitchen.id}` : ""
+    }`;
+
     // Logic to determine which image URL to use
     const rawImageUrl = (location.mainImage || location.featuredKitchenImage || '').trim();
     const hasValidRawImage = rawImageUrl.length > 0;
@@ -61,10 +84,10 @@ export function KitchenLocationCard({ location, navigate }: KitchenLocationCardP
                             <>
                                 <SmartImage
                                     src={displayUrl}
-                                    alt={location.name}
+                                    alt={kitchenName}
                                     className="w-full h-full object-cover rounded-2xl transform group-hover:scale-105 transition-transform duration-500"
                                     onError={(e) => {
-                                        logger.error(`[KitchenLocationCard] Image failed to load for ${location.name}:`, rawImageUrl);
+                                        logger.error(`[KitchenLocationCard] Image failed to load for ${kitchenName}:`, rawImageUrl);
                                         setImageError(true);
                                     }}
                                     loading="lazy"
@@ -103,7 +126,7 @@ export function KitchenLocationCard({ location, navigate }: KitchenLocationCardP
                     stopped lining up. */}
                 <div className="flex flex-1 flex-col p-5">
                     <TruncatedText as="h3" className="text-lg font-bold text-[#1A1A1A] mb-1 group-hover:text-[#F51042] transition-colors">
-                        {location.name}
+                        {kitchenName}
                     </TruncatedText>
 
                     {/* The row holds its height with a non-breaking space, so a
@@ -124,7 +147,7 @@ export function KitchenLocationCard({ location, navigate }: KitchenLocationCardP
 
                     <Button
                         className="mt-auto w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold rounded-full py-2.5 text-sm transition-all duration-300 group/btn"
-                        onClick={() => navigate(`/kitchen-preview/${location.slug || location.id}`)}
+                        onClick={() => navigate(previewHref)}
                     >
                         <Icon icon="mdi:calendar-month-outline" className="mr-1.5 h-4 w-4 text-white" aria-hidden />
                         {t("viewAvailability", "View Availability")}

@@ -80,6 +80,20 @@ export default function MyKitchensTabContent({
               kitchenData?.locationSlug
             );
 
+            /**
+             * Whether this chef may book here is decided in ONE place: `getKitchenDisplayStatus`,
+             * which folds in the manager's listing flag carried on the application itself.
+             *
+             * This component used to derive it locally, by cross-referencing the published kitchen
+             * list — which is exactly how the chef dashboard went on offering Book for a delisted
+             * kitchen. The rule lived here, and nowhere else that needed it.
+             *
+             * The chef keeps the kitchen either way: the approval is a relationship with the KITCHEN,
+             * not with its advert, and they may already have bookings here. Only the booking action
+             * changes, and only for the chef who could otherwise have pressed it.
+             */
+            const bookingPaused = display.listingPaused === true;
+
             const showChat =
               (app.status === "approved" || app.status === "inReview") &&
               !!app.chat_conversation_id;
@@ -98,7 +112,26 @@ export default function MyKitchensTabContent({
               </Button>
             );
             if (app.status === "approved") {
-              if ((app.current_tier ?? 1) >= 3) {
+              if (bookingPaused) {
+                // Not a disabled Button on purpose: a greyed-out control still reads as "there is
+                // an action here, you just can't take it", and invites the click. This is a state,
+                // so it wears the same non-interactive Badge the other unreachable states use.
+                primary = (
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "h-11 w-full justify-center font-medium",
+                      chefOutlineCtaClass()
+                    )}
+                  >
+                    <Clock className="mr-1 h-3 w-3" />
+                    {t(
+                      "apptabKitchenPausedAction",
+                      "This kitchen is not taking bookings right now"
+                    )}
+                  </Badge>
+                );
+              } else if ((app.current_tier ?? 1) >= 3) {
                 primary = (
                   <Button
                     className={chefPrimaryCtaClass(actionClass)}
@@ -185,6 +218,8 @@ export default function MyKitchensTabContent({
                 equipmentSummary={equipmentSummary}
                 storageSummary={storageSummary}
                 overlayChip={
+                  // Straight from the owner: it already reports "Not taking bookings" when the
+                  // listing is down, and the chef's own step otherwise.
                   <KitchenStatusChip display={display} />
                 }
                 onCardClick={() => {

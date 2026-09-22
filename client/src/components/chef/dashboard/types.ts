@@ -11,6 +11,12 @@ export type KitchenApplicationWithLocation = Omit<ChefKitchenApplication, 'locat
     brandImageUrl?: string;
     managerId?: number;
   } | null;
+  /**
+   * The server's answer to "does this location hold a kitchen a chef may see?". Attached to the
+   * application so every surface that renders one has the manager's listing flag with it.
+   * `undefined` means the server did not say — test `=== false`, never falsiness.
+   */
+  locationListed?: boolean;
 };
 
 // Public kitchen data for enriching cards

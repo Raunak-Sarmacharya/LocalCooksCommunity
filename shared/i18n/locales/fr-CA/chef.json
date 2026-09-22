@@ -142,6 +142,8 @@
   "apptabKitchenApplication": "Demande de cuisine",
   "apptabKitchenDetailsAfterBooking": "Détails de la cuisine disponibles après réservation",
   "apptabKitchenFallback": "Cuisine",
+  "apptabKitchenPausedAction": "Cette cuisine n’accepte pas de réservations pour le moment",
+  "apptabKitchenPausedChip": "N’accepte pas de réservations",
   "apptabKitchenPreference": "Type de cuisine",
   "apptabLicenseNumber": "Numéro de licence",
   "apptabManagerFeedback": "Commentaire du gestionnaire",

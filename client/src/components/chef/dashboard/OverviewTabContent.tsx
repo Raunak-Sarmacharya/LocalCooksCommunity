@@ -215,9 +215,12 @@ export default function OverviewTabContent({
     () => kitchenApplications.map((app) => ({ app, display: getKitchenDisplayStatus(app, t) })),
     [kitchenApplications, t]
   );
-  const firstBookableKitchen = kitchenApplications.find(
-    (app) => app.status === "approved" && (app.current_tier ?? 1) >= 3
-  );
+  // "Bookable" has to mean the same thing here as everywhere else, so it is ASKED of the display
+  // instead of re-derived from tier alone. Deriving it here is what let this card offer a delisted
+  // kitchen as bookable and drop the chef onto a preview page with nothing in it.
+  const firstBookableKitchen = kitchenDisplays.find(
+    ({ display }) => display.actionKind === "book"
+  )?.app;
   const openKitchenPreview = (locationId: number) => navigate(`/kitchen-preview/${locationId}`);
 
   const upcomingBookings = useMemo(() => {

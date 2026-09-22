@@ -142,6 +142,8 @@
   "apptabKitchenApplication": "Заявка на кухню",
   "apptabKitchenDetailsAfterBooking": "Деталі кухні доступні після бронювання",
   "apptabKitchenFallback": "Кухня",
+  "apptabKitchenPausedAction": "Ця кухня наразі не приймає бронювання",
+  "apptabKitchenPausedChip": "Не приймає бронювання",
   "apptabKitchenPreference": "Тип кухні",
   "apptabLicenseNumber": "Номер ліцензії",
   "apptabManagerFeedback": "Відгук менеджера",

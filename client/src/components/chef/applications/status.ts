@@ -17,6 +17,13 @@ export interface KitchenDisplayStatus {
   stepCaption: string;
   actionLabel: string | null;
   actionKind: KitchenActionKind;
+  /**
+   * The only thing between this chef and a booking is that the manager has taken the listing down.
+   *
+   * Set only where `actionKind` would otherwise have been `"book"`, so a surface can style this state
+   * differently without re-deriving WHY it is in it.
+   */
+  listingPaused?: boolean;
 }
 
 export interface KitchenStatusInput {
@@ -25,6 +32,12 @@ export interface KitchenStatusInput {
   currentTier?: number | null;
   tier2_completed_at?: string | Date | null;
   tier_data?: unknown;
+  /**
+   * From the chef's application payload. `undefined` means the server did not say — an older payload,
+   * or a read that failed — and must behave exactly as it did before the field existed. Test
+   * `=== false`, never falsiness.
+   */
+  locationListed?: boolean | null;
 }
 
 const TONE_TO_BADGE: Record<StatusTone, StatusVariant> = {
@@ -85,7 +98,56 @@ export function hasStep2BeenSubmitted(app: KitchenStatusInput): boolean {
   );
 }
 
+/**
+ * What this chef may do at this kitchen, in one place.
+ *
+ * Seven surfaces render an application — `MyKitchensTabContent`, `OverviewTabContent` (twice),
+ * `KitchenApplicationCard`, `SellerApplicationTabContent`, `KitchenDiscovery` and
+ * `KitchenPreviewPage` — and each used to decide for itself whether to offer a Book action. That is
+ * how the chef dashboard kept offering "book" for a kitchen whose manager had taken the listing down:
+ * this state machine knew nothing about listings, and exactly one surface had been taught to look.
+ * So the listing is folded in HERE, once, and nowhere else.
+ *
+ * It is applied as a POST-STEP deliberately. The manager's listing flag is orthogonal to the chef's
+ * progress: a delisted kitchen changes exactly one thing — the chef cannot book — and must not disturb
+ * Step 2, "Continue", or any in-review state. Someone mid-application has to be able to finish it and
+ * meet the wall only at the point of booking, which is the whole reason the application gate and the
+ * booking gate are separate.
+ *
+ * `app.locationListed === false` is tested explicitly, never for falsiness: `undefined` means the
+ * server did not say (an older payload, or a failed read) and must behave exactly as before.
+ */
 export function getKitchenDisplayStatus(
+  app: KitchenStatusInput,
+  t?: StatusTranslator
+): KitchenDisplayStatus {
+  const display = resolveApplicationDisplay(app, t);
+
+  if (display.actionKind !== "book" || app.locationListed !== false) {
+    return display;
+  }
+
+  const label = t
+    ? t("apptabKitchenPausedChip", { defaultValue: "Not taking bookings" })
+    : "Not taking bookings";
+
+  return {
+    ...display,
+    label,
+    tone: "warning",
+    actionLabel: label,
+    actionKind: "wait",
+    listingPaused: true,
+  };
+}
+
+/**
+ * The application's own state, with no knowledge of listings.
+ *
+ * Private on purpose: `getKitchenDisplayStatus` is the single entry point, so a caller cannot pick
+ * the half of the answer that forgets the listing.
+ */
+function resolveApplicationDisplay(
   app: KitchenStatusInput,
   t?: StatusTranslator
 ): KitchenDisplayStatus {

@@ -9,8 +9,56 @@ import { logger } from "../../logger";
 import { db, getDbError } from "../../db";
 import { chefKitchenApplications, locations, users, chefLocationAccess, type ChefKitchenApplication, type InsertChefKitchenApplication } from "@shared/schema";
 import { eq, and, desc, inArray, getTableColumns, isNotNull, gte, or } from "drizzle-orm";
+import { KitchenRepository } from "../kitchens/kitchen.repository";
+
+/**
+ * The kitchen predicate "may a chef see this?" lives on the repository. This file only asks it, so
+ * the rule stays in one place instead of being re-written wherever it is needed.
+ */
+const kitchenRepository = new KitchenRepository();
 
 export class ChefApplicationService {
+    /**
+     * The listed locations, or `null` if they could not be read.
+     *
+     * `null` rather than an empty Set on failure, deliberately. An empty Set means "nothing is
+     * listed", which would mark EVERY application as paused — a chef's own kitchen would show "not
+     * taking bookings" because of a transient read error. `null` means "unknown", and the callers
+     * below then omit the flag entirely so consumers fall back to their pre-existing behaviour.
+     * Degrade to the old behaviour, never to a false negative.
+     */
+    private async listedLocationIds(): Promise<Set<number> | null> {
+        try {
+            return await kitchenRepository.findListedLocationIds().then((ids) => new Set(ids));
+        } catch (error) {
+            logger.error("[ChefApplicationService] Could not read listed locations:", error);
+            return null;
+        }
+    }
+
+    /**
+     * Attach `locationListed` to chef applications.
+     *
+     * The client's `getKitchenDisplayStatus` is the single decision point for "what may this chef do
+     * here", and the manager's listing flag is half of that answer. It belongs on the APPLICATION
+     * rather than being cross-referenced against the public kitchen list by each surface: seven
+     * surfaces render an application, and a surface that has the application now has the listing
+     * state with it, so it cannot forget to look.
+     *
+     * Consumers must test `=== false`, never falsiness — an application from an older payload, or
+     * from a failed read, carries no field at all and must behave exactly as it did before.
+     */
+    private withListingState<T extends { locationId: number | null }>(
+        apps: T[],
+        listed: Set<number> | null
+    ): (T & { locationListed?: boolean })[] {
+        if (!listed) return apps;
+        return apps.map((app) => ({
+            ...app,
+            locationListed: app.locationId != null && listed.has(app.locationId),
+        }));
+    }
+
     /**
      * Get all applications for a specific location (Manager view)
      */
@@ -65,12 +113,14 @@ export class ChefApplicationService {
 
             // Format to match expected frontend structure (flattening location)
             // AND ensure we return the `location` object itself as expected by KitchenApplicationWithLocation
-            return apps.map(app => ({
+            const shaped = apps.map(app => ({
                 ...app,
                 locationName: app.location?.name,
                 locationAddress: app.location?.address,
                 location: app.location // Ensure full location object is passed
             }));
+
+            return this.withListingState(shaped, await this.listedLocationIds());
         } catch (error) {
             logger.error("[ChefApplicationService] Error fetching chef applications:", error);
             throw error;
@@ -166,7 +216,12 @@ export class ChefApplicationService {
                 ))
                 .limit(1);
 
-            return application;
+            if (!application) return application;
+
+            // Same annotation as the list getter: this one feeds the requirements page and the kitchen
+            // preview, so they read the listing from the application instead of re-deriving it.
+            const [annotated] = this.withListingState([application], await this.listedLocationIds());
+            return annotated;
         } catch (error) {
             logger.error("[ChefApplicationService] Error fetching chef application:", error);
             throw error;

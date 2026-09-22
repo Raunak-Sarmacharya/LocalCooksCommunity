@@ -892,7 +892,11 @@ export default function ChefLanding() {
         featuredKitchenImage: loc.featuredKitchenImage || null,
         mainImage: mainImage, // Combined image for display
         kitchenCount: loc.kitchenCount || 1,
-        description: loc.description || null
+        description: loc.description || null,
+        // The kitchen this card is for. The API returns one row per location, so it also names the
+        // single kitchen the card stands for — the card used to be titled with the location, which
+        // is an address, not something a chef can book.
+        featuredKitchen: loc.featuredKitchen || null
       };
     });
     logger.info(`[ChefLanding] Processed ${mapped.length} locations`);

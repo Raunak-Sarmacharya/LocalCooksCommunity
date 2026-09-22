@@ -1922,12 +1922,20 @@ function GuestHoursCard({
   onCalendarOpenChange,
   onDatesOkChange,
   bookingAccessChip,
+  noKitchen = false,
 }: {
   availability?: PublicKitchen["availability"];
   kitchenId?: string;
   locationId?: string;
   kitchenName?: string;
   kitchenRate?: string | null;
+  /**
+   * No kitchen at this location is listed at all — a genuinely different state from "this kitchen has
+   * no rate yet". The card used to explain the former with the latter's reason ("still needs an hourly
+   * rate and availability schedule"), copy written when "Coming Soon" meant an unfinished kitchen, so
+   * a chef whose manager had taken the listing down was told their kitchen was half-built.
+   */
+  noKitchen?: boolean;
   pricePreview?: PersistedBookingPricePreview | null;
   application?: {
     fullName?: string;
@@ -2404,27 +2412,36 @@ function GuestHoursCard({
       >
         {rateRow}
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50/80 px-4 py-8 text-center">
-          <InfoChip tone="progress">
-            {t("applyFlowComingSoonBadge", "Coming Soon")}
+          <InfoChip tone={noKitchen ? "warning" : "progress"}>
+            {noKitchen
+              ? t("kitchenNotTakingBookingsShort", "Not taking bookings")
+              : t("applyFlowComingSoonBadge", "Coming Soon")}
           </InfoChip>
           <p className="mt-3 text-sm font-medium text-gray-900">
-            {t("bookingDatesComingSoonTitle", "Booking dates aren’t open yet")}
+            {noKitchen
+              ? t("kitchenNotTakingBookings", "This kitchen is not taking bookings right now")
+              : t("bookingDatesComingSoonTitle", "Booking dates aren’t open yet")}
           </p>
           <p className="mt-1.5 max-w-[16rem] text-xs leading-relaxed text-gray-500">
-            {!hasRate && !hasSchedule
+            {noKitchen
               ? t(
-                  "bookingDatesComingSoonNeedRateAndSchedule",
-                  "This kitchen still needs an hourly rate and availability schedule before you can pick a date."
+                  "kitchenNotTakingBookingsApplied",
+                  "If you have already applied here, your application is unaffected."
                 )
-              : !hasRate
+              : !hasRate && !hasSchedule
                 ? t(
-                    "bookingDatesComingSoonNeedRate",
-                    "This kitchen still needs an hourly rate before you can pick a date."
+                    "bookingDatesComingSoonNeedRateAndSchedule",
+                    "This kitchen still needs an hourly rate and availability schedule before you can pick a date."
                   )
-                : t(
-                    "bookingDatesComingSoonNeedSchedule",
-                    "This kitchen still needs an availability schedule before you can pick a date."
-                  )}
+                : !hasRate
+                  ? t(
+                      "bookingDatesComingSoonNeedRate",
+                      "This kitchen still needs an hourly rate before you can pick a date."
+                    )
+                  : t(
+                      "bookingDatesComingSoonNeedSchedule",
+                      "This kitchen still needs an availability schedule before you can pick a date."
+                    )}
           </p>
         </div>
         {showDateGatedCta ? (
@@ -3781,8 +3798,16 @@ export default function KitchenPreviewPage() {
               {/* One chip, answering the only question this slot is asked: can I book here?
                   When the answer is no, that is what belongs here — a "Licensed kitchen"
                   badge sitting next to a closed listing reads as a contradiction. Same
-                  wording as the discover card, so the two surfaces agree. */}
-              {location.canAcceptApplications === false ? (
+                  wording as the discover card, so the two surfaces agree.
+
+                  Nothing listed is its own answer, and NOT "Coming Soon": that chip means
+                  "not finished yet", which is a different thing from a manager who has taken
+                  the listing down. */}
+              {kitchens.length === 0 ? (
+                <InfoChip tone="warning" className="shrink-0">
+                  {t("kitchenNotTakingBookingsShort", "Not taking bookings")}
+                </InfoChip>
+              ) : location.canAcceptApplications === false ? (
                 <InfoChip tone="progress" className="shrink-0">
                   {t("applyFlowComingSoonBadge", "Coming Soon")}
                 </InfoChip>
@@ -3797,13 +3822,17 @@ export default function KitchenPreviewPage() {
               ) : null}
             </div>
             <p className="mt-1 text-sm text-gray-600">{location.address}</p>
-            <p className="mt-0.5 text-sm text-gray-500">
-              {t("kitchensAtThisLocationPrefix", {
-                count: kitchens.length,
-                defaultValue: `${kitchens.length} ${kitchens.length === 1 ? "kitchen" : "kitchens"}`,
-              })}{" "}
-              {t("kitchensAtThisLocationSuffix", "at this location")}
-            </p>
+            {/* No count to report when nothing is listed. "0 kitchens at this location" is true and
+                reads as a broken page; the chip above already carries the state. */}
+            {kitchens.length > 0 && (
+              <p className="mt-0.5 text-sm text-gray-500">
+                {t("kitchensAtThisLocationPrefix", {
+                  count: kitchens.length,
+                  defaultValue: `${kitchens.length} ${kitchens.length === 1 ? "kitchen" : "kitchens"}`,
+                })}{" "}
+                {t("kitchensAtThisLocationSuffix", "at this location")}
+              </p>
+            )}
           </div>
         </div>
 
@@ -4042,6 +4071,9 @@ export default function KitchenPreviewPage() {
                 onCalendarOpenChange={setCalendarOpen}
                 onDatesOkChange={setDatesOk}
                 bookingAccessChip={bookingAccessChip}
+                // Nothing is listed here, so the "Booking dates aren't open yet / still needs a rate"
+                // panel would be explaining the wrong thing entirely.
+                noKitchen={kitchens.length === 0}
               />
               <AnimatePresence initial={false}>
                 {!tourInView && tourButton ? (
@@ -4096,8 +4128,18 @@ export default function KitchenPreviewPage() {
                 >
                   <div className="text-center px-4">
                     <PreviewIcon icon="mdi:silverware-fork-knife" size={48} className="mx-auto mb-3 text-gray-300" />
-                    <p className="text-sm sm:text-base text-gray-500">
-                      {t("noKitchensListedYet", "No kitchens are listed at this location yet.")}
+                    {/* Was "No kitchens are listed at this location yet." — the "yet" promised a
+                        kitchen that was coming, when in fact the manager has taken the listing down.
+                        The second line is the part that matters to whoever is looking: nothing about
+                        an application already made here changes. */}
+                    <p className="text-sm sm:text-base font-medium text-gray-700">
+                      {t("kitchenNotTakingBookings", "This kitchen is not taking bookings right now")}
+                    </p>
+                    <p className="mt-1.5 text-sm text-gray-500">
+                      {t(
+                        "kitchenNotTakingBookingsApplied",
+                        "If you have already applied here, your application is unaffected."
+                      )}
                     </p>
                   </div>
                 </motion.div>

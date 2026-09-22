@@ -155,6 +155,36 @@ export class KitchenRepository {
   }
 
   /**
+   * The set of location ids that hold at least one kitchen a CHEF may see.
+   *
+   * The SAME predicate as `findAllActive` (`is_active AND listing_status = 'active'`), asked as a set
+   * instead of as rows, because several callers need the question rather than the kitchens: the
+   * chef's own location list, and the `locationListed` flag on every chef application. Before this
+   * existed the predicate was written out again at each of those call sites — which is how they came
+   * to disagree, and how a delisted kitchen kept reaching chefs.
+   *
+   * `DISTINCT` rather than fetching kitchens and de-duplicating in JS: a location with eight kitchens
+   * would otherwise send eight rows to answer one yes/no question.
+   */
+  async findListedLocationIds(): Promise<number[]> {
+    try {
+      const rows = await db
+        .selectDistinct({ locationId: kitchens.locationId })
+        .from(kitchens)
+        .where(and(eq(kitchens.isActive, true), eq(kitchens.listingStatus, "active")));
+
+      return rows.map((row) => row.locationId);
+    } catch (error: any) {
+      logger.error('[KitchenRepository] Error finding listed location ids:', error);
+      throw new DomainError(
+        KitchenErrorCodes.KITCHEN_NOT_FOUND,
+        'Failed to find listed locations',
+        500
+      );
+    }
+  }
+
+  /**
    * Create new kitchen
    */
   async create(dto: CreateKitchenDTO): Promise<KitchenDTO> {

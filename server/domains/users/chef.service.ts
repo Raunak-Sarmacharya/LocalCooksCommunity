@@ -5,7 +5,7 @@ import { userService } from "./user.service";
 import { locationService } from "../locations/location.service";
 import { applicationService } from "../applications/application.service";
 import { db } from "../../db";
-import { applications, locations, chefLocationAccess, chefKitchenApplications } from "@shared/schema";
+import { applications, locations, kitchens, chefLocationAccess, chefKitchenApplications } from "@shared/schema";
 import { licenseAllowsBookings } from "@shared/kitchen-license";
 import { eq, and, asc, desc } from "drizzle-orm";
 
@@ -69,21 +69,52 @@ export class ChefService {
     }
 
     /**
-     * Whether this chef may create a booking at this location.
+     * Whether this chef may create a booking for this kitchen.
      *
-     * Two independent things must both hold: the chef's own access, and the location's
-     * kitchen licence still being valid. They are combined here because this is the one
-     * choke point both chef booking routes already pass through — a licence check written
-     * separately into each route is exactly how one of them ends up missing it.
+     * Three independent things must all hold: the chef's own access, the kitchen still being
+     * LISTED by its manager, and the location's kitchen licence still being valid. They are
+     * combined here because this is the one choke point both chef booking routes already pass
+     * through — a check written separately into each route is exactly how one of them ends up
+     * missing it.
      *
      * Airbnb's rule for a lapsed licence is "You cannot host a reservation without valid
-     * license(s)". Only NEW bookings are refused: bookings that already exist are left
-     * alone, so a chef who is already confirmed is never stranded by the manager's
-     * renewal paperwork.
+     * license(s)", and its rule for an unlisted space is that confirmed reservations are still
+     * honoured. Only NEW bookings are refused: bookings that already exist are left alone, so a
+     * chef who is already confirmed is never stranded by the manager's paperwork or by a listing
+     * the manager has paused.
+     *
+     * The listing check is why this takes a `kitchenId` rather than only a location: a manager
+     * takes a listing down per KITCHEN, and a location with three kitchens can have one paused
+     * and two live. It is the server-side half of the UI state — without it, a chef whose booking
+     * page was already open when the manager pressed "take off the listing" could still complete
+     * checkout, because nothing on the page is re-read at submit time.
      */
-    async getApplicationStatusForBooking(chefId: number, locationId: number) {
+    async getApplicationStatusForBooking(chefId: number, locationId: number, kitchenId: number) {
         const status = await this.resolveApplicationAccess(chefId, locationId);
         if (!status.canBook) return status;
+
+        const [kitchen] = await db
+            .select({ listingStatus: kitchens.listingStatus })
+            .from(kitchens)
+            .where(eq(kitchens.id, kitchenId))
+            .limit(1);
+
+        if (!kitchen || kitchen.listingStatus !== 'active') {
+            logger.info(
+                `[Booking] Refused a new booking: chef ${chefId} is approved for location ` +
+                    `${locationId}, but kitchen ${kitchenId} is not listed by its manager.`,
+            );
+            return {
+                hasApplication: true,
+                status: 'listing_unavailable',
+                canBook: false,
+                // Same sentence the licence branch uses, deliberately: from the chef's side both
+                // are "the kitchen is not taking bookings", and the reassurance that existing
+                // bookings survive is the part that actually matters to them.
+                message:
+                    'This kitchen is not accepting bookings right now. Any bookings you already have are unaffected.',
+            };
+        }
 
         const [location] = await db
             .select({

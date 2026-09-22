@@ -142,6 +142,8 @@
   "apptabKitchenApplication": "Kitchen application",
   "apptabKitchenDetailsAfterBooking": "Kitchen details available after booking",
   "apptabKitchenFallback": "Kitchen",
+  "apptabKitchenPausedAction": "This kitchen is not taking bookings right now",
+  "apptabKitchenPausedChip": "Not taking bookings",
   "apptabKitchenPreference": "Kitchen Preference",
   "apptabLicenseNumber": "License Number",
   "apptabManagerFeedback": "Manager feedback",
