@@ -51,6 +51,7 @@ import {
   CoverPhotoField,
 } from "@/components/manager/kitchen/KitchenPhotoFields";
 import { cn } from "@/lib/utils";
+import { invalidateKitchenListingState } from "@/lib/manager-kitchens-navigation";
 
 /** Revealed on hover and — importantly — on keyboard focus. */
 const OVERLAY_REVEAL =
@@ -145,7 +146,14 @@ export default function KitchenPhotos({ locationId, kitchen }: KitchenPhotosProp
 
   const refreshKitchens = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: ["managerKitchens", locationId] });
-  }, [queryClient, locationId]);
+    /*
+     * The cover photo is a REQUIRED item on the publish checklist, so replacing it here changes what the
+     * status banner says. Nothing else refreshes that checklist — the banner is mounted for the whole
+     * time this tab is open, and the app never refetches on focus — which is why the list used to keep
+     * claiming the photo was missing until a page reload.
+     */
+    invalidateKitchenListingState(queryClient, kitchen.id, locationId);
+  }, [queryClient, kitchen.id, locationId]);
 
   const authHeader = useCallback(async () => {
     const currentUser = auth.currentUser;

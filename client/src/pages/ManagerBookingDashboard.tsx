@@ -1081,6 +1081,7 @@ export default function ManagerBookingDashboard() {
       {activeView === 'listing-review' && kitchenForReview && (
         <KitchenListingReview
           kitchenId={kitchenForReview}
+          locationId={selectedLocation?.id}
           onNavigate={handleViewChange}
           // Listing is the end of the task, so the manager lands back on the kitchen rather than
           // being left staring at a page whose only action is now done.

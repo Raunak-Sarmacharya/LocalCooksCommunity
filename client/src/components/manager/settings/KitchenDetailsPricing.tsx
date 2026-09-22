@@ -23,6 +23,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { KitchenPricingContent, type KitchenPricingHandle } from "@/pages/KitchenPricingManagement";
+import { invalidateKitchenListingState } from "@/lib/manager-kitchens-navigation";
 import { SettingsRow } from "./SettingsRow";
 
 /**
@@ -98,10 +99,13 @@ const KitchenDetailsPricing = forwardRef<
   }, [isDirty, onDirtyChange]);
 
   const invalidateKitchenCaches = useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: ['managerKitchens', locationId] });
-    // The Availability sidebar reads this separate cache.
-    await queryClient.invalidateQueries({ queryKey: ["/api/manager/all-kitchens"] });
-  }, [queryClient, locationId]);
+    /*
+     * Description and rates are checklist items, so a save here changes what the status banner and the
+     * publish review report. `invalidateKitchenListingState` covers the checklist (keyed by kitchen) as
+     * well as the two kitchen lists (keyed by location, one of which the Availability sidebar reads).
+     */
+    invalidateKitchenListingState(queryClient, kitchen.id, locationId);
+  }, [queryClient, kitchen.id, locationId]);
 
   /**
    * Persist the identity fields. Throws on failure so the caller's status button

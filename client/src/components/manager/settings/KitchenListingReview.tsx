@@ -21,6 +21,10 @@ import { useToast } from "@/hooks/use-toast";
 import { apiGet, apiPost } from "@/lib/api";
 import { formatCurrency } from "@/lib/formatters";
 import type { KitchenSection, KitchensNavigationTarget } from "@/lib/manager-kitchens-navigation";
+import {
+  invalidateKitchenListingState,
+  kitchenListingReadinessKey,
+} from "@/lib/manager-kitchens-navigation";
 import { mt } from "@/i18n/manager";
 import type {
   ListingRecommendationId,
@@ -101,6 +105,14 @@ interface ReadinessResponse {
 interface KitchenListingReviewProps {
   kitchenId: number;
   /**
+   * The location the kitchen belongs to.
+   *
+   * Needed only so a successful publish can staleness the LOCATION-scoped caches (`managerKitchens`,
+   * the sidebar's kitchen list) as well as the kitchen-scoped checklist. Optional because the review
+   * is still correct without it — the checklist is keyed by kitchen.
+   */
+  locationId?: number;
+  /**
    * The shell owns routing: which view, which kitchen, and — when the destination is one of the
    * Kitchens view's tabs — which section.
    *
@@ -131,6 +143,7 @@ interface KitchenListingReviewProps {
  */
 export default function KitchenListingReview({
   kitchenId,
+  locationId,
   onNavigate,
   onListed,
 }: KitchenListingReviewProps) {
@@ -139,20 +152,18 @@ export default function KitchenListingReview({
   const [completedOpen, setCompletedOpen] = useState(false);
 
   const { data, isLoading } = useQuery<ReadinessResponse>({
-    queryKey: ["kitchen-listing-readiness", kitchenId],
+    queryKey: kitchenListingReadinessKey(kitchenId),
     queryFn: () => apiGet(`/manager/kitchens/${kitchenId}/listing-readiness`),
     enabled: Number.isFinite(kitchenId) && kitchenId > 0,
   });
 
   const refresh = () =>
-    queryClient.invalidateQueries({ queryKey: ["kitchen-listing-readiness", kitchenId] });
+    queryClient.invalidateQueries({ queryKey: kitchenListingReadinessKey(kitchenId) });
 
   const listKitchen = async () => {
     try {
       await apiPost(`/manager/kitchens/${kitchenId}/listing-status`, { status: "active" });
-      await refresh();
-      queryClient.invalidateQueries({ queryKey: ["/api/manager/all-kitchens"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
+      invalidateKitchenListingState(queryClient, kitchenId, locationId);
       toast({
         title: mt("listingStatusWentLive"),
         description: mt("listingStatusWentLiveDesc"),

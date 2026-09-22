@@ -537,3 +537,17 @@ graphify-out/GRAPH_REPORT.md
 graphify-out/graph.html
 graphify-out/graph.json
 graphify-out/manifest.json
+.workbuddy-ai/memory/2026-09-17.md
+.workbuddy-ai/memory/2026-09-21.md
+.workbuddy-ai/memory/MEMORY.md
+dev/listing-status-harness.tsx
+dev/listing-status.html
+dev/past-midnight-probe.ts
+dev/shot-listing-status.mjs
+dev/verify-listing-status.sh
+graphify-out/.graphify_labels.json
+graphify-out/.graphify_labels.json.sig
+graphify-out/GRAPH_REPORT.md
+graphify-out/graph.html
+graphify-out/graph.json
+graphify-out/manifest.json

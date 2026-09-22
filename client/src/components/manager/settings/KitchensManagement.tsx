@@ -168,6 +168,27 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
     );
   }, [kitchens]);
 
+  /**
+   * Publish the kitchen this page is SHOWING into `?kit`.
+   *
+   * Nothing else owns that parameter, and the shell reads it as the reload fallback for the publish
+   * review, so leaving it stale is what made a refresh on the review page land on "No kitchen
+   * selected" — `ManagerPageLayout`'s sync effect DELETES a `kit` the sidebar's own selector is not
+   * set to, so whether the parameter survived a reload came down to a race between that effect and
+   * the location list arriving. This page is the authority on which kitchen is on screen, so it is
+   * the right place to make the URL agree.
+   *
+   * A one-way write. `initialKitchenId` still decides what OPENS, and the effect above still owns
+   * the selection against the list, so nothing here can start a fight with either.
+   */
+  useEffect(() => {
+    if (activeKitchenId == null) return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("kit") === String(activeKitchenId)) return;
+    url.searchParams.set("kit", String(activeKitchenId));
+    window.history.replaceState({}, "", url);
+  }, [activeKitchenId]);
+
   useEffect(() => {
     onDirtyChange?.(kitchensDirty);
   }, [kitchensDirty, onDirtyChange]);
@@ -322,9 +343,9 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
   };
 
   /**
-   * The kitchen switcher, rendered as the IDENTITY inside the listing-status banner rather than as a
-   * header control. The banner answers "which kitchen, and where does it stand", so the two belong on
-   * one line, and it keeps the status visible on every tab instead of only the Details tab.
+   * The kitchen switcher, rendered as the IDENTITY at the head of the listing-status bar rather than
+   * as a header control. That bar answers "which kitchen, and where does it stand", so the two belong
+   * on one line, and it keeps the status visible on every tab instead of only the Details tab.
    *
    * The control itself lives in `KitchenSwitcher` so the harness can render the REAL thing — a
    * stand-in there could only ever confirm the copy, never the affordance. Switching is wrapped in
@@ -447,17 +468,20 @@ export default function KitchensManagement({ location, onNavigate, onConfigureRe
       ) : (
         <>
           {/*
-            The kitchen header and the section tabs are ONE panel, not two stacked blocks: the tab
+            The kitchen bar and the section tabs are ONE panel, not two stacked blocks: the tab
             bar's own bottom border is the header's divider, which is the entity-header shape GitHub
             and Vercel use. Any gap between them makes the header float as a notice about the page
             again, which is what it is not.
 
-            The header stays OUTSIDE the tabs on purpose: the listing status belongs to the KITCHEN,
-            so inside a tab it disappeared the moment a manager looked at Photos or Storage.
+            The bar stays OUTSIDE the tabs on purpose: the listing status belongs to the KITCHEN,
+            so inside a tab it disappeared the moment a manager looked at Photos or Storage. It is
+            also the only always-mounted observer of the readiness checklist while the tabs are the
+            things that save, so unmounting it here would silently bring back the stale-status bug.
           */}
           {activeKitchen && (
             <KitchenListingStatus
               kitchenId={activeKitchen.id}
+              locationId={location.id}
               selector={kitchenSwitcher}
               onNavigate={onNavigate}
             />

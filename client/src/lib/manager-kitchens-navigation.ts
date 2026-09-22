@@ -1,3 +1,5 @@
+import type { QueryClient } from "@tanstack/react-query";
+
 export type KitchenSection =
   | "photos"
   | "details"
@@ -74,4 +76,44 @@ export function resolveDestination(
   section?: KitchenSection,
 ): { view: string; section: KitchenSection | null } {
   return { view, section: section ?? legacyKitchenSection(view) };
+}
+
+/**
+ * The readiness query key, WITH the kitchen it is about.
+ *
+ * Exported because two components read this checklist from different places — the status banner, which
+ * sits above the tabs on the Kitchens view, and the full-page publish review — and a fix that stales
+ * one without the other is the bug this key exists to prevent.
+ */
+export const kitchenListingReadinessKey = (kitchenId: number) =>
+  ["kitchen-listing-readiness", kitchenId] as const;
+
+/**
+ * Refresh every cache that reflects a kitchen's publish state.
+ *
+ * One function rather than four `invalidateQueries` calls at each mutation site, because the CALLERS
+ * are what went wrong: the checklist queries are keyed by kitchen while the kitchen list is keyed by
+ * location, and the two live in different components. A task page that invalidated only the list it
+ * happened to be editing left the readiness banner showing the previous answer — and because the app
+ * defaults to `staleTime: Infinity` and no focus refetch (see `lib/queryClient.ts`), it never
+ * corrected itself. That is why completing a Review & list item appeared to need a manual refresh.
+ *
+ * The banner stays mounted on the Kitchens view, so invalidating from there reaches the review page too:
+ * a query with no cached data fetches on mount whatever its `staleTime`.
+ *
+ * Call this AFTER the write lands, never before — an invalidation that races the request just re-reads
+ * the old row.
+ */
+export function invalidateKitchenListingState(
+  queryClient: QueryClient,
+  kitchenId: number,
+  locationId?: number,
+): void {
+  void queryClient.invalidateQueries({ queryKey: kitchenListingReadinessKey(kitchenId) });
+  if (locationId != null) {
+    void queryClient.invalidateQueries({ queryKey: ["managerKitchens", locationId] });
+  }
+  // The kitchen pickers and lists that are built from these two.
+  void queryClient.invalidateQueries({ queryKey: ["/api/manager/all-kitchens"] });
+  void queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
 }
