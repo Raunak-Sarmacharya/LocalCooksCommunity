@@ -26,6 +26,7 @@
 import { db } from "../db";
 import {
   kitchenBookings,
+  kitchenBookingVisits,
   kitchens,
   locations,
   platformSettings,
@@ -41,6 +42,7 @@ import { logger } from "../logger";
 import { isChecklistSectionEnabled } from "./checkin-checkout-checklist";
 import { sendEmail, generateKitchenCheckinManagerEmail, generateKitchenCheckinChefEmail, generateKitchenCheckoutRequestManagerEmail, generateKitchenCheckoutClearedChefEmail, generateKitchenNoShowManagerEmail, generateKitchenNoShowChefEmail } from "../email";
 import { createBookingDateTime, DEFAULT_TIMEZONE } from "@shared/timezone-utils";
+import { calendarDateForOperatingTime } from "@shared/operating-hours";
 
 // ============================================================================
 // TYPES
@@ -409,6 +411,9 @@ export async function generateBookingAccessCode(
 
     if (!kitchen?.smartLockEnabled) return null;
 
+    const [bookingWindow] = await db.select({ startTime: kitchenBookings.operatingWindowStartTime })
+      .from(kitchenBookings).where(eq(kitchenBookings.id, bookingId)).limit(1);
+
     // Access codes default to alphanumeric (6-char, 1B+ combos) for new bookings.
     // Managers program the physical lock manually with the returned code.
     const codeFormat: 'alphanumeric' | 'numeric' = 'alphanumeric';
@@ -423,10 +428,13 @@ export async function generateBookingAccessCode(
     // starts "00:00" is midnight at the kitchen, not midnight on the server.
     const dateStr = bookingDate.toISOString().split('T')[0];
     const timezone = kitchen.timezone || DEFAULT_TIMEZONE;
-    const validFrom = createBookingDateTime(dateStr, startTime, timezone);
+    const validFrom = createBookingDateTime(bookingWindow?.startTime
+      ? calendarDateForOperatingTime(dateStr, startTime, bookingWindow.startTime) : dateStr, startTime, timezone);
     validFrom.setMinutes(validFrom.getMinutes() - settings.accessCodeValidBeforeMinutes);
 
-    const validUntil = createBookingDateTime(dateStr, endTime, timezone);
+    const validUntil = createBookingDateTime(bookingWindow?.startTime
+      ? calendarDateForOperatingTime(dateStr, endTime, bookingWindow.startTime)
+      : endTime <= startTime ? calendarDateForOperatingTime(dateStr, '00:00', '23:00') : dateStr, endTime, timezone);
     validUntil.setMinutes(validUntil.getMinutes() + settings.accessCodeValidAfterMinutes);
 
     // Store hash + format (bcrypt hash only — no plaintext column)
@@ -528,6 +536,7 @@ export async function requestKitchenCheckin(
         bookingDate: kitchenBookings.bookingDate,
         startTime: kitchenBookings.startTime,
         endTime: kitchenBookings.endTime,
+        operatingWindowStartTime: kitchenBookings.operatingWindowStartTime,
         kitchenId: kitchenBookings.kitchenId,
         locationId: kitchens.locationId,
         timezone: locations.timezone,
@@ -563,8 +572,11 @@ export async function requestKitchenCheckin(
     const dateStr = booking.bookingDate.toISOString().split('T')[0];
     const timezone = booking.timezone || DEFAULT_TIMEZONE;
 
-    const bookingStart = createBookingDateTime(dateStr, booking.startTime, timezone);
-    const bookingEnd = createBookingDateTime(dateStr, booking.endTime, timezone);
+    const bookingStart = createBookingDateTime(booking.operatingWindowStartTime
+      ? calendarDateForOperatingTime(dateStr, booking.startTime, booking.operatingWindowStartTime) : dateStr, booking.startTime, timezone);
+    const bookingEnd = createBookingDateTime(booking.operatingWindowStartTime
+      ? calendarDateForOperatingTime(dateStr, booking.endTime, booking.operatingWindowStartTime)
+      : booking.endTime <= booking.startTime ? calendarDateForOperatingTime(dateStr, '00:00', '23:00') : dateStr, booking.endTime, timezone);
     const checkinOpens = new Date(bookingStart.getTime() - settings.checkinWindowMinutesBefore * 60 * 1000);
 
     if (now < checkinOpens) {
@@ -1092,6 +1104,7 @@ export async function detectKitchenNoShows(): Promise<NoShowResult> {
         chefId: kitchenBookings.chefId,
         bookingDate: kitchenBookings.bookingDate,
         startTime: kitchenBookings.startTime,
+        operatingWindowStartTime: kitchenBookings.operatingWindowStartTime,
         kitchenId: kitchenBookings.kitchenId,
         locationId: kitchens.locationId,
         timezone: locations.timezone,
@@ -1112,13 +1125,16 @@ export async function detectKitchenNoShows(): Promise<NoShowResult> {
 
     for (const booking of candidates) {
       try {
+        const { ensureKitchenBookingVisits } = await import('./kitchen-booking-visits');
+        if ((await ensureKitchenBookingVisits(booking.id)).length) continue;
         // Use location-aware settings per booking (location override > platform default)
         // and resolve the booking start in the LOCATION's timezone so "00:00" is
         // midnight at the kitchen, not midnight on the server.
         const bookingSettings = await getCheckinSettings(booking.locationId);
         const dateStr = booking.bookingDate.toISOString().split('T')[0];
         const timezone = booking.timezone || DEFAULT_TIMEZONE;
-        const bookingStart = createBookingDateTime(dateStr, booking.startTime, timezone);
+        const bookingStart = createBookingDateTime(booking.operatingWindowStartTime
+          ? calendarDateForOperatingTime(dateStr, booking.startTime, booking.operatingWindowStartTime) : dateStr, booking.startTime, timezone);
         const noShowCutoff = new Date(bookingStart.getTime() + bookingSettings.noShowGraceMinutes * 60 * 1000);
 
         if (now <= noShowCutoff) continue; // Not yet past grace period
@@ -1271,7 +1287,17 @@ async function verifyManagerPermission(bookingId: number, managerId: number): Pr
   }
 }
 
-async function sendCheckinNotification(bookingId: number, _chefId: number): Promise<void> {
+async function visitNotificationContext(visitId?: number) {
+  if (!visitId) return null;
+  const [visit] = await db.select({
+    startTime: kitchenBookingVisits.startTime,
+    endTime: kitchenBookingVisits.endTime,
+    blockIndex: kitchenBookingVisits.blockIndex,
+  }).from(kitchenBookingVisits).where(eq(kitchenBookingVisits.id, visitId)).limit(1);
+  return visit || null;
+}
+
+export async function sendCheckinNotification(bookingId: number, _chefId: number, visitId?: number): Promise<void> {
   try {
     const [booking] = await db
       .select({
@@ -1291,6 +1317,9 @@ async function sendCheckinNotification(bookingId: number, _chefId: number): Prom
       .limit(1);
 
     if (!booking?.managerId) return;
+    const visit = await visitNotificationContext(visitId);
+    const startTime = visit?.startTime || booking.startTime;
+    const endTime = visit?.endTime || booking.endTime;
 
     const { notificationService } = await import('./notification.service');
 
@@ -1300,8 +1329,8 @@ async function sendCheckinNotification(bookingId: number, _chefId: number): Prom
       target: 'manager',
       type: 'kitchen_checkin',
       title: 'Chef Checked In',
-      message: `A chef has checked in to ${booking.kitchenName} (${booking.startTime}–${booking.endTime})`,
-      metadata: { bookingId },
+      message: `A chef has checked in to ${booking.kitchenName} (${startTime}–${endTime})`,
+      metadata: { bookingId, ...(visitId ? { visitId } : {}) },
     });
 
     // Chef in-app notification (confirmation)
@@ -1312,7 +1341,7 @@ async function sendCheckinNotification(bookingId: number, _chefId: number): Prom
         type: 'kitchen_checkin',
         title: 'Check-In Confirmed',
         message: `Your check-in at ${booking.kitchenName} has been confirmed. Enjoy your time in the kitchen!`,
-        metadata: { bookingId },
+        metadata: { bookingId, ...(visitId ? { visitId } : {}) },
       });
     }
 
@@ -1333,8 +1362,8 @@ async function sendCheckinNotification(bookingId: number, _chefId: number): Prom
           kitchenName: booking.kitchenName,
           locationName: booking.locationName,
           bookingDate: booking.bookingDate,
-          startTime: booking.startTime,
-          endTime: booking.endTime,
+          startTime,
+          endTime,
           bookingId,
         }));
         logger.info(`[KitchenCheckout] Sent checkin email to manager for booking ${bookingId}`);
@@ -1352,8 +1381,8 @@ async function sendCheckinNotification(bookingId: number, _chefId: number): Prom
           kitchenName: booking.kitchenName,
           locationName: booking.locationName,
           bookingDate: booking.bookingDate,
-          startTime: booking.startTime,
-          endTime: booking.endTime,
+          startTime,
+          endTime,
           bookingId,
         }));
         logger.info(`[KitchenCheckout] Sent checkin confirmation email to chef for booking ${bookingId}`);
@@ -1366,7 +1395,7 @@ async function sendCheckinNotification(bookingId: number, _chefId: number): Prom
   }
 }
 
-async function sendCheckoutRequestNotification(bookingId: number, _chefId: number): Promise<void> {
+export async function sendCheckoutRequestNotification(bookingId: number, _chefId: number, visitId?: number): Promise<void> {
   try {
     const [booking] = await db
       .select({
@@ -1382,6 +1411,7 @@ async function sendCheckoutRequestNotification(bookingId: number, _chefId: numbe
       .limit(1);
 
     if (!booking?.managerId) return;
+    const visit = await visitNotificationContext(visitId);
 
     const { notificationService } = await import('./notification.service');
     await notificationService.create({
@@ -1389,8 +1419,8 @@ async function sendCheckoutRequestNotification(bookingId: number, _chefId: numbe
       target: 'manager',
       type: 'kitchen_checkout_requested',
       title: 'Kitchen Checkout Requested',
-      message: `A chef has requested checkout from ${booking.kitchenName}. Please review.`,
-      metadata: { bookingId },
+      message: `A chef has requested checkout from ${booking.kitchenName}${visit ? ` (${visit.startTime}–${visit.endTime})` : ''}. Please review.`,
+      metadata: { bookingId, ...(visitId ? { visitId } : {}) },
     });
 
     // Fetch user info for email
@@ -1421,10 +1451,11 @@ async function sendCheckoutRequestNotification(bookingId: number, _chefId: numbe
   }
 }
 
-async function sendCheckoutClearedNotification(
+export async function sendCheckoutClearedNotification(
   bookingId: number,
   _chefId: number | null,
   isAutoClear: boolean = false,
+  visitId?: number,
 ): Promise<void> {
   try {
     if (!_chefId) return;
@@ -1437,7 +1468,7 @@ async function sendCheckoutClearedNotification(
       type: 'kitchen_checkout_cleared',
       title: 'Kitchen Checkout Complete',
       message: `Your kitchen checkout has been cleared ${clearedBy}. Thank you!`,
-      metadata: { bookingId },
+      metadata: { bookingId, ...(visitId ? { visitId } : {}) },
     });
 
     // Fetch booking + chef info for email
@@ -1457,6 +1488,7 @@ async function sendCheckoutClearedNotification(
       db.select({ username: users.username }).from(users).where(eq(users.id, _chefId)).limit(1).then(r => r[0]),
     ]);
 
+    const visit = await visitNotificationContext(visitId);
     if (chefUser?.username && booking) {
       try {
         await sendEmail(generateKitchenCheckoutClearedChefEmail({
@@ -1465,8 +1497,8 @@ async function sendCheckoutClearedNotification(
           kitchenName: booking.kitchenName,
           locationName: booking.locationName,
           bookingDate: booking.bookingDate,
-          startTime: booking.startTime,
-          endTime: booking.endTime,
+          startTime: visit?.startTime || booking.startTime,
+          endTime: visit?.endTime || booking.endTime,
           isAutoClear,
           bookingId,
         }));
@@ -1480,12 +1512,15 @@ async function sendCheckoutClearedNotification(
   }
 }
 
-async function sendNoShowNotification(
+export async function sendNoShowNotification(
   bookingId: number,
   chefId: number | null,
   kitchenId: number,
+  visitId?: number,
 ): Promise<void> {
   try {
+    const visit = await visitNotificationContext(visitId);
+    const visitLabel = visit ? ` (${visit.startTime}–${visit.endTime})` : '';
     // Notify manager
     const [kitchen] = await db
       .select({
@@ -1506,8 +1541,8 @@ async function sendNoShowNotification(
         target: 'manager',
         type: 'kitchen_no_show',
         title: 'No-Show Detected',
-        message: `A chef did not check in for their booking at ${kitchen.kitchenName}.`,
-        metadata: { bookingId },
+        message: `A chef did not check in for their booking at ${kitchen.kitchenName}${visitLabel}.`,
+        metadata: { bookingId, ...(visitId ? { visitId } : {}) },
       });
     }
 
@@ -1519,8 +1554,8 @@ async function sendNoShowNotification(
         target: 'chef',
         type: 'kitchen_no_show',
         title: 'Booking Marked as No-Show',
-        message: 'You did not check in for your kitchen booking within the grace period. Please contact the kitchen manager if this was an error.',
-        metadata: { bookingId },
+        message: `You did not check in for your kitchen booking${visitLabel} within the grace period. Please contact the kitchen manager if this was an error.`,
+        metadata: { bookingId, ...(visitId ? { visitId } : {}) },
       });
     }
 
@@ -1550,8 +1585,8 @@ async function sendNoShowNotification(
             kitchenName: kitchen.kitchenName,
             locationName: kitchen.locationName,
             bookingDate: booking.bookingDate,
-            startTime: booking.startTime,
-            endTime: booking.endTime,
+            startTime: visit?.startTime || booking.startTime,
+            endTime: visit?.endTime || booking.endTime,
             bookingId,
           }));
           logger.info(`[KitchenCheckout] Sent no-show email to manager for booking ${bookingId}`);
@@ -1570,8 +1605,8 @@ async function sendNoShowNotification(
           kitchenName: kitchen.kitchenName,
           locationName: kitchen.locationName,
           bookingDate: booking.bookingDate,
-          startTime: booking.startTime,
-          endTime: booking.endTime,
+          startTime: visit?.startTime || booking.startTime,
+          endTime: visit?.endTime || booking.endTime,
           bookingId,
         }));
         logger.info(`[KitchenCheckout] Sent no-show email to chef for booking ${bookingId}`);

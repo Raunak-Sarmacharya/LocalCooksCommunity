@@ -92,7 +92,7 @@ export async function generateInvoicePDF(
       let kitchenAmount = 0;
       let durationHours = 0;
       let hourlyRate = 0;
-      let rateMode: KitchenBookingRateMode = 'hourly';
+      let rateMode: KitchenBookingRateMode = booking.pricingMode === 'daily' || booking.pricing_mode === 'daily' || ptMetadata.pricingMode === 'daily' || ptMetadata.pricing_mode === 'daily' ? 'daily' : 'hourly';
 
       const addonSubtotalCents = [...(storageBookings || []), ...(equipmentBookings || [])]
         .reduce((sum, item) => sum + Math.max(0, Number(item.total_price || item.totalPrice || 0)), 0);
@@ -106,7 +106,7 @@ export async function generateInvoicePDF(
           durationHours,
           bookingSubtotalCents: Number(booking.total_price || booking.totalPrice || 0),
           addonSubtotalCents,
-          pricingMode: ptMetadata.pricingMode === 'daily' || ptMetadata.pricing_mode === 'daily' ? 'daily' : undefined,
+          pricingMode: booking.pricingMode === 'daily' || booking.pricing_mode === 'daily' || ptMetadata.pricingMode === 'daily' || ptMetadata.pricing_mode === 'daily' ? 'daily' : booking.pricingMode === 'hourly' || booking.pricing_mode === 'hourly' ? 'hourly' : undefined,
         });
         rateMode = capturedRate.mode;
         kitchenAmount = capturedRate.kitchenSubtotalCents / 100;

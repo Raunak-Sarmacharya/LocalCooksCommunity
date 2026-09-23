@@ -682,7 +682,7 @@ async function notifyChefBookingCancelled(data: ChefBookingNotificationData & { 
   });
 }
 
-async function notifyChefKitchenCheckinReminder(data: { chefId: number; bookingId: number; kitchenName: string; bookingDate: string; startTime: string; endTime: string }) {
+async function notifyChefKitchenCheckinReminder(data: { chefId: number; bookingId: number; kitchenName: string; bookingDate: string; startTime: string; endTime: string; visitId?: number }) {
   return createChefNotification({
     chefId: data.chefId,
     type: 'kitchen_checkin_reminder',
@@ -694,7 +694,8 @@ async function notifyChefKitchenCheckinReminder(data: { chefId: number; bookingI
       kitchenName: data.kitchenName,
       bookingDate: data.bookingDate,
       startTime: data.startTime,
-      endTime: data.endTime
+      endTime: data.endTime,
+      visitId: data.visitId,
     },
     actionUrl: chefBookingHref(data.bookingId),
     actionLabel: 'Check In Now',

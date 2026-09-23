@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { kitchenBookingBlocks } from "@/lib/kitchen-booking-blocks";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -30,6 +31,8 @@ export interface BookingForCancellation {
   bookingDate: string;
   startTime: string;
   endTime: string;
+  selectedSlots?: Array<string | { startTime: string; endTime: string }> | null;
+  operatingWindowStartTime?: string | null;
   storageItems?: StorageItemWithCancel[];
 }
 
@@ -97,7 +100,8 @@ export function PendingCancellationRequests({
           locationName: booking.locationName || "",
           label: `Kitchen Booking #${booking.id}`,
           date: dateStr
-            ? `${format(new Date(dateStr), "MMM d, yyyy")} · ${formatTime(booking.startTime)} – ${formatTime(booking.endTime)}`
+            ? `${format(new Date(dateStr), "MMM d, yyyy")} · ${kitchenBookingBlocks(booking).map(block =>
+                `${formatTime(block.startTime)} – ${formatTime(block.endTime)}`).join(', ')}`
             : "",
         });
       }

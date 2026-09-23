@@ -6,24 +6,7 @@
  */
 import { describe, it, expect } from "vitest";
 import Stripe from "stripe";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
-function loadDotEnv() {
-  try {
-    for (const line of readFileSync(resolve(process.cwd(), ".env"), "utf8").split(
-      "\n"
-    )) {
-      const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
-      if (m && !process.env[m[1]]) {
-        process.env[m[1]] = m[2].replace(/^["']|["']$/g, "");
-      }
-    }
-  } catch {
-    /* ignore */
-  }
-}
-loadDotEnv();
+import 'dotenv/config';
 
 const SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 const SK = process.env.STRIPE_SECRET_KEY || "";

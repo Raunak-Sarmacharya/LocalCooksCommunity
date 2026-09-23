@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, addMonths, subMonths, addWeeks, subWeeks, isSameMonth, isSameDay, isSameWeek, isToday, getHours, getMinutes } from "date-fns";
 import { enCA, frCA, uk as ukLocale } from "date-fns/locale";
 import { formatTime as formatTimeLocale } from "@/lib/formatters";
+import { kitchenBookingBlocks } from "@/lib/kitchen-booking-blocks";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // BOOKING CALENDAR WIDGET - Premium Design
@@ -21,6 +22,8 @@ interface Booking {
   bookingDate: string;
   startTime: string;
   endTime: string;
+  selectedSlots?: Array<string | { startTime: string; endTime: string }> | null;
+  operatingWindowStartTime?: string | null;
   status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
   chefName?: string;
   portalUserName?: string;
@@ -128,10 +131,10 @@ export default function BookingCalendarWidget({
   // Get bookings for selected date
   const selectedDateBookings = selectedDate ? getBookingsForDate(selectedDate) : [];
 
-  // Time slots for week view (6 AM to 10 PM)
+  // Include the overnight tail of each operating day.
   const timeSlots = useMemo(() => {
     const slots: number[] = [];
-    for (let hour = 6; hour <= 22; hour++) {
+    for (let hour = 6; hour <= 29; hour++) {
       slots.push(hour);
     }
     return slots;
@@ -143,19 +146,21 @@ export default function BookingCalendarWidget({
   // Format hour for time slots
   const formatHour = (hour: number) => {
     const d = new Date();
-    d.setHours(hour, 0, 0, 0);
+    d.setHours(hour % 24, 0, 0, 0);
     return new Intl.DateTimeFormat(i18n.language, { hour: "numeric" }).format(d);
   };
 
   // Get booking position and height for week view
-  const getBookingStyle = (booking: Booking) => {
-    if (!booking.startTime || !booking.endTime) return { display: 'none' };
+  const getBookingStyle = (startTime: string, endTime: string) => {
+    if (!startTime || !endTime) return { display: 'none' };
     
-    const [startHour, startMin] = booking.startTime.split(':').map(Number);
-    const [endHour, endMin] = booking.endTime.split(':').map(Number);
+    const [startHour, startMin] = startTime.split(':').map(Number);
+    const [endHour, endMin] = endTime.split(':').map(Number);
     
-    const startOffset = ((startHour - 6) * 60 + startMin) / 60; // hours from 6 AM
-    const duration = ((endHour - startHour) * 60 + (endMin - startMin)) / 60; // duration in hours
+    const displayStart = startHour < 6 ? startHour + 24 : startHour;
+    const displayEnd = endHour < displayStart ? endHour + 24 : endHour;
+    const startOffset = ((displayStart - 6) * 60 + startMin) / 60; // hours from 6 AM
+    const duration = ((displayEnd - displayStart) * 60 + (endMin - startMin)) / 60; // duration in hours
     
     return {
       top: `${startOffset * 48}px`, // 48px per hour
@@ -493,13 +498,13 @@ export default function BookingCalendarWidget({
 
                         {/* Bookings */}
                         <div className="absolute inset-0 p-0.5">
-                          {dayBookings.map((booking, idx) => {
-                            const style = getBookingStyle(booking);
+                          {dayBookings.flatMap((booking, idx) => kitchenBookingBlocks(booking).map((block, blockIdx) => {
+                            const style = getBookingStyle(block.startTime, block.endTime);
                             const config = statusConfig[booking.status];
 
                             return (
                               <div
-                                key={booking.id || idx}
+                                key={`${booking.id || idx}-${blockIdx}`}
                                 className={`
                                   absolute left-0.5 right-0.5 rounded-md px-1.5 py-1 overflow-hidden
                                   cursor-pointer transition-all duration-150
@@ -516,11 +521,11 @@ export default function BookingCalendarWidget({
                                   {booking.chefName || booking.portalUserName || mt("chef")}
                                 </p>
                                 <p className={`text-[9px] ${config.textColor} opacity-70`}>
-                                  {formatTime(booking.startTime)}
+                                  {formatTime(block.startTime)}
                                 </p>
                               </div>
                             );
-                          })}
+                          }))}
                         </div>
 
                         {/* Current Time Indicator */}
@@ -592,7 +597,8 @@ export default function BookingCalendarWidget({
                           <div className="flex items-center gap-1.5 mb-1">
                             <Clock className={`h-3 w-3 ${config.textColor}`} />
                             <span className={`text-xs font-semibold ${config.textColor}`}>
-                              {formatTime(booking.startTime)} - {formatTime(booking.endTime)}
+                              {kitchenBookingBlocks(booking).map(block =>
+                                `${formatTime(block.startTime)} - ${formatTime(block.endTime)}`).join(', ')}
                             </span>
                           </div>
 

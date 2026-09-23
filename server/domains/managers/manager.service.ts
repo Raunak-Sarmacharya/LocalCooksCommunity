@@ -50,7 +50,7 @@ export class ManagerService implements IManagerService {
             if (row.totalPrice != null) {
                 totalPriceCents = parseInt(String(row.totalPrice));
             } else if ('hourlyRate' in row && row.hourlyRate != null && 'durationHours' in row && row.durationHours != null) {
-                totalPriceCents = Math.round(parseFloat(String(row.hourlyRate)) * parseFloat(String(row.durationHours)));
+                totalPriceCents = Math.round(parseFloat(String(row.hourlyRate)) * (row.pricingMode === 'daily' ? 1 : parseFloat(String(row.durationHours))));
             }
 
             const serviceFeeCents = row.serviceFee != null ? parseInt(String(row.serviceFee)) : 0;

@@ -19,6 +19,11 @@ export default function KitchenBookingPage() {
   const searchParams = useMemo(() => new URLSearchParams(window.location.search), []);
   const kitchenIdParam = searchParams.get("kitchenId");
   const kitchenId = kitchenIdParam != null && kitchenIdParam !== "" ? kitchenIdParam : undefined;
+  const initialDateIso = searchParams.get('date') || undefined;
+  const initialSlots = searchParams.get('slots')?.split(',') || undefined;
+  const initialNotes = searchParams.get('notes') || undefined;
+  const initialStorage = searchParams.get('storage') || undefined;
+  const initialEquipment = searchParams.get('equipment') || undefined;
 
   const { data: locationData, isLoading, isError } = useQuery({
     queryKey: [`/api/public/locations/${locationId}/details`],
@@ -134,6 +139,11 @@ export default function KitchenBookingPage() {
         locationName={locationName}
         locationAddress={locationData.address}
         kitchenId={kitchenId}
+        initialDateIso={initialDateIso}
+        initialSlots={initialSlots}
+        initialNotes={initialNotes}
+        initialStorage={initialStorage}
+        initialEquipment={initialEquipment}
         onCancel={handleCancel}
         onComplete={handleComplete}
         registerLeaveGuard={registerLeaveGuard}

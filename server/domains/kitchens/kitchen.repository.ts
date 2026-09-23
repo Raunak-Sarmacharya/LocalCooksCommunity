@@ -603,8 +603,7 @@ export class KitchenRepository {
       return override ? this.mapOverrideToDTO(override) : null;
     } catch (error: any) {
       logger.error(`[KitchenRepository] Error finding override for date:`, error);
-      // Return null instead of throwing - no override is a valid state
-      return null;
+      throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to check date override', 500);
     }
   }
 }

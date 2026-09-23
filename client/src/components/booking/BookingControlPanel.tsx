@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DEFAULT_TIMEZONE, isBookingUpcoming, isBookingPast, createBookingDateTime } from "@/utils/timezone-utils";
+import { calendarDateForBookingTime } from "@shared/operating-hours";
+import { kitchenBookingBlocks } from "@/lib/kitchen-booking-blocks";
 import { useQuery } from "@tanstack/react-query";
 import { StorageExtensionDialog } from "./StorageExtensionDialog";
 import { ExpiringStorageNotification } from "./ExpiringStorageNotification";
@@ -25,6 +27,8 @@ interface Booking {
   bookingDate: string;
   startTime: string;
   endTime: string;
+  operatingWindowStartTime?: string | null;
+  selectedSlots?: Array<string | { startTime: string; endTime: string }> | null;
   status: "pending" | "confirmed" | "cancelled" | "completed";
   specialNotes?: string;
   createdAt: string;
@@ -150,11 +154,11 @@ export default function BookingControlPanel({
         const bookingDateStr = booking.bookingDate.split('T')[0];
         
         // Timeline is PRIMARY factor - check if booking end time has passed
-        if (isBookingPast(bookingDateStr, booking.endTime, timezone)) {
+        if (isBookingPast(calendarDateForBookingTime(bookingDateStr, booking.endTime, booking.operatingWindowStartTime, booking.startTime), booking.endTime, timezone)) {
           past.push(booking);
         } 
         // Check if booking start time is in the future
-        else if (isBookingUpcoming(bookingDateStr, booking.startTime, timezone)) {
+        else if (isBookingUpcoming(calendarDateForBookingTime(bookingDateStr, booking.startTime, booking.operatingWindowStartTime), booking.startTime, timezone)) {
           upcoming.push(booking);
         } 
         // Booking is currently happening or very recently ended
@@ -166,7 +170,7 @@ export default function BookingControlPanel({
         // If timezone check fails, fall back to simple date comparison using end time
         try {
           const dateStr = booking.bookingDate.split('T')[0];
-          const bookingEndDateTime = new Date(`${dateStr}T${booking.endTime}`);
+          const bookingEndDateTime = new Date(`${calendarDateForBookingTime(dateStr, booking.endTime, booking.operatingWindowStartTime, booking.startTime)}T${booking.endTime}`);
           if (bookingEndDateTime < new Date()) {
             past.push(booking);
           } else {
@@ -185,7 +189,7 @@ export default function BookingControlPanel({
       try {
         const dateStr = bk.bookingDate?.split('T')[0] || bk.bookingDate;
         const tz = bk.locationTimezone || DEFAULT_TIMEZONE;
-        return createBookingDateTime(dateStr, bk.startTime, tz).getTime();
+        return createBookingDateTime(calendarDateForBookingTime(dateStr, bk.startTime, bk.operatingWindowStartTime), bk.startTime, tz).getTime();
       } catch {
         return 0;
       }
@@ -255,8 +259,8 @@ export default function BookingControlPanel({
           const dateStrB = b.bookingDate?.split('T')[0] || b.bookingDate;
           const tzA = a.locationTimezone || DEFAULT_TIMEZONE;
           const tzB = b.locationTimezone || DEFAULT_TIMEZONE;
-          const dateA = createBookingDateTime(dateStrA, a.startTime, tzA).getTime();
-          const dateB = createBookingDateTime(dateStrB, b.startTime, tzB).getTime();
+          const dateA = createBookingDateTime(calendarDateForBookingTime(dateStrA, a.startTime, a.operatingWindowStartTime), a.startTime, tzA).getTime();
+          const dateB = createBookingDateTime(calendarDateForBookingTime(dateStrB, b.startTime, b.operatingWindowStartTime), b.startTime, tzB).getTime();
           return viewType === "past" ? dateB - dateA : dateA - dateB;
         } catch {
           return 0;
@@ -572,7 +576,7 @@ export default function BookingControlPanel({
       // Resolve in the location's timezone — the cancellation-window math
       // must agree with what the server enforces (kitchen's wall clock).
       const timezone = booking.locationTimezone || DEFAULT_TIMEZONE;
-      const bookingDateTime = createBookingDateTime(dateStr, startTime, timezone);
+      const bookingDateTime = createBookingDateTime(calendarDateForBookingTime(dateStr, startTime, booking.operatingWindowStartTime), startTime, timezone);
 
       if (isNaN(bookingDateTime.getTime())) {
         toast.error(tt("errorTitle"), {
@@ -779,7 +783,7 @@ export default function BookingControlPanel({
               // Resolve in the location's timezone so the "upcoming" /
               // cancellation state matches the kitchen's wall clock.
               const timezone = booking.locationTimezone || DEFAULT_TIMEZONE;
-              bookingDateTime = createBookingDateTime(dateStr, booking.startTime, timezone);
+              bookingDateTime = createBookingDateTime(calendarDateForBookingTime(dateStr, booking.startTime, booking.operatingWindowStartTime), booking.startTime, timezone);
 
               if (!isNaN(bookingDateTime.getTime())) {
                 isUpcoming = bookingDateTime >= now;
@@ -852,7 +856,8 @@ export default function BookingControlPanel({
                         <div className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />
                           <span>
-                            {formatTime(booking.startTime)} - {formatTime(booking.endTime)}
+                            {kitchenBookingBlocks(booking).map(block =>
+                              `${formatTime(block.startTime)} - ${formatTime(block.endTime)}`).join(', ')}
                           </span>
                         </div>
                       </div>

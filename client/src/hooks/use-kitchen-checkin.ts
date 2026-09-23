@@ -2,6 +2,7 @@ import { logger } from "@/lib/logger";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { auth } from "@/lib/firebase";
 import { createBookingDateTime, DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
+import { calendarDateForBookingTime } from '@shared/operating-hours';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -43,6 +44,7 @@ export interface CheckinStatusData {
   bookingDate: string;
   startTime: string;
   endTime: string;
+  operatingWindowStartTime?: string | null;
   // Authoritative timezone for the check-in window. Defaults to Newfoundland
   // if the server doesn't send it, but server now always includes it.
   timezone?: string | null;
@@ -50,6 +52,21 @@ export interface CheckinStatusData {
   // on exactly when the check-in button should be enabled.
   checkinWindowMinutesBefore?: number;
   noShowGraceMinutes?: number;
+  visits?: Array<{
+    id: number;
+    blockIndex: number;
+    startTime: string;
+    endTime: string;
+    checkinStatus: KitchenCheckinStatus;
+    checkedInAt: string | null;
+    checkoutRequestedAt: string | null;
+    checkedOutAt: string | null;
+    checkoutApprovedAt: string | null;
+    noShowDetectedAt: string | null;
+    checkinChecklistItems: Array<{ id: string; label: string; checked: boolean }> | null;
+    checkoutChecklistItems: Array<{ id: string; label: string; checked: boolean }> | null;
+  }>;
+  visitId?: number;
 }
 
 interface CheckinResult {
@@ -86,7 +103,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
-export function useKitchenCheckin(bookingId: number | null) {
+export function useKitchenCheckin(bookingId: number | null, selectedVisitId?: number | null) {
   const queryClient = useQueryClient();
 
   // Fetch check-in status for a specific booking
@@ -113,7 +130,8 @@ export function useKitchenCheckin(bookingId: number | null) {
       // Poll aggressively when waiting for manager action
       if (
         d.checkinStatus === "checked_in" ||
-        d.checkinStatus === "checkout_requested"
+        d.checkinStatus === "checkout_requested" ||
+        d.visits?.some(visit => visit.checkinStatus === 'checked_in' || visit.checkinStatus === 'checkout_requested')
       ) {
         return 5000;
       }
@@ -137,7 +155,7 @@ export function useKitchenCheckin(bookingId: number | null) {
           method: "POST",
           credentials: "include",
           headers,
-          body: JSON.stringify({ checkinNotes, checkinPhotoUrls, checkinChecklistItems }),
+          body: JSON.stringify({ checkinNotes, checkinPhotoUrls, checkinChecklistItems, visitId: status?.visitId }),
         }
       );
       if (!response.ok) {
@@ -168,7 +186,7 @@ export function useKitchenCheckin(bookingId: number | null) {
           method: "POST",
           credentials: "include",
           headers,
-          body: JSON.stringify({ checkoutNotes, checkoutPhotoUrls, checkoutChecklistItems }),
+          body: JSON.stringify({ checkoutNotes, checkoutPhotoUrls, checkoutChecklistItems, visitId: status?.visitId }),
         }
       );
       if (!response.ok) {
@@ -185,9 +203,23 @@ export function useKitchenCheckin(bookingId: number | null) {
     },
   });
 
+  const rawStatus = statusQuery.data;
+  const visits = rawStatus?.visits || [];
+  const currentVisit = visits.find(visit => visit.id === selectedVisitId)
+    || visits.find(visit => visit.checkinStatus === 'checked_in')
+    || visits.find(visit => {
+      if (['checked_out', 'no_show', 'checkout_claim_filed'].includes(visit.checkinStatus)) return false;
+      const date = rawStatus!.bookingDate.split('T')[0];
+      const endDate = calendarDateForBookingTime(date, visit.endTime, rawStatus!.operatingWindowStartTime, visit.startTime);
+      return createBookingDateTime(endDate, visit.endTime, rawStatus!.timezone || DEFAULT_TIMEZONE) >= new Date();
+    }) || visits[visits.length - 1];
+  const status = rawStatus && currentVisit ? {
+    ...rawStatus, ...currentVisit, visitId: currentVisit.id,
+  } : rawStatus;
+
   // Helpers
   const canCheckin = (): boolean => {
-    const s = statusQuery.data;
+    const s = status;
     if (!s) return false;
     if (s.status !== "confirmed") return false;
     if (
@@ -205,8 +237,8 @@ export function useKitchenCheckin(bookingId: number | null) {
 
     const now = new Date();
     const dateOnly = s.bookingDate.split("T")[0]; // Extract YYYY-MM-DD from ISO timestamp
-    const bookingStart = createBookingDateTime(dateOnly, s.startTime, timezone);
-    const bookingEnd = createBookingDateTime(dateOnly, s.endTime, timezone);
+    const bookingStart = createBookingDateTime(calendarDateForBookingTime(dateOnly, s.startTime, s.operatingWindowStartTime), s.startTime, timezone);
+    const bookingEnd = createBookingDateTime(calendarDateForBookingTime(dateOnly, s.endTime, s.operatingWindowStartTime, s.startTime), s.endTime, timezone);
     const checkinOpens = new Date(
       bookingStart.getTime() - windowMinutesBefore * 60 * 1000,
     );
@@ -215,13 +247,13 @@ export function useKitchenCheckin(bookingId: number | null) {
   };
 
   const canCheckout = (): boolean => {
-    const s = statusQuery.data;
+    const s = status;
     if (!s) return false;
     return s.checkinStatus === "checked_in";
   };
 
   return {
-    status: statusQuery.data,
+    status,
     isLoading: statusQuery.isLoading,
     isError: statusQuery.isError,
     error: statusQuery.error,

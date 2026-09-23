@@ -204,11 +204,12 @@ export const KitchenPricingContent = forwardRef<
       throw new Error("no-kitchen");
     }
 
-    const hourlyRateNum = pricing.hourlyRate.trim() === '' ? null : parseFloat(pricing.hourlyRate);
-    const dailyRateNum = pricing.dailyRate.trim() === '' ? null : parseFloat(pricing.dailyRate);
-    const taxRateNum = pricing.taxRatePercent.trim() === '' ? null : parseFloat(pricing.taxRatePercent);
+    const parseAmount = (value: string) => value.trim() === '' ? null : /^\d+(?:\.\d{1,2})?$/.test(value.trim()) ? Number(value.trim()) : NaN;
+    const hourlyRateNum = parseAmount(pricing.hourlyRate);
+    const dailyRateNum = parseAmount(pricing.dailyRate);
+    const taxRateNum = parseAmount(pricing.taxRatePercent);
 
-    const invalid = (value: number | null) => value !== null && (isNaN(value) || value < 0);
+    const invalid = (value: number | null) => value !== null && (!Number.isFinite(value) || value < 0);
 
     if (invalid(hourlyRateNum)) {
       toast({
@@ -237,7 +238,7 @@ export const KitchenPricingContent = forwardRef<
       throw new Error("no-rate");
     }
 
-    if (invalid(taxRateNum)) {
+    if (invalid(taxRateNum) || (taxRateNum ?? 0) > 100) {
       toast({
         title: mt("validationError"),
         description: mt("taxRateMustBeAPositiveNumberOrEmpty"),

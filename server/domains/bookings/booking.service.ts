@@ -15,27 +15,39 @@ import {
     calculateTotalWithFees,
     calculateDurationHours
 } from "../../services/pricing-service";
-import { bookingStatusEnum, kitchenBookings, kitchens, users, locations, equipmentListings, storageListings, chefLocationAccess, chefKitchenApplications } from "@shared/schema";
+import { bookingStatusEnum, kitchenBookings, kitchenCheckoutHolds, kitchens, users, locations, equipmentListings, storageListings, chefLocationAccess, chefKitchenApplications } from "@shared/schema";
 import { logger } from "../../logger";
 import { db } from "../../db";
-import { eq, and, ne } from "drizzle-orm";
+import { eq, and, ne, gt } from "drizzle-orm";
 import { sendEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateBookingCancellationNotificationEmail } from "../../email";
 import { kitchenService } from "../kitchens/kitchen.service";
-import { getHourlySlotStarts, isRangeWithinOperatingWindow, isSlotCoveredByRange, minutesInOperatingWindow } from "@shared/operating-hours";
+import { addHour, calendarDateForOperatingTime, getHourlySlotStarts, intervalsOverlapOnOperatingDay, isRangeWithinOperatingWindow, normalizeBookingSlots, occupiedIntervals, operatingSlotsOverlapAcrossDates } from "@shared/operating-hours";
+import { getActiveKitchenHolds } from "../../services/kitchen-checkout-holds";
+import { isUnambiguousBookingSlot, matchingLocalInstants } from '@shared/booking-dst';
 
 type BookingInterval = { startTime: string; endTime: string };
 
 export function hasBookingConflict(
-    existingBookings: BookingInterval[],
+    existingBookings: Array<BookingInterval & { selectedSlots?: unknown }>,
     requestedIntervals: BookingInterval[],
-    fullDay = false
+    fullDay = false,
+    windowStartTime = "00:00",
 ): boolean {
     if (fullDay) return existingBookings.length > 0;
     return requestedIntervals.some((requested) =>
         existingBookings.some((existing) =>
-            existing.startTime < requested.endTime && existing.endTime > requested.startTime
+            occupiedIntervals(existing).some(interval => intervalsOverlapOnOperatingDay(interval, requested, windowStartTime))
         )
     );
+}
+
+function occupiesOperatingSlot(
+    existing: BookingInterval & { selectedSlots?: unknown }, existingDate: string, existingWindowStart: string,
+    requested: BookingInterval, requestedDate: string, requestedWindowStart: string,
+): boolean {
+    return occupiedIntervals(existing).some(slot => operatingSlotsOverlapAcrossDates(
+        existingDate, slot, existingWindowStart, requestedDate, requested, requestedWindowStart,
+    ));
 }
 
 export class BookingService {
@@ -51,16 +63,33 @@ export class BookingService {
     async createKitchenBooking(
         data: CreateKitchenBookingDTO
     ): Promise<KitchenBooking> {
-        // 1. Validate pricing
-        const pricing = await calculateKitchenBookingPrice(
-            data.kitchenId,
-            data.startTime,
-            data.endTime
-        );
-
         // 1.1 Validate Chef Access (Tier 2 Requirement)
         const kitchen = await kitchenService.getKitchenById(data.kitchenId);
         if (!kitchen) throw new Error("Kitchen not found");
+
+        const pricingMode = data.pricingMode ?? 'hourly';
+        if (pricingMode !== 'hourly' && pricingMode !== 'daily') throw new Error('Invalid pricing mode');
+        const availability = await this.validateBookingAvailability(data.kitchenId, data.bookingDate, data.startTime, data.endTime, {
+            selectedSlots: data.selectedSlots,
+            fullDay: pricingMode === 'daily',
+        });
+        if (!availability.valid || !availability.slots) throw new Error(availability.error || 'Booking unavailable');
+        const selectedSlots = availability.slots;
+        const hourlyRateCents = Number(kitchen.hourlyRate || 0);
+        const dailyRateCents = Number(kitchen.dailyRate || 0);
+        const minimumHours = Number(kitchen.minimumBookingHours || 0);
+        if (pricingMode === 'hourly' && selectedSlots.length < minimumHours) throw new Error(`At least ${minimumHours} hours are required`);
+        const appliedRateCents = pricingMode === 'daily' ? dailyRateCents : hourlyRateCents;
+        if (!Number.isSafeInteger(appliedRateCents) || appliedRateCents < 0 ||
+            (appliedRateCents === 0 && (hourlyRateCents > 0 || dailyRateCents > 0))) {
+            throw new Error(`This kitchen does not offer ${pricingMode} booking`);
+        }
+        const pricing = {
+            totalPriceCents: pricingMode === 'daily' ? dailyRateCents : hourlyRateCents * selectedSlots.length,
+            hourlyRateCents: appliedRateCents,
+            durationHours: selectedSlots.length,
+            currency: kitchen.currency || 'CAD',
+        };
 
         if (!data.chefId) {
             throw new Error("Chef ID is required for booking");
@@ -124,28 +153,6 @@ export class BookingService {
         // So we stick to re-calculation.
 
         // 4. Create Booking
-        // Generate selectedSlots from startTime/endTime if not provided
-        let selectedSlots = data.selectedSlots;
-        if (!selectedSlots || selectedSlots.length === 0) {
-            // Generate contiguous slots from startTime to endTime for backward compatibility
-            selectedSlots = [];
-            const [startHours, startMins] = data.startTime.split(':').map(Number);
-            const [endHours, endMins] = data.endTime.split(':').map(Number);
-            const startMinutes = startHours * 60 + startMins;
-            const endMinutes = endHours * 60 + endMins;
-            for (let mins = startMinutes; mins < endMinutes; mins += 60) {
-                const slotStartH = Math.floor(mins / 60);
-                const slotStartM = mins % 60;
-                const slotEndMins = mins + 60;
-                const slotEndH = Math.floor(slotEndMins / 60);
-                const slotEndM = slotEndMins % 60;
-                selectedSlots.push({
-                    startTime: `${slotStartH.toString().padStart(2, '0')}:${slotStartM.toString().padStart(2, '0')}`,
-                    endTime: `${slotEndH.toString().padStart(2, '0')}:${slotEndM.toString().padStart(2, '0')}`
-                });
-            }
-        }
-
         const booking = await this.repo.createKitchenBooking({
             ...data,
             totalPrice: '0', // Will be updated after calculating addons
@@ -156,6 +163,8 @@ export class BookingService {
             storageItems: [], 
             equipmentItems: [], 
             selectedSlots: selectedSlots,
+            operatingWindowStartTime: availability.windowStartTime,
+            pricingMode,
             paymentStatus: data.paymentStatus || 'pending'
         });
 
@@ -385,9 +394,15 @@ export class BookingService {
     // We should eventually move that here.
 
     async createPortalBooking(data: any) {
+        const operatingDate = new Date(data.bookingDate).toISOString().slice(0, 10);
+        const { withKitchenDayLock } = await import('../../services/kitchen-checkout-holds');
+        return withKitchenDayLock(data.kitchenId, operatingDate, async () => {
+        const availability = await this.validateBookingAvailability(data.kitchenId, new Date(data.bookingDate), data.startTime, data.endTime);
+        if (!availability.valid) throw new Error(availability.error || 'Booking unavailable');
         // Map portal/external structure to DB schema (flatten externalContact)
         const dbData = {
             ...data,
+            operatingWindowStartTime: availability.windowStartTime,
             // If externalContact object is passed, flatten it
             externalContactName: data.externalContact?.name,
             externalContactEmail: data.externalContact?.email,
@@ -404,6 +419,7 @@ export class BookingService {
 
         // Use repo method
         return this.repo.createKitchenBooking(dbData);
+        });
     }
 
     // Proxy methods for repository
@@ -457,7 +473,7 @@ export class BookingService {
             selectedSlots?: Array<{ startTime: string; endTime: string }>;
             fullDay?: boolean;
         } = {}
-    ): Promise<{ valid: boolean; error?: string }> {
+    ): Promise<{ valid: boolean; error?: string; slots?: BookingInterval[]; windowStartTime?: string }> {
         try {
             // First check if there's a date-specific override
             const dateOverride = await kitchenService.getKitchenDateOverrideForDate(kitchenId, bookingDate);
@@ -498,32 +514,47 @@ export class BookingService {
                 return { valid: false, error: "Booking time must be within manager-set available hours" };
             }
 
-            if (options.selectedSlots?.some((slot) =>
-                !isRangeWithinOperatingWindow(slot.startTime, slot.endTime, availabilityStartTime, availabilityEndTime)
-            )) {
-                return { valid: false, error: "Selected slots must be within manager-set available hours" };
+            let requestedIntervals: BookingInterval[];
+            try {
+                requestedIntervals = normalizeBookingSlots(
+                    options.selectedSlots ?? [], startTime, endTime,
+                    availabilityStartTime, availabilityEndTime, !!options.fullDay,
+                );
+            } catch (error) {
+                return { valid: false, error: error instanceof Error ? error.message : 'Invalid selected slots' };
             }
 
             const dateStr = bookingDate.toISOString().split('T')[0];
-            const dayBookings = (await this.getBookingsByKitchen(kitchenId)).filter((booking) =>
-                booking.status !== 'cancelled' &&
-                new Date(booking.bookingDate).toISOString().split('T')[0] === dateStr
-            );
+            const [location] = await db.select({ timezone: locations.timezone }).from(kitchens)
+                .innerJoin(locations, eq(kitchens.locationId, locations.id))
+                .where(eq(kitchens.id, kitchenId)).limit(1);
+            const timezone = location?.timezone || 'America/St_Johns';
+            if (requestedIntervals.some(slot => !isUnambiguousBookingSlot(dateStr, slot, availabilityStartTime, timezone))) {
+                return { valid: false, error: 'This hour is affected by a daylight saving clock change and is unavailable for self-service booking' };
+            }
+            const bookings = (await this.getBookingsByKitchen(kitchenId)).filter(booking => booking.status !== 'cancelled');
 
             // A full-day booking requires the entire day to be free. Hourly bookings only
             // conflict with the discrete slots submitted by the client.
-            if (options.fullDay && dayBookings.length > 0) {
+            if (options.fullDay && bookings.some(booking => new Date(booking.bookingDate).toISOString().slice(0, 10) === dateStr)) {
                 return { valid: false, error: "Full-day booking is unavailable because this date already has a booking" };
             }
 
-            const requestedIntervals = options.selectedSlots?.length
-                ? options.selectedSlots
-                : [{ startTime, endTime }];
-            if (hasBookingConflict(dayBookings, requestedIntervals, options.fullDay)) {
+            if (bookings.some(booking => requestedIntervals.some(slot => occupiesOperatingSlot(
+                booking, new Date(booking.bookingDate).toISOString().slice(0, 10),
+                booking.operatingWindowStartTime || booking.startTime, slot, dateStr, availabilityStartTime,
+            )))) {
                 return { valid: false, error: "One or more selected time slots are no longer available" };
             }
+            const holds = await getActiveKitchenHolds(kitchenId);
+            if (holds.some(hold => requestedIntervals.some(slot => occupiesOperatingSlot(
+                { startTime: '', endTime: '', selectedSlots: hold.selectedSlots },
+                hold.operatingDate, hold.windowStartTime, slot, dateStr, availabilityStartTime,
+            )))) {
+                return { valid: false, error: 'One or more selected time slots are temporarily reserved' };
+            }
 
-            return { valid: true };
+            return { valid: true, slots: requestedIntervals, windowStartTime: availabilityStartTime };
         } catch (error) {
             logger.error('Error validating booking availability:', error);
             return { valid: false, error: "Error validating booking availability" };
@@ -572,21 +603,33 @@ export class BookingService {
             const bookings = await this.getBookingsByKitchen(kitchenId);
             const dateStr = date.toISOString().split('T')[0];
 
-            const dayBookings = bookings.filter(b => {
-                const bookingDateStr = new Date(b.bookingDate).toISOString().split('T')[0];
-                return bookingDateStr === dateStr && b.status !== 'cancelled';
-            });
-
             const bookedSlots = new Set<string>();
-            dayBookings.forEach(booking => {
+            bookings.filter(booking => booking.status !== 'cancelled').forEach(booking => {
                 for (const slot of slots) {
-                    if (isSlotCoveredByRange(slot, booking.startTime, booking.endTime, availabilityStartTime)) {
+                    if (occupiesOperatingSlot(booking, new Date(booking.bookingDate).toISOString().slice(0, 10),
+                        booking.operatingWindowStartTime || booking.startTime,
+                        { startTime: slot, endTime: addHour(slot) }, dateStr, availabilityStartTime)) {
                         bookedSlots.add(slot);
                     }
                 }
             });
+            const holds = await getActiveKitchenHolds(kitchenId);
+            holds.forEach(hold => {
+                slots.forEach(slot => {
+                    if (occupiesOperatingSlot({ startTime: '', endTime: '', selectedSlots: hold.selectedSlots },
+                        hold.operatingDate, hold.windowStartTime,
+                        { startTime: slot, endTime: addHour(slot) }, dateStr, availabilityStartTime)) {
+                        bookedSlots.add(slot);
+                    }
+                });
+            });
 
-            return slots.filter(slot => !bookedSlots.has(slot));
+            const [location] = await db.select({ timezone: locations.timezone }).from(kitchens)
+                .innerJoin(locations, eq(kitchens.locationId, locations.id))
+                .where(eq(kitchens.id, kitchenId)).limit(1);
+            return slots.filter(slot => !bookedSlots.has(slot) && isUnambiguousBookingSlot(
+                dateStr, { startTime: slot, endTime: addHour(slot) }, availabilityStartTime,
+                location?.timezone || 'America/St_Johns'));
         } catch (error) {
             logger.error('Error getting available time slots:', error);
             throw error;
@@ -624,7 +667,7 @@ export class BookingService {
                 if (dateOverride.startTime && dateOverride.endTime) {
                     availabilityStartTime = dateOverride.startTime;
                     availabilityEndTime = dateOverride.endTime;
-                    capacity = (dateOverride as any).maxConcurrentBookings ?? 1;
+                    capacity = 1;
                 } else {
                     return [];
                 }
@@ -640,7 +683,7 @@ export class BookingService {
 
                 availabilityStartTime = dayAvailability.startTime;
                 availabilityEndTime = dayAvailability.endTime;
-                capacity = (dayAvailability as any).maxConcurrentBookings ?? 1;
+                capacity = 1;
             }
 
             const allSlots = getHourlySlotStarts(availabilityStartTime, availabilityEndTime);
@@ -648,29 +691,42 @@ export class BookingService {
             const bookings = await this.getBookingsByKitchen(kitchenId);
             const dateStr = date.toISOString().split('T')[0];
 
-            const dayBookings = bookings.filter(b => {
-                const bookingDateStr = new Date(b.bookingDate).toISOString().split('T')[0];
-                return bookingDateStr === dateStr && b.status !== 'cancelled';
-            });
-
             const slotBookingCounts = new Map<string, number>();
             allSlots.forEach(slot => slotBookingCounts.set(slot, 0));
 
-            dayBookings.forEach(booking => {
+            bookings.filter(booking => booking.status !== 'cancelled').forEach(booking => {
                 allSlots.forEach(slot => {
-                    if (isSlotCoveredByRange(slot, booking.startTime, booking.endTime, availabilityStartTime)) {
+                    if (occupiesOperatingSlot(booking, new Date(booking.bookingDate).toISOString().slice(0, 10),
+                        booking.operatingWindowStartTime || booking.startTime,
+                        { startTime: slot, endTime: addHour(slot) }, dateStr, availabilityStartTime)) {
+                        slotBookingCounts.set(slot, (slotBookingCounts.get(slot) || 0) + 1);
+                    }
+                });
+            });
+            const holds = await getActiveKitchenHolds(kitchenId);
+            holds.forEach(hold => {
+                allSlots.forEach(slot => {
+                    if (occupiesOperatingSlot({ startTime: '', endTime: '', selectedSlots: hold.selectedSlots },
+                        hold.operatingDate, hold.windowStartTime,
+                        { startTime: slot, endTime: addHour(slot) }, dateStr, availabilityStartTime)) {
                         slotBookingCounts.set(slot, (slotBookingCounts.get(slot) || 0) + 1);
                     }
                 });
             });
 
+            const [location] = await db.select({ timezone: locations.timezone }).from(kitchens)
+                .innerJoin(locations, eq(kitchens.locationId, locations.id))
+                .where(eq(kitchens.id, kitchenId)).limit(1);
             return allSlots.map(slot => {
                 const bookedCount = slotBookingCounts.get(slot) || 0;
+                const clockSafe = isUnambiguousBookingSlot(dateStr,
+                    { startTime: slot, endTime: addHour(slot) }, availabilityStartTime,
+                    location?.timezone || 'America/St_Johns');
                 return {
                     time: slot,
-                    available: Math.max(0, capacity - bookedCount),
+                    available: clockSafe ? Math.max(0, capacity - bookedCount) : 0,
                     capacity,
-                    isFullyBooked: bookedCount >= capacity
+                    isFullyBooked: !clockSafe || bookedCount >= capacity
                 };
             });
         } catch (error) {
@@ -824,19 +880,25 @@ export class BookingService {
         const monthStart = new Date(Date.UTC(year, month, 1, 0, 0, 0));
         const monthEnd = new Date(Date.UTC(year, month + 1, 0, 23, 59, 59, 999));
 
-        const [weeklyAvailability, overrides, bookings] = await Promise.all([
+        const [weeklyAvailability, overrides, bookings, holds] = await Promise.all([
             kitchenService.getKitchenAvailability(kitchenId),
             kitchenService.getKitchenDateOverrides(kitchenId, monthStart, monthEnd),
             this.getBookingsByKitchen(kitchenId),
+            db.select().from(kitchenCheckoutHolds).where(and(
+                eq(kitchenCheckoutHolds.kitchenId, kitchenId), gt(kitchenCheckoutHolds.expiresAt, new Date()),
+            )),
         ]);
+        const [location] = await db.select({ timezone: locations.timezone }).from(kitchens)
+            .innerJoin(locations, eq(kitchens.locationId, locations.id))
+            .where(eq(kitchens.id, kitchenId)).limit(1);
+        const timezone = location?.timezone || 'America/St_Johns';
 
-        const weeklyMap = new Map<number, { isAvailable: boolean; startTime: string; endTime: string; maxConcurrentBookings?: number }>();
+        const weeklyMap = new Map<number, { isAvailable: boolean; startTime: string; endTime: string }>();
         weeklyAvailability.forEach((a: any) => {
             weeklyMap.set(a.dayOfWeek, {
                 isAvailable: !!a.isAvailable,
                 startTime: a.startTime,
                 endTime: a.endTime,
-                maxConcurrentBookings: a.maxConcurrentBookings,
             });
         });
 
@@ -871,7 +933,7 @@ export class BookingService {
                 }
                 availabilityStartTime = override.startTime;
                 availabilityEndTime = override.endTime;
-                capacity = (override as any).maxConcurrentBookings ?? 1;
+                capacity = 1;
             } else {
                 const dayOfWeek = date.getUTCDay();
                 const dayAvail = weeklyMap.get(dayOfWeek);
@@ -881,22 +943,28 @@ export class BookingService {
                 }
                 availabilityStartTime = dayAvail.startTime;
                 availabilityEndTime = dayAvail.endTime;
-                capacity = dayAvail.maxConcurrentBookings ?? 1;
+                capacity = 1;
             }
 
             const allSlots = getHourlySlotStarts(availabilityStartTime, availabilityEndTime);
 
-            const dayBookings = bookings.filter((b) => {
-                const bookingDateStr = new Date(b.bookingDate).toISOString().split('T')[0];
-                return bookingDateStr === dateStr && b.status !== 'cancelled';
-            });
-
             const slotBookingCounts = new Map<string, number>();
             allSlots.forEach((slot) => slotBookingCounts.set(slot, 0));
 
-            dayBookings.forEach((booking) => {
+            bookings.filter(booking => booking.status !== 'cancelled').forEach((booking) => {
                 allSlots.forEach((slot) => {
-                    if (isSlotCoveredByRange(slot, booking.startTime, booking.endTime, availabilityStartTime)) {
+                    if (occupiesOperatingSlot(booking, new Date(booking.bookingDate).toISOString().slice(0, 10),
+                        booking.operatingWindowStartTime || booking.startTime,
+                        { startTime: slot, endTime: addHour(slot) }, dateStr, availabilityStartTime)) {
+                        slotBookingCounts.set(slot, (slotBookingCounts.get(slot) || 0) + 1);
+                    }
+                });
+            });
+            holds.forEach(hold => {
+                allSlots.forEach(slot => {
+                    if (occupiesOperatingSlot({ startTime: '', endTime: '', selectedSlots: hold.selectedSlots },
+                        hold.operatingDate, hold.windowStartTime,
+                        { startTime: slot, endTime: addHour(slot) }, dateStr, availabilityStartTime)) {
                         slotBookingCounts.set(slot, (slotBookingCounts.get(slot) || 0) + 1);
                     }
                 });
@@ -904,9 +972,10 @@ export class BookingService {
 
             result[dateStr] = allSlots.some((slot) => {
                 if ((slotBookingCounts.get(slot) || 0) >= capacity) return false;
-                const slotMinutes = minutesInOperatingWindow(slot, availabilityStartTime);
-                const slotTime = new Date(year, month, day, 0, slotMinutes, 0, 0);
-                return slotTime > now;
+                const interval = { startTime: slot, endTime: addHour(slot) };
+                if (!isUnambiguousBookingSlot(dateStr, interval, availabilityStartTime, timezone)) return false;
+                const calendarDate = calendarDateForOperatingTime(dateStr, slot, availabilityStartTime);
+                return matchingLocalInstants(calendarDate, slot, timezone)[0] > now.getTime();
             });
         }
 

@@ -62,9 +62,9 @@ const UnsubscribePage = lazy(() => import("@/pages/UnsubscribePage"));
 const ManagerChangePassword = lazy(() => import("@/pages/ManagerChangePassword"));
 const KitchenAvailabilityManagement = lazy(() => import("@/pages/KitchenAvailabilityManagement"));
 const ManagerBookingsPanel = lazy(() => import("@/pages/ManagerBookingsPanel"));
-const KitchenBookingCalendar = lazy(() => import("@/pages/KitchenBookingCalendar"));
+const LegacyKitchenBookingRedirect = lazy(() => import("@/pages/LegacyKitchenBookingRedirect"));
+const KitchenCheckoutCancelPage = lazy(() => import("@/pages/KitchenCheckoutCancelPage"));
 const KitchenBookingPage = lazy(() => import("@/pages/KitchenBookingPage"));
-const BookingConfirmationPage = lazy(() => import("@/pages/BookingConfirmationPage"));
 const PaymentSuccessPage = lazy(() => import("@/pages/PaymentSuccessPage"));
 const BookingDetailsPage = lazy(() => import("@/pages/BookingDetailsPage"));
 const ApplyToKitchen = lazy(() => import("@/pages/ApplyToKitchen"));
@@ -276,8 +276,9 @@ function Router() {
 
         {/* Kitchen Booking Routes */}
         <ProtectedRoute path="/book/:locationId" component={KitchenBookingPage} />
-        <SubdomainRoute path="/book-kitchen" component={KitchenBookingCalendar} subdomain={subdomain} />
-        <SubdomainRoute path="/book-kitchen/confirm" component={BookingConfirmationPage} subdomain={subdomain} />
+        <ProtectedRoute path="/kitchen-checkout-cancel" component={KitchenCheckoutCancelPage} />
+        <SubdomainRoute path="/book-kitchen" component={LegacyKitchenBookingRedirect} subdomain={subdomain} />
+        <SubdomainRoute path="/book-kitchen/confirm" component={LegacyKitchenBookingRedirect} subdomain={subdomain} />
         <SubdomainRoute path="/payment-success" component={PaymentSuccessPage} subdomain={subdomain} />
         <SubdomainRoute path="/booking/:id" component={BookingDetailsPage} subdomain={subdomain} />
 

@@ -30,17 +30,21 @@ import { getR2ProxyUrl } from "@/utils/r2-url-helper"
 import { SmartImage } from "@/components/ui/smart-image";
 import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
+import { calendarDateForBookingTime } from '@shared/operating-hours';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface TodayBooking {
   id: number
+  visitId?: number
+  visitBlockIndex?: number
   referenceCode?: string | null
   chefId: number
   kitchenId: number
   bookingDate: string
   startTime: string
   endTime: string
+  operatingWindowStartTime?: string | null
   status: string
   checkinStatus: string | null
   checkedInAt: string | null
@@ -287,9 +291,9 @@ export function TodaysKitchenBookings() {
     const pB = statusPriority[b.status] || 99;
     if (pA !== pB) return pA - pB;
 
-    const dateA = new Date(`${a.bookingDate.split('T')[0]}T${a.startTime}`);
-    const dateB = new Date(`${b.bookingDate.split('T')[0]}T${b.startTime}`);
-    return dateA.getTime() - dateB.getTime();
+    const startA = calendarDateForBookingTime(a.bookingDate.split('T')[0], a.startTime, a.operatingWindowStartTime);
+    const startB = calendarDateForBookingTime(b.bookingDate.split('T')[0], b.startTime, b.operatingWindowStartTime);
+    return `${startA}T${a.startTime}`.localeCompare(`${startB}T${b.startTime}`);
   });
 
   // Fetch manager's viewings
@@ -339,9 +343,11 @@ export function TodaysKitchenBookings() {
   const clearCheckoutMutation = useMutation({
     mutationFn: async ({
       bookingId,
+      visitId,
       managerNotes,
     }: {
       bookingId: number
+      visitId?: number
       managerNotes?: string
     }) => {
       const headers = await getAuthHeaders()
@@ -351,7 +357,7 @@ export function TodaysKitchenBookings() {
           method: "POST",
           headers,
           credentials: "include",
-          body: JSON.stringify({ managerNotes }),
+          body: JSON.stringify({ managerNotes, visitId }),
         }
       )
       if (!response.ok) {
@@ -376,9 +382,11 @@ export function TodaysKitchenBookings() {
   const fileClaimMutation = useMutation({
     mutationFn: async ({
       bookingId,
+      visitId,
       claimData,
     }: {
       bookingId: number
+      visitId?: number
       claimData: {
         claimTitle: string
         claimDescription: string
@@ -393,7 +401,7 @@ export function TodaysKitchenBookings() {
           method: "POST",
           headers,
           credentials: "include",
-          body: JSON.stringify(claimData),
+          body: JSON.stringify({ ...claimData, visitId }),
         }
       )
       if (!response.ok) {
@@ -525,7 +533,7 @@ export function TodaysKitchenBookings() {
                 <TableBody>
                   {bookings.map((booking) => (
                     <TableRow
-                      key={booking.id}
+                      key={`${booking.id}-${booking.visitId ?? 'single'}`}
                       className={cn(
                         booking.checkinStatus === "no_show" && "bg-red-50/50",
                         booking.checkinStatus === "checkout_requested" &&
@@ -537,6 +545,9 @@ export function TodaysKitchenBookings() {
                         <div className="text-muted-foreground mb-1">
                           {formatTime(booking.startTime)} – {formatTime(booking.endTime)}
                         </div>
+                        {booking.visitId && (
+                          <div className="text-xs text-muted-foreground">Visit {(booking.visitBlockIndex ?? 0) + 1}</div>
+                        )}
                         <div className="whitespace-nowrap">
                           {booking.status === 'pending' ? (
                             <Badge variant="outline" className="text-muted-foreground">{mt("awaitingApproval")}</Badge>
@@ -717,6 +728,7 @@ export function TodaysKitchenBookings() {
                   {selectedBooking.kitchenName} ·{" "}
                   {formatTime(selectedBooking.startTime)} –{" "}
                   {formatTime(selectedBooking.endTime)}
+                  {selectedBooking.visitId && ` · Visit ${(selectedBooking.visitBlockIndex ?? 0) + 1}`}
                   {selectedBooking.referenceCode &&
                     ` · ${selectedBooking.referenceCode}`}
                 </SheetDescription>
@@ -1133,6 +1145,7 @@ export function TodaysKitchenBookings() {
                       onClick={() =>
                         clearCheckoutMutation.mutate({
                           bookingId: selectedBooking.id,
+                          visitId: selectedBooking.visitId,
                           managerNotes: notes || undefined,
                         })
                       }
@@ -1167,6 +1180,7 @@ export function TodaysKitchenBookings() {
                         try {
                           const result = await fileClaimMutation.mutateAsync({
                             bookingId: selectedBooking.id,
+                            visitId: selectedBooking.visitId,
                             claimData: {
                               claimTitle,
                               claimDescription,

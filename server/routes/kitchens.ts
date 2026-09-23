@@ -620,6 +620,7 @@ router.get("/public/kitchens/:kitchenId/booking-estimate", async (req: Request, 
                     ? parseFloat(kitchen.hourlyRate)
                     : Number(kitchen.hourlyRate)
                 : null;
+        const dailyRate = kitchen.dailyRate == null ? null : Number(kitchen.dailyRate);
         const taxRatePercent =
             kitchen.taxRatePercent !== null && kitchen.taxRatePercent !== undefined
                 ? Number(kitchen.taxRatePercent)
@@ -627,6 +628,7 @@ router.get("/public/kitchens/:kitchenId/booking-estimate", async (req: Request, 
 
         res.json({
             hourlyRate: Number.isFinite(hourlyRate) ? hourlyRate : null,
+            dailyRate: dailyRate !== null && Number.isFinite(dailyRate) ? dailyRate : null,
             currency: kitchen.currency || "CAD",
             minimumBookingHours: kitchen.minimumBookingHours ?? 1,
             taxRatePercent: Number.isFinite(taxRatePercent) ? taxRatePercent : 0,

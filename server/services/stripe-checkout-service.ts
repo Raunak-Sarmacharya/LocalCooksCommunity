@@ -74,6 +74,8 @@ export interface CreatePendingCheckoutSessionParams {
     hourlyRateCents: number;
     durationHours: number;
     pricingMode?: 'hourly' | 'daily';
+    holdId?: string;
+    windowStartTime?: string;
     platform_fee_cents?: number;
     stripe_fee_cents?: number;
   };
@@ -270,6 +272,8 @@ export async function createPendingCheckoutSession(
       hourly_rate_cents: bookingData.hourlyRateCents.toString(),
       duration_hours: bookingData.durationHours.toString(),
       ...(bookingData.pricingMode ? { pricing_mode: bookingData.pricingMode } : {}),
+      ...(bookingData.holdId ? { hold_id: bookingData.holdId } : {}),
+      ...(bookingData.windowStartTime ? { window_start_time: bookingData.windowStartTime } : {}),
       booking_price_cents: bookingPriceInCents.toString(),
       platform_fee_cents: (bookingData as any).platform_fee_cents 
         ? (bookingData as any).platform_fee_cents.toString() 
@@ -297,6 +301,8 @@ export async function createPendingCheckoutSession(
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
+      // Stripe requires at least 30 minutes from its own clock; allow for transit and clock skew.
+      expires_at: Math.floor(Date.now() / 1000) + 32 * 60,
       customer_email: customerEmail,
       // ENTERPRISE STANDARD: Always create a Stripe Customer for off-session charging
       // This enables future charges for overstay penalties, damage deposits, etc.
@@ -336,6 +342,24 @@ export async function createPendingCheckoutSession(
   } catch (error: any) {
     logger.error('Error creating Stripe Checkout session:', error);
     throw new Error(`Failed to create checkout session: ${error.message}`);
+  }
+}
+
+/** Only free inventory after Stripe can no longer complete this checkout. */
+export async function expireAbandonedCheckoutSession(sessionId: string): Promise<boolean> {
+  if (!stripe) throw new Error('Stripe is not configured');
+  const session = await stripe.checkout.sessions.retrieve(sessionId);
+  if (session.status === 'expired') return true;
+  if (session.status !== 'open') return false;
+  try {
+    await stripe.checkout.sessions.expire(sessionId);
+    return true;
+  } catch (error) {
+    // Checkout may have completed while the expiration request was in flight.
+    const current = await stripe.checkout.sessions.retrieve(sessionId);
+    if (current.status === 'expired') return true;
+    if (current.status === 'complete') return false;
+    throw error;
   }
 }
 

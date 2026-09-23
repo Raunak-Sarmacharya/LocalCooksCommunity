@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { CheckCircle2, XCircle, Loader2, Package, Boxes, Calendar, Clock, MapPin, DollarSign, AlertTriangle, Info, Pencil, Settings2, Ban, RotateCcw, ShieldAlert } from "@/components/ui/manager-icons";
 import { cn } from "@/lib/utils";
 import { TruncatedText } from "@/components/common/TruncatedText";
+import { kitchenBookingBlocks } from "@/lib/kitchen-booking-blocks";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -41,6 +42,8 @@ export interface BookingForManagement {
   bookingDate: string;
   startTime: string;
   endTime: string;
+  selectedSlots?: Array<string | { startTime: string; endTime: string }> | null;
+  operatingWindowStartTime?: string | null;
   totalPrice?: number; // kitchen-only in cents
   status: string;
   paymentStatus?: string;
@@ -496,7 +499,8 @@ function BookingManagementContent({
               </span>
               <span className="flex items-center gap-1">
                 <Clock className="h-3 w-3" />
-                {formatTime(booking.startTime)} – {formatTime(booking.endTime)}
+                {kitchenBookingBlocks(booking).map(block =>
+                  `${formatTime(block.startTime)} – ${formatTime(block.endTime)}`).join(', ')}
               </span>
             </div>
           </div>
@@ -573,7 +577,8 @@ function BookingManagementContent({
               <div>
                 <p className="text-sm font-medium">{mt("kitchenBooking")}</p>
                 <p className="text-xs text-muted-foreground">
-                  {formatTime(booking.startTime)} – {formatTime(booking.endTime)}
+                  {kitchenBookingBlocks(booking).map(block =>
+                    `${formatTime(block.startTime)} – ${formatTime(block.endTime)}`).join(', ')}
                 </p>
               </div>
             </div>

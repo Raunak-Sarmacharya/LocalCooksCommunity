@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { RevenueMetricCards } from "@/components/manager/revenue/components/RevenueMetricCards";
 import type { RevenueMetrics } from "@/components/manager/revenue/types";
 import { tt } from "@/i18n/common-ns";
+import { kitchenBookingBlocks } from "@/lib/kitchen-booking-blocks";
 
 // Storage/Equipment item types
 interface StorageItem {
@@ -43,6 +44,8 @@ interface Booking {
     bookingDate: string;
     startTime: string;
     endTime: string;
+    selectedSlots?: Array<string | { startTime: string; endTime: string }> | null;
+    operatingWindowStartTime?: string | null;
     kitchenName?: string;
     locationName?: string;
     chefName?: string;
@@ -496,7 +499,8 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                                                     </Badge>
                                                     <span className="text-sm font-medium flex items-center gap-1">
                                                         <Clock className="h-3 w-3" />
-                                                        {formatTime(booking.startTime)} - {formatTime(booking.endTime)}
+                                                        {kitchenBookingBlocks(booking).map(block =>
+                                                            `${formatTime(block.startTime)} - ${formatTime(block.endTime)}`).join(', ')}
                                                     </span>
                                                 </div>
                                                 {booking.kitchenName && (

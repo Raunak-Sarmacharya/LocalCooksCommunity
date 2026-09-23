@@ -28,6 +28,7 @@ import { TruncatedText } from "@/components/common/TruncatedText";
 import { tt } from "@/i18n/common-ns";
 import { Icon } from "@iconify/react";
 import { useLocation } from "wouter";
+import { kitchenBookingBlocks } from "@/lib/kitchen-booking-blocks";
 
 interface OverviewTabContentProps {
   user: {
@@ -767,7 +768,8 @@ function UpcomingBookings({
             };
             const timeLabel =
               booking.startTime && booking.endTime
-                ? `${formatTime(booking.startTime)} – ${formatTime(booking.endTime)}`
+                ? kitchenBookingBlocks(booking).map(block =>
+                    `${formatTime(block.startTime)} – ${formatTime(block.endTime)}`).join(', ')
                 : "";
 
             return (

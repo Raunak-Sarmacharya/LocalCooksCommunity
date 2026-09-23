@@ -11,7 +11,7 @@
  * 4. Outcome — cleared or claim filed
  */
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { Camera, CheckCircle, Clock, Loader2, ShieldCheck, AlertTriangle, FileWarning, LogIn, LogOut, Calendar, XCircle, Lock, Info } from "lucide-react"
 import { InfoChip } from "@/components/chef/info-chip"
@@ -125,6 +125,7 @@ export function KitchenCheckinTracker({
     return val !== key ? val : (defaultText || key);
   };
 
+  const [selectedVisitId, setSelectedVisitId] = useState<number | null>(null)
   const {
     status: data,
     isLoading,
@@ -134,7 +135,7 @@ export function KitchenCheckinTracker({
     isCheckingIn,
     checkout,
     isCheckingOut,
-  } = useKitchenCheckin(open ? bookingId : null)
+  } = useKitchenCheckin(open ? bookingId : null, selectedVisitId)
 
   // Fetch manager-defined checklist for this location
   const { data: checklist } = useLocationChecklist(data?.locationId)
@@ -147,6 +148,17 @@ export function KitchenCheckinTracker({
   const [checkinPhotos, setCheckinPhotos] = useState<Record<string, string[]>>({})
   const [checkoutPhotos, setCheckoutPhotos] = useState<Record<string, string[]>>({})
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    setSelectedVisitId(null)
+    setCheckinNotes("")
+    setCheckoutNotes("")
+    setCheckinPhotos({})
+    setCheckoutPhotos({})
+    setCheckedItems(new Set())
+    setShowCheckinForm(false)
+    setShowCheckoutForm(false)
+  }, [bookingId])
 
   const checkinStatus: KitchenCheckinStatus =
     (data?.checkinStatus as KitchenCheckinStatus) || "not_checked_in"
@@ -237,9 +249,10 @@ export function KitchenCheckinTracker({
     }
   }
 
-  const timeLabel =
-    bookingDate && startTime && endTime
-      ? `${bookingDate} · ${startTime} – ${endTime}`
+  const timeLabel = bookingDate && data?.visits && data.visits.length > 1
+    ? `${bookingDate} · ${data.visits.map(visit => `${visit.startTime}–${visit.endTime}`).join(', ')}`
+    : bookingDate && (data?.startTime || startTime) && (data?.endTime || endTime)
+      ? `${bookingDate} · ${data?.startTime || startTime} – ${data?.endTime || endTime}`
       : undefined
 
   return (
@@ -254,6 +267,29 @@ export function KitchenCheckinTracker({
             {kitchenName || t("kitchenDefault", "Kitchen")} {timeLabel && `— ${timeLabel}`}
           </SheetDescription>
         </SheetHeader>
+
+        {data?.visits && data.visits.length > 1 && (
+          <div className="mt-5 space-y-2" aria-label="Booking visits">
+            {data.visits.map(visit => (
+              <Button key={visit.id} type="button" size="sm"
+                variant={data.visitId === visit.id ? 'default' : 'outline'}
+                className="w-full justify-between"
+                onClick={() => {
+                  setSelectedVisitId(visit.id)
+                  setShowCheckinForm(false)
+                  setShowCheckoutForm(false)
+                  setCheckinNotes("")
+                  setCheckoutNotes("")
+                  setCheckinPhotos({})
+                  setCheckoutPhotos({})
+                  setCheckedItems(new Set())
+                }}>
+                <span>Visit {visit.blockIndex + 1}: {visit.startTime}–{visit.endTime}</span>
+                <span>{visit.checkinStatus.replaceAll('_', ' ')}</span>
+              </Button>
+            ))}
+          </div>
+        )}
 
         {((checklist?.checkinItems || []).some((item: ChecklistItem) => item.required) ||
           (checklist?.checkoutItems || []).some((item: ChecklistItem) => item.required) ||

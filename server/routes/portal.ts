@@ -13,6 +13,7 @@ import { requirePortalUser, getAuthenticatedUser } from "./middleware";
 import { bookingService } from "../domains/bookings/booking.service";
 import { kitchenService } from "../domains/kitchens/kitchen.service";
 import { locationService } from "../domains/locations/location.service";
+import { calendarDateForOperatingTime } from "@shared/operating-hours";
 const router = Router();
 
 // ===============================
@@ -397,11 +398,6 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
 
         // Validate booking date/time
         const bookingDateObj = new Date(bookingDate);
-        const now = new Date();
-
-        if (bookingDateObj < now) {
-            return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
-        }
 
         // Check availability
         const availabilityCheck = await bookingService.validateBookingAvailability(
@@ -418,9 +414,7 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
         // Enforce minimum booking hours for this kitchen (0 = no restriction)
         const minimumBookingHours = (kitchen as any).minimumBookingHours ?? (kitchen as any).minimum_booking_hours ?? 0;
         if (minimumBookingHours > 0) {
-            const [sH, sM] = startTime.split(':').map(Number);
-            const [eH, eM] = endTime.split(':').map(Number);
-            const durationHours = (eH * 60 + eM - sH * 60 - sM) / 60;
+            const durationHours = availabilityCheck.slots?.length ?? 0;
             if (durationHours < minimumBookingHours) {
                 return res.status(400).json({
                     error: `This kitchen requires a minimum of ${minimumBookingHours} hour${minimumBookingHours > 1 ? 's' : ''} per booking. Your booking is ${durationHours} hour${durationHours !== 1 ? 's' : ''}.`
@@ -434,18 +428,19 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
         const locationTimezone = (location as any)?.timezone || 'America/St_Johns';
 
         // Timezone-aware booking window enforcement (works for today AND future dates)
-        if (minimumBookingWindowHours > 0) {
+        {
             const bookingDateStr = typeof bookingDate === 'string'
                 ? bookingDate.split('T')[0]
                 : bookingDateObj.toISOString().split('T')[0];
 
             const { isBookingTimePast, getHoursUntilBooking } = await import('../date-utils');
 
-            if (isBookingTimePast(bookingDateStr, startTime, locationTimezone)) {
+            const startCalendarDate = calendarDateForOperatingTime(bookingDateStr, startTime, availabilityCheck.windowStartTime!);
+            if (isBookingTimePast(startCalendarDate, startTime, locationTimezone)) {
                 return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
             }
 
-            const hoursUntilBooking = getHoursUntilBooking(bookingDateStr, startTime, locationTimezone);
+            const hoursUntilBooking = getHoursUntilBooking(startCalendarDate, startTime, locationTimezone);
             if (hoursUntilBooking < minimumBookingWindowHours) {
                 return res.status(400).json({
                     error: `Bookings must be made at least ${minimumBookingWindowHours} hour${minimumBookingWindowHours !== 1 ? 's' : ''} in advance`
@@ -494,6 +489,7 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
                     timezone,
                     locationName,
                     bookingId: booking.id,
+                    operatingWindowStartTime: availabilityCheck.windowStartTime,
                 });
                 await sendEmail(managerEmail);
                 logger.info(`✅ Portal booking notification email sent to manager: ${notificationEmail}`);
@@ -511,6 +507,7 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
                     specialNotes: specialNotes || undefined,
                     timezone,
                     locationName,
+                    operatingWindowStartTime: availabilityCheck.windowStartTime,
                 });
                 await sendEmail(portalUserEmail);
                 logger.info(`✅ Portal booking confirmation email sent to user: ${bookingEmail}`);

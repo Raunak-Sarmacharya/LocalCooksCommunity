@@ -515,6 +515,19 @@ export const kitchenDateOverrides = pgTable("kitchen_date_overrides", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Short-lived inventory reservations while a chef completes Stripe Checkout.
+export const kitchenCheckoutHolds = pgTable("kitchen_checkout_holds", {
+  id: text("id").primaryKey(),
+  kitchenId: integer("kitchen_id").references(() => kitchens.id, { onDelete: "cascade" }).notNull(),
+  chefId: integer("chef_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  operatingDate: text("operating_date").notNull(),
+  windowStartTime: text("window_start_time").notNull(),
+  selectedSlots: jsonb("selected_slots").notNull(),
+  stripeSessionId: text("stripe_session_id").unique(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // Define kitchen bookings table
 export const kitchenBookings = pgTable("kitchen_bookings", {
   id: serial("id").primaryKey(),
@@ -524,6 +537,8 @@ export const kitchenBookings = pgTable("kitchen_bookings", {
   bookingDate: timestamp("booking_date").notNull(),
   startTime: text("start_time").notNull(), // HH:MM format - earliest slot start
   endTime: text("end_time").notNull(), // HH:MM format - latest slot end
+  operatingWindowStartTime: text("operating_window_start_time"), // Snapshot for resolving overnight times after schedules change
+  pricingMode: text("pricing_mode"), // 'hourly' or 'daily' snapshot; null on legacy rows
   selectedSlots: jsonb("selected_slots").default([]), // Array of discrete 1-hour time slots, e.g., [{startTime: "09:00", endTime: "10:00"}, {startTime: "14:00", endTime: "15:00"}]
   status: bookingStatusEnum("status").default("pending").notNull(),
   specialNotes: text("special_notes"),
@@ -578,6 +593,34 @@ export const kitchenBookings = pgTable("kitchen_bookings", {
   // Checklist audit trail (items chef confirmed during check-in/out)
   checkinChecklistItems: jsonb("checkin_checklist_items"), // Array of {id, label, checked: true}
   checkoutChecklistItems: jsonb("checkout_checklist_items"), // Array of {id, label, checked: true}
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Separate visits for a booking with nonconsecutive hourly blocks. One kitchen
+// booking/payment can have several independent check-in and checkout lifecycles.
+export const kitchenBookingVisits = pgTable("kitchen_booking_visits", {
+  id: serial("id").primaryKey(),
+  bookingId: integer("booking_id").references(() => kitchenBookings.id, { onDelete: "cascade" }).notNull(),
+  blockIndex: integer("block_index").notNull(),
+  startTime: text("start_time").notNull(),
+  endTime: text("end_time").notNull(),
+  checkinStatus: kitchenCheckinStatusEnum("checkin_status").default("not_checked_in").notNull(),
+  checkedInAt: timestamp("checked_in_at"),
+  checkedInMethod: text("checked_in_method"),
+  checkinPhotoUrls: jsonb("checkin_photo_urls").default([]),
+  checkinNotes: text("checkin_notes"),
+  checkinChecklistItems: jsonb("checkin_checklist_items"),
+  checkoutRequestedAt: timestamp("checkout_requested_at"),
+  checkedOutAt: timestamp("checked_out_at"),
+  checkoutPhotoUrls: jsonb("checkout_photo_urls").default([]),
+  checkoutNotes: text("checkout_notes"),
+  checkoutChecklistItems: jsonb("checkout_checklist_items"),
+  checkoutApprovedAt: timestamp("checkout_approved_at"),
+  checkoutApprovedBy: integer("checkout_approved_by").references(() => users.id, { onDelete: "set null" }),
+  noShowDetectedAt: timestamp("no_show_detected_at"),
+  actualStartTime: text("actual_start_time"),
+  actualEndTime: text("actual_end_time"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -1953,6 +1996,7 @@ export const damageClaims = pgTable("damage_claims", {
   // Booking reference (polymorphic for kitchen or storage bookings)
   bookingType: text("booking_type").notNull(), // 'kitchen' or 'storage'
   kitchenBookingId: integer("kitchen_booking_id").references(() => kitchenBookings.id, { onDelete: "set null" }),
+  kitchenBookingVisitId: integer("kitchen_booking_visit_id").references(() => kitchenBookingVisits.id, { onDelete: "set null" }),
   storageBookingId: integer("storage_booking_id").references(() => storageBookings.id, { onDelete: "set null" }),
   
   // Parties involved

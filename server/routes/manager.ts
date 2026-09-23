@@ -17,6 +17,8 @@ import { buildKitchenReadiness } from "../services/kitchen-listing-readiness-ser
 import { resolveCapturedKitchenRate } from "@shared/kitchen-booking-rate";
 import { resolveKitchenTransactionTaxAndSubtotal } from "../services/revenue-transaction-tax";
 import { parseCentsField, parseCentsFieldOrZero } from "@shared/money-cents";
+import { calendarDateForBookingTime, isValidOperatingWindow } from '@shared/operating-hours';
+import { activeBookingIdsOnOperatingDate, bookingsAffectedByWeeklyChange, hasOverlappingOperatingDays } from '@shared/operating-schedule';
 
 import {
   requireFirebaseAuthWithUser,
@@ -30,6 +32,8 @@ import {
   chefKitchenApplications,
   chefLocationProfiles,
   kitchens,
+  kitchenDateOverrides,
+  kitchenAvailability,
   checkinCheckoutChecklists,
 } from "@shared/schema";
 
@@ -229,6 +233,7 @@ router.get(
           totalPrice: kitchenBookings.totalPrice,
           hourlyRate: kitchenBookings.hourlyRate,
           durationHours: kitchenBookings.durationHours,
+          pricingMode: kitchenBookings.pricingMode,
           serviceFee: kitchenBookings.serviceFee,
           paymentStatus: kitchenBookings.paymentStatus,
           paymentIntentId: kitchenBookings.paymentIntentId,
@@ -2772,13 +2777,15 @@ router.post(
           .json({ error: "Access denied to this location" });
       }
 
-      if (hourlyRate !== undefined && (typeof hourlyRate !== "number" || hourlyRate <= 0)) {
-        return res.status(400).json({ error: "Hourly rate must be a positive number" });
+      if (hourlyRate !== undefined && (!Number.isSafeInteger(hourlyRate) || hourlyRate < 0)) {
+        return res.status(400).json({ error: "Hourly rate must be nonnegative integer cents" });
       }
       // Optional, and the client sends `undefined` rather than 0 when it is left blank.
-      if (dailyRate !== undefined && (typeof dailyRate !== "number" || dailyRate <= 0)) {
-        return res.status(400).json({ error: "Daily rate must be a positive number" });
+      if (dailyRate !== undefined && (!Number.isSafeInteger(dailyRate) || dailyRate < 0)) {
+        return res.status(400).json({ error: "Daily rate must be nonnegative integer cents" });
       }
+      // Draft kitchens can be created before their pricing is configured.
+      if (currency !== undefined && currency !== 'CAD') return res.status(400).json({ error: 'Kitchen checkout currently supports CAD only' });
       if (
         minimumBookingHours !== undefined &&
         (typeof minimumBookingHours !== "number" ||
@@ -2802,7 +2809,7 @@ router.post(
         dailyRate,
         currency: currency || "CAD",
         minimumBookingHours: minimumBookingHours ?? 1,
-        pricingModel: "hourly",
+        pricingModel: dailyRate > 0 && !(hourlyRate > 0) ? "daily" : "hourly",
       });
 
       res.status(201).json(created);
@@ -3651,7 +3658,7 @@ router.put(
       if (
         hourlyRate !== undefined &&
         hourlyRate !== null &&
-        (typeof hourlyRate !== "number" || hourlyRate < 0)
+        (!Number.isSafeInteger(hourlyRate) || hourlyRate < 0)
       ) {
         return res
           .status(400)
@@ -3661,7 +3668,7 @@ router.put(
       if (
         dailyRate !== undefined &&
         dailyRate !== null &&
-        (typeof dailyRate !== "number" || dailyRate < 0)
+        (!Number.isSafeInteger(dailyRate) || dailyRate < 0)
       ) {
         return res
           .status(400)
@@ -3680,8 +3687,8 @@ router.put(
         });
       }
 
-      if (currency !== undefined && typeof currency !== "string") {
-        return res.status(400).json({ error: "Currency must be a string" });
+      if (currency !== undefined && currency !== 'CAD') {
+        return res.status(400).json({ error: "Kitchen checkout currently supports CAD only" });
       }
 
       if (
@@ -3709,19 +3716,20 @@ router.put(
 
       if (
         pricingModel !== undefined &&
-        !["hourly", "daily", "weekly"].includes(pricingModel)
+        !["hourly", "daily"].includes(pricingModel)
       ) {
         return res
           .status(400)
           .json({
-            error: "Pricing model must be 'hourly', 'daily', or 'weekly'",
+            error: "Pricing model must be 'hourly' or 'daily'",
           });
       }
+      if (taxRatePercent !== undefined && taxRatePercent !== null &&
+          (typeof taxRatePercent !== 'number' || !Number.isFinite(taxRatePercent) || taxRatePercent < 0 || taxRatePercent > 100)) {
+        return res.status(400).json({ error: 'Tax rate must be between 0 and 100 percent' });
+      }
 
-      // Update pricing (hourlyRate is expected in dollars, will be converted to cents in storage method)
-      // NOTE: Actually, older clients might send dollars or cents.
-      // But KitchenPricingManagement sends CENTS. ManagerOnboardingWizard sends DOLLARS (will fix).
-      // Let's expect CENTS here to be consistent with KitchenPricingManagement.
+      // Rates are integer cents throughout the API and checkout.
       const pricing: any = {};
       if (hourlyRate !== undefined) {
         pricing.hourlyRate = hourlyRate === null ? null : hourlyRate;
@@ -3734,9 +3742,7 @@ router.put(
         pricing.minimumBookingHours = minimumBookingHours;
       if (pricingModel !== undefined) pricing.pricingModel = pricingModel;
       if (taxRatePercent !== undefined) {
-        pricing.taxRatePercent = taxRatePercent
-          ? parseFloat(taxRatePercent)
-          : null;
+        pricing.taxRatePercent = taxRatePercent;
       }
 
       const updated = await kitchenService.updateKitchen({
@@ -4252,11 +4258,15 @@ router.get(
     try {
       const managerId = req.neonUser!.id;
       const now = new Date();
-      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const localDateParts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+        timeZone: DEFAULT_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit',
+      }).formatToParts(now).map(part => [part.type, part.value]));
+      const todayKey = `${localDateParts.year}-${localDateParts.month}-${localDateParts.day}`;
+      const todayStart = new Date(Date.parse(`${todayKey}T00:00:00Z`) - 86_400_000);
 
       const { gte: gteOp, inArray } = await import("drizzle-orm");
 
-      const todaysBookings = await db
+      const candidateBookings = await db
         .select({
           id: kitchenBookings.id,
           referenceCode: kitchenBookings.referenceCode,
@@ -4267,12 +4277,14 @@ router.get(
           endTime: kitchenBookings.endTime,
           status: kitchenBookings.status,
           checkinStatus: kitchenBookings.checkinStatus,
+          hasPendingVisitReview: sql<boolean>`EXISTS (SELECT 1 FROM kitchen_booking_visits v WHERE v.booking_id = ${kitchenBookings.id} AND v.checkin_status = 'checkout_requested')`,
           checkedInAt: kitchenBookings.checkedInAt,
           checkedInMethod: kitchenBookings.checkedInMethod,
           checkoutRequestedAt: kitchenBookings.checkoutRequestedAt,
           checkedOutAt: kitchenBookings.checkedOutAt,
           noShowDetectedAt: kitchenBookings.noShowDetectedAt,
           actualStartTime: kitchenBookings.actualStartTime,
+          operatingWindowStartTime: kitchenBookings.operatingWindowStartTime,
           actualEndTime: kitchenBookings.actualEndTime,
           // Photos + notes for manager verification
           checkinPhotoUrls: kitchenBookings.checkinPhotoUrls,
@@ -4300,23 +4312,41 @@ router.get(
           and(
             eq(locations.managerId, managerId),
             inArray(kitchenBookings.status, ['confirmed', 'pending']),
-            gteOp(kitchenBookings.bookingDate, todayStart),
+            or(
+              gteOp(kitchenBookings.bookingDate, todayStart),
+              sql`EXISTS (SELECT 1 FROM kitchen_booking_visits v WHERE v.booking_id = ${kitchenBookings.id} AND v.checkin_status = 'checkout_requested')`,
+              eq(kitchenBookings.checkinStatus, 'checkout_requested'),
+            ),
           )
         )
         .orderBy(kitchenBookings.bookingDate, kitchenBookings.startTime);
+
+      const todaysBookings = candidateBookings.filter(booking => {
+        if (booking.checkinStatus === 'checkout_requested' || booking.hasPendingVisitReview) return true;
+        const operatingDate = booking.bookingDate.toISOString().slice(0, 10);
+        if (operatingDate >= todayKey) return true;
+        const endDate = calendarDateForBookingTime(operatingDate, booking.endTime,
+          booking.operatingWindowStartTime, booking.startTime);
+        if (createBookingDateTime(endDate, booking.endTime, booking.timezone || DEFAULT_TIMEZONE) > now) return true;
+        return false;
+      });
 
       // Lazy evaluation: detect no-shows inline (location-aware settings).
       // Resolve bookingStart in the LOCATION's timezone so "00:00" means midnight
       // at the kitchen, not midnight on the server — otherwise the no-show
       // cutoff can be off by the location's UTC offset.
       const { getCheckinSettings } = await import("../services/kitchen-checkout-service");
+      const { ensureKitchenBookingVisits } = await import('../services/kitchen-booking-visits');
 
       for (const booking of todaysBookings) {
+        if ((await ensureKitchenBookingVisits(booking.id)).length) continue;
         if (booking.checkinStatus === 'not_checked_in') {
           const bookingSettings = await getCheckinSettings(booking.locationId);
           const dateStr = booking.bookingDate.toISOString().split('T')[0];
           const bookingTimezone = booking.timezone || DEFAULT_TIMEZONE;
-          const bookingStart = createBookingDateTime(dateStr, booking.startTime, bookingTimezone);
+          const bookingStart = createBookingDateTime(
+            calendarDateForBookingTime(dateStr, booking.startTime, booking.operatingWindowStartTime),
+            booking.startTime, bookingTimezone);
           const noShowCutoff = new Date(bookingStart.getTime() + bookingSettings.noShowGraceMinutes * 60 * 1000);
 
           if (now > noShowCutoff) {
@@ -4344,9 +4374,38 @@ router.get(
         }
       }
 
+      const visitRows = (await Promise.all(todaysBookings.map(async booking => {
+        const visits = await ensureKitchenBookingVisits(booking.id);
+        if (!visits.length) return [booking];
+        const { detectKitchenVisitNoShows } = await import('../services/kitchen-visit-lifecycle');
+        await detectKitchenVisitNoShows(booking.id);
+        const refreshedVisits = await ensureKitchenBookingVisits(booking.id);
+        return refreshedVisits.map(visit => ({
+          ...booking,
+          visitId: visit.id,
+          visitBlockIndex: visit.blockIndex,
+          startTime: visit.startTime,
+          endTime: visit.endTime,
+          checkinStatus: visit.checkinStatus,
+          checkedInAt: visit.checkedInAt,
+          checkedInMethod: visit.checkedInMethod,
+          checkoutRequestedAt: visit.checkoutRequestedAt,
+          checkedOutAt: visit.checkedOutAt,
+          noShowDetectedAt: visit.noShowDetectedAt,
+          actualStartTime: visit.actualStartTime,
+          actualEndTime: visit.actualEndTime,
+          checkinPhotoUrls: visit.checkinPhotoUrls,
+          checkoutPhotoUrls: visit.checkoutPhotoUrls,
+          checkinNotes: visit.checkinNotes,
+          checkoutNotes: visit.checkoutNotes,
+          checkinChecklistItems: visit.checkinChecklistItems,
+          checkoutChecklistItems: visit.checkoutChecklistItems,
+        }));
+      }))).flat();
+
       // Fetch chef names
       const bookingsWithNames = await Promise.all(
-        todaysBookings.map(async (booking) => ({
+        visitRows.map(async (booking) => ({
           ...booking,
           chefName: booking.chefId ? await getUserDisplayName(booking.chefId, 'chef') : 'A chef'
         }))
@@ -4453,7 +4512,6 @@ router.get(
           const [chefApp] = await db
             .select({
               fullName: chefKitchenApplications.fullName,
-              phone: chefKitchenApplications.phone,
             })
             .from(chefKitchenApplications)
             .where(
@@ -4468,7 +4526,7 @@ router.get(
             id: chefUser.id,
             username: chefUser.username,
             fullName: chefApp?.fullName || chefUser.username,
-            phone: chefApp?.phone || null,
+            phone: chefUser.phoneVerifiedAt ? chefUser.phoneNumber : null,
           };
         }
       }
@@ -4628,6 +4686,7 @@ router.get(
         durationHours,
         bookingSubtotalCents: Number(booking.totalPrice || 0),
         addonSubtotalCents: addonSubtotal,
+        pricingMode: booking.pricingMode === 'daily' ? 'daily' : booking.pricingMode === 'hourly' ? 'hourly' : undefined,
       });
       const kitchenOnlyPrice = capturedKitchenRate.kitchenSubtotalCents;
       const capturedSubtotal = Math.max(0,
@@ -4712,6 +4771,7 @@ router.get(
 
       res.json({
         ...booking,
+        visits: await (await import('../services/kitchen-booking-visits')).ensureKitchenBookingVisits(id),
         totalPrice: reconciledKitchenOnlyPrice,
         pricingMode: capturedKitchenRate.mode,
         serviceFee: reconciledServiceFee,
@@ -5040,6 +5100,7 @@ router.put(
             durationHours: bookingDurationHours,
             bookingSubtotalCents: Math.round(parseFloat(String((booking as any).totalPrice || "0"))),
             addonSubtotalCents: originalAddonSubtotalCents,
+            pricingMode: booking.pricingMode === 'daily' ? 'daily' : booking.pricingMode === 'hourly' ? 'hourly' : undefined,
           });
           const kitchenOnlyPriceCents = capturedKitchenRate.kitchenSubtotalCents;
 
@@ -5768,6 +5829,8 @@ router.put(
         if (chef) {
           if (status === "confirmed") {
             // Send confirmation email to chef
+            const { getCheckinSettings } = await import('../services/kitchen-checkout-service');
+            const checkinSettings = await getCheckinSettings(location.id);
             const chefConfirmationEmail = generateBookingConfirmationEmail({
               chefEmail: chef.username,
               chefName: chef.username,
@@ -5779,8 +5842,11 @@ router.put(
               locationName,
               locationAddress,
               addons,
-              checkInWindowMinutesBefore: (location as any).checkinWindowMinutesBefore ?? undefined,
-              noShowGraceMinutes: (location as any).noShowGraceMinutes ?? undefined,
+              checkInWindowMinutesBefore: checkinSettings.checkinWindowMinutesBefore,
+              noShowGraceMinutes: checkinSettings.noShowGraceMinutes,
+              operatingWindowStartTime: booking.operatingWindowStartTime,
+              durationHours: Number(booking.durationHours || 0),
+              selectedSlots: booking.selectedSlots,
             });
             const emailSent = await sendEmail(chefConfirmationEmail, { trackingId: `booking_${id}_confirmed_chef` });
             if (emailSent) {
@@ -5847,6 +5913,9 @@ router.put(
                   timezone,
                   locationName,
                   addons,
+                  operatingWindowStartTime: booking.operatingWindowStartTime,
+                  durationHours: Number(booking.durationHours || 0),
+                  selectedSlots: booking.selectedSlots,
                 });
                 const managerEmailSent = await sendEmail(managerConfirmEmail, { trackingId: `booking_${id}_confirmed_manager` });
                 if (managerEmailSent) {
@@ -6032,6 +6101,29 @@ router.put(
 );
 
 // Date Overrides
+function parseOperatingDate(value: unknown): Date | null {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day, 12));
+  return date.toISOString().slice(0, 10) === value ? date : null;
+}
+
+async function managerOwnsKitchen(kitchenId: number, managerId: number): Promise<boolean> {
+  if (!Number.isSafeInteger(kitchenId) || kitchenId <= 0) return false;
+  const [owner] = await db.select({ managerId: locations.managerId })
+    .from(kitchens).innerJoin(locations, eq(kitchens.locationId, locations.id))
+    .where(eq(kitchens.id, kitchenId)).limit(1);
+  return owner?.managerId === managerId;
+}
+
+class OperatingScheduleOverlapError extends Error {
+  constructor() { super('Neighboring operating days cannot offer the same after-midnight hours'); }
+}
+
+class ScheduleAffectsBookingsError extends Error {
+  constructor(readonly bookingIds: number[]) { super('Review existing bookings before changing this schedule'); }
+}
+
 router.get(
   "/kitchens/:kitchenId/date-overrides",
   requireFirebaseAuthWithUser,
@@ -6039,6 +6131,7 @@ router.get(
   async (req: Request, res: Response) => {
     try {
       const kitchenId = parseInt(req.params.kitchenId);
+      if (!await managerOwnsKitchen(kitchenId, req.neonUser!.id)) return res.status(403).json({ error: 'Access denied' });
       const { startDate, endDate } = req.query;
       const start = startDate ? new Date(startDate as string) : new Date();
       const end = endDate
@@ -6063,27 +6156,46 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const kitchenId = parseInt(req.params.kitchenId);
-      const { specificDate, startTime, endTime, isAvailable, reason } =
+      const { specificDate, startTime, endTime, isAvailable, reason, acknowledgedBookingIds } =
         req.body;
+      if (!await managerOwnsKitchen(kitchenId, req.neonUser!.id)) return res.status(403).json({ error: 'Access denied' });
+      const parsedDate = parseOperatingDate(specificDate);
+      if (!parsedDate || typeof isAvailable !== 'boolean' ||
+          (isAvailable && !isValidOperatingWindow(startTime, endTime))) {
+        return res.status(400).json({ error: 'Valid date and whole-hour operating window are required' });
+      }
 
-      // parsing date logic ...
-      const parseDateString = (dateStr: string): Date => {
-        const [year, month, day] = dateStr.split("-").map(Number);
-        return new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
-      };
-      const parsedDate = parseDateString(specificDate);
-
-      const override = await kitchenService.createKitchenDateOverride({
-        kitchenId,
-        specificDate: parsedDate,
-        startTime,
-        endTime,
-        isAvailable: isAvailable !== undefined ? isAvailable : false,
-        reason,
+      const override = await db.transaction(async tx => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(${kitchenId}, 0)`);
+        const [weekly, overrides] = await Promise.all([
+          tx.select().from(kitchenAvailability).where(eq(kitchenAvailability.kitchenId, kitchenId)),
+          tx.select().from(kitchenDateOverrides).where(eq(kitchenDateOverrides.kitchenId, kitchenId)),
+        ]);
+        const proposed = { specificDate: parsedDate, isAvailable, startTime: startTime || '00:00', endTime: endTime || '00:00' };
+        if (hasOverlappingOperatingDays(weekly, [...overrides.map(row => ({ ...row,
+          startTime: row.startTime || '00:00', endTime: row.endTime || '00:00',
+        })), proposed])) throw new OperatingScheduleOverlapError();
+        if (!isAvailable) {
+          const bookings = await tx.select({ id: kitchenBookings.id, bookingDate: kitchenBookings.bookingDate,
+            status: kitchenBookings.status }).from(kitchenBookings).where(eq(kitchenBookings.kitchenId, kitchenId));
+          const affectedIds = activeBookingIdsOnOperatingDate(bookings, specificDate);
+          const acknowledged = Array.isArray(acknowledgedBookingIds) && acknowledgedBookingIds.every(Number.isSafeInteger)
+            ? [...acknowledgedBookingIds].sort((a: number, b: number) => a - b) : [];
+          if (affectedIds.length && JSON.stringify(affectedIds) !== JSON.stringify(acknowledged)) {
+            throw new ScheduleAffectsBookingsError(affectedIds);
+          }
+        }
+        const [created] = await tx.insert(kitchenDateOverrides).values({ kitchenId, specificDate: parsedDate,
+          isAvailable, startTime, endTime, reason }).returning();
+        return created;
       });
       // ... send emails ...
       res.json(override);
     } catch (e: any) {
+      if (e instanceof OperatingScheduleOverlapError) return res.status(400).json({ error: e.message });
+      if (e instanceof ScheduleAffectsBookingsError) return res.status(409).json({
+        code: 'BOOKINGS_AFFECTED', error: e.message, bookingIds: e.bookingIds,
+      });
       res.status(500).json({ error: e.message });
     }
   },
@@ -6096,18 +6208,50 @@ router.put(
   async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
-      const { startTime, endTime, isAvailable, reason } = req.body;
+      const { startTime, endTime, isAvailable, reason, acknowledgedBookingIds } = req.body;
+      const [existing] = await db.select().from(kitchenDateOverrides).where(eq(kitchenDateOverrides.id, id)).limit(1);
+      if (!existing) return res.status(404).json({ error: 'Override not found' });
+      if (!await managerOwnsKitchen(existing.kitchenId, req.neonUser!.id)) return res.status(403).json({ error: 'Access denied' });
+      const nextAvailable = isAvailable ?? existing.isAvailable;
+      if (isAvailable !== undefined && typeof isAvailable !== 'boolean') return res.status(400).json({ error: 'Invalid availability flag' });
+      if (nextAvailable && !isValidOperatingWindow(startTime ?? existing.startTime, endTime ?? existing.endTime)) {
+        return res.status(400).json({ error: 'Open days require a valid whole-hour operating window' });
+      }
 
-      await kitchenService.updateKitchenDateOverride(id, {
-        id,
-        startTime,
-        endTime,
-        isAvailable,
-        reason,
+      await db.transaction(async tx => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(${existing.kitchenId}, 0)`);
+        const [weekly, overrides] = await Promise.all([
+          tx.select().from(kitchenAvailability).where(eq(kitchenAvailability.kitchenId, existing.kitchenId)),
+          tx.select().from(kitchenDateOverrides).where(eq(kitchenDateOverrides.kitchenId, existing.kitchenId)),
+        ]);
+        const proposed = overrides.map(row => row.id === id ? {
+          ...row, isAvailable: nextAvailable,
+          startTime: startTime ?? row.startTime, endTime: endTime ?? row.endTime,
+        } : row);
+        if (hasOverlappingOperatingDays(weekly, proposed.map(row => ({ ...row,
+          startTime: row.startTime || '00:00', endTime: row.endTime || '00:00',
+        })))) throw new OperatingScheduleOverlapError();
+        if (!nextAvailable) {
+          const bookings = await tx.select({ id: kitchenBookings.id, bookingDate: kitchenBookings.bookingDate,
+            status: kitchenBookings.status }).from(kitchenBookings).where(eq(kitchenBookings.kitchenId, existing.kitchenId));
+          const dateKey = existing.specificDate.toISOString().slice(0, 10);
+          const affectedIds = activeBookingIdsOnOperatingDate(bookings, dateKey);
+          const acknowledged = Array.isArray(acknowledgedBookingIds) && acknowledgedBookingIds.every(Number.isSafeInteger)
+            ? [...acknowledgedBookingIds].sort((a: number, b: number) => a - b) : [];
+          if (affectedIds.length && JSON.stringify(affectedIds) !== JSON.stringify(acknowledged)) {
+            throw new ScheduleAffectsBookingsError(affectedIds);
+          }
+        }
+        await tx.update(kitchenDateOverrides).set({ startTime, endTime, isAvailable, reason, updatedAt: new Date() })
+          .where(eq(kitchenDateOverrides.id, id));
       });
       // ... send emails ...
       res.json({ success: true }); // or return updated
     } catch (e: any) {
+      if (e instanceof OperatingScheduleOverlapError) return res.status(400).json({ error: e.message });
+      if (e instanceof ScheduleAffectsBookingsError) return res.status(409).json({
+        code: 'BOOKINGS_AFFECTED', error: e.message, bookingIds: e.bookingIds,
+      });
       res.status(500).json({ error: e.message });
     }
   },
@@ -6120,9 +6264,23 @@ router.delete(
   async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
-      await kitchenService.deleteKitchenDateOverride(id);
+      const [existing] = await db.select().from(kitchenDateOverrides).where(eq(kitchenDateOverrides.id, id)).limit(1);
+      if (!existing) return res.status(404).json({ error: 'Override not found' });
+      if (!await managerOwnsKitchen(existing.kitchenId, req.neonUser!.id)) return res.status(403).json({ error: 'Access denied' });
+      await db.transaction(async tx => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(${existing.kitchenId}, 0)`);
+        const [weekly, overrides] = await Promise.all([
+          tx.select().from(kitchenAvailability).where(eq(kitchenAvailability.kitchenId, existing.kitchenId)),
+          tx.select().from(kitchenDateOverrides).where(eq(kitchenDateOverrides.kitchenId, existing.kitchenId)),
+        ]);
+        if (hasOverlappingOperatingDays(weekly, overrides.filter(row => row.id !== id).map(row => ({ ...row,
+          startTime: row.startTime || '00:00', endTime: row.endTime || '00:00',
+        })))) throw new OperatingScheduleOverlapError();
+        await tx.delete(kitchenDateOverrides).where(eq(kitchenDateOverrides.id, id));
+      });
       res.json({ success: true });
     } catch (e: any) {
+      if (e instanceof OperatingScheduleOverlapError) return res.status(400).json({ error: e.message });
       res.status(500).json({ error: e.message });
     }
   },
@@ -7414,7 +7572,60 @@ router.get(
   },
 );
 
-// Create or update weekly availability for a kitchen (upsert by day)
+// Save all seven operating days together so a failed day cannot leave a partial schedule.
+router.put('/availability/weekly', requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+  try {
+    const { kitchenId, days, acknowledgedBookingIds } = req.body;
+    if (!Number.isSafeInteger(kitchenId) || kitchenId <= 0 || !Array.isArray(days) || days.length !== 7 ||
+        new Set(days.map((day: any) => day.dayOfWeek)).size !== 7 ||
+        days.some((day: any) => !Number.isInteger(day.dayOfWeek) || day.dayOfWeek < 0 || day.dayOfWeek > 6 ||
+          typeof day.isAvailable !== 'boolean' || (day.isAvailable && !isValidOperatingWindow(day.startTime, day.endTime)))) {
+      return res.status(400).json({ error: 'Provide seven valid operating days' });
+    }
+    if (!await managerOwnsKitchen(kitchenId, req.neonUser!.id)) return res.status(403).json({ error: 'Access denied' });
+    const saved = await db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${kitchenId}, 0)`);
+      const overrides = await tx.select().from(kitchenDateOverrides).where(eq(kitchenDateOverrides.kitchenId, kitchenId));
+      if (hasOverlappingOperatingDays(days, overrides.map(row => ({ ...row,
+        startTime: row.startTime || '00:00', endTime: row.endTime || '00:00',
+      })))) throw new OperatingScheduleOverlapError();
+      const weekly = await tx.select().from(kitchenAvailability).where(eq(kitchenAvailability.kitchenId, kitchenId));
+        const todayParts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'America/St_Johns', year: 'numeric', month: '2-digit', day: '2-digit',
+        }).formatToParts(new Date()).map(part => [part.type, part.value]));
+        const todayKey = `${todayParts.year}-${todayParts.month}-${todayParts.day}`;
+        const existingBookings = await tx.select({ id: kitchenBookings.id, bookingDate: kitchenBookings.bookingDate,
+          status: kitchenBookings.status }).from(kitchenBookings).where(eq(kitchenBookings.kitchenId, kitchenId));
+        const affectedIds = bookingsAffectedByWeeklyChange(weekly, days, overrides, existingBookings, todayKey);
+        const acknowledged = Array.isArray(acknowledgedBookingIds) && acknowledgedBookingIds.every(Number.isSafeInteger)
+          ? [...acknowledgedBookingIds].sort((a: number, b: number) => a - b) : [];
+        if (affectedIds.length && JSON.stringify(affectedIds) !== JSON.stringify(acknowledged)) {
+          throw new ScheduleAffectsBookingsError(affectedIds);
+        }
+      const result = [];
+      for (const day of days) {
+        const [existing] = await tx.select().from(kitchenAvailability).where(and(
+          eq(kitchenAvailability.kitchenId, kitchenId), eq(kitchenAvailability.dayOfWeek, day.dayOfWeek),
+        )).limit(1);
+        const values = { startTime: day.startTime || '00:00', endTime: day.endTime || '00:00', isAvailable: day.isAvailable };
+        const [row] = existing
+          ? await tx.update(kitchenAvailability).set(values).where(eq(kitchenAvailability.id, existing.id)).returning()
+          : await tx.insert(kitchenAvailability).values({ kitchenId, dayOfWeek: day.dayOfWeek, ...values }).returning();
+        result.push(row);
+      }
+      return result;
+    });
+    return res.json(saved);
+  } catch (error) {
+    if (error instanceof OperatingScheduleOverlapError) return res.status(400).json({ error: error.message });
+    if (error instanceof ScheduleAffectsBookingsError) return res.status(409).json({
+      code: 'BOOKINGS_AFFECTED', error: error.message, bookingIds: error.bookingIds,
+    });
+    return errorResponse(res, error);
+  }
+});
+
+// Create or update weekly availability for a kitchen (legacy single-day API)
 router.post(
   "/availability",
   requireFirebaseAuthWithUser,
@@ -7426,14 +7637,18 @@ router.post(
         req.body;
 
       if (
-        !kitchenId ||
-        dayOfWeek === undefined ||
+        !Number.isSafeInteger(kitchenId) || kitchenId <= 0 ||
+        !Number.isInteger(dayOfWeek) ||
         dayOfWeek < 0 ||
         dayOfWeek > 6
       ) {
         return res
           .status(400)
           .json({ error: "kitchenId and valid dayOfWeek (0-6) are required" });
+      }
+      if (typeof isAvailable !== 'boolean' ||
+          (isAvailable && !isValidOperatingWindow(startTime, endTime))) {
+        return res.status(400).json({ error: 'Open days require valid whole-hour operating windows' });
       }
 
       // Verify manager has access to this kitchen
@@ -7452,49 +7667,27 @@ router.post(
         return res.status(403).json({ error: "Access denied to this kitchen" });
       }
 
-      // Upsert availability using Drizzle
-      const { kitchenAvailability } = await import("@shared/schema");
-
-      // Check if entry exists
-      const [existing] = await db
-        .select()
-        .from(kitchenAvailability)
-        .where(
-          and(
-            eq(kitchenAvailability.kitchenId, kitchenId),
-            eq(kitchenAvailability.dayOfWeek, dayOfWeek),
-          ),
-        )
-        .limit(1);
-
-      let result;
-      if (existing) {
-        // Update existing
-        [result] = await db
-          .update(kitchenAvailability)
-          .set({
-            startTime: startTime || "00:00",
-            endTime: endTime || "00:00",
-            isAvailable: isAvailable ?? false,
-          })
-          .where(eq(kitchenAvailability.id, existing.id))
-          .returning();
-      } else {
-        // Insert new
-        [result] = await db
-          .insert(kitchenAvailability)
-          .values({
-            kitchenId,
-            dayOfWeek,
-            startTime: startTime || "00:00",
-            endTime: endTime || "00:00",
-            isAvailable: isAvailable ?? false,
-          })
-          .returning();
-      }
+      const result = await db.transaction(async tx => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(${kitchenId}, 0)`);
+        const [weekly, overrides] = await Promise.all([
+          tx.select().from(kitchenAvailability).where(eq(kitchenAvailability.kitchenId, kitchenId)),
+          tx.select().from(kitchenDateOverrides).where(eq(kitchenDateOverrides.kitchenId, kitchenId)),
+        ]);
+        const nextDay = { dayOfWeek, startTime: startTime || '00:00', endTime: endTime || '00:00', isAvailable };
+        const nextWeekly = [...weekly.filter(row => row.dayOfWeek !== dayOfWeek), nextDay];
+        if (hasOverlappingOperatingDays(nextWeekly, overrides.map(row => ({ ...row,
+          startTime: row.startTime || '00:00', endTime: row.endTime || '00:00',
+        })))) throw new OperatingScheduleOverlapError();
+        const existing = weekly.find(row => row.dayOfWeek === dayOfWeek);
+        const [saved] = existing
+          ? await tx.update(kitchenAvailability).set(nextDay).where(eq(kitchenAvailability.id, existing.id)).returning()
+          : await tx.insert(kitchenAvailability).values({ kitchenId, ...nextDay }).returning();
+        return saved;
+      });
 
       res.json(result);
     } catch (error) {
+      if (error instanceof OperatingScheduleOverlapError) return res.status(400).json({ error: error.message });
       return errorResponse(res, error);
     }
   },
@@ -8958,6 +9151,16 @@ router.post(
       }
 
       const { notes } = req.body || {};
+      const { ensureKitchenBookingVisits } = await import('../services/kitchen-booking-visits');
+      const visits = await ensureKitchenBookingVisits(bookingId);
+      if (visits.length) {
+        const visitId = req.body?.visitId;
+        if (!Number.isSafeInteger(visitId) || !visits.some(visit => visit.id === visitId))
+          return res.status(400).json({ error: 'Choose a visit block to confirm' });
+        const { managerConfirmVisitCheckin } = await import('../services/kitchen-visit-lifecycle');
+        const result = await managerConfirmVisitCheckin(bookingId, visitId, req.neonUser!.id, notes);
+        return result.success ? res.json(result) : res.status(400).json({ error: result.error });
+      }
       const { managerConfirmCheckin } = await import("../services/kitchen-checkout-service");
 
       const result = await managerConfirmCheckin(bookingId, req.neonUser!.id, notes);
@@ -8991,6 +9194,16 @@ router.post(
       }
 
       const { managerNotes } = req.body || {};
+      const { ensureKitchenBookingVisits } = await import('../services/kitchen-booking-visits');
+      const visits = await ensureKitchenBookingVisits(bookingId);
+      if (visits.length) {
+        const visitId = req.body?.visitId;
+        if (!Number.isSafeInteger(visitId) || !visits.some(visit => visit.id === visitId))
+          return res.status(400).json({ error: 'Choose a visit block to clear' });
+        const { clearKitchenVisit } = await import('../services/kitchen-visit-lifecycle');
+        const result = await clearKitchenVisit(bookingId, visitId, req.neonUser!.id, managerNotes);
+        return result.success ? res.json(result) : res.status(400).json({ error: result.error });
+      }
       const { processKitchenCheckoutClear } = await import("../services/kitchen-checkout-service");
 
       const result = await processKitchenCheckoutClear(bookingId, req.neonUser!.id, managerNotes);
@@ -9032,6 +9245,19 @@ router.post(
         return res.status(400).json({
           error: "Missing required fields: claimTitle, claimDescription, claimedAmountCents",
         });
+      }
+
+      const { ensureKitchenBookingVisits } = await import('../services/kitchen-booking-visits');
+      const visits = await ensureKitchenBookingVisits(bookingId);
+      if (visits.length) {
+        const visitId = req.body?.visitId;
+        if (!Number.isSafeInteger(visitId) || !visits.some(visit => visit.id === visitId))
+          return res.status(400).json({ error: 'Choose a visit block for this claim' });
+        const { claimKitchenVisit } = await import('../services/kitchen-visit-lifecycle');
+        const result = await claimKitchenVisit(bookingId, visitId, req.neonUser!.id, {
+          claimTitle, claimDescription, claimedAmountCents, damageDate, managerNotes,
+        });
+        return result.success ? res.json(result) : res.status(400).json({ error: result.error });
       }
 
       const { processKitchenCheckoutClaim } = await import("../services/kitchen-checkout-service");

@@ -16,7 +16,7 @@ import { InfoChip } from "@/components/chef/info-chip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, type ReactNode } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, Fragment, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -153,6 +153,10 @@ function ExpandableDescription({
 type BookingAccessChip = {
   title: string;
   description: string;
+  /** InfoChip tone — defaults to success (e.g. Ready to book). */
+  tone?: "success" | "warning" | "progress" | "danger" | "neutral";
+  /** Optional mdi icon override for non-default states. */
+  icon?: string;
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -418,15 +422,40 @@ function getKitchenImages(kitchen: PublicKitchen): string[] {
   return images;
 }
 
-function formatKitchenRate(kitchen: PublicKitchen): string | null {
-  const rates = [];
+function formatKitchenRateAmount(cents: number, currency: string): string {
+  const wholeDollars = cents % 100 === 0;
+  return new Intl.NumberFormat("en-CA", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: wholeDollars ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(cents / 100);
+}
+
+/** Individual rate labels for sticky card (joined with a large bullet so it isn’t read as a decimal). */
+function getKitchenRateParts(kitchen: PublicKitchen): string[] {
+  const rates: string[] = [];
+  const currency = kitchen.currency || "CAD";
   if (kitchen.hourlyRate != null && kitchen.hourlyRate > 0) {
-    rates.push(`${formatCurrency(kitchen.hourlyRate, kitchen.currency || "CAD")} ${String(i18n.t("perHour", { ns: "kitchen", defaultValue: "per hour" }))}`);
+    rates.push(
+      `${formatKitchenRateAmount(kitchen.hourlyRate, currency)}${String(
+        i18n.t("perHour", { ns: "kitchen", defaultValue: "/hr" })
+      )}`
+    );
   }
   if (kitchen.dailyRate != null && kitchen.dailyRate > 0) {
-    rates.push(`${formatCurrency(kitchen.dailyRate, kitchen.currency || "CAD")}${String(i18n.t("perDaySuffix", { ns: "kitchen", defaultValue: "/day" }))}`);
+    rates.push(
+      `${formatKitchenRateAmount(kitchen.dailyRate, currency)}${String(
+        i18n.t("perDaySuffix", { ns: "kitchen", defaultValue: "/day" })
+      )}`
+    );
   }
-  return rates.length ? rates.join(" · ") : null;
+  return rates;
+}
+
+function formatKitchenRate(kitchen: PublicKitchen): string | null {
+  const rates = getKitchenRateParts(kitchen);
+  return rates.length ? rates.join(" • ") : null;
 }
 
 /** Rate + at least one operating day — otherwise date booking UX is Coming Soon. */
@@ -1901,7 +1930,7 @@ function GuestHoursCard({
   kitchenId,
   locationId,
   kitchenName,
-  kitchenRate,
+  kitchenRateParts,
   pricePreview,
   application,
   applicationLoading = false,
@@ -1928,7 +1957,8 @@ function GuestHoursCard({
   kitchenId?: string;
   locationId?: string;
   kitchenName?: string;
-  kitchenRate?: string | null;
+  /** Rate labels shown above the date picker, e.g. ["$10/hr", "$80/day"]. */
+  kitchenRateParts?: string[];
   /**
    * No kitchen at this location is listed at all — a genuinely different state from "this kitchen has
    * no rate yet". The card used to explain the former with the latter's reason ("still needs an hourly
@@ -1965,7 +1995,7 @@ function GuestHoursCard({
   calendarOpen?: boolean;
   onCalendarOpenChange?: (open: boolean) => void;
   onDatesOkChange?: (ok: boolean) => void;
-  /** Ready-to-book chip beside the rate (approved chefs only). */
+  /** Access status chip below the primary CTA (approved chefs / other states). */
   bookingAccessChip?: BookingAccessChip | null;
 }) {
   const { t } = useTranslation("kitchen");
@@ -1976,7 +2006,7 @@ function GuestHoursCard({
   const storageKey = kitchenId ? `kitchen_dates_${kitchenId}` : 'kitchen_dates_generic';
   const tourStorageKey = kitchenId ? `viewing_booking_${kitchenId}` : null;
 
-  const hasRate = !!kitchenRate;
+  const hasRate = !!(kitchenRateParts && kitchenRateParts.length > 0);
   const hasSchedule = !!(
     availability?.some((day) => {
       const available = day.isAvailable ?? (day as { is_available?: boolean }).is_available;
@@ -2360,44 +2390,75 @@ function GuestHoursCard({
     </Button>
   ) : null;
 
-  const rateRow =
-    kitchenRate || bookingAccessChip ? (
-      <div className="mb-2 flex items-center gap-2">
-        {kitchenRate ? (
-          <p className="min-w-0 text-lg font-bold text-gray-900">{kitchenRate}</p>
-        ) : null}
-        {bookingAccessChip ? (
-          <div className="ml-auto flex shrink-0 items-center gap-1">
-            <InfoChip
-              tone="success"
-              icon={<PreviewIcon icon="mdi:check-decagram" size={12} />}
-            >
-              {bookingAccessChip.title}
-            </InfoChip>
-            <Popover>
-              <PopoverTrigger asChild>
-                <button
-                  type="button"
-                  className={cn(
-                    "inline-flex h-6 w-6 items-center justify-center rounded-full",
-                    "text-muted-foreground/70 hover:bg-muted hover:text-muted-foreground",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]/40"
-                  )}
-                  aria-label={t("bookingAccessInfo", "More about this status")}
-                >
-                  <PreviewIcon icon="mdi:information-outline" size={14} />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent side="top" align="end" className="w-[280px] p-3">
-                <p className="text-xs leading-relaxed text-muted-foreground">
-                  {bookingAccessChip.description}
-                </p>
-              </PopoverContent>
-            </Popover>
+  const rateRow = kitchenRateParts && kitchenRateParts.length > 0 ? (
+    <div className="mb-3 min-w-0">
+      <p className="whitespace-nowrap text-base font-bold tabular-nums leading-snug text-gray-900 sm:text-lg">
+        {kitchenRateParts.map((part, index) => (
+          <Fragment key={`${part}-${index}`}>
+            {index > 0 ? (
+              <span
+                className="mx-1.5 inline-block text-[0.95em] font-bold leading-none text-gray-400 sm:mx-2 sm:text-[1.05em]"
+                aria-hidden
+              >
+                •
+              </span>
+            ) : null}
+            {part}
+          </Fragment>
+        ))}
+      </p>
+    </div>
+  ) : null;
+
+  const accessChipRow = bookingAccessChip ? (
+    <div className="flex items-center justify-center gap-1 py-[3px]">
+      <InfoChip tone={bookingAccessChip.tone ?? "success"} className="h-auto px-[3px] py-[3px]">
+        {bookingAccessChip.title}
+      </InfoChip>
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className={cn(
+              "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full",
+              "text-muted-foreground/70 hover:bg-muted hover:text-muted-foreground",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]/40"
+            )}
+            aria-label={t("bookingAccessInfo", "More about this status")}
+          >
+            <PreviewIcon icon="mdi:information-outline" size={14} />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent side="top" align="center" className="w-[280px] p-3">
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            {bookingAccessChip.description}
+          </p>
+        </PopoverContent>
+      </Popover>
+    </div>
+  ) : null;
+
+  const ctaFooter =
+    showDateGatedCta || accessChipRow ? (
+      <div
+        className={cn(
+          "mt-3 flex shrink-0 flex-col border-t border-gray-200 pt-3",
+          !showDateGatedCta && "border-t-0 pt-0"
+        )}
+        data-preview-tour="cta"
+      >
+        {showDateGatedCta && bookingDatesReady && pricePreview ? (
+          <div className="mb-3">
+            <PreviewBookingTotalAboveCta preview={pricePreview} />
           </div>
         ) : null}
+        {ctaButton}
+        {accessChipRow}
       </div>
     ) : null;
+
+  // Chip row owns its own 3px top/bottom; card drops bottom pad so they don’t stack.
+  const cardPad = cn("px-3 pt-3", accessChipRow ? "pb-0" : "pb-3");
 
   if (!bookingDatesReady) {
     return (
@@ -2406,7 +2467,8 @@ function GuestHoursCard({
         className={cn(
           "relative bg-white rounded-2xl border border-gray-200/70 flex flex-col w-full",
           PREMIUM_CARD_SHADOW,
-          bento ? "p-3 sm:p-3.5 h-full" : "p-4"
+          cardPad,
+          bento && "h-full"
         )}
         data-preview-tour="hours"
       >
@@ -2444,11 +2506,7 @@ function GuestHoursCard({
                     )}
           </p>
         </div>
-        {showDateGatedCta ? (
-          <div className="mt-3 shrink-0 space-y-2 border-t border-gray-200 pt-2.5" data-preview-tour="cta">
-            {ctaButton}
-          </div>
-        ) : null}
+        {ctaFooter}
       </div>
     );
   }
@@ -2459,7 +2517,8 @@ function GuestHoursCard({
       className={cn(
         "relative bg-white rounded-2xl border border-gray-200/70 flex flex-col w-full",
         PREMIUM_CARD_SHADOW,
-        bento ? "p-3 sm:p-3.5 h-full" : "p-4"
+        cardPad,
+        bento && "h-full"
       )}
       data-preview-tour="hours"
     >
@@ -2565,12 +2624,7 @@ function GuestHoursCard({
         </CollapsibleContent>
       </Collapsible>
 
-      {showDateGatedCta && (
-        <div className="mt-3 shrink-0 space-y-2 border-t border-gray-200 pt-2.5" data-preview-tour="cta">
-          {pricePreview ? <PreviewBookingTotalAboveCta preview={pricePreview} /> : null}
-          {ctaButton}
-        </div>
-      )}
+      {ctaFooter}
     </div>
   );
 }
@@ -3570,7 +3624,7 @@ export default function KitchenPreviewPage() {
     const rentalCount = kitchenEquipment?.rental?.length ?? 0;
     const storageCount = kitchenStorage?.length ?? 0;
 
-    // Ready-to-book chip beside sticky CTA rate — only when chef can book.
+    // Access status chip below sticky CTA — only when chef can book (extendable to other states).
     const bookingAccessChip: BookingAccessChip | null =
       !applicationLoading && (canBook || display?.actionKind === "book")
         ? {
@@ -3579,6 +3633,7 @@ export default function KitchenPreviewPage() {
               "readyToBookBannerBody",
               "You’re approved to book this kitchen. Pick a date and book a cooking session whenever you’re ready."
             ),
+            tone: "success",
           }
         : null;
 
@@ -4046,7 +4101,7 @@ export default function KitchenPreviewPage() {
                 kitchenId={selectedKitchen?.id?.toString()}
                 locationId={locationId?.toString()}
                 kitchenName={selectedKitchen?.name}
-                kitchenRate={selectedKitchen ? formatKitchenRate(selectedKitchen) : undefined}
+                kitchenRateParts={selectedKitchen ? getKitchenRateParts(selectedKitchen) : undefined}
                 pricePreview={bookingPricePreview}
                 application={application}
                 applicationLoading={applicationLoading}

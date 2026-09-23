@@ -5,6 +5,8 @@ import nodemailer from 'nodemailer';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
 import { tEmail } from "./i18n/outbound";
+import { addHour, calendarDateForBookingTime, sortTimesInOperatingWindow } from '@shared/operating-hours';
+import { matchingLocalInstants } from '@shared/booking-dst';
 
 // Dynamic import for timezone-utils to handle Vercel serverless path resolution
 // Use a cached function that falls back to a local implementation if import fails
@@ -13,9 +15,9 @@ type CreateBookingDateTimeFn = (dateStr: string, timeStr: string, timezone?: str
 
 // Local fallback implementation that doesn't require the external module
 function createBookingDateTimeFallback(dateStr: string, timeStr: string, timezone: string = 'America/St_Johns'): Date {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  const [hours, minutes] = timeStr.split(':').map(Number);
-  return new Date(year, month - 1, day, hours, minutes);
+  const instant = matchingLocalInstants(dateStr, timeStr, timezone)[0];
+  if (instant === undefined) throw new Error('Local booking time does not exist');
+  return new Date(instant);
 }
 
 // Cache for the loaded function
@@ -703,7 +705,8 @@ const generateCalendarUrl = (
   endTime: string,
   location: string,
   description: string,
-  timezone: string = 'America/St_Johns'
+  timezone: string = 'America/St_Johns',
+  operatingWindowStartTime?: string,
 ): string => {
   try {
     // Convert bookingDate to string format (YYYY-MM-DD) if it's a Date object
@@ -718,8 +721,8 @@ const generateCalendarUrl = (
     }
 
     // Create start and end Date objects in the specified timezone
-    const startDateTime = createBookingDateTime(bookingDateStr, startTime, timezone);
-    const endDateTime = createBookingDateTime(bookingDateStr, endTime, timezone);
+    const startDateTime = createBookingDateTime(calendarDateForBookingTime(bookingDateStr, startTime, operatingWindowStartTime), startTime, timezone);
+    const endDateTime = createBookingDateTime(calendarDateForBookingTime(bookingDateStr, endTime, operatingWindowStartTime, startTime), endTime, timezone);
 
     const startDateStr = formatDateForCalendar(startDateTime);
     const endDateStr = formatDateForCalendar(endDateTime);
@@ -801,6 +804,65 @@ const generateCalendarUrl = (
     return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&location=${encodeURIComponent(location)}`;
   }
 };
+
+type BookingCalendarInput = {
+  bookingDate: string | Date;
+  startTime: string;
+  endTime: string;
+  operatingWindowStartTime?: string | null;
+  selectedSlots?: unknown;
+};
+
+function bookingCalendarParts(
+  booking: BookingCalendarInput, recipient: string, title: string, location: string,
+  description: string, timezone: string,
+): { ics: string; linksHtml: string; linksText: string; timeLabel: string } {
+  const operatingDate = booking.bookingDate instanceof Date
+    ? booking.bookingDate.toISOString().slice(0, 10) : booking.bookingDate.slice(0, 10);
+  const windowStart = booking.operatingWindowStartTime || booking.startTime;
+  const selectedSlots = Array.isArray(booking.selectedSlots) ? booking.selectedSlots : [];
+  const hasValidSlots = selectedSlots.length > 0
+    && selectedSlots.every(slot => slot && typeof slot.startTime === 'string'
+      && /^([01]\d|2[0-3]):[0-5]\d$/.test(slot.startTime)
+      && slot.endTime === addHour(slot.startTime));
+  const ordered = hasValidSlots
+    ? sortTimesInOperatingWindow(selectedSlots.map(slot => slot.startTime), windowStart)
+      .map(startTime => ({ startTime, endTime: addHour(startTime) }))
+    : [{ startTime: booking.startTime, endTime: booking.endTime }];
+  const groups: Array<{ startTime: string; endTime: string }> = [];
+  for (const slot of ordered) {
+    const last = groups.at(-1);
+    if (last && last.endTime === slot.startTime) last.endTime = slot.endTime;
+    else groups.push({ ...slot });
+  }
+  const timeLabel = groups.map(group => `${group.startTime}–${group.endTime}`).join(', ');
+  const exactDescription = description.replace(/Time: [^\n]*/, `Time: ${timeLabel}`);
+  const uid = generateEventUid(booking.bookingDate, booking.startTime, location);
+  const icsFiles = groups.map((group, index) => {
+    const start = createBookingDateTime(calendarDateForBookingTime(operatingDate, group.startTime,
+      booking.operatingWindowStartTime), group.startTime, timezone);
+    const end = createBookingDateTime(calendarDateForBookingTime(operatingDate, group.endTime,
+      booking.operatingWindowStartTime, group.startTime), group.endTime, timezone);
+    return generateIcsFile(title, start, end, location, exactDescription, getSupportEmail(), [recipient],
+      groups.length === 1 ? uid : `${uid}-${index + 1}`);
+  });
+  const ics = icsFiles.length === 1 ? icsFiles[0] : [
+    icsFiles[0].slice(0, icsFiles[0].indexOf('BEGIN:VEVENT')),
+    ...icsFiles.map(file => file.slice(file.indexOf('BEGIN:VEVENT'), file.indexOf('END:VEVENT') + 'END:VEVENT'.length)),
+    'END:VCALENDAR',
+  ].join('\r\n');
+  const links = groups.map(group => ({
+    label: `${group.startTime}–${group.endTime}`,
+    url: generateCalendarUrl(recipient, title, booking.bookingDate, group.startTime, group.endTime,
+      location, exactDescription, timezone, booking.operatingWindowStartTime || undefined),
+  }));
+  return {
+    ics,
+    linksHtml: links.map(link => `<a href="${link.url}" target="_blank" style="display:inline-block;margin:4px 8px 4px 0;color:#F51042;text-decoration:underline">Add ${link.label} to calendar</a>`).join(''),
+    linksText: links.map(link => `Add ${link.label} to calendar: ${link.url}`).join('\n'),
+    timeLabel,
+  };
+}
 
 // Uniform email styles using brand colors and assets
 const getUniformEmailStyles = () => `
@@ -3390,7 +3452,7 @@ The Local Cooks Team
   return { to: userData.email, subject, text, html };
 };
 
-export const generateBookingNotificationEmail = (bookingData: { managerEmail: string; managerName?: string; chefName: string; kitchenName: string; bookingDate: string | Date; startTime: string; endTime: string; specialNotes?: string; timezone?: string; locationName?: string; bookingId: number; referenceCode?: string | null }): EmailContent => {
+export const generateBookingNotificationEmail = (bookingData: { managerEmail: string; managerName?: string; chefName: string; kitchenName: string; bookingDate: string | Date; startTime: string; endTime: string; specialNotes?: string; timezone?: string; locationName?: string; bookingId: number; referenceCode?: string | null; operatingWindowStartTime?: string | null; selectedSlots?: unknown }): EmailContent => {
   const chefFirstName = bookingData.chefName.split(' ')[0];
   const chefLastName = bookingData.chefName.includes(' ') ? bookingData.chefName.split(' ').slice(1).join(' ') : '';
   const subject = `New Booking Request from ${chefFirstName}${chefLastName ? ' ' + chefLastName : ''}`;
@@ -3409,33 +3471,9 @@ export const generateBookingNotificationEmail = (bookingData: { managerEmail: st
   // Generate calendar URL based on email provider - SAME event as chef receives for perfect sync
   const calendarTitle = `Kitchen Booking - ${bookingData.kitchenName}`;
   const calendarDescription = `Kitchen booking with ${bookingData.chefName} for ${bookingData.kitchenName}.\n\nChef: ${bookingData.chefName}\nDate: ${bookingDateObj.toLocaleDateString()}\nTime: ${bookingData.startTime} - ${bookingData.endTime}\nStatus: Pending Approval${bookingData.specialNotes ? `\n\nNotes: ${bookingData.specialNotes}` : ''}`;
-  const calendarUrl = generateCalendarUrl(
-    bookingData.managerEmail,
-    calendarTitle,
-    bookingData.bookingDate,
-    bookingData.startTime,
-    bookingData.endTime,
-    locationName,
-    calendarDescription,
-    timezone
-  );
-
-  // Generate .ics file for proper calendar integration (works with all calendar systems including Google Calendar)
-  // Use consistent UID for synchronization - both chef and manager will get the same event
-  const bookingDateStr = bookingData.bookingDate instanceof Date ? bookingData.bookingDate.toISOString().split('T')[0] : bookingData.bookingDate.split('T')[0];
-  const startDateTime = createBookingDateTime(bookingDateStr, bookingData.startTime, timezone);
-  const endDateTime = createBookingDateTime(bookingDateStr, bookingData.endTime, timezone);
-  const eventUid = generateEventUid(bookingData.bookingDate, bookingData.startTime, locationName);
-  const icsContent = generateIcsFile(
-    calendarTitle,
-    startDateTime,
-    endDateTime,
-    locationName,
-    calendarDescription,
-    getSupportEmail(),
-    [bookingData.managerEmail], // Manager is the primary attendee for this email
-    eventUid // Use consistent UID for synchronization
-  );
+  const calendar = bookingCalendarParts(bookingData, bookingData.managerEmail, calendarTitle,
+    locationName, calendarDescription, timezone);
+  const icsContent = calendar.ics;
 
 
 
@@ -3468,7 +3506,7 @@ export const generateBookingNotificationEmail = (bookingData: { managerEmail: st
         ${bookingData.referenceCode ? `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Reference:</span> <strong style="color: #1e293b; font-family: monospace;">${bookingData.referenceCode}</strong></p>` : ''}
         <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Kitchen:</span> <strong style="color: #1e293b;">${bookingData.kitchenName}</strong></p>
         <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Date:</span> <strong style="color: #1e293b;">${formattedDate}</strong></p>
-        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Time:</span> <strong style="color: #1e293b;">${bookingData.startTime} &#8211; ${bookingData.endTime}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Time:</span> <strong style="color: #1e293b;">${calendar.timeLabel}</strong></p>
       </div>
       <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">Next Steps:</p>
       <p class="message" style="margin-bottom: 20px;">Please review this request and respond within 24&#8211;48 hours so ${chefFirstName} can confirm their production schedule.</p>
@@ -3476,7 +3514,7 @@ export const generateBookingNotificationEmail = (bookingData: { managerEmail: st
         <a href="${bookingDetailsUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">Review &amp; Respond to Request</a>
       </div>
       <p class="message" style="margin-top: 20px;">You can approve or decline this booking directly from your dashboard. If you need to discuss any details with the chef, you can use the built-in chat feature.</p>
-      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 20px 0 0 0;">A calendar invite has been attached to this email. You can also <a href="${calendarUrl}" target="_blank" style="color: hsl(347, 91%, 51%); text-decoration: none;">add it to your calendar</a>.</p>
+      <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 20px 0 0 0;">A calendar invite has been attached to this email. ${calendar.linksHtml}</p>
       <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 16px 0 0 0;">If you have any questions about this request, simply reply to this email or contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
       <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #f1f5f9;">
         <p style="font-size: 15px; color: #64748b; margin: 0;">Best regards,</p>
@@ -3502,7 +3540,7 @@ Name: ${bookingData.chefName}
 Booking Request Details:
 Kitchen: ${bookingData.kitchenName}
 Date: ${formattedDate}
-Time: ${bookingData.startTime} - ${bookingData.endTime}
+Time: ${calendar.timeLabel}
 
 Next Steps:
 Please review this request and respond within 24-48 hours so ${chefFirstName} can confirm their production schedule.
@@ -3511,7 +3549,7 @@ Review & Respond: ${bookingDetailsUrl}
 
 You can approve or decline this booking directly from your dashboard. If you need to discuss any details with the chef, you can use the built-in chat feature.
 
-Add to calendar: ${calendarUrl}
+${calendar.linksText}
 
 If you have any questions about this request, simply reply to this email or contact us at support@localcook.shop
 
@@ -3695,7 +3733,7 @@ The Local Cooks Team
 };
 
 // Booking confirmed notification email for managers (when manager confirms a booking)
-export const generateBookingStatusChangeNotificationEmail = (bookingData: { managerEmail: string; managerName?: string; chefName: string; kitchenName: string; bookingDate: string | Date; startTime: string; endTime: string; status: string; timezone?: string; locationName?: string; addons?: string }): EmailContent => {
+export const generateBookingStatusChangeNotificationEmail = (bookingData: { managerEmail: string; managerName?: string; chefName: string; kitchenName: string; bookingDate: string | Date; startTime: string; endTime: string; status: string; timezone?: string; locationName?: string; addons?: string; operatingWindowStartTime?: string | null; durationHours?: number; selectedSlots?: unknown }): EmailContent => {
   const chefFirstName = bookingData.chefName.split(' ')[0];
   const timezone = bookingData.timezone || 'America/St_Johns';
   const locationName = bookingData.locationName || bookingData.kitchenName;
@@ -3711,7 +3749,8 @@ export const generateBookingStatusChangeNotificationEmail = (bookingData: { mana
   // Compute duration from start/end time
   const [startH, startM] = bookingData.startTime.split(':').map(Number);
   const [endH, endM] = bookingData.endTime.split(':').map(Number);
-  const durationMins = (endH * 60 + endM) - (startH * 60 + startM);
+  const durationMins = bookingData.durationHours != null
+    ? bookingData.durationHours * 60 : ((endH * 60 + endM) - (startH * 60 + startM) + 1440) % 1440;
   const durationHrs = Math.floor(durationMins / 60);
   const durationRemMins = durationMins % 60;
   const durationStr = durationRemMins > 0 ? `${durationHrs}h ${durationRemMins}m` : `${durationHrs}h`;
@@ -3721,33 +3760,9 @@ export const generateBookingStatusChangeNotificationEmail = (bookingData: { mana
   // Generate calendar URL based on email provider - SAME event as chef receives for perfect sync
   const calendarTitle = `Kitchen Booking - ${bookingData.kitchenName}`;
   const calendarDescription = `Confirmed kitchen booking with ${bookingData.chefName} for ${bookingData.kitchenName}.\n\nChef: ${bookingData.chefName}\nDate: ${bookingDateObj.toLocaleDateString()}\nTime: ${bookingData.startTime} - ${bookingData.endTime}\nStatus: Confirmed`;
-  const calendarUrl = generateCalendarUrl(
-    bookingData.managerEmail,
-    calendarTitle,
-    bookingData.bookingDate,
-    bookingData.startTime,
-    bookingData.endTime,
-    locationName,
-    calendarDescription,
-    timezone
-  );
-
-  // Generate .ics file for proper calendar integration
-  // Use consistent UID for synchronization - both chef and manager will get the same event
-  const bookingDateStr = bookingData.bookingDate instanceof Date ? bookingData.bookingDate.toISOString().split('T')[0] : bookingData.bookingDate.split('T')[0];
-  const startDateTime = createBookingDateTime(bookingDateStr, bookingData.startTime, timezone);
-  const endDateTime = createBookingDateTime(bookingDateStr, bookingData.endTime, timezone);
-  const eventUid = generateEventUid(bookingData.bookingDate, bookingData.startTime, locationName);
-  const icsContent = generateIcsFile(
-    calendarTitle,
-    startDateTime,
-    endDateTime,
-    locationName,
-    calendarDescription,
-    getSupportEmail(),
-    [bookingData.managerEmail], // Manager is the primary attendee for this email
-    eventUid // Use consistent UID for synchronization
-  );
+  const calendar = bookingCalendarParts(bookingData, bookingData.managerEmail, calendarTitle,
+    locationName, calendarDescription, timezone);
+  const icsContent = calendar.ics;
 
   const html = `
 <!DOCTYPE html>
@@ -3770,7 +3785,7 @@ export const generateBookingStatusChangeNotificationEmail = (bookingData: { mana
       <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px 0;">
         <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Chef:</span> <strong style="color: #1e293b;">${bookingData.chefName}</strong></p>
         <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Date:</span> <strong style="color: #1e293b;">${formattedDate}</strong></p>
-        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Time:</span> <strong style="color: #1e293b;">${bookingData.startTime} &#8211; ${bookingData.endTime} (${durationStr})</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Time:</span> <strong style="color: #1e293b;">${calendar.timeLabel} (${durationStr})</strong></p>
         <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Kitchen:</span> <strong style="color: #1e293b;">${bookingData.kitchenName}</strong></p>
         ${bookingData.addons ? `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Equipment/Storage:</span> <strong style="color: #1e293b;">${bookingData.addons}</strong></p>` : ''}
       </div>
@@ -3779,7 +3794,7 @@ export const generateBookingStatusChangeNotificationEmail = (bookingData: { mana
       </div>
       <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">Add to Your Calendar:</p>
       <div style="margin: 0 0 8px 0; text-align: center;">
-        <a href="${calendarUrl}" target="_blank" style="display: inline-block; padding: 10px 24px; background: #f1f5f9; color: #475569 !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; border: 1px solid #e2e8f0; margin: 0 8px 8px 0;">&#128197; Add to Google Calendar</a>
+        ${calendar.linksHtml}
         <a href="cid:kitchen-booking.ics" style="display: inline-block; padding: 10px 24px; background: #f1f5f9; color: #475569 !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; border: 1px solid #e2e8f0; margin: 0 0 8px 0;">&#128197; Download ICS File</a>
       </div>
       <p class="message" style="margin-top: 24px; margin-bottom: 8px; font-weight: 600; color: #1e293b;">Before the Session:</p>
@@ -3812,10 +3827,10 @@ Thank you for confirming this booking. The chef has been notified, and your kitc
 Booking Details:
 Chef: ${bookingData.chefName}
 Date: ${formattedDate}
-Time: ${bookingData.startTime} – ${bookingData.endTime} (${durationStr})
+Time: ${calendar.timeLabel} (${durationStr})
 Kitchen: ${bookingData.kitchenName}
 ${bookingData.addons ? `Equipment/Storage: ${bookingData.addons}\n` : ''}
-Add to your calendar: ${calendarUrl}
+${calendar.linksText}
 
 Before the Session:
 The chef will arrive at ${bookingData.startTime}. Please ensure the kitchen and requested equipment are accessible and ready. You can reach ${chefFirstName} directly through the chat in your dashboard if you need to coordinate any details.
@@ -3848,7 +3863,7 @@ The Local Cooks Team
   };
 };
 
-export const generateBookingRequestEmail = (bookingData: { chefEmail: string; chefName: string; kitchenName: string; bookingDate: string | Date; startTime: string; endTime: string; specialNotes?: string; timezone?: string; locationName?: string; locationAddress?: string }): EmailContent => {
+export const generateBookingRequestEmail = (bookingData: { chefEmail: string; chefName: string; kitchenName: string; bookingDate: string | Date; startTime: string; endTime: string; specialNotes?: string; timezone?: string; locationName?: string; locationAddress?: string; operatingWindowStartTime?: string | null; selectedSlots?: unknown }): EmailContent => {
   const subject = `Your Booking Request Has Been Submitted`;
   const timezone = bookingData.timezone || 'America/St_Johns';
   const locationName = bookingData.locationName || bookingData.kitchenName;
@@ -3864,33 +3879,9 @@ export const generateBookingRequestEmail = (bookingData: { chefEmail: string; ch
   // Generate calendar URL based on email provider
   const calendarTitle = `Kitchen Booking - ${bookingData.kitchenName}`;
   const calendarDescription = `Kitchen booking request for ${bookingData.kitchenName}.\n\nDate: ${bookingDateObj.toLocaleDateString()}\nTime: ${bookingData.startTime} - ${bookingData.endTime}\nStatus: Pending Approval${bookingData.specialNotes ? `\n\nNotes: ${bookingData.specialNotes}` : ''}`;
-  const calendarUrl = generateCalendarUrl(
-    bookingData.chefEmail,
-    calendarTitle,
-    bookingData.bookingDate,
-    bookingData.startTime,
-    bookingData.endTime,
-    locationName,
-    calendarDescription,
-    timezone
-  );
-
-  // Generate .ics file for proper calendar integration (works with all calendar systems including Google Calendar)
-  // Use consistent UID for synchronization - both chef and manager will get the same event
-  const bookingDateStr = bookingData.bookingDate instanceof Date ? bookingData.bookingDate.toISOString().split('T')[0] : bookingData.bookingDate.split('T')[0];
-  const startDateTime = createBookingDateTime(bookingDateStr, bookingData.startTime, timezone);
-  const endDateTime = createBookingDateTime(bookingDateStr, bookingData.endTime, timezone);
-  const eventUid = generateEventUid(bookingData.bookingDate, bookingData.startTime, locationName);
-  const icsContent = generateIcsFile(
-    calendarTitle,
-    startDateTime,
-    endDateTime,
-    locationName,
-    calendarDescription,
-    getSupportEmail(),
-    [bookingData.chefEmail], // Chef is the primary attendee
-    eventUid // Use consistent UID for synchronization
-  );
+  const calendar = bookingCalendarParts(bookingData, bookingData.chefEmail, calendarTitle,
+    locationName, calendarDescription, timezone);
+  const icsContent = calendar.ics;
 
   const html = `
 <!DOCTYPE html>
@@ -3914,7 +3905,7 @@ export const generateBookingRequestEmail = (bookingData: { chefEmail: string; ch
         <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Kitchen:</span> <strong style="color: #1e293b;">${bookingData.kitchenName}</strong></p>
         ${bookingData.locationAddress ? `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Location:</span> <strong style="color: #1e293b;">${bookingData.locationAddress}</strong></p>` : (locationName !== bookingData.kitchenName ? `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Location:</span> <strong style="color: #1e293b;">${locationName}</strong></p>` : '')}
         <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Date:</span> <strong style="color: #1e293b;">${formattedDate}</strong></p>
-        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Time:</span> <strong style="color: #1e293b;">${bookingData.startTime} &#8211; ${bookingData.endTime}</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Time:</span> <strong style="color: #1e293b;">${calendar.timeLabel}</strong></p>
         <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Status:</span> <strong style="color: #f59e0b;">Pending Manager Confirmation</strong></p>
       </div>
       <p class="message" style="margin-bottom: 8px; font-weight: 600; color: #1e293b;">What happens next:</p>
@@ -3925,7 +3916,7 @@ export const generateBookingRequestEmail = (bookingData: { chefEmail: string; ch
         <span style="display: inline-block; padding: 4px 12px; background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; border-radius: 100px; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;">&#9679; Pending Confirmation</span>
       </div>
       <div style="margin: 16px 0 0 0; text-align: center;">
-        <a href="${calendarUrl}" target="_blank" style="display: inline-block; padding: 10px 24px; background: #f1f5f9; color: #475569 !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; border: 1px solid #e2e8f0; margin: 0 8px 0 0;">Add to Calendar</a>
+        ${calendar.linksHtml}
         <a href="${dashboardUrl}" class="cta-button" style="display: inline-block; padding: 10px 24px; background: hsl(347, 91%, 51%); color: #ffffff !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; box-shadow: none; margin: 0;">View My Bookings</a>
       </div>
       <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 24px 0 0 0;">If you have any questions, simply reply to this email or contact us at <a href="mailto:support@localcook.shop" style="color: hsl(347, 91%, 51%); text-decoration: none;">support@localcook.shop</a></p>
@@ -3950,7 +3941,7 @@ Thank you for submitting your booking request for ${bookingData.kitchenName}. We
 Request Details:
 Kitchen: ${bookingData.kitchenName}
 ${bookingData.locationAddress ? `Location: ${bookingData.locationAddress}\n` : ''}Date: ${formattedDate}
-Time: ${bookingData.startTime} – ${bookingData.endTime}
+Time: ${calendar.timeLabel}
 Status: Pending Manager Confirmation
 
 What happens next:
@@ -3960,7 +3951,7 @@ In the meantime, you can use the built-in chat with the kitchen manager if you n
 
 You can also check your request status anytime from your dashboard: ${dashboardUrl}
 
-Add to calendar: ${calendarUrl}
+${calendar.linksText}
 
 If you have any questions, simply reply to this email or contact us at support@localcook.shop
 
@@ -3983,7 +3974,7 @@ ${new Date().getFullYear()} Local Cooks
   };
 };
 
-export const generateBookingConfirmationEmail = (bookingData: { chefEmail: string; chefName: string; kitchenName: string; bookingDate: string | Date; startTime: string; endTime: string; specialNotes?: string; timezone?: string; locationName?: string; locationAddress?: string; addons?: string; checkInWindowMinutesBefore?: number; noShowGraceMinutes?: number }): EmailContent => {
+export const generateBookingConfirmationEmail = (bookingData: { chefEmail: string; chefName: string; kitchenName: string; bookingDate: string | Date; startTime: string; endTime: string; specialNotes?: string; timezone?: string; locationName?: string; locationAddress?: string; addons?: string; checkInWindowMinutesBefore?: number; noShowGraceMinutes?: number; operatingWindowStartTime?: string | null; durationHours?: number; selectedSlots?: unknown }): EmailContent => {
   const timezone = bookingData.timezone || 'America/St_Johns';
   const locationName = bookingData.locationName || bookingData.kitchenName;
   const dashboardUrl = getDashboardUrl();
@@ -3998,7 +3989,8 @@ export const generateBookingConfirmationEmail = (bookingData: { chefEmail: strin
   // Compute duration from start/end time
   const [startH, startM] = bookingData.startTime.split(':').map(Number);
   const [endH, endM] = bookingData.endTime.split(':').map(Number);
-  const durationMins = (endH * 60 + endM) - (startH * 60 + startM);
+  const durationMins = bookingData.durationHours != null
+    ? bookingData.durationHours * 60 : ((endH * 60 + endM) - (startH * 60 + startM) + 1440) % 1440;
   const durationHrs = Math.floor(durationMins / 60);
   const durationRemMins = durationMins % 60;
   const durationStr = durationRemMins > 0 ? `${durationHrs}h ${durationRemMins}m` : `${durationHrs}h`;
@@ -4008,33 +4000,9 @@ export const generateBookingConfirmationEmail = (bookingData: { chefEmail: strin
   // Generate calendar URL based on email provider
   const calendarTitle = `Kitchen Booking - ${bookingData.kitchenName}`;
   const calendarDescription = `Confirmed kitchen booking for ${bookingData.kitchenName}.\n\nDate: ${bookingDateObj.toLocaleDateString()}\nTime: ${bookingData.startTime} - ${bookingData.endTime}\nStatus: Confirmed${bookingData.specialNotes ? `\n\nNotes: ${bookingData.specialNotes}` : ''}`;
-  const calendarUrl = generateCalendarUrl(
-    bookingData.chefEmail,
-    calendarTitle,
-    bookingData.bookingDate,
-    bookingData.startTime,
-    bookingData.endTime,
-    locationName,
-    calendarDescription,
-    timezone
-  );
-
-  // Generate .ics file for proper calendar integration (works with all calendar systems including Google Calendar)
-  // Use consistent UID for synchronization - both chef and manager will get the same event
-  const bookingDateStr = bookingData.bookingDate instanceof Date ? bookingData.bookingDate.toISOString().split('T')[0] : bookingData.bookingDate.split('T')[0];
-  const startDateTime = createBookingDateTime(bookingDateStr, bookingData.startTime, timezone);
-  const endDateTime = createBookingDateTime(bookingDateStr, bookingData.endTime, timezone);
-  const eventUid = generateEventUid(bookingData.bookingDate, bookingData.startTime, locationName);
-  const icsContent = generateIcsFile(
-    calendarTitle,
-    startDateTime,
-    endDateTime,
-    locationName,
-    calendarDescription,
-    getSupportEmail(),
-    [bookingData.chefEmail], // Chef is the primary attendee
-    eventUid // Use consistent UID for synchronization
-  );
+  const calendar = bookingCalendarParts(bookingData, bookingData.chefEmail, calendarTitle,
+    locationName, calendarDescription, timezone);
+  const icsContent = calendar.ics;
 
   const html = `
 <!DOCTYPE html>
@@ -4058,7 +4026,7 @@ export const generateBookingConfirmationEmail = (bookingData: { chefEmail: strin
         <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Kitchen:</span> <strong style="color: #1e293b;">${bookingData.kitchenName}</strong></p>
         ${bookingData.locationAddress ? `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Location:</span> <strong style="color: #1e293b;">${bookingData.locationAddress}</strong></p>` : (locationName !== bookingData.kitchenName ? `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Location:</span> <strong style="color: #1e293b;">${locationName}</strong></p>` : '')}
         <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Date:</span> <strong style="color: #1e293b;">${formattedDate}</strong></p>
-        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Time:</span> <strong style="color: #1e293b;">${bookingData.startTime} &#8211; ${bookingData.endTime} (${durationStr})</strong></p>
+        <p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Time:</span> <strong style="color: #1e293b;">${calendar.timeLabel} (${durationStr})</strong></p>
         ${bookingData.addons ? `<p style="font-size: 15px; line-height: 1.8; color: #475569; margin: 0;"><span style="color: #64748b;">Equipment/Storage Booked:</span> <strong style="color: #1e293b;">${bookingData.addons}</strong></p>` : ''}
       </div>
       <div style="margin: 16px 0 4px 0; text-align: center;">
@@ -4066,7 +4034,7 @@ export const generateBookingConfirmationEmail = (bookingData: { chefEmail: strin
       </div>
       <p class="message" style="margin-top: 24px; margin-bottom: 8px; font-weight: 600; color: #1e293b;">Add to Your Calendar:</p>
       <div style="margin: 0 0 8px 0; text-align: center;">
-        <a href="${calendarUrl}" target="_blank" style="display: inline-block; padding: 10px 24px; background: #f1f5f9; color: #475569 !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; border: 1px solid #e2e8f0; margin: 0 8px 8px 0;">&#128197; Add to Google Calendar</a>
+        ${calendar.linksHtml}
         <a href="cid:kitchen-booking.ics" style="display: inline-block; padding: 10px 24px; background: #f1f5f9; color: #475569 !important; text-decoration: none !important; border-radius: 6px; font-weight: 500; font-size: 14px; letter-spacing: 0.01em; border: 1px solid #e2e8f0; margin: 0 0 8px 0;">&#128197; Download ICS File</a>
       </div>
       <p style="font-size: 13px; line-height: 1.6; color: #94a3b8; margin: 0 0 24px 0; text-align: center;">(Or open the attached calendar invite to add this booking to your preferred calendar app)</p>
@@ -4093,7 +4061,7 @@ export const generateBookingConfirmationEmail = (bookingData: { chefEmail: strin
       <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 0 0 24px 4px;">
         <tr>
           <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
-          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Check-in opens <strong>${bookingData.checkInWindowMinutesBefore ?? 15} minutes before</strong> your session and closes <strong>${bookingData.noShowGraceMinutes ?? 15} minutes after</strong> it begins.</td>
+          <td style="padding: 6px 0; font-size: 15px; line-height: 1.65; color: #475569;">Check-in opens <strong>${bookingData.checkInWindowMinutesBefore ?? 15} minutes before</strong> your session. If you have not checked in, you may be marked a no-show <strong>${bookingData.noShowGraceMinutes ?? 30} minutes after</strong> it begins.</td>
         </tr>
         <tr>
           <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 16px; color: hsl(347, 91%, 55%); font-size: 16px; line-height: 24px;">&#8226;</td>
@@ -4129,9 +4097,9 @@ Great news — your booking at ${bookingData.kitchenName} has been confirmed!
 Booking Details:
 Kitchen: ${bookingData.kitchenName}
 ${bookingData.locationAddress ? `Location: ${bookingData.locationAddress}\n` : ''}Date: ${formattedDate}
-Time: ${bookingData.startTime} – ${bookingData.endTime} (${durationStr})
+Time: ${calendar.timeLabel} (${durationStr})
 ${bookingData.addons ? `Equipment/Storage Booked: ${bookingData.addons}\n` : ''}
-Add to your calendar: ${calendarUrl}
+${calendar.linksText}
 (Or open the attached calendar invite to add this booking to your preferred calendar app)
 
 Check-In & Check-Out Required:
@@ -4144,7 +4112,7 @@ You must check in and check out for every booking session.
 Both steps are done from your dashboard — just open the booking and tap "Check In" or "Check Out."
 
 Before Your Session:
-• Check-in opens ${bookingData.checkInWindowMinutesBefore ?? 15} minutes before your session and closes ${bookingData.noShowGraceMinutes ?? 15} minutes after it begins.
+• Check-in opens ${bookingData.checkInWindowMinutesBefore ?? 15} minutes before your session. If you have not checked in, you may be marked a no-show ${bookingData.noShowGraceMinutes ?? 30} minutes after it begins.
 • Review the kitchen's specific terms and policies in your dashboard
 
 Need to Make Changes?

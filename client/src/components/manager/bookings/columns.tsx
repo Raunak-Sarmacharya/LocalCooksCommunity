@@ -11,6 +11,8 @@ import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { createBookingDateTime, DEFAULT_TIMEZONE } from "@/utils/timezone-utils"
 import { resolveDisplayedKitchenNetPayoutCents } from "@shared/booking-pricing-breakdown"
+import { calendarDateForBookingTime } from "@shared/operating-hours"
+import { kitchenBookingBlocks } from "@/lib/kitchen-booking-blocks"
 
 // Storage/Equipment item types from JSONB fields
 export type StorageItem = {
@@ -44,7 +46,8 @@ export type Booking = {
     bookingDate: string;
     startTime: string;
     endTime: string;
-    selectedSlots?: Array<{ startTime: string; endTime: string }>; // Array of discrete 1-hour time slots
+    operatingWindowStartTime?: string | null;
+    selectedSlots?: Array<string | { startTime: string; endTime: string }>;
     status: string;
     specialNotes?: string;
     createdAt: string;
@@ -254,40 +257,8 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
             </Button>
         ),
         cell: ({ row }) => {
-            // Normalize slots to always have {startTime, endTime} format
-            // Database may have old format (strings like "09:00") or new format (objects)
-            const rawSlots = row.original.selectedSlots as Array<string | { startTime: string; endTime: string }> | undefined;
-            
-            const normalizeSlot = (slot: string | { startTime: string; endTime: string }): { startTime: string; endTime: string } => {
-                if (typeof slot === 'string') {
-                    // Old format: just start time string, calculate end time (+1 hour)
-                    const [h, m] = slot.split(':').map(Number);
-                    const endMins = h * 60 + m + 60;
-                    const endH = Math.floor(endMins / 60);
-                    const endM = endMins % 60;
-                    return {
-                        startTime: slot,
-                        endTime: `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`
-                    };
-                }
-                return slot;
-            };
-            
-            const normalizedSlots = rawSlots?.map(normalizeSlot).filter(s => s.startTime && s.endTime) || [];
-            const hasDiscreteSlots = normalizedSlots.length > 0;
-            
-            // Check if slots are contiguous (no gaps)
-            const areContiguous = (slots: Array<{ startTime: string; endTime: string }>) => {
-                if (slots.length <= 1) return true;
-                const sorted = [...slots].sort((a, b) => a.startTime.localeCompare(b.startTime));
-                for (let i = 1; i < sorted.length; i++) {
-                    // Check if previous slot's endTime equals current slot's startTime
-                    if (sorted[i - 1].endTime !== sorted[i].startTime) return false;
-                }
-                return true;
-            };
-            
-            const showAsRange = !hasDiscreteSlots || areContiguous(normalizedSlots);
+            const blocks = kitchenBookingBlocks(row.original);
+            const showAsRange = blocks.length === 1;
             
             return (
                 <div className="flex flex-col text-sm">
@@ -298,17 +269,17 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
                     {showAsRange ? (
                         <div className="flex items-center text-xs text-muted-foreground mt-1">
                             <Clock className="h-3 w-3 mr-2" />
-                            {formatTime(row.original.startTime)} - {formatTime(row.original.endTime)}
+                            {formatTime(blocks[0].startTime)} - {formatTime(blocks[0].endTime)}
                         </div>
                     ) : (
                         <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground mt-1">
                             <Clock className="h-3 w-3 mr-1" />
-                            {[...normalizedSlots].sort((a, b) => a.startTime.localeCompare(b.startTime)).map((slot, idx) => (
-                                <span key={slot.startTime} className="inline-flex items-center">
+                            {blocks.map((block, idx) => (
+                                <span key={block.startTime} className="inline-flex items-center">
                                     <span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] font-medium">
-                                        {formatTime(slot.startTime)} - {formatTime(slot.endTime)}
+                                        {formatTime(block.startTime)} - {formatTime(block.endTime)}
                                     </span>
-                                    {idx < normalizedSlots.length - 1 && <span className="mx-0.5 text-gray-400">+</span>}
+                                    {idx < blocks.length - 1 && <span className="mx-0.5 text-gray-400">+</span>}
                                 </span>
                             ))}
                         </div>
@@ -867,7 +838,7 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, onRefund, onC
             // past/future (server measures against the kitchen's wall clock).
             const timezone = booking.locationTimezone || DEFAULT_TIMEZONE;
             const bookingDateTime = createBookingDateTime(
-                booking.bookingDate.split('T')[0],
+                calendarDateForBookingTime(booking.bookingDate.split('T')[0], booking.startTime, booking.operatingWindowStartTime),
                 booking.startTime,
                 timezone,
             );

@@ -62,6 +62,7 @@ export interface DamagedItemInput {
 export interface CreateDamageClaimInput {
   bookingType: 'kitchen' | 'storage';
   kitchenBookingId?: number;
+  kitchenBookingVisitId?: number;
   storageBookingId?: number;
   managerId: number;
   claimTitle: string;
@@ -345,6 +346,7 @@ export async function createDamageClaim(input: CreateDamageClaimInput): Promise<
       referenceCode: dcRefCode,
       bookingType: input.bookingType,
       kitchenBookingId: input.kitchenBookingId || null,
+      kitchenBookingVisitId: input.kitchenBookingVisitId || null,
       storageBookingId: input.storageBookingId || null,
       chefId,
       managerId: input.managerId,

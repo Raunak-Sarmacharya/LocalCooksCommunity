@@ -45,6 +45,8 @@ export interface PaymentIntentResult {
   clientSecret: string;
   status: string;
   amount: number;
+  currency?: string;
+  metadata?: Record<string, string>;
 }
 
 /**
@@ -252,6 +254,8 @@ export async function confirmPaymentIntent(
       clientSecret: paymentIntent.client_secret || '',
       status: paymentIntent.status,
       amount: paymentIntent.amount,
+      currency: paymentIntent.currency,
+      metadata: paymentIntent.metadata,
     };
   } catch (error: any) {
     logger.error('Error confirming PaymentIntent:', error);
@@ -275,6 +279,8 @@ export async function getPaymentIntent(paymentIntentId: string): Promise<Payment
       clientSecret: paymentIntent.client_secret || '',
       status: paymentIntent.status,
       amount: paymentIntent.amount,
+      currency: paymentIntent.currency,
+      metadata: paymentIntent.metadata,
     };
   } catch (error: any) {
     if (error.code === 'resource_missing') {

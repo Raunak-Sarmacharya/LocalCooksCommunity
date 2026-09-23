@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { db, pool } from "../db";
 import {
     kitchenBookings,
+    kitchenCheckoutHolds,
     kitchens,
     locations,
     users,
@@ -26,6 +27,7 @@ import { kitchenService } from "../domains/kitchens/kitchen.service";
 import { locationService } from "../domains/locations/location.service";
 import { chefService } from "../domains/users/chef.service";
 import { parseCheckoutSlots } from "../services/checkout-metadata";
+import { calendarDateForOperatingTime } from "@shared/operating-hours";
 
 /**
  * Get base URL for Stripe redirect URLs
@@ -917,12 +919,19 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
         const { processExpiredKitchenCheckoutReviews } = await import("../services/kitchen-checkout-service");
         const kitchenCheckoutAutoClearResults = await processExpiredKitchenCheckoutReviews();
         logger.info("[Cron] Kitchen checkout auto-clear complete:", kitchenCheckoutAutoClearResults);
+        const { autoClearKitchenVisits } = await import('../services/kitchen-visit-lifecycle');
+        const { getCheckinSettings } = await import('../services/kitchen-checkout-service');
+        const visitAutoCleared = await autoClearKitchenVisits((await getCheckinSettings()).checkoutReviewWindowMinutes);
+        logger.info('[Cron] Kitchen visit checkout auto-clear complete:', visitAutoCleared);
 
         // Task 7: Detect kitchen booking no-shows
         logger.info("[Cron] Task 7: Detecting kitchen booking no-shows...");
         const { detectKitchenNoShows } = await import("../services/kitchen-checkout-service");
         const noShowResults = await detectKitchenNoShows();
         logger.info("[Cron] Kitchen no-show detection complete:", noShowResults);
+        const { detectKitchenVisitNoShows } = await import('../services/kitchen-visit-lifecycle');
+        const visitNoShows = await detectKitchenVisitNoShows();
+        logger.info('[Cron] Kitchen visit no-show detection complete:', visitNoShows);
 
         // Task 8: Expire access codes past their validity window
         logger.info("[Cron] Task 8: Expiring access codes past validity window...");
@@ -935,7 +944,10 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
         let checkinReminderResults = { kitchen: 0, storage: 0, errors: 0 };
         try {
             const today = new Date();
-            const todayStr = today.toISOString().split('T')[0]; // YYYY-MM-DD
+            const localDateParts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+                timeZone: 'America/St_Johns', year: 'numeric', month: '2-digit', day: '2-digit',
+            }).formatToParts(today).map(part => [part.type, part.value]));
+            const todayStr = `${localDateParts.year}-${localDateParts.month}-${localDateParts.day}`;
 
             // Kitchen bookings: confirmed + today + not checked in
             const todaysKitchenBookings = await db
@@ -946,6 +958,7 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
                     bookingDate: kitchenBookings.bookingDate,
                     startTime: kitchenBookings.startTime,
                     endTime: kitchenBookings.endTime,
+                    operatingWindowStartTime: kitchenBookings.operatingWindowStartTime,
                     checkinStatus: kitchenBookings.checkinStatus,
                 })
                 .from(kitchenBookings)
@@ -957,12 +970,20 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
                 );
 
             // Filter to today's bookings in JS (bookingDate is timestamp)
-            const todayBookings = todaysKitchenBookings.filter(b => {
-                const bd = b.bookingDate instanceof Date
+            const { ensureKitchenBookingVisits } = await import('../services/kitchen-booking-visits');
+            const todayBookings = (await Promise.all(todaysKitchenBookings.map(async b => {
+                const operatingDate = b.bookingDate instanceof Date
                     ? b.bookingDate.toISOString().split('T')[0]
                     : String(b.bookingDate).split('T')[0];
-                return bd === todayStr;
-            });
+                const visits = await ensureKitchenBookingVisits(b.id);
+                if (visits.length) return visits
+                    .filter(visit => visit.checkinStatus === 'not_checked_in'
+                        && calendarDateForOperatingTime(operatingDate, visit.startTime,
+                            b.operatingWindowStartTime || b.startTime) === todayStr)
+                    .map(visit => ({ ...b, visitId: visit.id,
+                        startTime: visit.startTime, endTime: visit.endTime }));
+                return operatingDate === todayStr ? [b] : [];
+            }))).flat();
 
             // Get kitchen names and location names for notifications + emails
             const kitchenIds = Array.from(new Set(todayBookings.map(b => b.kitchenId)));
@@ -1003,6 +1024,7 @@ router.post("/detect-overstays", async (req: Request, res: Response) => {
                         bookingDate: todayStr,
                         startTime: booking.startTime,
                         endTime: booking.endTime,
+                        visitId: 'visitId' in booking ? Number(booking.visitId) : undefined,
                     });
                     checkinReminderResults.kitchen++;
                 } catch (err) {
@@ -2043,6 +2065,14 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
 
         // Get kitchen details
         const kitchen = await kitchenService.getKitchenById(booking.kitchenId);
+        // The manager account supplies the confirmed email. Never expose an
+        // unverified phone through the chef booking response.
+        const [kitchenContact] = kitchen?.locationId ? await db
+            .select({ email: users.username, phone: users.phoneNumber, phoneVerifiedAt: users.phoneVerifiedAt })
+            .from(locations)
+            .innerJoin(users, eq(users.id, locations.managerId))
+            .where(eq(locations.id, kitchen.locationId))
+            .limit(1) : [];
 
         // Get location details
         let location = null;
@@ -2244,6 +2274,7 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
             durationHours,
             bookingSubtotalCents: Number(booking.totalPrice || 0),
             addonSubtotalCents: addonSubtotal,
+            pricingMode: booking.pricingMode === 'daily' ? 'daily' : booking.pricingMode === 'hourly' ? 'hourly' : undefined,
         });
         const kitchenOnlyPrice = capturedKitchenRate.kitchenSubtotalCents;
 
@@ -2283,8 +2314,18 @@ router.get("/chef/bookings/:id/details", requireChef, async (req: Request, res: 
             paymentTransaction.serviceFee = reconciledServiceFee;
         }
 
+        const { getCheckinSettings } = await import('../services/kitchen-checkout-service');
+        const checkinSettings = await getCheckinSettings(kitchen?.locationId);
+
         res.json({
             ...booking,
+            checkinWindowMinutesBefore: checkinSettings.checkinWindowMinutesBefore,
+            noShowGraceMinutes: checkinSettings.noShowGraceMinutes,
+            kitchenContact: kitchenContact ? {
+                email: kitchenContact.email,
+                phone: kitchenContact.phoneVerifiedAt ? kitchenContact.phone : null,
+            } : null,
+            visits: await (await import('../services/kitchen-booking-visits')).ensureKitchenBookingVisits(id),
             totalPrice: reconciledKitchenOnlyPrice,
             pricingMode: capturedKitchenRate.mode,
             serviceFee: reconciledServiceFee,
@@ -2589,12 +2630,14 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
                 bookingDate: kitchenBookings.bookingDate,
                 startTime: kitchenBookings.startTime,
                 endTime: kitchenBookings.endTime,
+                operatingWindowStartTime: kitchenBookings.operatingWindowStartTime,
                 status: kitchenBookings.status,
                 kitchenId: kitchenBookings.kitchenId,
                 chefId: kitchenBookings.chefId,
                 paymentIntentId: kitchenBookings.paymentIntentId,
                 paymentStatus: kitchenBookings.paymentStatus,
                 cancellationPolicyHours: locations.cancellationPolicyHours,
+                locationTimezone: locations.timezone,
                 cancellationPolicyMessage: locations.cancellationPolicyMessage,
                 locationId: locations.id,
                 locationName: locations.name,
@@ -2630,7 +2673,11 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
         }
 
         // Check cancellation policy window
-        const bookingDateTime = new Date(`${booking.bookingDate?.toISOString().split('T')[0]}T${booking.startTime}`);
+        const { createBookingDateTime } = await import('@shared/timezone-utils');
+        const operatingDate = booking.bookingDate.toISOString().slice(0, 10);
+        const calendarDate = booking.operatingWindowStartTime
+            ? calendarDateForOperatingTime(operatingDate, booking.startTime, booking.operatingWindowStartTime) : operatingDate;
+        const bookingDateTime = createBookingDateTime(calendarDate, booking.startTime, booking.locationTimezone || 'America/St_Johns');
         const now = new Date();
         const hoursUntilBooking = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
         const cancellationHours = booking.cancellationPolicyHours || 24;
@@ -2731,6 +2778,22 @@ router.post("/chef/bookings/:id/checkin", requireChef, async (req: Request, res:
         if (isNaN(id) || id <= 0) return res.status(400).json({ error: "Invalid booking ID" });
 
         const { checkinNotes, checkinPhotoUrls, checkinChecklistItems } = req.body || {};
+        const [owned] = await db.select({ id: kitchenBookings.id }).from(kitchenBookings).where(and(
+            eq(kitchenBookings.id, id), eq(kitchenBookings.chefId, req.neonUser!.id),
+        )).limit(1);
+        if (!owned) return res.status(404).json({ error: 'Booking not found' });
+        const { ensureKitchenBookingVisits } = await import('../services/kitchen-booking-visits');
+        const visits = await ensureKitchenBookingVisits(id);
+        if (visits.length) {
+            const visitId = req.body?.visitId;
+            if (!Number.isSafeInteger(visitId) || !visits.some(visit => visit.id === visitId)) {
+                return res.status(400).json({ error: 'Choose a visit block to check in' });
+            }
+            const { checkinKitchenVisit } = await import('../services/kitchen-visit-lifecycle');
+            const result = await checkinKitchenVisit(id, visitId, req.neonUser!.id,
+                checkinNotes, checkinPhotoUrls, checkinChecklistItems);
+            return result.success ? res.json(result) : res.status(400).json({ error: result.error });
+        }
         const { requestKitchenCheckin } = await import("../services/kitchen-checkout-service");
 
         const result = await requestKitchenCheckin(
@@ -2760,6 +2823,22 @@ router.post("/chef/bookings/:id/checkout", requireChef, async (req: Request, res
         if (isNaN(id) || id <= 0) return res.status(400).json({ error: "Invalid booking ID" });
 
         const { checkoutNotes, checkoutPhotoUrls, checkoutChecklistItems } = req.body || {};
+        const [owned] = await db.select({ id: kitchenBookings.id }).from(kitchenBookings).where(and(
+            eq(kitchenBookings.id, id), eq(kitchenBookings.chefId, req.neonUser!.id),
+        )).limit(1);
+        if (!owned) return res.status(404).json({ error: 'Booking not found' });
+        const { ensureKitchenBookingVisits } = await import('../services/kitchen-booking-visits');
+        const visits = await ensureKitchenBookingVisits(id);
+        if (visits.length) {
+            const visitId = req.body?.visitId;
+            if (!Number.isSafeInteger(visitId) || !visits.some(visit => visit.id === visitId)) {
+                return res.status(400).json({ error: 'Choose a visit block to check out' });
+            }
+            const { checkoutKitchenVisit } = await import('../services/kitchen-visit-lifecycle');
+            const result = await checkoutKitchenVisit(id, visitId, req.neonUser!.id,
+                checkoutNotes, checkoutPhotoUrls, checkoutChecklistItems);
+            return result.success ? res.json(result) : res.status(400).json({ error: result.error });
+        }
         const { requestKitchenCheckout } = await import("../services/kitchen-checkout-service");
 
         const result = await requestKitchenCheckout(
@@ -2814,6 +2893,7 @@ router.get("/chef/bookings/:id/checkin-status", requireChef, async (req: Request
                 bookingDate: kitchenBookings.bookingDate,
                 startTime: kitchenBookings.startTime,
                 endTime: kitchenBookings.endTime,
+                operatingWindowStartTime: kitchenBookings.operatingWindowStartTime,
                 // Location timezone (authoritative for all check-in window math).
                 // Must be returned so the client can compute canCheckin in the
                 // same timezone the server validates in.
@@ -2830,11 +2910,24 @@ router.get("/chef/bookings/:id/checkin-status", requireChef, async (req: Request
 
         if (!booking) return res.status(404).json({ error: "Booking not found" });
 
+        const { ensureKitchenBookingVisits } = await import('../services/kitchen-booking-visits');
+        const visits = await ensureKitchenBookingVisits(id);
+
         // Load location-aware settings so the client can compute the exact
         // same check-in window the server enforces (prevents a scenario where
         // the UI shows the button enabled but /checkin POST returns an error).
         const { autoCleanExpiredKitchenCheckout, getCheckinSettings } = await import("../services/kitchen-checkout-service");
         const settings = await getCheckinSettings(booking.locationId);
+
+        if (visits.length) {
+            const { autoClearKitchenVisits, detectKitchenVisitNoShows } = await import('../services/kitchen-visit-lifecycle');
+            await autoClearKitchenVisits(settings.checkoutReviewWindowMinutes, id);
+            await detectKitchenVisitNoShows(id);
+            const currentVisits = await ensureKitchenBookingVisits(id);
+            return res.json({ ...booking, visits: currentVisits,
+                checkinWindowMinutesBefore: settings.checkinWindowMinutesBefore,
+                noShowGraceMinutes: settings.noShowGraceMinutes });
+        }
 
         // Lazy evaluation: auto-clear expired kitchen checkout if applicable
         if (booking.checkinStatus === 'checkout_requested' && booking.checkoutRequestedAt) {
@@ -2867,6 +2960,7 @@ router.get("/chef/bookings/:id/checkin-status", requireChef, async (req: Request
 
         res.json({
             ...booking,
+            visits,
             checkinWindowMinutesBefore: settings.checkinWindowMinutesBefore,
             noShowGraceMinutes: settings.noShowGraceMinutes,
         });
@@ -3077,6 +3171,31 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
             return res.status(400).json({ error: "Missing required booking fields" });
         }
 
+        const kitchen = await kitchenService.getKitchenById(kitchenId);
+        const access = await chefService.getApplicationStatusForBooking(chefId, kitchen.locationId, kitchenId);
+        if (!access.canBook) return res.status(403).json({ error: access.message });
+        const availability = await bookingService.validateBookingAvailability(
+            kitchenId, new Date(bookingDate), startTime, endTime,
+        );
+        if (!availability.valid) return res.status(409).json({ error: availability.error || 'Kitchen is unavailable' });
+        const slotCount = availability.slots?.length || 0;
+        const [location] = await db.select({
+            limit: locations.defaultDailyBookingLimit,
+            timezone: locations.timezone,
+            minimumBookingWindowHours: locations.minimumBookingWindowHours,
+        })
+            .from(locations).where(eq(locations.id, kitchen.locationId)).limit(1);
+        if (slotCount < Number(kitchen.minimumBookingHours || 0) || slotCount > (location?.limit ?? 2)) {
+            return res.status(400).json({ error: 'Selected hours do not meet this kitchen’s booking limits' });
+        }
+        const operatingDate = new Date(bookingDate).toISOString().slice(0, 10);
+        const calendarStartDate = calendarDateForOperatingTime(operatingDate, startTime, availability.windowStartTime!);
+        const { getHoursUntilBooking } = await import('../date-utils');
+        if (getHoursUntilBooking(calendarStartDate, startTime, location?.timezone || 'America/St_Johns')
+            < (location?.minimumBookingWindowHours ?? 1)) {
+            return res.status(400).json({ error: 'Booking time is too soon' });
+        }
+
         // Calculate kitchen booking price (pass pool for compatibility)
         const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime);
         let totalPriceCents = kitchenPricing.totalPriceCents;
@@ -3268,6 +3387,9 @@ router.post("/payments/confirm", requireChef, async (req: Request, res: Response
         if (!paymentIntent) {
             return res.status(404).json({ error: "Payment intent not found" });
         }
+        if (paymentIntent.metadata?.chef_id !== String(chefId)) {
+            return res.status(403).json({ error: 'Payment intent does not belong to this chef' });
+        }
 
         // Confirm payment
         const confirmed = await confirmPaymentIntent(paymentIntentId, paymentMethodId);
@@ -3296,6 +3418,9 @@ router.get("/payments/intent/:id/status", requireChef, async (req: Request, res:
 
         if (!paymentIntent) {
             return res.status(404).json({ error: "Payment intent not found" });
+        }
+        if (paymentIntent.metadata?.chef_id !== String(chefId)) {
+            return res.status(403).json({ error: 'Payment intent does not belong to this chef' });
         }
 
         res.json({
@@ -3336,6 +3461,9 @@ router.post("/payments/cancel", requireChef, async (req: Request, res: Response)
         if (!paymentIntent) {
             return res.status(404).json({ error: "Payment intent not found" });
         }
+        if (paymentIntent.metadata?.chef_id !== String(chefId)) {
+            return res.status(403).json({ error: 'Payment intent does not belong to this chef' });
+        }
 
         // Check if payment intent can be cancelled
         const cancellableStatuses = ['requires_payment_method', 'requires_capture', 'requires_confirmation'];
@@ -3364,6 +3492,33 @@ router.post("/payments/cancel", requireChef, async (req: Request, res: Response)
 });
 
 // Create booking and redirect to Stripe Checkout (new flow - replaces embedded payment)
+router.post("/chef/bookings/checkout/cancel", requireChef, async (req: Request, res: Response) => {
+    const holdId = req.body?.holdId;
+    if (typeof holdId !== 'string' || !/^[0-9a-f-]{36}$/i.test(holdId)) {
+        return res.status(400).json({ error: 'Invalid checkout hold' });
+    }
+    try {
+        const { withKitchenDayLock, releaseKitchenCheckout } = await import('../services/kitchen-checkout-holds');
+        const [initial] = await db.select().from(kitchenCheckoutHolds)
+            .where(and(eq(kitchenCheckoutHolds.id, holdId), eq(kitchenCheckoutHolds.chefId, req.neonUser!.id))).limit(1);
+        if (!initial) return res.sendStatus(204);
+        const released = await withKitchenDayLock(initial.kitchenId, initial.operatingDate, async () => {
+            const [hold] = await db.select().from(kitchenCheckoutHolds)
+                .where(and(eq(kitchenCheckoutHolds.id, holdId), eq(kitchenCheckoutHolds.chefId, req.neonUser!.id))).limit(1);
+            if (!hold) return true;
+            if (!hold.stripeSessionId) return false;
+            const { expireAbandonedCheckoutSession } = await import('../services/stripe-checkout-service');
+            if (!await expireAbandonedCheckoutSession(hold.stripeSessionId)) return false;
+            await releaseKitchenCheckout(holdId);
+            return true;
+        });
+        return released ? res.sendStatus(204) : res.status(409).json({ error: 'Checkout has completed or is still being prepared' });
+    } catch (error) {
+        logger.error('Error cancelling kitchen checkout:', error);
+        return res.status(500).json({ error: 'Could not cancel checkout. The hold will expire automatically.' });
+    }
+});
+
 router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, async (req: Request, res: Response) => {
     try {
         const { kitchenId, bookingDate, startTime, endTime, selectedSlots, pricingMode, specialNotes, selectedStorage, selectedEquipmentIds } = req.body;
@@ -3422,10 +3577,15 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
             return res.status(400).json({ error: availabilityCheck.error || "Booking is not within manager-set available hours" });
         }
 
+        const bookingSlots = availabilityCheck.slots!;
+
         // Get location details
         const location = await locationService.getLocationById(kitchenLocationId);
         if (!location) {
             return res.status(404).json({ error: "Location not found" });
+        }
+        if (selectedPricingMode === 'hourly' && bookingSlots.length > (location.defaultDailyBookingLimit ?? 2)) {
+            return res.status(400).json({ error: `Select no more than ${location.defaultDailyBookingLimit ?? 2} hourly slots` });
         }
 
         const timezone = (location as any).timezone || "America/St_Johns";
@@ -3438,11 +3598,12 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
 
         const { isBookingTimePast, getHoursUntilBooking } = await import('../date-utils');
 
-        if (isBookingTimePast(bookingDateStr, startTime, timezone)) {
+        const startCalendarDate = calendarDateForOperatingTime(bookingDateStr, startTime, availabilityCheck.windowStartTime!);
+        if (isBookingTimePast(startCalendarDate, startTime, timezone)) {
             return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
         }
 
-        const hoursUntilBooking = getHoursUntilBooking(bookingDateStr, startTime, timezone);
+        const hoursUntilBooking = getHoursUntilBooking(startCalendarDate, startTime, timezone);
         if (hoursUntilBooking < minimumBookingWindowHours) {
             return res.status(400).json({
                 error: `Bookings must be made at least ${minimumBookingWindowHours} hour${minimumBookingWindowHours !== 1 ? 's' : ''} in advance`
@@ -3471,34 +3632,17 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
 
         // Enforce minimum booking hours (0 = no restriction)
         const minimumBookingHours = kitchenDetails.minimumBookingHours ?? 0;
-        if (selectedPricingMode === 'hourly' && minimumBookingHours > 0 && selectedSlots && Array.isArray(selectedSlots) && selectedSlots.length > 0 && selectedSlots.length < minimumBookingHours) {
+        if (selectedPricingMode === 'hourly' && minimumBookingHours > 0 && bookingSlots.length < minimumBookingHours) {
             return res.status(400).json({
-                error: `This kitchen requires a minimum of ${minimumBookingHours} hour${minimumBookingHours > 1 ? 's' : ''} per booking. You selected ${selectedSlots.length}.`
+                error: `This kitchen requires a minimum of ${minimumBookingHours} hour${minimumBookingHours > 1 ? 's' : ''} per booking. You selected ${bookingSlots.length}.`
             });
         }
 
         // Calculate total price
         // IMPORTANT: When staggered slots are selected, use slot count for pricing
         // not the duration from startTime to endTime (which would overcharge)
-        const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime);
-        
-        let totalPriceCents: number;
-        let effectiveDurationHours: number;
-        
-        if (selectedPricingMode === 'daily') {
-            effectiveDurationHours = selectedSlots?.length || kitchenPricing.durationHours;
-            totalPriceCents = calculateKitchenBasePrice('daily', hourlyRateCents, dailyRateCents, effectiveDurationHours);
-            logger.info(`[Checkout] Daily pricing: $${(totalPriceCents / 100).toFixed(2)}`);
-        } else if (selectedSlots && Array.isArray(selectedSlots) && selectedSlots.length > 0) {
-            // Staggered slots: price based on number of slots (each slot = 1 hour)
-            effectiveDurationHours = Math.max(selectedSlots.length, minimumBookingHours);
-            totalPriceCents = calculateKitchenBasePrice('hourly', kitchenPricing.hourlyRateCents, dailyRateCents, effectiveDurationHours);
-            logger.info(`[Checkout] Staggered slots pricing: ${selectedSlots.length} slots, effective ${effectiveDurationHours} hours, $${(totalPriceCents / 100).toFixed(2)}`);
-        } else {
-            // Contiguous booking: use standard duration calculation
-            effectiveDurationHours = kitchenPricing.durationHours;
-            totalPriceCents = kitchenPricing.totalPriceCents;
-        }
+        const effectiveDurationHours = bookingSlots.length;
+        let totalPriceCents = calculateKitchenBasePrice(selectedPricingMode, hourlyRateCents, dailyRateCents, effectiveDurationHours);
 
         // Calculate storage add-ons — track individual prices for Stripe line items
         const storageIds: number[] = [];
@@ -3573,32 +3717,37 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
 
         // Create Stripe Checkout session with booking data in metadata
         // Booking will be created from this metadata in the webhook
-        const { createPendingCheckoutSession } = await import('../services/stripe-checkout-service');
+        const { createPendingCheckoutSession, expireAbandonedCheckoutSession } = await import('../services/stripe-checkout-service');
+        const { reserveKitchenCheckout, bindKitchenCheckout, releaseKitchenCheckout } = await import('../services/kitchen-checkout-holds');
         // Build kitchen-only price for line item breakdown
-        const appliedRateCents = selectedPricingMode === 'daily' ? dailyRateCents : kitchenPricing.hourlyRateCents;
+        const appliedRateCents = selectedPricingMode === 'daily' ? dailyRateCents : hourlyRateCents;
         const kitchenOnlyPriceCents = selectedPricingMode === 'daily'
-            ? calculateKitchenBasePrice('daily', kitchenPricing.hourlyRateCents, dailyRateCents, effectiveDurationHours)
-            : calculateKitchenBasePrice('hourly', kitchenPricing.hourlyRateCents, dailyRateCents, effectiveDurationHours);
+            ? calculateKitchenBasePrice('daily', hourlyRateCents, dailyRateCents, effectiveDurationHours)
+            : calculateKitchenBasePrice('hourly', hourlyRateCents, dailyRateCents, effectiveDurationHours);
         const kitchenLabel = selectedPricingMode === 'daily'
             ? 'Kitchen Session (full day)'
             : `Kitchen Session (${effectiveDurationHours} hr${effectiveDurationHours !== 1 ? 's' : ''})`;
         const taxLabel = taxRatePercent > 0 ? `Tax (${taxRatePercent}%)` : 'Tax';
 
-        const checkoutSession = await createPendingCheckoutSession({
+        const holdId = await reserveKitchenCheckout(kitchenId, chefId, bookingDateStr, bookingSlots,
+            availabilityCheck.windowStartTime!, selectedPricingMode === 'daily');
+        let checkoutSession: Awaited<ReturnType<typeof createPendingCheckoutSession>>;
+        try {
+        checkoutSession = await createPendingCheckoutSession({
             bookingPriceInCents: totalPriceCents + taxCents + feeCalculation.platformCommissionInCents,
             platformFeeInCents: feeCalculation.platformCommissionInCents,
             managerStripeAccountId,
             customerEmail: chefEmail,
             currency: 'cad',
             successUrl: `${baseUrl}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-            cancelUrl: `${baseUrl}/dashboard?tab=kitchens`,
+            cancelUrl: `${baseUrl}/kitchen-checkout-cancel?hold_id=${holdId}`,
             bookingData: {
                 kitchenId,
                 chefId,
                 bookingDate: bookingDateObj.toISOString(),
                 startTime,
                 endTime,
-                selectedSlots: selectedSlots || [],
+                selectedSlots: bookingSlots,
                 specialNotes,
                 selectedStorage: selectedStorage || [],
                 selectedEquipmentIds: selectedEquipmentIds || [],
@@ -3608,6 +3757,8 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
                 hourlyRateCents: appliedRateCents,
                 durationHours: effectiveDurationHours,
                 pricingMode: selectedPricingMode,
+                holdId,
+                windowStartTime: availabilityCheck.windowStartTime,
                 platform_fee_cents: feeCalculation.platformCommissionInCents,
                 stripe_fee_cents: feeCalculation.stripeProcessingFeeInCents,
             },
@@ -3623,6 +3774,22 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
                 platformCommissionLabel: 'Service Fee',
             },
         });
+        } catch (error) {
+            await releaseKitchenCheckout(holdId);
+            throw error;
+        }
+        try {
+            await bindKitchenCheckout(holdId, checkoutSession.sessionId);
+        } catch (error) {
+            try {
+                if (await expireAbandonedCheckoutSession(checkoutSession.sessionId)) {
+                    await releaseKitchenCheckout(holdId);
+                }
+            } catch (expiryError) {
+                logger.error('Could not verify Stripe checkout expiration; retaining kitchen hold:', expiryError);
+            }
+            throw error;
+        }
 
         logger.info(`[Checkout] Created pending checkout session ${checkoutSession.sessionId} - booking will be created in webhook`);
 
@@ -3640,14 +3807,15 @@ router.post("/chef/bookings/checkout", requireChef, requireNoUnpaidPenalties, as
         });
     } catch (error: any) {
         logger.error("Error creating booking checkout:", error);
-        res.status(500).json({ error: error.message || "Failed to create booking checkout" });
+        const { KitchenSlotUnavailableError } = await import('../services/kitchen-checkout-holds');
+        res.status(error instanceof KitchenSlotUnavailableError ? 409 : 500).json({ error: error.message || "Failed to create booking checkout" });
     }
 });
 
 // Create a booking
 router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req: Request, res: Response) => {
     try {
-        const { kitchenId, bookingDate, startTime, endTime, selectedSlots, specialNotes, selectedStorageIds, selectedStorage, selectedEquipmentIds, paymentIntentId } = req.body;
+        const { kitchenId, bookingDate, startTime, endTime, selectedSlots, pricingMode, specialNotes, selectedStorageIds, selectedStorage, selectedEquipmentIds, paymentIntentId } = req.body;
         const chefId = req.neonUser!.id;
         
         logger.info(`[Booking Route] Received booking request with selectedEquipmentIds: ${JSON.stringify(selectedEquipmentIds)}`);
@@ -3694,6 +3862,9 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
 
         // Get location to get timezone and minimum booking window
         const kitchenLocationId2 = kitchenDetails.locationId;
+        if (!paymentIntentId && (Number(kitchenDetails.hourlyRate || 0) > 0 || Number(kitchenDetails.dailyRate || 0) > 0)) {
+            return res.status(409).json({ error: 'Paid kitchen bookings must use checkout' });
+        }
         let location = null;
         let timezone = "America/St_Johns"; // Default fallback
         let minimumBookingWindowHours = 1; // Default fallback
@@ -3712,6 +3883,10 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
                 }
             }
         }
+        if ((pricingMode ?? 'hourly') === 'hourly' &&
+            (availabilityCheck.slots?.length ?? 0) > ((location as any)?.defaultDailyBookingLimit ?? 2)) {
+            return res.status(400).json({ error: `Select no more than ${(location as any)?.defaultDailyBookingLimit ?? 2} hourly slots` });
+        }
 
         // Extract date string from ISO string to avoid timezone shifts
         // The frontend sends bookingDate as ISO string (e.g., "2025-01-15T00:00:00.000Z")
@@ -3723,12 +3898,13 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
         const { isBookingTimePast, getHoursUntilBooking } = await import('../date-utils');
 
         // Validate booking time using timezone-aware functions
-        if (isBookingTimePast(bookingDateStr, startTime, timezone)) {
+        const startCalendarDate = calendarDateForOperatingTime(bookingDateStr, startTime, availabilityCheck.windowStartTime!);
+        if (isBookingTimePast(startCalendarDate, startTime, timezone)) {
             return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
         }
 
         // Check if booking is within minimum booking window (timezone-aware)
-        const hoursUntilBooking = getHoursUntilBooking(bookingDateStr, startTime, timezone);
+        const hoursUntilBooking = getHoursUntilBooking(startCalendarDate, startTime, timezone);
         if (hoursUntilBooking < minimumBookingWindowHours) {
             return res.status(400).json({
                 error: `Bookings must be made at least ${minimumBookingWindowHours} hour${minimumBookingWindowHours !== 1 ? 's' : ''} in advance`
@@ -3745,15 +3921,31 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
                 return res.status(400).json({ error: "Invalid payment intent" });
             }
 
-            if (paymentIntent.status !== 'succeeded' && paymentIntent.status !== 'processing') {
+            if (paymentIntent.status !== 'succeeded') {
                 return res.status(400).json({
                     error: `Payment not completed. Status: ${paymentIntent.status}`
                 });
             }
 
+            const intentMetadata = paymentIntent.metadata || {};
+            const intendedBaseCents = (pricingMode === 'daily')
+                ? Number(kitchenDetails.dailyRate || 0)
+                : Number(kitchenDetails.hourlyRate || 0) * (availabilityCheck.slots?.length || 0);
+            if (intentMetadata.chef_id !== String(chefId) || intentMetadata.kitchen_id !== String(kitchenId)
+                || intentMetadata.booking_date?.split('T')[0] !== bookingDateStr
+                || intentMetadata.start_time !== startTime || intentMetadata.end_time !== endTime
+                || paymentIntent.currency?.toLowerCase() !== 'cad'
+                || !Number.isSafeInteger(intendedBaseCents) || intendedBaseCents < 0
+                || Number(intentMetadata.approved_subtotal) < intendedBaseCents
+                || paymentIntent.amount !== Number(intentMetadata.expected_amount)) {
+                return res.status(400).json({ error: 'Payment does not match this kitchen booking' });
+            }
+
+            const [alreadyUsed] = await db.select({ id: kitchenBookings.id }).from(kitchenBookings)
+                .where(eq(kitchenBookings.paymentIntentId, paymentIntentId)).limit(1);
+            if (alreadyUsed) return res.status(409).json({ error: 'Payment was already used for a booking' });
+
             paymentIntentStatus = paymentIntent.status;
-            // Check amount matches expected
-            // Note: We should ideally recalculate price here to verify, but for now trusting the intent amount
         }
 
         // Extract storage IDs from selectedStorage array (frontend sends objects with storageListingId)
@@ -3767,20 +3959,22 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
         logger.info(`[Booking Route] Received booking request with selectedStorage: ${JSON.stringify(selectedStorage)}, extracted storageIds: ${JSON.stringify(storageIds)}`);
 
         // Create booking with PENDING status - requires manager approval
-        const booking = await bookingService.createKitchenBooking({
+        const { withKitchenDayLock } = await import('../services/kitchen-checkout-holds');
+        const booking = await withKitchenDayLock(kitchenId, bookingDateStr, () => bookingService.createKitchenBooking({
             kitchenId,
             chefId,
             bookingDate: bookingDateObj,
             startTime,
             endTime,
             selectedSlots: selectedSlots || [], // Pass discrete time slots
+            pricingMode,
             status: 'pending', // Requires manager approval before confirmation
             paymentStatus: paymentIntentId ? 'paid' : 'pending',
             paymentIntentId,
             specialNotes,
             selectedStorage: selectedStorage || [], // Pass storage with explicit dates
             selectedEquipmentIds: selectedEquipmentIds || []
-        });
+        }));
 
         // Create payment transaction record if payment intent is present
         if (paymentIntentId) {
@@ -3849,7 +4043,9 @@ router.post("/chef/bookings", requireChef, requireNoUnpaidPenalties, async (req:
                     endTime,
                     specialNotes,
                     timezone: (location as any)?.timezone || 'America/St_Johns',
-                    locationName: (location as any)?.name
+                    locationName: (location as any)?.name,
+                    operatingWindowStartTime: booking.operatingWindowStartTime,
+                    selectedSlots: booking.selectedSlots,
                 });
                 await sendEmail(chefEmail, { trackingId: `booking_${booking.id}_chef` });
 
@@ -3991,7 +4187,11 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
             const hourlyRateCents = parseInt(metadata.hourly_rate_cents || "0");
             const durationHours = parseFloat(metadata.duration_hours || "1");
             
-            const [directBooking] = await db
+            const { fulfillKitchenCheckout } = await import('../services/kitchen-checkout-holds');
+            const directBooking = await fulfillKitchenCheckout(
+                metadata.hold_id, sessionId, kitchenIdFromMeta, bookingDate.toISOString().slice(0, 10),
+                selectedSlots, metadata.window_start_time || startTime, async () => {
+            const [created] = await db
                 .insert(kitchenBookings)
                 .values({
                     kitchenId: kitchenIdFromMeta,
@@ -4009,10 +4209,15 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
                     serviceFee: parseInt(metadata.platform_fee_cents || "0").toString(),
                     currency: "CAD",
                     selectedSlots: selectedSlots,
+                    operatingWindowStartTime: metadata.window_start_time || null,
+                    pricingMode: metadata.pricing_mode === 'daily' ? 'daily' : 'hourly',
                     storageItems: [],
                     equipmentItems: [],
                 })
                 .returning();
+            if (!created) throw new Error('Failed to create booking');
+            return created;
+            });
             
             if (!directBooking) {
                 throw new Error("Failed to create booking");
@@ -4131,6 +4336,8 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
                                 timezone: location.timezone || "America/St_Johns",
                                 locationName: location.name,
                                 bookingId: newBooking.id,
+                                operatingWindowStartTime: newBooking.operatingWindowStartTime,
+                                selectedSlots: newBooking.selectedSlots,
                             });
                             await sendEmail(managerEmail);
                             logger.info(`[Fallback] Sent manager notification for booking ${newBooking.id}`);

@@ -11,6 +11,7 @@ import { StorageExtensionApprovals } from "@/components/manager/StorageExtension
 import { PendingCancellationRequests } from "@/components/manager/PendingCancellationRequests";
 import { BookingActionSheet, type BookingForAction } from "@/components/manager/bookings/BookingActionSheet";
 import { BookingManagementSheet, type BookingForManagement, type ManagementSubmitParams } from "@/components/manager/bookings/BookingManagementSheet";
+import { kitchenBookingBlocks } from "@/lib/kitchen-booking-blocks";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ import { DataTable } from "@/components/ui/data-table";
 import { Input } from "@/components/ui/input";
 import { getBookingColumns, Booking } from "@/components/manager/bookings/columns";
 import { auth } from "@/lib/firebase";
+import { calendarDateForOperatingTime, sortTimesInOperatingWindow } from "@shared/operating-hours";
 
 // Booking type imported from columns.tsx
 
@@ -272,6 +274,8 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
       bookingDate: details.bookingDate,
       startTime: details.startTime,
       endTime: details.endTime,
+      selectedSlots: details.selectedSlots,
+      operatingWindowStartTime: details.operatingWindowStartTime,
       totalPrice: details.totalPrice,
       transactionAmount: details.paymentTransaction?.amount,
       serviceFee: details.paymentTransaction?.serviceFee,
@@ -595,6 +599,8 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
         bookingDate: details.bookingDate,
         startTime: details.startTime,
         endTime: details.endTime,
+        selectedSlots: details.selectedSlots,
+        operatingWindowStartTime: details.operatingWindowStartTime,
         totalPrice: details.totalPrice,
         status: details.status,
         paymentStatus: details.paymentStatus,
@@ -786,21 +792,26 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
 
       const timezone = booking.locationTimezone || DEFAULT_TIMEZONE;
       const bookingDateStr = booking.bookingDate.split('T')[0];
+      const startDate = booking.operatingWindowStartTime
+        ? calendarDateForOperatingTime(bookingDateStr, booking.startTime, booking.operatingWindowStartTime) : bookingDateStr;
+      const endDate = booking.operatingWindowStartTime
+        ? calendarDateForOperatingTime(bookingDateStr, booking.endTime, booking.operatingWindowStartTime)
+        : booking.endTime <= booking.startTime ? calendarDateForOperatingTime(bookingDateStr, '00:00', '23:00') : bookingDateStr;
 
       try {
         // Timeline is the PRIMARY factor - status does NOT override timeline
         // Check if booking end time has passed - if yes, it's past (regardless of status)
-        if (isBookingPast(bookingDateStr, booking.endTime, timezone)) {
+        if (isBookingPast(endDate, booking.endTime, timezone)) {
           past.push(booking);
         }
         // Check if booking start time is in the future - if yes, it's upcoming
-        else if (isBookingUpcoming(bookingDateStr, booking.startTime, timezone)) {
+        else if (isBookingUpcoming(startDate, booking.startTime, timezone)) {
           upcoming.push(booking);
         }
         // If booking is currently happening (between start and end), check more carefully
         else {
           // Booking start time has passed but end time hasn't - check if it's very recent
-          const bookingEndDateTime = createBookingDateTime(bookingDateStr, booking.endTime, timezone);
+          const bookingEndDateTime = createBookingDateTime(endDate, booking.endTime, timezone);
           const now = getNowInTimezone(timezone);
 
           // If end time is very close (within 1 hour), it might have just ended - use end time to decide
@@ -817,8 +828,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
       } catch (error) {
         // If timezone check fails, fall back to simple date comparison using end time
         try {
-          const dateStr = booking.bookingDate.split('T')[0];
-          const bookingEndDateTime = new Date(`${dateStr}T${booking.endTime}`);
+          const bookingEndDateTime = new Date(`${endDate}T${booking.endTime}`);
           if (bookingEndDateTime < new Date()) {
             past.push(booking);
           } else {
@@ -842,7 +852,9 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
     const toStartMs = (bk: Booking): number => {
       const dateStr = bk.bookingDate.split('T')[0];
       const tz = bk.locationTimezone || DEFAULT_TIMEZONE;
-      return createBookingDateTime(dateStr, bk.startTime, tz).getTime();
+      const startDate = bk.operatingWindowStartTime
+        ? calendarDateForOperatingTime(dateStr, bk.startTime, bk.operatingWindowStartTime) : dateStr;
+      return createBookingDateTime(startDate, bk.startTime, tz).getTime();
     };
     upcoming.sort((a, b) => toStartMs(a) - toStartMs(b));
     past.sort((a, b) => toStartMs(b) - toStartMs(a));
@@ -1113,12 +1125,13 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                                 const endMins = h * 60 + m + 60;
                                 const endH = Math.floor(endMins / 60);
                                 const endM = endMins % 60;
-                                return { startTime: slot, endTime: `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}` };
+                                return { startTime: slot, endTime: `${(endH % 24).toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}` };
                               }
                               return slot;
                             };
                             const normalized = rawSlots.map(normalizeSlot).filter(s => s.startTime && s.endTime);
-                            const sorted = [...normalized].sort((a, b) => a.startTime.localeCompare(b.startTime));
+                            const sortedTimes = sortTimesInOperatingWindow(normalized.map(s => s.startTime), bookingToCancel.operatingWindowStartTime || bookingToCancel.startTime);
+                            const sorted = sortedTimes.map(time => normalized.find(s => s.startTime === time)!);
                             // Check if contiguous
                             let isContiguous = true;
                             for (let i = 1; i < sorted.length; i++) {
@@ -1318,7 +1331,8 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">{t("time")}</span>
                   <span className="font-medium">
-                    {formatTime(bookingToCancelAndRefund.startTime)} - {formatTime(bookingToCancelAndRefund.endTime)}
+                    {kitchenBookingBlocks(bookingToCancelAndRefund).map(block =>
+                      `${formatTime(block.startTime)} - ${formatTime(block.endTime)}`).join(', ')}
                   </span>
                 </div>
               </div>

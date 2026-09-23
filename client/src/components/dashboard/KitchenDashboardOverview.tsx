@@ -17,6 +17,7 @@ import BookingCalendarWidget from "./BookingCalendarWidget";
 import { TodaysKitchenBookings } from "@/components/manager/TodaysKitchenBookings";
 import { formatCurrency, formatTime as formatTimeLocale, formatDate as formatDateLocale } from "@/lib/formatters";
 import { tt } from "@/i18n/common-ns";
+import { kitchenBookingBlocks } from "@/lib/kitchen-booking-blocks";
 
 
 type ViewType = 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'revenue';
@@ -1100,7 +1101,8 @@ export default function KitchenDashboardOverview({
                         <div className="flex items-center gap-2 text-sm text-gray-500">
                           <span>{formatDate(booking.bookingDate)}</span>
                           <span className="text-gray-300">•</span>
-                          <span>{formatTime(booking.startTime)} - {formatTime(booking.endTime)}</span>
+                          <span>{kitchenBookingBlocks(booking).map(block =>
+                            `${formatTime(block.startTime)} - ${formatTime(block.endTime)}`).join(', ')}</span>
                         </div>
                       </div>
                     </div>

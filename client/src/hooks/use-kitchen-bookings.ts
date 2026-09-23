@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { useState, useEffect } from "react";
+import { calendarDateForBookingTime } from '@shared/operating-hours';
+import { createBookingDateTime, DEFAULT_TIMEZONE } from '@/utils/timezone-utils';
 
 interface Booking {
   id: number;
@@ -11,6 +13,8 @@ interface Booking {
   bookingDate: string;
   startTime: string;
   endTime: string;
+  operatingWindowStartTime?: string | null;
+  locationTimezone?: string;
   selectedSlots?: Array<string | { startTime: string; endTime: string }>; // Discrete time slots
   status: "pending" | "confirmed" | "cancelled" | "completed";
   specialNotes?: string;
@@ -30,6 +34,7 @@ interface Booking {
 
 interface CreateBookingData {
   kitchenId: number;
+  pricingMode?: 'hourly' | 'daily';
   bookingDate: string;
   startTime: string;
   endTime: string;
@@ -138,6 +143,7 @@ export function useKitchenBookings() {
         bookingDate: booking.booking_date || booking.bookingDate,
         startTime: booking.start_time || booking.startTime,
         endTime: booking.end_time || booking.endTime,
+        operatingWindowStartTime: booking.operatingWindowStartTime || booking.operating_window_start_time || null,
         selectedSlots: booking.selected_slots || booking.selectedSlots || [], // Discrete time slots for non-contiguous bookings
         status: booking.status,
         specialNotes: booking.special_notes || booking.specialNotes,
@@ -186,7 +192,9 @@ export function useKitchenBookings() {
 
       // Check if there are upcoming confirmed bookings (manager might cancel/reschedule)
       const hasUpcomingBookings = data.some((b: Booking) => {
-        const bookingDate = new Date(`${b.bookingDate}T${b.startTime}`);
+        const operatingDate = b.bookingDate.split('T')[0];
+        const calendarDate = calendarDateForBookingTime(operatingDate, b.startTime, b.operatingWindowStartTime);
+        const bookingDate = createBookingDateTime(calendarDate, b.startTime, b.locationTimezone || DEFAULT_TIMEZONE);
         return bookingDate >= new Date() && b.status === "confirmed";
       });
 

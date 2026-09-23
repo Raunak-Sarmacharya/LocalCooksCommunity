@@ -150,7 +150,7 @@ export async function getRevenueMetrics(
             kb.total_price,
             CASE 
               WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
-              THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+              THEN CASE WHEN kb.pricing_mode = 'daily' THEN kb.hourly_rate::numeric ELSE ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric) END
               ELSE 0
             END
           )::numeric
@@ -163,7 +163,7 @@ export async function getRevenueMetrics(
               kb.total_price,
               CASE 
                 WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
-                THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+                THEN CASE WHEN kb.pricing_mode = 'daily' THEN kb.hourly_rate::numeric ELSE ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric) END
                 ELSE 0
               END
             )::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100
@@ -179,7 +179,7 @@ export async function getRevenueMetrics(
             kb.total_price,
             CASE 
               WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
-              THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+              THEN CASE WHEN kb.pricing_mode = 'daily' THEN kb.hourly_rate::numeric ELSE ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric) END
               ELSE 0
             END
           )::numeric ELSE 0 END), 0)::bigint as completed_payments,
@@ -188,7 +188,7 @@ export async function getRevenueMetrics(
             kb.total_price,
             CASE 
               WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
-              THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+              THEN CASE WHEN kb.pricing_mode = 'daily' THEN kb.hourly_rate::numeric ELSE ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric) END
               ELSE 0
             END
           )::numeric ELSE 0 END), 0)::bigint as pending_payments,
@@ -197,7 +197,7 @@ export async function getRevenueMetrics(
             kb.total_price,
             CASE 
               WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
-              THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+              THEN CASE WHEN kb.pricing_mode = 'daily' THEN kb.hourly_rate::numeric ELSE ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric) END
               ELSE 0
             END
           )::numeric ELSE 0 END), 0)::bigint as refunded_amount,
@@ -206,7 +206,7 @@ export async function getRevenueMetrics(
             kb.total_price,
             CASE 
               WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
-              THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+              THEN CASE WHEN kb.pricing_mode = 'daily' THEN kb.hourly_rate::numeric ELSE ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric) END
               ELSE 0
             END
           )::numeric
@@ -238,7 +238,7 @@ export async function getRevenueMetrics(
             kb.total_price,
             CASE 
               WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
-              THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+              THEN CASE WHEN kb.pricing_mode = 'daily' THEN kb.hourly_rate::numeric ELSE ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric) END
               ELSE 0
             END
           )::numeric
@@ -278,7 +278,7 @@ export async function getRevenueMetrics(
             kb.total_price,
             CASE 
               WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
-              THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+              THEN CASE WHEN kb.pricing_mode = 'daily' THEN kb.hourly_rate::numeric ELSE ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric) END
               ELSE 0
             END
           )::numeric
@@ -335,7 +335,7 @@ export async function getRevenueMetrics(
                 kb.total_price,
                 CASE 
                   WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
-                  THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+                  THEN CASE WHEN kb.pricing_mode = 'daily' THEN kb.hourly_rate::numeric ELSE ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric) END
                   ELSE 0
                 END
               )::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100
@@ -357,7 +357,7 @@ export async function getRevenueMetrics(
                 kb.total_price,
                 CASE 
                   WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
-                  THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+                  THEN CASE WHEN kb.pricing_mode = 'daily' THEN kb.hourly_rate::numeric ELSE ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric) END
                   ELSE 0
                 END
               )::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100
@@ -467,7 +467,7 @@ export async function getRevenueMetrics(
               kb.total_price,
               CASE 
                 WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
-                THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+                THEN CASE WHEN kb.pricing_mode = 'daily' THEN kb.hourly_rate::numeric ELSE ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric) END
                 ELSE 0
               END
             )::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100
@@ -488,7 +488,7 @@ export async function getRevenueMetrics(
               kb.total_price,
               CASE 
                 WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
-                THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+                THEN CASE WHEN kb.pricing_mode = 'daily' THEN kb.hourly_rate::numeric ELSE ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric) END
                 ELSE 0
               END
             )::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100
@@ -715,7 +715,7 @@ export async function getRevenueByLocation(
             kb.total_price,
             CASE 
               WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
-              THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+              THEN CASE WHEN kb.pricing_mode = 'daily' THEN kb.hourly_rate::numeric ELSE ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric) END
               ELSE 0
             END
           )::numeric
@@ -821,7 +821,7 @@ export async function getRevenueByDate(
             kb.total_price,
             CASE 
               WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
-              THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+              THEN CASE WHEN kb.pricing_mode = 'daily' THEN kb.hourly_rate::numeric ELSE ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric) END
               ELSE 0
             END
           )::numeric
@@ -930,7 +930,7 @@ export async function getTransactionHistory(
           kb.total_price,
           CASE 
             WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
-            THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+            THEN CASE WHEN kb.pricing_mode = 'daily' THEN kb.hourly_rate::numeric ELSE ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric) END
             ELSE 0
           END
         )::bigint as kb_total_price,

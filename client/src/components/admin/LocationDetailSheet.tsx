@@ -432,10 +432,13 @@ function KitchenDetailCard({ kitchen }: { kitchen: any }) {
               <Badge variant={kitchen.isActive ? "default" : "destructive"} className="text-[10px] px-1.5 py-0">
                 {kitchen.isActive ? "Active" : "Inactive"}
               </Badge>
-              {kitchen.hourlyRate && (
+              {Number(kitchen.hourlyRate) > 0 && (
                 <span className="text-xs text-muted-foreground">
-                  {formatCents(kitchen.hourlyRate)}/{kitchen.pricingModel || "hr"}
+                  {formatCents(kitchen.hourlyRate)}/hr
                 </span>
+              )}
+              {Number(kitchen.dailyRate) > 0 && (
+                <span className="text-xs text-muted-foreground">{formatCents(kitchen.dailyRate)}/day</span>
               )}
             </div>
           </div>
@@ -461,6 +464,7 @@ function KitchenDetailCard({ kitchen }: { kitchen: any }) {
           {/* Kitchen Details */}
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
             <Field label="Hourly Rate" value={kitchen.hourlyRate ? formatCents(kitchen.hourlyRate) : null} />
+            <Field label="Daily Rate" value={kitchen.dailyRate ? formatCents(kitchen.dailyRate) : null} />
             <Field label="Pricing Model" value={kitchen.pricingModel} />
             <Field label="Min Booking Hours" value={kitchen.minimumBookingHours} />
             <Field label="Tax Rate" value={kitchen.taxRatePercent ? `${kitchen.taxRatePercent}%` : null} />

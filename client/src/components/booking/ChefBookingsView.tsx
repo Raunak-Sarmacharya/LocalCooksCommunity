@@ -17,6 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { DEFAULT_TIMEZONE, isBookingPast, createBookingDateTime } from "@/utils/timezone-utils"
+import { addHour, calendarDateForBookingTime, sortTimesInOperatingWindow } from "@shared/operating-hours"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { StorageExtensionDialog } from "./StorageExtensionDialog"
 import { StorageCheckoutDialog } from "./StorageCheckoutDialog"
@@ -44,6 +45,7 @@ interface Booking {
   bookingDate: string
   startTime: string
   endTime: string
+  operatingWindowStartTime?: string | null
   selectedSlots?: Array<string | { startTime: string; endTime: string }>
   status: "pending" | "confirmed" | "cancelled" | "completed" | "cancellation_requested"
   specialNotes?: string
@@ -182,20 +184,18 @@ const formatBookingTimeSlots = (booking: Booking): string => {
 
   const normalizeSlot = (slot: string | { startTime: string; endTime: string }) => {
     if (typeof slot === 'string') {
-      const [h, m] = slot.split(':').map(Number)
-      const endMins = h * 60 + m + 60
-      const endH = Math.floor(endMins / 60)
-      const endM = endMins % 60
       return {
         startTime: slot,
-        endTime: `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`
+        endTime: addHour(slot)
       }
     }
     return slot
   }
 
   const normalized = rawSlots.map(normalizeSlot).filter(s => s.startTime && s.endTime)
-  const sorted = [...normalized].sort((a, b) => a.startTime.localeCompare(b.startTime))
+  const ordered = sortTimesInOperatingWindow(normalized.map(slot => slot.startTime),
+    booking.operatingWindowStartTime || booking.startTime)
+  const sorted = ordered.map(time => normalized.find(slot => slot.startTime === time)!)
 
   let isContiguous = true
   for (let i = 1; i < sorted.length; i++) {
@@ -231,7 +231,7 @@ const canCancelBooking = (booking: Booking, now: Date): boolean => {
     // wall-clock time is what the cancellation policy is measured against,
     // not the chef's browser timezone.
     const timezone = booking.locationTimezone || DEFAULT_TIMEZONE
-    const bookingDateTime = createBookingDateTime(dateStr, booking.startTime, timezone)
+    const bookingDateTime = createBookingDateTime(calendarDateForBookingTime(dateStr, booking.startTime, booking.operatingWindowStartTime), booking.startTime, timezone)
 
     if (isNaN(bookingDateTime.getTime())) return false
     if (bookingDateTime < now) return false
@@ -357,7 +357,7 @@ const getChefBookingColumns = ({
         // Resolve booking start in the location's timezone so "time until
         // booking" is measured against the kitchen's clock, not the chef's.
         const timezone = booking.locationTimezone || DEFAULT_TIMEZONE
-        const bookingDateTime = createBookingDateTime(dateStr, booking.startTime, timezone)
+        const bookingDateTime = createBookingDateTime(calendarDateForBookingTime(dateStr, booking.startTime, booking.operatingWindowStartTime), booking.startTime, timezone)
         if (!isNaN(bookingDateTime.getTime())) {
           const isUpcoming = bookingDateTime >= now
           if (isUpcoming && status !== 'cancelled') {
@@ -1255,14 +1255,14 @@ export default function ChefBookingsView({
         const timezone = booking.locationTimezone || DEFAULT_TIMEZONE
         const bookingDateStr = booking.bookingDate.split('T')[0]
 
-        if (isBookingPast(bookingDateStr, booking.endTime, timezone)) {
+        if (isBookingPast(calendarDateForBookingTime(bookingDateStr, booking.endTime, booking.operatingWindowStartTime, booking.startTime), booking.endTime, timezone)) {
           past.push(booking)
         } else {
           upcoming.push(booking)
         }
       } catch {
         const dateStr = booking.bookingDate.split('T')[0]
-        const bookingEndDateTime = new Date(`${dateStr}T${booking.endTime}`)
+        const bookingEndDateTime = new Date(`${calendarDateForBookingTime(dateStr, booking.endTime, booking.operatingWindowStartTime, booking.startTime)}T${booking.endTime}`)
         if (bookingEndDateTime < new Date()) {
           past.push(booking)
         } else {
@@ -1277,7 +1277,7 @@ export default function ChefBookingsView({
     const toStartMs = (bk: Booking): number => {
       const dateStr = bk.bookingDate?.split('T')[0] || bk.bookingDate
       const tz = bk.locationTimezone || DEFAULT_TIMEZONE
-      return createBookingDateTime(dateStr, bk.startTime, tz).getTime()
+      return createBookingDateTime(calendarDateForBookingTime(dateStr, bk.startTime, bk.operatingWindowStartTime), bk.startTime, tz).getTime()
     }
     upcoming.sort((a, b) => toStartMs(a) - toStartMs(b))
     past.sort((a, b) => toStartMs(b) - toStartMs(a))
@@ -1495,7 +1495,7 @@ export default function ChefBookingsView({
     // Resolve in the location's timezone so the cancellation-window math
     // agrees with the server (which measures against the kitchen's wall clock).
     const timezone = booking.locationTimezone || DEFAULT_TIMEZONE
-    const bookingDateTime = createBookingDateTime(dateStr, booking.startTime, timezone)
+    const bookingDateTime = createBookingDateTime(calendarDateForBookingTime(dateStr, booking.startTime, booking.operatingWindowStartTime), booking.startTime, timezone)
 
     if (isNaN(bookingDateTime.getTime())) {
       toast.error(t("bkInvalidDateFormat"))
@@ -1627,7 +1627,7 @@ export default function ChefBookingsView({
       // it's actually within 2 hours in NDT.
       const dateStr = b.bookingDate.split('T')[0]
       const timezone = b.locationTimezone || DEFAULT_TIMEZONE
-      const bookingStart = createBookingDateTime(dateStr, b.startTime, timezone)
+      const bookingStart = createBookingDateTime(calendarDateForBookingTime(dateStr, b.startTime, b.operatingWindowStartTime), b.startTime, timezone)
       const hoursUntil = (bookingStart.getTime() - now.getTime()) / (1000 * 60 * 60)
       return hoursUntil <= 2 // Within 2 hours of start time
     })

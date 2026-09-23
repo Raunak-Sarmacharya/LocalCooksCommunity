@@ -424,12 +424,35 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
   }, [selectedKitchenId, loadWeeklySchedule]);
 
   // Mutations
+  const showOverrideBookingWarning = (error: any, retry: (bookingIds: number[]) => void) => {
+    if (!Array.isArray(error.bookingIds)) return false;
+    const bookingIds: number[] = error.bookingIds;
+    setAlertConfig({
+      open: true,
+      title: mt('conflictWarning'),
+      description: `${mt('conflictWarningClosingDate')} ${bookingIds.length} booking${bookingIds.length === 1 ? '' : 's'}: ${bookingIds.map(id => `#${id}`).join(', ')}.`,
+      actionType: 'save',
+      onConfirm: () => {
+        setAlertConfig(previous => ({ ...previous, open: false }));
+        retry(bookingIds);
+      },
+    });
+    return true;
+  };
+
   const createAvailability = useMutation({
     mutationFn: async (data: any) => {
       const headers = await getAuthHeaders();
       const res = await fetch(`/api/manager/kitchens/${selectedKitchenId}/date-overrides`, {
         method: 'POST', headers, body: JSON.stringify(data)
       });
+      if (res.status === 409) {
+        const conflict = await res.json();
+        if (conflict.code === 'BOOKINGS_AFFECTED') {
+          throw Object.assign(new Error(conflict.error), { bookingIds: conflict.bookingIds });
+        }
+        throw new Error(conflict.error || 'Could not save date override');
+      }
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
@@ -438,7 +461,8 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
       setIsExceptionDialogOpen(false);
       toast({ title: mt("success"), description: mt("exceptionSavedSuccessfully") });
     },
-    onError: (err: any) => {
+    onError: (err: any, data) => {
+      if (showOverrideBookingWarning(err, bookingIds => createAvailability.mutate({ ...data, acknowledgedBookingIds: bookingIds }))) return;
       toast({ title: mt("error"), description: err.message, variant: "destructive" });
     }
   });
@@ -449,6 +473,13 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
       const res = await fetch(`/api/manager/date-overrides/${id}`, {
         method: 'PUT', headers, body: JSON.stringify(data)
       });
+      if (res.status === 409) {
+        const conflict = await res.json();
+        if (conflict.code === 'BOOKINGS_AFFECTED') {
+          throw Object.assign(new Error(conflict.error), { bookingIds: conflict.bookingIds });
+        }
+        throw new Error(conflict.error || 'Could not save date override');
+      }
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
@@ -457,7 +488,10 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
       setIsExceptionDialogOpen(false);
       toast({ title: mt("success"), description: mt("exceptionUpdatedSuccessfully") });
     },
-    onError: (err: any) => {
+    onError: (err: any, variables) => {
+      if (showOverrideBookingWarning(err, bookingIds => updateAvailability.mutate({
+        id: variables.id, data: { ...variables.data, acknowledgedBookingIds: bookingIds },
+      }))) return;
       toast({ title: mt("error"), description: err.message, variant: "destructive" });
     }
   });
@@ -480,7 +514,7 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
   });
 
 
-  const handleSaveWeeklySchedule = useCallback(async () => {
+  const handleSaveWeeklySchedule = useCallback(async (acknowledgedBookingIds?: number[]) => {
     if (!selectedKitchenId) return false;
     setIsSavingSchedule(true);
     try {
@@ -496,13 +530,26 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
         };
       });
 
-      // Naive sequential save to ensure reliability
-      for (const item of scheduleArray) {
-        const response = await fetch("/api/manager/availability", { method: "POST", headers, body: JSON.stringify(item) });
-        if (!response.ok) {
-          throw new Error(await response.text() || "Failed to save weekly schedule");
+      const response = await fetch('/api/manager/availability/weekly', {
+        method: 'PUT', headers, body: JSON.stringify({ kitchenId: selectedKitchenId, days: scheduleArray, acknowledgedBookingIds }),
+      });
+      if (response.status === 409) {
+        const conflict = await response.json();
+        if (conflict.code === 'BOOKINGS_AFFECTED' && Array.isArray(conflict.bookingIds)) {
+          setAlertConfig({
+            open: true,
+            title: mt('conflictWarning'),
+            description: `This schedule change affects ${conflict.bookingIds.length} existing booking${conflict.bookingIds.length === 1 ? '' : 's'}: ${conflict.bookingIds.map((id: number) => `#${id}`).join(', ')}. Review these bookings before continuing.`,
+            actionType: 'save',
+            onConfirm: () => {
+              setAlertConfig(current => ({ ...current, open: false }));
+              void handleSaveWeeklySchedule(conflict.bookingIds);
+            },
+          });
+          return false;
         }
       }
+      if (!response.ok) throw new Error(await response.text() || 'Failed to save weekly schedule');
       toast({ title: mt("success"), description: mt("weeklyScheduleSaved") });
       queryClient.invalidateQueries({ queryKey: ['/api/manager/availability', selectedKitchenId] });
       // [NEW] Notify parent that save was successful
@@ -585,25 +632,6 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
       maxSlotsPerChef: exceptionForm.maxSlotsPerChef
     };
 
-    // Check for conflicts if closing a date with bookings
-    if (!exceptionForm.isAvailable) {
-      const hasBookings = bookings.some((b: Booking) => format(new Date(b.bookingDate), 'yyyy-MM-dd') === dateStr);
-      if (hasBookings) {
-        setAlertConfig({
-          open: true,
-          title: mt("conflictWarning"),
-          description: mt("conflictWarningClosingDate"),
-          actionType: 'save',
-          onConfirm: () => {
-            if (selectedException) updateAvailability.mutate({ id: selectedException.id, data: payload });
-            else createAvailability.mutate(payload);
-            setAlertConfig(prev => ({ ...prev, open: false }));
-          }
-        });
-        return;
-      }
-    }
-
     if (selectedException) {
       updateAvailability.mutate({ id: selectedException.id, data: payload });
     } else {
@@ -664,7 +692,7 @@ const AvailabilityContent = forwardRef<AvailabilityContentHandle, {
                 <CardDescription>{mt("defaultHoursOfOperationForThisKitchen")}</CardDescription>
               </div>
               {!hideWeeklyScheduleSaveButton && (isScheduleDirty || isSavingSchedule) && (
-                <Button onClick={handleSaveWeeklySchedule} disabled={isSavingSchedule}>
+                <Button onClick={() => { void handleSaveWeeklySchedule(); }} disabled={isSavingSchedule}>
                   {isSavingSchedule ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                   {mt("saveSchedule")}
                 </Button>

@@ -110,6 +110,14 @@ router.post("/stripe", async (req: Request, res: Response) => {
           webhookEventId,
         );
         break;
+      case "checkout.session.expired": {
+        const expiredSession = event.data.object as Stripe.Checkout.Session;
+        if (expiredSession.metadata?.type === 'kitchen_booking' && expiredSession.metadata.hold_id) {
+          const { releaseKitchenCheckout } = await import('../services/kitchen-checkout-holds');
+          await releaseKitchenCheckout(expiredSession.metadata.hold_id);
+        }
+        break;
+      }
       case "payment_intent.succeeded":
         await handlePaymentIntentSucceeded(
           event.data.object as Stripe.PaymentIntent,
@@ -581,7 +589,11 @@ async function handleCheckoutSessionCompleted(
         
         try {
           const kbRefCode = await generateReferenceCode('kitchen_booking');
-          const [directBooking] = await db
+          const { fulfillKitchenCheckout } = await import('../services/kitchen-checkout-holds');
+          const directBooking = await fulfillKitchenCheckout(
+            metadata.hold_id, session.id, kitchenId, bookingDate.toISOString().slice(0, 10),
+            selectedSlots, metadata.window_start_time || startTime, async () => {
+          const [created] = await db
             .insert(kitchenBookings)
             .values({
               referenceCode: kbRefCode,
@@ -600,6 +612,8 @@ async function handleCheckoutSessionCompleted(
               serviceFee: parseInt(metadata.platform_fee_cents || "0").toString(),
               currency: "CAD",
               selectedSlots: selectedSlots,
+              operatingWindowStartTime: metadata.window_start_time || null,
+              pricingMode: metadata.pricing_mode === 'daily' ? 'daily' : 'hourly',
               storageItems: [],
               equipmentItems: [],
               // ENTERPRISE STANDARD: Store Stripe customer/payment info for off-session damage claim charging
@@ -607,6 +621,9 @@ async function handleCheckoutSessionCompleted(
               stripePaymentMethodId: stripePaymentMethodId || null,
             })
             .returning();
+          if (!created) throw new Error('Direct DB insert returned no result');
+          return created;
+          });
           
           if (directBooking) {
             booking = {
@@ -626,6 +643,26 @@ async function handleCheckoutSessionCompleted(
             throw new Error("Direct DB insert returned no result");
           }
         } catch (insertError: unknown) {
+          const { KitchenSlotUnavailableError, KitchenHoldMissingError } = await import('../services/kitchen-checkout-holds');
+          if (insertError instanceof KitchenSlotUnavailableError || insertError instanceof KitchenHoldMissingError) {
+            // A late webhook or an old unreserved session must never create a second booking.
+            const [alreadyBooked] = paymentIntentId ? await db.select({ id: kitchenBookings.id })
+              .from(kitchenBookings).where(eq(kitchenBookings.paymentIntentId, paymentIntentId)).limit(1) : [];
+            if (alreadyBooked) return;
+            if (paymentIntentId) {
+              const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
+              if (intent.status === 'requires_capture') {
+                await stripe.paymentIntents.cancel(paymentIntentId);
+              } else if (intent.status === 'succeeded') {
+                await stripe.refunds.create({ payment_intent: paymentIntentId, reason: 'requested_by_customer' },
+                  { idempotencyKey: `kitchen_inventory_conflict_${session.id}` });
+              }
+            }
+            logger.error(`[Webhook] Checkout ${session.id} could not be fulfilled; payment authorization cancelled or charge refunded`, insertError);
+            Sentry.captureException(insertError, { tags: { component: 'kitchen_checkout_inventory_conflict' },
+              extra: { sessionId: session.id, kitchenId, chefId, paymentIntentId } });
+            return;
+          }
           const errorMessage = insertError instanceof Error ? insertError.message : String(insertError);
           const errorStack = insertError instanceof Error ? insertError.stack : undefined;
           logger.error(`[Webhook] CRITICAL: Failed to create booking for session ${session.id}:`, {
@@ -1040,6 +1077,8 @@ async function handleCheckoutSessionCompleted(
                   locationName: location.name,
                   bookingId: booking.id,
                   referenceCode: booking.referenceCode,
+                  operatingWindowStartTime: metadata.window_start_time,
+                  selectedSlots,
                 });
                 const emailSent = await sendEmail(managerEmail, { trackingId: `booking_${booking.id}_manager` });
                 if (emailSent) {
@@ -1101,6 +1140,8 @@ async function handleCheckoutSessionCompleted(
               specialNotes: specialNotes || undefined,
               timezone: location?.timezone || "America/St_Johns",
               locationName: location?.name,
+              operatingWindowStartTime: metadata.window_start_time,
+              selectedSlots,
             });
             const emailSent = await sendEmail(chefEmail, { trackingId: `booking_${booking.id}_chef` });
             if (emailSent) {
@@ -1277,6 +1318,8 @@ async function handleCheckoutSessionCompleted(
       tags: { component: 'webhook_checkout_completed' },
       extra: { sessionId: session.id },
     });
+    // Acknowledging an unfulfilled kitchen checkout prevents Stripe from retrying it.
+    if (session.metadata?.type === 'kitchen_booking' && !session.metadata.booking_id) throw error;
   }
 }
 
