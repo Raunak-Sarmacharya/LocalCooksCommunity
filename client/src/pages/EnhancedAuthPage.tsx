@@ -662,14 +662,35 @@ export default function EnhancedAuthPage() {
   // the redirect was still waiting on its 300 ms timer. `ManagerLogin` has had
   // this gate for a long time; the chef entry point never got one.
   if (isAuthSettling && !gateTimedOut) {
+    // Is anything actually IN FLIGHT, or are we simply waiting on the session check?
+    //
+    // A plain refresh lands here with nothing in flight: no sign-in, no profile fetch, no
+    // magic-link exchange. The old copy claimed "Signing you in..." for everything that was
+    // not `syncing`, so a cold load with no session told the visitor we were logging them in.
+    // `ManagerLogin` splits the same way (see its `gateMessage`); this mirrors it.
+    //
+    // Registration needs no arm of its own: `awaitingEmailVerificationUi` holds this whole
+    // gate open while a signup is in progress, so `isRegistering` has no counterpart here.
+    const gateBusy = isAuthenticating || userMetaLoading || awaitingProfile || emailLinkPending;
+
+    const gateMessage = gateBusy
+      ? authPhase === 'syncing'
+        ? t("statusCheckingAccount", "Checking account...")
+        : t("btnSigningYouIn", "Signing you in...")
+      // Nothing in flight: a cold load waiting on the session check, which may well end
+      // with no session at all.
+      : t("statusLoading", "Loading...");
+
     return (
       <AuthLoadingScreen
-        message={
-          authPhase === 'syncing'
-            ? t("statusCheckingAccount", "Checking account...")
-            : t("btnSigningYouIn", "Signing you in...")
+        message={gateMessage}
+        // Same rule as the message: with nothing in flight there are no credentials to
+        // verify, so promising to do so is untrue.
+        submessage={
+          gateBusy
+            ? t("overlayVerifyCredentials", "Please wait while we verify your credentials securely.")
+            : t("statusPreparing", "Just a moment.")
         }
-        submessage={t("overlayVerifyCredentials", "Please wait while we verify your credentials securely.")}
       />
     );
   }
