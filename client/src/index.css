@@ -455,6 +455,21 @@
     background: linear-gradient(165deg, #ffffff 0%, #f0f9ff 25%, #e0f2fe 50%, #dbeafe 100%);
   }
 
+  /* Slow idle drift for the chef landing's floating app icons */
+  .chaos-float {
+    animation: chaos-float 6s ease-in-out infinite;
+    will-change: transform;
+  }
+
+  @keyframes chaos-float {
+    0%, 100% { transform: translate3d(0, 0, 0); }
+    50% { transform: translate3d(0, -7px, 0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .chaos-float { animation: none; }
+  }
+
   /* Fade-in Section Wrapper */
   .fade-in-section {
     animation: fade-in 0.6s ease-out;
