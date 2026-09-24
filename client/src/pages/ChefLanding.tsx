@@ -6,6 +6,8 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import CustomerSupportButton from "@/components/CustomerSupportButton";
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { SiStripe } from "react-icons/si";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import FadeInSection from "@/components/ui/FadeInSection";
@@ -21,8 +23,6 @@ import { landingBrowseKitchensPath, landingDashboardPath } from "@/lib/landing-c
 import { scrollToPageSection } from "@/lib/scroll-to-page-section";
 import { motion, AnimatePresence, useScroll, useTransform, MotionValue } from "framer-motion";
 import useEmblaCarousel from "embla-carousel-react";
-import { SmartImage } from "@/components/ui/smart-image";
-import chefImage from "@/assets/chef-cooking.png";
 import logoWhite from "@assets/logo-white.png";
 import SellerJourneyDialog from "@/components/home/SellerJourneyDialog";
 import { ChefServiceIllustration } from "@/components/home/ChefServiceIllustration";
@@ -827,10 +827,630 @@ function TypewriterText() {
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// CHEF HERO
+// ═══════════════════════════════════════════════════════════════════════════════
+// The chef-side landing hero. Two things must survive any future edit to this file:
+//
+// 1. The two services are INDEPENDENT, and must LOOK independent. A chef can take the
+//    storefront, the kitchen, or both — never one *then* the other. So the two path cards
+//    are siblings with the same size, the same type scale and the same emphasis, and the
+//    sell path must never mention kitchens (a cross-reference reads as a prerequisite, or
+//    as a cross-sell). The independence claim is asserted in dev/shot-chef-hero.mjs; if you
+//    add a line mentioning kitchens to the sell card, that check will fail, by design.
+//
+// 2. Every claim here has to be provable. The forbidden-phrase scan in the same script
+//    catches marketing superlatives and any implication that WE certify the kitchens —
+//    the partner kitchens are certified by their own health authority, not by us.
+//
+// Copy lives in shared/i18n/locales/*/chef.json under `hero*`. All three locales are
+// required: a missing key renders the key text itself, which the harness reports as an
+// unresolved locale entry rather than a silent English fallback.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * The hero's product window.
+ *
+ * Built from UI rather than photography. A stock kitchen photo is not this product, and a real
+ * screenshot would date the page within a release, but a still image of either kind cannot do
+ * the one thing the product actually claims: an order arriving and a kitchen being booked at
+ * the same moment. So the panel is animated, and both services live inside the single frame.
+ *
+ * Stripe is deliberately NOT repeated inside the panel. It belongs to the trust bar, and a
+ * processor mark on every order row made the orders read as advertising rather than as orders.
+ *
+ * Nothing in here is a link. The whole panel is a picture of the product, so it carries
+ * aria-hidden at the call site and every number in it is illustrative.
+ */
+function HeroShowcase() {
+  const { t } = useTranslation("chef");
+
+  // Two kitchens, not three. The third row was filler; cutting it buys the height for the
+  // booking detail underneath without making the panel any taller.
+  const kitchens = [
+    { name: "Harbour Kitchen Hub", rate: "$24/hr", booked: false },
+    { name: "Downtown Commissary", rate: "$220/day", booked: true },
+  ];
+
+  const topItems = [
+    { name: "Handmade Truffle Tagliatelle", sold: 42 },
+    { name: "Wood-Fired Margherita", sold: 36 },
+    { name: "Artisan Birria Tacos", sold: 28 },
+  ];
+
+  const orders = [
+    { id: "#00198", amount: "$112.50", state: "Out for delivery" },
+    { id: "#00197", amount: "$48.00", state: "Paid" },
+  ];
+
+  return (
+    <div className="relative h-full">
+      {/* A soft brand glow, so the window sits ON the page rather than being pasted on top of it. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -inset-x-10 -bottom-12 -top-10"
+        style={{
+          background:
+            "radial-gradient(58% 52% at 50% 42%, rgba(245,16,66,0.13) 0%, rgba(245,16,66,0) 72%)",
+        }}
+      />
+
+      {/* The window itself never moves. It used to drift up and down forever, which reads as a
+          decoration rather than as a product, and it fought the entry animation instead of
+          following it. It arrives once, then holds still, and the edges answer the pointer. */}
+      <div className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-[#2C2C2C]/10 bg-white shadow-[0_36px_80px_-36px_rgba(44,44,44,0.5)] transition-[border-color,box-shadow] duration-500 hover:border-[#F51042]/35 hover:shadow-[0_40px_90px_-34px_rgba(245,16,66,0.40)]">
+        {/* The top edge lights up on hover. One hairline, no movement. */}
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 z-10 h-px bg-gradient-to-r from-transparent via-[#F51042]/70 to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+        />
+        {/* Window bar: three dots and a live state. No title, because a title bar naming the
+            product would repeat the wordmark the header is already showing. */}
+        <div className="flex flex-shrink-0 items-center gap-1.5 border-b border-[#2C2C2C]/8 bg-[#FCFCFC] px-4 py-3">
+          <span className="h-2 w-2 rounded-full bg-[#2C2C2C]/12" />
+          <span className="h-2 w-2 rounded-full bg-[#2C2C2C]/12" />
+          <span className="h-2 w-2 rounded-full bg-[#2C2C2C]/12" />
+          <span className="ml-auto inline-flex items-center gap-1.5 text-[0.68rem] font-medium text-emerald-600">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-70" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            </span>
+            {t("heroMiniLive")}
+          </span>
+        </div>
+
+        {/* Two panes, one per service, so the window itself argues that both exist. The
+            hairline between them is the grid gap showing through a tinted background. */}
+        <div className="grid flex-1 grid-cols-[minmax(0,1fr)] gap-px bg-[#2C2C2C]/8 sm:grid-cols-2">
+          {/* ── Sell pane ───────────────────────────────────────────────────── */}
+          <div className="flex flex-col bg-white p-4 [@media(max-height:810px)]:p-3">
+            {/* Two columns. The revenue figure keeps its chart pulled in tight underneath it,
+                and the best sellers take the width that used to sit empty to the right of a
+                chart stretched across the whole pane. Each half is labelled by what it SHOWS,
+                never by the service name: "Your storefront" here and "Your storefront" as the
+                action heading was the same words twice. */}
+            {/* The two halves stack below `sm`. Side by side on a phone each got roughly 140px,
+                which is narrower than the revenue figure plus its trend can go, and because a
+                flex row's min-content is the SUM of its items the pane ended up 58px wider than
+                the viewport and the section clipped it. */}
+            <div className="flex flex-1 flex-col gap-4 sm:flex-row sm:gap-5">
+              {/* Revenue, with the chart drawn in right under the figure. */}
+              <div className="flex min-w-0 flex-1 flex-col">
+                <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-[#9A9A9A]">
+                  {t("heroMiniRevenue")}
+                </p>
+
+                <div className="mt-2 flex items-baseline gap-2">
+                  <p className="text-[1.75rem] font-bold leading-none tracking-[-0.03em] text-[#2C2C2C] tabular-nums">
+                    $4,286
+                  </p>
+                  <span className="inline-flex items-center gap-0.5 text-[0.7rem] font-semibold text-emerald-600">
+                    <Icon icon="mdi:trending-up" className="h-3 w-3 flex-shrink-0" />
+                    18%
+                  </span>
+                </div>
+
+                {/* The chart draws itself in. That single gesture is what makes the panel read
+                    as live rather than as a picture of a panel. */}
+                <svg
+                  viewBox="0 0 200 64"
+                  className="mt-3 min-h-[2.5rem] w-full flex-1"
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                >
+                  <defs>
+                    <linearGradient id="lc-showcase-fill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#F51042" stopOpacity="0.22" />
+                      <stop offset="100%" stopColor="#F51042" stopOpacity="0" />
+                    </linearGradient>
+                  </defs>
+                  <motion.path
+                    d="M0,50 L28,44 L56,47 L84,30 L112,36 L140,18 L168,24 L200,8"
+                    fill="none"
+                    stroke="#F51042"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    initial={{ pathLength: 0 }}
+                    animate={{ pathLength: 1 }}
+                    transition={{ duration: 1.6, delay: 1, ease: "easeInOut" }}
+                  />
+                  <motion.path
+                    d="M0,50 L28,44 L56,47 L84,30 L112,36 L140,18 L168,24 L200,8 L200,64 L0,64 Z"
+                    fill="url(#lc-showcase-fill)"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.9, delay: 1.9 }}
+                  />
+                </svg>
+              </div>
+
+              {/* Best sellers. Deliberately plain: this sits beside an animated chart, and a
+                  second set of animating bars meant two things competing for the same glance,
+                  one after the other. A quiet ranked list reads faster and does not fight the
+                  chart next to it. */}
+              <div className="flex min-w-0 flex-1 flex-col border-t border-[#2C2C2C]/8 pt-4 sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0">
+                <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-[#9A9A9A]">
+                  {t("revTopSellingItems")}
+                </p>
+
+                <ul className="mt-2.5 flex flex-col">
+                  {topItems.map((item, i) => (
+                    <li
+                      key={item.name}
+                      className={cn(
+                        "flex items-baseline justify-between gap-3 py-2",
+                        i > 0 && "border-t border-[#2C2C2C]/8",
+                      )}
+                    >
+                      <span className="min-w-0 truncate text-[0.78rem] text-[#4A4A4A]">
+                        {item.name}
+                      </span>
+                      <span className="flex-shrink-0 text-[0.78rem] font-semibold tabular-nums text-[#2C2C2C]">
+                        {item.sold}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            {/* Orders, one line each now that the pane carries three sections instead of two.
+                No processor mark on the rows: Stripe is the trust bar's job, and repeating it
+                here made an order look like an advertisement. A status dot carries the same
+                information and stays out of the way. */}
+            <div className="mt-3 grid gap-2 lg:grid-cols-2">
+              {orders.map((o, i) => (
+                <motion.div
+                  key={o.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: 1.5 + i * 0.16 }}
+                  className="flex items-center gap-2 rounded-lg border border-[#2C2C2C]/8 bg-[#FAFAFA] px-2.5 py-2"
+                >
+                  <span
+                    className={cn(
+                      "h-1.5 w-1.5 flex-shrink-0 rounded-full",
+                      o.state === "Paid" ? "bg-emerald-500" : "bg-[#F51042]",
+                    )}
+                  />
+                  <span className="flex-shrink-0 text-[0.74rem] font-semibold tabular-nums text-[#2C2C2C]">
+                    {o.amount}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[0.66rem] tabular-nums text-[#9A9A9A]">
+                    {o.id}
+                  </span>
+                  <span
+                    className={cn(
+                      "flex-shrink-0 text-[0.64rem] font-semibold",
+                      o.state === "Paid" ? "text-emerald-600" : "text-[#6B6B6B]",
+                    )}
+                  >
+                    {o.state}
+                  </span>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Kitchen pane ────────────────────────────────────────────────── */}
+          <div className="flex flex-col bg-white p-4 [@media(max-height:810px)]:p-3">
+            <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-[#9A9A9A]">
+              {t("heroMiniNearby")}
+            </p>
+
+            <div className="mt-2 flex flex-col">
+              {kitchens.map((k, i) => (
+                <motion.div
+                  key={k.name}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.5, delay: 1.1 + i * 0.16 }}
+                  className={cn(
+                    "flex items-center gap-2.5 py-2",
+                    i > 0 && "border-t border-[#2C2C2C]/8",
+                  )}
+                >
+                  <span className="min-w-0 flex-1 truncate text-[0.8rem] font-semibold text-[#2C2C2C]">
+                    {k.name}
+                  </span>
+                  <span className="flex-shrink-0 text-[0.78rem] font-bold tabular-nums text-[#2C2C2C]">
+                    {k.rate}
+                  </span>
+                  {/* Both badges are pinned to the same height, so the tick on "Booked" cannot
+                      make it taller than "Book". One solid and one quiet: availability is then
+                      readable before the label is. */}
+                  <span
+                    className={cn(
+                      "inline-flex h-6 flex-shrink-0 items-center gap-1 rounded-lg border px-2.5 text-[0.66rem] font-semibold",
+                      k.booked
+                        ? "border-[#2C2C2C]/10 bg-white text-[#8A8A8A]"
+                        : "border-transparent bg-[#F51042]/[0.09] text-[#F51042]",
+                    )}
+                  >
+                    {k.booked && <Icon icon="mdi:check" className="h-3 w-3 flex-shrink-0" />}
+                    {k.booked ? t("heroMiniBooked") : t("heroMiniBook")}
+                  </span>
+                </motion.div>
+              ))}
+            </div>
+
+            {/* The booked kitchen's detail. The list is two rows precisely so this has room
+                without the panel growing: a booking confirmation is the most persuasive thing
+                this pane can show, and the space was previously an empty gap under a "By the
+                hour or day" caption that the two rates already imply. */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 1.5 }}
+              className="mt-3 rounded-xl border border-[#2C2C2C]/8 bg-[#FAFAFA] p-3"
+            >
+              <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-[#9A9A9A]">
+                {t("bdBookingDetails")}
+              </p>
+
+              <ul className="mt-2 flex flex-col gap-1.5">
+                <li className="flex items-center gap-2">
+                  <Icon
+                    icon="mdi:calendar-blank-outline"
+                    className="h-3.5 w-3.5 flex-shrink-0 text-[#A8A8A8]"
+                  />
+                  <span className="text-[0.74rem] font-semibold text-[#2C2C2C]">Thu 25 Sep</span>
+                  <span className="text-[0.74rem] text-[#C4C4C4]">·</span>
+                  <span className="text-[0.74rem] font-semibold text-[#2C2C2C]">2:00 to 6:00 PM</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Icon
+                    icon="mdi:map-marker-outline"
+                    className="h-3.5 w-3.5 flex-shrink-0 text-[#A8A8A8]"
+                  />
+                  <span className="min-w-0 truncate text-[0.74rem] text-[#5A5A5A]">
+                    Downtown St. John&apos;s
+                  </span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Icon icon="mdi:stove" className="h-3.5 w-3.5 flex-shrink-0 text-[#A8A8A8]" />
+                  <span className="min-w-0 truncate text-[0.74rem] text-[#5A5A5A]">
+                    Range, oven, walk-in cold storage
+                  </span>
+                </li>
+              </ul>
+            </motion.div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export interface ChefHeroProps {
+  /** Handles in-page anchors (how-it-works, kitchen-access). */
+  onScrollToSection?: (id: string) => void;
+  /** Handles real route changes (compare-kitchens, dashboard). */
+  onNavigate?: (path: string) => void;
+  /** Opens the seller-journey dialog. */
+  onStartApplication?: () => void;
+  /** Harness-only: name of the assertion to deliberately break. Never set in app code. */
+  negative?: string;
+}
+
+export function ChefHero({
+  onScrollToSection,
+  onNavigate,
+  onStartApplication,
+  negative = "",
+}: ChefHeroProps) {
+  const { t } = useTranslation("chef");
+
+  // The two service blocks are deliberately thin: heading, one line, one button. The four
+  // capability bullets that used to live here made each block taller than the product window
+  // beside it, which stretched the window and left a dead gap inside it. The detail they
+  // carried (payments, delivery, tracking, hourly rates) is now shown rather than listed, in
+  // the panes of HeroShowcase.
+  const trust = [t("heroTrustFee"), t("heroTrustKeep"), t("heroTrustPayouts")];
+
+  // Armed only by ?negative=…; every branch exists so a check can be shown to FAIL.
+  // `orphan` lengthens line 1 past the column width on purpose: the line must then WRAP, which
+  // is what the harness's "headline line wrapped" assertion watches for. A short suffix would
+  // not reproduce it, because each authored line is guaranteed a fresh start.
+  const headlineLine1 =
+    negative === "orphan"
+      ? `${t("heroHeadlineLine1")} And a great deal more besides that`
+      : t("heroHeadlineLine1");
+  const headlineLine2 = t("heroHeadlineLine2");
+  const subhead = negative === "claim" ? `${t("heroSubhead")} Guaranteed unlimited growth.` : t("heroSubhead");
+
+  return (
+    <section data-hero className="relative overflow-hidden">
+      {/* ── Background ─────────────────────────────────────────────────────── */}
+      {/* Near-white ground, matching the reference sites: the colour lives in the cards and the
+          type, not in a wash behind them. The previous peach gradient plus a yellow and a red
+          blob read as haze, and haze is what makes a hero look template-built. What is left is
+          one very faint glow behind the heading, tight enough to read as light rather than fog. */}
+      <div className="absolute inset-0" aria-hidden="true">
+        <div className="absolute inset-0 bg-white" />
+        <div
+          className="absolute left-1/2 top-0 h-[520px] w-[min(1040px,112%)] -translate-x-1/2"
+          style={{
+            background:
+              "radial-gradient(ellipse at 50% 0%, rgba(245,16,66,0.05) 0%, rgba(245,16,66,0) 62%)",
+          }}
+        />
+      </div>
+
+      {/* ── Layout ───────────────────────────────────────────────────────────────
+          No forced min-height: the hero is exactly as tall as its content, so no viewport
+          leaves a dead band under the fold.
+
+          The vertical rhythm below is tuned so the two cards AND the trust bar clear the fold
+          at 900px (a standard laptop). Measured before the tuning: the trust bar sat at
+          y=1009 on a 900px viewport, i.e. the whole proof row was invisible without scrolling,
+          which defeats the point of putting proof in a hero. Re-measure with
+          `node dev/shot-chef-hero.mjs 1440x900` after any change to the spacing here. ───── */}
+      {/* Negative-test only: a floating layer over the copy, so the "floating layer covers
+          text" assertion can be shown to fail. Never rendered in the app. */}
+      {negative === "overlap" && (
+        <div
+          data-float
+          aria-hidden="true"
+          className="absolute inset-x-6 top-[90px] z-30 h-[340px] rounded-3xl bg-[#F51042]/15"
+        />
+      )}
+
+      <div
+        data-hero-content
+        className="relative z-10 mx-auto w-full max-w-7xl px-5 pb-14 pt-[calc(var(--header-height)+1.25rem)] sm:px-6 sm:pb-16 lg:px-8 lg:pb-20 lg:pt-[calc(var(--header-height)+1.5rem)] [@media(max-height:810px)]:pt-[calc(var(--header-height)+0.5rem)]"
+      >
+        <div>
+          {/* ── Heading block ────────────────────────────────────────────────────
+              Centred, because both audience segments read the same line and neither should
+              feel like the footnote. A left-aligned block would visually prioritise whatever
+              sits beside it. */}
+          <div className="mx-auto max-w-4xl text-center">
+            {/* Brand eyebrow. The wordmark is deliberately NOT repeated here: the fixed header
+                sits directly above the hero showing exactly the same lockup, so drawing it again
+                at display size spends the fold on something the reader already knows. What is
+                left is the one thing the header cannot say, which is who this page is for. */}
+            <motion.p
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.55, delay: 0.1 }}
+              className="mb-4 flex items-center justify-center gap-3 sm:mb-5 [@media(max-height:810px)]:mb-2"
+            >
+              <span className="h-px w-8 bg-[#F51042]/45" aria-hidden="true" />
+              <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#6B4A4F] sm:text-[11px]">
+                {t("heroEyebrow")}
+              </span>
+              <span className="h-px w-8 bg-[#F51042]/45" aria-hidden="true" />
+            </motion.p>
+
+            {/* Headline. Names the PLATFORM, never a person: "your food" or "your recipes" would
+                speak only to the chef who sells and leave a caterer who needs production space
+                with nothing. Both services are joined by "and" so neither reads as subordinate,
+                and the harness fails the build if the heading addresses only one side.
+
+                The two sentences are authored as two lines rather than left to wrap. One string
+                broke after "Sell your food. Book a commercial" and stranded "kitchen." on line
+                two at 390px, which is the exact orphan the reader notices. Breaking at the
+                sentence boundary is the same break at every width, so the pairing survives. */}
+            <motion.h1
+              data-h="headline"
+              initial={{ opacity: 0, y: 22 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.18 }}
+              className="text-[1.35rem] font-bold leading-[1.14] tracking-tight text-[#2C2C2C] sm:text-[1.95rem] md:text-[2.35rem] lg:text-[2.9rem] xl:text-[3.3rem] [@media(max-height:810px)]:text-[2.5rem]"
+            >
+              <span data-h="headline-line" className="block">
+                {headlineLine1}
+              </span>
+              <span data-h="headline-line" className="block">
+                {headlineLine2}
+              </span>
+            </motion.h1>
+
+            <motion.p
+              data-h="subhead"
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.26 }}
+              className="mx-auto mt-3 max-w-[34rem] text-pretty text-[0.95rem] leading-relaxed text-[#5A5A5A] sm:mt-4 sm:max-w-2xl sm:text-base lg:mt-3 lg:text-[1.08rem] [@media(max-height:810px)]:mt-2"
+            >
+              {subhead}
+            </motion.p>
+          </div>
+
+          {/* ── The product window, then the two services ───────────────────────
+              The panel runs full width across the top, then the two services sit side by side
+              underneath as two plain blocks. This is the shape the reference sites use: a rich
+              interface as the focal point, then the offers as text rather than a grid of equal
+              cards. Two even cards is a comparison table, and a comparison table is the calmest
+              shape there is. It can be perfectly correct and still have no pull.
+
+              The services were briefly in a column beside the panel. The copy grew and that
+              column reached ~490px, which forced the panel to stretch to match and left a dead
+              band inside its left pane. A panel must keep its own height, so the blocks moved
+              below it, where they also get a 590px measure instead of 490.
+
+              Both blocks keep their `data-path` hooks and stay strictly separate: the sell
+              block must never mention kitchens, because a cross-reference reads as a
+              prerequisite and the harness fails the build on it. */}
+          <div className="mt-8 grid grid-cols-[minmax(0,1fr)] gap-7 sm:mt-9 lg:mt-5 lg:gap-7 [@media(max-height:810px)]:mt-3">
+            {/* ── The product, as the hero visual ────────────────────────────── */}
+            <motion.div
+              aria-hidden="true"
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.75, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              className="relative"
+            >
+              <HeroShowcase />
+            </motion.div>
+
+            {/* ── The two services, as two plain blocks ────────────────────────
+                No card, no border, no icon tile: just a heading, a paragraph and its own
+                button, which is how the reference sites present a feature. Each keeps its own
+                action, so a chef who came for only one of them can act without reading the
+                other. They stay side by side down to `sm`, where they stack. */}
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-7 sm:grid-cols-2 lg:gap-10">
+              {/* ── PATH 1 · SELL ────────────────────────────────────────────── */}
+              <motion.div
+                data-path="sell"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.42 }}
+                className={cn(
+                  "group flex flex-col",
+                  negative === "truncate" && "w-[150px]",
+                  negative === "overflow" && "w-[3000px]",
+                )}
+              >
+                <h2
+                  data-path-title
+                  className="text-[1.15rem] font-bold leading-tight tracking-[-0.01em] text-[#2C2C2C] sm:text-[1.25rem]"
+                >
+                  {t("heroPathSellTitle")}
+                </h2>
+
+                <p
+                  data-path-body
+                  className="mt-2 flex-1 text-pretty text-[0.85rem] leading-relaxed text-[#5A5A5A]"
+                >
+                  {negative === "crossTalk"
+                    ? `${t("heroPathSellBody")} Commercial kitchen space available.`
+                    : t("heroPathSellBody")}
+                </p>
+
+                <button
+                  type="button"
+                  data-cta="path-sell"
+                  onClick={onStartApplication}
+                  className="mt-5 inline-flex min-h-[44px] w-full items-center justify-center rounded-full bg-[#F51042] px-5 text-[0.9rem] font-bold text-white shadow-lg transition-all duration-300 hover:-translate-y-1 hover:bg-[#D90E3A] hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042] focus-visible:ring-offset-2"
+                >
+                  <span className="truncate">{t("heroPathSellCta")}</span>
+                  <Icon icon="mdi:arrow-right" className="ml-1.5 h-4 w-4 flex-shrink-0" />
+                </button>
+              </motion.div>
+
+              {/* ── PATH 2 · BOOK A KITCHEN ──────────────────────────────────── */}
+              <motion.div
+                data-path="kitchen"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.5 }}
+                className="group flex flex-col"
+              >
+                <h2
+                  data-path-title
+                  className="text-[1.15rem] font-bold leading-tight tracking-[-0.01em] text-[#2C2C2C] sm:text-[1.25rem]"
+                >
+                  {t("heroPathKitchenTitle")}
+                </h2>
+
+                <p
+                  data-path-body
+                  className="mt-2 flex-1 text-pretty text-[0.85rem] leading-relaxed text-[#5A5A5A]"
+                >
+                  {t("heroPathKitchenBody")}
+                </p>
+
+                <button
+                  type="button"
+                  data-cta="path-kitchen"
+                  onClick={() => onScrollToSection?.("kitchen-access")}
+                  className="mt-5 inline-flex min-h-[44px] w-full items-center justify-center rounded-full border border-[#F51042]/25 bg-white px-5 text-[0.9rem] font-bold text-[#F51042] shadow-lg transition-all duration-300 hover:-translate-y-1 hover:border-[#F51042] hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042] focus-visible:ring-offset-2"
+                >
+                  <span className="truncate">{t("heroPathKitchenCta")}</span>
+                  <Icon icon="mdi:arrow-right" className="ml-1.5 h-4 w-4 flex-shrink-0" />
+                </button>
+              </motion.div>
+            </div>
+          </div>
+
+          {/* Both, or either. Stated once, plainly, so neither card reads as step one of a
+              sequence. Plain type now: the icon and the two flanking rules were more decoration
+              competing with the two cards sitting directly above them. */}
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.5, delay: 0.52 }}
+            className="mt-2 text-center text-[0.82rem] font-medium text-[#8A8A8A] sm:text-[0.85rem] [@media(max-height:810px)]:hidden"
+          >
+            {t("heroPathsNote")}
+          </motion.p>
+
+          {/* ── Trust bar ──────────────────────────────────────────────────────
+              Led by the Stripe mark, because "payments" is the claim a chef is most sceptical
+              of and a recognisable processor answers it faster than a sentence can. The Stripe
+              purple is the documented brand token (tailwind.config.ts `stripe`), not an
+              eyeballed hex. */}
+          <motion.div
+            data-fold="trust-bar"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55, delay: 0.6 }}
+            className="mt-3 flex flex-wrap items-center justify-center gap-x-7 gap-y-3 border-t border-[#2C2C2C]/8 pt-4 [@media(max-height:810px)]:mt-2"
+          >
+            {/* Stripe keeps its mark and its brand colour: a recognisable processor answers
+                "can I trust the payments" faster than a sentence can. The other three carry no
+                icon at all. Four coloured badges in a row was the same tile pattern as the card
+                headers, just smaller, and it made the row read as four separate claims instead
+                of one line of evidence. */}
+            <span className="flex items-center gap-2 text-[0.82rem] font-medium text-[#6B6B6B] sm:text-[0.85rem]">
+              <SiStripe className="h-4 w-4 flex-shrink-0 text-stripe" aria-hidden />
+              {t("heroTrustStripe")}
+            </span>
+            {trust.map((item, i) => (
+              <span
+                key={i}
+                className="text-[0.82rem] font-medium text-[#6B6B6B] sm:text-[0.85rem]"
+              >
+                {item}
+              </span>
+            ))}
+          </motion.div>
+        </div>
+      </div>
+
+      {/* Wave into the next section, kept so the page rhythm is unchanged. */}
+      <div className="pointer-events-none absolute bottom-0 left-0 right-0">
+        <svg viewBox="0 0 1440 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full" preserveAspectRatio="none">
+          <path d="M0 50L60 45C120 40 240 30 360 35C480 40 600 60 720 65C840 70 960 60 1080 50C1200 40 1320 30 1380 25L1440 20V100H0V50Z" fill="white" />
+        </svg>
+      </div>
+    </section>
+  );
+}
+
 export default function ChefLanding() {
   const { user } = useFirebaseAuth();
   const [, navigate] = useLocation();
   const { t } = useTranslation("chef");
+
+  // Harness-only: read by dev/chef-hero-harness.tsx to induce a failure. Always empty in the app.
+  const negative =
+    typeof window === "undefined"
+      ? ""
+      : new URLSearchParams(window.location.search).get("negative") ?? "";
 
   // Fetch locations data (same endpoint structure as preview page uses)
   const { data: locations = [], isLoading: kitchensLoading } = useQuery({
@@ -970,303 +1590,12 @@ export default function ChefLanding() {
       <Header hideHowItWorks />
 
       <main className="flex-grow">
-        {/* ═══════════════════════════════════════════════════════════════════════
-            HERO SECTION - Premium Split-Screen Design
-        ═══════════════════════════════════════════════════════════════════════ */}
-        <section className="relative min-h-screen flex items-center overflow-hidden">
-          {/* Sophisticated Background */}
-          <div className="absolute inset-0">
-            {/* Warm gradient base */}
-            <div className="absolute inset-0 bg-gradient-to-br from-[#FFF8F5] via-[#FFFAF8] to-white" />
-
-            {/* Large accent gradient */}
-            <motion.div
-              className="absolute -top-[20%] -right-[10%] w-[800px] h-[800px] rounded-full"
-              style={{ background: "radial-gradient(circle, rgba(245,16,66,0.08) 0%, transparent 70%)" }}
-              animate={{
-                scale: [1, 1.1, 1],
-                opacity: [0.6, 0.8, 0.6]
-              }}
-              transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-            />
-
-            {/* Golden accent */}
-            <motion.div
-              className="absolute bottom-[10%] left-[5%] w-[500px] h-[500px] rounded-full"
-              style={{ background: "radial-gradient(circle, rgba(255,215,0,0.12) 0%, transparent 70%)" }}
-              animate={{
-                scale: [1, 1.05, 1],
-                x: [0, 20, 0]
-              }}
-              transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
-            />
-
-            {/* Subtle pattern overlay */}
-            <div className="absolute inset-0 opacity-[0.015]" style={{
-              backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-            }} />
-          </div>
-
-          <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-20 sm:pt-24 md:pt-28 pb-12 sm:pb-14 md:pb-16 relative z-10">
-            <div className="grid lg:grid-cols-2 gap-6 sm:gap-8 lg:gap-16 items-center min-h-[calc(100vh-180px)] sm:min-h-[calc(100vh-200px)]">
-
-              {/* Left Content Column */}
-              <div className="order-2 lg:order-1">
-                {/* Brand Identity */}
-                <motion.div
-                  initial={{ opacity: 0, y: 30 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.7, delay: 0.3 }}
-                >
-                  <h1 className="font-logo text-[2.5rem] sm:text-[3rem] md:text-[4rem] lg:text-[5rem] xl:text-[6rem] text-[#F51042] leading-none mb-3 sm:mb-4 md:mb-5 tracking-tight">
-                    LocalCooks
-                  </h1>
-                  <p className="font-mono text-[9px] sm:text-[10px] md:text-[11px] text-[#6B4A4F] uppercase tracking-[0.3em] sm:tracking-[0.4em] mb-6 sm:mb-8">
-                    {t("dreamBigger")}
-                  </p>
-                </motion.div>
-
-                {/* Main Headline */}
-                <motion.div
-                  initial={{ opacity: 0, y: 30 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.7, delay: 0.5 }}
-                  className="mb-8"
-                >
-                  <h2 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-[#2C2C2C] leading-[1.15] mb-4 sm:mb-6">
-                    {t("turnKitchen")}
-                    <br />
-                    <span className="relative inline-block">
-                      <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A]">
-                        {t("intoBusiness")}
-                      </span>
-                      <motion.svg
-                        className="absolute -bottom-2 left-0 w-full"
-                        viewBox="0 0 300 12"
-                        fill="none"
-                        initial={{ pathLength: 0, opacity: 0 }}
-                        animate={{ pathLength: 1, opacity: 1 }}
-                        transition={{ duration: 1, delay: 1.2 }}
-                      >
-                        <motion.path
-                          d="M2 8C50 3 100 3 150 6C200 9 250 5 298 8"
-                          stroke="#F51042"
-                          strokeWidth="3"
-                          strokeLinecap="round"
-                          initial={{ pathLength: 0 }}
-                          animate={{ pathLength: 1 }}
-                          transition={{ duration: 1, delay: 1.2 }}
-                        />
-                      </motion.svg>
-                    </span>
-                  </h2>
-                  <p className="text-sm md:text-base lg:text-lg text-[#6B6B6B] leading-relaxed max-w-lg">
-                    <span className="block mb-3">
-                      {t("platformKeepsUp")}
-                    </span>
-                    <span className="block">
-                      {t("weHandleRegulatory")}
-                    </span>
-                  </p>
-                </motion.div>
-
-                {/* CTA Buttons */}
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.6, delay: 0.7 }}
-                  className="flex flex-row gap-2 sm:gap-3 md:gap-4 mb-10"
-                >
-                  <Button
-                    onClick={() => scrollToPageSection("how-it-works")}
-                    size="lg"
-                    className="group relative bg-[#F51042] hover:bg-[#D90E3A] text-white font-bold py-3 md:py-4 px-3 sm:px-6 md:px-12 text-[11px] sm:text-sm md:text-lg rounded-full transition-all duration-300 shadow-xl hover:shadow-2xl hover:shadow-[#F51042]/30 hover:-translate-y-1 overflow-hidden flex-1 min-w-0 min-h-[44px] sm:min-h-[48px]"
-                  >
-                    <span className="relative z-10 flex items-center justify-center truncate">
-                      <TruncatedText className="truncate">{t("howItWorksQuestion", "How it works?")}</TruncatedText>
-                      <Icon icon="mdi:arrow-right" className="ml-1 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5 shrink-0 group-hover:translate-x-1 transition-transform" />
-                    </span>
-                    <motion.div
-                      className="absolute inset-0 bg-gradient-to-r from-[#D90E3A] to-[#F51042]"
-                      initial={{ x: "100%" }}
-                      whileHover={{ x: 0 }}
-                      transition={{ duration: 0.3 }}
-                    />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    className="group inline-flex items-center justify-center border-2 border-[#2C2C2C]/20 text-[#2C2C2C] hover:border-[#F51042] hover:text-[#F51042] hover:bg-[#F51042]/5 font-semibold py-3 md:py-4 px-3 sm:px-6 md:px-10 text-[11px] sm:text-sm md:text-lg rounded-full transition-all duration-300 flex-1 min-w-0 min-h-[44px] sm:min-h-[48px]"
-                    onClick={() => scrollToPageSection("kitchen-access")}
-                    aria-label="Book a kitchen — scroll to kitchen listings"
-                  >
-                    <Icon icon="mdi:office-building-outline" className="mr-1 sm:mr-1.5 h-3.5 w-3.5 sm:h-4 sm:w-4 md:h-5 md:w-5 shrink-0 text-[#2C2C2C] group-hover:scale-110 transition-transform" />
-                    <TruncatedText className="truncate sm:hidden">{t("bookKitchenSmall")}</TruncatedText>
-                    <TruncatedText className="hidden sm:inline truncate">{t("bookAKitchen")}</TruncatedText>
-                  </Button>
-                </motion.div>
-
-                {/* Trust Indicators */}
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.6, delay: 0.9 }}
-                  className="flex flex-nowrap md:flex-wrap gap-x-2 md:gap-x-6 gap-y-3"
-                >
-                  {[
-                    { icon: "mdi:check-circle-outline", text: t("approved24h") },
-                    { icon: "mdi:shield-outline", text: t("noUpfront") },
-                    { icon: "mdi:hand-heart-outline", text: t("dedicatedSupport") }
-                  ].map((item, i) => (
-                    <motion.span
-                      key={i}
-                      className="flex items-center gap-1 md:gap-2 text-[#6B6B6B] text-[10px] md:text-sm whitespace-nowrap flex-shrink-0"
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ duration: 0.4, delay: 1 + (i * 0.1) }}
-                    >
-                      <Icon icon={item.icon} className="h-3 w-3 md:h-4 md:w-4 text-[#2C2C2C] flex-shrink-0" />
-                      <span className="leading-tight">{item.text}</span>
-                    </motion.span>
-                  ))}
-                </motion.div>
-              </div>
-
-              {/* Right Image Column */}
-              <div className="order-1 lg:order-2 relative overflow-visible">
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.9, x: 50 }}
-                  animate={{ opacity: 1, scale: 1, x: 0 }}
-                  transition={{ duration: 0.8, delay: 0.4, ease: "easeOut" }}
-                  className="relative overflow-visible"
-                >
-                  {/* Decorative background shapes */}
-                  <div className="absolute -inset-4 bg-gradient-to-br from-[#F51042]/10 via-[#FFE8DD]/50 to-[#FFD700]/20 rounded-[2.5rem] transform rotate-3" />
-                  <div className="absolute -inset-4 bg-gradient-to-tr from-[#FFE8DD]/80 to-white/60 rounded-[2.5rem] transform -rotate-2" />
-
-                  {/* Main Image Container */}
-                  <div className="relative rounded-[2rem] overflow-visible shadow-2xl shadow-[#F51042]/10 w-full">
-                    <div className="relative rounded-[2rem] overflow-hidden w-full">
-                      <SmartImage
-                        src={chefImage}
-                        alt={t("altProfessionalChef")}
-                        className="w-full h-auto object-cover aspect-[4/3]"
-                        loading="eager"
-                        fetchPriority="high"
-                      />
-
-                      {/* Gradient Overlay */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
-                    </div>
-
-                    {/* Trial Card - Centered Bottom, Partially Inside/Outside */}
-                    <motion.div
-                      initial={{ opacity: 0, y: 20, x: '-50%' }}
-                      animate={{ opacity: 1, y: '30%', x: '-50%' }}
-                      transition={{ duration: 0.7, delay: 1.2, ease: [0.16, 1, 0.3, 1] }}
-                      className="absolute bottom-0 left-1/2 bg-white rounded-xl lg:rounded-2xl px-2.5 py-2 lg:px-4 lg:py-3 shadow-[0_8px_32px_rgba(0,0,0,0.12)] ring-1 ring-slate-900/5 z-20 w-[calc(100%-2rem)] max-w-[18rem] lg:max-w-[28rem]"
-                    >
-                      <div className="flex items-center justify-between gap-2 lg:gap-4">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[8px] lg:text-[9px] font-semibold text-slate-500 uppercase tracking-[0.15em] leading-none mb-0.5 lg:mb-1">{t("duringTrialNormal")}</p>
-                          <p className="text-sm lg:text-base font-bold text-slate-950 leading-tight mb-1 lg:mb-1.5">{t("zeroPlatformFee")}</p>
-                          <div className="flex items-center gap-2 lg:gap-4">
-                            <div className="flex items-center gap-0.5 lg:gap-1">
-                              <div className="w-0.5 h-0.5 lg:w-1 lg:h-1 rounded-full bg-slate-400"></div>
-                              <span className="text-[9px] lg:text-[10px] font-semibold text-slate-700">{t("zeroBarriers")}</span>
-                            </div>
-                            <div className="flex items-center gap-0.5 lg:gap-1">
-                              <div className="w-0.5 h-0.5 lg:w-1 lg:h-1 rounded-full bg-slate-400"></div>
-                              <span className="text-[9px] lg:text-[10px] font-semibold text-slate-700">{t("zeroWaiting")}</span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex-shrink-0 text-right pl-2 lg:pl-4 border-l border-slate-200">
-                          <p className="text-[8px] lg:text-[9px] font-semibold text-slate-500 uppercase tracking-[0.15em] leading-none mb-0.5 lg:mb-1">{t("youKeepNormal")}</p>
-                          <p className="text-lg lg:text-xl font-bold text-[#F51042] leading-tight">100%</p>
-                        </div>
-                      </div>
-                    </motion.div>
-                  </div>
-
-                  {/* Premium Floating Cards - Positioned to overlap frame significantly */}
-
-                  {/* Premium Floating Tag - Top Right: "Built for Chefs. Powered by community." */}
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.6, delay: 1.4, type: "spring", stiffness: 200 }}
-                    className="absolute top-0 -right-3 lg:top-4 lg:-right-6 bg-white/95 backdrop-blur-md rounded-xl lg:rounded-2xl shadow-2xl px-2 py-1.5 lg:px-4 lg:py-3 border border-slate-200/50 z-20"
-                    style={{ transform: 'translateY(-20%)' }}
-                  >
-                    <div className="flex items-center gap-1.5 lg:gap-2.5">
-                      <div className="w-6 h-6 lg:w-9 lg:h-9 bg-gradient-to-br from-teal-500 to-cyan-600 rounded-lg lg:rounded-xl flex items-center justify-center shadow-lg shadow-teal-500/30 flex-shrink-0">
-                        <Icon icon="mdi:heart-outline" className="h-3.5 w-3.5 lg:h-5 lg:w-5 text-white" />
-                      </div>
-                      <div>
-                        <p className="text-[8px] lg:text-[10px] font-medium text-slate-600 uppercase tracking-wide leading-tight">{t("builtForChefs")}</p>
-                        <p className="text-[10px] lg:text-xs font-bold text-slate-900 leading-tight">{t("poweredByCommunity")}</p>
-                      </div>
-                    </div>
-                  </motion.div>
-
-                  {/* Premium Floating Tag - Top Left: "Fast approval" */}
-                  <motion.div
-                    initial={{ opacity: 0, x: -30 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.6, delay: 1.6, ease: [0.16, 1, 0.3, 1] }}
-                    className="absolute top-0 -left-3 lg:top-8 lg:-left-10 bg-white rounded-lg lg:rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] px-2 py-1.5 lg:px-3.5 lg:py-2.5 border border-slate-200/60 ring-1 ring-slate-900/5 z-20"
-                    style={{ transform: 'translateY(-30%)' }}
-                  >
-                    <div className="flex items-center gap-1.5 lg:gap-2">
-                      <div className="w-4 h-4 lg:w-6 lg:h-6 bg-gradient-to-br from-slate-700 to-slate-800 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
-                        <Icon icon="mdi:lightning-bolt" className="h-2.5 w-2.5 lg:h-3.5 lg:w-3.5 text-white" />
-                      </div>
-                      <span className="text-[10px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">{t("fastApproval")}</span>
-                    </div>
-                  </motion.div>
-
-                  {/* Premium Floating Tag - Middle Right: "Join chefs who've already launched" */}
-                  <motion.div
-                    initial={{ opacity: 0, x: 30 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.6, delay: 1.8, ease: [0.16, 1, 0.3, 1] }}
-                    className="absolute top-[32%] -right-3 lg:top-[28%] lg:-right-12 bg-white rounded-lg lg:rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] px-2 py-1.5 lg:px-3.5 lg:py-2.5 border border-slate-200/60 ring-1 ring-slate-900/5 z-20"
-                  >
-                    <div className="flex items-center gap-1.5 lg:gap-2">
-                      <div className="w-4 h-4 lg:w-6 lg:h-6 bg-gradient-to-br from-slate-700 to-slate-800 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
-                        <Icon icon="mdi:rocket-launch-outline" className="h-2.5 w-2.5 lg:h-3.5 lg:w-3.5 text-white" />
-                      </div>
-                      <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">{t("joinLaunched")}</span>
-                    </div>
-                  </motion.div>
-
-                  {/* Premium Floating Tag - Middle Left: "More time cooking, less time managing" */}
-                  <motion.div
-                    initial={{ opacity: 0, x: -30 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.6, delay: 2.0, ease: [0.16, 1, 0.3, 1] }}
-                    className="absolute top-[40%] -left-3 lg:top-[38%] lg:-left-10 bg-white rounded-lg lg:rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] px-2 py-1.5 lg:px-3.5 lg:py-2.5 border border-slate-200/60 ring-1 ring-slate-900/5 z-20"
-                  >
-                    <div className="flex items-center gap-1.5 lg:gap-2">
-                      <div className="w-4 h-4 lg:w-6 lg:h-6 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
-                        <Icon icon="mdi:clock-outline" className="h-2.5 w-2.5 lg:h-3.5 lg:w-3.5 text-white" />
-                      </div>
-                      <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">{t("moreTimeCooking")}</span>
-                    </div>
-                  </motion.div>
-                </motion.div>
-              </div>
-            </div>
-          </div>
-
-          {/* Elegant Wave Divider */}
-          <div className="absolute bottom-0 left-0 right-0">
-            <svg viewBox="0 0 1440 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full" preserveAspectRatio="none">
-              <path d="M0 50L60 45C120 40 240 30 360 35C480 40 600 60 720 65C840 70 960 60 1080 50C1200 40 1320 30 1380 25L1440 20V100H0V50Z" fill="white" />
-            </svg>
-          </div>
-        </section>
+        <ChefHero
+          negative={negative}
+          onScrollToSection={scrollToPageSection}
+          onNavigate={navigate}
+          onStartApplication={handleGetStarted}
+        />
 
         {/* ═══════════════════════════════════════════════════════════════════════
             "THE PROBLEM" SECTION - Award-Winning Floating Chaos Design

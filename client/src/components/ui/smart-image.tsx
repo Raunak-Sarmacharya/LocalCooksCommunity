@@ -57,6 +57,10 @@ export const SmartImage = forwardRef<HTMLImageElement, SmartImageProps>(
       onError,
       src,
       style,
+      // React 18 does not recognise the camelCase spelling and passes it straight through to the
+      // DOM, which logs "React does not recognize the `fetchPriority` prop". Destructure it and
+      // re-emit the lowercase form, which React 18 renders correctly as an attribute.
+      fetchPriority,
       ...props
     },
     forwardedRef
@@ -127,6 +131,7 @@ export const SmartImage = forwardRef<HTMLImageElement, SmartImageProps>(
       >
         <img
           {...props}
+          {...({ fetchpriority: fetchPriority } as Record<string, unknown>)}
           ref={setRefs}
           src={src}
           alt={alt ?? ""}
