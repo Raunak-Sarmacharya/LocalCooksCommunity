@@ -1,7 +1,6 @@
 import * as React from "react";
 import { useLocation } from "wouter";
 import { Loader2 } from "lucide-react";
-import { useTranslation } from "react-i18next";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
 import { isChefShellPath } from "@/lib/chef-shell-path";
@@ -25,9 +24,16 @@ function defaultChrome(navigate: (to: string) => void): ChefShellChrome {
   };
 }
 
-function ChefShellContentLoader() {
+function journeyLoadingLabel(pathname: string) {
+  if (pathname.startsWith("/request-tour/")) return "Loading your tour request…";
+  if (pathname.startsWith("/apply-kitchen/")) return "Checking your kitchen application…";
+  return "Loading your dashboard…";
+}
+
+function ChefShellContentLoader({ label }: { label: string }) {
   return (
-    <div className="space-y-4 py-2" aria-busy="true" aria-label="Loading">
+    <div className="space-y-4 py-2" role="status" aria-busy="true" aria-label={label}>
+      <p className="text-sm text-muted-foreground">{label}</p>
       <div className="h-8 w-48 animate-pulse rounded-md bg-muted" />
       <div className="h-40 w-full animate-pulse rounded-[1.35rem] bg-muted" />
       <div className="h-64 w-full animate-pulse rounded-[1.35rem] bg-muted" />
@@ -35,12 +41,11 @@ function ChefShellContentLoader() {
   );
 }
 
-function FullPageLoader() {
-  const { t } = useTranslation("common");
+function FullPageLoader({ label }: { label: string }) {
   return (
-    <div className="flex min-h-screen items-center justify-center">
+    <div className="flex min-h-screen items-center justify-center" role="status">
       <Loader2 className="h-8 w-8 animate-spin text-border" />
-      <span className="ml-2">{t("loading")}</span>
+      <span className="ml-2">{label}</span>
     </div>
   );
 }
@@ -80,7 +85,7 @@ export function ChefShellProvider({ children }: { children: React.ReactNode }) {
   );
 
   const body = (
-    <React.Suspense fallback={shellActive ? <ChefShellContentLoader /> : <FullPageLoader />}>
+    <React.Suspense fallback={shellActive ? <ChefShellContentLoader label={journeyLoadingLabel(pathname)} /> : <FullPageLoader label={journeyLoadingLabel(pathname)} />}>
       {children}
     </React.Suspense>
   );

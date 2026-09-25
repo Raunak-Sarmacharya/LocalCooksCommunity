@@ -2,13 +2,13 @@ import { logger } from "@/lib/logger";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, MessageCircle } from "lucide-react";
-import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { auth } from "@/lib/firebase";
-import { getAllConversations, type Conversation } from "@/services/chat-service";
+import { getAllConversations, getLiveChatParticipants, type Conversation } from "@/services/chat-service";
 import ChatPanel from './ChatPanel';
 import { ConversationList } from "./ConversationList";
+import { ConversationListSkeleton } from "./ConversationItemSkeleton";
 import { ApplicationStatus } from "./ConversationItem";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
@@ -17,7 +17,15 @@ interface ApplicationDetails {
   id: number;
   location?: {
     name?: string;
+    managerId?: number;
   };
+  /**
+   * Display name of the kitchen's manager, resolved server-side against the
+   * manager profile (and falling back to the chef application's full name).
+   * The chef list endpoint supplies this so chefs can tell threads apart —
+   * without it every chef-side thread was labelled a generic "Manager".
+   */
+  managerName?: string | null;
   chef?: {
     username?: string;
     full_name?: string;
@@ -44,6 +52,10 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
   const [locationNames, setLocationNames] = useState<Record<number, string>>({});
   const [partnerNames, setPartnerNames] = useState<Record<number, string>>({});
   const [isMobileListVisible, setIsMobileListVisible] = useState(true);
+  // Whether the application-details pass has finished at least once. The list
+  // used to hide every conversation until its application arrived, which made
+  // the sidebar look empty (then pop in) even though the data was already here.
+  const [hasResolvedDetails, setHasResolvedDetails] = useState(false);
 
   // Fetch all conversations
   const { data: conversations = [], isLoading, error, refetch } = useQuery({
@@ -79,9 +91,69 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
     refetch();
   }, [refetch]);
 
-  // Fetch application details
+  /**
+   * Reconcile each conversation against who still has an account.
+   *
+   * The delete-time flag on the conversation document only covers deletions that
+   * happened after it shipped, so every thread orphaned earlier still looked
+   * live. That is what let a manager keep opening and replying to a deleted
+   * chef's conversation. This asks Postgres — the authority — which participants
+   * still exist, and treats a missing one as an ended thread.
+   *
+   * Runs independently of the application-details fetch on purpose: a deleted
+   * chef's application disappears from the manager's list entirely, so the app
+   * fetch can never be the thing that reveals the deletion.
+   */
+  const [deletedParticipantIds, setDeletedParticipantIds] = useState<Set<number>>(new Set());
+
   useEffect(() => {
     if (conversations.length === 0) return;
+
+    let cancelled = false;
+
+    const reconcileParticipants = async () => {
+      const participantIds = conversations.flatMap((c) => [c.chefId, c.managerId]);
+      const live = await getLiveChatParticipants(participantIds);
+      // null means "could not tell" — leave the threads alone rather than
+      // disabling every chat because one request failed.
+      if (cancelled || !live) return;
+      setDeletedParticipantIds(
+        new Set(participantIds.filter((id) => !live.has(id))),
+      );
+    };
+
+    reconcileParticipants();
+    return () => {
+      cancelled = true;
+    };
+  }, [conversations]);
+
+  /** True when one participant no longer has an account. */
+  const isConversationUnavailable = useCallback(
+    (c: Conversation) =>
+      c.unavailable === true ||
+      deletedParticipantIds.has(c.chefId) ||
+      deletedParticipantIds.has(c.managerId),
+    [deletedParticipantIds],
+  );
+
+  /** Which side is gone, preferring the server's stamp when present. */
+  const getUnavailableRole = useCallback(
+    (c: Conversation): 'chef' | 'manager' | 'admin' | 'user' | undefined => {
+      if (c.unavailableRole === 'chef' || c.unavailableRole === 'manager') return c.unavailableRole;
+      if (deletedParticipantIds.has(c.chefId)) return 'chef';
+      if (deletedParticipantIds.has(c.managerId)) return 'manager';
+      return c.unavailableRole;
+    },
+    [deletedParticipantIds],
+  );
+
+  // Fetch application details
+  useEffect(() => {
+    if (conversations.length === 0) {
+      setHasResolvedDetails(true);
+      return;
+    }
 
     const fetchApplicationDetails = async () => {
       const currentUser = auth.currentUser;
@@ -123,9 +195,12 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
                   if (matchingApp?.fullName) {
                     partners[conv.chefId] = matchingApp.fullName;
                   }
-                } else {
-                  // Partner is manager - usually just "Manager" since we don't have manager names easily here
-                  partners[conv.managerId] = t("chatManager");
+                } else if (matchingApp?.managerName) {
+                  // Partner is the manager. The server resolves their real name
+                  // for us; a chef working across several kitchens needs to see
+                  // *which* manager each thread belongs to, so only fall back to
+                  // the generic label when the name genuinely isn't available.
+                  partners[conv.managerId] = matchingApp.managerName;
                 }
               }
             }
@@ -174,6 +249,10 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
         setPartnerNames(prev => ({ ...prev, ...partners }));
       } catch (err) {
         logger.error('Error in fetchApplicationDetails:', err);
+      } finally {
+        // Even on failure, stop showing skeletons — a list of real rows
+        // degrading to id fallbacks beats an indefinite loading state.
+        setHasResolvedDetails(true);
       }
     };
 
@@ -199,7 +278,17 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
       }
       return `Chef #${c.chefId}`;
     }
-    return partnerNames[c.managerId] || t("chatManager");
+    // Chef's view. Prefer the manager's real name from the application payload,
+    // then whatever the resolver already stored. Only when neither exists do we
+    // fall back — and then to the kitchen, which at least disambiguates two
+    // threads, rather than a flat "Manager" that tells the chef nothing.
+    const app = applicationDetails[c.applicationId];
+    return (
+      partnerNames[c.managerId] ||
+      app?.managerName ||
+      getPartnerLocation(c) ||
+      t("chatManager")
+    );
   };
 
   const getPartnerLocation = (c: Conversation) =>
@@ -234,11 +323,31 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
     return 'unknown';
   }, [applicationDetails]);
 
+  // Whether the list itself is still waiting on data. Details resolving is a
+  // second, softer phase — the sidebar shows skeleton rows for both so the
+  // layout never collapses to a bare spinner or an empty box.
+  const isListLoading = isLoading || !hasResolvedDetails;
+
   if (isLoading) {
+    // Skeleton shaped like the real two-pane layout, so the panel settles in
+    // place rather than flashing a centred spinner and reflowing.
     return (
-      <div className="flex items-center justify-center p-12 h-[600px]">
-        <LoadingSpinner size="lg" className="mb-4" />
-      </div>
+      <Card className="w-full h-full min-h-[500px] border shadow-sm overflow-hidden flex bg-background">
+        <div className="w-full md:w-80 border-r bg-muted/10 flex flex-col">
+          <div className="p-4 border-b space-y-4">
+            <div className="h-6 w-28 rounded bg-muted animate-pulse" />
+            <div className="h-9 w-full rounded-md bg-muted/70 animate-pulse" />
+          </div>
+          <div className="p-3">
+            <ConversationListSkeleton count={5} />
+          </div>
+        </div>
+        <div className="hidden md:flex flex-1 flex-col items-center justify-center gap-4 bg-background">
+          <div className="h-16 w-16 rounded-full bg-muted animate-pulse" />
+          <div className="h-4 w-40 rounded bg-muted animate-pulse" />
+          <div className="h-3 w-56 rounded bg-muted/70 animate-pulse" />
+        </div>
+      </Card>
     );
   }
 
@@ -252,10 +361,12 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
     );
   }
 
-  const filteredConversations = conversations.filter((conversation) => {
-    const app = applicationDetails[conversation.applicationId];
-    return !!app;
-  });
+  // Show every conversation the user actually has. Previously rows were hidden
+  // until their application details resolved, so a chef opening Messages saw an
+  // empty sidebar that filled in late. Rows now render immediately and their
+  // labels update as the details land; partner-name/location getters already
+  // fall back gracefully, so nothing renders blank.
+  const visibleConversations = conversations;
 
   return (
     <Card className="w-full h-full min-h-[500px] border shadow-sm overflow-hidden flex bg-background">
@@ -265,13 +376,15 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
         isMobileListVisible ? "flex" : "hidden md:flex"
       )}>
         <ConversationList
-          conversations={filteredConversations}
+          conversations={visibleConversations}
           selectedId={selectedConversation?.id}
           onSelect={handleSelectConversation}
           getPartnerName={getPartnerNameLabel}
           getPartnerLocation={getPartnerLocation}
           getApplicationStatus={getApplicationStatus}
           viewerRole={role}
+          isLoading={isListLoading}
+          isConversationUnavailable={isConversationUnavailable}
         />
       </div>
 
@@ -290,6 +403,11 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
             locationName={getPartnerLocation(selectedConversation)}
             chefName={role === 'chef' ? (auth.currentUser?.displayName || t("chatMe")) : getPartnerNameLabel(selectedConversation)}
             managerName={role === 'manager' ? (auth.currentUser?.displayName || t("chatMe")) : getPartnerNameLabel(selectedConversation)}
+            // True when a participant's account is gone — either flagged at
+            // delete time or detected by reconciling against Postgres. The
+            // history stays readable; the composer is replaced by a notice.
+            unavailable={isConversationUnavailable(selectedConversation)}
+            unavailableRole={getUnavailableRole(selectedConversation)}
             onUnreadCountUpdate={handleUnreadCountUpdate}
             embedded={true}
           />

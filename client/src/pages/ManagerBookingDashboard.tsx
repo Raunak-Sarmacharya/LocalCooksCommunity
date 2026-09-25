@@ -158,6 +158,8 @@ export default function ManagerBookingDashboard() {
   const { locations, isLoadingLocations } = useManagerDashboard();
   const { startNewLocation } = useManagerOnboarding();
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
+  const [reviewedApplicationName, setReviewedApplicationName] = useState<string | null>(null);
+  const showApplicationsListRef = useRef<() => void>(() => {});
 
   // Tab state - check URL params first, then default to 'overview'
   const [activeView, setActiveView] = useState<ViewType>(() => {
@@ -364,6 +366,7 @@ export default function ManagerBookingDashboard() {
 
     setActiveView(nextView);
     const url = new URL(window.location.href);
+    if (nextView !== 'applications') url.searchParams.delete('application');
     if (targetSection) {
       url.searchParams.set('view', 'kitchens');
       url.searchParams.set('section', targetSection);
@@ -471,7 +474,12 @@ export default function ManagerBookingDashboard() {
   const isApplicationChild = Boolean(applicationChildLabel[activeView]);
   const isMessageChild = Boolean(messageChildLabel[activeView]);
   const shellActiveView = isKitchenChild ? 'kitchens' : isStorageChild ? 'storage-bookings' : isApplicationChild ? 'applications' : isMessageChild ? 'messages' : activeView;
-  const breadcrumbs: ManagerBreadcrumb[] = activeView === 'kitchens'
+  const breadcrumbs: ManagerBreadcrumb[] = activeView === 'applications' && reviewedApplicationName
+    ? [
+        { label: mt("navRequests"), navId: "applications", onClick: () => showApplicationsListRef.current() },
+        { label: reviewedApplicationName },
+      ]
+    : activeView === 'kitchens'
     ? [{ label: mt("navSpaces"), navId: "kitchens" }]
     : isKitchenChild
       ? [
@@ -964,6 +972,8 @@ export default function ManagerBookingDashboard() {
           isLayoutLoading={isLoadingLocations}
           setLocation={setLocation}
           onNavigateToView={(view: string) => handleViewChange(view as ViewType)}
+          onApplicationChange={setReviewedApplicationName}
+          onRegisterListAction={(showList) => { showApplicationsListRef.current = showList; }}
         />
       )}
 

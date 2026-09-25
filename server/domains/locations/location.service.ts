@@ -298,7 +298,7 @@ export class LocationService {
         tier1_years_experience_required: false,
         tier1_years_experience_minimum: 0,
         tier1_custom_fields: [],
-        tier2_food_establishment_cert_required: false,
+        tier2_food_establishment_cert_required: true,
         tier2_food_establishment_expiry_required: false,
         tier2_insurance_document_required: false,
         tier2_insurance_minimum_amount: 0,

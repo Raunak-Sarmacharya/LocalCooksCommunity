@@ -54,10 +54,19 @@ export class TierValidationService {
 
         // --- Tier 2 Requirements (Kitchen Coordination) ---
         if (targetTier >= 2) {
+            if (requirements.requireFoodHandlerCert &&
+                (!application.foodSafetyLicenseUrl || !application.foodSafetyLicenseExpiry || application.foodSafetyLicense !== 'yes')) {
+                missing.push("Food Safety Certificate and expiry date are required");
+            } else if (requirements.requireFoodHandlerCert && application.foodSafetyLicenseExpiry && Date.parse(application.foodSafetyLicenseExpiry) < Date.now() - 86400000) {
+                missing.push("Food Safety Certificate has expired");
+            }
+            if (requirements.requireFoodHandlerCert && application.foodSafetyLicenseUrl && application.foodSafetyLicenseStatus !== 'approved') {
+                missing.push("Food Safety Certificate must be approved");
+            }
             // 1. Food Establishment Certificate
             if (requirements.tier2_food_establishment_cert_required) {
-                if (application.foodEstablishmentCertStatus !== 'approved') {
-                    missing.push("Food Establishment Certificate must be approved");
+                if (!application.foodEstablishmentCertUrl || application.foodEstablishmentCertStatus !== 'approved') {
+                    missing.push("Food Establishment Licence must be uploaded and approved");
                 }
                 if (requirements.tier2_food_establishment_expiry_required && !application.foodEstablishmentCertExpiry) {
                     missing.push("Food Establishment Certificate expiry date is required");

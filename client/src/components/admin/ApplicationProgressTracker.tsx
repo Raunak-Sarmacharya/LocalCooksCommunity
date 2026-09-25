@@ -147,13 +147,13 @@ function deriveChefSteps(props: ApplicationProgressTrackerProps): Step[] {
     status: step2Status,
   };
 
-  // Step 3: Documents Uploaded (only relevant after approval)
+  // Step 3: Documents may be uploaded before application approval.
   let step3Status: StepStatus = "upcoming";
   let step3Desc = "Awaiting document upload";
   if (isRejectedApp) {
     step3Status = "upcoming";
     step3Desc = "N/A";
-  } else if (status === "approved") {
+  } else {
     const hasRequiredDoc = !!foodSafetyLicenseUrl;
     if (hasRequiredDoc) {
       step3Status = "completed";
@@ -170,14 +170,14 @@ function deriveChefSteps(props: ApplicationProgressTrackerProps): Step[] {
     status: step3Status,
   };
 
-  // Step 4: Documents Verified (only relevant after upload)
+  // Step 4: Documents can be reviewed as soon as they are uploaded.
   let step4Status: StepStatus = "upcoming";
   let step4Desc = "Awaiting verification";
   let step4Timestamp: DateLike = null;
   if (isRejectedApp) {
     step4Status = "upcoming";
     step4Desc = "N/A";
-  } else if (status === "approved" && foodSafetyLicenseUrl) {
+  } else if (foodSafetyLicenseUrl) {
     const fslApproved = foodSafetyLicenseStatus === "approved";
     const fslRejected = foodSafetyLicenseStatus === "rejected";
     const fslPending = foodSafetyLicenseStatus === "pending";

@@ -19,10 +19,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, Fragment, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import Header from "@/components/layout/Header";
-import Footer from "@/components/layout/Footer";
 import useEmblaCarousel from 'embla-carousel-react';
 import { useFirebaseAuth } from "@/hooks/use-auth";
-import { useAuthModal } from "@/components/auth/AuthModalProvider";
 import { isChefUser } from "@/config/chef-onboarding-steps";
 import { chefDashboardHref } from "@/lib/chef-dashboard-nav";
 import { resolveChefDashboardNavigation } from "@shared/subdomain-utils";
@@ -34,7 +32,6 @@ import { useChefShellChrome } from "@/layouts/chef-shell-context";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LocationMap } from "@/components/ui/location-map";
 import { cn } from "@/lib/utils";
-import { ScheduleViewingWidget } from "@/components/chef/ScheduleViewingWidget";
 import { KitchenPreviewWalkthrough } from "@/components/kitchen-application/KitchenPreviewWalkthrough";
 import { getAuthHeaders } from "@/lib/api";
 import { saveAuthIntentFromCurrentPage } from "@/lib/auth-intent";
@@ -65,6 +62,60 @@ function PreviewIcon({
       width={size}
       height={size}
       className={cn("shrink-0", className)}
+      aria-hidden
+    />
+  );
+}
+
+/** Inline spinner for CTA pending states — accent-agnostic so it works on red and white. */
+function CtaSpinner({ className }: { className?: string }) {
+  return (
+    <Icon
+      icon="mdi:loading"
+      width={16}
+      height={16}
+      className={cn("shrink-0 animate-spin", className)}
+      aria-hidden
+    />
+  );
+}
+
+/** Surface a CTA label placeholder sits on — decides how strong the neutral step must be. */
+type CtaSkeletonTone = "solid" | "outline";
+
+/**
+ * Width-stable label placeholder for a CTA that is still resolving.
+ *
+ * The pending CTA keeps its real width and only the label is replaced, so the
+ * button does not resize between "loading" and the resolved label. Rendered as
+ * a shimmering bar rather than real copy — the resolved label is decided by
+ * server state we do not have yet, and showing the fallback text ("Request to
+ * apply") first would make an in-flight check read as a decision already made.
+ */
+function CtaLabelSkeleton({
+  widthClass = "w-24",
+  tone = "solid",
+}: {
+  widthClass?: string;
+  tone?: CtaSkeletonTone;
+}) {
+  // A neutral placeholder, never a brand-colored one. The previous `bg-current`
+  // inherited the CTA's foreground, which tinted the bar brand red on both the
+  // solid button and the red-bordered outline button (and green on the apply CTA).
+  //
+  // The tones are translucent light/dark rather than the `bg-muted-foreground`
+  // token, because the placeholder has to survive three different backdrops: the
+  // solid red button, a near-white outline button, and a gray-50 busy surface.
+  // `bg-muted-foreground/35` measured only 1.27:1 against the red — effectively
+  // invisible. White-on-red reaches 1.81:1 and slate-500-on-light 1.79:1, both in
+  // the same band as the app's neutral `bg-border` skeleton convention.
+  return (
+    <span
+      className={cn(
+        "block h-3 animate-pulse rounded-full",
+        tone === "solid" ? "bg-white/50" : "bg-slate-500/45",
+        widthClass,
+      )}
       aria-hidden
     />
   );
@@ -1750,9 +1801,16 @@ function previewApplyCtaClass(variant: "default" | "outline" = "default") {
     : chefPrimaryCtaClass();
 }
 
+/**
+ * Tone for a busy CTA's label placeholder.
+ *
+ * The Apply CTA is always solid (the "loading" spec is `variant: "default"`), so it
+ * takes the stronger step; everything else passes `"outline"`.
+ */
+const APPLY_CTA_SKELETON_TONE: CtaSkeletonTone = "solid";
+
 /** Dock tour CTA — solid primary when alone; outline secondary when paired with Apply. */
-function previewDockTourCtaClass(
-  kind: "request" | "pending" | "confirmed",
+function previewDockTourCtaClass(  kind: "request" | "pending" | "confirmed" | "history" | "loading",
   pairedWithApply: boolean
 ) {
   if (kind === "confirmed") {
@@ -1764,6 +1822,15 @@ function previewDockTourCtaClass(
   if (kind === "pending") {
     return cn(
       "border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100 hover:text-amber-950",
+      PREMIUM_CTA_SHADOW
+    );
+  }
+  if (kind === "history") {
+    return cn("border-gray-200 bg-white text-gray-900 hover:bg-gray-50", PREMIUM_CTA_SHADOW);
+  }
+  if (kind === "loading") {
+    return cn(
+      "border-gray-200 bg-gray-50 text-gray-900 hover:bg-gray-50 hover:text-gray-900",
       PREMIUM_CTA_SHADOW
     );
   }
@@ -1999,7 +2066,7 @@ function GuestHoursCard({
   bookingAccessChip?: BookingAccessChip | null;
 }) {
   const { t } = useTranslation("kitchen");
-  const { openAuthModal } = useAuthModal();
+  const [, navigate] = useLocation();
   const { user } = useFirebaseAuth();
   const isAuthenticated = !!user;
   
@@ -2334,21 +2401,7 @@ function GuestHoursCard({
     } catch (e) {
       console.error("Failed to persist pendingRegistrationKitchenContext", e);
     }
-    openAuthModal({
-      title: t("requestToApply", "Request to apply"),
-      defaultTab: "register",
-      requireApplication: true,
-      bookingContext: kitchenId
-        ? {
-            kitchenId,
-            kitchenName,
-            equipmentListings: equipmentListings
-              ? { included: equipmentListings.included, rental: equipmentListings.rental }
-              : null,
-            storageListings: storageListings ?? null,
-          }
-        : undefined,
-    });
+    if (locationId) navigate(`/apply-kitchen/${locationId}${kitchenId ? `?kitchenId=${kitchenId}` : ""}`);
   };
 
   const hasSelection = !!selectedDate || (!!dateInputValue && dateNotAvailable);
@@ -2367,7 +2420,7 @@ function GuestHoursCard({
     ? t("checkingApplication", "Checking your application…")
     : proceedLabel || t("requestToApply", "Request to apply");
 
-  const ctaBlocked = proceedDisabled || checkingApp || (bookingDatesReady && availabilityLoading);
+  const ctaBlocked = proceedDisabled || checkingApp || (requireDatesForProceed && bookingDatesReady && availabilityLoading);
   const handleCtaClick = () => {
     if (ctaBlocked) return;
     if (requireDatesForProceed && !datesOk) {
@@ -2447,7 +2500,7 @@ function GuestHoursCard({
         )}
         data-preview-tour="cta"
       >
-        {showDateGatedCta && bookingDatesReady && pricePreview ? (
+        {showDateGatedCta && canBook && bookingDatesReady && pricePreview ? (
           <div className="mb-3">
             <PreviewBookingTotalAboveCta preview={pricePreview} />
           </div>
@@ -3043,7 +3096,6 @@ export default function KitchenPreviewPage() {
   const { t: tChef } = useTranslation("chef");
   const [locationPath, navigate] = useLocation();
   const { user, loading: authLoading } = useFirebaseAuth();
-  const { openAuthModal } = useAuthModal();
   const isAuthenticated = !!user;
   const useChefChrome = isChefUser(user);
   const staticSiteHeader = !isAuthenticated;
@@ -3057,10 +3109,11 @@ export default function KitchenPreviewPage() {
   const [kitchenStorage, setKitchenStorage] = useState<StorageListing[] | null>(null);
   const [isLoadingAddons, setIsLoadingAddons] = useState(false);
   const [activeView, setActiveView] = useState("discover-kitchens");
-  const [tourModalOpen, setTourModalOpen] = useState(false);
   const [inventoryModal, setInventoryModal] = useState<"equipment" | "storage" | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [datesOk, setDatesOk] = useState(false);
+  /** Set while the date-gate CTA click is scrolling/opening the picker. */
+  const [datesGateScrolling, setDatesGateScrolling] = useState(false);
   const [activeSection, setActiveSection] = useState("preview-overview");
   const [photosInView, setPhotosInView] = useState(true);
   const [tourInView, setTourInView] = useState(true);
@@ -3148,14 +3201,15 @@ export default function KitchenPreviewPage() {
 
   // Existing tour request for this kitchen (Local Cooks review / manager review / confirmed).
   type ChefViewingRow = {
-    viewing?: { id: number; locationId: number; targetedKitchenId?: number | null; status: string; scheduledAt: string };
+    viewing?: { id: number; locationId: number; targetedKitchenId?: number | null; status: string; scheduledAt: string; durationMinutes?: number };
     id?: number;
     locationId?: number;
     targetedKitchenId?: number | null;
     status?: string;
     scheduledAt?: string;
+    durationMinutes?: number;
   };
-  const { data: chefViewings = [], isFetched: chefViewingsFetched } = useQuery<ChefViewingRow[]>({
+  const { data: chefViewings = [], isFetched: chefViewingsFetched, error: chefViewingsError } = useQuery<ChefViewingRow[]>({
     queryKey: ["/api/viewings", "chef", user?.uid],
     queryFn: async () => {
       const headers = await getAuthHeaders();
@@ -3163,29 +3217,23 @@ export default function KitchenPreviewPage() {
         headers,
         credentials: "include",
       });
-      if (!response.ok) return [];
+      if (!response.ok) throw new Error("Could not check your kitchen tours");
       return response.json();
     },
     enabled: !!isAuthenticated && !!user?.uid,
   });
-  const activeKitchenTour = useMemo(() => {
-    if (!selectedKitchen?.id || !chefViewings.length) return null;
-    const ACTIVE = new Set(["pending_local_cooks", "pending", "confirmed"]);
-    const rows = chefViewings
+  const kitchenTours = useMemo(() => {
+    if (!selectedKitchen?.id || !chefViewings.length) return [];
+    return chefViewings
       .map((r) => r.viewing ?? r)
-      .filter(
-        (v): v is { id: number; locationId: number; targetedKitchenId?: number | null; status: string; scheduledAt: string } =>
-          !!v &&
-          typeof v.id === "number" &&
-          Number(v.targetedKitchenId) === Number(selectedKitchen.id) &&
-          ACTIVE.has(String(v.status || "").toLowerCase())
-      )
-      .sort(
-        (a, b) =>
-          new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime()
-      );
-    return rows[0] ?? null;
+      .filter((v): v is { id: number; locationId: number; targetedKitchenId?: number | null; status: string; scheduledAt: string; durationMinutes?: number } =>
+        !!v && typeof v.id === "number" && Number(v.targetedKitchenId) === Number(selectedKitchen.id))
+      .sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime());
   }, [chefViewings, selectedKitchen?.id]);
+  const activeKitchenTour = useMemo(() => {
+    const ACTIVE = new Set(["pending_local_cooks", "pending", "confirmed"]);
+    return kitchenTours.find((tour) => ACTIVE.has(String(tour.status || "").toLowerCase()) && new Date(tour.scheduledAt).getTime() + (tour.durationMinutes ?? 30) * 60_000 >= Date.now()) ?? null;
+  }, [kitchenTours]);
   const activeTourStatus = String(activeKitchenTour?.status || "").toLowerCase();
   const activeTourKind: "pending" | "confirmed" | null = !activeKitchenTour
     ? null
@@ -3193,24 +3241,6 @@ export default function KitchenPreviewPage() {
       ? "confirmed"
       : "pending";
 
-  // Resume an in-progress tour draft after login. Never reopen once a tour
-  // is already in review or confirmed — leftover sessionStorage used to pop the dialog
-  // on every preview visit.
-  useEffect(() => {
-    if (!selectedKitchen?.id) return;
-    const key = `viewing_booking_${selectedKitchen.id}`;
-    try {
-      if (isAuthenticated && user?.uid && !chefViewingsFetched) return;
-      if (activeKitchenTour) {
-        sessionStorage.removeItem(key);
-        return;
-      }
-      if (!isAuthenticated) return;
-      if (sessionStorage.getItem(key)) setTourModalOpen(true);
-    } catch {
-      /* ignore */
-    }
-  }, [selectedKitchen?.id, isAuthenticated, user, activeKitchenTour, chefViewingsFetched]);
 
   const {
     application: locationApplication,
@@ -3362,6 +3392,20 @@ export default function KitchenPreviewPage() {
     setInventoryModal(null);
   }, [selectedKitchen?.id]);
 
+  // The date-gate CTA shows a spinner while it opens the picker; that click is
+  // done the moment the picker is open or dates exist, so clear it then — and
+  // on a timeout so a no-op scroll (picker already on screen) can never strand
+  // the button in its loading state.
+  useEffect(() => {
+    if (!datesGateScrolling) return;
+    if (calendarOpen || datesOk) {
+      setDatesGateScrolling(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setDatesGateScrolling(false), 1200);
+    return () => window.clearTimeout(timer);
+  }, [datesGateScrolling, calendarOpen, datesOk]);
+
   // Fetch equipment and storage when kitchen is selected (public — works logged out)
   useEffect(() => {
     const fetchKitchenAddons = async () => {
@@ -3502,21 +3546,7 @@ export default function KitchenPreviewPage() {
     } catch {
       /* ignore */
     }
-    openAuthModal({
-      title: t("requestToApply", "Request to apply"),
-      requireApplication: true,
-      defaultTab: "register",
-      bookingContext: kitchenId
-        ? {
-            kitchenId,
-            kitchenName: selectedKitchen?.name,
-            equipmentListings: kitchenEquipment
-              ? { included: kitchenEquipment.included, rental: kitchenEquipment.rental }
-              : null,
-            storageListings: kitchenStorage ?? null,
-          }
-        : undefined,
-    });
+    if (locationId) navigate(`/apply-kitchen/${locationId}${kitchenId ? `?kitchenId=${kitchenId}` : ""}`);
   };
 
   const openBookingPage = () => {
@@ -3563,10 +3593,7 @@ export default function KitchenPreviewPage() {
       goToMyTours();
       return;
     }
-    if (!isAuthenticated) {
-      saveAuthIntentFromCurrentPage("tour", locationId, selectedKitchen.id);
-    }
-    setTourModalOpen(true);
+    navigate(`/request-tour/${locationId}?kitchenId=${selectedKitchen.id}`);
   };
 
   // Loading content for dashboard
@@ -3638,35 +3665,52 @@ export default function KitchenPreviewPage() {
         : null;
 
     const tourCta = (() => {
+      // Applying later never hides a scheduled or past tour; only new requests stop.
+      if (chefViewingsError && isAuthenticated) return { kind: "history" as const };
+      if (isAuthenticated && !chefViewingsFetched) return { kind: "loading" as const };
+      if (activeTourKind) return { kind: activeTourKind };
+      if (alreadyApplied && kitchenTours.length) return { kind: "history" as const };
       if (alreadyApplied) return null;
       // Wait for availability + existing tours so we don't flash "Request a tour"
-      // over a review-in-progress or confirmed visit.
-      if (tourStatusLoading) return null;
-      if (isAuthenticated && !chefViewingsFetched) return null;
-      if (activeTourKind) return { kind: activeTourKind };
+      // over a review-in-progress or confirmed visit. This state keeps the slot
+      // occupied with a pending button rather than removing it: the button used
+      // to pop in on load, which both shifted the layout and read as the page
+      // still assembling itself.
+      if (tourStatusLoading) return { kind: "loading" as const };
       if (!toursAvailable) return null;
       return { kind: "request" as const };
     })();
 
     const tourTitle =
-      tourCta?.kind === "confirmed"
-        ? t("tourConfirmedCta", "Tour confirmed")
+      tourCta?.kind === "loading"
+        ? t("requestATour", "Request a tour")
+        : tourCta?.kind === "confirmed"
+          ? t("tourConfirmedCta", "Tour confirmed")
         : tourCta?.kind === "pending"
           ? t("tourPendingCta", "Tour pending")
+          : tourCta?.kind === "history"
+            ? "View My Tours"
           : t("requestATour", "Request a tour");
     const tourHint =
-      tourCta?.kind === "confirmed"
-        ? t("tourConfirmedChipHint", "View time and details in My Tours")
-        : tourCta?.kind === "pending"
-          ? t("tourPendingChipHint", "Waiting on the kitchen — open My Tours")
-          : t("requestATourHint", "Visit kitchen before applying");
+      tourCta?.kind === "loading"
+        ? t("checkingTourAvailability", "Checking tour availability…")
+        : tourCta?.kind === "confirmed"
+          ? t("tourConfirmedChipHint", "View time and details in My Tours")
+          : tourCta?.kind === "pending"
+            ? t("tourPendingChipHint", "Review in progress — open My Tours")
+            : tourCta?.kind === "history"
+              ? "See scheduled and previous visits"
+            : t("requestATourHint", "Visit kitchen before applying");
+    const tourBusy = tourCta?.kind === "loading";
     const tourOnClick =
-      tourCta?.kind === "confirmed" || tourCta?.kind === "pending" ? goToMyTours : handleScheduleTour;
+      tourCta?.kind === "confirmed" || tourCta?.kind === "pending" || tourCta?.kind === "history" ? goToMyTours : handleScheduleTour;
     const tourIcon =
       tourCta?.kind === "confirmed"
         ? "mdi:calendar-check"
         : tourCta?.kind === "pending"
           ? "mdi:calendar-clock"
+          : tourCta?.kind === "history"
+            ? "mdi:history"
           : "mdi:calendar-account";
 
     const tourSurfaceClass =
@@ -3682,36 +3726,67 @@ export default function KitchenPreviewPage() {
                 "border border-amber-200/90 bg-amber-50 text-amber-950 hover:bg-amber-100/80",
                 PREMIUM_CTA_SHADOW
               )
-            : "";
+            : tourCta?.kind === "history"
+              ? cn("border border-gray-200/90 bg-white text-gray-900 hover:bg-gray-50", PREMIUM_CTA_SHADOW)
+            : tourCta?.kind === "loading"
+              ? cn(
+                  "border border-gray-200/90 bg-gray-50 text-gray-900",
+                  PREMIUM_CTA_SHADOW
+                )
+              : "";
     const tourTitleClass =
       tourCta?.kind === "request"
         ? "text-white"
         : tourCta?.kind === "confirmed"
           ? "text-emerald-900"
-          : "text-amber-900";
+          : tourCta?.kind === "history"
+            ? "text-gray-900"
+          : tourCta?.kind === "loading"
+            ? "text-gray-900"
+            : "text-amber-900";
     const tourHintClass =
       tourCta?.kind === "request"
         ? "text-white/85"
         : tourCta?.kind === "confirmed"
           ? "text-emerald-800/80"
-          : "text-amber-800/80";
+          : tourCta?.kind === "history"
+            ? "text-gray-600"
+          : tourCta?.kind === "loading"
+            ? "text-gray-500"
+            : "text-amber-800/80";
     const tourIconWrapClass =
       tourCta?.kind === "request"
         ? "bg-white/20 text-white"
         : tourCta?.kind === "confirmed"
           ? "bg-emerald-600 text-white"
-          : "bg-amber-500 text-white";
+          : tourCta?.kind === "history"
+            ? "bg-gray-100 text-gray-700"
+          : tourCta?.kind === "loading"
+            ? "bg-gray-200 text-gray-500"
+            : "bg-amber-500 text-white";
     const tourChevronClass =
       tourCta?.kind === "request"
         ? "text-white"
         : tourCta?.kind === "confirmed"
           ? "text-emerald-700"
-          : "text-amber-700";
+          : tourCta?.kind === "history"
+            ? "text-gray-600"
+          : tourCta?.kind === "loading"
+            ? "text-gray-400"
+            : "text-amber-700";
+    // The busy surface is neutral (gray), but the label placeholder must not be
+    // read off the surrounding text color — `bg-current` on a red or emerald CTA
+    // turned the skeleton into a brand-colored bar. Fall back to the solid tone
+    // for any unresolved kind rather than inheriting the button's foreground.
+    const tourSkeletonTone: CtaSkeletonTone =
+      tourCta?.kind === "request" ? "solid" : "outline";
     const tourEyebrowClass =
       tourCta?.kind === "request"
         ? "text-white/90"
         : tourCta?.kind === "confirmed"
           ? "text-emerald-700"
+          : tourCta?.kind === "history"
+            ? "text-gray-600"
           : "text-amber-700";
 
     const tourButton = !tourCta ? null : (
@@ -3719,6 +3794,8 @@ export default function KitchenPreviewPage() {
         type="button"
         data-preview-tour="schedule"
         onClick={tourOnClick}
+        aria-busy={tourBusy || undefined}
+        disabled={tourBusy}
         className={cn(
           "w-full min-w-0 rounded-xl px-4 py-3.5 text-left transition-colors",
           tourSurfaceClass
@@ -3731,10 +3808,12 @@ export default function KitchenPreviewPage() {
               tourIconWrapClass
             )}
           >
-            <PreviewIcon icon={tourIcon} size={20} />
+            {tourBusy ? <CtaSpinner /> : <PreviewIcon icon={tourIcon} size={20} />}
           </span>
           <span className="min-w-0 flex-1">
-            <span className={cn("block text-sm font-semibold", tourTitleClass)}>{tourTitle}</span>
+            <span className={cn("block text-sm font-semibold", tourTitleClass)}>
+              {tourBusy ? <CtaLabelSkeleton widthClass="w-28" tone={tourSkeletonTone} /> : tourTitle}
+            </span>
             <span className={cn("mt-0.5 block text-xs", tourHintClass)}>{tourHint}</span>
           </span>
           <PreviewIcon icon="mdi:chevron-right" size={18} className={tourChevronClass} />
@@ -3747,14 +3826,16 @@ export default function KitchenPreviewPage() {
         type="button"
         data-preview-tour="schedule"
         onClick={tourOnClick}
+        aria-busy={tourBusy || undefined}
+        disabled={tourBusy}
         className={cn(
           "flex h-full w-full flex-col justify-center rounded-xl px-4 py-3 text-left transition-colors",
           tourSurfaceClass
         )}
       >
         <p className={cn("flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider", tourEyebrowClass)}>
-          <PreviewIcon icon={tourIcon} size={14} />
-          {tourTitle}
+          {tourBusy ? <CtaSpinner /> : <PreviewIcon icon={tourIcon} size={14} />}
+          {tourBusy ? <CtaLabelSkeleton widthClass="w-24" tone={tourSkeletonTone} /> : tourTitle}
         </p>
         <p className={cn("mt-1 flex items-start gap-1 text-sm font-medium leading-snug", tourTitleClass)}>
           <span className="min-w-0">{tourHint}</span>
@@ -3768,18 +3849,25 @@ export default function KitchenPreviewPage() {
     const showDockApply = !applyInView && showDateGatedApplyCta;
     const dockTourPairedWithApply = showDockTour && showDockApply;
 
-    const showDockTotal = showDockApply && !!bookingPricePreview;
+    const showDockTotal = showDockApply && ctaSpec?.kind === "book" && !!bookingPricePreview;
 
+    // Three pending states share this one button, so the label is resolved here
+    // rather than inline: the application check (nothing decided yet), the
+    // date-gate jump (the click is being acted on), and the server-confirmed
+    // "pending" (a decision that exists and blocks action).
+    const applyPending = ctaSpec?.kind === "loading" || datesGateScrolling;
     const applyCtaButton = showDateGatedApplyCta && ctaSpec ? (
       <Button
         size="sm"
         variant={ctaSpec.variant === "outline" ? "outline" : "default"}
         className={cn("shrink-0 font-semibold", previewApplyCtaClass(ctaSpec.variant))}
-        disabled={
-          ctaSpec.kind === "pending" || ctaSpec.kind === "loading" || ctaSpec.kind === "closed"
-        }
+        aria-busy={applyPending || undefined}
+        disabled={applyPending || ctaSpec.kind === "pending" || ctaSpec.kind === "closed"}
         onClick={() => {
           if (requireDatesForApply && !datesOk) {
+            // The smooth scroll + calendar expand take a beat; show the click
+            // landed until the date picker is in view, then clear.
+            setDatesGateScrolling(true);
             setCalendarOpen(true);
             document
               .getElementById("preview-dates")
@@ -3789,7 +3877,14 @@ export default function KitchenPreviewPage() {
           handleGetStarted();
         }}
       >
-        {ctaSpec.label}
+        {applyPending ? (
+          <>
+            <CtaSpinner className="mr-2" />
+            <CtaLabelSkeleton widthClass="w-20" tone={APPLY_CTA_SKELETON_TONE} />
+          </>
+        ) : (
+          ctaSpec.label
+        )}
       </Button>
     ) : null;
 
@@ -3810,13 +3905,22 @@ export default function KitchenPreviewPage() {
               type="button"
               size="sm"
               variant="outline"
+              aria-busy={tourBusy || undefined}
+              disabled={tourBusy}
               className={cn(
                 "shrink-0 font-semibold",
                 previewDockTourCtaClass(tourCta.kind, dockTourPairedWithApply)
               )}
               onClick={tourOnClick}
             >
-              {tourTitle}
+              {tourBusy ? (
+                <>
+                  <CtaSpinner className="mr-2" />
+                  <CtaLabelSkeleton widthClass="w-20" tone={tourSkeletonTone} />
+                </>
+              ) : (
+                tourTitle
+              )}
             </Button>
           ) : null}
         </DockCtaChip>
@@ -3984,6 +4088,8 @@ export default function KitchenPreviewPage() {
                             type="button"
                             size="sm"
                             variant="outline"
+                            aria-busy={tourBusy || undefined}
+                            disabled={tourBusy}
                             className={cn(
                               "font-semibold",
                               !showDockApply && "w-full",
@@ -3991,7 +4097,14 @@ export default function KitchenPreviewPage() {
                             )}
                             onClick={tourOnClick}
                           >
-                            {tourTitle}
+                            {tourBusy ? (
+                              <>
+                                <CtaSpinner className="mr-2" />
+                                <CtaLabelSkeleton widthClass="w-20" tone={tourSkeletonTone} />
+                              </>
+                            ) : (
+                              tourTitle
+                            )}
                           </Button>
                         ) : null}
                       </DockCtaChip>
@@ -4231,18 +4344,6 @@ export default function KitchenPreviewPage() {
     navigate(chefDashboardHref(view), { replace: true });
   };
 
-  const scheduleTourSheet = locationId != null && selectedKitchen?.id != null && !alreadyApplied ? (
-    <ScheduleViewingWidget
-      locationId={locationId}
-      locationName={locationData?.name}
-      targetedKitchenId={selectedKitchen.id}
-      targetedKitchenName={selectedKitchen.name}
-      open={tourModalOpen}
-      onClose={() => setTourModalOpen(false)}
-      onRequireOpen={() => setTourModalOpen(true)}
-    />
-  ) : null;
-
   const previewBreadcrumbs = useMemo(
     () => [
       {
@@ -4266,7 +4367,6 @@ export default function KitchenPreviewPage() {
     return (
       <>
         {getContent()}
-        {scheduleTourSheet}
       </>
     );
   }
@@ -4281,7 +4381,6 @@ export default function KitchenPreviewPage() {
         >
           {getContent()}
         </ChefDashboardLayout>
-        {scheduleTourSheet}
       </>
     );
   }
@@ -4309,7 +4408,6 @@ export default function KitchenPreviewPage() {
         <div className="flex-1 flex items-center justify-center bg-gray-50 px-4 py-8">
           {notFoundContent}
         </div>
-        <Footer />
       </div>
     );
   }
@@ -4323,8 +4421,6 @@ export default function KitchenPreviewPage() {
           {mainContent(locationData)}
         </div>
       </main>
-      <Footer />
-      {scheduleTourSheet}
     </div>
   );
 }

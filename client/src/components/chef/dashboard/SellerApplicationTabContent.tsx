@@ -214,20 +214,23 @@ export default function SellerApplicationTabContent({
     <div className="space-y-8">
       <ChefPageHeader title={t("apMyApplication")} description={subtitle} />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {/* Two tiles, not four.
+          "Kitchen setting" is a straight duplicate of the Seller card's Kitchen
+          row below (both read `current.kitchenPreference`).
+          "Documents" summarised a single application's paperwork — the same two
+          rows the Seller card lists — while sitting beside "Kitchens", which
+          counts them all. On a chef with several kitchens that read as one
+          number for one application next to a total for many, which is the
+          inconsistency worth removing.
+          Track at 2 columns so the pair keeps the old 4-up size. */}
+      <div className="grid grid-cols-2 gap-3">
         <StatTile
           label={t("apStatSeller")}
           value={statusLabel}
           hint={current ? t("apApplicationIdHint", { id: current.id }) : t("ovApplyToSellHint")}
           tone={statusTone}
         />
-        <StatTile label={t("apStatDocuments")} value={docs.label} hint={docs.hint} tone={docsTone} />
         <StatTile label={t("apStatKitchens")} value={kitchenValue} hint={kitchenHint} tone={kitchenTone} />
-        <StatTile
-          label={t("apStatKitchenSetting")}
-          value={hasSeller ? kitchenPref : "—"}
-          hint={hasSeller ? t("apWhereYouCook") : t("apSetWhenApply")}
-        />
       </div>
 
       <div className="grid items-start gap-4 lg:grid-cols-2">

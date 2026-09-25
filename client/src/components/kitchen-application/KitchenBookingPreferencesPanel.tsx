@@ -4,10 +4,13 @@ import { Calendar, Clock, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatHourSlotRange } from "@/lib/formatters";
 import { notifyBookingPrefsChanged } from "@/lib/persisted-booking-prefs";
-import { Badge } from "@/components/ui/badge";
 import { Calendar as UICalendar } from "@/components/ui/calendar";
 import { useToast } from "@/hooks/use-toast";
 import { kt } from "@/i18n/kitchen-ns";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { journeyCalendarClassNames, journeyCalendarContainer } from "./journey-calendar-style";
+import KitchenJourneyTimeSlot from "./KitchenJourneyTimeSlot";
+import SelectedSlotSummary from "./SelectedSlotSummary";
 
 export interface EquipmentListingOption {
   id: number;
@@ -34,6 +37,7 @@ export interface KitchenBookingPreferencesPanelProps {
   stage?: "date" | "slots" | "schedule" | "all";
   onValidityChange?: (valid: boolean) => void;
   onRequestDateStep?: () => void;
+  wide?: boolean;
 }
 
 function toLocalDateString(date: Date): string {
@@ -80,7 +84,10 @@ export function KitchenBookingPreferencesPanel({
   stage = "all",
   onValidityChange,
   onRequestDateStep,
+  wide = false,
 }: KitchenBookingPreferencesPanelProps) {
+  const isMobile = useIsMobile();
+  const monthCount = wide && !isMobile ? 2 : 1;
   const { t } = useTranslation("kitchen");
   const { t: tBooking } = useTranslation("booking");
   const { toast } = useToast();
@@ -89,7 +96,7 @@ export function KitchenBookingPreferencesPanel({
 
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(() => {
     try {
-      return parseStoredDate(sessionStorage.getItem(datesKey));
+      return parseStoredDate(localStorage.getItem(datesKey) || sessionStorage.getItem(datesKey));
     } catch {
       return undefined;
     }
@@ -97,7 +104,7 @@ export function KitchenBookingPreferencesPanel({
   // Collapse calendar after a date is chosen; expand to change it.
   const [calendarOpen, setCalendarOpen] = useState(() => {
     try {
-      return !parseStoredDate(sessionStorage.getItem(datesKey));
+      return !parseStoredDate(localStorage.getItem(datesKey) || sessionStorage.getItem(datesKey));
     } catch {
       return true;
     }
@@ -121,6 +128,7 @@ export function KitchenBookingPreferencesPanel({
   );
 
   const clearDates = useCallback(() => {
+    localStorage.removeItem(datesKey);
     sessionStorage.removeItem(datesKey);
     setSelectedDate(undefined);
     setSelectedSlots([]);
@@ -131,9 +139,9 @@ export function KitchenBookingPreferencesPanel({
   useEffect(() => {
     if (readOnly) return;
     if (selectedDate) {
-      sessionStorage.setItem(datesKey, JSON.stringify({ from: selectedDate }));
+      localStorage.setItem(datesKey, JSON.stringify({ from: selectedDate }));
     } else {
-      sessionStorage.removeItem(datesKey);
+      localStorage.removeItem(datesKey);
     }
     notifyBookingPrefsChanged(kitchenId);
   }, [selectedDate, datesKey, readOnly, kitchenId]);
@@ -170,24 +178,29 @@ export function KitchenBookingPreferencesPanel({
     const loadMonth = async () => {
       setAvailabilityLoading(true);
       try {
-        const year = calendarMonth.getFullYear();
-        const month = calendarMonth.getMonth();
-        const response = await fetch(
-          `/api/public/kitchens/${kitchenId}/month-availability?year=${year}&month=${month}`,
-          { credentials: "include", cache: "no-store" }
+        const months = Array.from({ length: monthCount }, (_, offset) =>
+          new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + offset, 1)
         );
-        if (!response.ok) throw new Error(kt("failedToLoadAvailability"));
-        const serverAvailability: Record<string, boolean> = await response.json();
+        const availabilityByMonth = await Promise.all(months.map(async (shownMonth) => {
+          const response = await fetch(
+            `/api/public/kitchens/${kitchenId}/month-availability?year=${shownMonth.getFullYear()}&month=${shownMonth.getMonth()}`,
+            { credentials: "include", cache: "no-store" }
+          );
+          if (!response.ok) throw new Error(kt("failedToLoadAvailability"));
+          return response.json() as Promise<Record<string, boolean>>;
+        }));
         if (cancelled) return;
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        const daysInMonth = new Date(year, month + 1, 0).getDate();
         const merged: Record<string, boolean> = {};
-        for (let day = 1; day <= daysInMonth; day++) {
-          const date = new Date(year, month, day);
-          merged[toLocalDateString(date)] =
-            date >= today && serverAvailability[toLocalDateString(date)] === true;
-        }
+        months.forEach((shownMonth, index) => {
+          const daysInMonth = new Date(shownMonth.getFullYear(), shownMonth.getMonth() + 1, 0).getDate();
+          for (let day = 1; day <= daysInMonth; day++) {
+            const date = new Date(shownMonth.getFullYear(), shownMonth.getMonth(), day);
+            merged[toLocalDateString(date)] =
+              date >= today && availabilityByMonth[index][toLocalDateString(date)] === true;
+          }
+        });
         setDateAvailability(merged);
       } catch {
         if (!cancelled) setDateAvailability({});
@@ -199,7 +212,7 @@ export function KitchenBookingPreferencesPanel({
     return () => {
       cancelled = true;
     };
-  }, [kitchenId, calendarMonth, readOnly]);
+  }, [kitchenId, calendarMonth, monthCount, readOnly]);
 
   const isDayAvailable = useCallback(
     (date: Date) => {
@@ -222,7 +235,7 @@ export function KitchenBookingPreferencesPanel({
     next.setHours(0, 0, 0, 0);
     if (!isDayAvailable(next)) return;
     if (selectedDate && sameCalendarDay(selectedDate, next)) {
-      clearDates();
+      setCalendarOpen(false);
       return;
     }
     setSelectedDate(next);
@@ -293,7 +306,7 @@ export function KitchenBookingPreferencesPanel({
 
   useEffect(() => {
     try {
-      const saved = sessionStorage.getItem(prefsKey);
+      const saved = localStorage.getItem(prefsKey) || sessionStorage.getItem(prefsKey);
       if (!saved) return;
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed.slots) && parsed.slots.length > 0) {
@@ -306,7 +319,7 @@ export function KitchenBookingPreferencesPanel({
 
   useEffect(() => {
     if (readOnly) return;
-    sessionStorage.setItem(
+    localStorage.setItem(
       prefsKey,
       JSON.stringify({
         slots: selectedSlots,
@@ -368,31 +381,8 @@ export function KitchenBookingPreferencesPanel({
     onValidityChange?.(isValid);
   }, [isValid, onValidityChange]);
 
-  // Natural size + fixed 32px day cells → selection ring is a true circle (not a stretched pill).
-  const calendarClassNames = {
-    months: "flex w-full flex-col space-y-0",
-    month: "w-full space-y-2",
-    caption: "relative flex w-full items-center justify-center pt-0.5",
-    caption_label: "text-xs font-medium",
-    nav_button:
-      "inline-flex h-7 w-7 items-center justify-center rounded-md border-0 bg-transparent p-0 opacity-50 shadow-none hover:opacity-100",
-    nav_button_previous: "absolute left-0",
-    nav_button_next: "absolute right-0",
-    table: "w-full table-fixed border-collapse",
-    head_cell:
-      "w-[14.28%] pb-0.5 text-center text-[0.65rem] font-normal text-muted-foreground",
-    row: "mt-0.5",
-    cell: cn(
-      "relative z-0 h-8 p-0 text-center text-xs",
-      "[&:has([aria-selected])]:before:absolute [&:has([aria-selected])]:before:left-1/2 [&:has([aria-selected])]:before:top-1/2 [&:has([aria-selected])]:before:h-8 [&:has([aria-selected])]:before:w-8 [&:has([aria-selected])]:before:-translate-x-1/2 [&:has([aria-selected])]:before:-translate-y-1/2 [&:has([aria-selected])]:before:-z-10 [&:has([aria-selected])]:before:rounded-full [&:has([aria-selected])]:before:border-2 [&:has([aria-selected])]:before:border-[#F51042]"
-    ),
-    day: "mx-auto flex h-8 w-8 max-w-[32px] items-center justify-center rounded-full p-0 text-xs font-normal text-gray-900 transition-colors hover:bg-gray-100 aria-selected:opacity-100",
-    day_disabled:
-      "pointer-events-none text-gray-300 opacity-40 line-through decoration-gray-300/80",
-  };
-
   const datePickerBody = (
-    <div className="relative mx-auto w-full max-w-[300px] rounded-xl border border-gray-100 bg-gray-50/40 p-1">
+    <div className={cn("relative", journeyCalendarContainer, !wide && "mx-auto max-w-[300px]")}>
       {availabilityLoading && (
         <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-white/60">
           <Loader2 className="h-5 w-5 animate-spin text-[#F51042]" />
@@ -400,6 +390,8 @@ export function KitchenBookingPreferencesPanel({
       )}
       <UICalendar
         mode="single"
+        numberOfMonths={monthCount}
+        pagedNavigation={monthCount === 2}
         selected={selectedDate}
         onSelect={handleSelect}
         month={calendarMonth}
@@ -410,7 +402,7 @@ export function KitchenBookingPreferencesPanel({
           return !isDayAvailable(d);
         }}
         className="w-full bg-transparent p-1"
-        classNames={calendarClassNames}
+        classNames={journeyCalendarClassNames(wide && !isMobile)}
       />
     </div>
   );
@@ -456,16 +448,14 @@ export function KitchenBookingPreferencesPanel({
       )}
     </p>
   ) : readOnly ? (
-    <div className="flex flex-wrap gap-1.5">
-      {selectedSlots.map((time) => (
-        <Badge key={time} variant="secondary" className="text-xs">
-          {formatHourSlotRange(time)}
-        </Badge>
-      ))}
-      {selectedSlots.length === 0 && (
-        <span className="text-xs text-muted-foreground">—</span>
-      )}
-    </div>
+    <SelectedSlotSummary
+      ranges={selectedSlots.map((time) => formatHourSlotRange(time))}
+      popoverTitle={t("preferredTimeSlots", "Preferred time slots")}
+      countLabel={t("hoursSelected", {
+        count: selectedSlots.length,
+        defaultValue: `${selectedSlots.length} hour${selectedSlots.length > 1 ? "s" : ""} selected`,
+      })}
+    />
   ) : (
     <>
       <p className="text-[11px] text-muted-foreground">
@@ -474,23 +464,16 @@ export function KitchenBookingPreferencesPanel({
           defaultValue: `Max ${estimateMeta.maxSlotsPerChef} hours`,
         })}
       </p>
-      <div className="flex flex-wrap gap-2">
+      <div className="grid grid-cols-2 gap-1.5 min-[420px]:grid-cols-3 sm:grid-cols-4">
         {availableSlots.map((slot) => {
           const selected = selectedSlots.includes(slot.time);
           return (
-            <button
+            <KitchenJourneyTimeSlot
               key={slot.time}
-              type="button"
+              label={formatHourSlotRange(slot.time)}
+              selected={selected}
               onClick={() => toggleSlot(slot.time)}
-              className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors",
-                selected
-                  ? "bg-[#F51042] text-white border-[#F51042]"
-                  : "bg-white text-gray-700 border-gray-200 hover:border-[#F51042]/40"
-              )}
-            >
-              {formatHourSlotRange(slot.time)}
-            </button>
+            />
           );
         })}
       </div>

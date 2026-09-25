@@ -23,7 +23,7 @@ function ApplicationStatusBadge({ application }: { application: Application }) {
     if (status === "inReview") {
         return (
             <Badge variant="warning">
-                <Clock className="h-3 w-3 mr-1" />{mt("pendingReview")}</Badge>
+                <Clock className="h-3 w-3 mr-1" />{mt("awaitingAdminReview")}</Badge>
         )
     }
 
@@ -41,7 +41,7 @@ function ApplicationStatusBadge({ application }: { application: Application }) {
         if (tier === 1) {
             return (
                 <Badge variant="info">
-                    <Check className="h-3 w-3 mr-1" />{mt("step1Done")}</Badge>
+                    <Clock className="h-3 w-3 mr-1" />{mt("step1Done")}</Badge>
             )
         }
 

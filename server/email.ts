@@ -7685,10 +7685,10 @@ export const generateTourRequestedChefEmail = (data: { chefEmail: string; chefNa
         </div>
         <div class="content">
           <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${data.chefName.split(' ')[0]},</h2>
-          <p class="message">Your kitchen viewing at <strong>${data.kitchenName}</strong> has been requested.</p>
+          <p class="message">Your kitchen tour at <strong>${data.kitchenName}</strong> has been requested.</p>
           
           <div class="info-box" style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; padding: 12px 16px; margin: 24px 0;">
-            <h3 style="margin-top: 0; color: hsl(347, 91%, 51%);">Viewing Details</h3>
+            <h3 style="margin-top: 0; color: hsl(347, 91%, 51%);">Tour Details</h3>
             <p><strong>Date:</strong> ${dateStr}</p>
             <p><strong>Time:</strong> ${data.startTime} ${data.timezone ? `(${data.timezone})` : ''}</p>
           </div>
@@ -7702,7 +7702,7 @@ export const generateTourRequestedChefEmail = (data: { chefEmail: string; chefNa
 
   return {
     to: data.chefEmail,
-    subject: `Kitchen Viewing Requested - ${data.kitchenName}`,
+    subject: `Kitchen Tour Requested - ${data.kitchenName}`,
     html,
   };
 };
@@ -7742,10 +7742,10 @@ export const generateTourRequestedManagerEmail = (data: { managerEmail: string; 
         </div>
         <div class="content">
           <p class="greeting">Hello ${data.managerName},</p>
-          <p class="message">Chef <strong>${data.chefName}</strong> has requested a kitchen viewing at <strong>${data.kitchenName}</strong>.</p>
+          <p class="message">Chef <strong>${data.chefName}</strong> has requested a kitchen tour at <strong>${data.kitchenName}</strong>.</p>
           
           <div class="info-box" style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; padding: 12px 16px; margin: 24px 0;">
-            <h3 style="margin-top: 0; color: hsl(347, 91%, 51%);">Viewing Details</h3>
+            <h3 style="margin-top: 0; color: hsl(347, 91%, 51%);">Tour Details</h3>
             <p><strong>Date:</strong> ${dateStr}</p>
             <p><strong>Time:</strong> ${data.startTime} ${data.timezone ? `(${data.timezone})` : ''}</p>
             ${data.chefNotes ? `<p><strong>Notes from Chef:</strong> ${data.chefNotes}</p>` : ''}
@@ -7764,7 +7764,7 @@ export const generateTourRequestedManagerEmail = (data: { managerEmail: string; 
 
   return {
     to: data.managerEmail,
-    subject: `New Kitchen Viewing Request from ${data.chefName}`,
+    subject: `New Kitchen Tour Request from ${data.chefName}`,
     html,
   };
 };
@@ -7772,7 +7772,7 @@ export const generateTourRequestedManagerEmail = (data: { managerEmail: string; 
 export const generateTourConfirmedEmail = (data: { isManager: boolean; email: string; recipientName: string; otherPartyName: string; kitchenName: string; locationAddress: string; tourDate: string | Date; startTime: string; endTime: string; timezone?: string; notes?: string; organizerEmail?: string; attendeeEmails?: string[] }): EmailContent => {
   const styles = getUniformEmailStyles();
   const dateStr = data.tourDate instanceof Date ? data.tourDate.toLocaleDateString() : new Date(data.tourDate).toLocaleDateString();
-  const title = `Kitchen Viewing: ${data.otherPartyName} @ ${data.kitchenName}`;
+  const title = `Kitchen Tour: ${data.otherPartyName} @ ${data.kitchenName}`;
   
   // Note: we're using a single start date/time block but calculating a nominal end time if it isn't provided or we just use 30 minutes later for the .ics
   let startDateTimeObj: Date;
@@ -7793,7 +7793,7 @@ export const generateTourConfirmedEmail = (data: { isManager: boolean; email: st
     startDateTimeObj,
     endDateTimeObj,
     data.locationAddress,
-    `Kitchen Viewing at ${data.kitchenName}. ${data.notes ? '\n\nNotes: ' + data.notes : ''}`,
+    `Kitchen Tour at ${data.kitchenName}. ${data.notes ? '\n\nNotes: ' + data.notes : ''}`,
     data.organizerEmail,
     data.attendeeEmails
   );
@@ -7803,7 +7803,7 @@ export const generateTourConfirmedEmail = (data: { isManager: boolean; email: st
     startDateTimeObj,
     endDateTimeObj,
     data.locationAddress,
-    `Kitchen Viewing at ${data.kitchenName}. ${data.notes ? '\\n\\nNotes: ' + data.notes : ''}`
+    `Kitchen Tour at ${data.kitchenName}. ${data.notes ? '\\n\\nNotes: ' + data.notes : ''}`
   );
 
   const html = `
@@ -7820,10 +7820,10 @@ export const generateTourConfirmedEmail = (data: { isManager: boolean; email: st
         </div>
         <div class="content">
           <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${data.recipientName.split(' ')[0]},</h2>
-          <p class="message">The kitchen viewing at <strong>${data.kitchenName}</strong> has been confirmed.</p>
+          <p class="message">The kitchen tour at <strong>${data.kitchenName}</strong> has been confirmed.</p>
           
           <div class="info-box" style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; padding: 12px 16px; margin: 24px 0;">
-            <h3 style="margin-top: 0; color: hsl(347, 91%, 51%);">Viewing Details</h3>
+            <h3 style="margin-top: 0; color: hsl(347, 91%, 51%);">Tour Details</h3>
             <p><strong>Meeting with:</strong> ${data.otherPartyName}</p>
             <p><strong>Date:</strong> ${dateStr}</p>
             <p><strong>Time:</strong> ${data.startTime} ${data.timezone ? `(${data.timezone})` : ''}</p>
@@ -7842,11 +7842,11 @@ export const generateTourConfirmedEmail = (data: { isManager: boolean; email: st
 
   return {
     to: data.email,
-    subject: `Confirmed: Kitchen Viewing at ${data.kitchenName}`,
+    subject: `Confirmed: Kitchen Tour at ${data.kitchenName}`,
     html,
     attachments: [
       {
-        filename: 'kitchen-viewing.ics',
+        filename: 'kitchen-tour.ics',
         contentType: 'text/calendar; charset=utf-8; method=REQUEST',
         content: icsContent
       }
@@ -7872,7 +7872,7 @@ export const generateTourRejectedChefEmail = (data: { chefEmail: string; chefNam
         </div>
         <div class="content">
           <h2 class="greeting" style="font-size: 22px; margin-bottom: 12px;">Hi ${data.chefName.split(' ')[0]},</h2>
-          <p class="message">Unfortunately, the manager at <strong>${data.kitchenName}</strong> was unable to accept your kitchen viewing request for ${dateStr} at ${data.startTime}.</p>
+          <p class="message">Unfortunately, the manager at <strong>${data.kitchenName}</strong> was unable to accept your kitchen tour request for ${dateStr} at ${data.startTime}.</p>
           
           ${(data.cancellationReason || data.managerNotes) ? `
           <div class="info-box">
@@ -7882,7 +7882,7 @@ export const generateTourRejectedChefEmail = (data: { chefEmail: string; chefNam
           </div>
           ` : ''}
           
-          <p class="message">We encourage you to log back in and request a viewing for a different time that works for the manager, or explore other available kitchens in your area.</p>
+          <p class="message">We encourage you to log back in and request a tour for a different time that works for the manager, or explore other available kitchens in your area.</p>
           
           <div style="text-align: center;">
             <a href="${getSubdomainUrl('chef')}/book-kitchen" class="cta-button">Find Kitchens</a>
@@ -7895,7 +7895,7 @@ export const generateTourRejectedChefEmail = (data: { chefEmail: string; chefNam
 
   return {
     to: data.chefEmail,
-    subject: `Kitchen Viewing Request Declined - ${data.kitchenName}`,
+    subject: `Kitchen Tour Request Declined - ${data.kitchenName}`,
     html,
   };
 };

@@ -33,6 +33,7 @@ import logoWhite from "@assets/logo-white.png";
 import harbourKitchenImage from "@/assets/harbour-kitchen-hub.jpg";
 import emptyKitchenImage from "@assets/emptykitchen.png";
 import SellerJourneyDialog from "@/components/home/SellerJourneyDialog";
+import { getSellerJourneyDraft } from "@/lib/seller-journey";
 import { ChefServiceIllustration } from "@/components/home/ChefServiceIllustration";
 
 import truckIcon from "@assets/truck.png";
@@ -2033,12 +2034,29 @@ export default function ChefLanding() {
     }
   }, []);
 
-  const [sellerJourneyOpen, setSellerJourneyOpen] = useState(false);
+  const [sellerJourneyOpen, setSellerJourneyOpen] = useState(
+    () => new URLSearchParams(window.location.search).get("journey") === "seller",
+  );
+  const handleSellerJourneyOpenChange = (nextOpen: boolean) => {
+    setSellerJourneyOpen(nextOpen);
+    if (!nextOpen && new URLSearchParams(window.location.search).get("journey") === "seller") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("journey");
+      window.history.replaceState(window.history.state, "", url);
+    }
+  };
   const handleGetStarted = () => {
     if (user) {
-      navigate(landingDashboardPath(user));
+      if (landingDashboardPath(user) === "/dashboard" && getSellerJourneyDraft()) {
+        window.location.assign("/?journey=seller");
+        return;
+      }
+      navigate(landingDashboardPath(user) === "/dashboard" ? "/dashboard?view=applications" : landingDashboardPath(user));
       return;
     }
+    const url = new URL(window.location.href);
+    url.searchParams.set("journey", "seller");
+    window.history.replaceState(window.history.state, "", url);
     setSellerJourneyOpen(true);
   };
   const handleBrowseKitchens = () => navigate(landingBrowseKitchensPath(user));
@@ -2419,7 +2437,7 @@ export default function ChefLanding() {
       </main>
 
       <Footer />
-      <SellerJourneyDialog open={sellerJourneyOpen} onOpenChange={setSellerJourneyOpen} />
+      <SellerJourneyDialog open={sellerJourneyOpen} onOpenChange={handleSellerJourneyOpenChange} />
     </div>
   );
 }

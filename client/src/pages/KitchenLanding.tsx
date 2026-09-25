@@ -1,5 +1,4 @@
 import { useTranslation } from "react-i18next";
-import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
 import SEOHead from "@/components/SEO/SEOHead";
 import CustomerSupportButton from "@/components/CustomerSupportButton";
@@ -1145,7 +1144,6 @@ export default function KitchenLanding() {
                 </motion.div>
               </FadeInSection>
             </div>
-
           </div>
         </section>
 
@@ -1569,10 +1567,7 @@ export default function KitchenLanding() {
             </FadeInSection>
           </div>
         </section>
-
       </main>
-
-      <Footer />
     </div>
   );
 }

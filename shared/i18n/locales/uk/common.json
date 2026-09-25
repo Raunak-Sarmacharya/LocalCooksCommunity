@@ -278,7 +278,7 @@
   "downloadInvoice": "Завантажити рахунок",
   "cancelBooking": "Скасувати бронювання",
   "failedToFetchApplications": "Не вдалося отримати заявки",
-  "failedToFetchViewings": "Не вдалося отримати перегляди",
+  "failedToFetchViewings": "Не вдалося отримати екскурсії",
   "accountAlreadyConnected": "Обліковий запис уже підключено",
   "dashboardLinkNotProvided": "URL панелі керування не надано",
   "failedToFetchStripeStatus": "Не вдалося отримати статус Stripe",

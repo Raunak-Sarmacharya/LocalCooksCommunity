@@ -48,7 +48,7 @@ const NAV_GROUPS = [
     label: "Applications",
     items: [
       { id: "applications" as AdminSection, label: "Seller Applications", icon: Shield, badgeKey: "pendingReview" as const },
-      { id: "kitchen-applications-step1" as AdminSection, label: "Kitchen Applications (Step 1)", icon: Shield, badgeKey: "pendingKitchenApps" as const },
+      { id: "kitchen-applications-step1" as AdminSection, label: "Kitchen Application Requests", icon: Shield, badgeKey: "pendingKitchenApps" as const },
       { id: "tour-requests" as AdminSection, label: "Tour Requests", icon: CalendarDays },
       { id: "kitchen-licenses" as AdminSection, label: "Kitchen Licenses", icon: FileText, badgeKey: "pendingLicenses" as const },
       { id: "damage-claims" as AdminSection, label: "Damage Claims", icon: AlertTriangle },

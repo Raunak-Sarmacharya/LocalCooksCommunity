@@ -68,6 +68,7 @@ const KitchenBookingPage = lazy(() => import("@/pages/KitchenBookingPage"));
 const PaymentSuccessPage = lazy(() => import("@/pages/PaymentSuccessPage"));
 const BookingDetailsPage = lazy(() => import("@/pages/BookingDetailsPage"));
 const ApplyToKitchen = lazy(() => import("@/pages/ApplyToKitchen"));
+const RequestTourPage = lazy(() => import("@/pages/RequestTourPage"));
 
 const AdminManageLocations = lazy(() => import("@/pages/AdminManageLocations"));
 const ManagerLanding = lazy(() => import("@/pages/ManagerLanding"));
@@ -284,6 +285,7 @@ function Router() {
 
         {/* Kitchen Application Routes */}
         <SubdomainRoute path="/apply-kitchen/:locationId" component={ApplyToKitchen} subdomain={subdomain} />
+        <SubdomainRoute path="/request-tour/:locationId" component={RequestTourPage} subdomain={subdomain} />
         <SubdomainRoute path="/compare-kitchens" component={KitchenComparisonPage} subdomain={subdomain} />
         {localePublicRoutes("/compare-kitchens", KitchenComparisonPage)}
         <SubdomainRoute path="/kitchen-requirements/:locationId" component={KitchenRequirementsPage} subdomain={subdomain} />

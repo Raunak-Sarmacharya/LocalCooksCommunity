@@ -24,6 +24,18 @@ export function useChefSidebarHiddenItems(): string[] {
   const { applications: kitchenApplications, isLoading: isLoadingKitchens } =
     useChefKitchenApplications();
   const { bookings } = useKitchenBookings();
+  const { data: tours = [], isLoading: isLoadingTours } = useQuery<unknown[]>({
+    queryKey: ["/api/viewings", "chef", user?.uid],
+    queryFn: async () => {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) return [];
+      const response = await fetch("/api/viewings/chef", { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error(tt("failedToFetchViewings"));
+      return response.json();
+    },
+    enabled: Boolean(user),
+    staleTime: 30_000,
+  });
   const { data: sellerApplications, isLoading: isLoadingSellerApps } = useQuery<unknown[]>({
     queryKey: ["/api/firebase/applications/my"],
     queryFn: async () => {
@@ -74,6 +86,8 @@ export function useChefSidebarHiddenItems(): string[] {
   const hasShop = Boolean(shopStatus?.phpShopId || shopStatus?.linked) && !isError;
   const hasSellerApplication = (sellerApplications?.length ?? 0) > 0;
   const hasKitchenApplication = kitchenApplications.length > 0;
+  const hasPendingKitchenApplication = kitchenApplications.some((app) => ["inreview", "pending"].includes(app.status.toLowerCase()));
+  const hasApprovedKitchen = kitchenApplications.some((app) => app.status === "approved");
   const hasAnyApplication = hasSellerApplication || hasKitchenApplication;
   const hasBookings = bookings.length > 0;
   const hasKitchenMessages = conversations.length > 0;
@@ -89,7 +103,9 @@ export function useChefSidebarHiddenItems(): string[] {
     if (!isLoadingSellerApps && !isLoadingKitchens && !hasAnyApplication) {
       hidden.push("applications");
     }
-    if (!isLoadingKitchens && !hasKitchenApplication) hidden.push("kitchen-applications");
+    if (isLoadingKitchens || !hasPendingKitchenApplication) hidden.push("kitchen-requests");
+    if (isLoadingKitchens || !hasApprovedKitchen) hidden.push("kitchen-applications");
+    if (isLoadingTours || tours.length === 0) hidden.push("viewings");
     if (!hasKitchenApplication && !hasBookings) hidden.push("bookings");
     if (!hasShop) {
       hidden.push("seller-revenue");
@@ -107,6 +123,10 @@ export function useChefSidebarHiddenItems(): string[] {
     hasSellerApplication,
     hasAnyApplication,
     hasKitchenApplication,
+    hasPendingKitchenApplication,
+    hasApprovedKitchen,
+    isLoadingTours,
+    tours.length,
     hasBookings,
     hasShop,
     isLoadingMessages,

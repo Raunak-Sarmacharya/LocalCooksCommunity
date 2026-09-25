@@ -16,7 +16,8 @@ export function ApplicationsTable({
     onReject,
     onOpenChat,
     onViewDocuments,
-    onReview
+    onReview,
+    onApproveStage
 }: ApplicationsTableProps) {
   
     const columns = getApplicationColumns({
@@ -24,7 +25,8 @@ export function ApplicationsTable({
         onReject,
         onChat: onOpenChat,
         onViewDocuments,
-        onReview
+        onReview,
+        onApproveStage
     })
 
     const [statusFilter, setStatusFilter] = useState<string>("all")
@@ -36,7 +38,7 @@ export function ApplicationsTable({
 
     const filteredData = data.filter(app => {
         if (statusFilter === "all") return true;
-        if (statusFilter === "pending") return app.status === "inReview";
+        if (statusFilter === "pending") return app.status === "inReview" || (app.status === "approved" && (app.current_tier ?? 1) === 2 && !!app.tier2_completed_at);
         return app.status === statusFilter;
     });
 
@@ -61,6 +63,7 @@ export function ApplicationsTable({
             <DataTable
                 columns={columns}
                 data={filteredData}
+                onRowClick={onReview}
                 filterColumn="fullName"
                 filterPlaceholder={mt("filterByApplicantName")}
             />

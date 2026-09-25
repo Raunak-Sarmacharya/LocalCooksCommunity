@@ -6,6 +6,7 @@ import { LocationRequirements, chefKitchenApplications } from '@shared/schema';
 const strictRequirements: LocationRequirements = {
     // ... defaults ...
     tier2_food_establishment_cert_required: true,
+    requireFoodHandlerCert: true,
     tier2_insurance_document_required: true,
     tier2_custom_fields: [{
         id: "tier2_special_doc",
@@ -22,6 +23,7 @@ const appIncomplete: typeof chefKitchenApplications.$inferSelect = {
     locationId: 1,
     current_tier: 2,
     foodEstablishmentCertStatus: 'pending', // Invalid
+    foodSafetyLicense: 'no',
     tier_data: {
         // Missing insurance
         // Missing custom field
@@ -32,7 +34,7 @@ console.log("🚀 Starting verification...");
 
 // Test 1: Incomplete App
 const res1 = tierValidationService.validateTierRequirements(appIncomplete, strictRequirements, 2);
-if (!res1.valid && res1.missingRequirements.length >= 3) {
+if (!res1.valid && res1.missingRequirements.length >= 4) {
     console.log("✅ Test 1 Passed: Correctly blocked access for incomplete application.");
     console.log("   Missing:", res1.missingRequirements);
 } else {
@@ -44,9 +46,14 @@ if (!res1.valid && res1.missingRequirements.length >= 3) {
 const appComplete: typeof chefKitchenApplications.$inferSelect = {
     ...appIncomplete,
     foodEstablishmentCertStatus: 'approved',
+    foodEstablishmentCertUrl: 'https://example.com/establishment.pdf',
+    foodSafetyLicense: 'yes',
+    foodSafetyLicenseUrl: 'https://example.com/safety.pdf',
+    foodSafetyLicenseExpiry: '2030-01-01',
+    foodSafetyLicenseStatus: 'pending', // Step 2 submission may proceed while Local Cooks review is pending.
     tier_data: {
         insuranceUrl: 'http://example.com/insurance.pdf',
-        custom_fields: {
+        tier2_custom_fields_data: {
             "tier2_special_doc": "Provided Content"
         }
     }

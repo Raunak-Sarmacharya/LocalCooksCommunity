@@ -728,6 +728,7 @@ async function notifyChefApplicationApproved(data: {
   locationId?: number;
   currentTier?: number | null;
   applicationId?: number;
+  conversationId?: string;
 }) {
   const currentTier = data.currentTier ?? 1;
   const isFullyApproved = currentTier >= 3;
@@ -736,23 +737,28 @@ async function notifyChefApplicationApproved(data: {
     chefId: data.chefId,
     type: 'application_approved',
     priority: 'high',
-    title: isFullyApproved ? 'Application Approved!' : 'Request to apply approved!',
+    title: isFullyApproved ? 'Application Approved!' : data.conversationId ? 'Chat with your kitchen manager is ready' : 'Request to apply approved!',
     message: isFullyApproved
       ? `Congratulations! Your application to ${data.kitchenName} at ${data.locationName} has been fully approved. You can now book this kitchen.`
-      : `Good news! Your request to apply to ${data.kitchenName} at ${data.locationName} was approved. Complete your kitchen documents before booking this kitchen.`,
+      : data.conversationId
+        ? `Your request to apply to ${data.kitchenName} was approved. Message the kitchen manager to coordinate your Food Establishment Licence, then upload your kitchen documents.`
+        : `Good news! Your request to apply to ${data.kitchenName} at ${data.locationName} was approved. Complete your kitchen documents before booking this kitchen.`,
     metadata: {
       kitchenName: data.kitchenName,
       locationName: data.locationName,
       locationId: data.locationId,
       applicationId: data.applicationId,
-      currentTier
+      currentTier,
+      conversationId: data.conversationId,
     },
     actionUrl: isFullyApproved
       ? chefDashboardView('discover-kitchens')
-      : data.locationId
+      : data.conversationId
+        ? chefDashboardView('messages', { conversation: data.conversationId })
+        : data.locationId
         ? `/kitchen-requirements/${data.locationId}`
         : chefDashboardView('kitchen-applications'),
-    actionLabel: isFullyApproved ? 'Book Now' : 'Complete Kitchen Coordination'
+    actionLabel: isFullyApproved ? 'Book Now' : data.conversationId ? 'Message kitchen manager' : 'Complete Kitchen Coordination'
   });
 }
 

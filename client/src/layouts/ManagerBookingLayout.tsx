@@ -51,8 +51,14 @@ export default function ManagerBookingLayout({
                 selectedLocation={selectedLocation}
                 onLocationChange={handleLocationChange}
             />
-            <SidebarInset className="min-w-0 overflow-x-hidden">
-                <header className="flex h-16 shrink-0 items-center justify-between gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 border-b px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 min-w-0">
+            {/*
+              Same scroll shell as DashboardLayout: viewport-height inset, header
+              shrink-0, `<main>` is the only vertical scroller. Without `h-svh
+              overflow-hidden`, the inset grows with content, the WINDOW scrolls,
+              and sticky header rides away with the page.
+            */}
+            <SidebarInset className="min-w-0 h-svh overflow-hidden">
+                <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 min-w-0">
                     <div className="flex items-center gap-2 min-w-0">
                         <SidebarTrigger className="-ml-1 shrink-0" />
                         <Separator orientation="vertical" className="mr-2 h-4 shrink-0" />
@@ -89,9 +95,9 @@ export default function ManagerBookingLayout({
                         </Breadcrumb>
                     </div>
                 </header>
-                <main className="flex-1 min-w-0 p-4 md:p-6 lg:p-8 bg-muted/10 relative overflow-x-hidden overflow-y-auto">
+                <main className="relative flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden bg-muted/10 p-4 md:p-6 lg:p-8">
                     <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
-                    <div className="mx-auto max-w-7xl w-full min-w-0 animate-fade-in space-y-6 relative z-10">
+                    <div className="relative z-10 mx-auto w-full max-w-7xl min-w-0 animate-fade-in space-y-6">
                         {children}
                     </div>
                 </main>

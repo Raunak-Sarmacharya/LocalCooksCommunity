@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": {"title": "Chef and manager footer visibility", "subtitle": "Page render paths in the current client", "output": "footer-visibility.html"},
+  "lanes": [{"id":"chef","label":"Chef routes"},{"id":"manager","label":"Manager routes"}],
+  "nodes": [
+    {"id":"chefpublic","lane":"chef","col":0,"type":"frontend","label":"Public page","sublabel":"landing / resources"},
+    {"id":"chefcheck","lane":"chef","col":2,"type":"security","label":"Auth + shell?","sublabel":"preview / requirements"},
+    {"id":"cheffooter","lane":"chef","col":5,"type":"frontend","label":"Site Footer","sublabel":"public branch"},
+    {"id":"managerlanding","lane":"manager","col":0,"type":"frontend","label":"Manager entry","sublabel":"landing / login"},
+    {"id":"managerauth","lane":"manager","col":2,"type":"security","label":"Auth redirect","sublabel":"dashboard / setup"},
+    {"id":"managernone","lane":"manager","col":5,"type":"backend","label":"No site footer","sublabel":"manager pages"}
+  ],
+  "edges": [
+    {"from":"chefpublic","to":"cheffooter","variant":"emphasis"},
+    {"from":"chefcheck","to":"cheffooter","label":"guest branch"},
+    {"from":"managerlanding","to":"managerauth"},
+    {"from":"managerauth","to":"managernone","variant":"emphasis"}
+  ],
+  "cards": []
+}

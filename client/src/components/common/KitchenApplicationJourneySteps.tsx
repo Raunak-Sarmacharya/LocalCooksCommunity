@@ -112,7 +112,7 @@ export function KitchenApplicationJourneySteps({
     {
       key: "apply" as const,
       icon: <ClipboardList className="h-4 w-4" />,
-      title: t("journeyApplyTitle", "1. Request to apply"),
+      title: t("journeyApplyTitle", "Request to apply"),
       desc: t(
         "journeyApplyDesc",
         "Share your basic details with Local Cooks."
@@ -121,7 +121,7 @@ export function KitchenApplicationJourneySteps({
     {
       key: "admin_review" as const,
       icon: <Clock className="h-4 w-4" />,
-      title: t("journeyAdminReviewTitle", "2. Our Team review"),
+      title: t("journeyAdminReviewTitle", "Our Team review"),
       desc: t(
         "journeyAdminReviewDesc",
         "Our Team reviews your request to apply."
@@ -130,7 +130,7 @@ export function KitchenApplicationJourneySteps({
     {
       key: "step2_manager" as const,
       icon: <Check className="h-4 w-4" />,
-      title: t("journeyStep2Title", "3. Kitchen documents & review"),
+      title: t("journeyStep2Title", "Kitchen documents and review"),
       desc: t(
         "journeyStep2Desc",
         "After your request to apply is approved, submit kitchen documents for the manager to review."
@@ -139,7 +139,7 @@ export function KitchenApplicationJourneySteps({
     {
       key: "book" as const,
       icon: <CheckCircle2 className="h-4 w-4" />,
-      title: t("journeyBookTitle", "4. Book & pay"),
+      title: t("journeyBookTitle", "Book and pay"),
       desc: t(
         "journeyBookDesc",
         "Once the kitchen approves you, finalize your schedule and pay."

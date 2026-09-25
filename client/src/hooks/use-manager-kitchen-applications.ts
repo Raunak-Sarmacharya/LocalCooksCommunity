@@ -66,6 +66,12 @@ export interface KitchenApplicationForManager {
     id: number;
     name: string;
     address?: string;
+    /**
+     * The location's manager. Returned by the manager/admin application queries
+     * so a chat can be attributed to the kitchen's real manager rather than
+     * whoever happens to have the page open.
+     */
+    managerId?: number;
   } | null;
 }
 
@@ -124,12 +130,14 @@ export function useManagerKitchenApplications() {
       feedback,
       currentTier,
       tierData,
+      verifyDocuments,
     }: {
       applicationId: number;
       status: "approved" | "rejected" | "inReview";
       feedback?: string;
       currentTier?: number;
       tierData?: any;
+      verifyDocuments?: Array<"foodSafetyLicenseStatus" | "foodEstablishmentCertStatus">;
     }) => {
       const headers = await getAuthHeaders();
       const response = await fetch(
@@ -143,13 +151,14 @@ export function useManagerKitchenApplications() {
             feedback,
             ...(currentTier !== undefined && { current_tier: currentTier }),
             ...(tierData !== undefined && { tier_data: tierData }),
+            ...(verifyDocuments?.length && { verify_documents: verifyDocuments }),
           }),
         }
       );
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to update application status");
+        throw new Error(errorData.missingRequirements?.length ? errorData.missingRequirements.join('; ') : errorData.error || "Failed to update application status");
       }
 
       return await response.json();
@@ -169,8 +178,8 @@ export function useManagerKitchenApplications() {
       foodEstablishmentCertStatus,
     }: {
       applicationId: number;
-      foodSafetyLicenseStatus?: "pending" | "approved" | "rejected";
-      foodEstablishmentCertStatus?: "pending" | "approved" | "rejected";
+      foodSafetyLicenseStatus?: "approved" | "rejected";
+      foodEstablishmentCertStatus?: "approved" | "rejected";
     }) => {
       const headers = await getAuthHeaders();
       const response = await fetch(
@@ -346,7 +355,7 @@ export function useManagerKitchenApplicationsForLocation(locationId: number | nu
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to update application status");
+        throw new Error([errorData.error, ...(errorData.missingRequirements || [])].filter(Boolean).join(' ') || "Failed to update application status");
       }
 
       return await response.json();

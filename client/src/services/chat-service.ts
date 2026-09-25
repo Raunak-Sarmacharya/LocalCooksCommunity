@@ -2,10 +2,21 @@ import { logger } from "@/lib/logger";
 import { collection, doc, addDoc, updateDoc, getDoc, getDocs, query, where, orderBy, limit, onSnapshot, Timestamp, serverTimestamp, QuerySnapshot, DocumentData } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
+/**
+ * Who wrote a message.
+ *
+ * `admin` is the Local Cooks team. It is a distinct role, not an alias for
+ * `manager`: an admin moderating a conversation is a different participant from
+ * the kitchen's manager, and collapsing the two would let an admin message show
+ * up as if the manager had sent it. It is displayed as "Local Cooks" everywhere
+ * so the name never leaks the internal role.
+ */
+export type ChatSenderRole = 'chef' | 'manager' | 'admin' | 'system';
+
 export interface ChatMessage {
   id?: string;
   senderId: number;
-  senderRole: 'chef' | 'manager' | 'system';
+  senderRole: ChatSenderRole;
   content: string;
   type: 'text' | 'file' | 'system';
   fileUrl?: string;
@@ -26,6 +37,17 @@ export interface Conversation {
   lastMessageText?: string;
   unreadChefCount: number;
   unreadManagerCount: number;
+  /**
+   * Set when one of the two participants has had their account deleted.
+   *
+   * The conversation is kept so the surviving party retains the history, but no
+   * further messages can be exchanged — see `unavailableRole` for which side is
+   * gone, so the UI can say the right thing.
+   */
+  unavailable?: boolean;
+  unavailableReason?: 'account_deleted';
+  unavailableRole?: 'chef' | 'manager' | 'admin' | 'user';
+  unavailableAt?: Timestamp | Date;
 }
 
 /**
@@ -130,7 +152,7 @@ export async function getConversationForApplication(applicationId: number): Prom
 export async function sendMessage(
   conversationId: string,
   senderId: number,
-  senderRole: 'chef' | 'manager',
+  senderRole: 'chef' | 'manager' | 'admin',
   content: string,
   type: 'text' | 'file' = 'text',
   fileUrl?: string,
@@ -210,7 +232,12 @@ export async function sendMessage(
       lastMessageText: preview,
     };
 
-    // Increment unread count for the other party
+    // Increment unread count for the other party.
+    //
+    // An admin is on the "other party" side of the conversation from the chef's
+    // point of view, exactly like the manager, so an admin message must light up
+    // the chef's badge. Treating admin as a manager here (the alternative) would
+    // have incremented the wrong counter and left the chef unaware of the reply.
     if (senderRole === 'chef') {
       updateData.unreadManagerCount = (conversation.unreadManagerCount || 0) + 1;
     } else {
@@ -359,7 +386,7 @@ export function subscribeToMessages(
 export async function markAsRead(
   conversationId: string,
   userId: number,
-  role: 'chef' | 'manager'
+  role: 'chef' | 'manager' | 'admin'
 ): Promise<void> {
   try {
     // Mark all unread messages as read
@@ -367,20 +394,24 @@ export async function markAsRead(
       collection(db, 'conversations', conversationId, 'messages')
     );
 
+    // Everything not written by this viewer counts as theirs to read, including
+    // admin (Local Cooks) messages. Comparing "chef vs manager" alone left admin
+    // messages permanently unread, so the badge never cleared.
     const batch = messagesSnapshot.docs
       .filter(doc => {
         const data = doc.data();
-        // Only mark messages from the other party as read
-        return (
-          (role === 'chef' && data.senderRole === 'manager') ||
-          (role === 'manager' && data.senderRole === 'chef')
-        ) && !data.readAt;
+        if (data.readAt) return false;
+        const fromOtherParty =
+          (role === 'chef' && (data.senderRole === 'manager' || data.senderRole === 'admin')) ||
+          (role !== 'chef' && data.senderRole === 'chef');
+        return fromOtherParty;
       })
       .map(doc => updateDoc(doc.ref, { readAt: serverTimestamp() }));
 
     await Promise.all(batch);
 
-    // Reset unread count
+    // Reset unread count. An admin reads on the chef's behalf counter the same
+    // way a manager does; only the chef's own badge is theirs to clear.
     const conversationRef = doc(db, 'conversations', conversationId);
     const updateData: any = {};
     if (role === 'chef') {
@@ -492,6 +523,12 @@ export async function getAllConversations(
           typeof data.lastMessageText === "string" ? data.lastMessageText : undefined,
         unreadChefCount: data.unreadChefCount || 0,
         unreadManagerCount: data.unreadManagerCount || 0,
+        // Carried through explicitly: this mapper builds each object by hand, so
+        // a field not named here is dropped even though it is in the document.
+        unavailable: data.unavailable === true,
+        unavailableReason: data.unavailableReason,
+        unavailableRole: data.unavailableRole,
+        unavailableAt: data.unavailableAt?.toDate?.() ?? undefined,
       });
     });
 
@@ -594,6 +631,50 @@ export async function getUnreadCount(
   } catch (error) {
     logger.error('Error getting unread count:', error);
     return 0;
+  }
+}
+
+/**
+ * Ask the server which of these participant ids still have an account.
+ *
+ * Conversations outlive deleted accounts (they are in Firestore, the account was
+ * in Postgres). A delete-time flag covers future deletions but not conversations
+ * that were already orphaned, so the authoritative check has to happen on read.
+ * Callers treat any id missing from the response as "this participant is gone".
+ *
+ * Returns null on failure so a caller can distinguish "nobody is deleted" from
+ * "we could not tell" and avoid disabling threads on a transient error.
+ */
+export async function getLiveChatParticipants(userIds: number[]): Promise<Set<number> | null> {
+  const unique = [...new Set(userIds.filter((id) => Number.isInteger(id) && id > 0))];
+  if (unique.length === 0) return new Set();
+
+  try {
+    const { auth } = await import('@/lib/firebase');
+    const token = await auth.currentUser?.getIdToken();
+    if (!token) return null;
+
+    const response = await fetch('/api/firebase/chat/participant-status', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      credentials: 'include',
+      body: JSON.stringify({ userIds: unique }),
+    });
+
+    if (!response.ok) {
+      logger.error('Failed to resolve chat participant status:', response.status);
+      return null;
+    }
+
+    const data = await response.json();
+    const existing = Array.isArray(data?.existing) ? data.existing : [];
+    return new Set<number>(existing.map((id: unknown) => Number(id)));
+  } catch (error) {
+    logger.error('Error resolving chat participant status:', error);
+    return null;
   }
 }
 

@@ -120,7 +120,7 @@ export class BookingService {
                 currentTier >= 2;
 
             if (!isApprovedTier2Plus) {
-                throw new Error("You do not have approved access to this kitchen location. Please complete all required application steps (Tier 2) to book.");
+                throw new Error("You do not have approved access to this kitchen location. Submit your kitchen documents and wait for manager approval before booking.");
             }
 
             // Auto-create access record for future checks (self-healing)

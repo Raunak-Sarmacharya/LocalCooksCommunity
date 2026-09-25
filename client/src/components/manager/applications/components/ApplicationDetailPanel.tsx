@@ -1,18 +1,22 @@
 "use client"
 import { mt } from "@/i18n/manager";
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Application } from "../types"
 import { Button } from "@/components/ui/button"
 import { StatusButton } from "@/components/ui/status-button"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { SecureDocumentLink } from "@/components/common/SecureDocumentLink"
+import { VerifiedDocumentChip } from "@/components/common/VerifiedDocumentChip"
+import {
+    DocumentViewerDialog,
+    type DocumentVerificationField,
+    type DocumentVerificationStatus,
+} from "./DocumentViewerDialog"
 import { parseBusinessInfo } from "@/utils/parseBusinessInfo"
-import { User, Mail, Phone, Building2, Calendar, Briefcase, Shield, FileText, Check, X, Clock, Ban, MessageCircle, ExternalLink, CheckCircle, AlertCircle } from "@/components/ui/manager-icons"
+import { Mail, Phone, Building2, Calendar, FileText, Check, X, Clock, MessageCircle, CheckCircle, Eye } from "@/components/ui/manager-icons"
 import { cn } from "@/lib/utils"
 
 interface LocationRequirements {
@@ -32,6 +36,7 @@ interface LocationRequirements {
     }>;
     tier2_insurance_document_required?: boolean;
     tier2_food_establishment_cert_required?: boolean;
+    requireFoodHandlerCert?: boolean;
 }
 
 interface ApplicationDetailPanelProps {
@@ -39,44 +44,58 @@ interface ApplicationDetailPanelProps {
     locationRequirements?: LocationRequirements | null;
     onApprove: () => void;
     onApproveTier2: () => void;
+    onVerifyDocument: (field: 'foodSafetyLicenseStatus' | 'foodEstablishmentCertStatus', status: 'approved' | 'rejected') => void;
     onReject: () => void;
     onRevokeAccess: () => void;
     onOpenChat: () => void;
-    onClose: () => void;
     isUpdating: boolean;
     reviewFeedback: string;
     onFeedbackChange: (value: string) => void;
 }
 
-/**
- * Enterprise-grade Application Detail Panel
- * 
- * Features:
- * - Clean, Notion-like design
- * - Step 1/Step 2 tabbed interface
- * - Document preview with secure links
- * - Custom fields display
- * - Action buttons with loading states
- */
+/** State of a document currently open in the viewer modal. */
+interface OpenDocument {
+    title: string;
+    subtitle?: string;
+    url: string | null | undefined;
+    status?: DocumentVerificationStatus;
+    expiry?: string | null;
+    reviewNote?: string | null;
+    reviewField?: DocumentVerificationField;
+}
+
 export function ApplicationDetailPanel({
     application,
     locationRequirements,
     onApprove,
     onApproveTier2,
+    onVerifyDocument,
     onReject,
     onRevokeAccess,
     onOpenChat,
-    onClose,
     isUpdating,
     reviewFeedback,
     onFeedbackChange
 }: ApplicationDetailPanelProps) {
-  
+
     const [activeAction, setActiveAction] = useState<string | null>(null);
+    const [openDocument, setOpenDocument] = useState<OpenDocument | null>(null);
 
     // Reset activeAction when the operation completes
     useEffect(() => {
         if (!isUpdating) setActiveAction(null);
+    }, [isUpdating]);
+
+    // Close the viewer only when a review mutation actually finishes (true → false),
+    // so the list reflects the new document state instead of a stale preview.
+    const wasUpdatingRef = useRef(false);
+    useEffect(() => {
+        if (isUpdating) {
+            wasUpdatingRef.current = true;
+        } else if (wasUpdatingRef.current) {
+            wasUpdatingRef.current = false;
+            setOpenDocument(null);
+        }
     }, [isUpdating]);
 
     const tier = application.current_tier ?? 1;
@@ -86,21 +105,40 @@ export function ApplicationDetailPanel({
     const isPending = application.status === 'inReview';
     const businessInfo = parseBusinessInfo(application.businessDescription);
 
-    // Determine which tab to show by default
-    const defaultTab = isStep2NeedsReview ? "step2" : "step1";
+    // Stage 2 document data lives on the tier payload.
+    const tierData = (application.tier_data || {}) as Record<string, any>;
+    const tierFiles = (tierData.tierFiles || {}) as Record<string, any>;
+    const insuranceUrl = tierFiles.tier2_insurance_document;
+    const insuranceRequired = locationRequirements?.tier2_insurance_document_required;
+    const licenseRequired = locationRequirements?.requireFoodHandlerCert;
+
+    const isExpired = (value?: string | null) => {
+        if (!value) return false;
+        const ts = Date.parse(value);
+        return Number.isFinite(ts) && ts < Date.now() - 86_400_000;
+    };
+
+    // Human copy for the current verification state of a document.
+    const reviewNoteFor = (status: DocumentVerificationStatus, expiry?: string | null): string | null => {
+        if (!status) return null;
+        if (isExpired(expiry)) return mt("documentExpiredNeedsReplacement");
+        if (status === 'approved') return mt("documentVerifiedNote");
+        if (status === 'rejected') return mt("documentRejectedNote");
+        return mt("documentPendingNote");
+    };
 
     // Helper to render custom field value
     const renderCustomFieldValue = (field: any, value: any) => {
         if (value === undefined || value === null || value === '') {
-            return <span className="text-gray-400 italic text-sm">{mt("notProvided")}</span>;
+            return <span className="text-muted-foreground italic text-sm">{mt("notProvided")}</span>;
         }
 
         if (field.type === 'checkbox') {
             if (Array.isArray(value)) {
-                return <span className="text-gray-900">{value.join(', ')}</span>;
+                return <span className="text-foreground">{value.join(', ')}</span>;
             }
             return (
-                <span className={cn("inline-flex items-center gap-1", value ? "text-emerald-600" : "text-gray-500")}>
+                <span className={cn("inline-flex items-center gap-1", value ? "text-primary" : "text-muted-foreground")}>
                     {value ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
                     {value ? 'Yes' : 'No'}
                 </span>
@@ -109,7 +147,7 @@ export function ApplicationDetailPanel({
 
         if (field.type === 'date') {
             return (
-                <span className="text-gray-900">
+                <span className="text-foreground">
                     {new Date(value).toLocaleDateString('en-US', {
                         month: 'long',
                         day: 'numeric',
@@ -133,148 +171,131 @@ export function ApplicationDetailPanel({
             return <span className="text-amber-600 text-sm">{String(value)} {mt("notUploaded")}</span>;
         }
 
-        return <span className="text-gray-900">{String(value)}</span>;
+        return <span className="text-foreground">{String(value)}</span>;
     };
 
-    // Status indicator component
+    // A compact status keeps the chef and document actions in focus.
     const StatusIndicator = () => {
-        if (isPending) {
-            return (
-                <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
-                    <Clock className="h-4 w-4 text-amber-600" />
-                    <span className="text-sm font-medium text-amber-700">
-                        {mt("awaitingAdminApproval")}
-                    </span>
-                </div>
-            );
-        }
-        if (isStep2NeedsReview) {
-            return (
-                <div className="flex items-center gap-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg">
-                    <AlertCircle className="h-4 w-4 text-orange-600" />
-                    <span className="text-sm font-medium text-orange-700">{mt("step2AwaitingReview")}</span>
-                </div>
-            );
-        }
-        if (isFullyApproved) {
-            return (
-                <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg">
-                    <CheckCircle className="h-4 w-4 text-emerald-600" />
-                    <span className="text-sm font-medium text-emerald-700">{mt("fullyApproved")}</span>
-                </div>
-            );
-        }
-        if (application.status === 'approved' && tier === 1) {
-            return (
-                <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
-                    <Clock className="h-4 w-4 text-blue-600" />
-                    <span className="text-sm font-medium text-blue-700">{mt("awaitingChefSStep2")}</span>
-                </div>
-            );
-        }
-        if (application.status === 'rejected') {
-            return (
-                <div className="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg">
-                    <X className="h-4 w-4 text-red-600" />
-                    <span className="text-sm font-medium text-red-700">{mt("rejected")}</span>
-                </div>
-            );
-        }
-        return null;
+        const label = isPending ? mt("awaitingAdminApproval")
+            : isStep2NeedsReview ? mt("step2AwaitingReview")
+            : isFullyApproved ? mt("fullyApproved")
+            : application.status === 'approved' && tier === 1 ? mt("awaitingChefSStep2")
+            : application.status === 'rejected' ? mt("rejected") : null;
+        if (!label) return null;
+        return <span className="inline-flex items-center gap-2 rounded-full border border-border bg-muted/30 px-3 py-1 text-xs font-medium text-foreground">
+            {isFullyApproved ? <CheckCircle className="h-3.5 w-3.5 text-primary" /> : <Clock className="h-3.5 w-3.5 text-muted-foreground" />}
+            {label}
+        </span>;
     };
+
+    // Stage rail marker: complete / active / upcoming for a stacked (non-tabbed) layout.
+    const StageMarker = ({ state }: { index: number; state: 'complete' | 'active' | 'upcoming' }) => (
+        <span
+            className={cn(
+                "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
+                state === 'complete' && "bg-primary/10 text-primary",
+                state === 'active' && "bg-primary text-primary-foreground",
+                state === 'upcoming' && "bg-muted text-muted-foreground",
+            )}
+        >
+            {state === 'complete' ? <Check className="h-3.5 w-3.5" /> : state === 'active' ? <Clock className="h-3.5 w-3.5" /> : <span className="h-1.5 w-1.5 rounded-full bg-current" />}
+        </span>
+    );
+
+    const StageHeading = ({
+        index,
+        state,
+        title,
+        caption,
+    }: {
+        index: number;
+        state: 'complete' | 'active' | 'upcoming';
+        title: string;
+        caption?: string | null;
+    }) => (
+        <div className="flex items-center gap-3">
+            <StageMarker index={index} state={state} />
+            <div className="min-w-0">
+                <h3 className="text-sm font-semibold tracking-tight text-foreground">{title}</h3>
+                {caption ? <p className="text-xs text-muted-foreground">{caption}</p> : null}
+            </div>
+        </div>
+    );
+
+    const stage1Marker: 'complete' | 'active' | 'upcoming' =
+        application.status === 'inReview' ? 'active' : 'complete';
+    const stage2Marker: 'complete' | 'active' | 'upcoming' =
+        isFullyApproved ? 'complete' : isStep2NeedsReview ? 'active' : 'upcoming';
 
     return (
-        <div className="flex flex-col h-full">
-            {/* Header */}
-            <div className="flex-shrink-0 p-6 border-b bg-gradient-to-r from-[#208D80]/5 to-transparent">
-                <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 rounded-xl bg-[#208D80]/10 flex items-center justify-center">
-                            <Calendar className="h-7 w-7 text-[#208D80]" />
-                        </div>
-                        <div>
-                            <h2 className="text-xl font-semibold text-gray-900">{application.fullName}</h2>
-                            <div className="flex items-center gap-2 mt-1 text-sm text-gray-500">
-                                <Building2 className="h-3.5 w-3.5" />
+        <>
+            <div className="flex flex-col">
+                {/* Header */}
+                <div className="flex-shrink-0 border-b border-border bg-card px-5 py-5 sm:px-6">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-primary">{mt("applicationDetails")}</p>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                            <h2 className="text-xl font-semibold tracking-tight text-foreground">{application.fullName}</h2>
+                            <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+                                <Building2 className="h-4 w-4 shrink-0" />
                                 <span>{application.location?.name || 'Unknown Location'}</span>
                             </div>
                         </div>
+                        <StatusIndicator />
                     </div>
-                    <StatusIndicator />
+
+                    {/* Quick Info Grid */}
+                    <div className="mt-5 grid gap-3 rounded-xl border border-border bg-muted/20 p-3 sm:grid-cols-2">
+                        <div className="flex min-w-0 items-center gap-2 text-sm">
+                            <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            <span className="min-w-0 truncate text-foreground" title={application.email}>{application.email}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm">
+                            <Phone className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-foreground">{application.phone || '—'}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm">
+                            <Calendar className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-foreground">
+                                {new Date(application.createdAt).toLocaleDateString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    year: 'numeric'
+                                })}
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Chat Button */}
+                    {(application.status === 'approved' || application.chat_conversation_id) && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={onOpenChat}
+                            className="mt-4 gap-2 border border-border hover:bg-muted"
+                        >
+                            <MessageCircle className="h-4 w-4" />{mt("openChat")}</Button>
+                    )}
                 </div>
 
-                {/* Quick Info Grid */}
-                <div className="grid grid-cols-3 gap-4 mt-4">
-                    <div className="flex items-center gap-2 text-sm">
-                        <Mail className="h-4 w-4 text-gray-400" />
-                        <span className="text-gray-600 truncate">{application.email}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm">
-                        <Phone className="h-4 w-4 text-gray-400" />
-                        <span className="text-gray-600">{application.phone || '—'}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm">
-                        <Calendar className="h-4 w-4 text-gray-400" />
-                        <span className="text-gray-600">
-                            {new Date(application.createdAt).toLocaleDateString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                                year: 'numeric'
-                            })}
-                        </span>
-                    </div>
-                </div>
+                {/* Content — both stages stacked, no tabs */}
+                <div className="p-5 sm:p-6">
+                    <div className="space-y-8">
 
-                {/* Chat Button */}
-                {(application.status === 'approved' || application.chat_conversation_id) && (
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={onOpenChat}
-                        className="mt-4 gap-2"
-                    >
-                        <MessageCircle className="h-4 w-4" />{mt("openChat")}</Button>
-                )}
-            </div>
+                        {/* ───────────────────────── Stage 1 ───────────────────────── */}
+                        <section className="space-y-5">
+                            <StageHeading
+                                index={1}
+                                state={stage1Marker}
+                                title={mt("initialApplication")}
+                                caption={mt("stageOneCaption")}
+                            />
 
-            {/* Content Area with Tabs */}
-            <ScrollArea className="flex-1">
-                <div className="p-6">
-                    <Tabs defaultValue={defaultTab} className="w-full">
-                        <TabsList className="grid w-full grid-cols-2 mb-6">
-                            <TabsTrigger value="step1" className="gap-2">
-                                <div className={cn(
-                                    "w-5 h-5 rounded-full flex items-center justify-center text-xs font-medium",
-                                    application.status !== 'inReview' 
-                                        ? "bg-emerald-100 text-emerald-700"
-                                        : "bg-amber-100 text-amber-700"
-                                )}>
-                                    {application.status !== 'inReview' ? <Check className="h-3 w-3" /> : '1'}
-                                </div>{mt("initialApplication")}</TabsTrigger>
-                            <TabsTrigger 
-                                value="step2" 
-                                className="gap-2"
-                                disabled={application.status === 'inReview'}
-                            >
-                                <div className={cn(
-                                    "w-5 h-5 rounded-full flex items-center justify-center text-xs font-medium",
-                                    isFullyApproved
-                                        ? "bg-emerald-100 text-emerald-700"
-                                        : hasStep2
-                                            ? "bg-orange-100 text-orange-700"
-                                            : "bg-gray-100 text-gray-500"
-                                )}>
-                                    {isFullyApproved ? <Check className="h-3 w-3" /> : '2'}
-                                </div>{mt("kitchenCoordination")}</TabsTrigger>
-                        </TabsList>
-
-                        {/* STEP 1 CONTENT */}
-                        <TabsContent value="step1" className="space-y-6 mt-0">
                             {/* Business Information */}
                             {businessInfo && (
                                 <div className="space-y-3">
-                                    <h3 className="text-sm font-semibold text-gray-900">{mt("businessInformation")}</h3>
-                                    <div className="grid grid-cols-2 gap-3">
+                                    <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{mt("businessInformation")}</h4>
+                                    <div className="grid gap-3 sm:grid-cols-2">
                                         {businessInfo.businessName && (
                                             <InfoCard label={mt("businessName")} value={businessInfo.businessName} />
                                         )}
@@ -292,221 +313,238 @@ export function ApplicationDetailPanel({
                                         )}
                                     </div>
                                     {businessInfo.description && (
-                                        <div className="p-3 bg-gray-50 rounded-lg border">
-                                            <div className="text-xs text-gray-500 mb-1">{mt("description")}</div>
-                                            <p className="text-sm text-gray-700">{businessInfo.description}</p>
+                                        <div className="rounded-xl border border-border bg-card p-4">
+                                            <div className="mb-1 text-xs text-muted-foreground">{mt("description")}</div>
+                                            <p className="text-sm text-foreground">{businessInfo.description}</p>
                                         </div>
                                     )}
                                 </div>
                             )}
 
-                            <Separator />
-
-                            {/* Food Safety Documents */}
+                            {/* Food Safety Licence — shown once, owned by the initial application */}
                             <div className="space-y-3">
-                                <h3 className="text-sm font-semibold text-gray-900">{mt("foodSafetyDocuments")}</h3>
+                                <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{mt("foodSafetyDocuments")}</h4>
                                 <DocumentCard
                                     title={mt("foodSafetyLicense")}
-                                    subtitle={application.foodSafetyLicense === 'yes' ? 'License provided' : 'No license'}
+                                    subtitle={application.foodSafetyLicenseUrl
+                                        ? licenseRequired
+                                            ? mt("requiredByThisKitchen")
+                                            : mt("optionalForThisKitchen")
+                                        : mt("noDocument")}
                                     url={application.foodSafetyLicenseUrl}
-                                    status={application.foodSafetyLicenseUrl ? 'complete' : 'missing'}
+                                    status={application.foodSafetyLicenseUrl ? 'complete' : licenseRequired ? 'required' : 'optional'}
                                     expiry={application.foodSafetyLicenseExpiry}
+                                    verificationStatus={application.foodSafetyLicenseStatus}
+                                    onView={() => setOpenDocument({
+                                        title: mt("foodSafetyLicense"),
+                                        subtitle: mt("foodSafetyLicense"),
+                                        url: application.foodSafetyLicenseUrl,
+                                        status: application.foodSafetyLicenseStatus,
+                                        expiry: application.foodSafetyLicenseExpiry,
+                                        reviewNote: reviewNoteFor(application.foodSafetyLicenseStatus, application.foodSafetyLicenseExpiry),
+                                        reviewField: isStep2NeedsReview ? 'foodSafetyLicenseStatus' : undefined,
+                                    })}
                                 />
                             </div>
 
-                            {/* Step 1 Custom Fields */}
+                            {/* Stage 1 Custom Fields */}
                             {locationRequirements?.tier1_custom_fields &&
                                 locationRequirements.tier1_custom_fields.length > 0 && (
-                                    <>
-                                        <Separator />
-                                        <div className="space-y-3">
-                                            <h3 className="text-sm font-semibold text-gray-900">{mt("additionalInformation")}</h3>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                {locationRequirements.tier1_custom_fields.map((field) => {
-                                                    const customData = (application.customFieldsData || {}) as Record<string, any>;
-                                                    const value = customData[field.id];
-                                                    return (
-                                                        <div key={field.id} className="p-3 bg-gray-50 rounded-lg border">
-                                                            <div className="text-xs text-gray-500 mb-1 flex items-center gap-1">
-                                                                {field.label}
-                                                                {field.required && <span className="text-red-500">*</span>}
-                                                            </div>
-                                                            {renderCustomFieldValue(field, value)}
+                                    <div className="space-y-3">
+                                        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{mt("additionalInformation")}</h4>
+                                        <div className="grid gap-3 sm:grid-cols-2">
+                                            {locationRequirements.tier1_custom_fields.map((field) => {
+                                                const customData = (application.customFieldsData || {}) as Record<string, any>;
+                                                const value = customData[field.id];
+                                                return (
+                                                    <div key={field.id} className="rounded-xl border border-border bg-card p-4">
+                                                        <div className="mb-1 flex items-center gap-1 text-xs text-muted-foreground">
+                                                            {field.label}
+                                                            {field.required && <span className="text-red-500">*</span>}
                                                         </div>
-                                                    );
-                                                })}
-                                            </div>
+                                                        {renderCustomFieldValue(field, value)}
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
-                                    </>
-                                )}
-                        </TabsContent>
-
-                        {/* STEP 2 CONTENT */}
-                        <TabsContent value="step2" className="space-y-6 mt-0">
-                            {!hasStep2 && application.status === 'approved' && tier === 1 ? (
-                                <div className="flex flex-col items-center justify-center py-12 text-center">
-                                    <div className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center mb-4">
-                                        <Clock className="h-8 w-8 text-blue-500" />
                                     </div>
-                                    <h3 className="text-lg font-medium text-gray-900 mb-2">{mt("awaitingChefSubmission")}</h3>
-                                    <p className="text-sm text-gray-500 max-w-sm">
-                                        {mt("chefApprovedStep1Desc")} {mt("openChat")}.
+                                )}
+                        </section>
+
+                        <Separator />
+
+                        {/* ───────────────────────── Stage 2 ───────────────────────── */}
+                        <section className="space-y-5">
+                            <StageHeading
+                                index={2}
+                                state={stage2Marker}
+                                title={mt("kitchenCoordination")}
+                                caption={hasStep2 && application.tier2_completed_at
+                                    ? mt("stageTwoSubmitted", { date: new Date(application.tier2_completed_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) })
+                                    : mt("stageTwoCaption")}
+                            />
+
+                            {!hasStep2 && application.status === 'approved' && tier === 1 ? (
+                                <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 px-6 py-12 text-center">
+                                    <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+                                        <Clock className="h-6 w-6 text-primary" />
+                                    </div>
+                                    <h4 className="mb-2 text-base font-medium text-foreground">{mt("awaitingChefSubmission")}</h4>
+                                    <p className="max-w-sm text-sm text-muted-foreground">
+                                        {mt("awaitingChefSubmissionDesc")}
                                     </p>
                                 </div>
                             ) : (
                                 <>
-                                    {hasStep2 && (
-                                        <div className="text-xs text-gray-500 mb-4">
-                                            Submitted: {new Date(application.tier2_completed_at!).toLocaleDateString('en-US', {
-                                                month: 'long',
-                                                day: 'numeric',
-                                                year: 'numeric',
-                                                hour: '2-digit',
-                                                minute: '2-digit'
-                                            })}
-                                        </div>
-                                    )}
-
-                                    {/* Step 2 Documents */}
+                                    {/* Stage 2 Documents */}
                                     <div className="space-y-3">
-                                        <h3 className="text-sm font-semibold text-gray-900">{mt("step2Documents")}</h3>
+                                        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{mt("step2Documents")}</h4>
 
-                                        {/* Food Safety License (uploaded on Step 2) */}
+                                        {/* Insurance Document — read-only */}
                                         <DocumentCard
-                                            title={mt("foodSafetyLicense")}
-                                            subtitle={application.foodSafetyLicenseExpiry
-                                                ? mt("expiresLabel", { date: new Date(application.foodSafetyLicenseExpiry).toLocaleDateString() })
-                                                : mt("requiredOnStep2", { defaultValue: "Required on Kitchen Coordination" })}
-                                            url={application.foodSafetyLicenseUrl}
-                                            status={application.foodSafetyLicenseUrl ? 'complete' : 'required'}
-                                            variant="blue"
+                                            title={mt("insuranceDocument")}
+                                            subtitle={mt("commercialLiabilityInsurance")}
+                                            url={insuranceUrl}
+                                            status={insuranceUrl ? 'complete' : insuranceRequired ? 'required' : 'optional'}
+                                            onView={() => setOpenDocument({
+                                                title: mt("insuranceDocument"),
+                                                subtitle: mt("commercialLiabilityInsurance"),
+                                                url: insuranceUrl,
+                                            })}
                                         />
-
-                                        {/* Insurance Document */}
-                                        {(() => {
-                                            const tierData = (application.tier_data || {}) as Record<string, any>;
-                                            const tierFiles = tierData.tierFiles || {};
-                                            const insuranceUrl = tierFiles.tier2_insurance_document;
-                                            const isRequired = locationRequirements?.tier2_insurance_document_required;
-
-                                            return (
-                                                <DocumentCard
-                                                    title={mt("insuranceDocument")}
-                                                    subtitle={mt("commercialLiabilityInsurance")}
-                                                    url={insuranceUrl}
-                                                    status={insuranceUrl ? 'complete' : isRequired ? 'required' : 'optional'}
-                                                    variant="purple"
-                                                />
-                                            );
-                                        })()}
 
                                         {/* Food Establishment Certificate */}
                                         <DocumentCard
                                             title={mt("foodEstablishmentCertificate")}
-                                            subtitle={application.foodEstablishmentCertExpiry
-                                                ? mt("expiresLabel", { date: new Date(application.foodEstablishmentCertExpiry).toLocaleDateString() })
-                                                : 'Kitchen Coordination requirement'}
+                                            subtitle={application.foodEstablishmentCertUrl
+                                                ? application.foodEstablishmentCertStatus === 'rejected' ? mt("needsAReplacement") : mt("uploadedForThisKitchen")
+                                                : locationRequirements?.tier2_food_establishment_cert_required ? mt("coordinateWithChef") : mt("optionalForThisKitchen")}
                                             url={application.foodEstablishmentCertUrl}
-                                            status={application.foodEstablishmentCertUrl ? 'complete' : 'optional'}
-                                            variant="blue"
+                                            status={application.foodEstablishmentCertUrl ? 'complete' : locationRequirements?.tier2_food_establishment_cert_required ? 'required' : 'optional'}
+                                            expiry={application.foodEstablishmentCertExpiry}
+                                            verificationStatus={application.foodEstablishmentCertStatus}
+                                            onView={() => setOpenDocument({
+                                                title: mt("foodEstablishmentCertificate"),
+                                                subtitle: mt("kitchenCoordination"),
+                                                url: application.foodEstablishmentCertUrl,
+                                                status: application.foodEstablishmentCertStatus,
+                                                expiry: application.foodEstablishmentCertExpiry,
+                                                reviewNote: reviewNoteFor(application.foodEstablishmentCertStatus, application.foodEstablishmentCertExpiry),
+                                                reviewField: isStep2NeedsReview ? 'foodEstablishmentCertStatus' : undefined,
+                                            })}
                                         />
                                     </div>
 
-                                    {/* Step 2 Custom Fields */}
+                                    {/* Stage 2 Custom Fields */}
                                     {locationRequirements?.tier2_custom_fields &&
                                         locationRequirements.tier2_custom_fields.length > 0 && (
-                                            <>
-                                                <Separator />
-                                                <div className="space-y-3">
-                                                    <h3 className="text-sm font-semibold text-gray-900">{mt("additionalStep2Information")}</h3>
-                                                    <div className="grid grid-cols-2 gap-3">
-                                                        {locationRequirements.tier2_custom_fields.map((field) => {
-                                                            const tierData = (application.tier_data || {}) as Record<string, any>;
-                                                            const tier2CustomData = tierData.tier2_custom_fields_data || {};
-                                                            const value = tier2CustomData[field.id];
-                                                            return (
-                                                                <div key={field.id} className="p-3 bg-gray-50 rounded-lg border">
-                                                                    <div className="text-xs text-gray-500 mb-1 flex items-center gap-1">
-                                                                        {field.label}
-                                                                        {field.required && <span className="text-red-500">*</span>}
-                                                                    </div>
-                                                                    {renderCustomFieldValue(field, value)}
+                                            <div className="space-y-3">
+                                                <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{mt("additionalStep2Information")}</h4>
+                                                <div className="grid gap-3 sm:grid-cols-2">
+                                                    {locationRequirements.tier2_custom_fields.map((field) => {
+                                                        const tier2CustomData = tierData.tier2_custom_fields_data || {};
+                                                        const value = tier2CustomData[field.id];
+                                                        return (
+                                                            <div key={field.id} className="rounded-xl border border-border bg-card p-4">
+                                                                <div className="mb-1 flex items-center gap-1 text-xs text-muted-foreground">
+                                                                    {field.label}
+                                                                    {field.required && <span className="text-red-500">*</span>}
                                                                 </div>
-                                                            );
-                                                        })}
-                                                    </div>
+                                                                {renderCustomFieldValue(field, value)}
+                                                            </div>
+                                                        );
+                                                    })}
                                                 </div>
-                                            </>
+                                            </div>
                                         )}
                                 </>
                             )}
-                        </TabsContent>
-                    </Tabs>
-                </div>
-            </ScrollArea>
-
-            {/* Footer Actions */}
-            <div className="flex-shrink-0 p-6 border-t bg-gray-50/50">
-                {/* Feedback textarea for Step 2 review / rejection notes */}
-                {isStep2NeedsReview && (
-                    <div className="mb-4">
-                        <label className="text-sm font-medium text-gray-700 mb-2 block">
-                            {mt("feedbackLabel")} {mt("feedbackOptional")}
-                        </label>
-                        <Textarea
-                            value={reviewFeedback}
-                            onChange={(e) => onFeedbackChange(e.target.value)}
-                            placeholder={mt("provideFeedbackForTheApplicant")}
-                            rows={3}
-                            className="resize-none"
-                        />
+                        </section>
                     </div>
-                )}
+                </div>
 
-                <div className="flex gap-3">
-                    <Button variant="outline" onClick={onClose} className="flex-1">{mt("close")}</Button>
-
-                    {isPending && (
-                        <div className="flex-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                            {mt("awaitingAdminStep1Review", {
-                                defaultValue:
-                                    "Awaiting Local Cooks review of this request to apply. You can review the application once the chef submits Kitchen Coordination documents.",
-                            })}
+                {/* Footer Actions */}
+                <div className="flex-shrink-0 border-t border-border bg-card p-5 sm:p-6">
+                    {/* Feedback textarea for Stage 2 review / rejection notes */}
+                    {isStep2NeedsReview && (
+                        <div className="mb-4">
+                            <label className="mb-2 block text-sm font-medium text-foreground">
+                                {mt("feedbackLabel")} {mt("feedbackOptional")}
+                            </label>
+                            <Textarea
+                                value={reviewFeedback}
+                                onChange={(e) => onFeedbackChange(e.target.value)}
+                                placeholder={mt("provideFeedbackForTheApplicant")}
+                                rows={3}
+                                className="resize-none"
+                            />
                         </div>
                     )}
 
-                    {isStep2NeedsReview && (
-                        <>
-                            <StatusButton
-                                variant="outline"
-                                onClick={() => { setActiveAction('revoke'); onRevokeAccess(); }}
-                                status={activeAction === 'revoke' && isUpdating ? "loading" : "idle"}
-                                disabled={isUpdating && activeAction !== 'revoke'}
-                                className="flex-1 border-red-200 text-red-700 hover:bg-red-50 hover:border-red-300"
-                                labels={{ idle: mt("revokeAccess"), loading: mt("revoking"), success: mt("revokedSuccess") }}
-                            />
+                    <div className="flex flex-wrap items-center justify-end gap-3">
+                        {isPending && (
+                            <div className="flex-1 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                                {mt("awaitingAdminStep1Review", {
+                                    defaultValue:
+                                        "Awaiting Local Cooks review of this request to apply. You can review the application once the chef submits Kitchen Coordination documents.",
+                                })}
+                            </div>
+                        )}
+
+                        {isStep2NeedsReview && (
                             <StatusButton
                                 onClick={() => { setActiveAction('approveTier2'); onApproveTier2(); }}
                                 status={activeAction === 'approveTier2' && isUpdating ? "loading" : "idle"}
                                 disabled={isUpdating && activeAction !== 'approveTier2'}
-                                className="flex-1"
+                                className="min-w-44"
                                 labels={{ idle: mt("approveStep2"), loading: mt("approving"), success: mt("approvedSuccess") }}
                             />
-                        </>
-                    )}
+                        )}
 
-                    {isFullyApproved && (
-                        <StatusButton
-                            variant="outline"
-                            onClick={() => { setActiveAction('revoke'); onRevokeAccess(); }}
-                            status={activeAction === 'revoke' && isUpdating ? "loading" : "idle"}
-                            className="flex-1 border-red-200 text-red-700 hover:bg-red-50 hover:border-red-300"
-                            labels={{ idle: mt("revokeAccess"), loading: mt("revoking"), success: mt("revokedSuccess") }}
-                        />
-                    )}
+                        {isFullyApproved && (
+                            <StatusButton
+                                variant="outline"
+                                onClick={() => { setActiveAction('revoke'); onRevokeAccess(); }}
+                                status={activeAction === 'revoke' && isUpdating ? "loading" : "idle"}
+                                className="border-destructive/30 text-destructive hover:bg-destructive/5"
+                                labels={{ idle: mt("revokeAccess"), loading: mt("revoking"), success: mt("revokedSuccess") }}
+                            />
+                        )}
+                    </div>
                 </div>
             </div>
-        </div>
+
+            {/* Document viewer — the single place where a manager reviews a document */}
+            <DocumentViewerDialog
+                open={openDocument !== null}
+                onOpenChange={(next) => { if (!next) setOpenDocument(null); }}
+                title={openDocument?.title ?? ''}
+                subtitle={openDocument?.subtitle}
+                url={openDocument?.url}
+                status={openDocument?.status}
+                expiry={openDocument?.expiry}
+                reviewNote={openDocument?.reviewNote}
+                reviewField={openDocument?.reviewField}
+                onVerify={onVerifyDocument}
+                labels={{
+                    verified: mt("verified"),
+                    pending: mt("pending"),
+                    rejected: mt("rejected"),
+                    needsReplacement: mt("needsAReplacement"),
+                    expired: mt("licenseExpired"),
+                    verify: mt("verifyDocument"),
+                    requestReplacement: mt("requestReplacement"),
+                    openInNewTab: mt("openInNewTab"),
+                    close: mt("close"),
+                    loading: mt("loadingDocument"),
+                    loadFailed: mt("documentUnavailable"),
+                    // `mt` is ICU-backed, so the value round-trips as a literal.
+                    // The dialog then fills the `{date}` placeholder with the real date.
+                    expires: mt("expiresLabel", { date: "{date}" }),
+                    working: mt("saving"),
+                }}
+            />
+        </>
     );
 }
 
@@ -514,9 +552,9 @@ export function ApplicationDetailPanel({
 
 function InfoCard({ label, value, className }: { label: string; value: string; className?: string }) {
     return (
-        <div className="p-3 bg-gray-50 rounded-lg border">
-            <div className="text-xs text-gray-500 mb-1">{label}</div>
-            <div className={cn("text-sm font-medium text-gray-900", className)}>{value}</div>
+        <div className="rounded-xl border border-border bg-card p-4">
+            <div className="mb-1 text-xs text-muted-foreground">{label}</div>
+            <div className={cn("text-sm font-medium text-foreground", className)}>{value}</div>
         </div>
     );
 }
@@ -527,52 +565,64 @@ function DocumentCard({
     url,
     status,
     expiry,
-    variant = 'green'
+    verificationStatus,
+    onView,
 }: {
     title: string;
     subtitle: string;
     url?: string | null;
     status: 'complete' | 'missing' | 'required' | 'optional';
     expiry?: string | null;
-    variant?: 'green' | 'blue' | 'purple';
+    verificationStatus?: 'pending' | 'approved' | 'rejected' | null;
+    onView?: () => void;
 }) {
-    const colors = {
-        green: { bg: 'bg-emerald-50', border: 'border-emerald-200', icon: 'text-emerald-600' },
-        blue: { bg: 'bg-blue-50', border: 'border-blue-200', icon: 'text-blue-600' },
-        purple: { bg: 'bg-purple-50', border: 'border-purple-200', icon: 'text-purple-600' },
-    };
-
-    const statusColors = {
-        complete: colors[variant],
-        missing: { bg: 'bg-gray-50', border: 'border-gray-200', icon: 'text-gray-400' },
-        required: { bg: 'bg-red-50', border: 'border-red-200', icon: 'text-red-400' },
-        optional: { bg: 'bg-gray-50', border: 'border-gray-200', icon: 'text-gray-400' },
-    };
-
-    const c = statusColors[status];
+    const expired = !!expiry && Number.isFinite(Date.parse(expiry)) && Date.parse(expiry) < Date.now() - 86_400_000;
+    const stateNote = url && verificationStatus
+        ? expired
+            ? mt("expiredNeedsReplacement")
+            : verificationStatus === 'rejected'
+                ? mt("reviewRejected")
+                : verificationStatus === 'approved'
+                    ? null
+                    : mt("reviewPending")
+        : null;
 
     return (
-        <div className={cn("flex items-center justify-between p-3 rounded-lg border", c.bg, c.border)}>
-            <div className="flex items-center gap-3">
-                <FileText className={cn("h-5 w-5", c.icon)} />
-                <div>
-                    <p className="font-medium text-gray-900 text-sm">{title}</p>
-                    <p className="text-xs text-gray-500">{subtitle}</p>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
+            <div className="flex min-w-0 items-start gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted/50">
+                    <FileText className="h-4 w-4 text-muted-foreground" />
+                </span>
+                <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">{title}</p>
+                    <p className="text-xs text-muted-foreground">{subtitle}</p>
                     {expiry && (
-                        <p className="text-xs text-gray-500 mt-0.5">
+                        <p className="mt-1 text-xs text-muted-foreground">
                             {mt("expiresLabel", { date: new Date(expiry).toLocaleDateString() })}
+                        </p>
+                    )}
+                    {stateNote && (
+                        <p className={cn("mt-1 text-xs font-medium", expired || verificationStatus === 'rejected' ? "text-destructive" : "text-muted-foreground")}>
+                            {stateNote}
                         </p>
                     )}
                 </div>
             </div>
             {url ? (
-                <SecureDocumentLink
-                    url={url}
-                    fileName={title}
-                    label={mt("view")}
-                />
+                <div className="flex shrink-0 flex-col items-end gap-2 self-start">
+                    <VerifiedDocumentChip status={verificationStatus} url={url} expiry={expiry} />
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={onView}
+                        className="gap-2 border border-border hover:bg-muted"
+                    >
+                        <Eye className="h-3.5 w-3.5" />
+                        {mt("view")}
+                    </Button>
+                </div>
             ) : status === 'required' ? (
-                <Badge variant="destructive" className="text-xs">{mt("required")}</Badge>
+                <Badge variant="outline" className="text-xs">{mt("required")}</Badge>
             ) : null}
         </div>
     );

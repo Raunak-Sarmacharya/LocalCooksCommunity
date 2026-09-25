@@ -25,6 +25,7 @@
     "deploy:preview": "node scripts/deploy-production.js --preview",
     "deploy:safe": "npm run test:firebase && npm run deploy:production",
     "backfill:payments": "node scripts/backfill-payment-transactions.js",
+    "backfill:chat-availability": "node scripts/backfill-chat-availability.mjs",
     "start": "NODE_ENV=production node dist/index.js",
     "check": "tsc",
     "db:push": "drizzle-kit push",

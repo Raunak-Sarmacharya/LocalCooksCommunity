@@ -1,7 +1,6 @@
 import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import Header from "@/components/layout/Header";
-import Footer from "@/components/layout/Footer";
 import SEOHead from "@/components/SEO/SEOHead";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -846,7 +845,5 @@ export default function ChefResourcesPage_en_fr() {
           </main>
         </div>
       </div>
-
-      <Footer />
     </div>;
 }

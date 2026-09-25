@@ -9,9 +9,19 @@ interface UseChatOptions {
   chefId: number;
   managerId: number;
   onUnreadCountUpdate?: () => void;
+  /**
+   * Explicit override of the viewer's role.
+   *
+   * Needed for admins. The default inference below is "am I the chef or the
+   * manager on this conversation?", which an admin is neither — so both flags
+   * came back false, `markAsRead` never fired, and typing produced no message
+   * because the send path had no role to attribute it to. Passing 'admin'
+   * makes the viewer a recognized third participant.
+   */
+  viewerRole?: 'admin';
 }
 
-export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate }: UseChatOptions) {
+export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate, viewerRole }: UseChatOptions) {
   const { user } = useFirebaseAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -46,8 +56,22 @@ export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate
   });
 
   const currentUserId = userInfo?.id || 0;
-  const isChef = currentUserId === chefId;
-  const isManager = currentUserId === managerId;
+  const isAdmin = viewerRole === 'admin';
+  const isChef = !isAdmin && currentUserId === chefId;
+  const isManager = !isAdmin && currentUserId === managerId;
+
+  /**
+   * The role to attribute this viewer's own actions to, or null when we cannot
+   * tell (e.g. the user info has not loaded yet). An admin is resolved first
+   * because they match neither id.
+   */
+  const role: 'chef' | 'manager' | 'admin' | null = isAdmin
+    ? 'admin'
+    : isChef
+      ? 'chef'
+      : isManager
+        ? 'manager'
+        : null;
 
   // Load initial messages
   useEffect(() => {
@@ -64,8 +88,8 @@ export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate
           setIsLoading(false);
         }
 
-        if (isChef || isManager) {
-          await markAsRead(conversationId, currentUserId, isChef ? 'chef' : 'manager');
+        if (role) {
+          await markAsRead(conversationId, currentUserId, role);
           queryClient.invalidateQueries({ queryKey: ['unread-counts'] });
           if (onUnreadCountUpdateRef.current) onUnreadCountUpdateRef.current();
         }
@@ -94,8 +118,8 @@ export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate
       (newMessages) => {
         setMessages(newMessages);
         // If we receive new messages and we are viewing the chat, mark as read
-        if (currentUserId && (isChef || isManager)) {
-          markAsRead(conversationId, currentUserId, isChef ? 'chef' : 'manager')
+        if (currentUserId && role) {
+          markAsRead(conversationId, currentUserId, role)
             .then(() => {
               if (onUnreadCountUpdateRef.current) onUnreadCountUpdateRef.current();
             })
@@ -106,7 +130,7 @@ export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate
     );
 
     return () => unsubscribe();
-  }, [conversationId, currentUserId, isChef, isManager]);
+  }, [conversationId, currentUserId, role]);
 
   const handleSendMessage = useCallback(async (content: string, file?: File | { name: string; url: string }) => {
     if (!content.trim() && !file) return;
@@ -135,7 +159,7 @@ export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate
       await sendMessage(
         conversationId,
         currentUserId,
-        isChef ? 'chef' : 'manager',
+        role ?? 'chef',
         messageContent,
         file ? 'file' : 'text',
         fileUrl,
@@ -150,7 +174,7 @@ export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate
     } finally {
       setIsSending(false);
     }
-  }, [conversationId, currentUserId, isChef]);
+  }, [conversationId, currentUserId, role]);
 
   return {
     messages,
@@ -160,6 +184,8 @@ export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate
     handleSendMessage,
     isChef,
     isManager,
+    isAdmin,
+    role,
     error
   };
 }

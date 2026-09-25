@@ -82,6 +82,81 @@ function emailPrefix(email: string): string {
     return email.includes('@') ? email.split('@')[0] : email;
 }
 
+/**
+ * Marks every Firestore conversation this user was part of as unavailable.
+ *
+ * WHY THIS EXISTS
+ * ---------------
+ * Conversations live in Firestore, not Postgres, so deleting the account leaves
+ * them behind. The surviving party (the kitchen manager when a chef is deleted,
+ * or the chef when a manager is) would keep seeing the thread, open it, and type
+ * into a conversation whose other end no longer exists — nothing would answer,
+ * with no explanation of why.
+ *
+ * The flag is written onto the conversation document rather than derived at read
+ * time so it survives independently of whether the deleted account is still
+ * resolvable, and so the client can render the state without an extra round-trip.
+ *
+ * `deletedRole` says which side left, which is what lets the client say the right
+ * thing ("This chef's account...") instead of a vague "this conversation is gone".
+ *
+ * Best-effort by design: the Postgres delete has already succeeded and must not be
+ * rolled back because Firestore was unreachable. A failure is logged, not thrown.
+ */
+async function markUserConversationsUnavailable(
+    userId: number,
+    role: string,
+): Promise<number> {
+    try {
+        if (!firestoreDb) {
+            const app = initializeFirebaseAdmin();
+            if (!app) return 0;
+            firestoreDb = getFirestore(app);
+            firestoreDb.settings({ ignoreUndefinedProperties: true });
+        }
+
+        // A user can be referenced by either column depending on their role, but
+        // querying both is harmless and covers role changes over the account's
+        // lifetime (e.g. someone promoted from chef to manager).
+        const [asChef, asManager] = await Promise.all([
+            firestoreDb!.collection('conversations').where('chefId', '==', userId).get(),
+            firestoreDb!.collection('conversations').where('managerId', '==', userId).get(),
+        ]);
+
+        const refs = new Map<string, FirebaseFirestore.DocumentReference>();
+        asChef.forEach((doc) => refs.set(doc.id, doc.ref));
+        asManager.forEach((doc) => refs.set(doc.id, doc.ref));
+
+        if (refs.size === 0) return 0;
+
+        const now = new Date();
+        // Batch in groups of 500 — Firestore's hard limit per write batch.
+        const all = Array.from(refs.values());
+        for (let i = 0; i < all.length; i += 500) {
+            const batch = firestoreDb!.batch();
+            all.slice(i, i + 500).forEach((ref) => {
+                batch.set(
+                    ref,
+                    {
+                        unavailable: true,
+                        unavailableReason: 'account_deleted',
+                        unavailableRole: role,
+                        unavailableAt: now,
+                    },
+                    { merge: true },
+                );
+            });
+            await batch.commit();
+        }
+
+        logger.info(`[Admin] Marked ${refs.size} conversation(s) unavailable after deleting user ${userId} (${role})`);
+        return refs.size;
+    } catch (error) {
+        logger.error(`[Admin] Failed to mark conversations unavailable for user ${userId}:`, error);
+        return 0;
+    }
+}
+
 const router = Router();
 
 // Initialize Services
@@ -118,48 +193,61 @@ router.delete("/users/:id/complete", requireFirebaseAuthWithUser, requireAdmin, 
             return res.status(400).json({ error: "Invalid user ID" });
         }
 
+        // Deleting yourself would revoke the session you are deleting from, and
+        // with the last admin gone nobody can reassign the orphaned locations.
+        if (userId === req.neonUser!.id) {
+            return res.status(400).json({ error: "You cannot delete your own account" });
+        }
+
         const user = await userService.getUser(userId);
         if (!user) {
             return res.status(404).json({ error: "User not found" });
         }
 
-        // 1. Delete associated data to prevent foreign key constraint failures
-        await db.transaction(async (tx) => {
-            // Delete applications
-            try {
-                // Not importing schema dynamically since this is an admin route, we assume schema is available
-                // To avoid import errors, we will just execute raw sql or use existing imports if we can.
-                // It's safer to use tx.execute to delete from tables that might have fks to users.id
-                await tx.execute(sql`DELETE FROM applications WHERE user_id = ${userId}`);
-                await tx.execute(sql`DELETE FROM portal_user_applications WHERE user_id = ${userId}`);
-                await tx.execute(sql`DELETE FROM microlearning_completions WHERE user_id = ${userId}`);
-                await tx.execute(sql`DELETE FROM video_progress WHERE user_id = ${userId}`);
-                // Delete user from db using existing userService
-                // Wait, userService.deleteUser does its own tx. So we should just run the deletes before calling it.
-            } catch (e) {
-                console.error("Error cleaning up user foreign keys:", e);
-            }
-        });
+        // The whole cascade (bookings, notifications, applications, reviews,
+        // access grants, audit stamps) runs inside userService.deleteUser's
+        // transaction. It used to be half-done here: a handful of tables were
+        // deleted in a try/catch that SWALLOWED the error, so when the cleanup
+        // failed the subsequent user delete failed with an opaque 23503 and the
+        // admin saw a generic 500 with no indication of what was still attached.
+        //
+        // Obligations are not enforced for admins: a support agent acting on a
+        // known account should not be blocked by a debt they cannot settle, and
+        // the financial rows (payment_transactions, damage_claims) outlive the
+        // account anyway.
+        await userService.deleteUser(userId, { enforceObligations: false });
 
-        // 2. Delete the user from postgres
-        await userService.deleteUser(userId);
-        // 3. Delete from Firebase Auth
+        // The account is gone from Postgres but its Firestore conversations are
+        // not — they live in a different store with no FK to follow. Flag them so
+        // the surviving party sees an honest "no longer available" state instead
+        // of a ghost thread that silently swallows replies. Run before the
+        // Firebase Auth delete so `role` is still on hand; it is best-effort and
+        // never fails the request.
+        await markUserConversationsUnavailable(userId, user.role || 'user');
+
+        // Firebase is deleted last and deliberately: if it fails, the account is
+        // already gone from Postgres, so the response says exactly that rather
+        // than pretending the whole operation rolled back.
         if (user.firebaseUid) {
             try {
                 const { getAuth } = await import('firebase-admin/auth');
                 const app = initializeFirebaseAdmin();
-                if (app) {
-                    await getAuth(app).deleteUser(user.firebaseUid);
-                    // 4. Delete from Firestore
-                    const { getFirestore } = await import('firebase-admin/firestore');
-                    const firestore = getFirestore(app);
-                    await firestore.collection('users').doc(user.firebaseUid).delete();
-                } else {
-                    console.error("Firebase app is null, could not delete firebase auth user.");
+                if (!app) {
                     throw new Error("Firebase app is null");
                 }
+                await getAuth(app).deleteUser(user.firebaseUid);
+
+                // Firestore is best-effort: the profile doc is a mirror of the
+                // Postgres row, so a failure here leaves no authoritative data
+                // behind and must not fail the request.
+                try {
+                    const { getFirestore } = await import('firebase-admin/firestore');
+                    await getFirestore(app).collection('users').doc(user.firebaseUid).delete();
+                } catch (firestoreError: any) {
+                    logger.error(`Deleted Firebase Auth user ${user.firebaseUid}, but Firestore cleanup failed:`, firestoreError);
+                }
             } catch (fbError: any) {
-                console.error("Error deleting user from Firebase:", fbError);
+                logger.error("Error deleting user from Firebase:", fbError);
                 return res.status(500).json({ error: `Postgres user deleted, but failed to delete from Firebase: ${fbError.message}` });
             }
         }
@@ -168,6 +256,60 @@ router.delete("/users/:id/complete", requireFirebaseAuthWithUser, requireAdmin, 
     } catch (error: any) {
         logger.error("Error completely deleting user:", error);
         res.status(500).json({ error: error.message || "Failed to delete user" });
+    }
+});
+
+// What a complete delete will actually remove, shown before the admin confirms.
+//
+// The counts mirror `deleteUserDependents` exactly, including the identity
+// columns on other people's rows: an admin about to delete a manager needs to
+// know that N kitchens will be left without an owner, not just how many
+// notifications disappear.
+router.get("/users/:id/delete-impact", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const userId = parseInt(req.params.id);
+        if (isNaN(userId) || userId <= 0) {
+            return res.status(400).json({ error: "Invalid user ID" });
+        }
+
+        const user = await userService.getUser(userId);
+        if (!user) {
+            return res.status(404).json({ error: "User not found" });
+        }
+
+        const result = await db.execute(sql`
+            SELECT
+                (SELECT COUNT(*) FROM kitchen_bookings  WHERE chef_id = ${userId} OR created_by = ${userId})::int AS bookings,
+                (SELECT COUNT(*) FROM storage_bookings  WHERE chef_id = ${userId})::int AS storage_bookings,
+                (SELECT COUNT(*) FROM equipment_bookings WHERE chef_id = ${userId})::int AS equipment_bookings,
+                (SELECT COUNT(*) FROM damage_claims WHERE chef_id = ${userId} OR manager_id = ${userId})::int AS damage_claims,
+                (SELECT COUNT(*) FROM chef_notifications WHERE chef_id = ${userId})::int AS chef_notifications,
+                (SELECT COUNT(*) FROM manager_notifications WHERE manager_id = ${userId})::int AS manager_notifications,
+                (SELECT COUNT(*) FROM chef_kitchen_applications WHERE chef_id = ${userId})::int AS kitchen_applications,
+                (SELECT COUNT(*) FROM kitchen_viewings WHERE chef_id = ${userId})::int AS viewings,
+                (SELECT COUNT(*) FROM chef_kitchen_access WHERE chef_id = ${userId})::int AS kitchen_access_grants,
+                (SELECT COUNT(*) FROM chef_location_access WHERE chef_id = ${userId})::int AS location_access_grants,
+                (SELECT COUNT(*) FROM locations WHERE manager_id = ${userId})::int AS managed_locations,
+                (SELECT COUNT(*) FROM applications WHERE user_id = ${userId})::int AS applications,
+                (SELECT COUNT(*) FROM microlearning_completions WHERE user_id = ${userId})::int AS microlearning_completions,
+                (SELECT COUNT(*) FROM video_progress WHERE user_id = ${userId})::int AS video_progress,
+                (SELECT COUNT(*) FROM password_reset_tokens WHERE user_id = ${userId})::int AS password_reset_tokens
+        `);
+
+        const row = (result.rows[0] ?? {}) as Record<string, number>;
+
+        // Obligations no longer block an admin delete, but the admin should
+        // still see the money before they pull the trigger.
+        const obligations = await userService.hasOutstandingObligations(userId);
+
+        res.json({
+            user: { id: user.id, username: user.username, role: user.role, firebaseUid: user.firebaseUid },
+            counts: row,
+            obligations,
+        });
+    } catch (error: any) {
+        logger.error("Error computing user delete impact:", error);
+        res.status(500).json({ error: error.message || "Failed to compute delete impact" });
     }
 });
 
@@ -207,6 +349,9 @@ router.get("/users", requireFirebaseAuthWithUser, requireAdmin, async (req: Requ
                 fullName: displayName || u.username,
                 role: u.role || 'user',
                 displayText: displayName ? `${displayName} (${u.username})` : u.username,
+                // Selected above but previously dropped here, so the admin table's
+                // "Firebase UID" column always fell back to "N/A". Pass it through.
+                firebaseUid: u.firebaseUid,
             };
         });
 
@@ -2003,7 +2148,11 @@ router.delete("/managers/:id", async (req: Request, res: Response) => {
             return res.status(400).json({ error: "User is not a manager" });
         }
 
-        await userService.deleteUser(managerId);
+        await userService.deleteUser(managerId, { enforceObligations: false });
+        // Same reason as the complete-delete path: their Firestore conversations
+        // outlive the Postgres row, so flag them before the manager's chefs are
+        // left typing into a thread nobody will answer.
+        await markUserConversationsUnavailable(managerId, 'manager');
         res.json({ success: true, message: "Manager deleted successfully" });
     } catch (error: any) {
         logger.error("Error deleting manager:", error);

@@ -2,11 +2,12 @@ import { logger } from "@/lib/logger";
 import { normalizeChatSystemMessage } from "@/lib/chat-system-message";
 import { useTranslation } from "react-i18next";
 import { useState, useRef, useEffect } from "react";
-import { X, Info, FileText } from "lucide-react";
+import { X, Info, FileText, AlertCircle } from "lucide-react";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import FacilityDocumentsPanel from './FacilityDocumentsPanel';
+import { MessageThreadSkeleton } from './ConversationItemSkeleton';
 import { useChat } from "@/hooks/use-chat";
 import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
 import { Timestamp } from "firebase/firestore";
@@ -54,6 +55,23 @@ interface ChatPanelProps {
   locationName?: string;
   chefName?: string;
   managerName?: string;
+  /** Label for the Local Cooks team, shown on admin messages. Defaults to "Local Cooks". */
+  adminName?: string;
+  /**
+   * Set to 'admin' when the Local Cooks team is the viewer. Without it the
+   * viewer matches neither chefId nor managerId and the panel cannot send or
+   * mark anything read — see the note on `useChat`'s `viewerRole`.
+   */
+  viewerRole?: 'admin';
+  /**
+   * True when one participant's account has been deleted, so the thread is kept
+   * for its history but can accept no new messages. Rendered as a read-only
+   * notice in place of the composer, rather than a disabled box the user would
+   * keep trying to type into.
+   */
+  unavailable?: boolean;
+  /** Which side is gone — lets the notice name the right party. */
+  unavailableRole?: 'chef' | 'manager' | 'admin' | 'user';
   onClose?: () => void;
   onUnreadCountUpdate?: () => void;
   embedded?: boolean;
@@ -67,6 +85,10 @@ export default function ChatPanel({
   locationName,
   chefName,
   managerName,
+  adminName,
+  viewerRole,
+  unavailable = false,
+  unavailableRole,
   onClose,
   onUnreadCountUpdate,
   embedded = false,
@@ -85,15 +107,23 @@ export default function ChatPanel({
     currentUserId,
     handleSendMessage,
     isManager,
+    isAdmin,
     error,
   } = useChat({
     conversationId,
     chefId,
     managerId,
     onUnreadCountUpdate,
+    viewerRole,
   });
 
+  const localCooksName = adminName || t("chatLocalCooks", "Local Cooks");
+
   const onSend = async (content: string, files?: File[]) => {
+    // Guarded here as well as in the UI: the composer is the only caller today,
+    // but a send into a thread whose other participant no longer exists would
+    // create a message nobody can ever read.
+    if (unavailable) return;
     try {
       // 1. Send text message first if exists
       if (content.trim()) {
@@ -142,13 +172,16 @@ export default function ChatPanel({
   }, [messages]);
 
   // ... helpers getPartnerName/getPartnerLabel kept same ...
+  // From the admin's seat this is the chef's conversation, exactly as it is for
+  // the manager — an admin does not sit opposite themselves.
+  const viewerSeesChef = isManager || isAdmin;
   const getPartnerName = () => {
-    if (isManager) return chefName || t("chatChef");
+    if (viewerSeesChef) return chefName || t("chatChef");
     return managerName || t("chatManager");
   };
 
   const getPartnerLabel = () => {
-    if (isManager) return t("chatChef");
+    if (viewerSeesChef) return t("chatChef");
     return t("chatManager");
   }
 
@@ -215,6 +248,8 @@ export default function ChatPanel({
           let senderName = "User";
           if (message.senderRole === 'chef') senderName = chefName || t("chatChef");
           if (message.senderRole === 'manager') senderName = managerName || t("chatManager");
+          // The admin role is internal; the chef only ever sees the team name.
+          if (message.senderRole === 'admin') senderName = localCooksName;
 
           const timestamp = message.createdAt instanceof Date
             ? message.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -255,16 +290,17 @@ export default function ChatPanel({
 
       <div className="flex-1 overflow-hidden relative bg-muted/20">
         {isLoading ? (
-          <div className="flex items-center justify-center h-full">
-            <LoadingSpinner size="lg" />
-          </div>
+          <MessageThreadSkeleton count={6} />
         ) : (
           renderMessages()
         )}
       </div>
 
       <div className="border-t bg-background">
-        {isManager && (
+        {/* Attaching facility documents is pointless once the thread is dormant,
+            and the pending-attachment chip row would dangle. Both are hidden
+            behind the same read-only state rather than the composer alone. */}
+        {!unavailable && isManager && (
           <div className="border-b bg-muted/10">
             <FacilityDocumentsPanel
               locationId={locationId}
@@ -273,7 +309,7 @@ export default function ChatPanel({
           </div>
         )}
 
-        {attachedFacilityDocuments.length > 0 && (
+        {!unavailable && attachedFacilityDocuments.length > 0 && (
           <div className="px-4 py-2 bg-muted/30 border-b flex flex-wrap gap-2 animate-in fade-in slide-in-from-bottom-2">
             {attachedFacilityDocuments.map((doc, index) => (
               <div key={index} className="flex items-center gap-2 bg-background border px-2 py-1 rounded-md text-sm shadow-sm">
@@ -289,13 +325,33 @@ export default function ChatPanel({
           </div>
         )}
 
-        <ChatInput
-          onSend={onSend}
-          isLoading={isSending}
-          hasExternalAttachments={attachedFacilityDocuments.length > 0}
-          className="border-0 shadow-none bg-background pb-6"
-          placeholder={t("chatMessagePlaceholder", { name: getPartnerName() })}
-        />
+        {unavailable ? (
+          // A notice, not a disabled input: a greyed-out box invites the user to
+          // keep trying, and never explains why nothing happens.
+          <div className="px-4 py-5 flex items-start gap-3 bg-muted/30" role="note">
+            <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium text-foreground">
+                {unavailableRole === 'chef'
+                  ? t("chatUnavailableChefTitle", "This chef's account was deleted")
+                  : unavailableRole === 'manager'
+                    ? t("chatUnavailableManagerTitle", "This manager's account was deleted")
+                    : t("chatUnavailableTitle", "This account was deleted")}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {t("chatUnavailableDescription", "This conversation is no longer active. You can still read the history above, but new messages can't be sent or received.")}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <ChatInput
+            onSend={onSend}
+            isLoading={isSending}
+            hasExternalAttachments={attachedFacilityDocuments.length > 0}
+            className="border-0 shadow-none bg-background pb-6"
+            placeholder={t("chatMessagePlaceholder", { name: getPartnerName() })}
+          />
+        )}
       </div>
     </div>
   );

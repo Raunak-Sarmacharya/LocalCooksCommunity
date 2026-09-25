@@ -18,6 +18,7 @@ import { requireFirebaseAuthWithUser, requireManager, requireAdmin } from "../fi
 import { requireChef } from "./middleware";
 import { logger } from "../logger";
 import { errorResponse } from "../api-response";
+import { buildTourConfirmationPdf, tourReference } from "../services/tour-confirmation-pdf";
 import { notificationService } from "../services/notification.service";
 
 
@@ -36,6 +37,7 @@ import {
   kitchenViewingAvailability,
   kitchenViewingBlackouts,
   kitchenViewings,
+  chefKitchenApplications,
   locations,
   kitchens,
   users,
@@ -625,8 +627,8 @@ router.post(
               chefId: viewing.chefId,
               type: "booking_cancelled",
               priority: "high",
-              title: "Kitchen Viewing Cancelled",
-              message: `Your scheduled viewing of ${kitchen.name} has been cancelled by the manager. Reason: ${parsed.data.reason || "Schedule change"}. Please book a new time.`,
+              title: "Kitchen Tour Cancelled",
+              message: `Your scheduled tour of ${kitchen.name} has been cancelled by the manager. Reason: ${parsed.data.reason || "Schedule change"}. Please book a new time.`,
               metadata: { viewingId: viewing.id, locationId: kitchen.locationId, kitchenId },
               actionUrl: `/dashboard?view=viewings`,
               actionLabel: "Reschedule",
@@ -803,6 +805,10 @@ router.post(
         return res.status(409).json({ error: "Tours are unavailable until a kitchen manager is assigned" });
       }
 
+      const [application] = await db.select({ id: chefKitchenApplications.id }).from(chefKitchenApplications)
+        .where(and(eq(chefKitchenApplications.chefId, chefId), eq(chefKitchenApplications.locationId, locationId))).limit(1);
+      if (application) return res.status(409).json({ error: "You have already applied to this kitchen location. Continue through My Applications." });
+
       const timezone = kitchen.timezone || "America/St_Johns";
 
       // Get settings
@@ -826,7 +832,8 @@ router.post(
           and(
             eq(kitchenViewings.chefId, chefId),
             eq(kitchenViewings.targetedKitchenId, targetedKitchenId),
-            sql`${kitchenViewings.status} IN ('pending_local_cooks', 'pending', 'confirmed')`
+            sql`${kitchenViewings.status} IN ('pending_local_cooks', 'pending', 'confirmed')`,
+            sql`${kitchenViewings.scheduledAt} + (${kitchenViewings.durationMinutes} || ' minutes')::interval > NOW()`
           )
         )
         .limit(1);
@@ -844,7 +851,7 @@ router.post(
       const hoursUntil = differenceInHours(scheduledDate, now);
       if (hoursUntil < settings.advanceNoticeHours) {
         return res.status(400).json({
-          error: `Viewings must be booked at least ${settings.advanceNoticeHours} hours in advance`,
+          error: `Tours must be booked at least ${settings.advanceNoticeHours} hours in advance`,
         });
       }
 
@@ -853,6 +860,13 @@ router.post(
       let newViewing: any;
 
       await db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(0, ${targetedKitchenId})`);
+        const [active] = await tx.select({ id: kitchenViewings.id }).from(kitchenViewings).where(and(
+          eq(kitchenViewings.chefId, chefId), eq(kitchenViewings.targetedKitchenId, targetedKitchenId),
+          sql`${kitchenViewings.status} IN ('pending_local_cooks', 'pending', 'confirmed')`,
+          sql`${kitchenViewings.scheduledAt} + (${kitchenViewings.durationMinutes} || ' minutes')::interval > NOW()`
+        )).limit(1);
+        if (active) throw new Error("ACTIVE_TOUR_EXISTS");
         // Check for conflicting viewings within the transaction
         const tourStart = scheduledDate;
         const tourEnd = addMinutes(scheduledDate, tourDuration);
@@ -934,8 +948,8 @@ router.post(
           chefId,
           type: "booking_confirmed", // Reusing this type, but logically it's a request receipt
           priority: "normal",
-          title: "Kitchen Viewing Request Received",
-          message: `Your viewing request for ${kitchen.name} at ${kitchen.locationName} on ${format(scheduledDate, "MMM d, yyyy")} at ${format(scheduledDate, "h:mm a")} has been sent to Local Cooks for review.`,
+          title: "Kitchen Tour Request Received",
+          message: `Your tour request for ${kitchen.name} at ${kitchen.locationName} on ${format(scheduledDate, "MMM d, yyyy")} at ${format(scheduledDate, "h:mm a")} has been sent to Local Cooks for review.`,
           metadata: {
             viewingId: newViewing.id,
             locationId,
@@ -971,6 +985,7 @@ router.post(
       logger.info(`[Viewings] Chef ${chefId} booked viewing ${newViewing.id} for kitchen ${targetedKitchenId} at ${scheduledDate.toISOString()}`);
       res.status(201).json(newViewing);
     } catch (error: any) {
+      if (error.message === "ACTIVE_TOUR_EXISTS") return res.status(409).json({ error: "You already have an active tour request for this kitchen.", code: "ACTIVE_TOUR_EXISTS" });
       if (error.message === "SLOT_TAKEN") {
         return res.status(409).json({
           error: "This time slot was just taken by another chef. Please select a different time.",
@@ -1005,14 +1020,19 @@ router.get(
           viewing: kitchenViewings,
           locationName: locations.name,
           locationAddress: locations.address,
+          locationContactEmail: locations.contactEmail,
+          locationContactPhone: locations.contactPhone,
+          timezone: locations.timezone,
           kitchenName: kitchens.name,
           managerId: locations.managerId,
+          chefEmail: users.username,
         })
         .from(kitchenViewings)
         .leftJoin(locations, eq(kitchenViewings.locationId, locations.id))
         .leftJoin(kitchens, eq(kitchenViewings.targetedKitchenId, kitchens.id))
+        .leftJoin(users, eq(kitchenViewings.chefId, users.id))
         .where(eq(kitchenViewings.chefId, chefId))
-        .orderBy(desc(kitchenViewings.scheduledAt));
+        .orderBy(desc(kitchenViewings.updatedAt), desc(kitchenViewings.id));
 
       const results = await query;
 
@@ -1021,10 +1041,17 @@ router.get(
         ? results.filter((r) => r.viewing.status === status)
         : results;
 
+      const chefName = await getUserDisplayName(chefId, "chef");
+      const managerIds = Array.from(new Set(filtered.map((r) => r.managerId).filter((id): id is number => id != null)));
+      const managerNames = new Map(await Promise.all(managerIds.map(async (id) => [id, await getUserDisplayName(id, "manager")] as const)));
+      const managerContacts = new Map(await Promise.all(managerIds.map(async (id) => [id, (await db.select({ email: users.username, phone: users.phoneNumber }).from(users).where(eq(users.id, id)).limit(1))[0]] as const)));
       const withNames = await Promise.all(
         filtered.map(async (r) => ({
           ...r,
-          managerName: r.managerId ? await getUserDisplayName(r.managerId, 'manager') : 'Manager'
+          locationContactEmail: r.viewing.status === "confirmed" ? r.locationContactEmail || (r.managerId && managerContacts.get(r.managerId)?.email) || null : null,
+          locationContactPhone: r.viewing.status === "confirmed" ? r.locationContactPhone || (r.managerId && managerContacts.get(r.managerId)?.phone) || null : null,
+          managerName: r.managerId ? managerNames.get(r.managerId) : null,
+          chefName,
         }))
       );
 
@@ -1035,6 +1062,131 @@ router.get(
     }
   }
 );
+
+/** A live, owner-only confirmation document for a manager-confirmed tour. */
+router.get(
+  "/chef/:id/confirmation",
+  requireFirebaseAuthWithUser,
+  requireChef,
+  async (req: Request, res: Response) => {
+    try {
+      const viewingId = Number(req.params.id);
+      if (!Number.isSafeInteger(viewingId) || viewingId < 1) return res.status(400).json({ error: "Invalid tour reference" });
+      const [record] = await db.select({
+        viewing: kitchenViewings,
+        locationName: locations.name,
+        locationAddress: locations.address,
+        locationContactEmail: locations.contactEmail,
+        locationContactPhone: locations.contactPhone,
+        timezone: locations.timezone,
+        kitchenName: kitchens.name,
+        chefEmail: users.username,
+      })
+        .from(kitchenViewings)
+        .leftJoin(locations, eq(kitchenViewings.locationId, locations.id))
+        .leftJoin(kitchens, eq(kitchenViewings.targetedKitchenId, kitchens.id))
+        .leftJoin(users, eq(kitchenViewings.chefId, users.id))
+        .where(and(eq(kitchenViewings.id, viewingId), eq(kitchenViewings.chefId, req.neonUser!.id)))
+        .limit(1);
+      if (!record) return res.status(404).json({ error: "Tour not found" });
+      if (record.viewing.status !== "confirmed" || record.viewing.scheduledAt.getTime() + record.viewing.durationMinutes * 60_000 < Date.now()) return res.status(409).json({ error: "A confirmation document is available only for upcoming confirmed tours" });
+      const [manager] = record.viewing.managerId ? await db.select({ email: users.username, phone: users.phoneNumber }).from(users).where(eq(users.id, record.viewing.managerId)).limit(1) : [null];
+
+      const pdf = await buildTourConfirmationPdf({
+        id: record.viewing.id,
+        chefName: await getUserDisplayName(req.neonUser!.id, "chef"),
+        chefEmail: record.chefEmail || "",
+        locationName: record.locationName || "Kitchen location",
+        kitchenName: record.kitchenName,
+        locationAddress: record.locationAddress,
+        managerName: record.viewing.managerId ? await getUserDisplayName(record.viewing.managerId, "manager") : null,
+        managerEmail: record.locationContactEmail || manager?.email || null,
+        managerPhone: record.locationContactPhone || manager?.phone || null,
+        scheduledAt: record.viewing.scheduledAt,
+        durationMinutes: record.viewing.durationMinutes,
+        submittedAt: record.viewing.createdAt,
+        timezone: record.timezone || "America/St_Johns",
+        chefNotes: record.viewing.chefNotes,
+        intakeData: record.viewing.intakeData as Record<string, unknown> | null,
+        managerNotes: record.viewing.managerNotes,
+      });
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${tourReference(viewingId)}-confirmation.pdf"`);
+      res.setHeader("Cache-Control", "private, no-store");
+      return res.send(pdf);
+    } catch (error) {
+      logger.error("Error generating tour confirmation:", error);
+      return errorResponse(res, error);
+    }
+  }
+);
+
+/** Keep the confirmed slot until the manager accepts a chef's change request. */
+router.post("/chef/:id/reschedule", requireFirebaseAuthWithUser, requireChef, async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    const requestedAt = new Date(req.body?.scheduledAt);
+    if (!Number.isSafeInteger(id) || Number.isNaN(requestedAt.getTime())) return res.status(400).json({ error: "Choose a valid tour time" });
+    const [tour] = await db.select().from(kitchenViewings).where(and(eq(kitchenViewings.id, id), eq(kitchenViewings.chefId, req.neonUser!.id))).limit(1);
+    if (!tour) return res.status(404).json({ error: "Tour not found" });
+    if (tour.status !== "confirmed" || tour.scheduledAt.getTime() <= Date.now()) return res.status(409).json({ error: "Only upcoming confirmed tours can be changed" });
+    if (tour.requestedRescheduleAt) return res.status(409).json({ error: "A date change request is already awaiting review" });
+    if (!tour.targetedKitchenId || requestedAt.getTime() === tour.scheduledAt.getTime()) return res.status(400).json({ error: "Choose a different available time" });
+    const [location] = await db.select({ timezone: locations.timezone }).from(locations).where(eq(locations.id, tour.locationId)).limit(1);
+    const timezone = location?.timezone || "America/St_Johns";
+    const date = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(requestedAt);
+    const slots = await calculateAvailableSlots(tour.targetedKitchenId, date, timezone);
+    if (!slots.some(slot => new Date(slot.scheduledAt).getTime() === requestedAt.getTime())) return res.status(409).json({ error: "That time is no longer available" });
+    const [updated] = await db.update(kitchenViewings).set({ requestedRescheduleAt: requestedAt, rescheduleRequestedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(kitchenViewings.id, id), eq(kitchenViewings.status, "confirmed"), sql`${kitchenViewings.scheduledAt} > NOW()`, sql`${kitchenViewings.requestedRescheduleAt} IS NULL`)).returning();
+    if (!updated) return res.status(409).json({ error: "This tour has changed. Refresh and try again" });
+    if (tour.managerId) await notificationService.createForManager({ managerId: tour.managerId, locationId: tour.locationId, type: "booking_new", priority: "high", title: "Tour date change requested", message: "A chef requested a new time for a confirmed kitchen tour. The original time remains booked until you decide.", metadata: { viewingId: id }, actionUrl: "/manager/dashboard?view=viewings", actionLabel: "Review request" });
+    return res.json(updated);
+  } catch (error) { logger.error("Error requesting tour date change:", error); return errorResponse(res, error); }
+});
+
+router.patch("/manager/:id/reschedule", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || !["accept", "decline"].includes(req.body?.decision)) return res.status(400).json({ error: "Invalid date change decision" });
+    const [tour] = await db.select().from(kitchenViewings).where(and(eq(kitchenViewings.id, id), eq(kitchenViewings.managerId, req.neonUser!.id))).limit(1);
+    if (!tour) return res.status(404).json({ error: "Tour not found" });
+    if (tour.status !== "confirmed" || !tour.requestedRescheduleAt || tour.scheduledAt.getTime() <= Date.now()) return res.status(409).json({ error: "No active date change request" });
+    const updated = await db.transaction(async (tx) => {
+      if (req.body.decision === "accept") {
+        if (!tour.targetedKitchenId) throw new Error("SLOT_TAKEN");
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(0, ${tour.targetedKitchenId})`);
+        const [location] = await db.select({ timezone: locations.timezone }).from(locations).where(eq(locations.id, tour.locationId)).limit(1);
+        const timezone = location?.timezone || "America/St_Johns";
+        const date = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(tour.requestedRescheduleAt!);
+        const slots = await calculateAvailableSlots(tour.targetedKitchenId, date, timezone);
+        if (!slots.some(slot => new Date(slot.scheduledAt).getTime() === tour.requestedRescheduleAt!.getTime())) throw new Error("SLOT_TAKEN");
+      }
+      const [record] = await tx.update(kitchenViewings).set({
+        ...(req.body.decision === "accept" ? { scheduledAt: tour.requestedRescheduleAt! } : {}),
+        requestedRescheduleAt: null, rescheduleRequestedAt: null, updatedAt: new Date(),
+      }).where(and(eq(kitchenViewings.id, id), eq(kitchenViewings.status, "confirmed"), eq(kitchenViewings.requestedRescheduleAt, tour.requestedRescheduleAt!))).returning();
+      return record;
+    });
+    if (!updated) return res.status(409).json({ error: "This request was already handled" });
+    await notificationService.createForChef({ chefId: tour.chefId, type: "booking_confirmed", priority: "high", title: req.body.decision === "accept" ? "Tour date changed" : "Tour date change declined", message: req.body.decision === "accept" ? "Your new tour time was approved. Open My Tours for the updated confirmation." : "The manager declined your date change. Your original confirmed time is still booked.", metadata: { viewingId: id, locationId: tour.locationId }, actionUrl: "/dashboard?view=viewings", actionLabel: "View tour" });
+    const [chef] = await db.select({ email: users.username }).from(users).where(eq(users.id, tour.chefId)).limit(1);
+    if (chef?.email) {
+      const [location] = await db.select({ timezone: locations.timezone, name: locations.name }).from(locations).where(eq(locations.id, tour.locationId)).limit(1);
+      const timeZone = location?.timezone || "America/St_Johns";
+      const formatTime = (date: Date) => new Intl.DateTimeFormat("en-CA", { dateStyle: "full", timeStyle: "short", timeZone }).format(date);
+      const accepted = req.body.decision === "accept";
+      await sendEmail({
+        to: chef.email,
+        subject: accepted ? `Your kitchen tour time has changed · ${tourReference(id)}` : `Your kitchen tour time remains confirmed · ${tourReference(id)}`,
+        text: accepted
+          ? `Your date change request for ${location?.name || "your kitchen tour"} was approved.\n\nNew time: ${formatTime(updated.scheduledAt)}\nPrevious time: ${formatTime(tour.scheduledAt)}\n\nOpen My Tours for your updated confirmation. Reference: ${tourReference(id)}.`
+          : `Your date change request for ${location?.name || "your kitchen tour"} was declined.\n\nYour original tour remains confirmed for ${formatTime(tour.scheduledAt)}.\n\nOpen My Tours for details. Reference: ${tourReference(id)}.`,
+      }).catch(err => logger.error("Failed to send tour date change decision email", err));
+    }
+    return res.json(updated);
+  } catch (error) { if (error instanceof Error && error.message === "SLOT_TAKEN") return res.status(409).json({ error: "The requested time is no longer available" }); logger.error("Error reviewing tour date change:", error); return errorResponse(res, error); }
+});
 
 /**
  * GET /api/viewings/manager
@@ -1057,6 +1209,7 @@ router.get(
           viewing: kitchenViewings,
           locationName: locations.name,
           locationAddress: locations.address,
+          locationTimezone: locations.timezone,
           kitchenName: kitchens.name,
           chefUsername: users.username,
           chefEmail: users.username,
@@ -1110,6 +1263,7 @@ router.get(
           viewing: kitchenViewings,
           locationName: locations.name,
           locationAddress: locations.address,
+          locationTimezone: locations.timezone,
           kitchenName: kitchens.name,
           chefUsername: users.username,
           chefEmail: users.username,
@@ -1150,7 +1304,7 @@ router.patch(
       const decision = req.body?.decision;
       const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
       if (!Number.isInteger(viewingId) || !["approved", "denied"].includes(decision)) {
-        return res.status(400).json({ error: "A valid viewing and decision are required" });
+        return res.status(400).json({ error: "A valid tour and decision are required" });
       }
       if (decision === "denied" && !reason) {
         return res.status(400).json({ error: "A reason is required when declining a tour request" });
@@ -1215,8 +1369,8 @@ router.patch(
             locationId: record.viewing.locationId,
             type: "booking_new",
             priority: "high",
-            title: "New Kitchen Viewing Request",
-            message: `${chefName} requested a viewing of ${kitchenName} at ${locationName} on ${format(scheduledDate, "MMM d, yyyy")} at ${format(scheduledDate, "h:mm a")}.`,
+            title: "New Kitchen Tour Request",
+            message: `${chefName} requested a tour of ${kitchenName} at ${locationName} on ${format(scheduledDate, "MMM d, yyyy")} at ${format(scheduledDate, "h:mm a")}.`,
             metadata: { viewingId, kitchenId: record.viewing.targetedKitchenId, chefId: record.viewing.chefId },
             actionUrl: "/manager/dashboard?view=viewings",
             actionLabel: "Review Request",
@@ -1301,7 +1455,7 @@ router.patch(
         .limit(1);
 
       if (!viewing) {
-        return res.status(404).json({ error: "Viewing not found" });
+        return res.status(404).json({ error: "Tour not found" });
       }
 
       // Authorization: chef can only cancel their own, manager can update their location's viewings
@@ -1315,10 +1469,13 @@ router.patch(
 
       // Chefs can only cancel
       if (isChef && parsed.data.status !== "cancelled") {
-        return res.status(403).json({ error: "Chefs can only cancel viewings" });
+        return res.status(403).json({ error: "Chefs can only cancel tours" });
       }
       if (isChef && !["pending_local_cooks", "pending", "confirmed"].includes(viewing.status)) {
-        return res.status(409).json({ error: "This viewing can no longer be cancelled" });
+        return res.status(409).json({ error: "This tour can no longer be cancelled" });
+      }
+      if (isChef && viewing.scheduledAt.getTime() <= Date.now()) {
+        return res.status(409).json({ error: "The tour has already started" });
       }
 
       if (isManager && viewing.status === "pending_local_cooks") {
@@ -1335,7 +1492,16 @@ router.patch(
           confirmed: ["cancelled", "completed", "no_show"],
         };
         if (!allowedTransitions[viewing.status]?.includes(parsed.data.status)) {
-          return res.status(409).json({ error: `Cannot change a ${viewing.status} viewing to ${parsed.data.status}` });
+          return res.status(409).json({ error: `Cannot change a ${viewing.status} tour to ${parsed.data.status}` });
+        }
+        if (["completed", "no_show"].includes(parsed.data.status) && viewing.scheduledAt.getTime() + viewing.durationMinutes * 60_000 > Date.now()) {
+          return res.status(409).json({ error: "The tour has not ended yet" });
+        }
+        if (parsed.data.status === "confirmed" && viewing.scheduledAt.getTime() <= Date.now()) {
+          return res.status(409).json({ error: "The requested tour time has already passed" });
+        }
+        if (parsed.data.status === "cancelled" && viewing.scheduledAt.getTime() <= Date.now()) {
+          return res.status(409).json({ error: "The tour has already started. Record the outcome instead" });
         }
       }
 
@@ -1344,6 +1510,10 @@ router.patch(
         status: parsed.data.status,
         updatedAt: new Date(),
       };
+      if (["cancelled", "completed", "no_show"].includes(parsed.data.status)) {
+        updateData.requestedRescheduleAt = null;
+        updateData.rescheduleRequestedAt = null;
+      }
 
       if (parsed.data.managerNotes) {
         updateData.managerNotes = parsed.data.managerNotes;
@@ -1366,8 +1536,9 @@ router.patch(
       const [updated] = await db
         .update(kitchenViewings)
         .set(updateData)
-        .where(eq(kitchenViewings.id, viewingId))
+        .where(and(eq(kitchenViewings.id, viewingId), eq(kitchenViewings.status, viewing.status)))
         .returning();
+      if (!updated) return res.status(409).json({ error: "This tour was updated by someone else. Refresh and try again" });
 
       // Get location name for notifications
       const [location] = await db
@@ -1393,8 +1564,8 @@ router.patch(
             locationId: viewing.locationId,
             type: "booking_cancelled",
             priority: "normal",
-            title: "Viewing Cancelled by Chef",
-            message: `${await getUserDisplayName(viewing.chefId, 'chef')} cancelled their viewing at ${locationName}.`,
+            title: "Tour Cancelled by Chef",
+            message: `${await getUserDisplayName(viewing.chefId, 'chef')} cancelled their tour at ${locationName}.`,
             metadata: { viewingId },
             actionUrl: `/manager/dashboard?view=viewings`,
             actionLabel: "View Details",
@@ -1409,8 +1580,8 @@ router.patch(
             chefId: viewing.chefId,
             type: "booking_cancelled",
             priority: "high",
-            title: "Kitchen Viewing Cancelled",
-            message: `Your viewing at ${locationName} has been cancelled by the manager.${parsed.data.cancellationReason ? ` Reason: ${parsed.data.cancellationReason}` : ""} Please book a new time.`,
+            title: "Kitchen Tour Cancelled",
+            message: `Your tour at ${locationName} has been cancelled by the manager.${parsed.data.cancellationReason ? ` Reason: ${parsed.data.cancellationReason}` : ""} Please book a new time.`,
             metadata: { viewingId },
             actionUrl: `/dashboard?view=viewings`,
             actionLabel: "Reschedule",
@@ -1436,11 +1607,22 @@ router.patch(
           chefId: viewing.chefId,
           type: "application_new",
           priority: "normal",
-          title: "How was your viewing?",
+          title: "How was your tour?",
           message: `Thanks for visiting ${locationName}! Ready to apply? Start your kitchen application now.`,
           metadata: { viewingId, locationId: viewing.locationId },
           actionUrl: `/kitchen-requirements/${viewing.locationId}`,
           actionLabel: "Apply Now",
+        });
+      } else if (parsed.data.status === "no_show") {
+        await notificationService.createForChef({
+          chefId: viewing.chefId,
+          type: "booking_cancelled",
+          priority: "high",
+          title: "Tour marked as missed",
+          message: `The kitchen manager marked your tour at ${locationName} as missed. Open My Tours to review the outcome.`,
+          metadata: { viewingId, locationId: viewing.locationId },
+          actionUrl: "/dashboard?view=viewings",
+          actionLabel: "View tour",
         });
       } else if (parsed.data.status === "confirmed" && isManager) {
         const [chef] = await db.select({ username: users.username }).from(users).where(eq(users.id, viewing.chefId)).limit(1);
@@ -1456,8 +1638,8 @@ router.patch(
           chefId: viewing.chefId,
           type: "booking_confirmed",
           priority: "high",
-          title: "Kitchen Viewing Confirmed!",
-          message: `Your viewing request at ${locationName} has been approved by the manager. See you then!`,
+          title: "Kitchen Tour Confirmed!",
+          message: `Your tour request at ${locationName} has been approved by the manager. See you then!`,
           metadata: { viewingId, locationId: viewing.locationId },
           actionUrl: `/dashboard?view=viewings`,
           actionLabel: "View Details",

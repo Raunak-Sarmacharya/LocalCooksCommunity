@@ -3,6 +3,7 @@ import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ConversationItem, ApplicationStatus } from "./ConversationItem";
+import { ConversationListSkeleton } from "./ConversationItemSkeleton";
 import { Conversation } from "@/services/chat-service";
 import { useTranslation } from "react-i18next";
 
@@ -14,6 +15,17 @@ interface ConversationListProps {
   getPartnerLocation: (conversation: Conversation) => string;
   getApplicationStatus?: (conversation: Conversation) => ApplicationStatus;
   viewerRole?: 'chef' | 'manager';
+  /**
+   * Renders row-shaped skeletons in place of the (possibly empty) list while
+   * conversations — or the application details they depend on — are loading.
+   */
+  isLoading?: boolean;
+  /**
+   * Resolves whether a conversation is dormant because a participant's account
+   * was deleted. Passed in rather than read off the conversation so a caller can
+   * combine the stored flag with a live check against Postgres.
+   */
+  isConversationUnavailable?: (conversation: Conversation) => boolean;
 }
 
 export function ConversationList({
@@ -23,7 +35,9 @@ export function ConversationList({
   getPartnerName,
   getPartnerLocation,
   getApplicationStatus,
-  viewerRole
+  viewerRole,
+  isLoading = false,
+  isConversationUnavailable
 }: ConversationListProps) {
   const { t } = useTranslation('chef');
   const [searchQuery, setSearchQuery] = useState("");
@@ -50,7 +64,9 @@ export function ConversationList({
       
       <ScrollArea className="flex-1">
         <div className="p-3 space-y-1">
-          {filteredConversations.length === 0 ? (
+          {isLoading ? (
+            <ConversationListSkeleton count={4} />
+          ) : filteredConversations.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground text-sm">
               {t("chatNoConversations")}
             </div>
@@ -65,6 +81,7 @@ export function ConversationList({
                 partnerLocation={getPartnerLocation(conversation)}
                 applicationStatus={getApplicationStatus?.(conversation)}
                 viewerRole={viewerRole}
+                unavailable={isConversationUnavailable?.(conversation) ?? conversation.unavailable}
               />
             ))
           )}

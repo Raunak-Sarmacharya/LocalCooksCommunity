@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Chef kitchen request journeys",
+    "subtitle": "Both paths keep identity and verification in context",
+    "output": "chef-request-journeys.html"
+  },
+  "lanes": [
+    { "id": "access", "label": "Request to apply" },
+    { "id": "tour", "label": "Request tour" }
+  ],
+  "nodes": [
+    { "id": "a-kitchen", "lane": "access", "col": 0, "type": "frontend", "label": "Kitchen page" },
+    { "id": "a-plan", "lane": "access", "col": 2, "type": "frontend", "label": "Preferences", "sublabel": "optional" },
+    { "id": "a-identity", "lane": "access", "col": 3, "type": "security", "label": "Account", "sublabel": "verify email" },
+    { "id": "a-request", "lane": "access", "col": 5, "type": "frontend", "label": "Access form", "sublabel": "send to review" },
+    { "id": "t-kitchen", "lane": "tour", "col": 0, "type": "frontend", "label": "Kitchen page" },
+    { "id": "t-time", "lane": "tour", "col": 2, "type": "frontend", "label": "Visit time", "sublabel": "date + slot" },
+    { "id": "t-identity", "lane": "tour", "col": 3, "type": "security", "label": "Account", "sublabel": "verify email" },
+    { "id": "t-review", "lane": "tour", "col": 5, "type": "backend", "label": "Local Cooks", "sublabel": "review" }
+  ],
+  "edges": [
+    { "from": "a-kitchen", "to": "a-plan" },
+    { "from": "a-plan", "to": "a-identity" },
+    { "from": "a-identity", "to": "a-request" },
+    { "from": "t-kitchen", "to": "t-time" },
+    { "from": "t-time", "to": "t-identity" },
+    { "from": "t-identity", "to": "t-review" }
+  ],
+  "cards": []
+}

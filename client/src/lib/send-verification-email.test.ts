@@ -61,4 +61,19 @@ describe("sendVerificationEmailWithFallback", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(sendEmailVerification).toHaveBeenCalledOnce();
   });
+
+  it("keeps the seller journey in the Firebase fallback link", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: vi.fn().mockResolvedValue({ code: "smtp_failed" }),
+    }));
+
+    await sendVerificationEmailWithFallback({ email: "chef@example.com", returnUrl: "/?journey=seller" });
+
+    expect(sendEmailVerification).toHaveBeenCalledWith(auth.currentUser, {
+      url: "https://chef.localcooks.ca/?journey=seller",
+      handleCodeInApp: false,
+    });
+  });
 });

@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Dashboard scroll shell",
+    "subtitle": "Header stays put; only main scrolls",
+    "output": "dashboard-scroll-shell.html"
+  },
+  "components": [
+    {
+      "id": "sidebar",
+      "type": "frontend",
+      "label": "AppSidebar",
+      "sublabel": "h-svh",
+      "pos": [40, 220],
+      "size": [130, 60]
+    },
+    {
+      "id": "inset",
+      "type": "backend",
+      "label": "SidebarInset",
+      "sublabel": "h-svh overflow-hidden",
+      "pos": [240, 220],
+      "size": [160, 60]
+    },
+    {
+      "id": "header",
+      "type": "frontend",
+      "label": "Header",
+      "sublabel": "shrink-0",
+      "pos": [470, 140],
+      "size": [140, 60]
+    },
+    {
+      "id": "main",
+      "type": "messagebus",
+      "label": "main",
+      "sublabel": "overflow-y-auto",
+      "pos": [470, 300],
+      "size": [140, 60]
+    },
+    {
+      "id": "broken",
+      "type": "external",
+      "label": "Old bug",
+      "sublabel": "window scrolls",
+      "pos": [700, 220],
+      "size": [140, 60]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Canonical shell",
+      "wraps": ["inset", "header", "main"]
+    }
+  ],
+  "connections": [
+    {
+      "from": "sidebar",
+      "to": "inset",
+      "variant": "dashed"
+    },
+    {
+      "from": "inset",
+      "to": "header",
+      "label": "fixed",
+      "variant": "emphasis",
+      "fromSide": "top",
+      "toSide": "left",
+      "labelDy": -20
+    },
+    {
+      "from": "inset",
+      "to": "main",
+      "label": "scrolls",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "labelDy": 20
+    },
+    {
+      "from": "inset",
+      "to": "broken",
+      "label": "avoid",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Rule",
+      "items": [
+        "h-svh + overflow-hidden on SidebarInset",
+        "overflow-y-auto only on main"
+      ]
+    }
+  ]
+}

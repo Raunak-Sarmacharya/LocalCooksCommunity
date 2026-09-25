@@ -430,7 +430,7 @@ export const locationRequirements = pgTable("location_requirements", {
   tier1_custom_fields: jsonb("tier1_custom_fields").default([]),
 
   // Tier 2 Requirements (Kitchen Coordination)
-  tier2_food_establishment_cert_required: boolean("tier2_food_establishment_cert_required").default(false).notNull(),
+  tier2_food_establishment_cert_required: boolean("tier2_food_establishment_cert_required").default(true).notNull(),
   tier2_food_establishment_expiry_required: boolean("tier2_food_establishment_expiry_required").default(false).notNull(),
   tier2_insurance_document_required: boolean("tier2_insurance_document_required").default(false).notNull(),
   tier2_insurance_minimum_amount: integer("tier2_insurance_minimum_amount").default(0).notNull(),
@@ -2250,6 +2250,8 @@ export const kitchenViewings = pgTable("kitchen_viewings", {
   managerId: integer("manager_id").references(() => users.id, { onDelete: "set null" }), // Manager assigned to conduct the tour
   status: viewingStatusEnum("status").default("pending").notNull(),
   scheduledAt: timestamp("scheduled_at").notNull(), // The tour date/time
+  requestedRescheduleAt: timestamp("requested_reschedule_at"),
+  rescheduleRequestedAt: timestamp("reschedule_requested_at"),
   durationMinutes: integer("duration_minutes").default(30).notNull(),
   chefNotes: text("chef_notes"), // What the chef specifically wants to see/discuss
   managerNotes: text("manager_notes"), // Internal notes from manager

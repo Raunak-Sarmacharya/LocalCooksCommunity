@@ -30,6 +30,7 @@ const viewLabelKeys: Record<string, string> = {
     overview: "shellOverview",
     applications: "shellMyApplication",
     "kitchen-applications": "shellMyKitchens",
+    "kitchen-requests": "shellKitchenApplications",
     bookings: "shellMyBookings",
     training: "shellTraining",
     messages: "shellMessages",
@@ -97,8 +98,9 @@ export default function ChefDashboardLayout({
                 hiddenItems={sidebarHiddenItems}
                 breadcrumbs={displayBreadcrumbs}
             />
-            <SidebarInset className="min-w-0 overflow-x-clip">
-                <header className="flex h-16 shrink-0 items-center justify-between gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 border-b px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 min-w-0">
+            {/* Same scroll shell as DashboardLayout / ManagerBookingLayout — header stays put. */}
+            <SidebarInset className="min-w-0 h-svh overflow-hidden">
+                <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 min-w-0">
                     <div className="flex items-center gap-2 min-w-0">
                         <SidebarTrigger className="-ml-1 shrink-0" />
                         <Separator orientation="vertical" className="mr-2 h-4 shrink-0" />
@@ -168,7 +170,7 @@ export default function ChefDashboardLayout({
                         <ChefNotificationCenter onViewAll={() => onViewChange("notifications")} />
                     </div>
                 </header>
-                <main className="flex-1 min-w-0 p-4 md:p-6 lg:p-8 bg-muted/30 overflow-x-clip">
+                <main className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-clip bg-muted/30 p-4 md:p-6 lg:p-8">
                     <div className="mx-auto max-w-7xl w-full min-w-0 animate-fade-in space-y-6">
                         {children}
                     </div>

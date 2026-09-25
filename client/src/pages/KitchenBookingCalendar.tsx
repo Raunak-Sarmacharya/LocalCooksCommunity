@@ -7,7 +7,6 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useKitchenBookings } from "../hooks/use-kitchen-bookings";
 import Header from "@/components/layout/Header";
-import Footer from "@/components/layout/Footer";
 import SEOHead from "@/components/SEO/SEOHead";
 import { useToast } from "@/hooks/use-toast";
 import BookingControlPanel from "@/components/booking/BookingControlPanel";
@@ -1727,9 +1726,7 @@ export default function KitchenBookingCalendar() {
             </div>
           )}
         </div>
-
       </main>
-      <Footer />
     </div>
   );
 }

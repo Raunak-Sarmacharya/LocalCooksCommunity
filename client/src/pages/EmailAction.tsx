@@ -278,6 +278,7 @@ function isKitchenFlowPath(pathOrUrl: string): boolean {
     return (
       path.includes("/kitchen-preview") ||
       path.includes("/apply-kitchen") ||
+      path.includes("/request-tour") ||
       path.includes("/book-kitchen") ||
       path.includes("/book/")
     );
@@ -324,6 +325,16 @@ function buildRedirectUrl(
     }
     return null;
   };
+
+  // The link itself names this seller journey. A stale kitchen intent from an
+  // earlier visit must not pull this registration into another flow.
+  const sellerReturn = trustedContinueUrl(continueUrl);
+  if (databaseRole !== "manager" && databaseRole !== "admin" && sellerReturn) {
+    try {
+      const sellerUrl = new URL(sellerReturn);
+      if (sellerUrl.pathname === "/" && sellerUrl.searchParams.get("journey") === "seller") return "/?journey=seller&verified=true";
+    } catch { /* use the normal role redirect */ }
+  }
 
   // Saved kitchen tour/book intent — survives magic-link AND verification redirects.
   const intent = getAuthIntent();
@@ -777,7 +788,9 @@ export default function EmailAction() {
           databaseRole,
           Boolean(auth.currentUser)
         );
-        setRedirectUrl(finalRedirectUrl);
+        setRedirectUrl(isKitchenFlowPath(finalRedirectUrl)
+          ? withVerifiedMarker(finalRedirectUrl)
+          : finalRedirectUrl);
 
         logger.info('🎯 Will redirect to:', finalRedirectUrl);
 

@@ -25,6 +25,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import { format, isPast, isFuture } from "date-fns"
+import { formatTourWhen } from "@/lib/chef-viewing-display"
 
 // ─── Auth Helper ──────────────────────────────────────────────────────────────
 
@@ -62,9 +63,11 @@ interface ViewingRecord {
     completedAt: string | null
     createdAt: string
     updatedAt: string
+    requestedRescheduleAt: string | null
   }
   locationName: string | null
   locationAddress: string | null
+  locationTimezone: string | null
   kitchenName: string | null
   chefUsername: string | null
   chefEmail: string | null
@@ -143,6 +146,15 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
     refetchInterval: 30000, // Poll every 30s
     refetchOnWindowFocus: true,
   })
+  const reviewReschedule = useMutation({
+    mutationFn: async ({ id, decision }: { id: number; decision: "accept" | "decline" }) => {
+      const response = await fetch(`/api/viewings/manager/${id}/reschedule`, { method: "PATCH", headers: await getAuthHeaders(), body: JSON.stringify({ decision }) });
+      if (!response.ok) throw new Error((await response.json()).error || "Could not review date change");
+      return response.json();
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: [queryUrl] }); toast.success("Date change reviewed"); },
+    onError: (error: Error) => toast.error(error.message),
+  });
 
   // Status update mutation
   const updateStatusMutation = useMutation({
@@ -211,14 +223,14 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
       (v) =>
         isFuture(new Date(v.viewing.scheduledAt)) &&
         !["cancelled", "completed", "no_show"].includes(v.viewing.status)
-    ) || []
+    ).sort((a, b) => new Date(a.viewing.scheduledAt).getTime() - new Date(b.viewing.scheduledAt).getTime()) || []
 
   const past =
     viewings?.filter(
       (v) =>
         isPast(new Date(v.viewing.scheduledAt)) ||
         ["cancelled", "completed", "no_show"].includes(v.viewing.status)
-    ) || []
+    ).sort((a, b) => new Date(b.viewing.updatedAt).getTime() - new Date(a.viewing.updatedAt).getTime()) || []
 
   // Stats
   const confirmedCount = upcoming.filter((v) => v.viewing.status === "confirmed").length
@@ -233,7 +245,18 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
     return (
       <TableRow
         key={viewing.id}
+        tabIndex={0}
+        onClick={(event) => {
+          if (!(event.target as HTMLElement).closest("button, a, [role='menuitem']")) handleStatusAction(record, "view")
+        }}
+        onKeyDown={(event) => {
+          if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
+            event.preventDefault()
+            handleStatusAction(record, "view")
+          }
+        }}
         className={cn(
+          "cursor-pointer hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
           viewing.status === "no_show" && "bg-red-50/50",
           viewing.status === "cancelled" && "opacity-60"
         )}
@@ -269,7 +292,7 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
             </div>
           )}
         </TableCell>
-        <TableCell>{getStatusBadge(viewing.status)}</TableCell>
+        <TableCell><div className="flex flex-col items-start gap-1">{viewing.status === "pending" && new Date(viewing.scheduledAt).getTime() < Date.now() ? <Badge variant="secondary">Request expired</Badge> : getStatusBadge(viewing.status)}{viewing.requestedRescheduleAt && <Badge variant="outline" className="text-amber-700 border-amber-300">Date change requested</Badge>}</div></TableCell>
         <TableCell>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -278,9 +301,15 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {viewing.requestedRescheduleAt && new Date(viewing.scheduledAt).getTime() > Date.now() && <>
+                <DropdownMenuItem disabled>Requested: {formatTourWhen(viewing.requestedRescheduleAt, viewing.durationMinutes, record.locationTimezone || "America/St_Johns")}</DropdownMenuItem>
+                <DropdownMenuItem disabled={reviewReschedule.isPending} onClick={() => reviewReschedule.mutate({ id: viewing.id, decision: "accept" })}>Approve new time</DropdownMenuItem>
+                <DropdownMenuItem disabled={reviewReschedule.isPending} onClick={() => reviewReschedule.mutate({ id: viewing.id, decision: "decline" })}>Keep original time</DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>}
               <DropdownMenuItem onClick={() => handleStatusAction(record, "view")}>
                 <Eye className="h-4 w-4 mr-2" />{mt("viewDetails")}</DropdownMenuItem>
-              {viewing.status === "pending" && (
+              {viewing.status === "pending" && new Date(viewing.scheduledAt).getTime() > Date.now() && (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -298,6 +327,7 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
               {viewing.status === "confirmed" && (
                 <>
                   <DropdownMenuSeparator />
+                  {new Date(viewing.scheduledAt).getTime() + viewing.durationMinutes * 60_000 <= Date.now() && <>
                   <DropdownMenuItem
                     onClick={() => handleStatusAction(record, "complete")}
                   >
@@ -307,11 +337,13 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
                     className="text-amber-600"
                   >
                     <AlertTriangle className="h-4 w-4 mr-2" />{mt("markNoShow")}</DropdownMenuItem>
+                  </>}
+                  {new Date(viewing.scheduledAt).getTime() > Date.now() &&
                   <DropdownMenuItem
                     onClick={() => handleStatusAction(record, "cancel")}
                     className="text-destructive"
                   >
-                    <XCircle className="h-4 w-4 mr-2" />{mt("cancelViewing")}</DropdownMenuItem>
+                    <XCircle className="h-4 w-4 mr-2" />{mt("cancelViewing")}</DropdownMenuItem>}
                 </>
               )}
             </DropdownMenuContent>
@@ -436,6 +468,18 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
                 {/* Viewing Info */}
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
+                    <span className="text-muted-foreground">{mt("viewingReference")}</span>
+                    <span className="font-medium">TOUR-{selectedViewing.viewing.id}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">{mt("submitted")}</span>
+                    <span className="text-right">{formatTourWhen(selectedViewing.viewing.createdAt, null, selectedViewing.locationTimezone || "America/St_Johns")}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">{mt("tourDateAndTime")}</span>
+                    <span className="text-right">{formatTourWhen(selectedViewing.viewing.scheduledAt, selectedViewing.viewing.durationMinutes, selectedViewing.locationTimezone || "America/St_Johns")}</span>
+                  </div>
+                  <div className="flex justify-between">
                     <span className="text-muted-foreground">{mt("chef")}</span>
                     <span>
                       {selectedViewing.chefName || selectedViewing.chefUsername?.split("@")[0] ||
@@ -446,6 +490,12 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
                     <span className="text-muted-foreground">{mt("navLocation")}</span>
                     <span>{selectedViewing.locationName || "—"}</span>
                   </div>
+                  {selectedViewing.locationAddress && (
+                    <div className="flex justify-between gap-4">
+                      <span className="text-muted-foreground">{mt("address")}</span>
+                      <span className="text-right">{selectedViewing.locationAddress}</span>
+                    </div>
+                  )}
                   {selectedViewing.chefEmail && (
                     <div className="flex justify-between gap-4">
                       <span className="flex items-center gap-1 text-muted-foreground"><Mail className="h-3.5 w-3.5" />Email</span>
@@ -496,7 +546,7 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
                         <p className="text-xs font-medium text-muted-foreground mb-2">{mt("preViewingScreening")}</p>
                         <div className="space-y-1.5 bg-blue-50/50 p-3 rounded-md border border-blue-100">
                           {Object.entries(selectedViewing.viewing.intakeData)
-                            .filter(([_, v]) => v !== undefined && v !== "")
+                            .filter(([_, v]) => v != null && v !== "")
                             .map(([key, value]) => (
                               <div
                                 key={key}
@@ -505,12 +555,12 @@ export function ViewingsDashboard({ locationId }: ViewingsDashboardProps) {
                                 <span className="text-muted-foreground">
                                   {getIntakeLabel(key)}
                                 </span>
-                                <span className="font-medium">
+                                <span className="font-medium break-words text-right">
                                   {typeof value === "boolean"
                                     ? value
                                       ? mt("yes")
                                       : mt("no")
-                                    : String(value).replace(/_/g, " ")}
+                                    : typeof value === "object" ? JSON.stringify(value) : String(value).replace(/_/g, " ")}
                                 </span>
                               </div>
                             ))}

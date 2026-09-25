@@ -1,4 +1,3 @@
-import Footer from '@/components/layout/Footer';
 import Header from '@/components/layout/Header';
 import TrainingVideoPlayer from '@/components/training/TrainingVideoPlayer';
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -55,7 +54,6 @@ export default function MicrolearningPlayer() {
 
         <TrainingVideoPlayer className="player-focused" />
       </main>
-      <Footer />
     </div>
   );
 }

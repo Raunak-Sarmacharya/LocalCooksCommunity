@@ -23,10 +23,43 @@ import { Button } from "@/components/ui/button";
 import { Trash2, Loader2, UserMinus } from "lucide-react";
 import { auth } from "@/lib/firebase";
 
+/** One line of "what will be removed" in the delete confirmation. */
+type DeleteImpactCategory = {
+  /** Key in the `counts` object returned by `GET /api/admin/users/:id/delete-impact`. */
+  key: string;
+  label: string;
+};
+
+/**
+ * The rows the cascade will delete, in the order an admin cares about them:
+ * money and relationships first, housekeeping last.
+ *
+ * `managed_locations` is NOT here — those rows are not deleted, their owner is
+ * simply cleared. It gets its own warning line below.
+ */
+const DELETE_IMPACT_CATEGORIES: DeleteImpactCategory[] = [
+  { key: "bookings", label: "Kitchen bookings" },
+  { key: "storage_bookings", label: "Storage bookings" },
+  { key: "equipment_bookings", label: "Equipment bookings" },
+  { key: "damage_claims", label: "Damage claims" },
+  { key: "kitchen_applications", label: "Kitchen applications" },
+  { key: "applications", label: "Portal applications" },
+  { key: "viewings", label: "Viewings" },
+  { key: "kitchen_access_grants", label: "Kitchen access grants" },
+  { key: "location_access_grants", label: "Location access grants" },
+  { key: "chef_notifications", label: "Chef notifications" },
+  { key: "manager_notifications", label: "Manager notifications" },
+  { key: "microlearning_completions", label: "Training completions" },
+  { key: "video_progress", label: "Video progress records" },
+  { key: "password_reset_tokens", label: "Password reset links" },
+];
+
 export function AdminUserManagement() {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [deletingUser, setDeletingUser] = useState<any | null>(null);
+  const [impact, setImpact] = useState<any | null>(null);
+  const [impactLoading, setImpactLoading] = useState(false);
 
   const getAuthHeaders = async (): Promise<HeadersInit> => {
     const headers: HeadersInit = {
@@ -72,6 +105,45 @@ export function AdminUserManagement() {
   useEffect(() => {
     loadUsers();
   }, []);
+
+  /**
+   * Fetch what the delete will remove as soon as the dialog opens, so the admin
+   * reads the blast radius BEFORE confirming rather than after.
+   *
+   * A failure here must not block the delete: the impact is informational, and
+   * the dialog falls back to the generic warning.
+   */
+  useEffect(() => {
+    if (!deletingUser) {
+      setImpact(null);
+      return;
+    }
+
+    let cancelled = false;
+    setImpactLoading(true);
+
+    (async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const response = await fetch(`/api/admin/users/${deletingUser.id}/delete-impact`, {
+          credentials: "include",
+          headers,
+        });
+        if (!response.ok) throw new Error("Failed to load delete impact");
+        const data = await response.json();
+        if (!cancelled) setImpact(data);
+      } catch (error: any) {
+        logger.error("Error loading delete impact:", error);
+        if (!cancelled) setImpact(null);
+      } finally {
+        if (!cancelled) setImpactLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [deletingUser]);
 
   const handleDeleteUser = async () => {
     if (!deletingUser) return;
@@ -170,16 +242,84 @@ export function AdminUserManagement() {
           <AlertDialogHeader>
             <AlertDialogTitle>Completely Delete User?</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you absolutely sure? This will delete the user account from the PostgreSQL database (including all bookings, applications, and settings), as well as remove their identity from Firebase Auth and Firestore.
-              <br /><br />
-              <strong className="text-destructive">This action is irreversible.</strong>
+              This permanently deletes <strong>{deletingUser?.username}</strong> and every
+              record attached to the account, then removes their identity from Firebase Auth
+              and Firestore.
             </AlertDialogDescription>
           </AlertDialogHeader>
+
+          {impactLoading && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Checking what will be removed…
+            </div>
+          )}
+
+          {impact && (
+            <div className="space-y-3 py-1">
+              <div className="max-h-64 overflow-y-auto rounded-md border">
+                <Table>
+                  <TableBody>
+                    {DELETE_IMPACT_CATEGORIES.filter(
+                      (c) => (impact.counts?.[c.key] ?? 0) > 0,
+                    ).map((c) => (
+                      <TableRow key={c.key}>
+                        <TableCell className="py-2 text-sm">{c.label}</TableCell>
+                        <TableCell className="py-2 text-sm text-right font-mono tabular-nums">
+                          {impact.counts[c.key]}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {DELETE_IMPACT_CATEGORIES.every(
+                      (c) => (impact.counts?.[c.key] ?? 0) === 0,
+                    ) && (
+                      <TableRow>
+                        <TableCell className="py-3 text-sm text-muted-foreground">
+                          No attached records — only the account itself will be removed.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Not a deletion, which is exactly why it needs calling out:
+                  the kitchen keeps its bookings and outlives the manager. */}
+              {(impact.counts?.managed_locations ?? 0) > 0 && (
+                <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
+                  <strong>{impact.counts.managed_locations}</strong> location
+                  {impact.counts.managed_locations === 1 ? "" : "s"} will be left with no
+                  manager and must be reassigned.
+                </p>
+              )}
+
+              {impact.obligations?.hasObligations && (
+                <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
+                  This user has unresolved obligations:{" "}
+                  {impact.obligations.overstayPenalties} overstay penalty(ies) and{" "}
+                  {impact.obligations.damageClaims} damage claim(s), totaling{" "}
+                  <strong>${(impact.obligations.totalOwedCents / 100).toFixed(2)}</strong>.
+                  The claims are kept, but the account that owes them is removed.
+                </p>
+              )}
+            </div>
+          )}
+
+          <p className="text-sm">
+            <strong className="text-destructive">This action is irreversible.</strong>
+          </p>
+
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={handleDeleteUser}
+              onClick={(e) => {
+                // Keep the dialog mounted while the request is in flight;
+                // closing it on confirm would unmount the spinner and leave the
+                // admin with no feedback on a delete that can take a while.
+                e.preventDefault();
+                handleDeleteUser();
+              }}
               disabled={loading}
             >
               {loading ? (

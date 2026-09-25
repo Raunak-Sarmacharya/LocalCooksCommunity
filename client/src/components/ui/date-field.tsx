@@ -2,7 +2,6 @@ import * as React from "react";
 import { format } from "date-fns";
 
 import { Calendar as CalendarIcon } from "@/components/ui/manager-icons";
-import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -57,16 +56,32 @@ export function DateField({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button
+        {/*
+          A plain `<button>`, not shadcn's `Button`: `Button` applies the chef CTA treatment
+          (pill + shadow + red glow) to `default`/`outline`, which made a date field look like a
+          call-to-action instead of an input.
+        */}
+        <button
           id={id}
           type="button"
-          variant="outline"
           disabled={disabled}
-          className={cn("w-full sm:w-auto sm:min-w-[240px] justify-center font-normal px-4", className)}
+          className={cn(
+            "flex h-10 w-full items-center gap-2 rounded-md border border-input bg-background px-3 text-left text-sm font-normal transition-colors",
+            "hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "disabled:cursor-not-allowed disabled:opacity-50",
+            className,
+          )}
         >
-          <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-          {selected ? format(selected, "PPP") : placeholder}
-        </Button>
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate",
+              value ? "text-foreground" : "text-muted-foreground",
+            )}
+          >
+            {selected ? format(selected, "PPP") : placeholder}
+          </span>
+          <CalendarIcon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+        </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-auto p-0">
         <Calendar

@@ -15,7 +15,7 @@ interface AdminHeaderProps {
 const SECTION_META: Record<AdminSection, { category: string; title: string }> = {
   overview: { category: "Dashboard", title: "Overview" },
   applications: { category: "Applications", title: "Seller Applications" },
-  "kitchen-applications-step1": { category: "Applications", title: "Kitchen Applications (Step 1)" },
+  "kitchen-applications-step1": { category: "Applications", title: "Kitchen Application Requests" },
   "tour-requests": { category: "Applications", title: "Tour Requests" },
   "kitchen-licenses": { category: "Applications", title: "Kitchen Licenses" },
   "damage-claims": { category: "Applications", title: "Damage Claims" },

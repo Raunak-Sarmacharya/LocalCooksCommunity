@@ -1,9 +1,8 @@
 import { useChefKitchenApplicationsStatus } from "@/hooks/use-chef-kitchen-applications";
-import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Building2, Check, Calendar, Clock, Plus, Search, Eye } from "lucide-react";
-import { useState, useEffect, useMemo } from "react";
+import { Building2, Check, Calendar, Clock, Plus, Search } from "lucide-react";
+import { useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Icon } from "@iconify/react";
 import { Link, useLocation } from "wouter";
@@ -15,12 +14,11 @@ import { KitchenGridCard } from "@/components/kitchen/KitchenGridCard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { TruncatedText } from "@/components/common/TruncatedText";
-import { countPendingOrUpcomingTours, normalizeChefTourRow } from "@/lib/chef-viewing-display";
+import { chefDashboardHref } from "@/lib/chef-dashboard-nav";
 import { groupKitchensByLocation, kitchenPreviewPath } from "@/lib/discover-location-groups";
 import { chefOutlineCtaClass, chefPrimaryCtaClass } from "@/lib/chef-cta";
-import { auth } from "@/lib/firebase";
 import { cn } from "@/lib/utils";
 import { tt } from "@/i18n/common-ns";
 
@@ -99,14 +97,9 @@ export default function KitchenDiscovery({
 }: KitchenDiscoveryProps) {
   const { t, i18n } = useTranslation("kitchen");
   const { t: tChef } = useTranslation("chef");
-  const { user } = useFirebaseAuth();
   const [, navigate] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState(defaultTab);
-
-  useEffect(() => {
-    setActiveTab(defaultTab);
-  }, [defaultTab]);
+  const activeTab = defaultTab;
 
   const handleBookClick = (locationId: number, locationSlug?: string | null) => {
     navigate(kitchenPreviewPath(locationId, locationSlug));
@@ -131,34 +124,6 @@ export default function KitchenDiscovery({
     },
     staleTime: 60000,
   });
-
-  // Same cache key as ChefViewingsList / overview — pending + upcoming only for header chip
-  const { data: rawViewings = [] } = useQuery({
-    queryKey: ["/api/viewings", "chef", user?.uid],
-    queryFn: async () => {
-      if (!user) return [];
-      try {
-        const token = await auth.currentUser?.getIdToken();
-        const res = await fetch("/api/viewings/chef", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) throw new Error(tt("failedToFetchViewings"));
-        return res.json();
-      } catch (error) {
-        console.error(error);
-        return [];
-      }
-    },
-    enabled: !!user?.uid,
-    staleTime: 60_000,
-  });
-
-  const activeTourCount = useMemo(() => {
-    const rows = (rawViewings as unknown[])
-      .map(normalizeChefTourRow)
-      .filter((row): row is NonNullable<typeof row> => row != null);
-    return countPendingOrUpcomingTours(rows);
-  }, [rawViewings]);
 
   const isLoading = applicationsLoading || kitchensLoading;
 
@@ -288,88 +253,11 @@ export default function KitchenDiscovery({
   return (
     <div className="space-y-6">
       <ChefPageHeader
-        title={t("applyFlowDiscoverKitchensTitle", "Discover kitchens")}
-        description={t("applyFlowDiscoverKitchensDesc", "Apply first. Booking opens after approval.")}
-        actions={
-          <div className="flex flex-wrap gap-2">
-            {approvedCount > 0 ? (
-              <button
-                type="button"
-                onClick={() => setActiveTab("approved")}
-                className="rounded-xl border px-3 py-2 text-center transition-colors hover:border-[#F51042]/40 hover:bg-[#F51042]/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]/30"
-                aria-label={t("applyFlowApprovedTabLabel", {
-                  count: approvedCount,
-                  defaultValue: `Approved (${approvedCount})`,
-                })}
-              >
-                <p className="text-xl font-semibold leading-none">{approvedCount}</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {t("applyFlowApprovedLabel", "Approved")}
-                </p>
-              </button>
-            ) : null}
-            {pendingCount > 0 ? (
-              <button
-                type="button"
-                onClick={() => setActiveTab("applications")}
-                className="rounded-xl border px-3 py-2 text-center transition-colors hover:border-[#F51042]/40 hover:bg-[#F51042]/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]/30"
-                aria-label={t("applyFlowMyApplicationsTabLabel", {
-                  count: pendingCount,
-                  defaultValue: `My Applications (${pendingCount})`,
-                })}
-              >
-                <p className="text-xl font-semibold leading-none">{pendingCount}</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {t("applyFlowPendingLabel", "Pending")}
-                </p>
-              </button>
-            ) : null}
-            {activeTourCount > 0 ? (
-              <button
-                type="button"
-                onClick={() => setActiveTab("tours")}
-                className="rounded-xl border px-3 py-2 text-center transition-colors hover:border-[#F51042]/40 hover:bg-[#F51042]/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]/30"
-                aria-label={t("applyFlowKitchenToursTab", "Kitchen Tours")}
-              >
-                <p className="text-xl font-semibold leading-none">{activeTourCount}</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {t("applyFlowKitchenToursTab", "Kitchen Tours")}
-                </p>
-              </button>
-            ) : null}
-          </div>
-        }
+        title={activeTab === "tours" ? tChef("tourListTitle", "Your kitchen tours") : activeTab === "applications" ? tChef("shellKitchenApplications", "My Applications") : t("applyFlowDiscoverKitchensTitle", "Discover kitchens")}
+        description={activeTab === "tours" ? tChef("tourListIntroBody", "Review your tours, visit details and requests in one place.") : activeTab === "applications" ? t("applyFlowMyApplicationsDesc", "Track your kitchen applications.") : t("applyFlowDiscoverKitchensDesc", "Apply first. Booking opens after approval.")}
       />
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-4 h-auto flex-wrap">
-          <TabsTrigger value="discover">
-            <Plus className="h-4 w-4 mr-2" />
-            {t("applyFlowDiscoverTabLabel", {
-              count: discoverLocationCards.length,
-              defaultValue: "Discover ({count})",
-            })}
-          </TabsTrigger>
-          <TabsTrigger value="applications">
-            <Clock className="h-4 w-4 mr-2" />
-            {t("applyFlowMyApplicationsTabLabel", {
-              count: pendingApplications.length,
-              defaultValue: "My Applications ({count})",
-            })}
-          </TabsTrigger>
-          <TabsTrigger value="approved">
-            <Check className="h-4 w-4 mr-2" />
-            {t("applyFlowApprovedTabLabel", {
-              count: approvedCount,
-              defaultValue: "Approved ({count})",
-            })}
-          </TabsTrigger>
-          <TabsTrigger value="tours">
-            <Eye className="h-4 w-4 mr-2" />
-            {t("applyFlowKitchenToursTab", "Kitchen Tours")}
-          </TabsTrigger>
-        </TabsList>
-
+      <Tabs value={activeTab}>
         <TabsContent value="discover" className="space-y-6">
           <div className="relative max-w-md">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -497,7 +385,7 @@ export default function KitchenDiscovery({
               <p className="text-sm text-muted-foreground/70 mt-1">
                 {t("applyFlowApplyToGetStarted", "Apply to a kitchen to get started")}
               </p>
-              <Button className={chefPrimaryCtaClass("mt-4")} onClick={() => setActiveTab("discover")}>
+              <Button className={chefPrimaryCtaClass("mt-4")} onClick={() => navigate(chefDashboardHref("discover-kitchens"))}>
                 <Plus className="mr-2 h-4 w-4" />
                 {t("applyFlowExploreKitchensButton", "Discover Kitchens")}
               </Button>
@@ -693,7 +581,7 @@ export default function KitchenDiscovery({
         </TabsContent>
 
         <TabsContent value="tours" className="space-y-4">
-          <ChefViewingsList onExploreKitchens={() => setActiveTab("discover")} />
+          <ChefViewingsList onExploreKitchens={() => navigate(chefDashboardHref("discover-kitchens"))} />
         </TabsContent>
       </Tabs>
     </div>

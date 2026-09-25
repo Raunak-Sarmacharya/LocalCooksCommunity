@@ -22,7 +22,7 @@ export function getSellerJourneyDraft(): SellerJourneyDraft | null {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const draft = JSON.parse(raw) as SellerJourneyDraft;
-    if (!draft.fullName || !draft.email || !draft.phone || !draft.kitchenPreference) return null;
+    if (!draft.kitchenPreference || typeof draft.fullName !== "string" || typeof draft.email !== "string" || typeof draft.phone !== "string") return null;
     if (draft.termsAccepted !== true || !draft.termsAcceptedAt) return null;
     if (Date.now() - draft.savedAt > MAX_AGE_MS) {
       clearSellerJourneyDraft();

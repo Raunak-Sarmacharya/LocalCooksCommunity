@@ -281,7 +281,7 @@ export function PlatformRequirementsSection() {
           <div className="flex items-center gap-2">
             <FileCheck className="h-4 w-4 text-blue-600 dark:text-blue-400" />
             <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-              Custom Questions for Step 1
+              Custom questions for the request to apply
             </h4>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">

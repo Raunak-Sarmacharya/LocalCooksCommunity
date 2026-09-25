@@ -2,16 +2,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Utensils, Building2, ArrowRight, Calendar, Clock } from "lucide-react";
-import { KitchenNextStepsDescription } from "@/components/common/KitchenNextStepsDescription";
 import { useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFirebaseAuth } from "@/hooks/use-auth";
-import { useAuthModal } from "@/components/auth/AuthModalProvider";
 import { chefDashboardHref } from "@/lib/chef-dashboard-nav";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
 import { useChefShellChrome } from "@/layouts/chef-shell-context";
 import Header from "@/components/layout/Header";
-import Footer from "@/components/layout/Footer";
 import { Badge } from "@/components/ui/badge";
 import { ChefPageHeader } from "@/components/chef/ui";
 import { useState, useEffect, useMemo } from "react";
@@ -19,22 +16,18 @@ import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { useChefKitchenApplicationForLocation } from "@/hooks/use-chef-kitchen-applications";
 import { hasStep2BeenSubmitted } from "@/components/chef/applications/status";
-import ScheduleViewingWidget from "@/components/chef/ScheduleViewingWidget";
 import { SmartImage } from "@/components/ui/smart-image";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { tt } from "@/i18n/common-ns";
 import { kt } from "@/i18n/kitchen-ns";
 
 export default function KitchenRequirementsPage() {
-    const { t: tAuth } = useTranslation("auth");
     const { t } = useTranslation("kitchen");
     const [locationPath, setLocation] = useLocation();
     const locationIdMatch = locationPath.match(/\/kitchen-requirements\/(\d+)/);
     const locationId = locationIdMatch ? locationIdMatch[1] : undefined;
     const { user, loading: authLoading } = useFirebaseAuth();
-    const { openAuthModal } = useAuthModal();
     const [activeView, setActiveView] = useState("discover-kitchens");
-    const [showTourModal, setShowTourModal] = useState(false);
     const [hasBookingIntent, setHasBookingIntent] = useState(false);
     const [intentDateRange, setIntentDateRange] = useState<{from: string, to?: string} | null>(null);
 
@@ -131,9 +124,10 @@ export default function KitchenRequirementsPage() {
     const kitchen = kitchenData?.find((k: { locationId: number }) => k.locationId === Number(locationId));
 
     // For authenticated chefs, check if they already have an application (Step 1 done)
-    const { application: existingApplication, hasApplication } = useChefKitchenApplicationForLocation(
+    const { application: existingApplication, hasApplication, isLoading: applicationLoading } = useChefKitchenApplicationForLocation(
         user && locationId ? Number(locationId) : null
     );
+
 
     /**
      * The manager has taken this location's kitchen off the listing.
@@ -215,9 +209,7 @@ export default function KitchenRequirementsPage() {
     const getStep2Items = () => {
         if (!requirements) return [];
         const items = [
-            // Always required on Step 2 (request-to-apply only collects yes/no)
-            t("foodSafetyLicense", "Food Safety License"),
-            t("foodSafetyLicenseExpiry", "Food Safety License Expiry Date"),
+            requirements.requireFoodHandlerCert && t("foodSafetyLicense", "Food Safety Certificate") + " + " + t("foodSafetyLicenseExpiry", "Expiry Date"),
             requirements.tier2_food_establishment_cert_required && t("foodEstablishmentCertificate", "Food Establishment Certificate"),
             requirements.tier2_food_establishment_expiry_required && t("foodEstablishmentExpiry", "Food Establishment License Expiry"),
             (requirements.tier2_insurance_document_required || requirements.tier2_insurance_minimum_amount > 0) &&
@@ -400,24 +392,12 @@ export default function KitchenRequirementsPage() {
                                     </li>
                                 ))
                             ) : (
-                                <li className="text-sm text-muted-foreground italic">{t("noDocsRequiredStep2", "No specific documents required for Kitchen Coordination.")}</li>
+                                <li className="text-sm text-muted-foreground italic">{t("noDocsRequiredStep2", "No specific kitchen documents are required.")}</li>
                             )}
                         </ul>
                     </CardContent>
                 </Card>
             </div>
-
-            {/* Schedule Viewing Widget as Modal */}
-            {user && !isStep1Done && kitchen?.id && (
-                <ScheduleViewingWidget 
-                    locationId={Number(locationId)} 
-                    locationName={kitchen?.name || locationData?.name}
-                    targetedKitchenId={kitchen.id}
-                    targetedKitchenName={kitchen?.name}
-                    open={showTourModal}
-                    onClose={() => setShowTourModal(false)}
-                />
-            )}
 
             {/* CTA Section */}
             <Card className="shadow-none border-border/50">
@@ -459,11 +439,11 @@ export default function KitchenRequirementsPage() {
                                 {t("ensureDocumentsReady", "Ensure you have these documents ready to speed up your verification process. The initial application takes about 5 minutes.")}
                             </p>
                             <div className="flex flex-col sm:flex-row gap-4 justify-center items-stretch sm:items-stretch">
-                                {user && (
+                                {!applicationLoading && !hasApplication && (
                                     <Button 
                                         size="lg" 
                                         className="h-11 min-h-[44px] w-full sm:w-auto"
-                                        onClick={() => setShowTourModal(true)}
+                                        onClick={() => setLocation(`/request-tour/${locationId}?kitchenId=${kitchen.id}`)}
                                     >
                                         <Calendar />
                                         {t("applyFlowScheduleTourButton", "Request tour")}
@@ -472,16 +452,7 @@ export default function KitchenRequirementsPage() {
                                 <Button 
                                     size="lg" 
                                     data-testid="kitchen-requirements-start-apply"
-                                    onClick={() => {
-                                        if (user) {
-                                            setLocation(`/apply-kitchen/${locationId}`);
-                                        } else {
-                                            openAuthModal({
-                                                title: tAuth("authModalApplyTitle", "Almost there!"),
-                                                description: <KitchenNextStepsDescription type="apply" />,
-                                            });
-                                        }
-                                    }}
+                                    onClick={() => setLocation(`/apply-kitchen/${locationId}${kitchen?.id ? `?kitchenId=${kitchen.id}` : ""}`)}
                                     className="h-11 min-h-[44px] w-full sm:w-auto"
                                 >
                                     {t("startApplication", "Start Application")}
@@ -550,7 +521,6 @@ export default function KitchenRequirementsPage() {
                     {getContent()}
                 </div>
             </main>
-            <Footer />
         </div>
     );
 }

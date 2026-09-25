@@ -16,6 +16,7 @@ import {
   isAbandonedGoogleRegistration,
   markPendingGoogleRegistration,
   pendingGoogleRegistration,
+  setGoogleRegistrationActive,
 } from "@/lib/pending-google-registration";
 import { LAST_ACCOUNT_KEY, getLastAccount } from "@/lib/last-account";
 import { normalizePhoneNumber } from "@shared/phone-validation";
@@ -317,6 +318,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Check for user role and data from backend API (not Firestore)
           let role = null; // Don't set default role - let backend determine
           let applicationData = null;
+          let hasBackendProfile = false;
           try {
             const token = await firebaseUser.getIdToken();
             const response = await fetch('/api/user/profile', {
@@ -327,6 +329,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             });
 
             if (response.ok) {
+              hasBackendProfile = true;
               const userData = await response.json();
               role = userData.role;
               applicationData = {
@@ -452,6 +455,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   }
                 });
                 if (freshResponse.ok) {
+                  hasBackendProfile = true;
                   const userData = await freshResponse.json();
                   role = userData.role;
                   applicationData = {
@@ -489,7 +493,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             logger.info('ℹ️ SKIPPING SYNC - Session restoration or no sync needed');
           }
 
-          setUser({
+          // A Google popup establishes a Firebase identity before the chef has
+          // supplied the required phone and created a Local Cooks profile. It is
+          // not an application session yet; exposing it as `user` sends the tour
+          // to email verification and advertises a dashboard mid-registration.
+          setUser(hasBackendProfile ? {
             uid: firebaseUser.uid,
             email: firebaseUser.email,
             displayName: firebaseUser.displayName,
@@ -514,7 +522,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             termsAcceptedAt: applicationData?.termsAcceptedAt,
             termsVersion: applicationData?.termsVersion,
             chefOnboardingCompleted: applicationData?.chefOnboardingCompleted,
-          });
+          } : null);
 
           if (pendingRegistrationRef.current || isPhoneAuthInProgress()) {
             // signup()/Google registration is still performing the authoritative
@@ -686,7 +694,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: updatedUser.email!,
           role: accountType,
           returnUrl:
-            getAuthIntent()?.returnPath ||
+            (new URLSearchParams(window.location.search).get("journey") === "seller" ? "/?journey=seller" : getAuthIntent()?.returnPath) ||
             `${window.location.pathname}${window.location.search}`,
         });
         logger.info("✅ Custom email verification sent successfully");
@@ -831,11 +839,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       //
       // `isNewUser` describes whether the POPUP created this Firebase identity, which
       // is what decides whether an abandonment DELETES it or merely signs out of it.
+      // Claim the identity before publishing the pending marker: the auth-state
+      // listener may finish its own profile read before the form mounts.
+      setGoogleRegistrationActive(googleUser.uid);
       markPendingGoogleRegistration({
         uid: googleUser.uid,
         email: googleUser.email,
         createdIdentity: getAdditionalUserInfo(result)?.isNewUser === true,
       });
+    } else if (pendingGoogleRegistration()?.uid === googleUser.uid) {
+      clearPendingGoogleRegistration();
     }
 
     return {
@@ -1084,7 +1097,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logger.info(`📧 Sending custom magic link email to: ${email}`);
       const intent = getAuthIntent();
       const returnUrl =
-        intent?.returnPath ||
+        (new URLSearchParams(window.location.search).get("journey") === "seller" ? "/?journey=seller" : intent?.returnPath) ||
         `${window.location.pathname}${window.location.search}`;
       const customEmailResponse = await fetch('/api/firebase/send-magic-link-email', {
         method: 'POST',

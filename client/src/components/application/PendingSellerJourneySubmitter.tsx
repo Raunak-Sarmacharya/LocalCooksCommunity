@@ -28,16 +28,15 @@ export default function PendingSellerJourneySubmitter() {
         subdomain: getSubdomainFromHostname(window.location.hostname),
         role: user.role,
         isManager: user.isManager,
+        journeyActive: new URLSearchParams(window.location.search).get("journey") === "seller",
       })
     ) {
       return;
     }
 
     const draft = getSellerJourneyDraft();
-    if (!draft || draft.email.toLowerCase() !== user.email?.toLowerCase()) return;
-    // Only the email is required to submit. A missing phone must not hold a
-    // completed seller journey hostage, since the server accepts it on an
-    // unverified-email check alone.
+    const verifiedEmail = user.email;
+    if (!draft || !verifiedEmail || (draft.email && draft.email.toLowerCase() !== verifiedEmail.toLowerCase())) return;
     if (!hasVerifiedEmail(user, user)) return;
 
     const submit = async () => {
@@ -58,10 +57,20 @@ export default function PendingSellerJourneySubmitter() {
           return;
         }
 
+        // The authenticated profile owns the application identity. A chef may
+        // choose a different Google account from the address entered initially.
+        const currentDraft = {
+          ...draft,
+          email: verifiedEmail,
+          fullName: user.displayName?.trim() || draft.fullName,
+          phone: user.phoneNumber || "",
+        };
+        if (!user.phoneNumber) throw new Error("Add a phone number to your account before applying.");
+        if (!currentDraft.fullName.trim()) throw new Error("Add your full name to your account before applying.");
         const response = await fetch("/api/firebase/applications", {
           method: "POST",
           headers,
-          body: JSON.stringify(sellerJourneyPayload(draft)),
+          body: JSON.stringify(sellerJourneyPayload(currentDraft)),
         });
         if (!response.ok) throw new Error(await response.text());
         clearSellerJourneyDraft();
@@ -71,10 +80,15 @@ export default function PendingSellerJourneySubmitter() {
       } catch (error) {
         logger.error("Unable to submit pending seller journey application", error);
         setTransitioning(false);
+        const missingProfile = error instanceof Error && (error.message.includes("phone number") || error.message.includes("full name"));
         showAlert({
           title: "Application not submitted",
-          description: "Your account is ready, but we couldn’t submit the application yet. Please try again from My Application.",
+          description: missingProfile
+            ? error.message
+            : "Your account is ready, but we couldn’t submit the application yet. Your plans are saved.",
           type: "error",
+          secondaryText: missingProfile ? "Open account profile" : "Try again",
+          onSecondary: () => missingProfile ? window.location.assign("/dashboard?view=profile") : window.location.reload(),
         });
       } finally {
         submitting.current = false;

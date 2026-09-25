@@ -1,5 +1,4 @@
 import { logger } from "@/lib/logger";
-import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
 import SEOHead from "@/components/SEO/SEOHead";
 import { Button } from "@/components/ui/button";
@@ -272,7 +271,6 @@ export default function AdminLanding() {
           </div>
         </section>
       </main>
-      <Footer />
     </div>
   );
 }

@@ -12,4 +12,9 @@ export interface ApplicationsTableProps {
     onOpenChat: (application: Application) => void;
     onViewDocuments: (application: Application) => void;
     onReview: (application: Application) => void;
+    /**
+     * Approve the pending document/coordination stage straight from the row menu.
+     * Optional so existing callers keep working unchanged.
+     */
+    onApproveStage?: (application: Application) => void;
 }

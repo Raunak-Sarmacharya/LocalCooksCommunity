@@ -227,7 +227,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
     onSwitchToLogin?.();
   };
 
-  const journeyDraft = getSellerJourneyDraft();
+  const journeyDraft = new URLSearchParams(window.location.search).get("journey") === "seller" ? getSellerJourneyDraft() : null;
   const form = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
     defaultValues: { 
@@ -332,13 +332,14 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
 
         // No verification link here: Google owns the address and has already proved
         // it, so the server records it as verified from the token's claim.
-        await syncUserWithBackend(
+        const created = await syncUserWithBackend(
           googleUser,
           accountType,
           true,
           initialTermsAccepted || (showTermsInline && acceptedTerms),
           data.phone,
         );
+        if (!created) throw new Error("Could not create your account. Please try again.");
 
         setAuthState('success');
         await onRegistrationComplete?.(data.email, data);
@@ -741,7 +742,11 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
         initial={animateEntrance ? "hidden" : false}
         animate="visible"
       >
-        <motion.div variants={itemVariants} className="mb-6">
+        {googleProfile ? (
+          <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+            Google connected as <strong>{googleProfile.email}</strong>. Add your phone number below to finish creating your account.
+          </div>
+        ) : <motion.div variants={itemVariants} className="mb-6">
           <TooltipProvider delayDuration={0}>
             <Tooltip open={showTermsInline && !acceptedTerms ? undefined : false}>
               <TooltipTrigger asChild>
@@ -765,7 +770,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-        </motion.div>
+        </motion.div>}
 
         {/* Once phone ownership is proven, progressively disclose only the required profile fields. */}
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-5">
@@ -884,6 +889,25 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
               {/* Form Legend placed at the end of content for registration */}
               <FormLegend className="mt-4 mb-2" />
 
+              {/* Acceptance sits at the point of commitment, immediately above the
+                  submit button and directly under the required-field legend — not at
+                  the top of the form, where it was easy to tick, scroll past and stop
+                  meaning anything. `acceptedTerms` is the same state, so the Google
+                  button gate and its nudge tooltip below still work unchanged. */}
+              {showTermsInline && (
+                <label className="mb-2 flex cursor-pointer items-start gap-3 text-sm leading-relaxed">
+                  <input
+                    type="checkbox"
+                    checked={acceptedTerms}
+                    onChange={(event) => setAcceptedTerms(event.target.checked)}
+                    className="mt-1 size-4 accent-[#F51042]"
+                  />
+                  <span>
+                    I agree to the <a href="/terms" target="_blank" rel="noopener noreferrer" className="font-medium text-[#E00A38] underline">Terms</a> and <a href="/privacy" target="_blank" rel="noopener noreferrer" className="font-medium text-[#E00A38] underline">Privacy Policy</a>.
+                  </span>
+                </label>
+              )}
+
               {/*
                 A STATEMENT, not a checkbox, and never recorded on the visitor's behalf.
                 Acceptance happens when the flow takes them to the terms — see the note
@@ -895,7 +919,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
                 It used to sit behind `showTermsInline`, which NO caller ever passed, so
                 the manager login's Create Account section said nothing at all.
               */}
-              <p className="mt-4 text-center text-xs leading-relaxed text-muted-foreground">
+              {!showTermsInline && <p className="mt-4 text-center text-xs leading-relaxed text-muted-foreground">
                 {t("termsCreateNotice", "By creating an account you agree to our")}{' '}
                 <a
                   href="/terms"
@@ -921,7 +945,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
                 >
                   {t("termsNoticePrivacy", "Privacy Policy")}
                 </a>.
-              </p>
+              </p>}
 
               {/* Step actions — Previous + Next when parent provides wizard navigation */}
               {isApplying ? (
@@ -995,7 +1019,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
                 <button type="button" onClick={() => setStep(1)} className="text-gray-400 hover:text-gray-600 transition-colors">
                   <Icon icon="mdi:arrow-left" className="h-4 w-4" aria-hidden />
                 </button>
-                <div className="text-sm text-gray-500 font-medium">Step 2 of 2: Application Info</div>
+                <div className="text-sm text-gray-500 font-medium">Application information</div>
               </div>
 
               {/* Required first */}
@@ -1065,7 +1089,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
 
               {/* Optional after required */}
               <div className="space-y-1">
-                <label className="block text-sm font-medium text-gray-700">Type of Food Business (Optional)</label>
+                <label className="block text-sm font-medium text-gray-700">Business Type (Optional)</label>
                 <select 
                   className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50 text-gray-900 bg-white"
                   {...form.register('businessType')}
@@ -1083,7 +1107,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
               </div>
 
               <AnimatedInput
-                label="Tell Us About Your Business (Optional)"
+                label="Business Description (Optional)"
                 type="text"
                 validationState={getFieldValidationState('businessDescription')}
                 error={form.formState.errors.businessDescription?.message}
@@ -1091,6 +1115,22 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
               />
 
               <FormLegend className="mt-6 mb-4" />
+
+              {/* See the note at the other submit site: acceptance belongs directly
+                  above the submit button, under the required-field legend. */}
+              {showTermsInline && (
+                <label className="mb-4 flex cursor-pointer items-start gap-3 text-sm leading-relaxed">
+                  <input
+                    type="checkbox"
+                    checked={acceptedTerms}
+                    onChange={(event) => setAcceptedTerms(event.target.checked)}
+                    className="mt-1 size-4 accent-[#F51042]"
+                  />
+                  <span>
+                    I agree to the <a href="/terms" target="_blank" rel="noopener noreferrer" className="font-medium text-[#E00A38] underline">Terms</a> and <a href="/privacy" target="_blank" rel="noopener noreferrer" className="font-medium text-[#E00A38] underline">Privacy Policy</a>.
+                  </span>
+                </label>
+              )}
 
               {/* Submit Button */}
               <TooltipProvider delayDuration={0}>

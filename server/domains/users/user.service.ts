@@ -8,6 +8,16 @@ import { hashPassword } from "../../passwordUtils";
 import { DomainError, UserErrorCodes } from "../../shared/errors/domain-error";
 import { nationalPhoneDigits } from "@shared/phone-validation";
 import { randomBytes } from "node:crypto";
+import { deleteUserDependents } from "./user-deletion.service";
+
+/**
+ * See `UserService.deleteUser`. Admins opt out of the debt guard because they
+ * are acting with context the account holder does not have.
+ */
+export interface DeleteUserOptions {
+  /** Refuse the deletion while unpaid penalties or damage claims remain. Default `true`. */
+  enforceObligations?: boolean;
+}
 
 export class UserService {
   private repo: UserRepository;
@@ -291,31 +301,62 @@ export class UserService {
     }
   }
 
-  async deleteUser(id: number): Promise<void> {
-    // ENTERPRISE STANDARD: Check for outstanding obligations before deletion
-    const obligations = await this.hasOutstandingObligations(id);
-    if (obligations.hasObligations) {
-      throw new Error(
-        `Cannot delete account with outstanding obligations. ` +
-        `${obligations.overstayPenalties} unpaid overstay penalty(ies), ` +
-        `${obligations.damageClaims} unpaid damage claim(s), ` +
-        `totaling $${(obligations.totalOwedCents / 100).toFixed(2)}. ` +
-        `Please resolve all obligations before deleting your account.`
-      );
+  /**
+   * Hard-deletes a user account and everything hanging off it.
+   *
+   * @param options.enforceObligations
+   *   When `true` (the default, used by the self-serve `chef_account_delete`
+   *   flow) the deletion is refused while the user owes unpaid overstay
+   *   penalties or damage claims — deleting the account would make the debt
+   *   uncollectable and the payer disappear.
+   *
+   *   Admins pass `false`: a support agent removing an account has the context
+   *   to decide, and the money is tracked on `payment_transactions` /
+   *   `damage_claims` which survive the account. Blocking here gave them a
+   *   message they could not act on.
+   */
+  async deleteUser(id: number, options: DeleteUserOptions = {}): Promise<void> {
+    const { enforceObligations = true } = options;
+
+    if (enforceObligations) {
+      const obligations = await this.hasOutstandingObligations(id);
+      if (obligations.hasObligations) {
+        throw new Error(
+          `Cannot delete account with outstanding obligations. ` +
+          `${obligations.overstayPenalties} unpaid overstay penalty(ies), ` +
+          `${obligations.damageClaims} unpaid damage claim(s), ` +
+          `totaling $${(obligations.totalOwedCents / 100).toFixed(2)}. ` +
+          `Please resolve all obligations before deleting your account.`
+        );
+      }
     }
 
-    // Transactional delete ensuring referential integrity with locations
+    // One transaction for the whole cascade: `users.id` is referenced by ~50
+    // foreign keys and about half of them are `NO ACTION`, so a delete that
+    // fails partway leaves an account that can neither log in nor be removed
+    // without manual repair.
     await db.transaction(async (tx) => {
-      // Remove manager assignment from locations
-      const managedLocations = await tx.select().from(locations).where(eq(locations.managerId, id));
+      const counts = await deleteUserDependents(tx, id);
+
+      // The kitchen is the business and the manager is a person who may be
+      // replaced, so a location survives its manager with no owner until an
+      // admin reassigns one. This is what `KitchenRepository` assumes when it
+      // decides whether a kitchen is safe to hard-delete.
+      const managedLocations = await tx
+        .update(locations)
+        .set({ managerId: null })
+        .where(eq(locations.managerId, id))
+        .returning({ id: locations.id });
       if (managedLocations.length > 0) {
-        await tx.update(locations).set({ managerId: null }).where(eq(locations.managerId, id));
         logger.info(`Removed manager ${id} from ${managedLocations.length} locations`);
       }
 
-      // Delete the user
       await tx.delete(users).where(eq(users.id, id));
-      logger.info(`Deleted user ${id}`);
+
+      const summary = Object.entries(counts)
+        .map(([table, n]) => `${table}=${n}`)
+        .join(", ");
+      logger.info(`Deleted user ${id}${summary ? ` (cascade: ${summary})` : ""}`);
     });
   }
 }

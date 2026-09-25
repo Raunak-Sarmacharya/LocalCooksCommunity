@@ -131,7 +131,7 @@ export default function EnhancedLoginForm({
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: initialEmail || getSellerJourneyDraft()?.email || "", password: "" },
+    defaultValues: { email: initialEmail || (new URLSearchParams(window.location.search).get("journey") === "seller" ? getSellerJourneyDraft()?.email : "") || "", password: "" },
   });
 
   const resetAuthUi = (delayMs = 0) => {

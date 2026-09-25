@@ -3,7 +3,6 @@ import CertificationsForm from "@/components/application/CertificationsForm";
 import KitchenPreferenceForm from "@/components/application/KitchenPreferenceForm";
 import PersonalInfoForm from "@/components/application/PersonalInfoForm";
 import ProgressIndicator from "@/components/application/ProgressIndicator";
-import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
 import SEOHead from "@/components/SEO/SEOHead";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -231,7 +230,6 @@ export default function ApplicationForm() {
             </div>
           </motion.div>
         </main>
-        <Footer />
       </div>
     );
   }
@@ -289,7 +287,6 @@ export default function ApplicationForm() {
             <FormStep />
           )}
         </main>
-        <Footer />
       </div>
     </ApplicationFormProvider>
   );

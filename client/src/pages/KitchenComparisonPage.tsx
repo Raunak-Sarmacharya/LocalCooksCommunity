@@ -9,7 +9,6 @@ import { motion } from "framer-motion";
 import { Building2, MapPin, ArrowRight, ArrowLeft, Search, Calendar, Lock } from "lucide-react";
 import { bookNowIcon as BookNowIcon } from "@/components/chef/applications/status-icons";
 import Header from "@/components/layout/Header";
-import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import FadeInSection from "@/components/ui/FadeInSection";
@@ -352,7 +351,6 @@ export default function KitchenComparisonPage() {
           style={{ background: "radial-gradient(circle, rgba(255,215,0,0.08) 0%, transparent 70%)" }}
         />
       </div>
-
       <Header />
 
       <main className="relative z-10 flex-1 pb-16 pt-20 sm:pt-24 lg:pt-28">
@@ -496,8 +494,6 @@ export default function KitchenComparisonPage() {
           )}
         </div>
       </main>
-
-      <Footer />
     </div>
   );
 }

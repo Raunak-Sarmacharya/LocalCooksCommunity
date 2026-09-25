@@ -12,6 +12,7 @@ import { ChefKitchenApplication } from "@shared/schema";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { parseBusinessInfo, formatExperience, formatExpiryDate } from "@/utils/parseBusinessInfo";
 import { SecureDocumentLink } from "@/components/common/SecureDocumentLink";
+import { VerifiedDocumentChip } from "@/components/common/VerifiedDocumentChip";
 import { TruncatedText } from "@/components/common/TruncatedText";
 import { getKitchenDisplayStatus, hasStep2BeenSubmitted } from "./status";
 import { KitchenStatusChip, bookNowIcon as BookNowIcon } from "./status-icons";
@@ -79,20 +80,18 @@ function KitchenApplicationDetails({
             {t("apptabProgress", "Progress")}
           </p>
           <div className="flex items-center gap-2">
-            {[1, 2, 3].map((step) => (
+            {[1, 2].map((step) => (
               <div key={step} className="flex-1">
                 <div
                   className={cn(
                     "h-1 rounded-full",
-                    display.step >= step ? "bg-foreground" : "bg-border"
+                    (step === 1 || step2Submitted) ? "bg-foreground" : "bg-border"
                   )}
                 />
                 <p className="mt-1 text-center text-xs text-muted-foreground">
                   {step === 1
-                    ? t("requestToApply", "Request")
-                    : step === 2
-                      ? t("kitchenDocuments", "Documents")
-                      : t("apptabCompleteWord", "Access")}
+                    ? t("requestToApply", "Request to apply")
+                    : t("kitchenDocuments", "Kitchen documents")}
                 </p>
               </div>
             ))}
@@ -230,6 +229,9 @@ function KitchenApplicationDetails({
           })()}
 
           <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+            <div className="float-right">
+              <VerifiedDocumentChip status={app.foodSafetyLicenseStatus} url={app.foodSafetyLicenseUrl} expiry={app.foodSafetyLicenseExpiry} />
+            </div>
             <p className="text-xs uppercase text-muted-foreground">
               {t("apptabFoodSafetyLicense", "Food Safety License")}
             </p>
@@ -240,9 +242,11 @@ function KitchenApplicationDetails({
                   ? t("apptabNo", "No")
                   : t("apptabNotSure", "Not Sure")}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {t("apptabDocumentsAfterStep1", "Document upload becomes available after Step 1 approval.")}
-            </p>
+            {app.foodSafetyLicenseUrl ? (
+              <div className="mt-2"><SecureDocumentLink url={app.foodSafetyLicenseUrl} fileName={t("apptabFoodSafetyLicense", "Food Safety License")} label={t("apptabView", "View")} /></div>
+            ) : (
+              <p className="mt-1 text-xs text-muted-foreground">{t("apptabDocumentsAfterStep1", "Document upload becomes available after your request to apply is approved.")}</p>
+            )}
           </div>
 
         </div>
@@ -264,6 +268,16 @@ function KitchenApplicationDetails({
                 </InfoChip>
               ) : null}
             </div>
+
+            {app.foodEstablishmentCertUrl && (
+              <div className="rounded-xl border border-border bg-card p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-sm font-medium">Food Establishment Licence</p>
+                  <VerifiedDocumentChip status={app.foodEstablishmentCertStatus} url={app.foodEstablishmentCertUrl} expiry={app.foodEstablishmentCertExpiry} />
+                </div>
+                <div className="mt-2"><SecureDocumentLink url={app.foodEstablishmentCertUrl} fileName="Food Establishment Licence" label={t("apptabView", "View")} /></div>
+              </div>
+            )}
 
             {hasStep2Data ? (
               <div className="space-y-3">

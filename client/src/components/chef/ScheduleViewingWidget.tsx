@@ -8,15 +8,19 @@ import { useState, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Icon } from "@iconify/react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, Clock, MapPin, Loader2, CheckCircle, ArrowLeft, Building2, Send, Mail, Phone, RefreshCw } from "lucide-react";
+import { CalendarDays, Clock, MapPin, Loader2, CheckCircle, ArrowLeft, Building2, Send, Mail, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { auth } from "@/lib/firebase";
 import { useFirebaseAuth } from "@/hooks/use-auth";
+import KitchenJourneyAuth from "@/components/auth/KitchenJourneyAuth";
 import { useEmailVerificationGuard } from "@/hooks/use-email-verification-guard";
-import AuthFlow, { type AuthFlowStep } from "@/components/auth/AuthFlow";
 import { useLocation } from "wouter";
 import { chefDashboardHref } from "@/lib/chef-dashboard-nav";
 import { saveAuthIntentFromCurrentPage, getAuthIntent, resolveVerificationReturnPath, kitchenActor, nextTourStepAfterSlot, coerceTourStepForActor, skipKitchenVerify } from "@/lib/auth-intent";
+import { isPendingGoogleRegistration } from "@/lib/pending-google-registration";
+import KitchenJourneyLayout, { KitchenJourneySteps } from "@/components/kitchen-application/KitchenJourneyLayout";
+import { journeyCalendarClassNames, journeyCalendarContainer } from "@/components/kitchen-application/journey-calendar-style";
+import KitchenJourneyTimeSlot, { formatJourneyClock } from "@/components/kitchen-application/KitchenJourneyTimeSlot";
 import { sendVerificationEmailWithFallback } from "@/lib/send-verification-email";
 import { hasVerifiedEmail } from "@/lib/auth-verification";
 import { Button } from "@/components/ui/button";
@@ -31,6 +35,7 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { format, addDays, isBefore, startOfDay, endOfDay } from "date-fns";
 import { ct } from "@/i18n/chef-ns";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 async function getAuthHeaders(forceRefresh = false): Promise<HeadersInit> {
   const currentUser = auth.currentUser;
@@ -70,9 +75,11 @@ interface ScheduleViewingWidgetProps {
   locationName?: string;
   targetedKitchenId: number;
   targetedKitchenName?: string;
+  kitchenImageUrl?: string | null;
   onClose?: () => void;
   onRequireOpen?: () => void;
   open?: boolean;
+  presentation?: "dialog" | "page";
 }
 
 /**
@@ -94,27 +101,26 @@ export function ScheduleViewingWidget({
   locationName,
   targetedKitchenId,
   targetedKitchenName,
+  kitchenImageUrl,
   onClose,
   onRequireOpen,
   open = true,
+  presentation = "dialog",
 }: ScheduleViewingWidgetProps) {
+  const isMobile = useIsMobile();
   const queryClient = useQueryClient();
   const { t } = useTranslation("kitchen");
-  const { user, refreshUserData, signInWithGoogle, discardPendingGoogleRegistration } = useFirebaseAuth();
+  const { user, refreshUserData } = useFirebaseAuth();
   const { guard, gate } = useEmailVerificationGuard();
   const [, setLocation] = useLocation();
-  const isAuthenticated = !!user;
+  const isAuthenticated = !!user && !isPendingGoogleRegistration(auth.currentUser?.uid);
   const [registeredInFlow, setRegisteredInFlow] = useState(false);
   const actor = kitchenActor(isAuthenticated, registeredInFlow);
   const emailVerified = isUserVerified(user);
-  const phoneVerified = Boolean(auth.currentUser?.phoneNumber || user?.phoneVerified);
-  const contactVerificationComplete = emailVerified && phoneVerified;
-  // Phone is surfaced as an optional nudge elsewhere, so it must not drive whether
-  // the verification step is skipped.
   const skipVerify = skipKitchenVerify(actor, emailVerified);
 
   const [step, setStep] = useState<TourStep>("date");
-  const [authTab, setAuthTab] = useState<AuthFlowStep>("identifier");
+  const [progressRestored, setProgressRestored] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
   const [chefNotes, setChefNotes] = useState("");
@@ -144,29 +150,29 @@ export function ScheduleViewingWidget({
       const notes = next?.chefNotes ?? chefNotes;
       const registering = next?.registeredInFlow ?? registeredInFlow;
       if (st === "success") {
-        sessionStorage.removeItem(storageKey);
+        localStorage.removeItem(storageKey);
         return;
       }
       if (date || slot || st !== "date" || notes) {
-        sessionStorage.setItem(
+        localStorage.setItem(
           storageKey,
           JSON.stringify({ date, slot, step: st, chefNotes: notes, registeredInFlow: registering })
         );
       } else {
-        sessionStorage.removeItem(storageKey);
+        localStorage.removeItem(storageKey);
       }
     },
     [selectedDate, selectedSlot, step, chefNotes, storageKey, registeredInFlow]
   );
 
   useEffect(() => {
-    if (!open || step === "success") return;
+    if (!open || step === "success" || !progressRestored) return;
     persistProgress();
-  }, [open, persistProgress, step]);
+  }, [open, persistProgress, step, progressRestored]);
 
   useEffect(() => {
     try {
-      const savedData = sessionStorage.getItem(storageKey);
+      const savedData = localStorage.getItem(storageKey) || sessionStorage.getItem(storageKey);
       if (!savedData) return;
       const parsed = JSON.parse(savedData);
       if (parsed.date) setSelectedDate(new Date(parsed.date));
@@ -183,12 +189,14 @@ export function ScheduleViewingWidget({
         rawStep,
         restoreActor,
         !!parsed.slot,
-        contactVerificationComplete
+        emailVerified
       ) as TourStep;
       // Resume fields only — the preview page decides whether to reopen the dialog.
       if (restored !== "date") setStep(restored);
     } catch (e) {
       console.error("Failed to restore tour booking data", e);
+    } finally {
+      setProgressRestored(true);
     }
     // Re-coerce once auth hydrates so signed-in chefs don't land on verify.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -198,7 +206,7 @@ export function ScheduleViewingWidget({
   useEffect(() => {
     if (!selectedSlot) return;
     if (step === "time" || step === "date" || step === "success") return;
-    const next = nextTourStepAfterSlot(actor, contactVerificationComplete);
+    const next = nextTourStepAfterSlot(actor, emailVerified);
     if (next === "confirm" && (step === "verify" || step === "account")) {
       setStep("confirm");
       onRequireOpen?.();
@@ -206,7 +214,7 @@ export function ScheduleViewingWidget({
       setStep("verify");
       onRequireOpen?.();
     }
-  }, [actor, contactVerificationComplete, selectedSlot, step, onRequireOpen]);
+  }, [actor, emailVerified, selectedSlot, step, onRequireOpen]);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -278,10 +286,11 @@ export function ScheduleViewingWidget({
     },
     onSuccess: () => {
       setStep("success");
+      localStorage.removeItem(storageKey);
       sessionStorage.removeItem(storageKey);
       queryClient.invalidateQueries({ queryKey: ["/api/viewings/chef"] });
       queryClient.invalidateQueries({ queryKey: ["/api/viewings", "chef"] });
-      toast.success(t("kitchenTourBookedSuccess", "Kitchen tour booked!"));
+      toast.success(t("kitchenTourBookedSuccess", "Tour request sent"));
     },
     onError: (error: Error) => {
       toast.error(error.message);
@@ -309,7 +318,6 @@ export function ScheduleViewingWidget({
 
       const next = nextTourStepAfterSlot(actor, emailVerified);
       persistProgress({ slot, step: next });
-      if (next === "account") setAuthTab("register");
       setStep(next);
     },
     [actor, emailVerified, locationId, targetedKitchenId, persistProgress]
@@ -319,8 +327,8 @@ export function ScheduleViewingWidget({
     if (step === "time") setStep("date");
     else if (step === "account") setStep("time");
     else if (step === "verify") setStep(isAuthenticated ? "time" : "account");
-    else if (step === "confirm") setStep(skipVerify ? "time" : "verify");
-  }, [step, skipVerify, isAuthenticated]);
+    else if (step === "confirm") setStep("time");
+  }, [step, isAuthenticated]);
 
   const resetForm = useCallback(() => {
     setStep("date");
@@ -328,6 +336,7 @@ export function ScheduleViewingWidget({
     setSelectedSlot(null);
     setChefNotes("");
     setRegisteredInFlow(false);
+    localStorage.removeItem(storageKey);
     sessionStorage.removeItem(storageKey);
   }, [storageKey]);
 
@@ -420,10 +429,10 @@ export function ScheduleViewingWidget({
         };
       case "account":
         return {
-          title: t("tourModalAccountTitle", "Create your account"),
+          title: t("tourModalAccountTitle", "Continue with your account"),
           subtext: t(
             "tourModalAccountSubtext",
-            "We need an account so the kitchen can confirm your visit. You’re not applying yet."
+            "Sign in or create an account to continue your tour request."
           ),
         };
       case "verify":
@@ -447,7 +456,7 @@ export function ScheduleViewingWidget({
           title: t("tourModalDoneTitle", "Tour requested"),
           subtext: t(
             "tourModalDoneSubtext",
-            "The kitchen will review and email you. Check spam for that email too."
+            "Local Cooks reviews your request first. If approved, the kitchen manager will receive it. We'll email you with updates."
           ),
         };
       default:
@@ -488,43 +497,16 @@ export function ScheduleViewingWidget({
             ? 2
             : 3;
 
-    return (
-      <ol className="space-y-2.5">
-        {steps.map((s, idx) => {
-          const done = step === "success" || idx < railIdx;
-          const current = step !== "success" && idx === railIdx;
-          return (
-            <li key={s.id} className="flex items-center gap-3">
-              <span
-                className={cn(
-                  "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
-                  done && "bg-[#F51042] text-white",
-                  current && "bg-[#F51042]/15 text-[#F51042] ring-2 ring-[#F51042]/25",
-                  !done && !current && "bg-gray-100 text-gray-400"
-                )}
-              >
-                {done ? <CheckCircle className="h-4 w-4" /> : idx + 1}
-              </span>
-              <span
-                className={cn(
-                  "text-sm font-medium",
-                  current || done ? "text-gray-900" : "text-gray-400"
-                )}
-              >
-                {s.label}
-              </span>
-            </li>
-          );
-        })}
-      </ol>
-    );
+    return <KitchenJourneySteps steps={steps.map((s) => s.label.replace(/^\d+\.\s*/, ""))} current={railIdx} />;
   };
 
   const renderDateStep = () => (
     <div className="space-y-3">
-      <div className="flex justify-center">
+      <div className={presentation === "page" ? journeyCalendarContainer : "flex justify-center"}>
         <Calendar
           mode="single"
+          numberOfMonths={presentation === "page" && !isMobile ? 2 : 1}
+          pagedNavigation={presentation === "page" && !isMobile}
           selected={selectedDate}
           onSelect={handleDateSelect}
           disabled={(date) => {
@@ -547,7 +529,8 @@ export function ScheduleViewingWidget({
             if (calMetadata.fullyBookedDates?.includes(ds)) return true;
             return false;
           }}
-          className="rounded-xl border"
+          className={presentation === "page" ? "w-full bg-transparent p-1" : "rounded-xl border"}
+          classNames={presentation === "page" ? journeyCalendarClassNames(!isMobile) : undefined}
         />
       </div>
     </div>
@@ -555,13 +538,11 @@ export function ScheduleViewingWidget({
 
   const renderTimeStep = () => (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" onClick={handleBack} className="h-8 w-8">
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
+      <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           {selectedDate && format(selectedDate, "EEEE, MMMM d, yyyy")}
         </p>
+        <Button variant="ghost" size="sm" className="shrink-0 text-primary" onClick={handleBack}>Change date</Button>
       </div>
 
       {slotsLoading || slotsFetching ? (
@@ -583,23 +564,14 @@ export function ScheduleViewingWidget({
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[280px] overflow-y-auto">
+        <div className="grid grid-cols-2 gap-1.5 min-[420px]:grid-cols-3 sm:grid-cols-4">
           {availability?.slots.map((slot) => (
-            <Button
+            <KitchenJourneyTimeSlot
               key={slot.scheduledAt}
-              variant={selectedSlot?.scheduledAt === slot.scheduledAt ? "default" : "outline"}
-              className={cn(
-                "h-auto py-3 flex flex-col gap-0.5",
-                selectedSlot?.scheduledAt === slot.scheduledAt &&
-                  "ring-2 ring-primary ring-offset-2"
-              )}
+              label={`${formatJourneyClock(slot.startTime)} – ${formatJourneyClock(slot.endTime)}`}
+              selected={selectedSlot?.scheduledAt === slot.scheduledAt}
               onClick={() => continueAfterSlot(slot)}
-            >
-              <span className="text-sm font-medium">{slot.startTime}</span>
-              <span className="text-[10px] text-muted-foreground">
-                {t("toTime", { defaultValue: "to {endTime}", endTime: slot.endTime })}
-              </span>
-            </Button>
+            />
           ))}
         </div>
       )}
@@ -607,101 +579,19 @@ export function ScheduleViewingWidget({
   );
 
   const renderAccountStep = () => (
-    <div className="space-y-3">
+    <div className="space-y-5">
       <Button variant="ghost" size="sm" onClick={handleBack} className="self-start -ml-2 text-gray-500">
         <ArrowLeft className="h-4 w-4 mr-1" />
-        {t("modalBack")}
+        Change visit time
       </Button>
-      <AuthFlow
-        step={authTab}
-        onStepChange={setAuthTab}
-        loginProps={{
-          onSuccess: async () => {
-            await refreshUserData();
-            setRegisteredInFlow(false);
-            setStep("confirm");
-            persistProgress({ step: "confirm", registeredInFlow: false });
-          },
-        }}
-        registerProps={{
-          showTermsInline: true,
-          hideApplyingToggle: true,
-          onRegistrationComplete: () => {
-            // signup() already sends verification — avoid a second send (rate limits).
-            setRegisteredInFlow(true);
-            setStep("verify");
-            persistProgress({ step: "verify", registeredInFlow: true });
-          },
-          onSuccess: async () => {
-            await refreshUserData();
-            if (auth.currentUser?.emailVerified && auth.currentUser?.phoneNumber) {
-              setRegisteredInFlow(false);
-              setStep("confirm");
-              persistProgress({ step: "confirm", registeredInFlow: false });
-            } else {
-              setRegisteredInFlow(true);
-              setStep("verify");
-              persistProgress({ step: "verify", registeredInFlow: true });
-              const email = auth.currentUser?.email;
-              if (email) {
-                try {
-                  await sendVerificationEmailWithFallback({
-                    email,
-                    role: "chef",
-                    returnUrl:
-                      resolveVerificationReturnPath() ||
-                      getAuthIntent()?.returnPath ||
-                      `${window.location.pathname}${window.location.search}`,
-                  });
-                } catch (err) {
-                  console.error("Tour Google verification email send failed:", err);
-                  setVerifyError(
-                    err instanceof Error && err.message
-                      ? err.message
-                      : t(
-                          "resendVerificationFailed",
-                          "Failed to send verification email. Tap Resend below."
-                        )
-                  );
-                }
-              }
-            }
-          },
-        }}
-        // Leaving the register step for the identifier step abandons a Google
-        // registration started there, and that path has no page load — so the load-time
-        // sweep cannot see it.
-        onDiscardPendingGoogleRegistration={() => void discardPendingGoogleRegistration()}
-        onGoogleSignIn={async () => {
-          await signInWithGoogle();
-          await refreshUserData();
-          setRegisteredInFlow(false);
-          setStep("confirm");
-          persistProgress({ step: "confirm", registeredInFlow: false });
-        }}
-        onPhoneExistingUser={async () => {
-          await refreshUserData();
-          setRegisteredInFlow(false);
-          setStep("confirm");
-          persistProgress({ step: "confirm", registeredInFlow: false });
-        }}
-      />
+      <KitchenJourneyAuth title="Continue your tour request" />
     </div>
   );
 
-  const renderVerifyStep = () => (
+  const renderVerifyStep = () => presentation === "page" ? (
+    <KitchenJourneyAuth title="Verify your email to continue" />
+  ) : (
     <div className="space-y-4">
-      {emailVerified && !phoneVerified ? (
-        <div className="rounded-[1.35rem] border-2 border-amber-300 bg-amber-50 p-5 text-center space-y-3">
-          <Phone className="mx-auto h-8 w-8 text-amber-700" aria-hidden />
-          <p className="text-lg font-bold text-gray-900">Verify your phone to continue</p>
-          <p className="text-sm text-gray-700">
-            Your account is registered. Add the OTP-verified phone from your profile, then return to this saved request.
-          </p>
-          <Button onClick={() => setLocation(chefDashboardHref("profile"))}>Open profile</Button>
-        </div>
-      ) : (
-      <>
       <div className="rounded-[1.35rem] border-2 border-[#F51042]/30 bg-[#F51042]/5 p-5 text-center space-y-3">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#F51042] text-white">
           <Mail className="h-6 w-6" aria-hidden />
@@ -780,18 +670,14 @@ export function ScheduleViewingWidget({
         <ArrowLeft className="h-4 w-4 mr-1" />
         {t("modalBack")}
       </Button>
-      </>
-      )}
     </div>
   );
 
   const renderConfirmStep = () => (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" onClick={handleBack} className="h-8 w-8">
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
+      <div className="flex items-center justify-between gap-3">
         <h3 className="text-base font-semibold">{t("confirmKitchenTour", "Confirm your kitchen tour request")}</h3>
+        <Button variant="ghost" size="sm" className="shrink-0 text-primary" onClick={handleBack}>Edit time</Button>
       </div>
 
       <Card className="border-primary/20">
@@ -820,7 +706,7 @@ export function ScheduleViewingWidget({
                 {selectedDate && format(selectedDate, "EEEE, MMMM d, yyyy")}
               </p>
               <p className="text-xs text-muted-foreground">
-                {selectedSlot?.startTime} — {selectedSlot?.endTime}
+                {selectedSlot && `${formatJourneyClock(selectedSlot.startTime)} – ${formatJourneyClock(selectedSlot.endTime)}`}
               </p>
             </div>
           </div>
@@ -907,7 +793,7 @@ export function ScheduleViewingWidget({
           <p>
             <span className="text-muted-foreground">{t("timeLabel", "Time:")}</span>{" "}
             <span className="font-medium">
-              {selectedSlot?.startTime} — {selectedSlot?.endTime}
+              {selectedSlot && `${formatJourneyClock(selectedSlot.startTime)} – ${formatJourneyClock(selectedSlot.endTime)}`}
             </span>
           </p>
         </CardContent>
@@ -937,8 +823,13 @@ export function ScheduleViewingWidget({
     </div>
   );
 
+  // In the dialog the wizard owns the scrolling, so this is its scroll body.
+  // In `presentation="page"` it sits inside KitchenJourneyLayout where the
+  // DOCUMENT is the scroller — and a nested overflow-y-auto that cannot scroll
+  // still swallows the wheel instead of chaining it to the page, which froze
+  // scrolling over the whole right column. Only be a scroll container in dialog mode.
   const body = (
-    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+    <div className={presentation === "page" ? undefined : "min-h-0 flex-1 overflow-y-auto overscroll-contain"}>
       {step === "date" && renderDateStep()}
       {step === "time" && renderTimeStep()}
       {step === "account" && renderAccountStep()}
@@ -950,7 +841,42 @@ export function ScheduleViewingWidget({
 
   return (
     <>
-      <Dialog
+      {presentation === "page" ? (
+        <KitchenJourneyLayout
+          eyebrow="Request a tour"
+          title={`Visit ${targetedKitchenName || locationName || "this kitchen"}`}
+          description="See the space in person before you request access. Choose a date and time, then use your Local Cooks account to send the tour request."
+          imageUrl={kitchenImageUrl}
+          onBack={requestClose}
+          aside={<div className="flex flex-col gap-6">
+            <div>
+              <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-primary">Your progress</p>
+              <h2 className="text-2xl font-semibold tracking-tight">{guidedChrome.title}</h2>
+              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{guidedChrome.subtext}</p>
+            </div>
+            {step !== "success" && renderGuideRail()}
+            <div className="rounded-2xl bg-muted/50 p-4 text-sm text-muted-foreground">
+              <p className="font-medium text-foreground">{targetedKitchenName || locationName}</p>
+              {selectedDate && selectedSlot ? (
+                <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                  <span>{format(selectedDate, "EEE, MMM d, yyyy")}</span>
+                  <span aria-hidden className="text-muted-foreground/60">·</span>
+                  <span className="font-medium text-foreground">
+                    {formatJourneyClock(selectedSlot.startTime)}–{formatJourneyClock(selectedSlot.endTime)}
+                  </span>
+                </p>
+              ) : (
+                <p className="mt-1">Pick a visit time. Local Cooks reviews each tour request before the kitchen sees it.</p>
+              )}
+            </div>
+          </div>}
+        >
+          <div className="min-w-0">
+            <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-primary">{step === "date" ? "Step 1 · Choose a date" : step === "time" ? "Step 2 · Choose a time" : "Your tour request"}</p>
+            <div className="max-w-3xl">{body}</div>
+          </div>
+        </KitchenJourneyLayout>
+      ) : <Dialog
         open={open}
         onOpenChange={(o) => {
           if (!o) requestClose();
@@ -1031,7 +957,7 @@ export function ScheduleViewingWidget({
             </div>
           </div>
         </DialogContent>
-      </Dialog>
+      </Dialog>}
 
       <AlertDialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>
         <AlertDialogContent>

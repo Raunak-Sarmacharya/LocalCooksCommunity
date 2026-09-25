@@ -3,7 +3,6 @@ import BenefitsSection from "@/components/home/BenefitsSection";
 import CTASection from "@/components/home/CTASection";
 import HeroSection from "@/components/home/HeroSection";
 import HowItWorksSection from "@/components/home/HowItWorksSection";
-import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
 import SEOHead from "@/components/SEO/SEOHead";
 import StatusEmailTest from "@/components/test/StatusEmailTest";
@@ -111,7 +110,6 @@ export default function Home() {
           </div>
         )}
       </main>
-      <Footer />
     </div>
   );
 }

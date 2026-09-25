@@ -3,7 +3,7 @@
  * Uses localStorage so intent survives cross-tab / email-link opens.
  */
 
-export type AuthIntentType = "tour" | "book";
+export type AuthIntentType = "tour" | "book" | "apply";
 
 export interface AuthIntent {
   type: AuthIntentType;

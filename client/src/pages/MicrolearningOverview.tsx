@@ -1,4 +1,3 @@
-import Footer from '@/components/layout/Footer';
 import Header from '@/components/layout/Header';
 import TrainingOverviewPanel from '@/components/training/TrainingOverviewPanel';
 import { Skeleton } from "@/components/ui/skeleton";
@@ -31,7 +30,6 @@ export default function MicrolearningOverview() {
             </div>
           </div>
         </main>
-        <Footer />
       </div>
     );
   }
@@ -52,7 +50,6 @@ export default function MicrolearningOverview() {
           <TrainingOverviewPanel />
         </div>
       </main>
-      <Footer />
     </div>
   );
 }

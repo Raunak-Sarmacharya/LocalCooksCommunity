@@ -125,7 +125,7 @@ export function useChefKitchenApplications() {
 
   // Get all kitchen applications for the chef
   const applicationsQuery = useQuery<KitchenApplicationWithLocation[], Error>({
-    queryKey: ["/api/firebase/chef/kitchen-applications"],
+    queryKey: ["/api/firebase/chef/kitchen-applications", user?.uid],
     queryFn: async () => {
       const headers = await getAuthHeaders();
       const response = await fetch("/api/firebase/chef/kitchen-applications", {
@@ -252,7 +252,7 @@ export function useGlobalMyApplications() {
   const { user } = useFirebaseAuth();
 
   const myApplicationsQuery = useQuery<any[], Error>({
-    queryKey: ["/api/applications/my-applications"],
+    queryKey: ["/api/applications/my-applications", user?.uid],
     queryFn: async () => {
       const headers = await getAuthHeaders();
       const response = await fetch("/api/applications/my-applications", {
@@ -281,8 +281,9 @@ export function useGlobalMyApplications() {
  * Used to determine if chef can book or needs to apply
  */
 export function useChefKitchenAccessForLocation(locationId: number | null) {
+  const { user } = useFirebaseAuth();
   const applicationsQuery = useQuery<KitchenAccessStatus, Error>({
-    queryKey: ["/api/firebase/chef/kitchen-access-status", locationId],
+    queryKey: ["/api/firebase/chef/kitchen-access-status", locationId, user?.uid],
     queryFn: async () => {
       if (!locationId) {
         return {
@@ -311,7 +312,7 @@ export function useChefKitchenAccessForLocation(locationId: number | null) {
 
       return await response.json();
     },
-    enabled: !!locationId,
+    enabled: !!locationId && !!user,
     retry: 1,
     staleTime: 30000,
   });
@@ -333,7 +334,7 @@ export function useChefKitchenApplicationForLocation(locationId: number | null) 
     KitchenApplicationWithLocation & { hasApplication: boolean; canBook: boolean },
     Error
   >({
-    queryKey: ["/api/firebase/chef/kitchen-applications/location", locationId],
+    queryKey: ["/api/firebase/chef/kitchen-applications/location", locationId, user?.uid],
     queryFn: async () => {
       if (!locationId) {
         return {

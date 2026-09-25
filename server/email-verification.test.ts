@@ -15,9 +15,20 @@ import {
   resolveEmailLinkUserType,
   resolveTrustedLinkOrigin,
   resolveAuthEmailLink,
+  sellerVerificationReturnPath,
 } from "./email-verification";
 
 const NOW = Date.parse("2026-09-15T12:00:00.000Z");
+
+describe("seller verification return", () => {
+  it("resumes only the chef's explicit seller journey", () => {
+    expect(sellerVerificationReturnPath('/?journey=seller', 'chef')).toBe('/?journey=seller');
+    expect(sellerVerificationReturnPath('/?source=landing&journey=seller', 'chef')).toBe('/?journey=seller');
+    expect(sellerVerificationReturnPath('/?journey=seller', 'manager')).toBeNull();
+    expect(sellerVerificationReturnPath('//evil.example/?journey=seller', 'chef')).toBeNull();
+    expect(sellerVerificationReturnPath('/auth?journey=seller', 'chef')).toBeNull();
+  });
+});
 
 function statusUser(overrides: Record<string, unknown> = {}) {
   return {

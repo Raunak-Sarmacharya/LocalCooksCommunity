@@ -766,13 +766,23 @@ textarea:focus {
 }
 
 /* Mobile-friendly button size */
-button:not([data-radix-collection-item]):not([role="checkbox"]):not([role="switch"]),
-.button,
-a[role="button"],
-[type="button"],
-[type="submit"] {
+/* Touch targets stay 44px on real controls only. The old selector also forced a
+   44px min-height/min-width on every <button>, which overrode icon buttons, tab
+   triggers and dialog close buttons and left pills with a dead 44px box. */
+a[role="button"] {
   @apply min-h-[44px];
-  /* Minimum height for touch targets */
+}
+
+/* Sidebar controls keep the 44px touch target the global rule used to provide.
+   `menu-button`/`menu-action`/`trigger`/`rail` are plain <button>s whose height
+   otherwise comes only from their utility classes (h-8/h-7/w-4), so without this
+   the sidebar rows visibly shrink. Scoped by `data-sidebar` so nothing else moves. */
+[data-sidebar="menu-button"],
+[data-sidebar="menu-action"],
+[data-sidebar="group-action"],
+[data-sidebar="trigger"],
+[data-sidebar="rail"] {
+  min-height: 44px;
 }
 
 /* Radio button specific styles - ensure circular shape */
@@ -828,9 +838,18 @@ a[role="button"],
     padding-right: 1rem;
   }
 
-  /* Touch-friendly buttons */
-  .btn,
-  button:not([role="checkbox"]):not([role="switch"]):not([role="radio"]) {
+  /* Touch-friendly buttons (icon-only controls are excluded so they stay square). */
+  .btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Keep sidebar controls at the 44px row height the previous global rule gave them. */
+  [data-sidebar="menu-button"],
+  [data-sidebar="menu-action"],
+  [data-sidebar="group-action"],
+  [data-sidebar="trigger"],
+  [data-sidebar="rail"] {
     min-height: 44px;
     min-width: 44px;
   }

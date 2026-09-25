@@ -344,18 +344,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { getEmailLinkOrigin } = await import('./email');
       const userType = userRole === 'manager' ? 'kitchen' : userRole === 'admin' ? 'admin' : 'chef';
 
-      const redirectPath = userRole === 'manager'
+      let redirectPath = userRole === 'manager'
         ? '/manager/login?verified=true'
         : userRole === 'admin'
           ? '/admin/login?verified=true'
           : '/auth?verified=true';
+
+      // Keep first-time seller registration in the journey that sent this
+      // verification email. Only this exact chef landing route is accepted.
+      const { sellerVerificationReturnPath, resolveAuthEmailLink } = await import('./email-verification');
+      redirectPath = sellerVerificationReturnPath(returnUrl, userRole) || redirectPath;
 
       // One origin for the whole email, resolved once. Previously the action URL came from
       // `getEmailLinkOrigin` (a public host) while the continue URL came from
       // `getFirebaseContinueUrl` -> `getSubdomainUrl` — two resolvers, two possible origins.
       // Keeping both on the caller's own environment also avoids the failure mode where the
       // public host is running an older build and the link answers "Invalid email action link".
-      const { resolveAuthEmailLink } = await import('./email-verification');
       const { linkOrigin, continueUrl } = resolveAuthEmailLink({
         callerOrigin: req.body?.origin,
         role: userRole,

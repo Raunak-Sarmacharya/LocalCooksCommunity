@@ -1,4 +1,3 @@
-import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
 import SEOHead from "@/components/SEO/SEOHead";
 import PrivacyContent from "@/components/legal/PrivacyContent";
@@ -49,11 +48,9 @@ export default function Privacy() {
             <Suspense fallback={<div>Loading privacy policy...</div>}>
               {renderContent()}
             </Suspense>
-
           </div>
         </motion.div>
       </main>
-      <Footer />
     </div>
   );
 } 

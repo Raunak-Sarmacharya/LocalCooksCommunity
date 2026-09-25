@@ -17,7 +17,7 @@ describe("resolvePreviewPrimaryCta", () => {
     ).toMatchObject({
       label: "Request to apply",
       kind: "request",
-      requireDates: true,
+      requireDates: false,
     });
   });
 
@@ -59,7 +59,7 @@ describe("resolvePreviewPrimaryCta", () => {
     ).toMatchObject({
       label: "Apply again",
       kind: "discover",
-      requireDates: true,
+      requireDates: false,
     });
     expect(resolvePreviewApplicationRoute("42", display)).toBe("/apply-kitchen/42");
   });

@@ -382,10 +382,8 @@ function AdminDashboard() {
 
       // Check for any pending document reviews across all applications
       const hasPendingDocumentReviews = data.some(app =>
-        app.status === "approved" && (
-          app.foodSafetyLicenseStatus === "pending" ||
-          app.foodEstablishmentCertStatus === "pending"
-        )
+        (app.foodSafetyLicenseUrl && app.foodSafetyLicenseStatus === "pending") ||
+        (app.foodEstablishmentCertUrl && app.foodEstablishmentCertStatus === "pending")
       );
 
       // Check for new applications awaiting review
@@ -413,6 +411,10 @@ function AdminDashboard() {
     gcTime: 10000, // Keep in cache for only 10 seconds (updated property name)
   });
 
+  // Keep an open review dialog on the latest server record when a chef uploads later.
+  useEffect(() => {
+    setSelectedApplication((current) => current ? applications.find((app) => app.id === current.id) || current : null);
+  }, [applications]);
 
   // Mutation to update application status
   const updateStatusMutation = useMutation({
@@ -792,8 +794,6 @@ function AdminDashboard() {
 
     // Quick Approve: User said yes to both and uploaded documents
     if (app.status !== "approved" &&
-      app.foodSafetyLicense === "yes" &&
-      app.foodEstablishmentCert === "yes" &&
       app.foodSafetyLicenseUrl &&
       app.foodEstablishmentCertUrl) {
       return (
@@ -1418,19 +1418,19 @@ function AdminDashboard() {
                         {/* Certification Status Indicators */}
                         <div className="flex flex-wrap gap-1.5 sm:gap-3">
                           <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg bg-gray-50 border">
-                            {getCertificationIcon(app.foodSafetyLicense)}
+                            {getCertificationIcon(app.foodSafetyLicenseUrl ? "yes" : app.foodSafetyLicense)}
                             <span className="text-xs sm:text-sm font-medium">
                               <span className="hidden sm:inline">Food Safety: </span>
                               <span className="sm:hidden">FSL: </span>
-                              {formatCertificationStatus(app.foodSafetyLicense)}
+                              {app.foodSafetyLicenseUrl ? "Uploaded" : formatCertificationStatus(app.foodSafetyLicense)}
                             </span>
                           </div>
                           <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg bg-gray-50 border">
-                            {getCertificationIcon(app.foodEstablishmentCert)}
+                            {getCertificationIcon(app.foodEstablishmentCertUrl ? "yes" : app.foodEstablishmentCert)}
                             <span className="text-xs sm:text-sm font-medium">
                               <span className="hidden lg:inline">Establishment: </span>
                               <span className="lg:hidden">Est: </span>
-                              {formatCertificationStatus(app.foodEstablishmentCert)}
+                              {app.foodEstablishmentCertUrl ? "Uploaded" : formatCertificationStatus(app.foodEstablishmentCert)}
                             </span>
                           </div>
                           <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg bg-gray-50 border">
@@ -1472,8 +1472,8 @@ function AdminDashboard() {
                           </Button>
                         </div>
 
-                        {/* Document Status Indicators (for approved applications) */}
-                        {app.status === "approved" && (
+                        {/* Uploaded documents are reviewable while the application is in review. */}
+                        {(app.foodSafetyLicenseUrl || app.foodEstablishmentCertUrl) && (
                           <div className="flex flex-col gap-1 text-right">
                             {app.foodSafetyLicenseUrl && (
                               <div className="flex items-center gap-1">
@@ -1619,13 +1619,13 @@ function AdminDashboard() {
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
                         <h5 className="text-xs font-medium text-blue-800">Food Safety License</h5>
-                        <p className="text-sm font-semibold text-blue-900">{formatCertificationStatus(selectedApplication.foodSafetyLicense)}</p>
+                        <p className="text-sm font-semibold text-blue-900">{selectedApplication.foodSafetyLicenseUrl ? "Uploaded" : formatCertificationStatus(selectedApplication.foodSafetyLicense)}</p>
                       </div>
                       <div className="p-3 bg-muted/40 rounded-lg border">
                         <h5 className="text-xs font-medium text-foreground">Food Establishment Cert</h5>
                         <div className="flex flex-col gap-2 mt-1">
-                          <p className="text-sm font-semibold">{formatCertificationStatus(selectedApplication.foodEstablishmentCert)}</p>
-                          {selectedApplication.foodEstablishmentCert !== 'yes' && (
+                          <p className="text-sm font-semibold">{selectedApplication.foodEstablishmentCertUrl ? "Uploaded" : formatCertificationStatus(selectedApplication.foodEstablishmentCert)}</p>
+                          {!selectedApplication.foodEstablishmentCertUrl && selectedApplication.foodEstablishmentCert !== 'yes' && (
                             <Button 
                               size="sm" 
                               variant="outline" 
@@ -1656,8 +1656,8 @@ function AdminDashboard() {
                     </div>
                   </div>
 
-                  {/* Document Verification - Only for approved */}
-                  {selectedApplication.status === "approved" && (
+                  {/* Show submitted documents before and after the application decision. */}
+                  {(selectedApplication.foodSafetyLicenseUrl || selectedApplication.foodEstablishmentCertUrl) && (
                     <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
                       <h4 className="text-sm font-semibold mb-3 text-indigo-800 flex items-center gap-2">
                         <Shield className="h-4 w-4" />

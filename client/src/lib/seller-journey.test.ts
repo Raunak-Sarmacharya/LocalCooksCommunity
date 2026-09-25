@@ -18,6 +18,18 @@ describe("seller journey draft", () => {
     expect(getSellerJourneyDraft()).toBeNull();
   });
 
+  it("keeps cooking plans before account details are collected by shared auth", () => {
+    saveSellerJourneyDraft({
+      fullName: "",
+      email: "",
+      phone: "",
+      kitchenPreference: "commercial",
+      termsAccepted: true,
+      termsAcceptedAt: Date.now(),
+    });
+    expect(getSellerJourneyDraft()?.kitchenPreference).toBe("commercial");
+  });
+
   it("builds a seller application with certifications deferred", () => {
     const payload = sellerJourneyPayload({
       fullName: " Ada Cook ",

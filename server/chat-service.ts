@@ -85,6 +85,10 @@ export async function initializeConversation(applicationData: {
         chefFirebaseUid,
         managerFirebaseUid,
       }, { merge: true });
+      await db
+        .update(chefKitchenApplications)
+        .set({ chat_conversation_id: existingConversation.id })
+        .where(eq(chefKitchenApplications.id, applicationData.id));
       return existingConversation.id;
     }
 

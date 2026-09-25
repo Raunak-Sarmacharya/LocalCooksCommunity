@@ -9,25 +9,39 @@ export type ViewingStatusBadge = {
 export type ChefTourRow = {
   id: number;
   locationId: number | null;
+  targetedKitchenId: number | null;
   locationName: string;
   locationAddress: string | null;
+  locationContactEmail: string | null;
+  locationContactPhone: string | null;
   kitchenName: string | null;
   status: string;
   scheduledAt: string;
+  updatedAt: string;
+  requestedRescheduleAt: string | null;
   durationMinutes: number | null;
   chefNotes: string | null;
   managerNotes: string | null;
   cancellationReason: string | null;
+  adminReviewReason: string | null;
+  noShowReason: string | null;
+  adminReviewedAt: string | null;
+  cancelledAt: string | null;
+  completedAt: string | null;
   managerName: string | null;
+  chefName: string | null;
+  chefEmail: string | null;
+  submittedAt: string;
+  timezone: string;
   intakeEntries: [string, unknown][];
 };
 
 export function viewingStatusBadge(status: string): ViewingStatusBadge {
   switch (status) {
     case "pending_local_cooks":
-      return { variant: "warning", labelKey: "tourStatusLocalCooksReview", defaultLabel: "Local Cooks review" };
+      return { variant: "warning", labelKey: "tourStatusPending", defaultLabel: "In review" };
     case "pending":
-      return { variant: "warning", labelKey: "tourStatusPending", defaultLabel: "Manager review" };
+      return { variant: "warning", labelKey: "tourStatusPending", defaultLabel: "In review" };
     case "confirmed":
       return { variant: "success", labelKey: "tourStatusConfirmed", defaultLabel: "Confirmed" };
     case "completed":
@@ -84,25 +98,42 @@ export function normalizeChefTourRow(item: unknown): ChefTourRow | null {
   return {
     id: viewing.id,
     locationId: viewing.locationId ?? null,
+    targetedKitchenId: viewing.targetedKitchenId ?? null,
     locationName: row.locationName || viewing.location?.name || "Kitchen location",
     locationAddress: row.locationAddress || viewing.location?.address || null,
+    locationContactEmail: row.locationContactEmail || null,
+    locationContactPhone: row.locationContactPhone || null,
     kitchenName: row.kitchenName || viewing.kitchen?.name || null,
     status: viewing.status || "pending",
     scheduledAt: viewing.scheduledAt,
+    updatedAt: viewing.updatedAt || viewing.createdAt || viewing.scheduledAt,
+    requestedRescheduleAt: viewing.requestedRescheduleAt ?? null,
     durationMinutes: viewing.durationMinutes ?? null,
     chefNotes: viewing.chefNotes ?? null,
     managerNotes: viewing.managerNotes ?? null,
     cancellationReason: viewing.cancellationReason ?? null,
+    adminReviewReason: viewing.adminReviewReason ?? null,
+    noShowReason: viewing.noShowReason ?? null,
+    adminReviewedAt: viewing.adminReviewedAt ?? null,
+    cancelledAt: viewing.cancelledAt ?? null,
+    completedAt: viewing.completedAt ?? null,
     managerName: row.managerName || null,
+    chefName: row.chefName || null,
+    chefEmail: row.chefEmail || null,
+    submittedAt: viewing.createdAt || viewing.submittedAt || "",
+    timezone: row.timezone || "America/St_Johns",
     intakeEntries,
   };
 }
 
 export function chefTourRowHasDetails(row: ChefTourRow): boolean {
   return Boolean(
+    row.submittedAt ||
     row.chefNotes?.trim() ||
       row.managerNotes?.trim() ||
       row.cancellationReason?.trim() ||
+      row.adminReviewReason?.trim() ||
+      row.noShowReason?.trim() ||
       row.intakeEntries.length > 0 ||
       row.status === "pending_local_cooks" ||
       row.status === "pending" ||
@@ -115,7 +146,7 @@ export function isPendingOrUpcomingTour(
   row: Pick<ChefTourRow, "status" | "scheduledAt" | "durationMinutes">,
   nowMs: number = Date.now()
 ): boolean {
-  if (row.status === "pending_local_cooks" || row.status === "pending") return true;
+  if (row.status === "pending_local_cooks" || row.status === "pending") return new Date(row.scheduledAt).getTime() >= nowMs;
   if (row.status !== "confirmed") return false;
   const start = new Date(row.scheduledAt).getTime();
   if (Number.isNaN(start)) return false;

@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import GradientHero from "@/components/ui/GradientHero";
 import FadeInSection from "@/components/ui/FadeInSection";
+import Footer from "@/components/layout/Footer";
 
 export default function ManagerLanding() {
   const { t } = useTranslation("manager");
@@ -153,6 +154,7 @@ export default function ManagerLanding() {
           </FadeInSection>
         </div>
       </GradientHero>
+      <Footer />
       </>
     );
   }

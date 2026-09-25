@@ -15,7 +15,7 @@ import { sendVerificationEmailWithFallback } from "@/lib/send-verification-email
 import { hasVerifiedEmail } from "@/lib/auth-verification";
 import { useEmailVerificationGuard } from "@/hooks/use-email-verification-guard";
 import { resolveChefDashboardNavigation } from "@shared/subdomain-utils";
-import { CheckCircle2, Loader2, Clock, RefreshCw, Mail, Phone } from "lucide-react";
+import { CheckCircle2, Loader2, Clock, RefreshCw, Mail } from "lucide-react";
 import { KitchenBookingPreferencesPanel, type EquipmentListingOption, type StorageListingOption } from "@/components/kitchen-application/KitchenBookingPreferencesPanel";
 import { BookingPriceSummary } from "@/components/kitchen-application/BookingPriceSummary";
 import { RequestToApplyFields, EMPTY_REQUEST_TO_APPLY_DRAFT, type RequestToApplyDraft } from "@/components/kitchen-application/request-to-apply-fields";
@@ -263,6 +263,7 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
   const [resendCooldown, setResendCooldown] = useState(0);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [applyDraft, setApplyDraft] = useState<ApplyDraft>(EMPTY_APPLY_DRAFT);
+  const [certificateFile, setCertificateFile] = useState<File | null>(null);
   const [applyUiStep, setApplyUiStep] = useState<ApplyUiStep>("request");
   const [stepValid, setStepValid] = useState(false);
 
@@ -317,6 +318,7 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
   // Restore after auth hydrates so signed-in chefs aren't sent to the guest verify step.
   useEffect(() => {
     if (authLoading || pendingRestoredRef.current) return;
+    if (/^\/(apply-kitchen|request-tour)\//.test(window.location.pathname)) return;
     pendingRestoredRef.current = true;
     const pending = getPendingApplicationModal();
     if (!pending || pending.phase === "submitted") return;
@@ -342,6 +344,7 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get("verified") !== "true") return;
+    if (/^\/(apply-kitchen|request-tour)\//.test(window.location.pathname)) return;
 
     setShowVerificationSuccess(true);
     const newUrl = window.location.pathname;
@@ -423,6 +426,7 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
         (stored.foodSafetyLicense as ApplyDraft["foodSafetyLicense"]) ||
         (registrationReview?.foodSafetyLicense as ApplyDraft["foodSafetyLicense"]) ||
         d.foodSafetyLicense,
+      foodSafetyLicenseExpiry: d.foodSafetyLicenseExpiry || stored.foodSafetyLicenseExpiry || "",
       usageFrequency: d.usageFrequency || stored.usageFrequency || "",
     }));
   }, [isOpen, user, registrationReview]);
@@ -516,6 +520,9 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
           }
         }
       });
+      if (certificateFile && applicationData.foodSafetyLicense === "yes") {
+        formData.append("foodSafetyLicenseFile", certificateFile);
+      }
 
       const KITCHEN_PREF_VALUES = ["commercial", "home", "notSure"] as const;
       if (
@@ -691,6 +698,7 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
     setRegistrationReview(null);
     setApplicationPhase(null);
     setApplyDraft(EMPTY_APPLY_DRAFT);
+    setCertificateFile(null);
     setApplyUiStep("request");
     setOptions({});
     setShowPreAuth(false);
@@ -867,7 +875,21 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
   };
 
   const applyDraftReady =
-    applyDraft.fullName.trim().split(/\s+/).length >= 2 && !!applyDraft.usageFrequency;
+    applyDraft.fullName.trim().split(/\s+/).length >= 2 &&
+    isValidNorthAmericanPhone(normalizePhoneNumber(applyDraft.phone) || "") &&
+    !!applyDraft.usageFrequency &&
+    (applyDraft.foodSafetyLicense === "yes" || applyDraft.foodSafetyLicense === "no") &&
+    (!certificateFile || !!applyDraft.foodSafetyLicenseExpiry);
+
+  const handleCertificateFileChange = (file: File | null) => {
+    if (file && (file.size > 5 * 1024 * 1024 || !["application/pdf", "image/jpeg", "image/png"].includes(file.type))) {
+      setSubmitError(t("invalidCertificateFile", "Choose a PDF, JPG or PNG under 5 MB"));
+      return;
+    }
+    setSubmitError(null);
+    setCertificateFile(file);
+    if (!file) setApplyDraft((draft) => ({ ...draft, foodSafetyLicenseExpiry: "" }));
+  };
 
   const persistApplyDraft = () => {
     const email = user?.email || registrationReview?.email || "";
@@ -880,6 +902,7 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
       businessType: applyDraft.businessType,
       businessDescription: applyDraft.businessDescription,
       foodSafetyLicense: applyDraft.foodSafetyLicense,
+      foodSafetyLicenseExpiry: certificateFile ? applyDraft.foodSafetyLicenseExpiry : "",
       foodEstablishmentCert: "notSure",
       kitchenPreference: "commercial",
       usageFrequency: applyDraft.usageFrequency,
@@ -1083,28 +1106,6 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
                     <>
                       {applicationPhase === "awaiting_verification" && !skipVerify ? (
                         <div className="space-y-4">
-                          {auth.currentUser?.emailVerified && !auth.currentUser?.phoneNumber ? (
-                            <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-5 text-center space-y-3">
-                              <Phone className="mx-auto h-8 w-8 text-amber-700" aria-hidden />
-                              <p className="text-lg font-bold text-gray-900">Verify your phone to continue</p>
-                              <p className="text-sm text-gray-700">
-                                Your application is saved. Verify your phone by OTP from your profile, then return here.
-                              </p>
-                              <Button onClick={() => {
-                                const destination = resolveChefDashboardNavigation(
-                                  "profile",
-                                  window.location.hostname,
-                                  window.location.port,
-                                  import.meta.env.VITE_VERCEL_ENV,
-                                );
-                                if (destination.sameOrigin) navigate(destination.path);
-                                else window.location.href = destination.href;
-                              }}>
-                                Open profile
-                              </Button>
-                            </div>
-                          ) : (
-                          <>
                           <div className="rounded-xl border-2 border-[#F51042]/30 bg-[#F51042]/5 p-5 text-center space-y-3">
                             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#F51042] text-white">
                               <Mail className="h-6 w-6" aria-hidden />
@@ -1206,8 +1207,6 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
                           {resendError && (
                             <p className="text-sm text-red-600 text-center">{resendError}</p>
                           )}
-                          </>
-                          )}
                         </div>
                       ) : (
                         <>
@@ -1216,6 +1215,8 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
                               draft={applyDraft}
                               onChange={(patch) => setApplyDraft((d) => ({ ...d, ...patch }))}
                               email={registrationReview.email || user?.email || undefined}
+                              certificateFile={certificateFile}
+                              onCertificateFileChange={handleCertificateFileChange}
                             />
                             {submitError && (
                               <p className="text-sm text-red-600">{submitError}</p>
@@ -1276,6 +1277,8 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
                           draft={applyDraft}
                           onChange={(patch) => setApplyDraft((d) => ({ ...d, ...patch }))}
                           email={user?.email || undefined}
+                          certificateFile={certificateFile}
+                          onCertificateFileChange={handleCertificateFileChange}
                         />
                         {submitError && <p className="text-sm text-red-600">{submitError}</p>}
                       </div>

@@ -1,0 +1,1 @@
+DejaVu Sans is embedded in kitchen tour confirmation PDFs so chef names and submitted answers in supported non-Latin scripts remain readable. The font is distributed under the Bitstream Vera license in `LICENSE.txt`; DejaVu's additions are public domain. See the [DejaVu license](https://dejavu-fonts.github.io/License.html).

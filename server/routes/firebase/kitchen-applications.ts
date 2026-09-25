@@ -7,6 +7,7 @@ import { chefLocationAccess, insertChefKitchenApplicationSchema, updateApplicati
 import { fromZodError } from 'zod-validation-error';
 // Import Domain Services
 import { chefApplicationService } from '../../domains/applications/chef-application.service';
+import { approvalDocumentUpdates, type ApprovalDocumentField } from '../../domains/applications/document-approval';
 import { LocationRepository } from '../../domains/locations/location.repository';
 import { LocationService } from '../../domains/locations/location.service';
 import { KitchenRepository } from '../../domains/kitchens/kitchen.repository';
@@ -15,9 +16,10 @@ import { ApplicationRepository } from '../../domains/applications/application.re
 import { ApplicationService } from '../../domains/applications/application.service';
 
 import { initializeConversation, sendSystemNotification, notifyTierTransition } from '../../chat-service';
-import { and, eq, isNotNull, ne } from 'drizzle-orm';
+import { and, eq, isNotNull, ne, inArray } from 'drizzle-orm';
 import { notificationService } from '../../services/notification.service';
 import { getChefPhone } from '../../phone-utils';
+import { getUserDisplayName } from '../../utils/user-display';
 import { 
     sendEmail, 
     generateNewKitchenApplicationManagerEmail,
@@ -55,7 +57,7 @@ router.post('/firebase/chef/kitchen-applications',
         try {
             logger.info(`🍳 POST /api/firebase/chef/kitchen-applications - Chef ${req.neonUser!.id} submitting kitchen application`);
 
-            if (req.firebaseUser?.email_verified !== true) {
+            if (req.firebaseUser?.email_verified !== true || !req.firebaseUser.email) {
                 return res.status(403).json({
                     error: "Please verify your email before submitting an application.",
                     code: "EMAIL_NOT_VERIFIED",
@@ -87,6 +89,7 @@ router.post('/firebase/chef/kitchen-applications',
                         logger.info(`✅ Uploaded food safety license: ${foodSafetyLicenseUrl}`);
                     } catch (uploadError) {
                         logger.error('❌ Failed to upload food safety license:', uploadError);
+                        throw uploadError;
                     }
                 }
 
@@ -208,22 +211,21 @@ router.post('/firebase/chef/kitchen-applications',
                 ''
             ).trim();
 
-            // For TIER 2 submissions (manager review, documents uploaded), apply strict
-            // phone validation because the chef has had full access to the form UX to fix.
-            //
-            // For TIER 1 submissions (which can be auto-submitted from the registration
-            // modal after email verification), if the phone is required but invalid, DON'T
-            // hard-fail. Instead save what we have normalized to empty and let the chef
-            // fix it later from the application page. This ensures the user's Step 1 is
-            // still created (with all their submitted info) instead of being stuck on a
-            // validation error that's confusing.
+
+            // Every initial kitchen request needs a valid phone number, regardless of
+            // manager-configured optional fields. Registration collects it too.
             const tierValue = parseInt((req.body.current_tier as string) || '1', 10);
             const isTier1 = !tierValue || tierValue === 1;
+            if (isTier1) {
+                const { phoneNumberSchema } = await import('@shared/phone-validation');
+                if (!phoneNumberSchema.safeParse(phoneInput).success) {
+                    return res.status(400).json({ error: 'A valid phone number is required before requesting kitchen access.' });
+                }
+            }
 
             if (requirements.requirePhone) {
                 if (!phoneInput || phoneInput === '') {
-                    // Tier 1: allow empty (request-to-apply phone is optional).
-                    // Tier 2: allow empty here and require-or-preserve after loading existingApp.
+                    // Tier 2 may preserve a number already on the application.
                     phoneValue = '';
                 } else {
                     const { phoneNumberSchema } = await import('@shared/phone-validation');
@@ -232,8 +234,7 @@ router.post('/firebase/chef/kitchen-applications',
                         phoneValue = phoneValidation.data;
                     } else {
                         if (isTier1) {
-                            // Tier 1: don't block submit. Save the raw input
-                            // (best-effort normalize) and chef can fix it later.
+                            // The Tier 1 validity gate above already rejects this case.
                             const { normalizePhoneNumber } = await import('@shared/phone-validation');
                             const normalized = normalizePhoneNumber(phoneInput);
                             phoneValue = normalized || phoneInput;
@@ -318,20 +319,6 @@ router.post('/firebase/chef/kitchen-applications',
                     });
                 }
 
-                if (requirements.requireEmail && (!req.body.email || req.body.email.trim() === '')) {
-                    return res.status(400).json({
-                        error: 'Validation error',
-                        message: 'Email is required for this location',
-                        details: [{
-                            code: 'too_small',
-                            minimum: 1,
-                            type: 'string',
-                            message: 'Email is required',
-                            path: ['email']
-                        }]
-                    });
-                }
-
                 // Business name/type/description/experience are optional on request-to-apply.
                 // Do not hard-fail Step 1 when missing — chef can complete later.
             }
@@ -342,6 +329,18 @@ router.post('/firebase/chef/kitchen-applications',
             let foodSafetyLicenseValue: "yes" | "no" | "notSure" = "notSure";
             if (req.body.foodSafetyLicense === "yes" || req.body.foodSafetyLicense === "no") {
                 foodSafetyLicenseValue = req.body.foodSafetyLicense;
+            }
+            if (isTier1 && foodSafetyLicenseValue === "notSure") {
+                return res.status(400).json({ error: 'Please answer yes or no for food safety certification.' });
+            }
+            if (isTier1 && foodSafetyLicenseUrl && foodSafetyLicenseValue !== 'yes') {
+                return res.status(400).json({ error: 'Select yes when uploading a food safety certificate.' });
+            }
+            if (isTier1 && foodSafetyLicenseUrl && !req.body.foodSafetyLicenseExpiry) {
+                return res.status(400).json({ error: 'Certificate expiry date is required with an upload.' });
+            }
+            if (foodSafetyLicenseUrl && (!req.body.foodSafetyLicenseExpiry || Number.isNaN(Date.parse(req.body.foodSafetyLicenseExpiry)) || Date.parse(req.body.foodSafetyLicenseExpiry) < Date.now() - 86400000)) {
+                return res.status(400).json({ error: 'Enter a valid future expiry date for the uploaded certificate.' });
             }
 
             // Food establishment cert is still a Tier 2 requirement - not validated at initial application
@@ -354,22 +353,25 @@ router.post('/firebase/chef/kitchen-applications',
                 fullName: req.body.fullName || `${firstName} ${lastName}`.trim() || 'N/A',
                 shopName: req.body.shopName || businessInfo.businessName || 'Shop Not Named',
                 shopAddress: req.body.shopAddress || 'Address Not Provided',
-                email: req.body.email || '',
+                email: req.firebaseUser.email,
                 phone: phoneValue,
                 kitchenPreference: req.body.kitchenPreference || "commercial",
                 businessDescription: req.body.businessDescription || undefined,
                 cookingExperience: req.body.cookingExperience || businessInfo.experience || undefined,
                 foodSafetyLicense: foodSafetyLicenseValue,
-                foodSafetyLicenseUrl: foodSafetyLicenseUrl || req.body.foodSafetyLicenseUrl || undefined,
+                foodSafetyLicenseUrl: foodSafetyLicenseUrl || undefined,
                 foodSafetyLicenseExpiry: req.body.foodSafetyLicenseExpiry || businessInfo.foodHandlerCertExpiry || undefined,
                 foodEstablishmentCert: foodEstablishmentCertValue,
-                foodEstablishmentCertUrl: foodEstablishmentCertUrl || req.body.foodEstablishmentCertUrl || undefined,
+                foodEstablishmentCertUrl: foodEstablishmentCertUrl || undefined,
                 foodEstablishmentCertExpiry: req.body.foodEstablishmentCertExpiry || businessInfo.foodEstablishmentCertExpiry || undefined,
                 customFieldsData: customFieldsData || undefined,
             };
 
             // Add tier fields if provided
             const currentTierValue = parseInt(req.body.current_tier) || 1;
+            if (currentTierValue !== 1 && currentTierValue !== 2) {
+                return res.status(400).json({ error: 'Only request and kitchen document submissions are accepted here.' });
+            }
             let existingApp: any;
             if (req.body.current_tier) {
                 formData.current_tier = currentTierValue;
@@ -379,8 +381,11 @@ router.post('/firebase/chef/kitchen-applications',
             if (currentTierValue === 2) {
                 // Get existing application to preserve Step 1 custom fields
                 existingApp = await chefApplicationService.getChefApplication(req.neonUser!.id, locationId);
+                if (!existingApp || existingApp.status !== 'approved' || !existingApp.tier1_completed_at) {
+                    return res.status(403).json({ error: 'Local Cooks must approve the initial request before kitchen documents can be submitted.' });
+                }
 
-                // Phone is optional on request-to-apply — require it here if still missing
+                // Preserve the previously collected phone number when Step 2 omits it.
                 if (!phoneValue || String(phoneValue).trim() === '') {
                     const existingPhone = existingApp?.phone ? String(existingApp.phone).trim() : '';
                     if (existingPhone) {
@@ -388,7 +393,7 @@ router.post('/firebase/chef/kitchen-applications',
                     } else {
                         return res.status(400).json({
                             error: 'Validation error',
-                            message: 'Phone number is required for Step 2',
+                            message: 'Phone number is required with kitchen documents',
                             details: [{
                                 code: 'custom',
                                 message: 'Phone number is required',
@@ -431,12 +436,6 @@ router.post('/firebase/chef/kitchen-applications',
                 }
                 if (!formData.cookingExperience && existingApp?.cookingExperience) {
                     formData.cookingExperience = existingApp.cookingExperience;
-                }
-                if (formData.foodSafetyLicense === 'no' && existingApp?.foodSafetyLicense && existingApp.foodSafetyLicense !== 'no') {
-                    // Keep prior yes/notSure unless a new license file is being set below
-                    if (!foodSafetyLicenseUrl && !req.body.foodSafetyLicenseUrl) {
-                        formData.foodSafetyLicense = existingApp.foodSafetyLicense;
-                    }
                 }
                 if (!formData.foodSafetyLicenseUrl && existingApp?.foodSafetyLicenseUrl) {
                     formData.foodSafetyLicenseUrl = existingApp.foodSafetyLicenseUrl;
@@ -499,34 +498,32 @@ router.post('/firebase/chef/kitchen-applications',
                     });
                 };
 
-                // Food Safety License is always required on Step 2
+                // The manager's single certificate setting covers the file and expiry.
                 const hasFoodSafetyLicense =
-                    foodSafetyLicenseUrl ||
-                    req.body.foodSafetyLicenseUrl ||
-                    existingApp?.foodSafetyLicenseUrl;
-                if (!hasFoodSafetyLicense) {
-                    return rejectStep2('Food Safety License is required for Step 2', 'foodSafetyLicenseFile');
+                    foodSafetyLicenseUrl || existingApp?.foodSafetyLicenseUrl;
+                if (requirements.requireFoodHandlerCert && (formData.foodSafetyLicense !== 'yes' || !hasFoodSafetyLicense)) {
+                    return rejectStep2('Food Safety License is required with kitchen documents', 'foodSafetyLicenseFile');
                 }
 
                 const hasFoodSafetyExpiry =
                     req.body.foodSafetyLicenseExpiry ||
                     businessInfo.foodHandlerCertExpiry ||
                     existingApp?.foodSafetyLicenseExpiry;
-                if (!hasFoodSafetyExpiry || String(hasFoodSafetyExpiry).trim() === '') {
-                    return rejectStep2('Food Safety License expiry date is required for Step 2', 'foodSafetyLicenseExpiry');
+                if (formData.foodSafetyLicense === 'yes' && hasFoodSafetyLicense && (!hasFoodSafetyExpiry || String(hasFoodSafetyExpiry).trim() === '')) {
+                    return rejectStep2('Food Safety License expiry date is required with kitchen documents', 'foodSafetyLicenseExpiry');
                 }
 
                 if (requirements.tier2_food_establishment_cert_required) {
-                    const hasFoodEstablishmentCert = foodEstablishmentCertUrl || req.body.foodEstablishmentCertUrl || existingApp?.foodEstablishmentCertUrl;
+                    const hasFoodEstablishmentCert = foodEstablishmentCertUrl || existingApp?.foodEstablishmentCertUrl;
                     if (!hasFoodEstablishmentCert) {
-                        return rejectStep2('Food Establishment Certificate is required for Tier 2', 'foodEstablishmentCert');
+                        return rejectStep2('Food Establishment Certificate is required with kitchen documents', 'foodEstablishmentCert');
                     }
                 }
 
                 if (requirements.tier2_food_establishment_expiry_required) {
                     const hasFoodEstablishmentExpiry = req.body.foodEstablishmentCertExpiry || businessInfo.foodEstablishmentCertExpiry || existingApp?.foodEstablishmentCertExpiry;
                     if (!hasFoodEstablishmentExpiry) {
-                        return rejectStep2('Food establishment license expiry date is required for Step 2', 'foodEstablishmentCertExpiry');
+                        return rejectStep2('Food establishment license expiry date is required with kitchen documents', 'foodEstablishmentCertExpiry');
                     }
                 }
 
@@ -534,14 +531,14 @@ router.post('/firebase/chef/kitchen-applications',
                     const existingTierFiles = (existingApp?.tier_data as Record<string, any> | undefined)?.tierFiles || {};
                     const hasInsuranceDoc = tierFileUrls['tier2_insurance_document'] || existingTierFiles.tier2_insurance_document;
                     if (!hasInsuranceDoc) {
-                        return rejectStep2('Insurance Document is required for Tier 2', 'tier2_insurance_document');
+                        return rejectStep2('Insurance Document is required with kitchen documents', 'tier2_insurance_document');
                     }
                 }
 
                 if (requirements.tier2_kitchen_experience_required) {
                     const kitchenExperienceDesc = tierData?.kitchen_experience_description;
                     if (!kitchenExperienceDesc || kitchenExperienceDesc.trim() === '') {
-                        return rejectStep2('Kitchen Experience Description is required for Tier 2', 'kitchenExperienceDescription');
+                        return rejectStep2('Kitchen Experience Description is required with kitchen documents', 'kitchenExperienceDescription');
                     }
                 }
             }
@@ -588,6 +585,8 @@ router.post('/firebase/chef/kitchen-applications',
                 ...(formData.tier_data && { tier_data: formData.tier_data }),
                 ...(formData.tier2_completed_at && { tier2_completed_at: formData.tier2_completed_at }),
                 ...(foodEstablishmentCertUrl && { foodEstablishmentCertUrl }),
+                ...(foodEstablishmentCertUrl && { foodEstablishmentCertStatus: 'pending' }),
+                ...(foodSafetyLicenseUrl && { foodSafetyLicenseStatus: 'pending' }),
                 // [FIX] Explicitly set customFieldsData from formData (not from Zod which may have empty default)
                 customFieldsData: formData.customFieldsData || parsedData.data.customFieldsData || {},
             };
@@ -646,6 +645,28 @@ router.post('/firebase/chef/kitchen-applications',
                     logger.info(`✅ Notified ${admins.length} admin(s) about kitchen application ${application.id}`);
                 } catch (adminNotificationError) {
                     logger.error('Error notifying admins about kitchen application:', adminNotificationError);
+                }
+            }
+
+            if (currentTierValue === 2) {
+                try {
+                    const admins = await db.select({ id: users.id })
+                        .from(users)
+                        .where(eq(users.role, 'admin'));
+                    for (const admin of admins) {
+                        await notificationService.createForManager({
+                            managerId: admin.id,
+                            type: 'application_new',
+                            priority: 'normal',
+                            title: 'Kitchen documents ready for review',
+                            message: `${formData.fullName || 'A chef'} submitted Kitchen Coordination documents for ${location.name || 'a kitchen'}.`,
+                            metadata: { applicationId: application.id, chefId: req.neonUser!.id, locationId: location.id, workflow: 'kitchen', step: 2 },
+                            actionUrl: '/admin?section=kitchen-applications-step1',
+                            actionLabel: 'Review documents',
+                        });
+                    }
+                } catch (adminNotificationError) {
+                    logger.error('Error notifying admins about Kitchen Coordination documents:', adminNotificationError);
                 }
             }
 
@@ -775,7 +796,31 @@ router.get('/firebase/chef/kitchen-applications', requireFirebaseAuthWithUser, a
                 });
                 if (conversationId) application.chat_conversation_id = conversationId;
             }));
-        res.json(applications);
+
+        // The chef sees one row per conversation, and every conversation is keyed
+        // to a location, not to a person. Without this the chat list had nothing
+        // to label the other party with and fell back to a bare "Manager" for all
+        // of them — so a chef working with two kitchens could not tell the threads
+        // apart. Resolved once per DISTINCT manager rather than per application,
+        // since a manager usually owns several locations.
+        const managerIds = [
+            ...new Set(
+                applications
+                    .map((application) => application.location?.managerId)
+                    .filter((id): id is number => typeof id === 'number' && id > 0),
+            ),
+        ];
+        const managerNames = new Map<number, string>();
+        await Promise.all(managerIds.map(async (id) => {
+            managerNames.set(id, await getUserDisplayName(id, 'manager'));
+        }));
+
+        res.json(applications.map((application) => ({
+            ...application,
+            managerName: application.location?.managerId
+                ? managerNames.get(application.location.managerId) ?? null
+                : null,
+        })));
     } catch (error) {
         logger.error('Error getting chef kitchen applications:', error);
         res.status(500).json({ error: 'Failed to get kitchen applications' });
@@ -937,18 +982,27 @@ router.patch('/firebase/chef/kitchen-applications/:id/documents',
 
             if (files) {
                 if (files['foodSafetyLicenseFile']?.[0]) {
+                    const expiry = String(req.body.foodSafetyLicenseExpiry || '');
+                    if (!Number.isFinite(Date.parse(expiry)) || Date.parse(expiry) < Date.now() - 86400000) {
+                        return res.status(400).json({ error: 'Enter a valid future expiry date with the replacement food safety certificate.' });
+                    }
                     try {
                         updateData.foodSafetyLicenseUrl = await uploadToBlob(files['foodSafetyLicenseFile'][0], req.neonUser!.id, 'documents');
+                        updateData.foodSafetyLicenseExpiry = expiry;
+                        updateData.foodSafetyLicenseStatus = 'pending';
                     } catch (uploadError) {
                         logger.error('❌ Failed to upload food safety license:', uploadError);
+                        throw uploadError;
                     }
                 }
 
                 if (files['foodEstablishmentCertFile']?.[0]) {
                     try {
                         updateData.foodEstablishmentCertUrl = await uploadToBlob(files['foodEstablishmentCertFile'][0], req.neonUser!.id, 'documents');
+                        updateData.foodEstablishmentCertStatus = 'pending';
                     } catch (uploadError) {
                         logger.error('❌ Failed to upload food establishment cert:', uploadError);
+                        throw uploadError;
                     }
                 }
             }
@@ -988,6 +1042,42 @@ router.get('/firebase/admin/kitchen-applications', requireFirebaseAuthWithUser, 
     }
 });
 
+router.patch('/firebase/admin/kitchen-applications/:id/verify-documents', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const applicationId = Number(req.params.id);
+        const { foodSafetyLicenseStatus, foodEstablishmentCertStatus } = req.body;
+        const reviewStatuses = ['approved', 'rejected'];
+        if (!Number.isInteger(applicationId) ||
+            (!foodSafetyLicenseStatus && !foodEstablishmentCertStatus) ||
+            (foodSafetyLicenseStatus && !reviewStatuses.includes(foodSafetyLicenseStatus)) ||
+            (foodEstablishmentCertStatus && !reviewStatuses.includes(foodEstablishmentCertStatus))) {
+            return res.status(400).json({ error: 'Choose a document to approve or reject.' });
+        }
+        const application = await chefApplicationService.getApplicationById(applicationId);
+        if (!application) return res.status(404).json({ error: 'Application not found' });
+        if (foodSafetyLicenseStatus && !application.foodSafetyLicenseUrl) return res.status(400).json({ error: 'No food safety certificate is on file.' });
+        if (foodSafetyLicenseStatus === 'approved' && (!application.foodSafetyLicenseExpiry || !Number.isFinite(Date.parse(application.foodSafetyLicenseExpiry)) || Date.parse(application.foodSafetyLicenseExpiry) < Date.now() - 86400000)) {
+            return res.status(400).json({ error: 'The certificate needs a current expiry date before it can be verified.' });
+        }
+        if (foodEstablishmentCertStatus && (!application.tier2_completed_at || !application.foodEstablishmentCertUrl)) {
+            return res.status(400).json({ error: 'Kitchen Coordination documents must be submitted before review.' });
+        }
+        if (foodEstablishmentCertStatus === 'approved' && application.foodEstablishmentCertExpiry && Date.parse(application.foodEstablishmentCertExpiry) < Date.now() - 86400000) {
+            return res.status(400).json({ error: 'The Food Establishment Licence has expired.' });
+        }
+        const updated = await chefApplicationService.updateApplicationDocuments({ id: applicationId, foodSafetyLicenseStatus, foodEstablishmentCertStatus });
+        if (updated.chat_conversation_id && (foodSafetyLicenseStatus === 'approved' || foodEstablishmentCertStatus === 'approved')) {
+            await sendSystemNotification(updated.chat_conversation_id, 'DOCUMENT_VERIFIED', {
+                documentName: foodSafetyLicenseStatus === 'approved' ? 'Food Safety Certificate' : 'Food Establishment Licence',
+            });
+        }
+        return res.json({ success: true, application: updated });
+    } catch (error) {
+        logger.error('Error reviewing food safety certificate:', error);
+        return res.status(500).json({ error: 'Failed to review certificate' });
+    }
+});
+
 /**
  * PATCH /api/firebase/admin/kitchen-applications/:id/status
  * Update application status (Admin)
@@ -1006,13 +1096,33 @@ router.patch('/firebase/admin/kitchen-applications/:id/status', requireFirebaseA
         if (!status || !['approved', 'rejected', 'inReview'].includes(status)) {
             return res.status(400).json({ error: 'Status must be "approved", "rejected", or "inReview"' });
         }
-
         // Fetch application BEFORE update so we can compare tiers
         const applicationBeforeUpdate = await chefApplicationService.getApplicationById(applicationId);
         if (!applicationBeforeUpdate) {
             return res.status(404).json({ error: 'Application not found' });
         }
         const previousTier = applicationBeforeUpdate.current_tier ?? 1;
+        const finalApproval = req.body.current_tier !== undefined;
+        if (req.body.verify_documents !== undefined && !finalApproval) {
+            return res.status(400).json({ error: 'Documents can only be verified with final kitchen approval.' });
+        }
+        if (finalApproval) {
+            if (status !== 'approved' || Number(req.body.current_tier) !== 3 || previousTier !== 2 || !applicationBeforeUpdate.tier2_completed_at) {
+                return res.status(400).json({ error: 'Kitchen Coordination documents must be submitted before final approval.' });
+            }
+            const { tierValidationService } = await import('../../domains/applications/tier-validation');
+            const requirements = await locationService.getLocationRequirementsWithDefaults(applicationBeforeUpdate.locationId);
+            let documentUpdates: Partial<Record<ApprovalDocumentField, 'approved'>>;
+            try { documentUpdates = approvalDocumentUpdates(applicationBeforeUpdate, req.body.verify_documents); }
+            catch (error: any) { return res.status(400).json({ error: error.message }); }
+            const validation = tierValidationService.validateTierRequirements({ ...applicationBeforeUpdate, ...documentUpdates } as any, requirements, 2);
+            if (!validation.valid) {
+                return res.status(400).json({ error: 'Required kitchen documents are incomplete or awaiting approval.', missingRequirements: validation.missingRequirements });
+            }
+            if (Object.keys(documentUpdates).length) {
+                await chefApplicationService.updateApplicationDocuments({ id: applicationId, ...documentUpdates });
+            }
+        }
 
         let updatedApplication = await chefApplicationService.updateApplicationStatus(
             applicationId,
@@ -1033,9 +1143,28 @@ router.patch('/firebase/admin/kitchen-applications/:id/status', requireFirebaseA
 
         logger.info(`✅ Application ${applicationId} ${status} by Admin ${user.id}`);
 
+        if (finalApproval && updatedApplication?.chefId) {
+            const [existingAccess] = await db.select({ chefId: chefLocationAccess.chefId })
+                .from(chefLocationAccess)
+                .where(and(eq(chefLocationAccess.chefId, updatedApplication.chefId), eq(chefLocationAccess.locationId, updatedApplication.locationId)))
+                .limit(1);
+            if (!existingAccess) {
+                await db.insert(chefLocationAccess).values({
+                    chefId: updatedApplication.chefId,
+                    locationId: updatedApplication.locationId,
+                    grantedBy: user.id,
+                    grantedAt: new Date(),
+                });
+            }
+        }
+
         // ─── Approval: chat, notifications, emails ─────────────────────
         if (status === 'approved' && updatedApplication) {
             const currentTier = updatedApplication.current_tier ?? 1;
+            const initialApproval = previousTier <= 1 && applicationBeforeUpdate.status !== 'approved';
+            const conversationId = initialApproval
+                ? await initializeConversation({ id: applicationId, chefId: applicationBeforeUpdate.chefId, locationId: applicationBeforeUpdate.locationId })
+                : updatedApplication.chat_conversation_id;
 
             // 1. Initialize chat conversation & send tier transition system messages
             if (currentTier > previousTier) {
@@ -1066,7 +1195,8 @@ router.patch('/firebase/admin/kitchen-applications/:id/status', requireFirebaseA
                         locationName: location?.name || 'Kitchen Location',
                         locationId: applicationBeforeUpdate.locationId,
                         applicationId: applicationBeforeUpdate.id,
-                        currentTier
+                        currentTier,
+                        conversationId: conversationId || undefined,
                     });
                     logger.info(`✅ In-app notification sent to chef ${applicationBeforeUpdate.chefId} for application ${applicationId}`);
                 }
@@ -1118,15 +1248,19 @@ router.patch('/firebase/admin/kitchen-applications/:id/status', requireFirebaseA
                         locationId: applicationBeforeUpdate.locationId,
                         type: 'application_new',
                         priority: 'normal',
-                        title: 'Application cleared by Local Cooks',
-                        message: `${applicationBeforeUpdate.fullName || 'A chef'} can now submit Kitchen Coordination documents for ${location.name || 'your kitchen'}.`,
+                        title: conversationId && initialApproval ? 'Chat with your chef is ready' : 'Application cleared by Local Cooks',
+                        message: conversationId && initialApproval
+                            ? `${applicationBeforeUpdate.fullName || 'A chef'} is approved to continue with ${location.name || 'your kitchen'}. Message them to coordinate their Food Establishment Licence before they submit kitchen documents.`
+                            : `${applicationBeforeUpdate.fullName || 'A chef'} can now submit Kitchen Coordination documents for ${location.name || 'your kitchen'}.`,
                         metadata: {
                             applicationId: applicationBeforeUpdate.id,
                             chefId: applicationBeforeUpdate.chefId,
                             step: 1,
                         },
-                        actionUrl: '/manager/dashboard?view=applications',
-                        actionLabel: 'View application',
+                        actionUrl: conversationId && initialApproval
+                            ? `/manager/dashboard?view=messages&conversation=${encodeURIComponent(conversationId)}`
+                            : '/manager/dashboard?view=applications',
+                        actionLabel: conversationId && initialApproval ? 'Message chef' : 'View application',
                     });
                     const [manager] = await db.select({ username: users.username })
                         .from(users)
@@ -1200,6 +1334,55 @@ router.patch('/firebase/admin/kitchen-applications/:id/status', requireFirebaseA
 // =============================================================================
 // 👨‍🍳 MANAGER KITCHEN APPLICATIONS - Review Chef Applications
 // =============================================================================
+
+/**
+ * 🔥 Conversation Participant Liveness (Firebase Auth)
+ * POST /api/firebase/chat/participant-status
+ *
+ * Body: { userIds: number[] }
+ * Returns: { existing: number[] }
+ *
+ * WHY THIS EXISTS
+ * ---------------
+ * Conversations live in Firestore; accounts live in Postgres. When an account is
+ * deleted the conversation survives with a dangling `chefId`/`managerId`, and the
+ * surviving party is left looking at a thread they can still type into but which
+ * nobody will ever answer.
+ *
+ * A delete-time flag alone is not enough: it does nothing for conversations that
+ * were already orphaned before the flag existed, and it silently misses any path
+ * that removes a user without going through the admin routes. Resolving liveness
+ * here — against the authoritative `users` table, on read — self-heals both.
+ *
+ * Takes an explicit id list rather than a conversation id so a list view can
+ * reconcile a whole page of threads in one request.
+ */
+router.post('/firebase/chat/participant-status', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+    try {
+        const raw = Array.isArray(req.body?.userIds) ? req.body.userIds : [];
+        const userIds = [
+            ...new Set(
+                raw
+                    .map((value: unknown) => Number(value))
+                    .filter((value: number) => Number.isInteger(value) && value > 0),
+            ),
+        ];
+
+        if (userIds.length === 0) {
+            return res.json({ existing: [] });
+        }
+
+        const rows = await db
+            .select({ id: users.id })
+            .from(users)
+            .where(inArray(users.id, userIds));
+
+        res.json({ existing: rows.map((row) => row.id) });
+    } catch (error) {
+        logger.error('Error resolving chat participant status:', error);
+        res.status(500).json({ error: 'Failed to resolve participant status' });
+    }
+});
 
 /**
  * 🔥 Get Kitchen Applications for Manager (Firebase Auth)
@@ -1282,6 +1465,29 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
         // Only Global Admins can approve Step 1 (current_tier === 1)
         if (application.current_tier === 1) {
             return res.status(403).json({ error: 'Kitchen Coordination must be submitted before the manager can review this application.' });
+        }
+
+        if (req.body.current_tier !== undefined) {
+            if ((application.current_tier ?? 1) !== 2) {
+                return res.status(409).json({ error: 'Kitchen Coordination is not awaiting final approval.' });
+            }
+            if (status !== 'approved' || Number(req.body.current_tier) !== 3 || !application.tier2_completed_at) {
+                return res.status(400).json({ error: 'Kitchen documents must be submitted before final approval.' });
+            }
+            const { tierValidationService } = await import('../../domains/applications/tier-validation');
+            const requirements = await locationService.getLocationRequirementsWithDefaults(application.locationId);
+            let documentUpdates: Partial<Record<ApprovalDocumentField, 'approved'>>;
+            try { documentUpdates = approvalDocumentUpdates(application, req.body.verify_documents); }
+            catch (error: any) { return res.status(400).json({ error: error.message }); }
+            const validation = tierValidationService.validateTierRequirements({ ...application, ...documentUpdates } as any, requirements, 2);
+            if (!validation.valid) {
+                return res.status(400).json({ error: 'Required kitchen documents are incomplete or awaiting approval.', missingRequirements: validation.missingRequirements });
+            }
+            if (Object.keys(documentUpdates).length) {
+                await chefApplicationService.updateApplicationDocuments({ id: applicationId, ...documentUpdates });
+            }
+        } else if (req.body.verify_documents !== undefined) {
+            return res.status(400).json({ error: 'Documents can only be verified with final kitchen approval.' });
         }
 
         // Update the status
@@ -1500,11 +1706,13 @@ router.patch('/manager/kitchen-applications/:id/verify-documents', requireFireba
         }
 
         const { foodSafetyLicenseStatus, foodEstablishmentCertStatus } = req.body;
-
         // Validate statuses
-        const validStatuses = ['pending', 'approved', 'rejected'];
+        const validStatuses = ['approved', 'rejected'];
+        if (!foodSafetyLicenseStatus && !foodEstablishmentCertStatus) {
+            return res.status(400).json({ error: 'Choose a document to approve or reject.' });
+        }
         if (foodSafetyLicenseStatus && !validStatuses.includes(foodSafetyLicenseStatus)) {
-            return res.status(400).json({ error: 'Invalid food safety license status' });
+            return res.status(400).json({ error: 'Invalid food safety certificate status' });
         }
         if (foodEstablishmentCertStatus && !validStatuses.includes(foodEstablishmentCertStatus)) {
             return res.status(400).json({ error: 'Invalid food establishment cert status' });
@@ -1521,12 +1729,23 @@ router.patch('/manager/kitchen-applications/:id/verify-documents', requireFireba
         if (!location || location.managerId !== user.id) {
             return res.status(403).json({ error: 'Access denied to this application' });
         }
-        if ((application.current_tier ?? 1) < 2) {
-            return res.status(403).json({ error: 'Kitchen Coordination is not ready for manager review.' });
+        if ((application.current_tier ?? 1) < 2 || !application.tier2_completed_at) {
+            return res.status(403).json({ error: 'Kitchen Coordination documents must be submitted before manager review.' });
         }
-
         // Update document statuses
         const updateData: any = { id: applicationId };
+        if (foodSafetyLicenseStatus && !application.foodSafetyLicenseUrl) {
+            return res.status(400).json({ error: 'No food safety certificate is on file.' });
+        }
+        if (foodSafetyLicenseStatus === 'approved' && (!application.foodSafetyLicenseExpiry || !Number.isFinite(Date.parse(application.foodSafetyLicenseExpiry)) || Date.parse(application.foodSafetyLicenseExpiry) < Date.now() - 86400000)) {
+            return res.status(400).json({ error: 'The certificate needs a current expiry date before it can be verified.' });
+        }
+        if (foodEstablishmentCertStatus && !application.foodEstablishmentCertUrl) {
+            return res.status(400).json({ error: 'No Food Establishment Licence is on file.' });
+        }
+        if (foodEstablishmentCertStatus === 'approved' && application.foodEstablishmentCertExpiry && Date.parse(application.foodEstablishmentCertExpiry) < Date.now() - 86400000) {
+            return res.status(400).json({ error: 'The Food Establishment Licence has expired.' });
+        }
         if (foodSafetyLicenseStatus) updateData.foodSafetyLicenseStatus = foodSafetyLicenseStatus;
         if (foodEstablishmentCertStatus) updateData.foodEstablishmentCertStatus = foodEstablishmentCertStatus;
 
@@ -1602,6 +1821,10 @@ router.patch('/manager/kitchen-applications/:id/tier', requireFirebaseAuthWithUs
 
         if ((application.current_tier ?? 1) < 2) {
             return res.status(403).json({ error: 'Kitchen Coordination is not ready for manager review.' });
+        }
+
+        if (parsed.data.current_tier >= 3) {
+            return res.status(400).json({ error: 'Use final application approval to grant booking access.' });
         }
 
         // Update tier

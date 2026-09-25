@@ -9,7 +9,9 @@ export function shouldAutoSubmitSellerJourney(opts: {
   subdomain: SubdomainType;
   role?: string | null;
   isManager?: boolean | null;
+  journeyActive: boolean;
 }): boolean {
+  if (!opts.journeyActive) return false;
   if (opts.subdomain === "kitchen" || opts.subdomain === "admin") return false;
   if (opts.role === "manager" || opts.isManager || opts.role === "admin") return false;
   return true;

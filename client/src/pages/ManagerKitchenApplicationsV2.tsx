@@ -13,7 +13,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
@@ -22,29 +21,16 @@ import { useLocation } from "wouter";
 import { DataTable } from "@/components/ui/data-table";
 import { getApplicationColumnsV2 } from "@/components/manager/applications/columns-v2";
 import { ApplicationDetailPanel } from "@/components/manager/applications/components/ApplicationDetailPanel";
+import { KitchenDocumentApprovalDialog, getKitchenDocumentApprovalPlan, type KitchenDocumentField } from "@/components/common/KitchenDocumentApprovalDialog";
 import { Application } from "@/components/manager/applications/types";
 import { cn } from "@/lib/utils";
 import { tt } from "@/i18n/common-ns";
 
-/**
- * Manager Kitchen Applications Page - Enterprise Edition
- * 
- * A complete redesign featuring:
- * - TanStack Table with sorting, filtering, and column visibility
- * - Sheet-based detail panel (replaces modal for better UX)
- * - Step 1/Step 2 tabbed navigation in detail view
- * - Real-time unread chat indicators
- * - Enterprise-grade styling inspired by Notion
- */
 export default function ManagerKitchenApplicationsV2() {
   
     const [, setLocation] = useLocation();
     return (
-        <ManagerPageLayout
-            title={mt("chefApplications")}
-            description={mt("reviewAndManageChefApplicationsToYourKitchenLocations")}
-            showKitchenSelector={false}
-        >
+        <ManagerPageLayout showKitchenSelector={false}>
             {({ selectedLocationId, isLoading: isLayoutLoading }) => (
                 <ManagerKitchenApplicationsContent
                     selectedLocationId={selectedLocationId}
@@ -60,17 +46,22 @@ export function ManagerKitchenApplicationsContent({
     selectedLocationId,
     isLayoutLoading,
     setLocation,
-    onNavigateToView
+    onNavigateToView,
+    onApplicationChange,
+    onRegisterListAction
 }: {
     selectedLocationId: number | null,
     isLayoutLoading: boolean,
     setLocation: (path: string) => void,
-    onNavigateToView?: (view: string) => void
+    onNavigateToView?: (view: string) => void,
+    onApplicationChange?: (applicationName: string | null) => void,
+    onRegisterListAction?: (showList: () => void) => void
 }) {
     const {
         applications,
         isLoading,
         updateApplicationStatus,
+        verifyDocuments,
         revokeAccess
     } = useManagerKitchenApplications();
 
@@ -78,8 +69,11 @@ export function ManagerKitchenApplicationsContent({
     
     // State
     const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
-    const [showDetailSheet, setShowDetailSheet] = useState(false);
     const [reviewFeedback, setReviewFeedback] = useState("");
+    const [approvalIssues, setApprovalIssues] = useState<string[]>([]);
+    const [approvalDocuments, setApprovalDocuments] = useState<{ field: KitchenDocumentField; label: string }[]>([]);
+    const [showApprovalDialog, setShowApprovalDialog] = useState(false);
+    const [isCombinedApproving, setIsCombinedApproving] = useState(false);
     const [statusFilter, setStatusFilter] = useState<string>("all");
     const [searchQuery, setSearchQuery] = useState("");
 
@@ -191,7 +185,7 @@ export function ManagerKitchenApplicationsContent({
             if (!response.ok) return null;
             return response.json();
         },
-        enabled: !!selectedApplication?.locationId && showDetailSheet,
+        enabled: !!selectedApplication?.locationId,
     });
 
     // Unread counts tracking
@@ -270,33 +264,40 @@ export function ManagerKitchenApplicationsContent({
 
     // Handlers
     const openDetailSheet = (application: Application) => {
+        const url = new URL(window.location.href);
+        url.searchParams.set('application', String(application.id));
+        window.history.pushState({}, '', url);
         setSelectedApplication(application);
         setReviewFeedback(application.feedback || "");
-        setShowDetailSheet(true);
+        onApplicationChange?.(application.fullName);
     };
 
     const closeDetailSheet = useCallback(() => {
-        setShowDetailSheet(false);
+        const url = new URL(window.location.href);
+        url.searchParams.delete('application');
+        window.history.replaceState({}, '', url);
         setSelectedApplication(null);
         setReviewFeedback("");
-        
-        // Fix for Radix UI bug #1241: pointer-events: none stuck on body after dialog close
-        // This ensures the body is clickable again after the sheet closes
-        setTimeout(() => {
-            document.body.style.pointerEvents = '';
-        }, 0);
-    }, []);
+        onApplicationChange?.(null);
+    }, [onApplicationChange]);
 
-    // Cleanup effect for Sheet close - ensures pointer-events are restored
     useEffect(() => {
-        if (!showDetailSheet) {
-            // Additional cleanup after animation completes (300ms is the close animation duration)
-            const timer = setTimeout(() => {
-                document.body.style.pointerEvents = '';
-            }, 350);
-            return () => clearTimeout(timer);
-        }
-    }, [showDetailSheet]);
+        onRegisterListAction?.(closeDetailSheet);
+    }, [closeDetailSheet, onRegisterListAction]);
+
+    useEffect(() => () => onApplicationChange?.(null), [onApplicationChange]);
+
+    useEffect(() => {
+        const syncApplicationFromUrl = () => {
+            const id = Number(new URLSearchParams(window.location.search).get('application'));
+            const application = id ? applications.find((item) => item.id === id) : null;
+            setSelectedApplication(application ?? null);
+            onApplicationChange?.(application?.fullName ?? null);
+        };
+        syncApplicationFromUrl();
+        window.addEventListener('popstate', syncApplicationFromUrl);
+        return () => window.removeEventListener('popstate', syncApplicationFromUrl);
+    }, [applications, onApplicationChange]);
 
     const openChat = async (application: Application) => {
         let currentManagerId = managerId;
@@ -374,7 +375,7 @@ export function ManagerKitchenApplicationsContent({
         }
     };
 
-    const handleApproveTier2 = async () => {
+    const approveTier2 = async (verifyFields?: KitchenDocumentField[]) => {
         if (!selectedApplication) return;
         try {
             await updateApplicationStatus.mutateAsync({
@@ -382,16 +383,50 @@ export function ManagerKitchenApplicationsContent({
                 status: 'approved',
                 currentTier: 3,
                 feedback: reviewFeedback || undefined,
+                verifyDocuments: verifyFields,
             });
             toast({ title: mt("step2Approved"),
                 description: mt("chefIsNowFullyApprovedAndCanBookKitchens"),
             });
             closeDetailSheet();
+            setShowApprovalDialog(false);
         } catch (error: any) {
-            toast({ title: mt("error"),
-                description: error.message || "Failed to approve Kitchen Coordination",
-                variant: "destructive",
-            });
+            setApprovalIssues(String(error.message || "Could not approve this application.").split('; ').filter(Boolean));
+            setApprovalDocuments([]);
+            setShowApprovalDialog(true);
+        }
+    };
+
+    const handleApproveTier2 = () => {
+        if (!selectedApplication) return;
+        const plan = getKitchenDocumentApprovalPlan(selectedApplication, locationRequirements);
+        if (plan.issues.length || plan.toVerify.length) {
+            setApprovalIssues(plan.issues);
+            setApprovalDocuments(plan.toVerify);
+            setShowApprovalDialog(true);
+            return;
+        }
+        void approveTier2();
+    };
+
+    const handleVerifyAndApprove = async () => {
+        if (!selectedApplication || !approvalDocuments.length) return;
+        setIsCombinedApproving(true);
+        try {
+            await approveTier2(approvalDocuments.map(({ field }) => field));
+        } finally {
+            setIsCombinedApproving(false);
+        }
+    };
+
+    const handleVerifyDocument = async (field: 'foodSafetyLicenseStatus' | 'foodEstablishmentCertStatus', status: 'approved' | 'rejected') => {
+        if (!selectedApplication) return;
+        try {
+            await verifyDocuments.mutateAsync({ applicationId: selectedApplication.id, [field]: status });
+            setSelectedApplication({ ...selectedApplication, [field]: status });
+            toast({ title: status === 'approved' ? 'Document verified' : 'Document needs a replacement' });
+        } catch (error: any) {
+            toast({ title: mt('error'), description: error.message || 'Could not review document', variant: 'destructive' });
         }
     };
 
@@ -486,6 +521,34 @@ export function ManagerKitchenApplicationsContent({
 
     return (
         <div className="space-y-6">
+            {selectedApplication ? (
+                <div className="mx-auto max-w-5xl space-y-6">
+                    {!onApplicationChange && (
+                        <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-sm">
+                            <button type="button" onClick={closeDetailSheet} className="text-muted-foreground hover:text-foreground hover:underline">
+                                {mt("chefApplications")}
+                            </button>
+                            <span aria-hidden="true" className="text-muted-foreground/50">/</span>
+                            <span aria-current="page" className="font-medium text-foreground">{selectedApplication.fullName}</span>
+                        </nav>
+                    )}
+                    <div className="bg-background">
+                        <ApplicationDetailPanel
+                            application={selectedApplication}
+                            locationRequirements={locationRequirements}
+                            onApprove={handleApprove}
+                            onApproveTier2={handleApproveTier2}
+                            onVerifyDocument={handleVerifyDocument}
+                            onReject={handleReject}
+                            onRevokeAccess={handleRevokeAccess}
+                            onOpenChat={() => openChat(selectedApplication)}
+                            isUpdating={updateApplicationStatus.isPending || verifyDocuments.isPending || revokeAccess.isPending}
+                            reviewFeedback={reviewFeedback}
+                            onFeedbackChange={setReviewFeedback}
+                        />
+                    </div>
+                </div>
+            ) : <>
             {/* Header */}
             <div className="flex items-start justify-between gap-4">
                 <div>
@@ -587,6 +650,7 @@ export function ManagerKitchenApplicationsContent({
                         <DataTable
                             columns={columns}
                             data={filteredApplications}
+                            onRowClick={openDetailSheet}
                             filterColumn="fullName"
                             filterPlaceholder={mt("filterByName")}
                         />
@@ -614,63 +678,15 @@ export function ManagerKitchenApplicationsContent({
                 </CardContent>
             </Card>
 
-            {/* Detail Sheet - with Radix pointer-events fix */}
-            <Sheet 
-                open={showDetailSheet} 
-                onOpenChange={(open) => {
-                    if (!open) {
-                        closeDetailSheet();
-                    } else {
-                        setShowDetailSheet(true);
-                    }
-                }}
-            >
-                <SheetContent 
-                    side="right" 
-                    className="w-full sm:max-w-2xl p-0 overflow-hidden flex flex-col"
-                    onCloseAutoFocus={(e) => {
-                        // Prevent default focus behavior and ensure body pointer-events are restored
-                        e.preventDefault();
-                        document.body.style.pointerEvents = '';
-                    }}
-                    onEscapeKeyDown={() => {
-                        // Ensure cleanup on escape key
-                        setTimeout(() => {
-                            document.body.style.pointerEvents = '';
-                        }, 0);
-                    }}
-                    onPointerDownOutside={() => {
-                        // Ensure cleanup on outside click
-                        setTimeout(() => {
-                            document.body.style.pointerEvents = '';
-                        }, 0);
-                    }}
-                >
-                    <VisuallyHidden>
-                        <SheetTitle>{mt("applicationDetails")}</SheetTitle>
-                        <SheetDescription>{mt("reviewChefApplication2")}</SheetDescription>
-                    </VisuallyHidden>
-                    {selectedApplication && (
-                        <ApplicationDetailPanel
-                            application={selectedApplication}
-                            locationRequirements={locationRequirements}
-                            onApprove={handleApprove}
-                            onApproveTier2={handleApproveTier2}
-                            onReject={handleReject}
-                            onRevokeAccess={handleRevokeAccess}
-                            onOpenChat={() => {
-                                setShowDetailSheet(false);
-                                openChat(selectedApplication);
-                            }}
-                            onClose={closeDetailSheet}
-                            isUpdating={updateApplicationStatus.isPending || revokeAccess.isPending}
-                            reviewFeedback={reviewFeedback}
-                            onFeedbackChange={setReviewFeedback}
-                        />
-                    )}
-                </SheetContent>
-            </Sheet>
-
+            </>}
+            <KitchenDocumentApprovalDialog
+                open={showApprovalDialog}
+                onOpenChange={setShowApprovalDialog}
+                issues={approvalIssues}
+                toVerify={approvalDocuments}
+                onVerifyAndApprove={handleVerifyAndApprove}
+                processing={isCombinedApproving || updateApplicationStatus.isPending || verifyDocuments.isPending}
+            />
             {/* Chat Dialog - with Radix pointer-events fix */}
             <Dialog 
                 open={showChatDialog} 

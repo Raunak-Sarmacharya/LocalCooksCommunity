@@ -38,6 +38,8 @@ export class ApplicationRepository {
       .insert(applications)
       .values({
         ...data,
+        ...(data.foodSafetyLicenseUrl ? { foodSafetyLicense: "yes" as const } : {}),
+        ...(data.foodEstablishmentCertUrl ? { foodEstablishmentCert: "yes" as const } : {}),
         status: "inReview",
         createdAt: now,
         foodSafetyLicenseStatus: data.foodSafetyLicenseUrl ? "pending" : "pending", // Default
@@ -65,6 +67,8 @@ export class ApplicationRepository {
       .update(applications)
       .set({
         ...updates,
+        ...(updates.foodSafetyLicenseUrl ? { foodSafetyLicense: "yes" as const } : {}),
+        ...(updates.foodEstablishmentCertUrl ? { foodEstablishmentCert: "yes" as const } : {}),
         ...resetStatus
       } as any)
       .where(eq(applications.id, id))

@@ -1055,7 +1055,7 @@ function ApplicationCard({
       case 'inReview':
         return (
           <Badge variant="warning">
-            <Clock className="h-3 w-3 mr-1" />{mt("pending")}</Badge>
+            <Clock className="h-3 w-3 mr-1" />{mt("awaitingAdminReview")}</Badge>
         );
       case 'approved': {
         const tier = application.current_tier ?? 1;
@@ -1074,7 +1074,7 @@ function ApplicationCard({
         if (tier === 1) {
           return (
             <Badge variant="info">
-              <Check className="h-3 w-3 mr-1" />{mt("step1Done")}</Badge>
+              <Clock className="h-3 w-3 mr-1" />{mt("step1Done")}</Badge>
           );
         }
 

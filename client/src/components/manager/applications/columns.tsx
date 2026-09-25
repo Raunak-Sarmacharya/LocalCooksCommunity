@@ -15,7 +15,7 @@ function StatusBadge({ application }: { application: Application }) {
     const hasStep2 = !!application.tier2_completed_at;
 
     if (status === "inReview") {
-        return <Badge variant="warning">{mt("pendingReview")}</Badge>;
+        return <Badge variant="warning">{mt("awaitingAdminReview")}</Badge>;
     }
     if (status === "approved") {
         if (tier === 2 && hasStep2) {
@@ -43,6 +43,13 @@ interface ApplicationColumnsProps {
     onChat?: (app: Application) => void;
     onViewDocuments?: (app: Application) => void;
     onReview?: (app: Application) => void;
+    /**
+     * Approve the document/coordination stage directly from the row. Distinct
+     * from `onApprove` (Step 1) because the stage depends on the application's
+     * tier — the caller resolves it. Optional: surfaces that already put these
+     * controls in their own dialog can leave it off.
+     */
+    onApproveStage?: (app: Application) => void;
 }
 
 export function getApplicationColumns({
@@ -50,7 +57,8 @@ export function getApplicationColumns({
     onReject,
     onChat,
     onViewDocuments,
-    onReview
+    onReview,
+    onApproveStage
 }: ApplicationColumnsProps): ColumnDef<Application>[] {
     return [
         {
@@ -130,6 +138,29 @@ export function getApplicationColumns({
                                 <DropdownMenuItem onClick={() => onViewDocuments(app)}>
                                     <Eye className="mr-2 h-4 w-4" />{mt("viewDocuments")}</DropdownMenuItem>
                             )}
+
+                            {/* Stage-aware approval, visible from the row so the admin
+                                does not have to open a dialog to see that Kitchen
+                                Coordination is waiting on them.
+
+                                Only the Step-2 case appears here: an `inReview` row
+                                already has its own Approve / Review Application items
+                                below, and duplicating them would put two identical
+                                actions in one menu. */}
+                            {onApproveStage && (() => {
+                                const tier = app.current_tier ?? 1;
+                                const hasStep2 = !!app.tier2_completed_at;
+                                if (!(app.status === "approved" && tier === 2 && hasStep2)) return null;
+                                return (
+                                    <DropdownMenuItem
+                                        onClick={() => onApproveStage(app)}
+                                        className="text-primary focus:text-primary"
+                                    >
+                                        <Check className="mr-2 h-4 w-4" />
+                                        {mt("approveStep2")}
+                                    </DropdownMenuItem>
+                                );
+                            })()}
 
                             {app.status === "inReview" && (
                                 <>

@@ -6,7 +6,6 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useKitchenBookings } from "../hooks/use-kitchen-bookings";
 import Header from "@/components/layout/Header";
-import Footer from "@/components/layout/Footer";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { useStoragePricing } from "@/hooks/use-storage-pricing";
@@ -498,7 +497,6 @@ export default function BookingConfirmationPage() {
             </div>
           </div>
         </main>
-        <Footer />
       </div>
     );
   }
@@ -517,7 +515,6 @@ export default function BookingConfirmationPage() {
             </div>
           </div>
         </main>
-        <Footer />
       </div>
     );
   }
@@ -842,7 +839,7 @@ export default function BookingConfirmationPage() {
           </div>
         </div>
       </main>
-      <Footer />
+      
       {gate}
     </div>
   );

@@ -29,7 +29,7 @@ import { SmartImage } from "@/components/ui/smart-image";
 import { tt } from "@/i18n/common-ns";
 import { mt } from "@/i18n/manager";
 import { ChefBookingReceiptBreakdown, KitchenPayoutStatementBreakdown } from "@/components/booking/BookingPricingBreakdown";
-import { kitchenCheckinPolicyTimes } from '@/lib/kitchen-checkin-policy';
+import { CheckinPolicyTimesCard } from "@/components/booking/CheckinPolicyTimesCard";
 
 interface BookingDetails {
   id: number;
@@ -1151,32 +1151,18 @@ export default function BookingDetailsPage() {
     booking.checkoutEnabled === true && booking.checkinStatus === 'checked_in';
   const renderChefCheckinPolicy = (startTime: string) => {
     if (!booking || isManagerView || booking.checkinWindowMinutesBefore == null || booking.noShowGraceMinutes == null) return null;
-    const times = kitchenCheckinPolicyTimes(
-      booking.bookingDate.split('T')[0], startTime,
-      booking.operatingWindowStartTime || booking.startTime,
-      booking.location?.timezone || 'America/St_Johns',
-      booking.checkinWindowMinutesBefore, booking.noShowGraceMinutes,
-    );
     return (
-      <div className="mt-4 border-t pt-4">
-        <div className="grid gap-5 sm:grid-cols-3 sm:divide-x sm:divide-border">
-          <div className="sm:pr-4">
-            <p className="text-xs text-muted-foreground">{t('bdCheckinOpens', { defaultValue: 'Check-in opens' })}</p>
-            <p className="mt-1 text-sm font-medium">{formatEventTimestamp(times.opensAt.toISOString())}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">{t('bdMinutesBeforeStart', { count: booking.checkinWindowMinutesBefore, defaultValue: `${booking.checkinWindowMinutesBefore} minutes before start` })}</p>
-          </div>
-          <div className="sm:px-4">
-            <p className="text-xs text-muted-foreground">{t('bdVisitStarts', { defaultValue: 'Visit starts' })}</p>
-            <p className="mt-1 text-sm font-medium">{formatEventTimestamp(times.startsAt.toISOString())}</p>
-          </div>
-          <div className="sm:pl-4">
-            <p className="text-xs text-muted-foreground">{t('bdNoShowAfter', { defaultValue: 'No-show may be recorded after' })}</p>
-            <p className="mt-1 text-sm font-medium">{formatEventTimestamp(times.noShowAfter.toISOString())}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">{t('bdMinutesAfterStart', { count: booking.noShowGraceMinutes, defaultValue: `${booking.noShowGraceMinutes} minutes after start` })}</p>
-          </div>
-        </div>
-        <p className="mt-3 text-xs text-muted-foreground">{t('bdKitchenLocalTime', { defaultValue: 'Times are shown in the kitchen’s local time (St. John’s).' })}</p>
-      </div>
+      <CheckinPolicyTimesCard
+        className="mt-4 border-t pt-4"
+        showIntro={false}
+        layout="responsive"
+        bookingDate={booking.bookingDate}
+        startTime={startTime}
+        operatingWindowStartTime={booking.operatingWindowStartTime || booking.startTime}
+        timezone={booking.location?.timezone || "America/St_Johns"}
+        checkinWindowMinutesBefore={booking.checkinWindowMinutesBefore}
+        noShowGraceMinutes={booking.noShowGraceMinutes}
+      />
     );
   };
   const bookingContent = booking && (
@@ -1668,31 +1654,68 @@ export default function BookingDetailsPage() {
             </section>
           )}
 
-          {/* Contact details follow the booking content in either view. */}
+          {/* Contact details — same header / hint / content pattern as Contact Local Cooks. */}
           {!isManagerView && booking.kitchenContact?.email && (
-            <section className="rounded-2xl border bg-card p-5 sm:p-6">
-              <h2 className="text-sm font-semibold">{t('bdContactKitchen', { defaultValue: 'Contact the kitchen' })}</h2>
-              <p className="mt-1 text-xs text-muted-foreground">{t('bdContactKitchenHint', { defaultValue: 'Questions about your visit? Reach the kitchen directly.' })}</p>
-              <div className="mt-4 flex flex-wrap gap-x-6 gap-y-3 text-sm">
-                <a className="inline-flex min-w-0 items-center gap-2 text-foreground underline-offset-4 hover:underline" href={`mailto:${booking.kitchenContact.email}`}><Mail className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="break-all">{booking.kitchenContact.email}</span></a>
-                {booking.kitchenContact.phone && <a className="inline-flex items-center gap-2 text-foreground underline-offset-4 hover:underline" href={`tel:${booking.kitchenContact.phone}`}><Phone className="h-4 w-4 text-muted-foreground" />{formatContactPhone(booking.kitchenContact.phone)}</a>}
+            <section className="rounded-2xl border bg-card p-5">
+              <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                {t('bdContactKitchen', { defaultValue: 'Contact the kitchen' })}
+              </h3>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {t('bdContactKitchenHint', { defaultValue: 'Questions about your visit? Reach the kitchen directly.' })}
+              </p>
+              <div className="mt-4 space-y-3 text-sm">
+                <a
+                  className="flex min-w-0 items-center gap-2 text-foreground underline-offset-4 hover:underline"
+                  href={`mailto:${booking.kitchenContact.email}`}
+                >
+                  <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 break-all">{booking.kitchenContact.email}</span>
+                </a>
+                {booking.kitchenContact.phone ? (
+                  <a
+                    className="flex items-center gap-2 text-foreground underline-offset-4 hover:underline"
+                    href={`tel:${booking.kitchenContact.phone}`}
+                  >
+                    <Phone className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    {formatContactPhone(booking.kitchenContact.phone)}
+                  </a>
+                ) : null}
               </div>
             </section>
           )}
 
           {isManagerView && booking.chef && (
-            <section className="rounded-2xl border bg-card p-5 sm:p-6">
-              <h2 className="text-sm font-semibold">{t('bdContactChef', { defaultValue: 'Contact the chef' })}</h2>
-              <p className="mt-1 text-sm text-muted-foreground">{booking.chef.fullName || booking.chef.username}</p>
-              <div className="mt-4 flex flex-wrap gap-x-6 gap-y-3 text-sm">
-                <a className="inline-flex min-w-0 items-center gap-2 text-foreground underline-offset-4 hover:underline" href={`mailto:${booking.chef.username}`}>
-                  <Mail className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="break-all">{booking.chef.username}</span>
+            <section className="rounded-2xl border bg-card p-5">
+              <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                {t('bdContactChef', { defaultValue: 'Contact the chef' })}
+              </h3>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {t('bdContactChefHint', {
+                  defaultValue: 'Questions about this booking? Reach the chef directly.',
+                })}
+              </p>
+              <div className="mt-4 space-y-3 text-sm">
+                {(booking.chef.fullName || booking.chef.username) ? (
+                  <p className="font-medium text-foreground">
+                    {booking.chef.fullName || booking.chef.username}
+                  </p>
+                ) : null}
+                <a
+                  className="flex min-w-0 items-center gap-2 text-foreground underline-offset-4 hover:underline"
+                  href={`mailto:${booking.chef.username}`}
+                >
+                  <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 break-all">{booking.chef.username}</span>
                 </a>
-                {booking.chef.phone && (
-                  <a className="inline-flex items-center gap-2 text-foreground underline-offset-4 hover:underline" href={`tel:${booking.chef.phone}`}>
-                    <Phone className="h-4 w-4 shrink-0 text-muted-foreground" />{formatContactPhone(booking.chef.phone)}
+                {booking.chef.phone ? (
+                  <a
+                    className="flex items-center gap-2 text-foreground underline-offset-4 hover:underline"
+                    href={`tel:${booking.chef.phone}`}
+                  >
+                    <Phone className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    {formatContactPhone(booking.chef.phone)}
                   </a>
-                )}
+                ) : null}
               </div>
             </section>
           )}

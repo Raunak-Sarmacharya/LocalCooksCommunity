@@ -99,7 +99,7 @@ export function resolvePreviewPrimaryCta(args: {
     return {
       label: t("applyAgain", "Apply again"),
       kind: "discover",
-      requireDates: true,
+      requireDates: false,
       variant: "default",
     };
   }
@@ -107,7 +107,7 @@ export function resolvePreviewPrimaryCta(args: {
   return {
     label: t("requestToApply", "Request to apply"),
     kind: "request",
-    requireDates: true,
+    requireDates: false,
     variant: "default",
   };
 }

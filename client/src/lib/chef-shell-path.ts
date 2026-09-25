@@ -10,6 +10,7 @@ export function isChefShellPath(pathname: string): boolean {
   if (path.startsWith("/kitchen-preview/") || path.includes("/kitchen-preview/")) return true;
   if (path.startsWith("/booking/") && !path.startsWith("/manager/")) return true;
   if (path.startsWith("/apply-kitchen/")) return true;
+  if (path.startsWith("/request-tour/")) return true;
   if (path.startsWith("/kitchen-requirements/")) return true;
   return false;
 }

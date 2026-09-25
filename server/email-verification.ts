@@ -207,6 +207,12 @@ export function hasRecentFirebaseAuth(authTime: unknown, nowMs = Date.now()): bo
  * Prefer the caller's own origin when it is a trusted host for this role; otherwise fall
  * back to the public host. Returning both values from one call makes divergence impossible.
  */
+export function sellerVerificationReturnPath(returnUrl: unknown, role: string): string | null {
+  if (role !== 'chef' || typeof returnUrl !== 'string' || !returnUrl.startsWith('/') || returnUrl.startsWith('//')) return null;
+  const url = new URL(returnUrl, 'https://localcooks.invalid');
+  return url.pathname === '/' && url.searchParams.get('journey') === 'seller' ? '/?journey=seller' : null;
+}
+
 export function resolveAuthEmailLink(input: {
   callerOrigin: unknown;
   role: string | null | undefined;

@@ -5,7 +5,9 @@ export type ChefNavItemId =
   | "seller-revenue"
   | "my-account"
   | "kitchen-applications"
+  | "kitchen-requests"
   | "discover-kitchens"
+  | "viewings"
   | "bookings"
   | "messages"
   | "notifications"
@@ -16,6 +18,7 @@ export type ChefNavItem = {
   labelKey: string;
   /** Iconify MDI id, e.g. mdi:view-dashboard-outline */
   icon: string;
+  children?: ChefNavItem[];
 };
 
 export type ChefNavSection = {
@@ -40,6 +43,7 @@ export const chefNavSections: ChefNavSection[] = [
       { id: "overview", labelKey: "shellOverview", icon: "mdi:view-dashboard-outline" },
       { id: "applications", labelKey: "shellMyApplication", icon: "mdi:file-document-outline" },
       { id: "training", labelKey: "shellTraining", icon: "mdi:school-outline" },
+      { id: "bookings", labelKey: "shellMyBookings", icon: "mdi:calendar-month-outline" },
     ],
   },
   {
@@ -52,11 +56,15 @@ export const chefNavSections: ChefNavSection[] = [
   },
   {
     id: "section-kitchens",
-    titleKey: "shellKitchens",
     items: [
-      { id: "kitchen-applications", labelKey: "shellMyKitchens", icon: "mdi:office-building-outline" },
-      { id: "discover-kitchens", labelKey: "shellDiscoverKitchens", icon: "mdi:magnify" },
-      { id: "bookings", labelKey: "shellMyBookings", icon: "mdi:calendar-month-outline" },
+      {
+        id: "discover-kitchens", labelKey: "shellKitchens", icon: "mdi:office-building-outline",
+        children: [
+          { id: "kitchen-requests", labelKey: "shellKitchenApplications", icon: "mdi:file-document-outline" },
+          { id: "kitchen-applications", labelKey: "shellApprovedKitchens", icon: "mdi:check-circle-outline" },
+          { id: "viewings", labelKey: "shellKitchenTours", icon: "mdi:eye-outline" },
+        ],
+      },
     ],
   },
   {
@@ -71,13 +79,15 @@ export const chefNavSections: ChefNavSection[] = [
 ];
 
 export function findChefNavSectionForView(view: string): ChefNavSection | undefined {
-  return chefNavSections.find((section) => section.items.some((item) => item.id === view));
+  return chefNavSections.find((section) => section.items.some((item) => item.id === view || item.children?.some((child) => child.id === view)));
 }
 
 export function findChefNavItem(view: string): ChefNavItem | undefined {
   for (const section of chefNavSections) {
     const item = section.items.find((i) => i.id === view);
     if (item) return item;
+    const child = section.items.flatMap((i) => i.children || []).find((i) => i.id === view);
+    if (child) return child;
   }
   return undefined;
 }

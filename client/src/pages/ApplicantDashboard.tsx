@@ -96,7 +96,7 @@ export default function ApplicantDashboard() {
   const getInitialTab = () => {
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
-    if (view && ['overview', 'applications', 'kitchen-applications', 'discover-kitchens', 'viewings', 'bookings', 'training', 'messages', 'support', 'feedback', 'seller-revenue', 'my-account', 'transactions', 'issues-refunds', 'notifications', 'profile'].includes(view)) {
+    if (view && ['overview', 'applications', 'kitchen-applications', 'kitchen-requests', 'discover-kitchens', 'viewings', 'bookings', 'training', 'messages', 'support', 'feedback', 'seller-revenue', 'my-account', 'transactions', 'issues-refunds', 'notifications', 'profile'].includes(view)) {
       return view;
     }
     return 'overview';
@@ -175,7 +175,7 @@ export default function ApplicantDashboard() {
   // through tabs we pushed onto history.
   useEffect(() => {
     const VALID_VIEWS = [
-      'overview', 'applications', 'kitchen-applications', 'discover-kitchens',
+      'overview', 'applications', 'kitchen-applications', 'kitchen-requests', 'discover-kitchens',
       'viewings', 'bookings', 'training', 'messages', 'support', 'feedback',
       'damage-claims', 'issues-refunds', 'profile', 'seller-revenue', 'my-account', 'transactions'
     ];
@@ -791,7 +791,7 @@ export default function ApplicantDashboard() {
 
   const discoverKitchensTabContent = (
     <KitchenDiscovery
-      defaultTab={activeTab === "viewings" ? "tours" : "discover"}
+      defaultTab={activeTab === "viewings" ? "tours" : activeTab === "kitchen-requests" ? "applications" : "discover"}
     />
   );
 
@@ -805,6 +805,7 @@ export default function ApplicantDashboard() {
       case "kitchen-applications":
         return <div className="space-y-8 animate-in fade-in-50 duration-500">{kitchenApplicationsTabContent}</div>;
       case "discover-kitchens":
+      case "kitchen-requests":
       case "viewings":
         return <div className="space-y-8 animate-in fade-in-50 duration-500">{discoverKitchensTabContent}</div>;
       case "bookings":
@@ -926,26 +927,20 @@ export default function ApplicantDashboard() {
     if (activeTab === 'kitchen-applications') {
       return [
         ...baseBreadcrumbs,
-        { label: t("shellMyKitchens"), navId: "kitchen-applications" as const },
+        { label: t("shellKitchens"), onClick: () => setActiveTab("discover-kitchens") },
+        { label: t("shellApprovedKitchens"), navId: "kitchen-applications" as const },
       ];
     }
 
     if (activeTab === 'discover-kitchens') {
-      return [
-        ...baseBreadcrumbs,
-        { label: t("shellDiscoverKitchens"), navId: "discover-kitchens" as const },
-      ];
+      return [...baseBreadcrumbs, { label: t("shellKitchens"), navId: "discover-kitchens" as const }];
     }
 
-    if (activeTab === 'viewings') {
+    if (activeTab === 'kitchen-requests' || activeTab === 'viewings') {
       return [
         ...baseBreadcrumbs,
-        {
-          label: t("shellDiscoverKitchens"),
-          onClick: () => setActiveTab("discover-kitchens"),
-          navId: "discover-kitchens" as const,
-        },
-        { label: t("shellKitchenTours") },
+        { label: t("shellKitchens"), onClick: () => setActiveTab("discover-kitchens") },
+        { label: t(activeTab === 'viewings' ? "shellKitchenTours" : activeTab === 'kitchen-requests' ? "shellKitchenApplications" : "shellDiscoverKitchens"), navId: activeTab },
       ];
     }
 
@@ -973,9 +968,7 @@ export default function ApplicantDashboard() {
   }, [activeTab, applicationViewMode, trainingViewMode, t, guardedApplicationNavigate]);
 
   const shellActiveView =
-    activeTab === "viewings"
-      ? "discover-kitchens"
-      : activeTab === "transactions"
+    activeTab === "transactions"
         ? "bookings"
         : activeTab;
 

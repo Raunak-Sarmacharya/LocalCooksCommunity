@@ -180,22 +180,22 @@ function resolveApplicationDisplay(
     };
   }
 
-  if (status === "inreview" || status === "pending") {
+  if (status === "inreview" || status === "pending" || status === "new") {
     // Legacy/buggy path: admin approval used to leave status=inReview while bumping tier ≥ 2.
     // Treat that as Step 2 unlocked so chefs aren't stuck behind a "waiting" screen.
     if (tier >= 2 && !step2Submitted) {
       return {
-        label: tr("ksActionNeeded", "Action needed"),
+        label: tr("kdAwaitingDocuments", "Awaiting kitchen documents"),
         tone: "warning",
         step: 2,
-        stepCaption: tr("kdCompleteStep2", "Complete Step 2 of 3"),
+        stepCaption: tr("kdCompleteStep2", "Submit kitchen documents"),
         actionLabel: tr("kdContinue", "Continue"),
         actionKind: "complete-step",
       };
     }
 
     return {
-      label: tr("kdInReview", "In review"),
+      label: tr("kdAwaitingAdminReview", "Awaiting admin review"),
       tone: "progress",
       step: 1,
       stepCaption: tr("kdStep1Of3", "Request to apply"),
@@ -206,7 +206,7 @@ function resolveApplicationDisplay(
 
   if (status === "approved" && tier >= 3) {
     return {
-      label: tr("kdReadyToBook", "Book Now"),
+      label: tr("kdApproved", "Approved"),
       tone: "success",
       step: 3,
       stepCaption: tr("ovReady", "Book Now"),
@@ -217,10 +217,10 @@ function resolveApplicationDisplay(
 
   if (status === "approved" && step2Submitted) {
     return {
-      label: tr("kdInReview", "In review"),
+      label: tr("kdDocumentsAwaitingReview", "Kitchen documents awaiting review"),
       tone: "progress",
       step: 2,
-      stepCaption: tr("kdStep2Of3Submitted", "Step 2 of 3 · submitted"),
+      stepCaption: tr("kdStep2Of3Submitted", "Kitchen documents submitted"),
       actionLabel: tr("kdApplicationInProgress", "Application in progress"),
       actionKind: "wait",
     };
@@ -228,10 +228,10 @@ function resolveApplicationDisplay(
 
   if (status === "approved" && (tier === 2 || tier === 1) && !step2Submitted) {
     return {
-      label: tr("ksActionNeeded", "Action needed"),
+      label: tr("kdAwaitingDocuments", "Awaiting kitchen documents"),
       tone: "warning",
       step: 2,
-      stepCaption: tr("kdCompleteStep2", "Complete Step 2 of 3"),
+      stepCaption: tr("kdCompleteStep2", "Submit kitchen documents"),
       actionLabel: tr("kdContinue", "Continue"),
       actionKind: "complete-step",
     };
@@ -239,7 +239,7 @@ function resolveApplicationDisplay(
 
   if (status === "approved") {
     return {
-      label: tr("kdStep1Approved", "Request to apply approved"),
+      label: tr("kdAwaitingDocuments", "Awaiting kitchen documents"),
       tone: "progress",
       step: 1,
       stepCaption: tr("kdContinueToStep2", "Continue"),

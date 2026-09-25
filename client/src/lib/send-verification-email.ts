@@ -66,7 +66,7 @@ export async function sendVerificationEmailWithFallback(options: {
   ) {
     if (canUseFirebaseClient(email)) {
       logger.warn("Custom verification SMTP failed, trying Firebase fallback");
-      await sendFirebaseVerification(email, message);
+      await sendFirebaseVerification(email, message, resolvedReturnUrl);
       return { channel: "firebase" };
     }
   }
@@ -84,7 +84,8 @@ function canUseFirebaseClient(email: string): boolean {
 
 async function sendFirebaseVerification(
   email: string,
-  serverError?: string
+  serverError?: string,
+  returnUrl?: string,
 ): Promise<void> {
   const firebaseUser = auth.currentUser;
   if (!firebaseUser?.email) {
@@ -109,7 +110,7 @@ async function sendFirebaseVerification(
   );
 
   await sendEmailVerification(firebaseUser, {
-    url: `${origin}/auth?verified=true`,
+    url: `${origin}${returnUrl?.startsWith('/?') && new URL(returnUrl, origin).searchParams.get('journey') === 'seller' ? '/?journey=seller' : '/auth?verified=true'}`,
     handleCodeInApp: false,
   });
 

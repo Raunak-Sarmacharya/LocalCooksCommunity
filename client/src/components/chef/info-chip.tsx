@@ -5,7 +5,7 @@ import type { StatusTone } from "@/components/chef/applications/status";
 import type { StatusVariant } from "@/components/chef/dashboard/types";
 
 /** Badge / status visual keys that InfoChip can map to a tone. */
-export type InfoChipVariant = StatusVariant | "info" | "count";
+export type InfoChipVariant = StatusVariant | "info" | "count" | "brand";
 
 /**
  * Discover kitchen card chip surface — exact reference for chef/booking info chips.
@@ -141,7 +141,7 @@ export function InfoChip({
         );
 
   return (
-    <span className={cn(infoChipClassName, className)} {...props}>
+    <span className={cn(infoChipClassName, variant === "brand" && "border border-primary/20 bg-primary/10 text-primary shadow-none [&_svg]:!text-primary", className)} {...props}>
       <span
         className={cn(infoChipIconShellClass, infoChipIconClass(tone))}
         aria-hidden

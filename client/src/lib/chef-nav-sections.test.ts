@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
-import { sidebarBranchForView, type ChefBreadcrumb } from "./chef-nav-sections";
+import { chefNavSections, findChefNavItem, sidebarBranchForView, type ChefBreadcrumb } from "./chef-nav-sections";
+
+{
+  const kitchens = chefNavSections.flatMap((section) => section.items).find((item) => item.id === "discover-kitchens");
+  assert.deepEqual(kitchens?.children?.map((item) => item.id), ["kitchen-requests", "kitchen-applications", "viewings"]);
+  assert.equal(findChefNavItem("viewings")?.labelKey, "shellKitchenTours");
+}
 
 {
   // Discover → kitchen → book nests under Discover (book is child of kitchen in UI)

@@ -72,14 +72,23 @@ export class ChefApplicationService {
                         username: users.username,
                         role: users.role,
                         createdAt: users.createdAt, // When the chef account was created
-                    }
+                    },
+                    // Same reason as getAllApplications: the manager review surface
+                    // needs the location's manager id to open a correctly-attributed
+                    // conversation.
+                    location: {
+                        id: locations.id,
+                        name: locations.name,
+                        address: locations.address,
+                        managerId: locations.managerId,
+                    },
                 })
                 .from(chefKitchenApplications)
                 .leftJoin(users, eq(chefKitchenApplications.chefId, users.id))
                 .where(and(
                     eq(chefKitchenApplications.locationId, locationId),
                     or(
-                        isNotNull(chefKitchenApplications.tier1_completed_at),
+                        and(eq(chefKitchenApplications.status, 'approved'), isNotNull(chefKitchenApplications.tier1_completed_at)),
                         gte(chefKitchenApplications.current_tier, 2)
                     )
                 ))
@@ -245,7 +254,12 @@ export class ChefApplicationService {
                     location: {
                         id: locations.id,
                         name: locations.name,
-                        address: locations.address
+                        address: locations.address,
+                        // The admin Step 1 view opens a chat against this
+                        // application. Without the location's manager here there
+                        // was no way to name the real counterpart, so admins ended
+                        // up passed as the manager themselves.
+                        managerId: locations.managerId,
                     }
                 })
                 .from(chefKitchenApplications)
@@ -294,7 +308,7 @@ export class ChefApplicationService {
                 .where(and(
                     inArray(chefKitchenApplications.locationId, locationIds),
                     or(
-                        isNotNull(chefKitchenApplications.tier1_completed_at),
+                        and(eq(chefKitchenApplications.status, 'approved'), isNotNull(chefKitchenApplications.tier1_completed_at)),
                         gte(chefKitchenApplications.current_tier, 2)
                     )
                 ))
@@ -526,6 +540,7 @@ export class ChefApplicationService {
     async updateApplicationDocuments(data: {
         id: number;
         foodSafetyLicenseUrl?: string;
+        foodSafetyLicenseExpiry?: string;
         foodEstablishmentCertUrl?: string;
         foodSafetyLicenseStatus?: "pending" | "approved" | "rejected";
         foodEstablishmentCertStatus?: "pending" | "approved" | "rejected";
@@ -535,6 +550,7 @@ export class ChefApplicationService {
                 .update(chefKitchenApplications)
                 .set({
                     ...((data.foodSafetyLicenseUrl) && { foodSafetyLicenseUrl: data.foodSafetyLicenseUrl }),
+                    ...((data.foodSafetyLicenseExpiry) && { foodSafetyLicenseExpiry: data.foodSafetyLicenseExpiry }),
                     ...((data.foodEstablishmentCertUrl) && { foodEstablishmentCertUrl: data.foodEstablishmentCertUrl }),
                     ...(data.foodSafetyLicenseStatus && { foodSafetyLicenseStatus: data.foodSafetyLicenseStatus }),
                     ...(data.foodEstablishmentCertStatus && { foodEstablishmentCertStatus: data.foodEstablishmentCertStatus }),

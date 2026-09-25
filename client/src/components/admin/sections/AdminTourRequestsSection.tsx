@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { format } from "date-fns";
 import { CalendarDays, Check, Loader2, Mail, MapPin, Phone, X } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
@@ -10,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { formatTourWhen } from "@/lib/chef-viewing-display";
 
 type TourRequest = {
   viewing: {
@@ -22,6 +22,7 @@ type TourRequest = {
     adminReviewDecision: "approved" | "denied" | null;
     adminReviewReason: string | null;
     adminReviewedAt: string | null;
+    createdAt: string;
   };
   chefName: string;
   chefUsername: string | null;
@@ -30,6 +31,7 @@ type TourRequest = {
   kitchenName: string | null;
   locationName: string | null;
   locationAddress: string | null;
+  locationTimezone: string | null;
 };
 
 async function authHeaders() {
@@ -128,16 +130,19 @@ export function AdminTourRequestsSection() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
-                <div className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-muted-foreground" />{format(new Date(request.viewing.scheduledAt), "EEE, MMM d, yyyy 'at' h:mm a")} · {request.viewing.durationMinutes} min</div>
+                <div><span className="font-medium">Tour reference:</span> TOUR-{request.viewing.id}</div>
+                <div><span className="font-medium">Submitted:</span> {formatTourWhen(request.viewing.createdAt, null, request.locationTimezone || "America/St_Johns")}</div>
+                <div className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-muted-foreground" />{formatTourWhen(request.viewing.scheduledAt, request.viewing.durationMinutes, request.locationTimezone || "America/St_Johns")} · {request.viewing.durationMinutes} min</div>
                 <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-muted-foreground" />{request.locationName || "Kitchen"}{request.locationAddress ? ` · ${request.locationAddress}` : ""}</div>
                 {request.chefEmail && <div className="flex items-center gap-2"><Mail className="h-4 w-4 text-muted-foreground" /><a className="text-primary hover:underline" href={`mailto:${request.chefEmail}`}>{request.chefEmail}</a></div>}
                 {request.chefPhone && <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-muted-foreground" /><a className="text-primary hover:underline" href={`tel:${request.chefPhone}`}>{request.chefPhone}</a></div>}
                 {request.viewing.chefNotes && <p className="rounded-md bg-muted p-3"><span className="font-medium">Chef notes:</span> {request.viewing.chefNotes}</p>}
                 {request.viewing.adminReviewReason && <p className="rounded-md bg-muted p-3"><span className="font-medium">Review reason:</span> {request.viewing.adminReviewReason}</p>}
+                {request.viewing.adminReviewedAt && <p><span className="font-medium">Reviewed:</span> {formatTourWhen(request.viewing.adminReviewedAt, null, request.locationTimezone || "America/St_Johns")}</p>}
                 {request.viewing.intakeData && Object.keys(request.viewing.intakeData).length > 0 && (
                   <dl className="grid gap-2 rounded-md border p-3 sm:grid-cols-2">
                     {Object.entries(request.viewing.intakeData).filter(([, value]) => value != null && value !== "").map(([key, value]) => (
-                      <div key={key}><dt className="text-xs text-muted-foreground">{key.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase())}</dt><dd>{typeof value === "boolean" ? (value ? "Yes" : "No") : String(value)}</dd></div>
+                      <div key={key}><dt className="text-xs text-muted-foreground">{key.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase())}</dt><dd className="break-words">{typeof value === "boolean" ? (value ? "Yes" : "No") : typeof value === "object" ? JSON.stringify(value) : String(value)}</dd></div>
                     ))}
                   </dl>
                 )}

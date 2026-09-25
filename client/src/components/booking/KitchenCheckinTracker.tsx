@@ -29,6 +29,7 @@ import { useLocationChecklist, type ChecklistItem, type PhotoRequirement } from 
 import { Checkbox } from "@/components/ui/checkbox"
 import { bt } from "@/i18n/booking-ns";
 import { PhotoRequirementUploader, flattenPhotos, areAllRequiredPhotosUploaded } from "./PhotoRequirementUploader"
+import { CheckinPolicyTimesCard, CheckoutReadyCard } from "./CheckinPolicyTimesCard"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -289,6 +290,63 @@ export function KitchenCheckinTracker({
               </Button>
             ))}
           </div>
+        )}
+
+        {/* Policy times first — same numbers as booking details, before check-in / checkout. */}
+        {!isLoading &&
+          data &&
+          (!data.checkinStatus || data.checkinStatus === "not_checked_in" || data.checkinStatus === "no_show") && (
+          <CheckinPolicyTimesCard
+            className="mt-5"
+            emphasize
+            layout="stack"
+            bookingDate={data.bookingDate}
+            startTime={data.startTime || startTime || "00:00"}
+            operatingWindowStartTime={data.operatingWindowStartTime || data.startTime}
+            timezone={data.timezone}
+            checkinWindowMinutesBefore={data.checkinWindowMinutesBefore ?? 15}
+            noShowGraceMinutes={data.noShowGraceMinutes ?? 30}
+            title={
+              canCheckin
+                ? t("bdCheckInRequired", "Check In Required")
+                : t("kciWindowNotOpenTitle", "Check-in window")
+            }
+            description={
+              canCheckin
+                ? t("bdCheckInBody")
+                : t(
+                    "kciWindowNotOpenBody",
+                    "Check-in opens at the time below. Arrive on time — a no-show may be recorded after the grace period.",
+                  )
+            }
+          />
+        )}
+
+        {!isLoading && data && data.checkinStatus === "checked_in" && (
+          <CheckoutReadyCard
+            className="mt-5"
+            mode="ready"
+            bookingDate={data.bookingDate}
+            startTime={data.startTime || startTime || "00:00"}
+            endTime={data.endTime || endTime || data.startTime || "00:00"}
+            operatingWindowStartTime={data.operatingWindowStartTime || data.startTime}
+            timezone={data.timezone}
+            checkedInAt={data.checkedInAt}
+          />
+        )}
+
+        {!isLoading && data && data.checkinStatus === "checkout_requested" && (
+          <CheckoutReadyCard
+            className="mt-5"
+            mode="pending"
+            bookingDate={data.bookingDate}
+            startTime={data.startTime || startTime || "00:00"}
+            endTime={data.endTime || endTime || data.startTime || "00:00"}
+            operatingWindowStartTime={data.operatingWindowStartTime || data.startTime}
+            timezone={data.timezone}
+            checkedInAt={data.checkedInAt}
+            checkoutRequestedAt={data.checkoutRequestedAt}
+          />
         )}
 
         {((checklist?.checkinItems || []).some((item: ChecklistItem) => item.required) ||

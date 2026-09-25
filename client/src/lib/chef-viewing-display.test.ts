@@ -5,8 +5,8 @@ describe("viewingStatusBadge", () => {
   it("maps both review gates to warning and confirmed to success", () => {
     expect(viewingStatusBadge("pending_local_cooks")).toEqual({
       variant: "warning",
-      labelKey: "tourStatusLocalCooksReview",
-      defaultLabel: "Local Cooks review",
+      labelKey: "tourStatusPending",
+      defaultLabel: "In review",
     });
     expect(viewingStatusBadge("pending").variant).toBe("warning");
     expect(viewingStatusBadge("confirmed").variant).toBe("success");
@@ -37,12 +37,16 @@ describe("normalizeChefTourRow", () => {
     const row = normalizeChefTourRow({
       locationName: "Satya Test",
       locationAddress: "14 Water St",
+      timezone: "America/St_Johns",
+      chefName: "Alex Chef",
+      chefEmail: "alex@example.com",
       managerName: "Alex",
       viewing: {
         id: 7,
         locationId: 3,
         status: "pending",
         scheduledAt: "2026-08-31T12:25:00.000Z",
+        createdAt: "2026-08-20T10:00:00.000Z",
         durationMinutes: 30,
         chefNotes: "Need cold storage",
         intakeData: { intendedUse: "meal prep", skip: "" },
@@ -50,6 +54,10 @@ describe("normalizeChefTourRow", () => {
     });
     expect(row?.locationName).toBe("Satya Test");
     expect(row?.chefNotes).toBe("Need cold storage");
+    expect(row?.submittedAt).toBe("2026-08-20T10:00:00.000Z");
+    expect(row?.chefName).toBe("Alex Chef");
+    expect(row?.chefEmail).toBe("alex@example.com");
+    expect(row?.timezone).toBe("America/St_Johns");
     expect(row?.intakeEntries).toEqual([["intendedUse", "meal prep"]]);
     expect(chefTourRowHasDetails(row!)).toBe(true);
   });
@@ -63,19 +71,19 @@ describe("normalizeChefTourRow", () => {
 describe("isPendingOrUpcomingTour", () => {
   const now = Date.parse("2026-09-05T12:00:00.000Z");
 
-  it("counts pending regardless of schedule", () => {
+  it("does not count stale pending requests", () => {
     expect(
       isPendingOrUpcomingTour(
         { status: "pending", scheduledAt: "2026-01-01T00:00:00.000Z", durationMinutes: 30 },
         now
       )
-    ).toBe(true);
+    ).toBe(false);
     expect(
       isPendingOrUpcomingTour(
         { status: "pending_local_cooks", scheduledAt: "2026-01-01T00:00:00.000Z", durationMinutes: 30 },
         now
       )
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("counts confirmed only while not finished", () => {
@@ -108,6 +116,6 @@ describe("isPendingOrUpcomingTour", () => {
         ],
         now
       )
-    ).toBe(1);
+    ).toBe(0);
   });
 });

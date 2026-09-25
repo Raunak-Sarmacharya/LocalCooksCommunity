@@ -278,7 +278,7 @@
   "downloadInvoice": "Download invoice",
   "cancelBooking": "Cancel booking",
   "failedToFetchApplications": "Failed to fetch applications",
-  "failedToFetchViewings": "Failed to fetch viewings",
+  "failedToFetchViewings": "Failed to fetch tours",
   "accountAlreadyConnected": "Account Already Connected",
   "dashboardLinkNotProvided": "Dashboard link URL not provided",
   "failedToFetchStripeStatus": "Failed to fetch Stripe status",

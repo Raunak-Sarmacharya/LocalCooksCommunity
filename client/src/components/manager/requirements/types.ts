@@ -118,6 +118,12 @@ export const STEP2_BUILT_IN_FIELDS: FieldGroupConfig[] = [
     title: 'Licensing & Compliance',
     description: 'Official documentation for regulatory compliance',
     fields: [
+      {
+        key: 'requireFoodHandlerCert',
+        label: 'Food Safety Certificate',
+        description: 'Certificate and expiry date are collected together',
+        recommended: true,
+      },
       { 
         key: 'tier2_food_establishment_cert_required', 
         label: 'Food Establishment License', 
