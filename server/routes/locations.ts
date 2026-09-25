@@ -14,6 +14,7 @@ import { LocationService } from '../domains/locations/location.service';
 import { KitchenRepository } from '../domains/kitchens/kitchen.repository';
 import { KitchenService } from '../domains/kitchens/kitchen.service';
 import { DomainError } from '../shared/errors/domain-error';
+import { geocodeAddresses } from '../services/geocoding-service';
 
 const router = Router();
 
@@ -151,6 +152,16 @@ router.get('/public/kitchens', async (req: Request, res: Response) => {
         // Create a map of locations for quick lookup
         const locationMap = new Map(allLocations.map(loc => [loc.id, loc]));
 
+        // Coordinates for the discovery map. Locations store an address string and no
+        // lat/lng, so the addresses are geocoded server-side here (cached per process,
+        // one lookup per unique address). A lookup that fails yields null coordinates
+        // and the client simply renders that kitchen without a marker - the list must
+        // never fail because a geocoder hiccuped.
+        const kitchenAddresses = allKitchens
+            .map(k => locationMap.get(k.locationId)?.address || '')
+            .filter(a => a.trim().length > 0);
+        const geoByAddress = await geocodeAddresses(kitchenAddresses);
+
         // Fetch all active storage listings and group by kitchen
         const { storageListings, equipmentListings } = await import('@shared/schema');
         const { db } = await import('../db');
@@ -255,6 +266,15 @@ router.get('/public/kitchens', async (req: Request, res: Response) => {
                 locationName: location.name,
                 locationSlug: location.slug,
                 address: location.address,
+                // Geocoded above; null when no provider could place the address, in which
+                // case the discovery map renders the kitchen in the list only.
+                latitude: geoByAddress.get(location.address)?.lat ?? null,
+                longitude: geoByAddress.get(location.address)?.lng ?? null,
+                // The location's branding. A kitchen card wants the same venue cue the location
+                // card carried, and a location is the venue - several kitchens can share it.
+                // Additive: existing consumers of this endpoint ignore fields they don't read.
+                logoUrl: normalizeImageUrl(location.logoUrl || null, req),
+                brandImageUrl: normalizeImageUrl(location.brandImageUrl || null, req),
                 // Booking status
                 canAcceptBookings,
                 isLocationApproved,

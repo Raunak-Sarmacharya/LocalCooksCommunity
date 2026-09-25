@@ -55,10 +55,18 @@ export function PublicLocaleRouter() {
 
     const target = buildLocalizedPath(pathWithoutLocale, negotiated);
     if (target !== location) {
-      // Preserve any URL hash (e.g. /#faq) across the locale redirect so
-      // landing pages can still scroll to the targeted section on mount
-      const hash = typeof window !== "undefined" ? window.location.hash : "";
-      setLocation(`${target}${hash}`, { replace: true });
+      /**
+       * Preserve the query string AND the URL hash across the locale redirect.
+       *
+       * wouter's `location` is a PATHNAME only - no search, no hash - so both have to be read off
+       * `window.location`. The hash was handled first (so landing pages can still scroll to
+       * `/#faq`); the search was not, which meant EVERY public route silently lost its query
+       * parameters on the bare-path redirect. That is how `/kitchen-preview/<slug>?kitchenId=N`
+       * became `/en-CA/kitchen-preview/<slug>` and the preview opened on the location's first
+       * kitchen instead of the one the card named.
+       */
+      const { hash, search } = window.location;
+      setLocation(`${target}${search}${hash}`, { replace: true });
     }
   }, [location, setLocation]); // Note: i18n intentionally omitted to prevent reacting to language state changes
 
@@ -75,9 +83,10 @@ export function PublicLocaleRouter() {
       if (hasLocalePrefix || isPublicLocalizedPath(pathWithoutLocale)) {
         const target = buildLocalizedPath(pathWithoutLocale, lng);
         if (target !== location) {
-          // Preserve the hash so in-page anchors survive a language switch
-          const hash = typeof window !== "undefined" ? window.location.hash : "";
-          setLocation(`${target}${hash}`, { replace: true });
+          // Same rule as the redirect above: carry the query and the hash, because wouter's
+          // `location` holds neither.
+          const { hash, search } = window.location;
+          setLocation(`${target}${search}${hash}`, { replace: true });
         }
       }
     };

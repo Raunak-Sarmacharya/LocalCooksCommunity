@@ -1,7 +1,7 @@
 import { logger } from "@/lib/logger";
 import i18n from "@/i18n";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { useTranslation } from "react-i18next";
 import { Helmet } from "react-helmet-async";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
@@ -3301,6 +3301,21 @@ export default function KitchenPreviewPage() {
     }
   }, [isAuthenticated, locationId, hasApplication, canBook, application?.status, applicationLoading]);
 
+  /**
+   * The kitchen the URL is asking for, if any.
+   *
+   * `useSearch` rather than reading `window.location` directly: wouter's `location` is a PATHNAME
+   * only (no search, no hash), and `useSearch` is the reactive accessor that re-renders when the
+   * query changes - which is what a link from a kitchen card does.
+   */
+  const locationSearch = useSearch();
+  const requestedKitchenId = useMemo(
+    () => new URLSearchParams(locationSearch).get("kitchenId"),
+    [locationSearch],
+  );
+  /** The last `?kitchenId=` this effect acted on, so a stale one is never re-applied. */
+  const honouredKitchenIdRef = useRef<string | null>(null);
+
   // Keep selection on the current kitchen when switching units at this location;
   // reset when the location changes or the prior kitchen is gone.
   useEffect(() => {
@@ -3309,20 +3324,32 @@ export default function KitchenPreviewPage() {
       setSelectedKitchen(null);
       return;
     }
+
+    /**
+     * An explicit request in the URL outranks a selection left over from a previous visit.
+     *
+     * The guard below used to run FIRST, so once the component had a kitchen it kept it and the
+     * `?kitchenId=` was never consulted. Two cards at one address differ only in that parameter,
+     * so clicking the second card opened the first card's kitchen. Comparing against the last
+     * honoured value means the URL is obeyed when it CHANGES (a fresh navigation) but the chef's
+     * own picker clicks are still not undone by a URL that still names the old kitchen.
+     */
+    if (requestedKitchenId !== honouredKitchenIdRef.current) {
+      honouredKitchenIdRef.current = requestedKitchenId;
+      const requested = requestedKitchenId
+        ? kitchens.find((k) => String(k.id) === requestedKitchenId)
+        : null;
+      if (requested) {
+        setSelectedKitchen(requested);
+        return;
+      }
+    }
+
     setSelectedKitchen((prev) => {
       if (prev && kitchens.some((k) => k.id === prev.id)) return prev;
-      try {
-        const preferred = new URLSearchParams(window.location.search).get("kitchenId");
-        if (preferred) {
-          const match = kitchens.find((k) => String(k.id) === preferred);
-          if (match) return match;
-        }
-      } catch {
-        /* ignore */
-      }
       return kitchens[0];
     });
-  }, [locationData?.id, locationData?.kitchens]);
+  }, [locationData?.id, locationData?.kitchens, requestedKitchenId]);
 
   useEffect(() => {
     let raf = 0;
@@ -4404,7 +4431,10 @@ export default function KitchenPreviewPage() {
   if (error || !locationData) {
     return (
       <div className="min-h-screen flex flex-col">
-        <Header />
+        {/* `hideHowItWorks` matches the other chef public pages. This page has no `how-it-works`
+            section, so the item could not scroll - it fell through to a navigation back to the
+            landing page, i.e. an extra item in the bar that did nothing. */}
+        <Header hideHowItWorks />
         <div className="flex-1 flex items-center justify-center bg-gray-50 px-4 py-8">
           {notFoundContent}
         </div>
@@ -4415,7 +4445,9 @@ export default function KitchenPreviewPage() {
   // Public view for unauthenticated users
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      <Header position={staticSiteHeader ? "static" : "fixed"} />
+      {/* `hideHowItWorks` matches the other chef public pages - this one has no `how-it-works`
+          section, so the item could only navigate back to the landing page. */}
+      <Header hideHowItWorks position={staticSiteHeader ? "static" : "fixed"} />
       <main className={cn("flex-1 pb-8 sm:pb-12 lg:pb-12", !staticSiteHeader && "pt-[var(--header-height)]")}>
         <div className="container mx-auto px-4 sm:px-6 max-w-7xl py-6 sm:py-8">
           {mainContent(locationData)}

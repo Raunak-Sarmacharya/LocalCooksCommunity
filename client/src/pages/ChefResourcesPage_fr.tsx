@@ -488,7 +488,9 @@ export default function ChefResourcesPage_en_fr() {
       description: "Complete guide to starting your food business in Canada",
       url: "https://chef.localcooks.ca/resources"
     }]} />
-      <Header />
+      {/* `hideHowItWorks` matches the chef landing page: this page has no `how-it-works`
+          section, so the item could only navigate back to the landing page. */}
+      <Header hideHowItWorks />
 
       {/* Mobile navigation — Sheet drawer */}
       <MobileNav onNavigate={scrollToSection} />

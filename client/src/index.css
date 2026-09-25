@@ -1114,3 +1114,237 @@ input[type="number"] {
   background: linear-gradient(135deg, #F51042 0%, #FF5470 100%) !important;
   background-color: #F51042 !important;
 }
+
+/* ===== Kitchens discovery map (Compare Kitchens split view) =====
+   Leaflet renders markers and popups OUTSIDE the React tree, so these styles
+   are plain scoped CSS rather than Tailwind utilities. Brand tokens match the
+   landing page: ink #1A1A1A/#2C2C2C, muted #6B6B6B, brand red #F51042, cream #FFF8F5. */
+.kc-map {
+  width: 100%;
+  height: 100%;
+  min-height: 280px;
+  background: #F3F1EF;
+  font-family: inherit;
+  z-index: 0; /* keep Leaflet panes below the page header/popovers stacking context */
+}
+.kc-map .leaflet-container {
+  font-family: inherit;
+  background: #F3F1EF;
+  outline: none;
+}
+.kc-map .leaflet-control-attribution {
+  font-size: 10px;
+  line-height: 1.4;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 2px 6px;
+  color: #6B6B6B;
+}
+.kc-map .leaflet-control-attribution a {
+  color: #6B6B6B;
+}
+.kc-map .leaflet-bar {
+  border: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 14px rgba(44, 44, 44, 0.16);
+}
+.kc-map .leaflet-bar a {
+  border: 0;
+  color: #2C2C2C;
+  background: #fff;
+}
+.kc-map .leaflet-bar a:hover {
+  background: #FFF8F5;
+  color: #F51042;
+}
+
+/* Price pill marker. The wrap is zero-size; the pill centres itself over the point. */
+.kc-map-pill-wrap {
+  background: transparent;
+  border: 0;
+}
+.kc-map-pill {
+  transform: translate(-50%, -100%);
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  background: #fff;
+  border: 1px solid rgba(44, 44, 44, 0.1);
+  border-radius: 9999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1A1A1A;
+  box-shadow: 0 4px 14px rgba(44, 44, 44, 0.18);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+.kc-map-pill-from {
+  color: #6B6B6B;
+  font-weight: 500;
+}
+.kc-map-pill-rate {
+  color: #F51042;
+}
+.kc-map-pill-name {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kc-map-pill:hover,
+.kc-map-pill.kc-map-pill--active {
+  background: #F51042;
+  border-color: #F51042;
+  color: #fff;
+  transform: translate(-50%, -100%) scale(1.06);
+  box-shadow: 0 8px 22px rgba(245, 16, 66, 0.35);
+}
+.kc-map-pill:hover .kc-map-pill-from,
+.kc-map-pill:hover .kc-map-pill-rate,
+.kc-map-pill.kc-map-pill--active .kc-map-pill-from,
+.kc-map-pill.kc-map-pill--active .kc-map-pill-rate {
+  color: #fff;
+}
+
+/* Preview popover */
+.kc-map-popup .leaflet-popup-content-wrapper {
+  border-radius: 16px;
+  padding: 0;
+  overflow: hidden;
+  box-shadow: 0 16px 40px rgba(44, 44, 44, 0.2);
+}
+.kc-map-popup .leaflet-popup-content {
+  margin: 0;
+  width: 250px !important;
+  line-height: 1.4;
+  font-family: inherit;
+}
+.kc-map-popup .leaflet-popup-tip {
+  box-shadow: 0 16px 40px rgba(44, 44, 44, 0.2);
+}
+.kc-popup-card {
+  position: relative;
+}
+/* The popup's own close control (Leaflet's default anchor is disabled). The app-wide
+   44px button floor would stretch a 28px control, so the minimums are reset with
+   !important - the documented escape for that unlayered floor rule. */
+.kc-popup-close {
+  min-height: 0 !important;
+  min-width: 0 !important;
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 2px 8px rgba(44, 44, 44, 0.22);
+  color: #2C2C2C;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.kc-popup-close:hover {
+  background: #fff;
+  color: #F51042;
+}
+.kc-popup-img {
+  width: 100%;
+  height: 132px;
+  object-fit: cover;
+  display: block;
+}
+.kc-popup-body {
+  padding: 12px 14px 14px;
+}
+.kc-popup-name {
+  margin: 0 0 2px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1A1A1A;
+}
+.kc-popup-meta {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: #6B6B6B;
+}
+.kc-popup-view {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 9999px;
+  background: #F51042;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 14px;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.kc-popup-view:hover {
+  background: #D90E3A;
+}
+.kc-popup-title {
+  margin: 0;
+  padding: 12px 14px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6B6B6B;
+}
+.kc-popup-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 0;
+  background: #fff;
+  padding: 8px 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.kc-popup-row:last-child {
+  padding-bottom: 12px;
+}
+.kc-popup-row:hover {
+  background: #FFF8F5;
+}
+.kc-popup-thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: #F3F1EF;
+}
+.kc-popup-row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.kc-popup-row-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1A1A1A;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kc-popup-row-rate {
+  font-size: 11px;
+  font-weight: 600;
+  color: #F51042;
+}
+.kc-popup-chevron {
+  color: #9A9A9A;
+  flex-shrink: 0;
+}
