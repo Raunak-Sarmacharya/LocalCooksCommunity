@@ -1,7 +1,5 @@
 import { logger } from "@/lib/logger";
 import { motion } from "framer-motion";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Icon } from "@iconify/react";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { useState } from "react";
@@ -31,9 +29,11 @@ export interface KitchenLocation {
 interface KitchenLocationCardProps {
     location: KitchenLocation;
     navigate: (path: string) => void;
+    /** Position in the row, used only to stagger the entrance. */
+    index?: number;
 }
 
-export function KitchenLocationCard({ location, navigate }: KitchenLocationCardProps) {
+export function KitchenLocationCard({ location, navigate, index = 0 }: KitchenLocationCardProps) {
     const { t } = useTranslation("common");
 
     /**
@@ -68,93 +68,90 @@ export function KitchenLocationCard({ location, navigate }: KitchenLocationCardP
     const displayUrl = proxyUrl || rawImageUrl; // Fallback to raw if proxy failed
 
     return (
-        <motion.div
-            className="group h-full"
-            initial={{ opacity: 0, y: 30 }}
+        <motion.article
+            data-kitchen-card
+            className="group/card h-full"
+            initial={{ opacity: 0, y: 28 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            whileHover={{ y: -8 }}
-            transition={{ duration: 0.3, ease: "easeOut" }}
+            viewport={{ once: true, margin: "0px 0px -8% 0px" }}
+            transition={{ duration: 0.7, delay: index * 0.1, ease: [0.22, 1, 0.36, 1] }}
         >
-            <Card className="h-full border-0 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 bg-white overflow-hidden">
-                {/* Inset photo — same radius as card + visible stroke */}
-                <div className="shrink-0 p-3 pb-0">
-                    <div className="relative h-44 overflow-hidden rounded-2xl border border-[#E5E0DB] ring-1 ring-[#2C2C2C]/[0.06] bg-[#F3F1EF]">
-                        {!showPlaceholder ? (
-                            <>
-                                <SmartImage
-                                    src={displayUrl}
-                                    alt={kitchenName}
-                                    className="w-full h-full object-cover rounded-2xl transform group-hover:scale-105 transition-transform duration-500"
-                                    onError={(e) => {
-                                        logger.error(`[KitchenLocationCard] Image failed to load for ${kitchenName}:`, rawImageUrl);
-                                        setImageError(true);
-                                    }}
-                                    loading="lazy"
-                                />
-                                <div className="absolute inset-0 rounded-2xl bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
-                            </>
-                        ) : (
-                            <KitchenPhotoPlaceholder className="rounded-2xl" />
-                        )}
+            <div className="flex h-full flex-col rounded-[26px] bg-white p-2 shadow-[0_1px_2px_rgba(80,0,20,0.08),0_24px_48px_-24px_rgba(80,0,20,0.45)] ring-1 ring-black/[0.04] transition-[transform,box-shadow] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover/card:-translate-y-1.5 group-hover/card:shadow-[0_1px_2px_rgba(80,0,20,0.08),0_36px_60px_-24px_rgba(80,0,20,0.55)]">
+                {/* Photo */}
+                <div className="relative aspect-[16/11] overflow-hidden rounded-[20px] bg-[#F3F1EF]">
+                    {!showPlaceholder ? (
+                        <>
+                            <SmartImage
+                                src={displayUrl}
+                                alt={kitchenName}
+                                className="h-full w-full object-cover transition-transform duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover/card:scale-[1.04]"
+                                onError={() => {
+                                    logger.error(`[KitchenLocationCard] Image failed to load for ${kitchenName}:`, rawImageUrl);
+                                    setImageError(true);
+                                }}
+                                loading="lazy"
+                            />
+                            <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-transparent" />
+                        </>
+                    ) : (
+                        <KitchenPhotoPlaceholder />
+                    )}
 
-                        {location.kitchenCount > 1 && (
-                            <div className="absolute top-3 right-3 bg-white rounded-full px-3 py-1 shadow-md z-10">
-                                <span className="text-xs font-bold text-[#F51042]">
-                                    {t("kitchenCount", "{{count}} Kitchens", { count: location.kitchenCount })}
-                                </span>
-                            </div>
-                        )}
+                    {location.logoUrl && (
+                        <div className="absolute left-3 top-3 z-10">
+                            <SmartImage
+                                src={location.logoUrl}
+                                alt={t("logoAlt", "{{name}} logo", { name: location.name })}
+                                className="h-10 w-auto rounded-xl bg-white/95 object-contain p-1.5 shadow-[0_4px_12px_-4px_rgba(0,0,0,0.3)]"
+                                style={{ borderRadius: 7 }}
+                                hideOnError
+                            />
+                        </div>
+                    )}
 
-                        {location.logoUrl && (
-                            <div className="absolute top-3 left-3 z-10">
-                                <SmartImage
-                                    src={location.logoUrl}
-                                    alt={t("logoAlt", "{{name}} logo", { name: location.name })}
-                                    className="h-10 w-auto object-contain bg-white rounded-lg p-1.5 shadow-md"
-                                    hideOnError
-                                />
-                            </div>
-                        )}
-                    </div>
+                    {location.kitchenCount > 1 && (
+                        <div className="absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1 shadow-[0_4px_12px_-4px_rgba(0,0,0,0.3)] backdrop-blur">
+                            <Icon icon="mdi:silverware-fork-knife" className="h-3.5 w-3.5 text-[#F51042]" aria-hidden />
+                            <span className="text-[0.72rem] font-semibold text-[#1F1F1F]">
+                                {t("kitchenCount", "{{count}} Kitchens", { count: location.kitchenCount })}
+                            </span>
+                        </div>
+                    )}
                 </div>
 
-                {/* Content. Two things keep a row of cards level: every block
-                    reserves its space whether or not it has content, and the
-                    button is pushed down by `mt-auto`. Without both, a card
-                    with no description pulled its button up and the row
-                    stopped lining up. */}
-                <div className="flex flex-1 flex-col p-5">
-                    <TruncatedText as="h3" className="text-lg font-bold text-[#1A1A1A] mb-1 group-hover:text-[#F51042] transition-colors">
+                {/* Details. Every line reserves its height whether or not it has content, and the
+                    button sits on `mt-auto`, so a row of cards always lines up. */}
+                <div className="flex flex-1 flex-col px-3 pb-3 pt-4 sm:px-4">
+                    <TruncatedText as="h3" className="truncate text-[1.1rem] font-semibold tracking-[-0.01em] text-[#1F1F1F]">
                         {kitchenName}
                     </TruncatedText>
 
-                    {/* The row holds its height with a non-breaking space, so a
-                        missing address cannot shorten the card. */}
-                    <div className="mb-2 flex items-start gap-1.5">
-                        <Icon icon="mdi:map-marker-outline" className="mt-0.5 h-4 w-4 shrink-0 text-[#2C2C2C]" aria-hidden />
-                        <TruncatedText as="p" className="truncate text-sm leading-relaxed text-[#6B6B6B]">
+                    <div className="mt-1.5 flex min-w-0 items-center gap-1.5">
+                        <Icon icon="mdi:map-marker-outline" className="h-4 w-4 shrink-0 text-[#F51042]" aria-hidden />
+                        <TruncatedText as="p" className="min-w-0 truncate text-[0.86rem] text-[#5F5F5F]">
                             {location.address?.trim() || "\u00a0"}
                         </TruncatedText>
                     </div>
 
-                    {/* One line, always reserved. `truncate` gives the ellipsis and
-                        TruncatedText adds the full text on hover only when it
-                        actually overflows — no wrapping, so every card matches. */}
-                    <TruncatedText as="p" className="mb-4 truncate text-xs italic leading-relaxed text-[#828282]">
+                    <TruncatedText as="p" className="mb-4 mt-2 truncate text-[0.8rem] text-[#8A8A8A]">
                         {location.description?.trim() || "\u00a0"}
                     </TruncatedText>
 
-                    <Button
-                        className="mt-auto w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold rounded-full py-2.5 text-sm transition-all duration-300 group/btn"
+                    <button
+                        type="button"
                         onClick={() => navigate(previewHref)}
+                        className="group/btn mt-auto inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-[#F51042] px-5 text-[0.9rem] font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_8px_18px_-10px_rgba(245,16,66,0.8)] transition-colors duration-300 hover:bg-[#E30D3C] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042] focus-visible:ring-offset-2"
                     >
-                        <Icon icon="mdi:calendar-month-outline" className="mr-1.5 h-4 w-4 text-white" aria-hidden />
+                        <Icon icon="mdi:calendar-month-outline" className="h-4 w-4" aria-hidden />
                         {t("viewAvailability", "View Availability")}
-                        <Icon icon="mdi:arrow-right" className="ml-1.5 h-4 w-4 text-white group-hover/btn:translate-x-0.5 transition-transform" aria-hidden />
-                    </Button>
+                        <Icon
+                            icon="mdi:arrow-right"
+                            className="h-4 w-4 transition-transform duration-300 group-hover/btn:translate-x-0.5"
+                            aria-hidden
+                        />
+                    </button>
                 </div>
-            </Card>
-        </motion.div>
+            </div>
+        </motion.article>
     );
 }

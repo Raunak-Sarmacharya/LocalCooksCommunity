@@ -11,14 +11,12 @@ import { SiStripe } from "react-icons/si";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import FadeInSection from "@/components/ui/FadeInSection";
-import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
 import { addCollection, Icon } from "@iconify/react";
 import { icons as mdiIcons } from "@iconify-json/mdi";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { KitchenLocationCard } from "@/components/chef-landing/KitchenLocationCard";
-import { TruncatedText } from "@/components/common/TruncatedText";
 import { landingBrowseKitchensPath, landingDashboardPath } from "@/lib/landing-cta";
 import { scrollToPageSection } from "@/lib/scroll-to-page-section";
 import {
@@ -31,8 +29,9 @@ import {
   useTransform,
   type MotionValue,
 } from "framer-motion";
-import useEmblaCarousel from "embla-carousel-react";
 import logoWhite from "@assets/logo-white.png";
+import harbourKitchenImage from "@/assets/harbour-kitchen-hub.jpg";
+import emptyKitchenImage from "@assets/emptykitchen.png";
 import SellerJourneyDialog from "@/components/home/SellerJourneyDialog";
 import { ChefServiceIllustration } from "@/components/home/ChefServiceIllustration";
 
@@ -499,259 +498,838 @@ function PhoneComparison() {
   );
 }
 
-// Testimonial Carousel Component with Auto-Scroll
-function TestimonialCarouselSection() {
+// ═══════════════════════════════════════════════════════════════════════════════
+// HOW IT WORKS
+// ═══════════════════════════════════════════════════════════════════════════════
+// One section for what used to be three ("How it works", "What you get" and the resource
+// guide). The two services are shown as two separate paths behind a toggle, never as one
+// sequence, because a chef can take either on its own. Every figure in the mockups is
+// illustrative sample data, reusing the names the hero and phones already show.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+type HowPath = "sell" | "kitchen";
+
+const HOW_STEP_MS = 5200;
+
+const MENU_SAMPLE = [
+  {
+    name: "Handmade Truffle Tagliatelle",
+    price: "$24.00",
+    image: "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=120&h=120&fit=crop",
+  },
+  {
+    name: "Wood-Fired Margherita",
+    price: "$18.00",
+    image: "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=120&h=120&fit=crop",
+  },
+  {
+    name: "Artisan Birria Tacos",
+    price: "$16.00",
+    image: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=120&h=120&fit=crop",
+  },
+];
+
+/** White app card used by every step mockup. */
+function MockCard({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <div
+      className={cn(
+        "w-full max-w-[380px] overflow-hidden rounded-[20px] border border-[#2C2C2C]/[0.07] bg-white shadow-[0_1px_2px_rgba(44,44,44,0.05),0_28px_56px_-28px_rgba(44,44,44,0.35)]",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+function MockHeader({ title, badge }: { title: string; badge?: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-[#2C2C2C]/[0.06] px-4 py-3">
+      <p className="truncate text-[0.82rem] font-semibold text-[#1F1F1F]">{title}</p>
+      {badge}
+    </div>
+  );
+}
+
+function MockPill({ tone, icon, children }: { tone: "green" | "red" | "neutral"; icon?: string; children: ReactNode }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex flex-shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[0.66rem] font-semibold",
+        tone === "green" && "bg-emerald-50 text-emerald-700",
+        tone === "red" && "bg-[#F51042]/[0.08] text-[#F51042]",
+        tone === "neutral" && "bg-[#F4F2F0] text-[#6B6B6B]",
+      )}
+    >
+      {icon && <Icon icon={icon} className="h-3 w-3" />}
+      {children}
+    </span>
+  );
+}
+
+/** Rows inside a mockup rise in one after another. */
+function MockRow({ i, children, className }: { i: number; children: ReactNode; className?: string }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45, delay: 0.15 + i * 0.12, ease: [0.22, 1, 0.36, 1] }}
+      className={className}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+function StepMockup({ path, step }: { path: HowPath; step: number }) {
+  const { t, i18n } = useTranslation("chef");
+
+  if (path === "sell" && step === 0) {
+    return (
+      <MockCard>
+        <MockHeader
+          title={t("hiwMockApplication")}
+          badge={
+            <motion.span initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.75 }}>
+              <MockPill tone="green" icon="mdi:check">{t("hiwMockSubmitted")}</MockPill>
+            </motion.span>
+          }
+        />
+        <div className="space-y-3.5 p-4">
+          <MockRow i={0}>
+            <p className="text-[0.66rem] font-medium text-[#8A8A8A]">{t("hiwMockName")}</p>
+            <div className="mt-1 flex h-9 items-center justify-between rounded-lg border border-[#2C2C2C]/10 px-3">
+              <span className="text-[0.8rem] text-[#1F1F1F]">Jennifer W.</span>
+              <Icon icon="mdi:check-circle" className="h-4 w-4 text-emerald-500" />
+            </div>
+          </MockRow>
+          <MockRow i={1}>
+            <p className="text-[0.66rem] font-medium text-[#8A8A8A]">{t("hiwMockKitchenSetting")}</p>
+            <div className="mt-1 grid grid-cols-2 gap-2">
+              <span className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-[#F51042] bg-[#F51042]/[0.05] text-[0.76rem] font-semibold text-[#F51042]">
+                <Icon icon="mdi:home-outline" className="h-4 w-4" />
+                {t("hiwMockHome")}
+              </span>
+              <span className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-[#2C2C2C]/10 text-[0.76rem] text-[#6B6B6B]">
+                <Icon icon="mdi:office-building-outline" className="h-4 w-4" />
+                {t("hiwMockCommercial")}
+              </span>
+            </div>
+          </MockRow>
+          <MockRow i={2} className="flex items-center gap-3 rounded-lg border border-[#2C2C2C]/10 px-3 py-2.5">
+            <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
+              <Icon icon="mdi:check" className="h-3.5 w-3.5" />
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[0.8rem] text-[#1F1F1F]">{t("hiwMockLocalCooksQuestions")}</span>
+          </MockRow>
+        </div>
+      </MockCard>
+    );
+  }
+
+  if (path === "sell" && step === 1) {
+    return (
+      <MockCard>
+        <MockHeader title={t("hiwMockMenu")} badge={<MockPill tone="green" icon="mdi:circle-medium">{t("hiwMockLive")}</MockPill>} />
+        <div className="p-2">
+          {MENU_SAMPLE.map((dish, i) => (
+            <MockRow key={dish.name} i={i} className="flex items-center gap-3 rounded-xl px-2 py-2">
+              <img src={dish.image} alt="" className="h-11 w-11 flex-shrink-0 rounded-lg object-cover" loading="lazy" />
+              <span className="min-w-0 flex-1 truncate text-[0.8rem] font-medium text-[#1F1F1F]">{dish.name}</span>
+              <span className="text-[0.8rem] font-semibold tabular-nums text-[#1F1F1F]">{dish.price}</span>
+            </MockRow>
+          ))}
+          <MockRow i={3} className="px-2 pb-1 pt-1">
+            <span className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-dashed border-[#F51042]/35 text-[0.76rem] font-semibold text-[#F51042]">
+              <Icon icon="mdi:plus" className="h-4 w-4" />
+              {t("hiwMockAddDish")}
+            </span>
+          </MockRow>
+        </div>
+      </MockCard>
+    );
+  }
+
+  if (path === "sell" && step === 2) {
+    const orders = [
+      { amount: "$112.50", id: "#00198", state: "Out for delivery", dot: "bg-[#F51042]" },
+      { amount: "$48.00", id: "#00197", state: "Paid", dot: "bg-emerald-500" },
+    ];
+    return (
+      <div className="flex w-full max-w-[380px] flex-col gap-2.5">
+        {orders.map((o, i) => (
+          <MockRow key={o.id} i={i}>
+            <div className="flex items-center gap-3 rounded-2xl border border-[#2C2C2C]/[0.07] bg-white px-3.5 py-3 shadow-[0_18px_36px_-24px_rgba(44,44,44,0.35)]">
+              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-[#F51042]">
+                <img src={logoWhite} alt="" className="h-5 w-5 object-contain" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[0.66rem] font-medium text-[#8A8A8A]">
+                  {t("hiwMockNewOrder")} · <span className="tabular-nums">{o.id}</span>
+                </p>
+                <p className="text-[0.86rem] font-semibold tabular-nums text-[#1F1F1F]">{o.amount}</p>
+              </div>
+              <span className="inline-flex items-center gap-1.5 text-[0.68rem] font-semibold text-[#6B6B6B]">
+                <span className={cn("h-1.5 w-1.5 rounded-full", o.dot)} />
+                {o.state}
+              </span>
+            </div>
+          </MockRow>
+        ))}
+        <MockRow i={2}>
+          <div className="rounded-2xl border border-[#2C2C2C]/[0.07] bg-white p-4 shadow-[0_18px_36px_-24px_rgba(44,44,44,0.35)]">
+            <div className="flex items-center justify-between">
+              <p className="text-[0.7rem] font-medium text-[#8A8A8A]">{t("hiwMockWeeklyPayout")}</p>
+              <MockPill tone="green" icon="mdi:bank-outline">
+                {new Intl.DateTimeFormat(i18n.resolvedLanguage || "en-CA", { weekday: "short" }).format(new Date(2025, 8, 26))}
+              </MockPill>
+            </div>
+            <p className="mt-1 text-[1.5rem] font-bold leading-none tracking-[-0.02em] tabular-nums text-[#1F1F1F]">$1,036.40</p>
+            <div className="mt-3 flex h-10 items-end gap-1.5">
+              {[38, 52, 44, 70, 58, 84, 100].map((h, i) => (
+                <motion.span
+                  key={i}
+                  initial={{ height: 0 }}
+                  animate={{ height: `${h}%` }}
+                  transition={{ duration: 0.6, delay: 0.5 + i * 0.05, ease: [0.22, 1, 0.36, 1] }}
+                  className={cn("flex-1 rounded-[3px]", i === 6 ? "bg-[#F51042]" : "bg-[#F51042]/15")}
+                />
+              ))}
+            </div>
+          </div>
+        </MockRow>
+      </div>
+    );
+  }
+
+  if (path === "kitchen" && step === 0) {
+    const kitchens = [
+      { name: "Harbour Kitchen Hub", rate: "$24/hr", tags: ["Range", "Oven", "Cold storage"], image: harbourKitchenImage },
+      { name: "Downtown Commissary", rate: "$220/day", tags: ["Walk-in", "Mixers", "Dry storage"], image: emptyKitchenImage },
+    ];
+    return (
+      <MockCard>
+        <MockHeader title={t("heroMiniNearby")} badge={<MockPill tone="neutral" icon="mdi:map-marker-outline">St. John&apos;s</MockPill>} />
+        <div className="p-2">
+          {kitchens.map((k, i) => (
+            <MockRow key={k.name} i={i} className={cn("flex gap-3 rounded-xl p-2", i === 0 && "bg-[#FAFAF9]")}>
+              <img src={k.image} alt="" className="h-16 w-16 flex-shrink-0 rounded-lg object-cover" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className="truncate text-[0.82rem] font-semibold text-[#1F1F1F]">{k.name}</p>
+                  <p className="flex-shrink-0 text-[0.78rem] font-bold tabular-nums text-[#1F1F1F]">{k.rate}</p>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {k.tags.map((tag) => (
+                    <span key={tag} className="rounded-full border border-[#2C2C2C]/10 bg-white px-2 py-0.5 text-[0.62rem] text-[#6B6B6B]">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </MockRow>
+          ))}
+        </div>
+      </MockCard>
+    );
+  }
+
+  if (path === "kitchen" && step === 1) {
+    return (
+      <MockCard>
+        <MockHeader title={t("hiwMockRequestTo", { kitchen: "Harbour Kitchen Hub" })} />
+        <div className="space-y-2 p-4">
+          {[t("hiwMockBusinessContact"), t("hiwMockKitchenQuestions")].map((label, i) => (
+            <MockRow key={label} i={i} className="flex items-center gap-3 rounded-xl border border-[#2C2C2C]/[0.07] px-3 py-2.5">
+              <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
+                <Icon icon="mdi:check" className="h-3.5 w-3.5" />
+              </span>
+              <span className="min-w-0 flex-1 truncate text-[0.8rem] text-[#1F1F1F]">{label}</span>
+            </MockRow>
+          ))}
+          <MockRow i={2} className="pt-2">
+            <span className="flex h-10 items-center justify-center gap-2 rounded-full bg-emerald-50 text-[0.8rem] font-semibold text-emerald-700">
+              <Icon icon="mdi:send-check-outline" className="h-4 w-4" />
+              {t("hiwMockSent")}
+            </span>
+          </MockRow>
+        </div>
+      </MockCard>
+    );
+  }
+
+  // Kitchen, step 3: booking a slot. Dates are drawn from a week in which the 25th is a
+  // Thursday, so the day names agree with the "Thu 25 Sep" booking the hero shows.
+  const locale = i18n.resolvedLanguage || "en-CA";
+  const week = Array.from({ length: 7 }, (_, i) => new Date(2025, 8, 22 + i));
+  const dayName = new Intl.DateTimeFormat(locale, { weekday: "short" });
+  return (
+    <MockCard>
+      <MockHeader title={t("hiwMockPickTime")} badge={<MockPill tone="green" icon="mdi:check">{t("hiwMockApproved")}</MockPill>} />
+      <div className="p-4">
+        <MockRow i={0} className="grid grid-cols-7 gap-1">
+          {week.map((d) => {
+            const selected = d.getDate() === 25;
+            return (
+              <span
+                key={d.getDate()}
+                className={cn(
+                  "flex flex-col items-center rounded-xl py-1.5",
+                  selected ? "bg-[#F51042] text-white shadow-[0_8px_16px_-8px_rgba(245,16,66,0.8)]" : "text-[#6B6B6B]",
+                )}
+              >
+                <span className={cn("text-[0.58rem] font-medium uppercase", selected ? "text-white/80" : "text-[#9A9A9A]")}>
+                  {dayName.format(d).replace(".", "")}
+                </span>
+                <span className="text-[0.86rem] font-semibold tabular-nums">{d.getDate()}</span>
+              </span>
+            );
+          })}
+        </MockRow>
+        <div className="mt-3 space-y-2">
+          <MockRow i={1} className="flex items-center justify-between rounded-xl border border-[#2C2C2C]/[0.07] px-3 py-2.5 text-[0.78rem] text-[#9A9A9A]">
+            <span className="tabular-nums">9:00 AM to 1:00 PM</span>
+          </MockRow>
+          <MockRow i={2} className="flex items-center justify-between rounded-xl border border-[#F51042] bg-[#F51042]/[0.04] px-3 py-2.5">
+            <span className="text-[0.78rem] font-semibold tabular-nums text-[#1F1F1F]">2:00 to 6:00 PM</span>
+            <MockPill tone="green" icon="mdi:check">{t("heroMiniBooked")}</MockPill>
+          </MockRow>
+          <MockRow i={3} className="flex items-center gap-1.5 px-1 pt-1 text-[0.7rem] text-[#8A8A8A]">
+            <Icon icon="mdi:map-marker-outline" className="h-3.5 w-3.5" />
+            Harbour Kitchen Hub
+          </MockRow>
+        </div>
+      </div>
+    </MockCard>
+  );
+}
+
+function HowItWorksSection({ onVisitMarketplace }: { onVisitMarketplace: () => void }) {
   const { t } = useTranslation("chef");
-  const [emblaRef, emblaApi] = useEmblaCarousel({
-    loop: true,
-    align: "start",
-    duration: 25, // Smooth transition duration in milliseconds
-    dragFree: false,
-    containScroll: "trimSnaps"
-  });
+  const reduceMotion = useReducedMotion();
+  const panelRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(panelRef, { margin: "-20% 0px -20% 0px" });
 
-  // Auto-scroll functionality
+  const [path, setPath] = useState<HowPath>("sell");
+  const [step, setStep] = useState(0);
+  // Auto-advance until the visitor picks a step themselves, then hand over control.
+  const [autoplay, setAutoplay] = useState(true);
+  const playing = autoplay && inView && !reduceMotion;
+
   useEffect(() => {
-    if (!emblaApi) return;
+    if (!playing) return;
+    const id = window.setTimeout(() => setStep((s) => (s + 1) % 3), HOW_STEP_MS);
+    return () => window.clearTimeout(id);
+  }, [playing, step, path]);
 
-    const scrollInterval = setInterval(() => {
-      if (emblaApi.canScrollNext()) {
-        emblaApi.scrollNext();
-      } else {
-        emblaApi.scrollTo(0); // Reset to start if at end
-      }
-    }, 3000); // Scroll every 3 seconds
+  const paths: Record<HowPath, { label: string; icon: string; steps: { title: string; desc: string }[] }> = {
+    sell: {
+      label: t("hiwTabSell"),
+      icon: "mdi:storefront-outline",
+      steps: [
+        { title: t("hiwSell1Title"), desc: t("hiwSell1Desc") },
+        { title: t("hiwSell2Title"), desc: t("hiwSell2Desc") },
+        { title: t("hiwSell3Title"), desc: t("hiwSell3Desc") },
+      ],
+    },
+    kitchen: {
+      label: t("hiwTabKitchen"),
+      icon: "mdi:silverware-fork-knife",
+      steps: [
+        { title: t("hiwKitchen1Title"), desc: t("hiwKitchen1Desc") },
+        { title: t("hiwKitchen2Title"), desc: t("hiwKitchen2Desc") },
+        { title: t("hiwKitchen3Title"), desc: t("hiwKitchen3Desc") },
+      ],
+    },
+  };
 
-    return () => clearInterval(scrollInterval);
-  }, [emblaApi]);
+  // Switching path starts that path's walkthrough from step 1. Only picking a step by hand
+  // stops the timer, because that is the one choice the timer would otherwise undo.
+  const choosePath = (next: HowPath) => {
+    if (next === path) return;
+    setPath(next);
+    setStep(0);
+    setAutoplay(true);
+  };
 
-  const testimonials = [
-    {
-      text: t("testimonialDafna"),
-      name: "Dafna",
-      role: "Sababa Cafe NL",
-      color: "#fc7545",
-      textColor: "#2C2C2C",
-    },
-    {
-      text: t("testimonialEmily"),
-      name: "Emily",
-      role: "The Waffle Lady",
-      color: "#06516D",
-      textColor: "#ffffff",
-    },
-    {
-      text: t("testimonialKanij"),
-      name: "Kanij",
-      role: "Misti Mountain",
-      color: "#30524e",
-      textColor: "#ffffff",
-    },
-    {
-      text: t("testimonialFardin"),
-      name: "Fardin",
-      role: "Alu Bhaja",
-      color: "#ff8c42",
-      textColor: "#2C2C2C",
-    },
+  const chooseStep = (next: number) => {
+    setAutoplay(false);
+    setStep(next);
+  };
+
+  const guideItems = [
+    { icon: "mdi:certificate-outline", title: t("kbFoodSafetyTitle"), desc: t("hiwGuideFoodSafety") },
+    { icon: "mdi:office-building-outline", title: t("kbBizRegTitle"), desc: t("hiwGuideBizReg") },
+    { icon: "mdi:shield-outline", title: t("kbRegulatoryTitle"), desc: t("hiwGuideRegulatory") },
+    { icon: "mdi:file-certificate-outline", title: t("kbInsuranceTitle"), desc: t("hiwGuideLicensing") },
   ];
 
+  const ease = [0.22, 1, 0.36, 1] as const;
+
   return (
-    <section id="testimonials" className="scroll-mt-24 py-12 sm:py-16 md:py-20 lg:py-32 px-4 sm:px-6 bg-white relative overflow-visible">
-      <div className="container mx-auto max-w-7xl">
-        <FadeInSection>
-          <div className="text-center mb-12 md:mb-16">
-            <motion.h2
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.7, delay: 0.1 }}
-              className="text-2xl md:text-3xl lg:text-4xl font-bold text-[#1A1A1A] leading-tight"
-            >
-              {t("someKindWords")} {" "}
-              <span className="relative inline-block">
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A]">{t("chefsWord")}</span>
-                <motion.svg
-                  className="absolute -bottom-1 md:-bottom-2 left-0 w-full"
-                  viewBox="0 0 200 12"
-                  fill="none"
-                  initial={{ pathLength: 0, opacity: 0 }}
-                  whileInView={{ pathLength: 1, opacity: 1 }}
-                  transition={{ duration: 1.2, delay: 0.6 }}
-                  viewport={{ once: true }}
+    <section id="how-it-works" className="scroll-mt-24 bg-white px-4 py-20 sm:py-24 lg:py-28">
+      <div className="mx-auto w-full max-w-6xl">
+        {/* ── Header ─────────────────────────────────────────────────────────── */}
+        <div className="mx-auto max-w-2xl text-center">
+          <motion.h2
+            initial={{ opacity: 0, y: 24 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "0px 0px -10% 0px" }}
+            transition={{ duration: 0.7, ease }}
+            className="text-[1.9rem] font-bold leading-[1.12] tracking-[-0.025em] text-[#1F1F1F] sm:text-[2.5rem] lg:text-[3rem]"
+          >
+            {t("hiwTitle")}
+          </motion.h2>
+          <motion.p
+            initial={{ opacity: 0, y: 16 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "0px 0px -10% 0px" }}
+            transition={{ duration: 0.6, delay: 0.12, ease }}
+            className="mx-auto mt-5 max-w-[34rem] text-balance text-[1rem] leading-relaxed text-[#5F5F5F] sm:text-[1.1rem]"
+          >
+            {t("hiwSubhead")}
+          </motion.p>
+        </div>
+
+        {/* ── Path toggle ────────────────────────────────────────────────────── */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "0px 0px -10% 0px" }}
+          transition={{ duration: 0.6, delay: 0.2, ease }}
+          className="mt-9 flex justify-center sm:mt-10"
+        >
+          <div role="tablist" aria-label={t("hiwTitle")} className="inline-flex rounded-full bg-[#F4F2F0] p-1 ring-1 ring-inset ring-[#2C2C2C]/[0.04]">
+            {(Object.keys(paths) as HowPath[]).map((key) => {
+              const active = key === path;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  aria-controls="how-it-works-panel"
+                  onClick={() => choosePath(key)}
+                  className={cn(
+                    "relative inline-flex h-10 items-center gap-2 rounded-full px-4 text-[0.86rem] font-semibold transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042] sm:h-11 sm:px-5 sm:text-[0.92rem]",
+                    active ? "text-[#1F1F1F]" : "text-[#7A7A7A] hover:text-[#1F1F1F]",
+                  )}
                 >
-                  <motion.path
-                    d="M2 8C30 4 70 4 100 6C130 8 170 5 198 8"
-                    stroke="#F51042"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    initial={{ pathLength: 0 }}
-                    whileInView={{ pathLength: 1 }}
-                    transition={{ duration: 1.2, delay: 0.6 }}
-                    viewport={{ once: true }}
-                  />
-                </motion.svg>
-              </span>
-            </motion.h2>
+                  {active && (
+                    <motion.span
+                      layoutId="how-path-pill"
+                      className="absolute inset-0 rounded-full bg-white shadow-[0_1px_2px_rgba(44,44,44,0.08),0_6px_16px_-6px_rgba(44,44,44,0.2)]"
+                      transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                    />
+                  )}
+                  <Icon icon={paths[key].icon} className={cn("relative h-4 w-4", active && "text-[#F51042]")} />
+                  <span className="relative whitespace-nowrap">{paths[key].label}</span>
+                </button>
+              );
+            })}
           </div>
-        </FadeInSection>
+        </motion.div>
 
-        {/* Testimonial Carousel with Auto-Scroll */}
-        <div className="relative px-4 sm:px-6 md:px-8 lg:px-12 py-8 sm:py-10 md:py-12">
-          <div className="overflow-hidden" ref={emblaRef} style={{ willChange: 'transform' }}>
-            <div className="flex">
-              {testimonials.map((testimonial, index) => (
-                <div
-                  key={index}
-                  className="flex-[0_0_100%] sm:flex-[0_0_50%] lg:flex-[0_0_33.333%] min-w-0 px-2 sm:px-2.5 md:px-3"
-                >
-                  <div className="h-full py-4 sm:py-5 md:py-6">
-                    <div
-                      className="relative rounded-2xl p-4 sm:p-5 md:p-6 h-full shadow-xl transition-transform duration-300 ease-in-out hover:scale-[1.02]"
-                      style={{
-                        backgroundColor: testimonial.color,
-                        transform: `rotate(${index % 2 === 0 ? '-1.5deg' : '1.5deg'}) translateZ(0)`,
-                        zIndex: 10 - (index % 3),
-                      }}
+        {/* ── Steps and the live preview ─────────────────────────────────────── */}
+        <div
+          ref={panelRef}
+          id="how-it-works-panel"
+          role="tabpanel"
+          className="mt-10 grid grid-cols-[minmax(0,1fr)] items-center gap-8 sm:mt-12 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-14"
+        >
+          <ol className="order-2 flex flex-col gap-1.5 lg:order-1">
+            {paths[path].steps.map((s, i) => {
+              const active = i === step;
+              return (
+                <li key={`${path}-${i}`}>
+                  <button
+                    type="button"
+                    onClick={() => chooseStep(i)}
+                    aria-current={active ? "step" : undefined}
+                    className={cn(
+                      "group relative flex w-full gap-4 overflow-hidden rounded-2xl p-4 text-left transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042] sm:p-5",
+                      active ? "bg-[#FAFAF9] ring-1 ring-inset ring-[#2C2C2C]/[0.06]" : "hover:bg-[#FAFAF9]/70",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-[0.8rem] font-bold tabular-nums transition-colors duration-300",
+                        active ? "bg-[#F51042] text-white shadow-[0_6px_14px_-6px_rgba(245,16,66,0.8)]" : "bg-[#F4F2F0] text-[#8A8A8A]",
+                      )}
                     >
-                      {/* Elegant Quotation Mark */}
-                      <div className="absolute top-2 left-2 sm:top-3 sm:left-3 md:top-4 md:left-4">
-                        <span
-                          className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-serif leading-none"
-                          style={{
-                            color: testimonial.color === "#ffffff"
-                              ? "rgba(44, 44, 44, 0.15)"
-                              : testimonial.textColor === "#ffffff"
-                                ? "rgba(255, 255, 255, 0.3)"
-                                : "rgba(255, 255, 255, 0.4)",
-                            fontFamily: "'Georgia', 'Times New Roman', serif",
-                            lineHeight: "1",
-                          }}
-                        >
-                          &ldquo;
-                        </span>
-                      </div>
-
-                      {/* Content */}
-                      <div className="relative z-10 pt-6 sm:pt-8 md:pt-10 lg:pt-12">
-                        {/* Testimonial Text */}
-                        <p
-                          className="text-sm sm:text-base md:text-base lg:text-lg font-sans leading-relaxed mb-3 sm:mb-4 md:mb-5"
-                          style={{
-                            color: testimonial.textColor,
-                          }}
-                        >
-                          {testimonial.text}
-                        </p>
-
-                        {/* Horizontal Line */}
-                        <div
-                          className="h-px mb-2 sm:mb-3 md:mb-4"
-                          style={{
-                            backgroundColor: testimonial.textColor === "#ffffff"
-                              ? "rgba(255, 255, 255, 0.3)"
-                              : "rgba(44, 44, 44, 0.2)",
-                          }}
+                      {i + 1}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className={cn("block text-[1.05rem] font-semibold tracking-[-0.01em] transition-colors duration-300", active ? "text-[#1F1F1F]" : "text-[#6B6B6B]")}>
+                        {s.title}
+                      </span>
+                      <span className={cn("mt-1 block text-pretty text-[0.9rem] leading-relaxed transition-colors duration-300", active ? "text-[#5F5F5F]" : "text-[#9A9A9A]")}>
+                        {s.desc}
+                      </span>
+                    </span>
+                    {active && (
+                      <span className="absolute inset-x-5 bottom-0 h-[2px] overflow-hidden rounded-full bg-[#2C2C2C]/[0.06]">
+                        <motion.span
+                          key={`${path}-${step}-${playing}`}
+                          className="block h-full origin-left rounded-full bg-[#F51042]"
+                          initial={{ scaleX: playing ? 0 : 1 }}
+                          animate={{ scaleX: 1 }}
+                          transition={{ duration: playing ? HOW_STEP_MS / 1000 : 0, ease: "linear" }}
                         />
+                      </span>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
 
-                        {/* Chef Name and Role */}
-                        <div>
-                          <p
-                            className="font-bold text-xs sm:text-sm md:text-base lg:text-lg mb-0.5 sm:mb-1"
-                            style={{
-                              color: testimonial.textColor,
-                            }}
-                          >
-                            {testimonial.name}
-                          </p>
-                          <p
-                            className="text-xs sm:text-sm md:text-base"
-                            style={{
-                              color: testimonial.textColor === "#ffffff"
-                                ? "rgba(255, 255, 255, 0.8)"
-                                : "rgba(44, 44, 44, 0.7)",
-                            }}
-                          >
-                            {testimonial.role}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
+          <div
+            aria-hidden="true"
+            className="relative order-1 flex h-[340px] items-center justify-center overflow-hidden rounded-[28px] bg-[#F6F5F3] px-5 sm:h-[400px] lg:order-2 lg:h-[440px]"
+          >
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{
+                backgroundImage: "radial-gradient(rgba(44,44,44,0.09) 1px, transparent 1px)",
+                backgroundSize: "16px 16px",
+                maskImage: "radial-gradient(ellipse 75% 70% at 50% 45%, #000 30%, transparent 85%)",
+                WebkitMaskImage: "radial-gradient(ellipse 75% 70% at 50% 45%, #000 30%, transparent 85%)",
+              }}
+            />
+            <div
+              className="pointer-events-none absolute left-1/2 top-1/2 h-[80%] w-[80%] -translate-x-1/2 -translate-y-1/2"
+              style={{ background: "radial-gradient(closest-side, rgba(245,16,66,0.10), rgba(245,16,66,0))" }}
+            />
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={`${path}-${step}`}
+                initial={{ opacity: 0, y: 16, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -10, scale: 0.98 }}
+                transition={{ duration: 0.4, ease }}
+                className="relative flex w-full justify-center"
+              >
+                <StepMockup path={path} step={step} />
+              </motion.div>
+            </AnimatePresence>
+          </div>
+        </div>
+
+        {/* ── The two ways to go deeper ──────────────────────────────────────── */}
+        <div className="mt-16 grid grid-cols-[minmax(0,1fr)] gap-5 sm:mt-20 md:grid-cols-2">
+          <motion.div
+            id="resources"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "0px 0px -10% 0px" }}
+            transition={{ duration: 0.7, ease }}
+            className="flex scroll-mt-24 flex-col rounded-[28px] border border-[#2C2C2C]/[0.07] bg-white p-6 shadow-[0_1px_2px_rgba(44,44,44,0.04),0_24px_48px_-32px_rgba(44,44,44,0.3)] sm:p-8"
+          >
+            <p className="inline-flex items-center gap-2 text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-[#F51042]">
+              <Icon icon="mdi:book-open-page-variant-outline" className="h-4 w-4" />
+              {t("hiwGuideEyebrow")}
+            </p>
+            <h3 className="mt-3 text-balance text-[1.45rem] font-bold leading-tight tracking-[-0.02em] text-[#1F1F1F] sm:text-[1.6rem]">
+              {t("hiwGuideTitle")}
+            </h3>
+            <p className="mt-2 text-pretty text-[0.94rem] leading-relaxed text-[#5F5F5F]">{t("hiwGuideDesc")}</p>
+
+            <ul className="mt-6 grid grid-cols-[minmax(0,1fr)] gap-x-5 gap-y-4 sm:grid-cols-2">
+              {guideItems.map((item) => (
+                <li key={item.title} className="flex gap-3">
+                  <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-[#F51042]/[0.07] text-[#F51042]">
+                    <Icon icon={item.icon} className="h-[18px] w-[18px]" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-[0.88rem] font-semibold text-[#1F1F1F]">{item.title}</span>
+                    <span className="mt-0.5 block text-[0.8rem] leading-snug text-[#7A7A7A]">{item.desc}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+
+            <div className="mt-8 pt-1 md:mt-auto md:pt-8">
+              <Link
+                href="/resources"
+                className="group inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-[#F51042] px-6 text-[0.92rem] font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_10px_22px_-10px_rgba(245,16,66,0.8)] transition-colors duration-300 hover:bg-[#E30D3C] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042] focus-visible:ring-offset-2 sm:w-auto"
+              >
+                {t("hiwGuideCta")}
+                <Icon icon="mdi:arrow-right" className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5" />
+              </Link>
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "0px 0px -10% 0px" }}
+            transition={{ duration: 0.7, delay: 0.1, ease }}
+            className="relative flex flex-col overflow-hidden rounded-[28px] bg-[#F51042] p-6 text-white shadow-[0_24px_48px_-28px_rgba(245,16,66,0.7)] sm:p-8"
+          >
+            <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+              <div
+                className="absolute inset-0"
+                style={{
+                  background:
+                    "radial-gradient(80% 70% at 0% 0%, rgba(255,255,255,0.22), rgba(255,255,255,0) 60%), radial-gradient(70% 60% at 100% 100%, rgba(150,0,30,0.45), rgba(150,0,30,0) 70%)",
+                }}
+              />
+              <div
+                className="absolute inset-0"
+                style={{
+                  backgroundImage:
+                    "linear-gradient(to right, rgba(255,255,255,0.08) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.08) 1px, transparent 1px)",
+                  backgroundSize: "40px 40px",
+                  maskImage: "linear-gradient(to bottom, #000, transparent 75%)",
+                  WebkitMaskImage: "linear-gradient(to bottom, #000, transparent 75%)",
+                }}
+              />
+            </div>
+
+            <div className="relative">
+              <p className="inline-flex items-center gap-2 text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-white/90">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-60" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-white" />
+                </span>
+                {t("hiwMarketEyebrow")}
+              </p>
+              <h3 className="mt-3 text-balance text-[1.45rem] font-bold leading-tight tracking-[-0.02em] sm:text-[1.6rem]">
+                {t("hiwMarketTitle")}
+              </h3>
+              <p className="mt-2 max-w-[26rem] text-pretty text-[0.94rem] leading-relaxed text-white/85">{t("hiwMarketDesc")}</p>
+            </div>
+
+            {/* A glimpse of the marketplace: three dishes fanned out. */}
+            <div aria-hidden="true" className="relative mx-auto mt-8 flex h-[150px] w-full max-w-[340px] items-end justify-center">
+              {MENU_SAMPLE.map((dish, i) => (
+                <div
+                  key={dish.name}
+                  className={cn(
+                    "absolute bottom-0 w-[132px] overflow-hidden rounded-2xl bg-white p-1.5 shadow-[0_18px_36px_-16px_rgba(80,0,20,0.6)] transition-transform duration-500",
+                    i === 0 && "left-[4%] -rotate-[8deg]",
+                    i === 1 && "z-10 -translate-y-3",
+                    i === 2 && "right-[4%] rotate-[8deg]",
+                  )}
+                >
+                  <img src={dish.image} alt="" className="h-[84px] w-full rounded-xl object-cover" loading="lazy" />
+                  <div className="px-1.5 pb-1 pt-1.5">
+                    <p className="truncate text-[0.68rem] font-semibold text-[#1F1F1F]">{dish.name}</p>
+                    <p className="text-[0.66rem] font-semibold tabular-nums text-[#F51042]">{dish.price}</p>
                   </div>
                 </div>
               ))}
             </div>
-          </div>
+
+            <div className="relative mt-8 md:mt-auto md:pt-8">
+              <button
+                type="button"
+                onClick={onVisitMarketplace}
+                className="group inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-white px-6 text-[0.92rem] font-semibold text-[#F51042] shadow-[0_10px_22px_-10px_rgba(80,0,20,0.6)] transition-transform duration-300 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#F51042] sm:w-auto"
+              >
+                {t("hiwMarketCta")}
+                <Icon icon="mdi:arrow-top-right" className="h-4 w-4 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+              </button>
+            </div>
+          </motion.div>
         </div>
       </div>
     </section>
   );
 }
 
-// Typewriter component - centered over the CTA button
-function TypewriterText() {
+// ═══════════════════════════════════════════════════════════════════════════════
+// PROOF AND CLOSE
+// ═══════════════════════════════════════════════════════════════════════════════
+// The chefs' words and the invitation to join, as one card: a slow, endless row of
+// reviews on top, the ask on a red band beneath it. The row is the same four reviews
+// twice over, so the loop has no seam; it pauses under the pointer so a quote can be read.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function ReviewCard({ text, name, business }: { text: string; name: string; business: string }) {
+  return (
+    <figure className="flex h-full w-[290px] flex-col rounded-[24px] border border-[#2C2C2C]/[0.09] bg-white p-6 shadow-[0_1px_2px_rgba(44,44,44,0.06),0_14px_30px_-14px_rgba(60,40,30,0.28)] sm:w-[380px] sm:p-7">
+      <svg viewBox="0 0 48 36" className="h-5 w-7 flex-shrink-0" aria-hidden="true">
+        <path
+          fill="#F51042"
+          d="M0 36V22.4C0 9.9 6.2 2.5 18.6 0l2 4.5C13.8 6.6 10.4 10.7 10 17h9.6v19H0Zm27.4 0V22.4C27.4 9.9 33.6 2.5 46 0l2 4.5c-6.8 2.1-10.2 6.2-10.6 12.5H47v19H27.4Z"
+        />
+      </svg>
+      <blockquote className="mb-6 mt-4 text-pretty text-[0.95rem] leading-[1.65] text-[#2F2F2F] sm:text-[1rem]">{text}</blockquote>
+      <figcaption className="mt-auto flex items-center gap-2 border-t border-[#2C2C2C]/[0.06] pt-4 text-[0.88rem]">
+        <span className="font-semibold text-[#1F1F1F]">{name}</span>
+        <span className="text-[#C4C4C4]" aria-hidden="true">·</span>
+        <span className="truncate font-medium text-[#F51042]">{business}</span>
+      </figcaption>
+    </figure>
+  );
+}
+
+function ChefProofSection({ onJoin }: { onJoin: () => void }) {
   const { t } = useTranslation("chef");
-  const words = [t("twCooks"), t("twCompany"), t("twCommunity")];
-  const [currentWordIndex, setCurrentWordIndex] = useState(0);
-  const [currentText, setCurrentText] = useState("");
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
 
-  const currentWord = words[currentWordIndex];
-  const typingSpeed = 120;
-  const deletingSpeed = 80;
-  const pauseDuration = 2500;
+  const testimonials = [
+    { text: t("testimonialDafna"), name: "Dafna", business: "Sababa Cafe NL" },
+    { text: t("testimonialEmily"), name: "Emily", business: "The Waffle Lady" },
+    { text: t("testimonialKanij"), name: "Kanij", business: "Misti Mountain" },
+    { text: t("testimonialFardin"), name: "Fardin", business: "Alu Bhaja" },
+  ];
 
-  const tick = useCallback(() => {
-    if (isPaused) return;
+  const guarantees = t("approved24hGuarantees")
+    .split("·")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const craftSentences = t("perfectingCraft").split(/(?<=[.!?])\s+/);
 
-    if (!isDeleting) {
-      // Typing
-      if (currentText.length < currentWord.length) {
-        setCurrentText(currentWord.slice(0, currentText.length + 1));
-      } else {
-        // Word complete, pause before deleting
-        setIsPaused(true);
-        setTimeout(() => {
-          setIsPaused(false);
-          setIsDeleting(true);
-        }, pauseDuration);
-      }
-    } else {
-      // Deleting
-      if (currentText.length > 0) {
-        setCurrentText(currentWord.slice(0, currentText.length - 1));
-      } else {
-        // Word deleted, move to next
-        setIsDeleting(false);
-        setCurrentWordIndex((prev) => (prev + 1) % words.length);
-      }
-    }
-  }, [currentText, currentWord, isDeleting, isPaused, pauseDuration, words.length]);
-
-  useEffect(() => {
-    const speed = isDeleting ? deletingSpeed : typingSpeed;
-    const timer = setTimeout(tick, speed);
-    return () => clearTimeout(timer);
-  }, [tick, isDeleting, deletingSpeed, typingSpeed]);
+  const ease = [0.22, 1, 0.36, 1] as const;
 
   return (
-    <span
-      className="font-logo inline-flex items-center justify-center text-3xl md:text-4xl lg:text-5xl text-white whitespace-nowrap min-h-[1.3em]"
-      style={{ fontFamily: "'Lobster', cursive" }}
-    >
-      <span>{t("twLocal")}</span>
-      <span className="ml-2.5 md:ml-3.5">{currentText}</span>
-      <span
-        className="typewriter-cursor inline-block"
-        style={{
-          backgroundColor: 'white',
-          marginLeft: '6px',
-          height: '0.85em',
-          verticalAlign: 'middle',
-        }}
-      />
-    </span>
+    <section id="testimonials" className="scroll-mt-24 bg-white px-4 py-20 sm:py-24 lg:py-28">
+      <div className="mx-auto w-full max-w-6xl">
+        <div className="mx-auto max-w-2xl text-center">
+          <motion.h2
+            initial={{ opacity: 0, y: 24 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "0px 0px -10% 0px" }}
+            transition={{ duration: 0.7, ease }}
+            className="text-balance text-[1.9rem] font-bold leading-[1.15] tracking-[-0.025em] text-[#1F1F1F] sm:text-[2.5rem] lg:text-[3rem]"
+          >
+            {t("tstTitleStart")}{" "}
+            <span className="relative inline-block whitespace-nowrap">
+              <span className="relative z-10 bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A] bg-clip-text text-transparent">
+                {t("tstTitleEmphasis")}
+              </span>
+              <svg className="absolute -bottom-1.5 left-0 w-full md:-bottom-2" viewBox="0 0 300 12" fill="none" aria-hidden="true">
+                <motion.path
+                  d="M2 8C50 3 100 3 150 6C200 9 250 5 298 8"
+                  stroke="#F51042"
+                  strokeOpacity="0.6"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  initial={{ pathLength: 0, opacity: 0 }}
+                  whileInView={{ pathLength: 1, opacity: 1 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 1, delay: 0.5, ease: [0.65, 0, 0.35, 1] }}
+                />
+              </svg>
+            </span>
+          </motion.h2>
+          <motion.p
+            initial={{ opacity: 0, y: 16 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "0px 0px -10% 0px" }}
+            transition={{ duration: 0.6, delay: 0.12, ease }}
+            className="mt-5 text-balance text-[1rem] leading-relaxed text-[#5F5F5F] sm:text-[1.1rem]"
+          >
+            {t("tstSubhead")}
+          </motion.p>
+        </div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 28 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "0px 0px -10% 0px" }}
+          transition={{ duration: 0.8, delay: 0.15, ease }}
+          className="relative mt-12 overflow-hidden rounded-[32px] border border-[#2C2C2C]/[0.07] bg-[#F3EFEA] shadow-[0_1px_2px_rgba(44,44,44,0.04),0_40px_80px_-40px_rgba(44,44,44,0.35)] sm:mt-14"
+        >
+          {/* ── Reviews ───────────────────────────────────────────────────── */}
+          <div className="relative py-10 sm:py-12">
+            <div
+              className="pointer-events-none absolute inset-0"
+              aria-hidden="true"
+              style={{
+                backgroundImage: "radial-gradient(rgba(44,44,44,0.07) 1px, transparent 1px)",
+                backgroundSize: "18px 18px",
+                maskImage: "radial-gradient(ellipse 70% 80% at 50% 50%, #000 20%, transparent 80%)",
+                WebkitMaskImage: "radial-gradient(ellipse 70% 80% at 50% 50%, #000 20%, transparent 80%)",
+              }}
+            />
+            <div
+              className="chef-marquee-viewport relative overflow-hidden"
+              style={{
+                maskImage: "linear-gradient(to right, transparent, #000 7%, #000 93%, transparent)",
+                WebkitMaskImage: "linear-gradient(to right, transparent, #000 7%, #000 93%, transparent)",
+              }}
+            >
+              <ul className="chef-marquee flex w-max">
+                {[0, 1].map((copy) =>
+                  testimonials.map((q) => (
+                    <li key={`${copy}-${q.name}`} aria-hidden={copy === 1} className="pr-5">
+                      <ReviewCard {...q} />
+                    </li>
+                  )),
+                )}
+              </ul>
+            </div>
+          </div>
+
+          {/* ── The ask ───────────────────────────────────────────────────── */}
+          <div className="relative overflow-hidden bg-[#F51042] px-6 py-10 sm:px-12 sm:py-12 lg:px-14">
+            <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+              <div
+                className="absolute inset-0"
+                style={{
+                  background:
+                    "radial-gradient(60% 120% at 0% 0%, rgba(255,255,255,0.2), rgba(255,255,255,0) 60%), radial-gradient(50% 120% at 100% 100%, rgba(150,0,30,0.4), rgba(150,0,30,0) 70%)",
+                }}
+              />
+              <div
+                className="absolute inset-0"
+                style={{
+                  backgroundImage:
+                    "linear-gradient(to right, rgba(255,255,255,0.08) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.08) 1px, transparent 1px)",
+                  backgroundSize: "48px 48px",
+                  maskImage: "linear-gradient(to right, #000, transparent 70%)",
+                  WebkitMaskImage: "linear-gradient(to right, #000, transparent 70%)",
+                }}
+              />
+            </div>
+
+            <div className="relative flex flex-col items-center gap-8 text-center lg:flex-row lg:items-center lg:justify-between lg:gap-12 lg:text-left">
+              <div>
+                <h3 className="text-[1.7rem] font-bold leading-[1.1] tracking-[-0.025em] text-white sm:text-[2.1rem] lg:text-[2.35rem]">
+                  <span className="block">{t("passionToProfit")}</span>
+                  <span className="block text-white/75">{t("onYourTerms")}</span>
+                </h3>
+                <p className="mt-4 text-[0.98rem] leading-relaxed text-white/85 sm:text-[1.05rem]">
+                  {craftSentences.map((sentence, i) => (
+                    <span key={i} className="block">
+                      {sentence}
+                    </span>
+                  ))}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={onJoin}
+                className="group inline-flex h-12 flex-shrink-0 items-center justify-center gap-2 rounded-full bg-white px-8 text-[1rem] font-semibold text-[#F51042] shadow-[0_16px_32px_-14px_rgba(80,0,20,0.7)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_20px_40px_-14px_rgba(80,0,20,0.8)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#F51042] sm:h-14 sm:px-10 sm:text-[1.05rem]"
+              >
+                {t("joinLocalCooks")}
+                <Icon icon="mdi:arrow-right" className="h-5 w-5 transition-transform duration-300 group-hover:translate-x-0.5" />
+              </button>
+            </div>
+
+            {/* The three promises get their own row, aligned to the headline, rather than
+                hanging off the button where they never lined up with anything. */}
+            <div className="relative mt-8 border-t border-white/20 pt-6">
+            <ul className="mx-auto flex w-fit flex-col items-start gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-center sm:gap-x-8 lg:justify-start">
+              {guarantees.map((item) => (
+                <li key={item} className="inline-flex items-center gap-2 text-[0.88rem] font-medium text-white/90">
+                  <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-white/20">
+                    <Icon icon="mdi:check" className="h-3.5 w-3.5 text-white" aria-hidden />
+                  </span>
+                  {item}
+                </li>
+              ))}
+            </ul>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    </section>
   );
 }
 
@@ -1599,634 +2177,207 @@ export default function ChefLanding() {
         </section>
 
         {/* ═══════════════════════════════════════════════════════════════════════
-            HOW IT WORKS - Clean, Balanced Design
-            Color Theory: Coral red (#F51042) complemented by teal, amber/gold, soft coral
+            KITCHEN ACCESS
+            The second half of the offer, straight after the selling story: a full-bleed brand
+            band so the page has a strong beat between two white sections. Its edges are single
+            shallow arcs rather than waves, and the texture is a white grid and two soft lights.
+            The arcs are white cut-outs drawn inside the section, so the lights fade out beneath
+            them instead of being clipped into straight edges at a section boundary.
+            The cards show one published kitchen per location, the first three.
         ═══════════════════════════════════════════════════════════════════════ */}
-        <section id="how-it-works" className="scroll-mt-24 py-20 md:py-28 px-4 bg-white">
-          <div className="container mx-auto max-w-6xl">
-            {/* Section Header */}
-            <FadeInSection>
-              <div className="text-center mb-16">
-                <motion.h2
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.7, delay: 0.1 }}
-                  className="text-2xl md:text-3xl lg:text-4xl font-bold text-[#1A1A1A] leading-tight mb-4"
-                >
-                  {t("threeSimple")} {" "}
-                  <span className="relative inline-block">
-                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A]">{t("stepsWord")}</span>
-                    <motion.svg
-                      className="absolute -bottom-1 md:-bottom-2 left-0 w-full"
-                      viewBox="0 0 200 12"
-                      fill="none"
-                      initial={{ pathLength: 0, opacity: 0 }}
-                      whileInView={{ pathLength: 1, opacity: 1 }}
-                      transition={{ duration: 1.2, delay: 0.6 }}
-                      viewport={{ once: true }}
-                    >
-                      <motion.path
-                        d="M2 8C30 4 70 4 100 6C130 8 170 5 198 8"
-                        stroke="#F51042"
-                        strokeWidth="3"
-                        strokeLinecap="round"
-                        initial={{ pathLength: 0 }}
-                        whileInView={{ pathLength: 1 }}
-                        transition={{ duration: 1.2, delay: 0.6 }}
-                        viewport={{ once: true }}
-                      />
-                    </motion.svg>
-                  </span>
-                </motion.h2>
-
-                <motion.p
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.6, delay: 0.2 }}
-                  className="text-[#6B6B6B] text-sm md:text-base lg:text-lg"
-                >{t("joinPassionateChefs")}</motion.p>
-              </div>
-            </FadeInSection>
-
-            {/* Connected visual story — an infographic rather than three isolated cards. */}
-            <div className="relative grid md:grid-cols-3 gap-7 md:gap-10 lg:gap-14 mb-12 md:mb-16">
-              <div className="pointer-events-none absolute left-[16%] right-[16%] top-16 hidden h-0.5 md:block">
-                <div className="h-full w-full bg-[repeating-linear-gradient(90deg,#f51042_0_8px,transparent_8px_16px)] opacity-25" />
-              </div>
-
-              {/* Step 1 - Apply */}
-              <FadeInSection delay={1}>
-                <motion.div
-                  whileHover={{ y: -6 }}
-                  transition={{ duration: 0.3 }}
-                  className="group relative h-full text-center"
-                >
-                  <Card className="relative h-full rounded-2xl bg-white border-0 shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]">
-                    <CardContent className="p-6 md:p-7 lg:p-8 flex flex-col items-center h-full">
-                      <div className="relative z-10 mb-5 w-full">
-                        <ChefServiceIllustration variant="storefront" />
-                      </div>
-
-                      <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C] mb-1">{t("serviceStorefrontTitle", "Build your storefront")}</h3>
-                      <p className="text-xs md:text-sm font-medium text-[#6B6B6B] mb-2 md:mb-3">{t("serviceStorefrontEyebrow", "Your brand, menu and prices")}</p>
-
-                      <p className="text-[#6B6B6B] leading-relaxed text-xs md:text-sm">{t("serviceStorefrontDesc", "Create your own storefront and publish menus to sell directly through the LocalCooks marketplace.")}</p>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              </FadeInSection>
-
-              {/* Step 2 - We Approve You */}
-              <FadeInSection delay={2}>
-                <motion.div
-                  whileHover={{ y: -6 }}
-                  transition={{ duration: 0.3 }}
-                  className="group relative h-full text-center"
-                >
-                  <Card className="relative h-full rounded-2xl bg-white border-0 shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]">
-                    <CardContent className="p-6 md:p-7 lg:p-8 flex flex-col items-center h-full">
-                      <div className="relative z-10 mb-5 w-full">
-                        <ChefServiceIllustration variant="operations" />
-                      </div>
-
-                      <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C] mb-1">{t("serviceOperationsTitle", "Cook—we handle the rest")}</h3>
-                      <p className="text-xs md:text-sm font-medium text-[#6B6B6B] mb-2 md:mb-3">{t("serviceOperationsEyebrow", "Orders, payments and delivery")}</p>
-
-                      <p className="text-[#6B6B6B] leading-relaxed text-xs md:text-sm">{t("serviceOperationsDesc", "Accept customer orders while LocalCooks coordinates secure payments and delivery logistics for you.")}</p>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              </FadeInSection>
-
-              {/* Step 3 - Menu. Price. Sell. */}
-              <FadeInSection delay={3}>
-                <motion.div
-                  whileHover={{ y: -6 }}
-                  transition={{ duration: 0.3 }}
-                  className="group relative h-full text-center"
-                >
-                  <Card className="relative h-full rounded-2xl bg-white border-0 shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all duration-300 hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]">
-                    <CardContent className="p-6 md:p-7 lg:p-8 flex flex-col items-center h-full">
-                      <div className="relative z-10 mb-5 w-full">
-                        <ChefServiceIllustration variant="kitchen" />
-                      </div>
-
-                      <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C] mb-1">{t("serviceKitchenTitle", "Cook in the right kitchen")}</h3>
-                      <p className="text-xs md:text-sm font-medium text-[#6B6B6B] mb-2 md:mb-3">{t("serviceKitchenEyebrow", "Commercial kitchens by the hour")}</p>
-
-                      <p className="text-[#6B6B6B] leading-relaxed text-xs md:text-sm">{t("serviceKitchenDesc", "Browse commercial kitchens, compare what they offer and book prep time when you need it.")}</p>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              </FadeInSection>
-            </div>
-
-            {/* CTA Section (Moved above What You Get) */}
-            <FadeInSection>
-              <div className="text-center mb-16 md:mb-20">
-                <Button
-                  onClick={handleGetStarted}
-                  size="lg"
-                  className="bg-[#F51042] hover:bg-[#D90E3A] text-white font-bold py-3 md:py-4 px-3 sm:px-6 md:px-12 text-[11px] sm:text-sm md:text-lg rounded-full shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300 min-h-[44px] sm:min-h-[48px]"
-                >
-                  <span className="flex items-center justify-center">{t("startYourJourney")}<Icon icon="mdi:arrow-right" className="ml-1.5 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5" />
-                  </span>
-                </Button>
-              </div>
-            </FadeInSection>
-
-            {/* What You Get - Compact Bento Grid */}
-            <FadeInSection>
-              <div className="mb-10 md:mb-12">
-                <div className="flex items-center gap-2 md:gap-3 mb-4 md:mb-6">
-                  <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-200 to-transparent" />
-                  <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C]">{t("whatYouGet")}</h3>
-                  <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-200 to-transparent" />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  {[
-                    { text: t("wygStorefront"), icon: "mdi:storefront-outline" },
-                    { text: t("wygOrderManagement"), icon: "mdi:clipboard-list-outline" },
-                    { text: t("wygMoneyFlows"), icon: "mdi:credit-card-outline" },
-                    { text: t("wygDeliveryLogistics"), icon: "mdi:truck-delivery-outline" },
-                    { text: t("wygKitchenAccess"), icon: "mdi:chef-hat" },
-                    { text: t("wygHandleComplexity"), icon: "mdi:shield-check-outline" },
-                    { text: t("wygStayInControl"), icon: "mdi:tune-variant" },
-                    { text: t("wygRealSupport"), icon: "mdi:account-heart-outline" },
-                  ].map((item, i) => (
-                    <motion.div
-                      key={i}
-                      whileHover={{ y: -2, scale: 1.01 }}
-                      className="group"
-                    >
-                      <div className="h-full bg-white rounded-2xl p-4 border border-[#2C2C2C]/10 hover:shadow-md transition-all duration-300">
-                        <div className="flex flex-row items-center text-left gap-3 md:items-start md:gap-2.5">
-                          <div className="flex-shrink-0">
-                            <Icon icon={item.icon} className="h-4 w-4 text-[#2C2C2C]" />
-                          </div>
-                          <p className="text-[#4A5568] text-[10px] md:text-xs leading-tight md:leading-relaxed">
-                            {item.text}
-                          </p>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-            </FadeInSection>
-
-            {/* Explore Marketplace CTA (Moved under What You Get) */}
-            <FadeInSection>
-              <div className="text-center mt-12 mb-8">
-                <Button
-                  onClick={() => window.open('https://localcook.shop/', '_blank')}
-                  variant="outline"
-                  size="lg"
-                  className="relative z-20 inline-flex items-center justify-center rounded-full border border-[#F51042]/25 bg-white py-3 md:py-4 px-3 sm:px-6 md:px-12 text-[11px] sm:text-sm md:text-lg font-bold text-[#F51042] shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1 hover:border-[#F51042] min-h-[44px] sm:min-h-[48px]"
-                >
-                  {t("visitMarketplace", "Explore the live marketplace")}
-                  <Icon icon="mdi:arrow-right" className="ml-1.5 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5" />
-                </Button>
-              </div>
-            </FadeInSection>
-          </div>
-        </section>
-
-        {/* ═══════════════════════════════════════════════════════════════════════
-            KITCHEN ACCESS - DRAMATIC BRAND SECTION with Bold Wave Dividers
-            Inspired by Stripe, Linear, and LocalCooks.ca branding
-        ═══════════════════════════════════════════════════════════════════════ */}
-
-        {/* ══════ TOP WAVE DIVIDER - White to Primary Red ══════ */}
-        <div className="relative w-full overflow-hidden" style={{ height: '120px', marginBottom: '-1px' }}>
-          <svg
-            viewBox="0 0 1440 320"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            className="absolute bottom-0 w-full"
-            style={{ height: '120px', minWidth: '100%' }}
-            preserveAspectRatio="none"
-          >
-            {/* Wave pattern - solid brand red, no gradient */}
-            <path
-              fill="#F51042"
-              fillOpacity="1"
-              d="M0,224L48,224C96,224,192,224,288,213.3C384,203,480,181,576,192C672,203,768,245,864,256C960,267,1056,245,1152,224C1248,203,1344,181,1392,170.7L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"
-            />
-          </svg>
-        </div>
-
-        {/* ══════ MAIN KITCHEN ACCESS SECTION - Bold Primary Background ══════ */}
-        <section id="kitchen-access" className="relative scroll-mt-24 py-20 md:py-28 px-4 overflow-hidden bg-[#F51042]">
-          {/* Animated Background Effects with fade mask to blend into waves */}
-          <div
-            className="absolute inset-0 overflow-hidden pointer-events-none"
-            style={{
-              maskImage: 'linear-gradient(to bottom, transparent 0%, transparent 5%, rgba(0,0,0,1) 10%, rgba(0,0,0,1) 90%, transparent 95%, transparent 100%)',
-              WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, transparent 5%, rgba(0,0,0,1) 10%, rgba(0,0,0,1) 90%, transparent 95%, transparent 100%)'
-            }}
-          >
-            {/* Large Floating Orbs */}
+        <section id="kitchen-access" className="relative scroll-mt-24 overflow-hidden bg-[#F51042] px-4 pb-28 pt-20 sm:pb-36 sm:pt-28 lg:pb-44 lg:pt-32">
+          <div className="pointer-events-none absolute inset-0" aria-hidden="true">
             <motion.div
-              className="absolute -top-40 -right-40 w-[500px] h-[500px] md:w-[800px] md:h-[800px] rounded-full"
-              style={{ background: 'radial-gradient(circle, rgba(255, 255, 255, 0.15) 0%, transparent 60%)' }}
-              animate={{ scale: [1, 1.15, 1], x: [0, 40, 0], y: [0, 20, 0] }}
-              transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
-            />
-            <motion.div
-              className="absolute -bottom-60 -left-40 w-[400px] h-[400px] md:w-[600px] md:h-[600px] rounded-full"
-              style={{ background: 'radial-gradient(circle, rgba(255, 255, 255, 0.12) 0%, transparent 60%)' }}
-              animate={{ scale: [1.1, 1, 1.1], x: [0, -30, 0], y: [0, -40, 0] }}
+              className="absolute left-[-18%] top-[4%] h-[520px] w-[520px] rounded-full md:h-[720px] md:w-[720px]"
+              style={{ background: "radial-gradient(closest-side, rgba(255,255,255,0.16), rgba(255,255,255,0))" }}
+              animate={{ x: [0, 40, 0], y: [0, 24, 0] }}
               transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
             />
             <motion.div
-              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] md:w-[900px] md:h-[900px] rounded-full"
-              style={{ background: 'radial-gradient(circle, rgba(255, 107, 107, 0.1) 0%, transparent 50%)' }}
-              animate={{ rotate: [0, 360] }}
-              transition={{ duration: 60, repeat: Infinity, ease: "linear" }}
+              className="absolute bottom-[6%] right-[-16%] h-[520px] w-[520px] rounded-full md:h-[720px] md:w-[720px]"
+              style={{ background: "radial-gradient(closest-side, rgba(170,0,35,0.22), rgba(170,0,35,0))" }}
+              animate={{ x: [0, -32, 0], y: [0, -20, 0] }}
+              transition={{ duration: 22, repeat: Infinity, ease: "easeInOut" }}
             />
-
-            {/* Cross Pattern Overlay */}
-            <div className="absolute inset-0 opacity-[0.05]" style={{
-              backgroundImage: `url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M20 0v40M0 20h40' stroke='%23fff' stroke-width='1'/%3E%3C/g%3E%3C/svg%3E")`,
-            }} />
+            <div
+              className="absolute inset-0"
+              style={{
+                backgroundImage:
+                  "linear-gradient(to right, rgba(255,255,255,0.09) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.09) 1px, transparent 1px)",
+                backgroundSize: "64px 64px",
+                backgroundPosition: "center top",
+                maskImage: "radial-gradient(ellipse 70% 60% at 50% 20%, #000 20%, transparent 80%)",
+                WebkitMaskImage: "radial-gradient(ellipse 70% 60% at 50% 20%, #000 20%, transparent 80%)",
+              }}
+            />
+            <svg
+              viewBox="0 0 1440 80"
+              preserveAspectRatio="none"
+              className="absolute inset-x-0 -top-px h-10 w-full sm:h-16 lg:h-20"
+            >
+              <path d="M0 0 H1440 V80 Q720 -40 0 80 Z" fill="#FFFFFF" />
+            </svg>
+            <svg
+              viewBox="0 0 1440 80"
+              preserveAspectRatio="none"
+              className="absolute inset-x-0 -bottom-px h-10 w-full sm:h-16 lg:h-20"
+            >
+              <path d="M0 80 H1440 V0 Q720 120 0 0 Z" fill="#FFFFFF" />
+            </svg>
           </div>
 
-          <div className="container mx-auto max-w-6xl relative z-10">
-            {/* Section Header - White Text on Red */}
-            <FadeInSection>
-              <div className="text-center mb-12">
-                <motion.h2
-                  className="text-2xl md:text-3xl lg:text-4xl font-bold text-white leading-tight mb-4"
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.7, delay: 0.1 }}
-                >
-                  {t("noKitchen")} 
-                  <span className="relative inline-block">
-                    <span className="relative z-10">{t("noProblem")}</span>
-                    <motion.svg
-                      className="absolute -bottom-1 md:-bottom-2 left-0 w-full"
-                      viewBox="0 0 300 12"
-                      fill="none"
+          <div className="relative z-10 mx-auto w-full max-w-6xl">
+            <div className="mx-auto mb-10 max-w-3xl text-center sm:mb-12 lg:mb-14">
+              <motion.h2
+                className="text-balance text-[1.9rem] font-bold leading-[1.12] tracking-[-0.025em] text-white sm:text-[2.5rem] lg:text-[3rem]"
+                initial={{ opacity: 0, y: 24 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "0px 0px -10% 0px" }}
+                transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+              >
+                {t("noKitchen")}{" "}
+                <span className="relative inline-block whitespace-nowrap">
+                  <span className="relative z-10">{t("noProblem")}</span>
+                  <svg className="absolute -bottom-1.5 left-0 w-full md:-bottom-2" viewBox="0 0 300 12" fill="none" aria-hidden="true">
+                    <motion.path
+                      d="M2 8C50 3 100 3 150 6C200 9 250 5 298 8"
+                      stroke="rgba(255,255,255,0.7)"
+                      strokeWidth="3"
+                      strokeLinecap="round"
                       initial={{ pathLength: 0, opacity: 0 }}
                       whileInView={{ pathLength: 1, opacity: 1 }}
-                      transition={{ duration: 1, delay: 0.5 }}
                       viewport={{ once: true }}
-                    >
-                      <motion.path
-                        d="M2 8C50 3 100 3 150 6C200 9 250 5 298 8"
-                        stroke="rgba(255,255,255,0.6)"
-                        strokeWidth="3"
-                        strokeLinecap="round"
-                        initial={{ pathLength: 0 }}
-                        whileInView={{ pathLength: 1 }}
-                        transition={{ duration: 1, delay: 0.5 }}
-                        viewport={{ once: true }}
-                      />
-                    </motion.svg>
-                  </span>
-                </motion.h2>
-
-                <motion.p
-                  className="text-sm md:text-base lg:text-lg text-white/85 leading-relaxed max-w-5xl mx-auto"
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.6, delay: 0.2 }}
-                >{t("accessCommercialKitchens")}</motion.p>
-              </div>
-            </FadeInSection>
-
-            {/* Kitchen Location Cards - White Cards on Red Background */}
-            {!kitchensLoading && uniqueLocations.length > 0 ? (
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10 md:mb-12">
-                {uniqueLocations.slice(0, 3).map((loc: any, i: number) => (
-                  <FadeInSection key={loc.id} delay={Math.min(i % 4, 3) as 0 | 1 | 2 | 3}>
-                    <KitchenLocationCard
-                      location={loc}
-                      navigate={navigate}
+                      transition={{ duration: 1, delay: 0.5, ease: [0.65, 0, 0.35, 1] }}
                     />
-                  </FadeInSection>
-                ))}
+                  </svg>
+                </span>
+              </motion.h2>
+
+              <motion.p
+                className="mx-auto mt-6 max-w-[38rem] text-pretty text-[1rem] leading-relaxed text-white/85 sm:text-[1.1rem]"
+                initial={{ opacity: 0, y: 16 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "0px 0px -10% 0px" }}
+                transition={{ duration: 0.6, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
+              >
+                {t("accessCommercialKitchens")}
+              </motion.p>
+            </div>
+
+            {/* Cards: a swipeable row that peeks the next card on phones and tablets, three
+                columns from `lg`. The row bleeds to the screen edge so the peek reads as more. */}
+            {kitchensLoading || uniqueLocations.length > 0 ? (
+              <div className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-4 overflow-x-auto px-4 pb-6 pt-1 scrollbar-none sm:gap-5 lg:mx-0 lg:grid lg:grid-cols-3 lg:gap-6 lg:overflow-visible lg:px-0 lg:pb-0">
+                {kitchensLoading
+                  ? [0, 1, 2].map((i) => (
+                      <div
+                        key={i}
+                        aria-hidden="true"
+                        className="w-[84%] flex-shrink-0 snap-start rounded-[26px] bg-white/95 p-2 sm:w-[46%] lg:w-auto"
+                      >
+                        <div className="aspect-[16/11] animate-pulse rounded-[20px] bg-[#F1EEEC]" />
+                        <div className="space-y-2.5 px-3 pb-3 pt-4 sm:px-4">
+                          <div className="h-4 w-2/3 animate-pulse rounded bg-[#F1EEEC]" />
+                          <div className="h-3 w-5/6 animate-pulse rounded bg-[#F1EEEC]" />
+                          <div className="h-3 w-1/2 animate-pulse rounded bg-[#F1EEEC]" />
+                          <div className="!mt-5 h-11 animate-pulse rounded-full bg-[#F1EEEC]" />
+                        </div>
+                      </div>
+                    ))
+                  : uniqueLocations.slice(0, 3).map((loc: any, i: number) => (
+                      <div key={loc.id} className="w-[84%] flex-shrink-0 snap-start sm:w-[46%] lg:w-auto">
+                        <KitchenLocationCard location={loc} navigate={navigate} index={i} />
+                      </div>
+                    ))}
               </div>
-            ) : !kitchensLoading ? (
-              <FadeInSection delay={1}>
-                <div className="flex justify-center mb-10 md:mb-12">
-                  <div className="bg-white/15 backdrop-blur-md rounded-2xl border border-white/20 px-8 py-10 text-center max-w-md">
-                    <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center mx-auto mb-4">
-                      <Icon icon="mdi:office-building-outline" className="h-7 w-7 text-white" />
-                    </div>
-                    <h3 className="text-xl font-bold text-white mb-2">{t("partnerKitchensComingSoon")}</h3>
-                    <p className="text-sm text-white/80 leading-relaxed">{t("onboardingKitchens")}</p>
-                  </div>
-                </div>
-              </FadeInSection>
-            ) : null}
-
-            {/* Browse all kitchens — discovery path to full listings */}
-            {!kitchensLoading && (
-              <FadeInSection delay={1}>
-                <div className="flex justify-center mb-14 md:mb-16">
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    className="group inline-flex items-center justify-center bg-white text-[#F51042] border-2 border-white font-semibold rounded-full px-6 sm:px-8 py-3 md:py-4 text-sm sm:text-base transition-all duration-300 shadow-lg shadow-black/10 hover:shadow-xl hover:-translate-y-0.5"
-                    onClick={handleBrowseKitchens}
-                  >
-                    <Icon icon="mdi:calendar-month-outline" className="mr-2 h-4 w-4 sm:h-5 sm:w-5 shrink-0" />{t("browseAllKitchens")}<Icon icon="mdi:arrow-right" className="ml-2 h-4 w-4 sm:h-5 sm:w-5 shrink-0 group-hover:translate-x-1 transition-transform" />
-                  </Button>
-                </div>
-              </FadeInSection>
-            )}
-
-            {/* Partner CTA - Container Card with Bento Grid Inside */}
-            <FadeInSection delay={1}>
+            ) : (
               <motion.div
-                className="bg-white rounded-2xl shadow-xl overflow-hidden"
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 16 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ duration: 0.4 }}
+                transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+                className="mx-auto max-w-md rounded-[26px] border border-white/25 bg-white/[0.12] px-8 py-10 text-center backdrop-blur-md"
               >
-                {/* Bento Grid Content Area */}
-                <div className="p-4 md:p-6">
-                  {/* Header Row with Kitchen Icon */}
-                  <div className="flex items-start gap-4 mb-4">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" className="h-12 w-12 shrink-0 text-[#2C2C2C]" aria-hidden="true">
-                      <path d="M0 0h24v24H0z" fill="none" />
-                      <path fill="currentColor" d="M11.473 10.596h1.399v-.7H11.75l-.938-3.94a.35.35 0 0 0-.341-.27H8.967a.35.35 0 0 0-.341.27l-.939 3.94H6.561v.7ZM9.244 6.385h.949l.836 3.509H8.408Zm1.527 8.07H8.666a.35.35 0 0 0-.351.35v1.755a.35.35 0 0 0 .351.351h2.105a.35.35 0 0 0 .351-.351v-1.755a.35.35 0 0 0-.351-.35m-.35 1.754H9.017v-1.053h1.4ZM6.21 14.455h.702v1.754H6.21Zm11.227-2.457h.702v1.754h-.702Zm0-3.156h.702v1.754h-.702Zm4.211-2.457h-4.912a.35.35 0 0 0-.35.351v6.666H2.35a.35.35 0 0 0-.35.351v4.21a.35.35 0 0 0 .35.351h19.299a.35.35 0 0 0 .351-.351V6.736a.35.35 0 0 0-.352-.351m-5.263 9.122h-4.211v-1.4h4.211Zm-13.684-1.4h4.562v3.509H2.701Zm5.263 0h3.509v1.4h-.012v.7h.012v1.4H7.964Zm4.21 2.1h4.211v1.4h-4.211Zm9.123 1.4h-4.211v-5.958h4.211Zm-4.211-6.66v-3.86h4.211v3.86Z" />
-                    </svg>
-                    <div>
-                      <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#6B6B6B] block mb-1">{t("forKitchenOwners")}</span>
-                      <h3 className="text-lg md:text-xl lg:text-2xl font-bold text-[#1A1A1A] leading-tight">
-                        {t("turnDowntimeInto")}{" "}
-                        <span className="relative inline-block">
-                          <span className="text-[#F51042]">{t("revenueBadge")}</span>
-                          <motion.svg
-                            className="absolute -bottom-0.5 left-0 w-full"
-                            viewBox="0 0 300 12"
-                            fill="none"
-                            initial={{ pathLength: 0, opacity: 0 }}
-                            whileInView={{ pathLength: 1, opacity: 1 }}
-                            transition={{ duration: 1, delay: 0.3 }}
-                            viewport={{ once: true }}
-                          >
-                            <motion.path
-                              d="M2 8C50 3 100 3 150 6C200 9 250 5 298 8"
-                              stroke="#F51042"
-                              strokeWidth="3"
-                              strokeLinecap="round"
-                              initial={{ pathLength: 0 }}
-                              whileInView={{ pathLength: 1 }}
-                              transition={{ duration: 1, delay: 0.3 }}
-                              viewport={{ once: true }}
-                            />
-                          </motion.svg>
-                        </span>
-                      </h3>
-                    </div>
-                  </div>
-
-                  <p className="text-sm text-[#6B6B6B] mb-4 max-w-xl">{t("dontLetKitchenSitEmpty")}</p>
-
-                  {/* Bento Grid - Award-Winning Card Design with Background Icons */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-3">
-                    {/* Reliable Weekly Revenue Card */}
-                    <motion.div
-                      className="relative bg-gradient-to-br from-[#4A90A4] to-[#2D6A7A] rounded-xl p-4 text-white overflow-hidden min-h-[160px]"
-                      whileHover={{ scale: 1.02, y: -2 }}
-                      transition={{ duration: 0.2 }}
-                    >
-                      {/* Background Icon */}
-                      <Icon icon="mdi:credit-card-outline" className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
-
-                      <div className="relative z-10">
-                        <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">{t("reliableIncome")}</span>
-                        <h4 className="text-base font-bold leading-tight mb-2">{t("weeklyRevenue")}</h4>
-                        <p className="text-xs text-white/80 leading-relaxed">{t("forgetChasingInvoices")}</p>
-                      </div>
-                    </motion.div>
-
-                    {/* Zero Risk, Total Compliance Card - Rich Violet (complementary to coral) */}
-                    <motion.div
-                      className="relative bg-gradient-to-br from-[#7C5295] to-[#5D3D70] rounded-xl p-4 text-white overflow-hidden min-h-[160px]"
-                      whileHover={{ scale: 1.02, y: -2 }}
-                      transition={{ duration: 0.2 }}
-                    >
-                      {/* Background Icon */}
-                      <Icon icon="mdi:shield-outline" className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
-
-                      <div className="relative z-10">
-                        <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">{t("zeroRisk")}</span>
-                        <h4 className="text-base font-bold leading-tight mb-2">{t("totalCompliance")}</h4>
-                        <p className="text-xs text-white/80 leading-relaxed">{t("everyChefVerified")}</p>
-                      </div>
-                    </motion.div>
-
-                    {/* Intelligent Hourly Management Card */}
-                    <motion.div
-                      className="relative bg-gradient-to-br from-[#0D9488] to-[#0F766E] rounded-xl p-4 text-white overflow-hidden min-h-[160px]"
-                      whileHover={{ scale: 1.02, y: -2 }}
-                      transition={{ duration: 0.2 }}
-                    >
-                      {/* Background Icon */}
-                      <Icon icon="mdi:calendar-month-outline" className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
-
-                      <div className="relative z-10">
-                        <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">{t("automated")}</span>
-                        <h4 className="text-base font-bold leading-tight mb-2">{t("bookingManagement")}</h4>
-                        <p className="text-xs text-white/80 leading-relaxed">{t("automatedBookingEngine")}</p>
-                      </div>
-                    </motion.div>
-
-                    {/* Your Kitchen, Your Rules Card */}
-                    <motion.div
-                      className="relative bg-gradient-to-br from-[#F5A623] to-[#E8940D] rounded-xl p-4 text-white overflow-hidden min-h-[160px]"
-                      whileHover={{ scale: 1.02, y: -2 }}
-                      transition={{ duration: 0.2 }}
-                    >
-                      {/* Background Icon */}
-                      <Icon icon="mdi:lightning-bolt" className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
-
-                      <div className="relative z-10">
-                        <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">{t("yourControl")}</span>
-                        <h4 className="text-base font-bold leading-tight mb-2">{t("yourRules")}</h4>
-                        <p className="text-xs text-white/80 leading-relaxed">{t("maintainSovereignty")}</p>
-                      </div>
-                    </motion.div>
-
-                    {/* Frictionless Flexibility Card */}
-                    <motion.div
-                      className="relative bg-gradient-to-br from-[#2D3E50] to-[#1A2530] rounded-xl p-4 text-white overflow-hidden min-h-[160px]"
-                      whileHover={{ scale: 1.02, y: -2 }}
-                      transition={{ duration: 0.2 }}
-                    >
-                      {/* Background Icon */}
-                      <Icon icon="mdi:clock-outline" className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
-
-                      <div className="relative z-10">
-                        <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">{t("flexible")}</span>
-                        <h4 className="text-base font-bold leading-tight mb-2">{t("frictionlessFlexibility")}</h4>
-                        <p className="text-xs text-white/80 leading-relaxed">{t("noLongTermContracts")}</p>
-                      </div>
-                    </motion.div>
-                  </div>
+                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/20">
+                  <Icon icon="mdi:office-building-outline" className="h-7 w-7 text-white" />
                 </div>
-
-                {/* Bottom Lip with Buttons */}
-                <div className="bg-[#FAFAFA] border-t border-gray-100 px-4 md:px-6 py-4">
-                  <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-                    <p className="text-sm text-[#6B6B6B] hidden sm:block">{t("joinKitchenPartners")}</p>
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <Button
-                        onClick={() => window.location.href = 'https://kitchen.localcooks.ca'}
-                        className="bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold py-3 md:py-4 px-6 rounded-full text-sm transition-all duration-300 group"
-                      >{t("becomePartner")}<Icon icon="mdi:arrow-right" className="ml-1.5 h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => window.location.href = 'https://kitchen.localcooks.ca'}
-                        className="border border-[#2C2C2C]/20 text-[#2C2C2C] hover:border-[#F51042] hover:text-[#F51042] font-semibold py-3 md:py-4 px-6 rounded-full text-sm transition-all duration-300"
-                      >{t("learnMore")}</Button>
-                    </div>
-                  </div>
-                </div>
+                <h3 className="text-xl font-bold text-white">{t("partnerKitchensComingSoon")}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-white/80">{t("onboardingKitchens")}</p>
               </motion.div>
-            </FadeInSection>
+            )}
+
+            {!kitchensLoading && (
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                className="mt-6 flex justify-center sm:mt-8 lg:mt-12"
+              >
+                <button
+                  type="button"
+                  onClick={handleBrowseKitchens}
+                  className="group inline-flex h-12 items-center justify-center gap-2 rounded-full bg-white px-7 text-[0.95rem] font-semibold text-[#F51042] shadow-[0_14px_30px_-12px_rgba(80,0,20,0.6)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_36px_-12px_rgba(80,0,20,0.7)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#F51042]"
+                >
+                  {t("browseAllKitchens")}
+                  <Icon icon="mdi:arrow-right" className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5" />
+                </button>
+              </motion.div>
+            )}
           </div>
         </section>
 
-        {/* ══════ BOTTOM WAVE DIVIDER - Primary Red to Light ══════ */}
-        <div className="relative w-full overflow-hidden" style={{ height: '120px', marginTop: '-1px' }}>
-          <svg
-            viewBox="0 0 1440 320"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            className="absolute top-0 w-full"
-            style={{ height: '120px', minWidth: '100%' }}
-            preserveAspectRatio="none"
+        <HowItWorksSection onVisitMarketplace={() => window.open("https://localcook.shop/", "_blank")} />
+
+        <ChefProofSection onJoin={handleGetStarted} />
+
+        {/* ═══════════════════════════════════════════════════════════════════════
+            FOR KITCHEN OWNERS
+            One quiet line for a manager who lands on the chef page. It sits late, just before
+            the FAQ, so it never interrupts the chef story, and it hands off to the kitchen site.
+        ═══════════════════════════════════════════════════════════════════════ */}
+        <section aria-labelledby="kitchen-owners-heading" className="px-4 pt-4 sm:pt-6">
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "0px 0px -10% 0px" }}
+            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+            className="relative mx-auto max-w-5xl overflow-hidden rounded-[24px] border border-[#F51042]/[0.12] bg-gradient-to-r from-[#FFF4F6] via-white to-[#FFF4F6] p-5 shadow-[0_16px_40px_-28px_rgba(245,16,66,0.45)] sm:p-6"
           >
-            {/* Inverted wave pattern - solid brand red, no gradient */}
-            <path
-              fill="#F51042"
-              fillOpacity="1"
-              d="M0,96L48,106.7C96,117,192,139,288,149.3C384,160,480,160,576,138.7C672,117,768,75,864,64C960,53,1056,75,1152,96C1248,117,1344,139,1392,149.3L1440,160L1440,0L1392,0C1344,0,1248,0,1152,0C1056,0,960,0,864,0C768,0,672,0,576,0C480,0,384,0,288,0C192,0,96,0,48,0L0,0Z"
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute -right-10 -top-16 h-48 w-48 rounded-full"
+              style={{ background: "radial-gradient(closest-side, rgba(245,16,66,0.12), rgba(245,16,66,0))" }}
             />
-          </svg>
-        </div>
+            <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:gap-6">
+              <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-[#F51042] shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_10px_20px_-10px_rgba(245,16,66,0.8)]">
+                <Icon icon="mdi:storefront-outline" className="h-6 w-6 text-white" aria-hidden />
+              </div>
 
-        {/* ═══════════════════════════════════════════════════════════════════════
-            TESTIMONIALS CAROUSEL - Thrive Childcare Centers Style
-        ═══════════════════════════════════════════════════════════════════════ */}
-        <TestimonialCarouselSection />
-
-        {/* ═══════════════════════════════════════════════════════════════════════
-            RESOURCES — Preview section linking to full Chef Resources page
-        ═══════════════════════════════════════════════════════════════════════ */}
-        <section id="resources" className="scroll-mt-24 py-20 md:py-28 px-4 bg-gradient-to-b from-gray-50/80 to-white relative overflow-hidden">
-          {/* Subtle decorative elements */}
-          <div className="absolute top-0 right-0 w-96 h-96 rounded-full opacity-[0.03]" style={{ background: "radial-gradient(circle, #F51042 0%, transparent 70%)" }} />
-          <div className="absolute bottom-0 left-0 w-72 h-72 rounded-full opacity-[0.04]" style={{ background: "radial-gradient(circle, #FFD700 0%, transparent 70%)" }} />
-
-          <div className="container mx-auto max-w-6xl relative z-10">
-            <FadeInSection>
-              <div className="text-center mb-16">
-                <motion.h2
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.7, delay: 0.1 }}
-                  className="text-2xl md:text-3xl lg:text-4xl font-bold text-[#1A1A1A] leading-tight mb-4"
+              <div className="min-w-0 flex-1">
+                <p className="text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-[#F51042]">
+                  {t("forKitchenOwners")}
+                </p>
+                <h2
+                  id="kitchen-owners-heading"
+                  className="mt-1 text-balance text-[1.15rem] font-bold leading-snug tracking-[-0.015em] text-[#1F1F1F] sm:text-[1.25rem]"
                 >
-                  {t("everythingYouNeedTo")}{" "}
-                  <span className="relative inline-block">
-                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A]">{t("getStarted")}</span>
-                    <motion.svg
-                      className="absolute -bottom-1 md:-bottom-2 left-0 w-full"
-                      viewBox="0 0 250 12"
-                      fill="none"
-                      initial={{ pathLength: 0, opacity: 0 }}
-                      whileInView={{ pathLength: 1, opacity: 1 }}
-                      transition={{ duration: 1.2, delay: 0.6 }}
-                      viewport={{ once: true }}
-                    >
-                      <motion.path
-                        d="M2 8C40 4 90 4 125 6C160 8 210 5 248 8"
-                        stroke="#F51042"
-                        strokeWidth="3"
-                        strokeLinecap="round"
-                        initial={{ pathLength: 0 }}
-                        whileInView={{ pathLength: 1 }}
-                        transition={{ duration: 1.2, delay: 0.6 }}
-                        viewport={{ once: true }}
-                      />
-                    </motion.svg>
-                  </span>
-                </motion.h2>
-                <p className="text-[#6B6B6B] text-base md:text-lg max-w-2xl mx-auto leading-relaxed">{t("resourceGuideDesc")}</p>
+                  {t("turnDowntimeInto")} {t("revenueBadge")}
+                </h2>
+                <p className="mt-1 text-pretty text-[0.9rem] leading-relaxed text-[#5F5F5F]">
+                  {t("dontLetKitchenSitEmpty")}
+                </p>
               </div>
-            </FadeInSection>
 
-            <FadeInSection delay={1}>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-12">
-                {[
-                  {
-                    icon: "mdi:shield-outline",
-                    title: t("kbRegulatoryTitle"),
-                    description: t("kbRegulatoryDesc"),
-                    color: "bg-gray-100 text-gray-700",
-                  },
-                  {
-                    icon: "mdi:certificate-outline",
-                    title: t("kbFoodSafetyTitle"),
-                    description: t("kbFoodSafetyDesc"),
-                    color: "bg-gray-100 text-gray-700",
-                  },
-                  {
-                    icon: "mdi:office-building-outline",
-                    title: t("kbBizRegTitle"),
-                    description: t("kbBizRegDesc"),
-                    color: "bg-gray-100 text-gray-700",
-                  },
-                  {
-                    icon: "mdi:scale-balance",
-                    title: t("kbInsuranceTitle"),
-                    description: t("kbInsuranceDesc"),
-                    color: "bg-gray-100 text-gray-700",
-                  },
-                ].map((item, i) => (
-                  <Card key={i} className="group border border-gray-100 shadow-sm hover:shadow-md hover:border-gray-200 transition-all duration-300 bg-white">
-                    <CardContent className="p-6">
-                      <div className={`w-10 h-10 rounded-lg ${item.color} flex items-center justify-center mb-4`}>
-                        <Icon icon={item.icon} className="h-5 w-5" />
-                      </div>
-                      <h3 className="font-semibold text-[#2C2C2C] text-sm mb-2">{item.title}</h3>
-                      <p className="text-[#6B6B6B] text-xs leading-relaxed">{item.description}</p>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </FadeInSection>
-
-            <FadeInSection delay={2}>
-              <div className="text-center">
-                <div className="inline-flex flex-col sm:flex-row items-center gap-4">
-                  <Link href="/resources">
-                    <Button
-                      size="lg"
-                      className="bg-[#F51042] hover:bg-[#D90935] text-white font-semibold py-3 md:py-4 px-10 text-base rounded-full shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all"
-                    >{t("exploreResourceGuide")}<Icon icon="mdi:arrow-right" className="ml-2 h-5 w-5" />
-                    </Button>
-                  </Link>
-                </div>
-              </div>
-            </FadeInSection>
-          </div>
+              <a
+                href="https://kitchen.localcooks.ca"
+                className="group inline-flex h-11 flex-shrink-0 items-center justify-center gap-2 rounded-full bg-[#F51042] px-6 text-[0.9rem] font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_10px_22px_-10px_rgba(245,16,66,0.8)] transition-colors duration-300 hover:bg-[#E30D3C] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042] focus-visible:ring-offset-2"
+              >
+                {t("becomePartner")}
+                <Icon icon="mdi:arrow-right" className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5" />
+              </a>
+            </div>
+          </motion.div>
         </section>
 
         {/* ═══════════════════════════════════════════════════════════════════════
@@ -2262,111 +2413,6 @@ export default function ChefLanding() {
                   </AccordionItem>
                 ))}
               </Accordion>
-            </FadeInSection>
-          </div>
-        </section>
-
-        {/* ═══════════════════════════════════════════════════════════════════════
-            FINAL CTA
-        ═══════════════════════════════════════════════════════════════════════ */}
-        <section className="relative py-16 md:py-20 px-4 overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-[#F51042] via-[#E8103A] to-[#D90935]" />
-          <div className="absolute inset-0 opacity-10">
-            <div className="absolute top-10 left-10 w-96 h-96 bg-white rounded-full blur-3xl" />
-            <div className="absolute bottom-10 right-10 w-80 h-80 bg-white rounded-full blur-3xl" />
-          </div>
-
-          <div className="container mx-auto max-w-5xl text-center relative z-10">
-            <FadeInSection>
-              {/* Section Title - Styled like other sections with animated underline */}
-              <motion.div
-                className="mb-8 md:mb-10"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6 }}
-              >
-                <motion.h2
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.7, delay: 0.1 }}
-                  className="text-2xl md:text-3xl lg:text-4xl font-bold text-white leading-tight"
-                >{t("passionToProfit")}<br />
-                  <span className="relative inline-block">
-                    <span className="text-white/95">{t("onYourTerms")}</span>
-                    <motion.svg
-                      className="absolute -bottom-1 md:-bottom-2 left-0 w-full"
-                      viewBox="0 0 300 12"
-                      fill="none"
-                      initial={{ pathLength: 0, opacity: 0 }}
-                      whileInView={{ pathLength: 1, opacity: 1 }}
-                      transition={{ duration: 1.2, delay: 0.6 }}
-                      viewport={{ once: true }}
-                    >
-                      <motion.path
-                        d="M2 8C50 3 100 3 150 6C200 9 250 5 298 8"
-                        stroke="rgba(255,255,255,0.8)"
-                        strokeWidth="3"
-                        strokeLinecap="round"
-                        initial={{ pathLength: 0 }}
-                        whileInView={{ pathLength: 1 }}
-                        transition={{ duration: 1.2, delay: 0.6 }}
-                        viewport={{ once: true }}
-                      />
-                    </motion.svg>
-                  </span>
-                </motion.h2>
-              </motion.div>
-
-              {/* Subheading - Single line on desktop */}
-              <motion.div
-                className="text-base md:text-lg lg:text-xl text-white/90 mb-5 md:mb-6 max-w-4xl mx-auto leading-tight font-medium md:whitespace-nowrap md:overflow-hidden md:text-ellipsis"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.1 }}
-              >
-                <TruncatedText>{t("perfectingCraft")}</TruncatedText>
-              </motion.div>
-
-              {/* Brand Statement - Single line on desktop */}
-              <motion.div
-                className="text-sm md:text-base lg:text-lg text-white/85 mb-6 md:mb-8 max-w-5xl mx-auto leading-tight md:whitespace-nowrap md:overflow-hidden md:text-ellipsis"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.2 }}
-              >
-                <TruncatedText>{t("platformBuiltForChefs")}</TruncatedText>
-              </motion.div>
-
-              {/* Three Truths Section - Centered */}
-              <motion.div
-                className="mb-8"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.3 }}
-              >
-                <p className="text-xs md:text-sm text-white/75 mb-4 font-medium tracking-wider uppercase">
-                  {t("threeSimpleTruths")}
-                </p>
-                <div className="flex justify-center items-center">
-                  <TypewriterText />
-                </div>
-              </motion.div>
-
-              {/* CTA Button */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.4 }}
-              >
-                <Button
-                  onClick={handleGetStarted}
-                  size="lg"
-                  className="bg-white text-[#F51042] hover:bg-gray-100 font-bold py-3 md:py-4 px-12 text-lg md:text-xl rounded-full shadow-2xl hover:shadow-white/30 hover:-translate-y-1 transition-all"
-                >{t("joinLocalCooks")}<Icon icon="mdi:arrow-right" className="ml-3 h-5 w-5 md:h-6 md:w-6" />
-                </Button>
-                <p className="text-white/70 mt-5 text-xs md:text-sm">{t("approved24hGuarantees")}</p>
-              </motion.div>
             </FadeInSection>
           </div>
         </section>

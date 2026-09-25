@@ -470,6 +470,28 @@
     .chaos-float { animation: none; }
   }
 
+  /* Endless review row on the chef landing. The track holds the reviews twice, so moving it
+     by exactly half its width lands on an identical frame and the loop has no seam. */
+  .chef-marquee {
+    animation: chef-marquee 70s linear infinite;
+    will-change: transform;
+  }
+
+  .chef-marquee-viewport:hover .chef-marquee,
+  .chef-marquee-viewport:focus-within .chef-marquee {
+    animation-play-state: paused;
+  }
+
+  @keyframes chef-marquee {
+    from { transform: translate3d(0, 0, 0); }
+    to { transform: translate3d(-50%, 0, 0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .chef-marquee { animation: none; }
+    .chef-marquee-viewport { overflow-x: auto; }
+  }
+
   /* Fade-in Section Wrapper */
   .fade-in-section {
     animation: fade-in 0.6s ease-out;
