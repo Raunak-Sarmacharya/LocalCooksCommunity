@@ -70,7 +70,10 @@ const AvailabilityStep = () => {
         handleBack,
         isFirstStep,
         refreshAvailability,
+        refreshLocation,
         hasAvailability,
+        availabilityStepCompleted,
+        setAvailabilityStepCompleted,
         availabilityLoaded,
         hasUnsavedChanges,
         setUnsavedChanges,
@@ -81,17 +84,20 @@ const AvailabilityStep = () => {
     const availabilityRef = useRef<KitchenAvailabilityManagementHandle>(null);
     const bookingPoliciesRef = useRef<BookingPoliciesHandle>(null);
     /**
-     * A finished Availability step opens on its review. `availabilityLoaded` — not
-     * `hasAvailability` — is the readiness signal: the flag is false until the fetch lands,
-     * so deciding on it would open every revisit at part 0 and never reach the review. The
-     * decision latches, so saving a schedule for the first time does not throw the manager
-     * onto the review before they have seen the policies.
+     * A finished Availability step opens on its review.
+     *
+     * `isComplete` is `hasAvailability || availabilityStepCompleted`: a real schedule means the
+     * step is done, and so does having been through it — the second is how a manager who accepts
+     * the (already-defaulted) booking policies and moves on gets the step ticked, rather than
+     * being kept in a permanently-incomplete step for work they chose to do from the dashboard.
+     *
+     * `availabilityLoaded` — not `hasAvailability` — is the readiness signal: the flag is false
+     * until the fetch lands, so deciding on it would open every revisit at part 0 and never reach
+     * the review. The decision latches, so saving a schedule for the first time does not throw the
+     * manager onto the review before they have seen the policies.
      */
     const { activePart, isSummary, editPart, goNext, goBack } = useStepParts({
-        // `availabilityLoaded` — not `hasAvailability` — is the readiness signal: the flag is
-        // false until the fetch lands, so deciding on it would open every revisit at part 0
-        // and never reach the review.
-        isComplete: Boolean(hasAvailability),
+        isComplete: Boolean(hasAvailability) || Boolean(availabilityStepCompleted),
         isReady: Boolean(availabilityLoaded),
         partCount: PART_COUNT,
     });
@@ -99,6 +105,24 @@ const AvailabilityStep = () => {
     const [bookingPoliciesDirty, setBookingPoliciesDirty] = useState(false);
     // Continuing to a shorter part used to leave you mid-page.
     const scrollRef = useScrollToTopOnChange(activePart);
+
+    /**
+     * Reaching the review completes the step.
+     *
+     * The manager has seen the week they set (or chose not to set) and the booking policies,
+     * which arrive pre-filled with the platform defaults — so the review is where this step is
+     * genuinely finished, schedule or not. Recording it here rather than on Continue is the
+     * honest moment: it is the screen that says "that's your availability & policies set up",
+     * and it is reachable only after both parts.
+     *
+     * Sets a flag, not the data-derived `hasAvailability` — see the note on that state in the
+     * context. The dashboard's Getting Started checklist still asks for a real open day, and the
+     * publish review still requires one; this only stops the WIZARD keeping the step incomplete
+     * for work the manager may deliberately do later from My Kitchens.
+     */
+    useEffect(() => {
+        if (isSummary) setAvailabilityStepCompleted?.(true);
+    }, [isSummary, setAvailabilityStepCompleted]);
 
     /**
      * What the review shows: the days that are open, and the dated exceptions.
@@ -180,6 +204,16 @@ const AvailabilityStep = () => {
             }
             throw new Error(message);
         }
+        /*
+         * Re-read the location, or the review and this form's own `location` prop keep the
+         * pre-save numbers.
+         *
+         * `BookingRulesSettings` is the dashboard's component, and there it is wired to a
+         * mutation that invalidates this query; here the write is the fetch above, which
+         * touches no cache — so the reader has to be told. Done here rather than at each
+         * caller because every path that changes the policy row goes through this function.
+         */
+        await refreshLocation?.();
         return response.json();
     };
 
@@ -377,7 +411,7 @@ const AvailabilityStep = () => {
                                 {mt("availabilityRequiredNoticeTitle")}
                             </p>
                             <p className="mt-0.5 text-xs text-muted-foreground">
-                                {mt("availabilityRequiredNoticeDesc")}
+                                {mt("availabilityRequiredNoticeDesc", { spaces: mt("navSpaces") })}
                             </p>
                         </div>
                     </div>
@@ -401,6 +435,28 @@ const AvailabilityStep = () => {
 
             {activePart === 1 && (
                 <>
+                    {/*
+                     * The policies arrive pre-filled, so this part is a confirmation rather than a
+                     * form to complete — and the manager needs to hear that, or a screen full of
+                     * numbers reads as work they must think about. Same notice shape as the
+                     * check-in/check-out note below, and the same "My Kitchens → X" wording the
+                     * schedule part uses, so the two read as one voice.
+                     */}
+                    <div className="flex items-start gap-3 rounded-xl border border-border bg-muted/40 px-4 py-3">
+                        <ClipboardCheck className="mt-px h-4 w-4 shrink-0 text-muted-foreground" />
+                        <div className="min-w-0">
+                            <p className="text-xs font-medium text-foreground">
+                                {mt("availabilityPoliciesLaterTitle")}
+                            </p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                                {mt("availabilityPoliciesLaterDesc", {
+                                    spaces: mt("navSpaces"),
+                                    policies: mt("navBookingRules"),
+                                })}
+                            </p>
+                        </div>
+                    </div>
+
                     {/*
                      * Awareness, not configuration. The arrival window and the
                      * checklist itself are set on the check-in/check-out page;

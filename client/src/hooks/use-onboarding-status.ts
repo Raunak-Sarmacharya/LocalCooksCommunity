@@ -222,12 +222,24 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
         ...ONBOARDING_QUERY_OPTIONS,
     });
 
-    // [ENTERPRISE OPTIMIZATION] Skip Stripe, Kitchens, Availability, Requirements queries
-    // when onboarding is already complete - these are only needed during setup
+    /*
+     * [ENTERPRISE OPTIMIZATION] Skip Kitchens, Availability and Requirements queries once
+     * onboarding is marked complete — those were verified when the flag was set, and nothing
+     * can un-verify them afterwards.
+     *
+     * STRIPE IS THE EXCEPTION, and deliberately so. It used to be skipped under the same
+     * assumption ("verified during onboarding"), but that assumption is now FALSE: a manager
+     * can legitimately finish onboarding with Stripe merely SUBMITTED, because Stripe's own
+     * verification takes days and it is not ours to make them wait. So the flag no longer
+     * implies a connected account, and this row has to ask Stripe rather than infer.
+     *
+     * Skipping it here ticked the Getting Started "payments" row for a manager who could not
+     * yet be paid — which is exactly the claim the dashboard must never make.
+     */
     const shouldSkipDetailedQueries = isOnboardingMarkedComplete;
 
     // Fetch Stripe Connect status from dedicated endpoint (queries Stripe API for real status)
-    // SKIP when onboarding is complete - Stripe status was already verified during onboarding
+    // ALWAYS fetched: the account can still be mid-verification after onboarding completes.
     const { data: stripeConnectStatus, isLoading: isLoadingStripe } = useQuery({
         queryKey: ['/api/manager/stripe-connect/status', firebaseUser?.uid],
         queryFn: async () => {
@@ -240,7 +252,7 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
             if (!res.ok) return null;
             return res.json();
         },
-        enabled: !!firebaseUser && !shouldSkipDetailedQueries,
+        enabled: !!firebaseUser,
         // This is the SAME endpoint the Payments tab reads, so it shares one policy —
         // the 30s staleTime that used to sit here now lives in ONBOARDING_QUERY_OPTIONS.
         ...ONBOARDING_QUERY_OPTIONS,

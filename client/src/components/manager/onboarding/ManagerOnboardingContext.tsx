@@ -119,8 +119,38 @@ interface ManagerOnboardingContextType {
   selectedKitchenId: number | null;
   setSelectedKitchenId: (id: number | null) => void;
   isLoadingLocations: boolean;
+  /**
+   * Whether the manager has DONE ENOUGH with Stripe for the wizard to move on.
+   *
+   * True as soon as they have submitted Stripe's onboarding form (`detailsSubmitted`), which
+   * is the moment the account exists and the ball is in Stripe's court. It is deliberately
+   * NOT "the account can receive money" — see `isStripeConnected` for that.
+   *
+   * The two are separate because they answer different questions, and collapsing them into
+   * one flag is what used to hard-block setup: full verification ("charges and payouts
+   * enabled") takes Stripe days to a week, and a manager cannot be asked to sit on the last
+   * step of onboarding until a bank check clears. Stripe is the one dependency in this whole
+   * wizard that is not ours, so it is the one that must not gate "finish setup".
+   */
   isStripeOnboardingComplete?: boolean;
+  /**
+   * Whether the Stripe account is FULLY connected — charges AND payouts enabled.
+   *
+   * The strict fact, and the one the dashboard's Getting Started checklist and the
+   * publish/booking gates read. Finishing onboarding does not set this; only Stripe does.
+   */
+  isStripeConnected?: boolean;
   hasAvailability?: boolean;
+  /**
+   * Whether the availability STEP has been completed by being visited — as opposed to
+   * `hasAvailability`, which asks whether a real open day exists.
+   *
+   * The step's rail tick is `hasAvailability || availabilityStepCompleted`. See the note on the
+   * state itself: overloading `hasAvailability` would let the kitchen check un-tick the step.
+   */
+  availabilityStepCompleted?: boolean;
+  /** Mark the Availability & policies step done without a schedule. Called on reaching its review. */
+  setAvailabilityStepCompleted?: (completed: boolean) => void;
   /**
    * Whether the availability check has actually returned.
    *
@@ -130,6 +160,20 @@ interface ManagerOnboardingContextType {
    */
   availabilityLoaded?: boolean;
   refreshAvailability?: () => Promise<void>; // [NEW] Trigger refresh after saving availability
+  /**
+   * Re-read the LOCATION after a write that changes it.
+   *
+   * The Availability step's policies part embeds the dashboard's own `BookingRulesSettings`, and
+   * the review prints `selectedLocation` — which the context derives from the `["/api/manager/locations"]`
+   * query. On the dashboard that component is wired to a mutation whose `onSuccess` invalidates that
+   * query, so the reader is fresh; the step's own `saveBookingRules` is a plain fetch and touches no
+   * cache, so without this the review (and the form's own `location` prop) kept the pre-save numbers
+   * until a reload. Same defect shape as the kitchen step's stale review (2026-09-26).
+   *
+   * Invalidate — not patch — because the endpoint returns the row and there are several writers
+   * (policy hours, terms upload) whose fields the caller does not all know.
+   */
+  refreshLocation?: () => Promise<void>;
   hasRequirements?: boolean;
   /** Whether the requirements check has actually returned. Same rule as availability. */
   requirementsLoaded?: boolean;
@@ -211,13 +255,15 @@ interface ManagerOnboardingContextType {
   storageForm: {
     listings: StorageListing[];
     isLoading: boolean;
-    refresh: () => Promise<void>;
+    /** `kitchenId` is optional: omit it to refresh the currently-selected kitchen. */
+    refresh: (kitchenId?: number) => Promise<void>;
   };
 
   equipmentForm: {
     listings: EquipmentListing[];
     isLoading: boolean;
-    refresh: () => Promise<void>;
+    /** `kitchenId` is optional: omit it to refresh the currently-selected kitchen. */
+    refresh: (kitchenId?: number) => Promise<void>;
   };
 
   // Actions
@@ -247,6 +293,39 @@ interface ManagerOnboardingContextType {
 }
 
 const ManagerOnboardingContext = createContext<ManagerOnboardingContextType | undefined>(undefined);
+
+/**
+ * The two Stripe facts, derived in ONE place from the status endpoint's payload.
+ *
+ * They answer different questions and must never be collapsed into one flag:
+ *
+ * - `connected` — the account can take and send money (`charges` AND `payouts` enabled).
+ *   This is the strict fact. The dashboard's Getting Started checklist, and the gates on
+ *   listing or booking a kitchen, read this and nothing else.
+ * - `initiated` — the manager has finished THEIR part: they submitted Stripe's onboarding
+ *   form and the account is now with Stripe. This is what the wizard gates on.
+ *
+ * Why they are separate: full verification takes Stripe days to a week, and it is not ours
+ * to make. Gating "finish setup" on it left a manager stuck on the last onboarding step
+ * until a bank check cleared. Gating nothing on it is the opposite mistake — a manager would
+ * be told they can be paid when they cannot. So: setup completes on `initiated`, and every
+ * money-facing surface still reads `connected`.
+ *
+ * `detailsSubmitted` is Stripe's own signal (the status endpoint copies it off the account
+ * object, and the server flips `status` to "pending" at that same moment). An account that
+ * was created but whose form was abandoned is `detailsSubmitted: false` — correctly still
+ * "not done", because there is nothing for Stripe to review yet.
+ *
+ * `connected` implies `detailsSubmitted`, so a fully verified account satisfies both.
+ */
+export function resolveStripeState(
+  status: { status?: string; chargesEnabled?: boolean; payoutsEnabled?: boolean; detailsSubmitted?: boolean } | null | undefined,
+): { connected: boolean; initiated: boolean } {
+  const connected =
+    status?.status === "complete" && status?.chargesEnabled === true && status?.payoutsEnabled === true;
+  const initiated = connected || status?.detailsSubmitted === true;
+  return { connected, initiated };
+}
 
 // Internal component to consume OnboardJS hook and provide the blended context
 function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: ReactNode, isOpen: boolean, setIsOpen: (val: boolean) => void }) {
@@ -323,6 +402,22 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   const [hasAvailability, setHasAvailability] = useState(false);
   const [isLoadingAvailability, setIsLoadingAvailability] = useState(false);
   const [availabilityLoaded, setAvailabilityLoaded] = useState(false); // [FIX] Track when availability check completes
+  /**
+   * The manager has been through the Availability & policies step, whether or not they set a
+   * weekly schedule.
+   *
+   * Deliberately NOT folded into `hasAvailability`. That flag is DATA-DERIVED and the
+   * `checkAvailability` effect re-runs whenever the kitchen list changes, setting it back to
+   * false when nothing is open — so a "the manager accepted the policy defaults and moved on"
+   * fact stored there would silently un-tick the step the next time a kitchen was added.
+   * Overloading one flag with both meanings is the two-definitions shape this codebase keeps
+   * getting bitten by.
+   *
+   * What it does NOT mean: that the kitchen is bookable. `hasAvailability` stays the only thing
+   * that answers that, and it is what the dashboard's Getting Started checklist and the publish
+   * readiness gate read. Onboarding ticks on a visit; going live still requires real hours.
+   */
+  const [availabilityStepCompleted, setAvailabilityStepCompleted] = useState(false);
 
   // Requirements State [NEW] - tracks if location_requirements record exists
   const [hasRequirements, setHasRequirements] = useState(false);
@@ -380,9 +475,12 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   });
 
   const userData = firebaseUserData;
-  // Use Stripe API status (more accurate) - account is complete only when charges AND payouts are enabled
-  const isStripeOnboardingComplete = stripeConnectStatus?.status === 'complete' && 
-    stripeConnectStatus?.chargesEnabled && stripeConnectStatus?.payoutsEnabled;
+  // The two Stripe facts, both derived in `resolveStripeState` (see its note above).
+  // `isStripeConnected` is the strict one the dashboard reads; `isStripeOnboardingComplete`
+  // is the one this wizard gates on, and it is satisfied as soon as the manager has
+  // submitted Stripe's form — so setup is not held open for Stripe's own review queue.
+  const { connected: isStripeConnected, initiated: isStripeOnboardingComplete } =
+    resolveStripeState(stripeConnectStatus);
   const [dbCompletedSteps, setDbCompletedSteps] = useState<Record<string, boolean>>({});
 
   // Normalize legacy numeric step keys to string format for UI consumption
@@ -494,9 +592,21 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       result['application-requirements'] = true;
     }
 
-    // Availability is complete ONLY if any day is actually set available
-    // This is DATA-DRIVEN - must have data in kitchen_availability table
-    if (hasAvailability) {
+    /*
+     * Availability is complete when EITHER a real open day exists, OR the manager has been
+     * through the step and reached its review.
+     *
+     * Two ways in, one meaning out — "this step is behind you". A schedule is one way to be
+     * done with it; reading the policies and accepting the defaults is another, and it is the
+     * one most managers take, because the policies are already filled in and a weekly schedule
+     * is real work they may want to do from the dashboard instead.
+     *
+     * This tick is a PROGRESS GUIDE, not a bookability claim. `hasAvailability` alone still
+     * answers "is there anything to book", and that is what the dashboard's Getting Started
+     * checklist and the publish readiness gate read — a manager who skips the schedule will
+     * still be told, where it matters, that the kitchen has no hours yet.
+     */
+    if (hasAvailability || availabilityStepCompleted) {
       result['availability'] = true;
     }
 
@@ -529,7 +639,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
 
     return result;
   }, [locations, selectedLocationId, kitchens.length,
-    hasRequirements, hasAvailability, isStripeOnboardingComplete,
+    hasRequirements, hasAvailability, availabilityStepCompleted, isStripeOnboardingComplete,
     dbCompletedSteps, isAddingLocation]);
 
   // Build visible steps: show all steps, but skip welcome if returning user with location
@@ -1897,7 +2007,10 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     locations, selectedLocationId, setSelectedLocationId, selectedLocation,
     kitchens, selectedKitchenId, setSelectedKitchenId, isLoadingLocations,
     isStripeOnboardingComplete,
+    isStripeConnected,
     hasAvailability,
+    availabilityStepCompleted,
+    setAvailabilityStepCompleted,
     availabilityLoaded,
     refreshAvailability: async () => {
       // The same LOCATION-scoped rule as the check above. A save can therefore only ever turn the
@@ -1920,6 +2033,13 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       } catch (e) {
         logger.error("Failed to refresh availability", e);
       }
+    },
+    refreshLocation: async () => {
+      // `selectedLocation` is `locations.find(...)`, and `locations` is the
+      // `["/api/manager/locations"]` query — so re-reading that ONE key is what makes every
+      // reader of `selectedLocation` (the review's policy rows, the embedded BookingRules-
+      // Settings' own `location` prop and its dirty check) agree with the server again.
+      await queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
     },
     hasRequirements,
     requirementsLoaded,
@@ -1981,13 +2101,22 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     storageForm: { 
       listings: existingStorageListings, 
       isLoading: isLoadingStorage,
-      refresh: async () => {
-        if (!selectedKitchenId) return;
+      /*
+       * Re-reads storage for a kitchen. Takes the id explicitly rather than closing over
+       * `selectedKitchenId`: the onboarding step knows which kitchen it is working on
+       * (`selectedKitchenId ?? kitchens[0]?.id`) and can be rendered a frame before the
+       * provider's auto-select lands, so a guard on the provider's own state made this a
+       * silent no-op exactly when it was needed — the review would then stay stale, which
+       * is the bug it exists to fix.
+       */
+      refresh: async (kitchenId?: number) => {
+        const id = kitchenId ?? selectedKitchenId;
+        if (!id) return;
         const token = await auth.currentUser?.getIdToken();
         if (!token) return;
         setIsLoadingStorage(true);
         try {
-          const res = await fetch(`/api/manager/kitchens/${selectedKitchenId}/storage-listings`, {
+          const res = await fetch(`/api/manager/kitchens/${id}/storage-listings`, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           if (res.ok) setExistingStorageListings(await res.json());
@@ -1997,13 +2126,15 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     equipmentForm: { 
       listings: existingEquipmentListings, 
       isLoading: isLoadingEquipment,
-      refresh: async () => {
-        if (!selectedKitchenId) return;
+      /** See the note on `storageForm.refresh` — the id is explicit for the same reason. */
+      refresh: async (kitchenId?: number) => {
+        const id = kitchenId ?? selectedKitchenId;
+        if (!id) return;
         const token = await auth.currentUser?.getIdToken();
         if (!token) return;
         setIsLoadingEquipment(true);
         try {
-          const res = await fetch(`/api/manager/kitchens/${selectedKitchenId}/equipment-listings`, {
+          const res = await fetch(`/api/manager/kitchens/${id}/equipment-listings`, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           if (res.ok) setExistingEquipmentListings(await res.json());
@@ -2159,6 +2290,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       setExistingStorageListings([]);
       setExistingEquipmentListings([]);
       setHasAvailability(false);
+      setAvailabilityStepCompleted(false);
       setAvailabilityLoaded(false);
       setHasRequirements(false);
       setRequirementsLoaded(false);

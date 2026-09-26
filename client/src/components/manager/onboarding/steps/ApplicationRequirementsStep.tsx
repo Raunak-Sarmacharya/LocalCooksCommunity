@@ -5,9 +5,11 @@ import { CheckCircle, ClipboardList } from "@/components/ui/manager-icons";
 import { ApplicationRequirementsWizard } from "@/components/manager/requirements";
 import type { ApplicationRequirementsWizardHandle } from "@/components/manager/requirements";
 import {
-  STEP1_FIELD_GROUPS,
-  STEP2_BUILT_IN_FIELDS,
+  resolveApplicantRequirements,
+  resolveCustomRequirements,
+  resolveDocumentRequirementsUnique,
   type LocationRequirements,
+  type ResolvedRequirement,
 } from "@/components/manager/requirements/types";
 import { auth } from "@/lib/firebase";
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
@@ -58,8 +60,15 @@ export default function ApplicationRequirementsStep() {
    * The saved row, for the review.
    *
    * Read on the review rather than held in the context, so it reflects what was just
-   * saved. `{ id: -1 }` is the endpoint's "no row yet" sentinel — a truthy check would
-   * show a review of nothing.
+   * saved — the same shape the availability step's review uses, and the reason this screen
+   * does NOT have the kitchen step's staleness: it re-reads on every arrival instead of
+   * rendering a copy some other component filled.
+   *
+   * The `id > 0` guard is deliberately NOT applied. `{ id: -1 }` means "no row saved yet",
+   * and the endpoint still answers it with the platform DEFAULTS — which are exactly what
+   * the wizard rendered and what the manager reviewed, so they are the truthful thing to
+   * show. Rejecting the payload left every section blank for a manager who accepted the
+   * defaults without touching a switch.
    */
   const [saved, setSaved] = useState<LocationRequirements | null>(null);
   useEffect(() => {
@@ -73,27 +82,78 @@ export default function ApplicationRequirementsStep() {
       });
       if (!res.ok || cancelled) return;
       const row = await res.json();
-      if (!cancelled && Number(row?.id) > 0) setSaved(row);
+      if (!cancelled && row && typeof row === "object") setSaved(row);
     })();
     return () => { cancelled = true; };
   }, [isSummary, selectedLocationId]);
 
   /**
-   * How much the manager is asking for, counted off the same field lists the wizard
-   * renders — so the review cannot describe a different form from the one that set it.
+   * The manager's decisions, by NAME.
+   *
+   * Counts ("3 of 13 required") told the manager how many switches they had left on, which
+   * is not a thing anyone can check — they came here to see what a chef will be asked for.
+   * These are read off the very field lists the wizard renders (see `types.ts`), so the
+   * review cannot describe a different form from the one that produced it.
+   *
+   * A switch that is OFF is reported as OPTIONAL rather than dropped: it is still a decision
+   * the manager made, and leaving it out would hide what they turned off.
    */
-  const requiredCounts = useMemo(() => {
-    const required = (groups: typeof STEP1_FIELD_GROUPS) =>
-      groups
-        .flatMap((group) => group.fields)
-        .filter((field) => Boolean((saved as Record<string, unknown> | null)?.[field.key as string])).length;
-    return {
-      info: required(STEP1_FIELD_GROUPS),
-      infoTotal: STEP1_FIELD_GROUPS.flatMap((group) => group.fields).length,
-      documents: required(STEP2_BUILT_IN_FIELDS),
-      documentsTotal: STEP2_BUILT_IN_FIELDS.flatMap((group) => group.fields).length,
-      custom: Array.isArray(saved?.customFields) ? saved.customFields.length : 0,
+  const requirementSections = useMemo(() => {
+    const toGroups = (rows: ResolvedRequirement[]) => {
+      const required = rows.filter((row) => row.required);
+      const optional = rows.filter((row) => !row.required);
+      const toRow = (row: ResolvedRequirement) => ({
+        key: row.key,
+        label: row.label,
+        value: row.description ?? "",
+        // The name is the information here; the description annotates it.
+        emphasis: "label" as const,
+      });
+      return [
+        {
+          key: "required",
+          title: mt("requirementsSummaryRequired"),
+          count: required.length,
+          // An empty required list is a FACT worth stating, not a gap: "every field here is
+          // optional" is a very different contract from "this section is broken".
+          rows: required.length > 0
+            ? required.map(toRow)
+            : [{ key: "none-required", value: mt("requirementsSummaryNothingRequired") }],
+        },
+        {
+          key: "optional",
+          title: mt("requirementsSummaryOptional"),
+          count: optional.length,
+          rows: optional.length > 0
+            ? optional.map(toRow)
+            : [{ key: "none-optional", value: mt("requirementsSummaryNothingOptional") }],
+        },
+      ];
     };
+
+    return [
+      {
+        key: "info",
+        title: mt("requirementsSummaryInfo"),
+        groups: toGroups(saved ? resolveApplicantRequirements(saved) : []),
+      },
+      {
+        key: "documents",
+        title: mt("requirementsSummaryDocuments"),
+        groups: toGroups(resolveDocumentRequirementsUnique(saved)),
+      },
+      {
+        key: "custom",
+        title: mt("requirementsSummaryCustom"),
+        groups: (() => {
+          const rows = resolveCustomRequirements(saved);
+          if (rows.length === 0) {
+            return [{ key: "none", title: "", rows: [{ key: "no-custom", value: mt("requirementsSummaryNoCustom") }] }];
+          }
+          return toGroups(rows);
+        })(),
+      },
+    ];
   }, [saved]);
 
   // Let the wizard's unsaved-changes guard speak for this step.
@@ -151,32 +211,6 @@ export default function ApplicationRequirementsStep() {
     handleBack();
   };
 
-  const summaryRows = [
-    {
-      key: "info",
-      label: mt("requirementsSummaryInfo"),
-      value: mt("requirementsSummaryRequiredCount", {
-        required: requiredCounts.info,
-        total: requiredCounts.infoTotal,
-      }),
-    },
-    {
-      key: "documents",
-      label: mt("requirementsSummaryDocuments"),
-      value: mt("requirementsSummaryRequiredCount", {
-        required: requiredCounts.documents,
-        total: requiredCounts.documentsTotal,
-      }),
-    },
-    {
-      key: "custom",
-      label: mt("requirementsSummaryCustom"),
-      value: requiredCounts.custom > 0
-        ? mt("requirementsSummaryCustomCount", { count: requiredCounts.custom })
-        : mt("none"),
-    },
-  ];
-
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       {!isSummary && (
@@ -212,15 +246,15 @@ export default function ApplicationRequirementsStep() {
        * The review. The wizard is one pane, so its rows carry no Edit of their own — three
        * buttons that all open the same form would be three ways to say one thing. The
        * heading carries the single action instead.
+       *
+       * Each section splits into Required and Optional, and the SPLIT is the marking: a
+       * per-row "Required" pill under a heading that already says Required is six
+       * repetitions of a fact already stated. Marking everything marks nothing.
        */}
       {isSummary && (
         <StepSummary
           heading={{ title: mt("requirementsSummaryHeading"), part: 0 }}
-          /*
-           * One surface, so one group — and an untitled one: the heading above already names
-           * it, and the single Edit lives there. A group heading would only say it twice.
-           */
-          sections={[{ key: "requirements", rows: summaryRows }]}
+          sections={requirementSections}
           onEdit={editPart}
           noteTitle={mt("requirementsRecapTitle")}
           noteBody={mt("requirementsRecapBody")}

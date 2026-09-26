@@ -2,7 +2,6 @@ import { logger } from "@/lib/logger";
 import { mt } from "@/i18n/manager";
 import { Package, Plus, Pencil, Trash2, Thermometer, Snowflake, AlertTriangle, ChevronLeft } from "@/components/ui/manager-icons";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
@@ -365,7 +364,8 @@ export default function StorageListingManagement() {
 export function StorageListingContent({
   selectedLocationId,
   selectedKitchenId,
-  embedded = false
+  embedded = false,
+  onListingsChanged
 }: {
   selectedLocationId: number | null,
   selectedKitchenId: number | null,
@@ -376,10 +376,22 @@ export function StorageListingContent({
    * its own footer directly below it. Everything else is the same component: one
    * implementation, two placements, so the wizard cannot drift from My Kitchens.
    */
-  embedded?: boolean
+  embedded?: boolean,
+  /**
+   * Called after this page's own list has been re-read following a successful write.
+   *
+   * The page keeps its rows in local state, so it repaints itself the moment you add
+   * something — but anything ELSE reading the same listings from a different owner does
+   * not. The onboarding step is exactly that: its review and the completion summary read
+   * `storageForm.listings` from the onboarding context, which holds its own copy of these
+   * rows. Without this the review showed an empty storage group until the whole provider
+   * remounted. See the same prop on `EquipmentListingContent`.
+   *
+   * Optional, so the dashboard's own usage is unaffected.
+   */
+  onListingsChanged?: () => void
 }) {
   const { toast } = useToast();
-  const queryClient = useQueryClient();
 
   /** The tab shows either the listings or a full page for one listing. */
   const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
@@ -805,7 +817,7 @@ export function StorageListingContent({
       const fresh = await fetchListings();
       if (fresh) setListings(fresh);
       loadAllKitchenListings(kitchens);
-      queryClient.invalidateQueries({ queryKey: [`/api/manager/storage-listings`] });
+      onListingsChanged?.();
     } catch (error: any) {
       toast({ title: mt("error"), description: error.message || mt("failedToAddStorageListings"), variant: "destructive" });
     } finally {
@@ -879,7 +891,7 @@ export function StorageListingContent({
       closePage();
       loadListings();
       loadAllKitchenListings(kitchens);
-      queryClient.invalidateQueries({ queryKey: [`/api/manager/storage-listings`] });
+      onListingsChanged?.();
       return true;
     } catch (error: any) {
       toast({ title: mt("error"), description: error.message || "Failed to update listing", variant: "destructive" });
@@ -910,7 +922,10 @@ export function StorageListingContent({
     } catch (error: any) {
       toast({ title: mt("error"), description: error.message || "Failed to delete listing", variant: "destructive" });
     } finally {
-      loadListings();
+      // The refetch is awaited before notifying so any other reader (the onboarding
+      // review) sees the row gone, not the previous list.
+      await loadListings();
+      onListingsChanged?.();
     }
   };
 
@@ -935,8 +950,8 @@ export function StorageListingContent({
     setIsToggling(true);
     try {
       await apiPut(`/manager/storage-listings/${listing.id}`, { isActive: next });
-      loadListings();
-      queryClient.invalidateQueries({ queryKey: [`/api/manager/storage-listings`] });
+      await loadListings();
+      onListingsChanged?.();
       toast({ title: mt("statusUpdated"), description: next ? mt("listingNowActive") : mt("listingNowInactive") });
     } catch (error: any) {
       toast({ title: mt("error"), description: error.message || "Failed to update status", variant: "destructive" });

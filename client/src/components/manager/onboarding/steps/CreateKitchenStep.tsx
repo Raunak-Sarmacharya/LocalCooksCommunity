@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useCallback, useState, useEffect, useRef } from "react";
 import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
 import {
@@ -555,6 +555,33 @@ export default function CreateKitchenStep() {
     (l: any) => l.name || mt("untitledItem"),
   );
 
+  /**
+   * Keep the context's copy of the listings in step with the embedded editors.
+   *
+   * Parts 1 and 2 render the dashboard's inventory, which keeps its own rows in local
+   * state and repaints itself the moment something is added. The review below and the
+   * completion summary read the CONTEXT's copy (`equipmentForm.listings` /
+   * `storageForm.listings`) instead, and the effect that fills those only re-runs when
+   * the selected kitchen changes — never when a listing is added. So the review showed
+   * empty equipment/storage until the provider remounted ("it works after a refresh").
+   *
+   * Passing the context's own `refresh` down closes that gap without the pages needing to
+   * know the context exists: they call it on write, this array updates, the review
+   * re-renders. One owner per fact, and no polling.
+   *
+   * `listingKitchenId` is passed explicitly rather than letting the context fall back to
+   * its own `selectedKitchenId`: this page is keyed off the fallback, so if the two ever
+   * disagree the refresh would read a different kitchen than the one that was edited.
+   */
+  const refreshEquipment = equipmentForm?.refresh;
+  const refreshStorage = storageForm?.refresh;
+  const handleEquipmentChanged = useCallback(() => {
+    if (listingKitchenId != null) void refreshEquipment?.(listingKitchenId);
+  }, [refreshEquipment, listingKitchenId]);
+  const handleStorageChanged = useCallback(() => {
+    if (listingKitchenId != null) void refreshStorage?.(listingKitchenId);
+  }, [refreshStorage, listingKitchenId]);
+
   const partHeading = [
     { title: mt("kitchenPartListingTitle"), description: mt("kitchenPartListingDesc") },
     { title: mt("kitchenPartEquipmentTitle"), description: mt("kitchenPartEquipmentDesc") },
@@ -869,6 +896,7 @@ export default function CreateKitchenStep() {
           embedded
           selectedLocationId={selectedLocationId}
           selectedKitchenId={listingKitchenId}
+          onListingsChanged={handleEquipmentChanged}
         />
       )}
 
@@ -877,6 +905,7 @@ export default function CreateKitchenStep() {
           embedded
           selectedLocationId={selectedLocationId}
           selectedKitchenId={listingKitchenId}
+          onListingsChanged={handleStorageChanged}
         />
       )}
 

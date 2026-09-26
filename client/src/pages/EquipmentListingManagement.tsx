@@ -11,7 +11,6 @@ import {
   DollarSign,
 } from "@/components/ui/manager-icons";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
@@ -417,7 +416,8 @@ export default function EquipmentListingManagement() {
 export function EquipmentListingContent({
   selectedLocationId,
   selectedKitchenId,
-  embedded = false
+  embedded = false,
+  onListingsChanged
 }: {
   selectedLocationId: number | null,
   selectedKitchenId: number | null,
@@ -428,10 +428,29 @@ export function EquipmentListingContent({
    * its own footer directly below it. Everything else is the same component: one
    * implementation, two placements, so the wizard cannot drift from My Kitchens.
    */
-  embedded?: boolean
+  embedded?: boolean,
+  /**
+   * Called after this page's own list has been re-read following a successful write.
+   *
+   * The page keeps its rows in local state, so it repaints itself the moment you add
+   * something — but anything ELSE reading the same listings from a different owner does
+   * not. The onboarding step is exactly that: its review and the completion summary read
+   * `equipmentForm.listings` from the onboarding context, which holds its own copy of
+   * these rows. Without this the review showed an empty equipment group until the whole
+   * provider remounted.
+   *
+   * This replaced a `queryClient.invalidateQueries({ queryKey: ['/api/manager/equipment-listings'] })`
+   * that had been sitting at each write site and doing NOTHING: `apiGet` is a plain fetch
+   * wrapper, so these endpoints were never registered as React Query caches and the
+   * invalidation matched nothing. It read as "the other readers are covered" while covering
+   * none of them — which is why the bug survived review.
+   *
+   * Optional, so the dashboard's own usage is unaffected — it passes nothing and relies
+   * on its own state, which is the only reader there.
+   */
+  onListingsChanged?: () => void
 }) {
   const { toast } = useToast();
-  const queryClient = useQueryClient();
 
   /** The tab shows either the inventory or a full page for one listing. */
   const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
@@ -843,7 +862,7 @@ export function EquipmentListingContent({
       const fresh = await fetchListings();
       if (fresh) setListings(fresh);
       loadAllKitchenListings(kitchens);
-      queryClient.invalidateQueries({ queryKey: [`/api/manager/equipment-listings`] });
+      onListingsChanged?.();
     } catch (error: any) {
       toast({ title: mt("error"), description: error.message || mt("failedToAddEquipmentListings"), variant: "destructive" });
     } finally {
@@ -904,7 +923,7 @@ export function EquipmentListingContent({
       closePage();
       loadListings();
       loadAllKitchenListings(kitchens);
-      queryClient.invalidateQueries({ queryKey: [`/api/manager/equipment-listings`] });
+      onListingsChanged?.();
       return true;
     } catch (error: any) {
       toast({ title: mt("error"), description: error.message || "Failed to update listing", variant: "destructive" });
@@ -935,7 +954,10 @@ export function EquipmentListingContent({
     } catch (error: any) {
       toast({ title: mt("error"), description: error.message || "Failed to delete listing", variant: "destructive" });
     } finally {
-      loadListings();
+      // The refetch is awaited before notifying so any other reader (the onboarding
+      // review) sees the row gone, not the previous list.
+      await loadListings();
+      onListingsChanged?.();
     }
   };
 
@@ -960,8 +982,8 @@ export function EquipmentListingContent({
     setIsToggling(true);
     try {
       await apiPut(`/manager/equipment-listings/${listing.id}`, { isActive: next });
-      loadListings();
-      queryClient.invalidateQueries({ queryKey: [`/api/manager/equipment-listings`] });
+      await loadListings();
+      onListingsChanged?.();
       toast({
         title: mt("statusUpdated"),
         description: next ? mt("listingNowActive") : mt("listingNowInactive"),

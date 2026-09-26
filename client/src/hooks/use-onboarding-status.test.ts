@@ -79,6 +79,53 @@ describe("invalidateOnboardingStatus", () => {
   });
 });
 
+describe("the dashboard's Stripe gate is the STRICT one", () => {
+  /*
+   * Onboarding completes as soon as the manager SUBMITS Stripe's form (`detailsSubmitted`),
+   * because Stripe's own verification takes days and a manager must not be held on the last
+   * setup step for it (2026-09-26). This hook feeds the dashboard checklist, which must NOT
+   * follow suit: its "payments" row is a claim that money can move, so it may only read
+   * charges+payouts enabled.
+   *
+   * This is a source-level guard because the regression is a one-line change to a condition
+   * that compiles and behaves plausibly — the row just ticks early, which no type can catch.
+   */
+  it("does not let `detailsSubmitted` stand in for a connected account", () => {
+    const source = readFileSync(
+      join(process.cwd(), "client/src/hooks/use-onboarding-status.ts"),
+      "utf8",
+    );
+
+    // The strict condition must still be present and intact.
+    expect(
+      /stripeConnectStatus\?\.status === 'complete'\s*&&\s*stripeConnectStatus\?\.chargesEnabled\s*&&\s*stripeConnectStatus\?\.payoutsEnabled/.test(
+        source,
+      ),
+      "the dashboard's isStripeComplete no longer requires charges AND payouts",
+    ).toBe(true);
+
+    // And it must not have picked up the onboarding signal.
+    expect(
+      source.includes("detailsSubmitted"),
+      "use-onboarding-status must not read detailsSubmitted — that is the ONBOARDING signal",
+    ).toBe(false);
+  });
+
+  it("always fetches Stripe, even once onboarding is marked complete", () => {
+    // The skip-optimization assumes "verified during onboarding". After the change above that
+    // assumption is false for Stripe — an account can still be mid-verification — so skipping
+    // the query would infer a connected account from a flag that no longer implies one.
+    const source = readFileSync(
+      join(process.cwd(), "client/src/hooks/use-onboarding-status.ts"),
+      "utf8",
+    );
+    expect(
+      /enabled:\s*!!firebaseUser\s*&&\s*!shouldSkipDetailedQueries/.test(source),
+      "the Stripe query is skipped when onboarding is marked complete — it must always run",
+    ).toBe(false);
+  });
+});
+
 describe("shouldShowSidebarGuidance", () => {
   const steps = (overrides: Partial<Parameters<typeof buildManagerSetupSteps>[0]> = {}) =>
     buildManagerSetupSteps({

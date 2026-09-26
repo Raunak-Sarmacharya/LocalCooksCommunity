@@ -127,14 +127,14 @@ export const steps: any[] = [
         id: 'application-requirements',
         type: 'CUSTOM_COMPONENT',
         metadata: {
-            label: 'Requirements',
+            label: 'Booking Requirements',
             isOptional: false,  // REQUIRED - managers must configure chef application requirements
             canSkip: false
         },
         payload: {
             componentKey: 'application-requirements',
-            title: 'Application Requirements',
-            description: 'Configure chef application fields',
+            title: 'Booking Requirements',
+            description: 'Set what chefs must provide to apply',
         },
         nextStep: 'payment-setup'
     },

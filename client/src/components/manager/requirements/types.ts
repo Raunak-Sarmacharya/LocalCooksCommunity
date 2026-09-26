@@ -197,3 +197,99 @@ export const CUSTOM_FIELD_TYPES = [
   { value: 'file', label: 'File Upload', description: 'Document or image upload' },
   { value: 'cloudflare_upload', label: 'Large File Upload', description: 'For larger files via Cloudflare' },
 ] as const;
+
+/**
+ * One named requirement a chef is asked for, and whether it is compulsory.
+ *
+ * The review screen needs the manager's decisions AS NAMES — "Food Safety Certificate,
+ * required", not "1 of 4 required" — so it reads the same field lists the wizard renders.
+ * Deriving them here rather than hand-writing a second list is the whole point: a
+ * hand-written copy is free to drift from the form that set it, which is the same
+ * two-owners-of-one-fact shape that has already cost this codebase two reviews.
+ */
+export interface ResolvedRequirement {
+  /** Stable key for React and for tests. */
+  key: string;
+  /** The field's name, as the wizard shows it. */
+  label: string;
+  /** What it is for — shown quietly under the name, so a name alone is not a riddle. */
+  description?: string;
+  required: boolean;
+}
+
+/** The document rows the wizard actually renders switches for. */
+const BUILT_IN_DOC_ROWS = STEP2_BUILT_IN_FIELDS.flatMap((group) => group.fields);
+
+/**
+ * The built-in document requirements, resolved against a saved row.
+ *
+ * A switch that is OFF is not "not requested" in the abstract — it means the chef will
+ * NOT be asked for it, so it is reported as optional rather than dropped. Dropping it
+ * left the manager unable to confirm what they had turned off.
+ */
+export function resolveDocumentRequirements(
+  requirements: Partial<LocationRequirements> | null | undefined,
+): ResolvedRequirement[] {
+  return BUILT_IN_DOC_ROWS.map((field) => ({
+    key: String(field.key),
+    label: field.label,
+    description: field.description,
+    required: requirements?.[field.key] === true,
+  }));
+}
+
+/**
+ * The food-safety row appears in BOTH step-1 and step-2 field lists (it is asked as a
+ * question in one and collected as a document in the other). De-duplicating on the key
+ * here keeps the review showing one row per decision, which is what the wizard does.
+ */
+export function resolveDocumentRequirementsUnique(
+  requirements: Partial<LocationRequirements> | null | undefined,
+): ResolvedRequirement[] {
+  const seen = new Set<string>();
+  return resolveDocumentRequirements(requirements).filter((row) => {
+    if (seen.has(row.key)) return false;
+    seen.add(row.key);
+    return true;
+  });
+}
+
+/**
+ * The applicant questions, resolved against a saved row.
+ *
+ * Read from `STEP1_FIELD_GROUPS` — the same list the wizard's first pane renders — so the
+ * review names exactly the fields the manager was shown.
+ */
+export function resolveApplicantRequirements(
+  requirements: Partial<LocationRequirements> | null | undefined,
+): ResolvedRequirement[] {
+  return STEP1_FIELD_GROUPS
+    .flatMap((group) => group.fields)
+    .map((field) => ({
+      key: String(field.key),
+      label: field.label,
+      description: field.description,
+      required: requirements?.[field.key] === true,
+    }));
+}
+
+/** The manager's own questions, in the order they were added. */
+export function resolveCustomRequirements(
+  requirements: Partial<LocationRequirements> | null | undefined,
+): ResolvedRequirement[] {
+  /*
+   * `tier2_custom_fields` is where the wizard WRITES and what the server validates
+   * (`tier-validation.ts`). The review used to read the legacy `customFields`, which the
+   * step never populates — so a manager's own questions were invisible on this screen.
+   */
+  const fields = (requirements as { tier2_custom_fields?: CustomField[] } | null | undefined)?.tier2_custom_fields;
+  if (!Array.isArray(fields)) return [];
+  return fields.map((field, index) => ({
+    key: field.id || `custom-${index}`,
+    label: field.label,
+    // The field type is worth naming: "Dropdown" and "File Upload" are different asks,
+    // and the review is where the manager checks which they picked.
+    description: CUSTOM_FIELD_TYPES.find((type) => type.value === field.type)?.label ?? field.type,
+    required: field.required === true,
+  }));
+}

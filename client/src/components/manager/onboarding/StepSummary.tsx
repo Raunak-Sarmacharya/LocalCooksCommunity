@@ -36,6 +36,44 @@ export interface StepSummaryRow {
      * is the caller's to shorten (see `truncateFilename`) rather than the layout's to fold.
      */
     value: string;
+    /**
+     * Flip which line carries the weight.
+     *
+     * By default the VALUE is the readable line and the label is the quiet one — right for
+     * "Cancellation window / 48h before". A list of the manager's OWN DECISIONS inverts that:
+     * the field's name is the thing being read, and its state is the annotation. Without this
+     * a checklist of requirements rendered as thirteen quiet labels over thirteen values,
+     * which is the opposite of scannable.
+     */
+    emphasis?: "value" | "label";
+    /**
+     * A short state word shown on the row's trailing edge — "Required", "Optional".
+     *
+     * Only ever set on rows whose state is NOT already carried by the group they sit under.
+     * Marking every row in a group that is already titled "Required" is the "highlighting
+     * everything means highlighting nothing" mistake (see the note on `groups`).
+     */
+    tag?: string;
+    /** Whether `tag` should read as the more emphatic of the two states. */
+    tagStrong?: boolean;
+}
+
+/**
+ * A titled sub-list of one section's rows, sharing that section's single Edit.
+ *
+ * This is how a group says "these are the required ones, these are the optional ones"
+ * without becoming two groups: the section still owns exactly one way back to the form,
+ * so the component's one-Edit-per-part rule holds. The heading IS the marking — a
+ * per-row "Required" tag under a heading that already says Required is noise, which is
+ * why `groups[].rows[].tag` should be left off inside a titled group.
+ */
+export interface StepSummaryGroup {
+    key: string;
+    /** The sub-heading, e.g. "Required" or "Optional". */
+    title: string;
+    /** Optional count shown beside the title, e.g. "3". */
+    count?: number;
+    rows: StepSummaryRow[];
 }
 
 export interface StepSummarySection {
@@ -55,8 +93,21 @@ export interface StepSummarySection {
      * from two controls, which is the defect this component exists to prevent.
      */
     part?: number;
-    rows: StepSummaryRow[];
 }
+
+/**
+ * A section has EITHER flat `rows` OR `groups` — exactly one, which the union enforces.
+ *
+ * `rows` used to be required with `groups` described as overriding it — but a grouped
+ * section has no rows to override, so every grouped caller had to populate a field it had
+ * nothing to put in. A type that documents one rule and enforces another is worse than no
+ * type: it is the shape that produced the TS2322 on the requirements review.
+ */
+export type StepSummarySectionInput = StepSummarySection &
+    (
+        | { rows: StepSummaryRow[]; groups?: undefined }
+        | { groups: StepSummaryGroup[]; rows?: undefined }
+    );
 
 interface StepSummaryProps {
     /** Optional hero — the kitchen recap puts its photo collage here. */
@@ -66,7 +117,7 @@ interface StepSummaryProps {
      * own Edit, so the part it names must not also appear as a section.
      */
     heading?: { title: string; meta?: ReactNode; part: number };
-    sections: StepSummarySection[];
+    sections: StepSummarySectionInput[];
     onEdit: (part: number) => void;
     noteTitle: string;
     noteBody: string;
@@ -114,27 +165,33 @@ export function StepSummary({ media, heading, sections, onEdit, noteTitle, noteB
                         ) : null}
 
                         <div className={cn("px-4 sm:px-5", hasHeader ? "pb-4 pt-2.5" : "py-4")}>
-                            {section.rows.map((row) => (
-                                <div key={row.key} className="py-1.5">
-                                    {/*
-                                      * Three levels, and they have to be three: the group heading is
-                                      * the only bold thing, the field name is a smaller, quieter
-                                      * line, and the value is what the manager is actually here to
-                                      * read — so the value is the readable one. Two similar-looking
-                                      * dark labels was the first attempt, and the grouping vanished
-                                      * into a wall of same-weight text.
-                                      */}
-                                    {row.label ? (
-                                        <p className="text-xs text-muted-foreground">{row.label}</p>
-                                    ) : null}
-                                    {/* `break-words`, never `truncate`: a value that wraps grows
-                                        its own line, and with no Edit button beside it there is
-                                        nothing for it to push around. */}
-                                    <p className={cn("break-words text-sm text-foreground", row.label && "mt-0.5")}>
-                                        {row.value}
-                                    </p>
-                                </div>
-                            ))}
+                            {section.groups
+                                ? section.groups.map((group, groupIndex) => (
+                                    <div key={group.key} className={cn(groupIndex > 0 && "mt-4")}>
+                                        {/*
+                                          * The sub-heading IS the marking. "Required" over a list of
+                                          * named fields reads as a rule the manager is imposing, and it
+                                          * costs one line — where a "Required" pill on each of six rows
+                                          * under it would be six repetitions of a fact already stated.
+                                          */}
+                                        <div className="flex items-center gap-2">
+                                            <h5 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                                {group.title}
+                                            </h5>
+                                            {group.count !== undefined ? (
+                                                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-[11px] font-medium leading-none tabular-nums text-muted-foreground">
+                                                    {group.count}
+                                                </span>
+                                            ) : null}
+                                        </div>
+                                        <div className="mt-1">
+                                            {group.rows.map((row) => (
+                                                <SummaryRow key={row.key} row={row} />
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))
+                                : (section.rows ?? []).map((row) => <SummaryRow key={row.key} row={row} />)}
                         </div>
                     </div>
                 );
@@ -148,6 +205,58 @@ export function StepSummary({ media, heading, sections, onEdit, noteTitle, noteB
                 <p className="mt-1 text-sm text-muted-foreground">{noteBody}</p>
             </div>
         </Card>
+    );
+}
+
+/**
+ * One row, in one shape, whether it sits in a flat section or a titled sub-group.
+ *
+ * Extracted so the grouped and ungrouped paths cannot drift into two slightly different
+ * rows — the same reason this file exists at all.
+ */
+function SummaryRow({ row }: { row: StepSummaryRow }) {
+    /*
+     * Which line is loud, and why it is a choice rather than a constant.
+     *
+     * Default (emphasis `value`): the name is a quiet caption and the value is what the
+     * manager came to read — "Cancellation window" over "48h before". Three levels have to
+     * be three, or the grouping vanishes into a wall of same-weight text.
+     *
+     * Inverted (`label`): a checklist of the manager's own decisions. Here the FIELD is the
+     * information — "Food Safety Certificate" — and its state is the annotation, so making
+     * the name the caption would leave the reader scanning thirteen quiet words.
+     */
+    const labelIsLoud = row.emphasis === "label";
+
+    return (
+        <div className="flex items-baseline justify-between gap-4 py-1.5">
+            <div className="min-w-0">
+                {row.label ? (
+                    <p className={cn(
+                        labelIsLoud ? "break-words text-sm text-foreground" : "text-xs text-muted-foreground",
+                    )}>
+                        {row.label}
+                    </p>
+                ) : null}
+                {/* `break-words`, never `truncate`: a value that wraps grows its own line, and
+                    with no Edit button beside it there is nothing for it to push around. */}
+                <p className={cn(
+                    "break-words",
+                    labelIsLoud ? "text-xs text-muted-foreground" : "text-sm text-foreground",
+                    row.label && "mt-px",
+                )}>
+                    {row.value}
+                </p>
+            </div>
+            {row.tag ? (
+                <span className={cn(
+                    "shrink-0 text-xs font-medium",
+                    row.tagStrong ? "text-foreground" : "text-muted-foreground",
+                )}>
+                    {row.tag}
+                </span>
+            ) : null}
+        </div>
     );
 }
 
