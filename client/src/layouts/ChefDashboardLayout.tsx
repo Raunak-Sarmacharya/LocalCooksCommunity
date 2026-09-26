@@ -30,7 +30,7 @@ const viewLabelKeys: Record<string, string> = {
     overview: "shellOverview",
     applications: "shellMyApplication",
     "kitchen-applications": "shellMyKitchens",
-    "kitchen-requests": "shellKitchenApplications",
+    "kitchen-requests": "shellMyKitchenApplications",
     bookings: "shellMyBookings",
     training: "shellTraining",
     messages: "shellMessages",

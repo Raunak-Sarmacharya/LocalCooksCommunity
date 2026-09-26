@@ -4,10 +4,69 @@ import path from "path";
 import fs from "fs";
 import { getPresignedUrl, isR2Configured } from "../r2-storage";
 import { upload, uploadToBlob } from "../fileUpload";
-import { optionalFirebaseAuth } from "../firebase-auth-middleware";
+import { optionalFirebaseAuth, requireFirebaseAuthWithUser } from "../firebase-auth-middleware";
 import { userService } from "../domains/users/user.service";
 
 const router = Router();
+
+// Return an application document inline for the manager's review modal.
+// The browser cannot embed R2's cross-origin signed URL, so the modal fetches
+// this authenticated same-origin response and creates a local blob URL.
+router.get('/kitchen-application/:applicationId/preview', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+    try {
+        const applicationId = Number(req.params.applicationId);
+        const fileUrl = req.query.url;
+        if (!Number.isInteger(applicationId) || applicationId <= 0 || typeof fileUrl !== 'string') {
+            return res.status(400).json({ error: 'Invalid document request' });
+        }
+        const { chefKitchenApplications, locations } = await import('@shared/schema');
+        const { db } = await import('../db');
+        const { eq } = await import('drizzle-orm');
+        const [application] = await db.select({
+            managerId: locations.managerId,
+            foodSafetyLicenseUrl: chefKitchenApplications.foodSafetyLicenseUrl,
+            foodEstablishmentCertUrl: chefKitchenApplications.foodEstablishmentCertUrl,
+            tierData: chefKitchenApplications.tier_data,
+        }).from(chefKitchenApplications)
+            .leftJoin(locations, eq(chefKitchenApplications.locationId, locations.id))
+            .where(eq(chefKitchenApplications.id, applicationId)).limit(1);
+        if (!application) return res.status(404).json({ error: 'Application not found' });
+        if (req.neonUser!.role !== 'admin' && application.managerId !== req.neonUser!.id) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+        const tierFiles = (application.tierData as { tierFiles?: Record<string, string> } | null)?.tierFiles || {};
+        const allowedUrls = [application.foodSafetyLicenseUrl, application.foodEstablishmentCertUrl, ...Object.values(tierFiles)];
+        if (!allowedUrls.includes(fileUrl)) return res.status(404).json({ error: 'Document not found' });
+
+        let bytes: Buffer;
+        let contentType: string;
+        if (fileUrl.startsWith('/api/files/documents/')) {
+            const filename = fileUrl.slice('/api/files/documents/'.length);
+            if (!filename || path.basename(filename) !== filename) return res.status(400).json({ error: 'Invalid document path' });
+            bytes = await fs.promises.readFile(path.join(process.cwd(), 'uploads', 'documents', filename));
+            contentType = /\.pdf$/i.test(filename) ? 'application/pdf' : /\.png$/i.test(filename) ? 'image/png' : /\.webp$/i.test(filename) ? 'image/webp' : 'image/jpeg';
+        } else {
+            const parsed = new URL(fileUrl);
+            if (parsed.protocol !== 'https:' || (parsed.hostname !== 'files.localcooks.ca' && !parsed.hostname.endsWith('.r2.cloudflarestorage.com'))) {
+                return res.status(400).json({ error: 'Invalid document host' });
+            }
+            const signedUrl = await getPresignedUrl(fileUrl);
+            const upstream = await fetch(signedUrl);
+            if (!upstream.ok) return res.status(502).json({ error: 'Could not load document' });
+            bytes = Buffer.from(await upstream.arrayBuffer());
+            contentType = /\.pdf$/i.test(parsed.pathname) ? 'application/pdf' : upstream.headers.get('content-type') || 'application/octet-stream';
+        }
+        if (bytes.length > 25 * 1024 * 1024) return res.status(413).json({ error: 'Document is too large to preview' });
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Disposition', 'inline');
+        res.setHeader('Cache-Control', 'private, no-store');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        return res.send(bytes);
+    } catch (error) {
+        logger.error('Kitchen document preview failed:', error);
+        return res.status(500).json({ error: 'Could not load document preview' });
+    }
+});
 
 // HIGH-6 Security: SSRF protection — only allow our R2 domain
 function isAllowedR2Url(url: string): boolean {

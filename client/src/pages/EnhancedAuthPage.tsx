@@ -37,7 +37,7 @@ export default function EnhancedAuthPage() {
     logout,
     refreshUserData,
     handleEmailLinkSignIn,
-    signInWithGoogle,
+    authenticateWithGoogle,
     authPhase,
     updateUserVerification,
     discardPendingGoogleRegistration,
@@ -892,9 +892,13 @@ export default function EnhancedAuthPage() {
                 // load-time sweep cannot see it.
                 onDiscardPendingGoogleRegistration={() => void discardPendingGoogleRegistration()}
                 onGoogleSignIn={async () => {
-                  // Public Google entry is idempotent: existing users sign in;
-                  // Firebase-only users are provisioned immediately as chefs.
-                  await signInWithGoogle(true, "chef", sellerJourneyDraft?.termsAccepted === true);
+                  const identity = await authenticateWithGoogle();
+                  if (!identity.existing) {
+                    // The shared register form resumes this pending identity and
+                    // collects the required name and phone before provisioning.
+                    setAuthStep("register");
+                    return;
+                  }
                   await handleSuccess();
                 }}
                 onPhoneExistingUser={handleSuccess}

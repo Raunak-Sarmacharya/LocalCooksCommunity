@@ -585,11 +585,11 @@ export function ManagerKitchenApplicationsContent({
                     active={statusFilter === 'pending'}
                 />
                 <StatCard
-                    title={mt("awaitingStep2")}
+                    title={mt("awaitingChefSStep2")}
                     value={stats.awaitingStep2}
                     icon={Users}
                     color="blue"
-                    subtitle={mt("chatEnabled")}
+                    subtitle={mt("chefDocumentsNeeded")}
                     onClick={() => setStatusFilter('awaiting-step2')}
                     active={statusFilter === 'awaiting-step2'}
                 />
@@ -634,7 +634,7 @@ export function ManagerKitchenApplicationsContent({
                                 <SelectContent>
                                     <SelectItem value="all">{mt("allApplications")}</SelectItem>
                                     <SelectItem value="pending">{mt("pendingReview")}</SelectItem>
-                                    <SelectItem value="awaiting-step2">{mt("awaitingStep2")}</SelectItem>
+                                    <SelectItem value="awaiting-step2">{mt("awaitingChefSStep2")}</SelectItem>
                                     <SelectItem value="approved">{mt("approved")}</SelectItem>
                                     <SelectItem value="rejected">{mt("rejected")}</SelectItem>
                                 </SelectContent>
@@ -718,6 +718,7 @@ export function ManagerKitchenApplicationsContent({
                             userId={managerId}
                             role="manager"
                             initialConversationId={chatConversationId}
+                            hideConversationList
                         />
                     )}
                 </DialogContent>

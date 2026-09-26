@@ -429,8 +429,8 @@ async function notifyStep2ApplicationSubmitted(data: ApplicationNotificationData
     locationId: data.locationId,
     type: 'application_new',
     priority: 'high',
-    title: 'Kitchen Coordination Submitted',
-    message: `${data.chefName} (${data.chefEmail}) submitted Kitchen Coordination documents${data.locationName ? ` for ${data.locationName}` : ''}. Review Kitchen Coordination to approve full booking access.`,
+    title: 'Chef Application Requirements Submitted',
+    message: `${data.chefName} (${data.chefEmail}) submitted their Chef Application Requirements${data.locationName ? ` for ${data.locationName}` : ''}. Review the Chef Application Requirements to approve full booking access.`,
     metadata: {
       applicationId: data.applicationId,
       chefName: data.chefName,
@@ -439,7 +439,7 @@ async function notifyStep2ApplicationSubmitted(data: ApplicationNotificationData
       step: 2
     },
     actionUrl: managerDashboardView('applications'),
-    actionLabel: 'Review Kitchen Coordination'
+    actionLabel: 'Review Chef Application Requirements'
   });
 }
 
@@ -752,13 +752,13 @@ async function notifyChefApplicationApproved(data: {
       conversationId: data.conversationId,
     },
     actionUrl: isFullyApproved
-      ? chefDashboardView('discover-kitchens')
+      ? chefDashboardView('kitchen-applications')
       : data.conversationId
         ? chefDashboardView('messages', { conversation: data.conversationId })
         : data.locationId
         ? `/kitchen-requirements/${data.locationId}`
-        : chefDashboardView('kitchen-applications'),
-    actionLabel: isFullyApproved ? 'Book Now' : data.conversationId ? 'Message kitchen manager' : 'Complete Kitchen Coordination'
+        : chefDashboardView('kitchen-requests'),
+    actionLabel: isFullyApproved ? 'View approved kitchen' : data.conversationId ? 'Message kitchen' : 'Complete Chef Application Requirements'
   });
 }
 
@@ -774,7 +774,7 @@ async function notifyChefApplicationRejected(data: { chefId: number; kitchenName
       locationName: data.locationName,
       reason: data.reason
     },
-    actionUrl: chefDashboardView('applications'),
+    actionUrl: chefDashboardView('kitchen-requests'),
     actionLabel: 'View Details'
   });
 }
@@ -846,6 +846,49 @@ async function notifyChefMessage(data: { chefId: number; senderName: string; mes
     },
     actionUrl: chefMessagesHref(data.conversationId),
     actionLabel: 'View Message'
+  });
+}
+
+async function notifySellerApplicationSubmitted(data: { chefId: number; applicationId: number; hasDocuments: boolean }) {
+  return createChefNotification({
+    chefId: data.chefId,
+    type: 'application_pending',
+    priority: 'normal',
+    title: 'Seller application received',
+    message: data.hasDocuments
+      ? 'We received your seller application and documents. Track its review in My Applications.'
+      : 'We received your seller application. Upload your documents in My Applications to complete it.',
+    metadata: { applicationId: data.applicationId, workflow: 'seller' },
+    actionUrl: chefDashboardView('applications', data.hasDocuments ? undefined : { action: 'documents' }),
+    actionLabel: data.hasDocuments ? 'Track application' : 'Upload documents',
+  });
+}
+
+async function notifySellerApplicationDecision(data: { chefId: number; applicationId: number; status: 'approved' | 'rejected' }) {
+  return createChefNotification({
+    chefId: data.chefId,
+    type: data.status === 'approved' ? 'application_approved' : 'application_rejected',
+    priority: 'high',
+    title: data.status === 'approved' ? 'Seller application approved' : 'Seller application not approved',
+    message: data.status === 'approved'
+      ? 'Your seller application was approved. Open Food Safety Training for your next step.'
+      : 'Your seller application was not approved. Open My Applications to review its status.',
+    metadata: { applicationId: data.applicationId, workflow: 'seller' },
+    actionUrl: chefDashboardView(data.status === 'approved' ? 'training' : 'applications'),
+    actionLabel: data.status === 'approved' ? 'Start training' : 'View application',
+  });
+}
+
+async function notifySellerDocumentRejected(data: { chefId: number; applicationId: number; documentName: string; feedback?: string }) {
+  return createChefNotification({
+    chefId: data.chefId,
+    type: 'application_pending',
+    priority: 'high',
+    title: 'Seller document needs replacement',
+    message: `${data.documentName} was not approved.${data.feedback ? ` Feedback: ${data.feedback}` : ''} Upload a replacement in My Applications.`,
+    metadata: { applicationId: data.applicationId, workflow: 'seller', documentName: data.documentName },
+    actionUrl: chefDashboardView('applications', { action: 'documents' }),
+    actionLabel: 'Replace document',
   });
 }
 
@@ -1400,6 +1443,9 @@ export const notificationService = {
   notifyChefPaymentReceived,
   notifyChefPaymentRefunded,
   notifyChefMessage,
+  notifySellerApplicationSubmitted,
+  notifySellerApplicationDecision,
+  notifySellerDocumentRejected,
   broadcastChefAnnouncement,
   
   // Storage Checkout

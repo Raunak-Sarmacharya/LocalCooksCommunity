@@ -15,7 +15,7 @@ const ChatInputSchema = z.object({
 type ChatInputFormType = z.infer<typeof ChatInputSchema>
 
 interface ChatInputProps {
-  onSend: (message: string, files?: File[]) => void
+  onSend: (message: string, files?: File[]) => Promise<void>
   onFileSelect?: (files: File[]) => void
   disabled?: boolean
   isLoading?: boolean
@@ -33,6 +33,8 @@ export function ChatInput({
   hasExternalAttachments = false
 }: ChatInputProps) {
   const [files, setFiles] = React.useState<File[]>([])
+  const [sending, setSending] = React.useState(false)
+  const [sendError, setSendError] = React.useState<string | null>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
   const form = useForm<ChatInputFormType>({
@@ -45,19 +47,20 @@ export function ChatInput({
   const message = form.watch("message")
 
   const onSubmit = async (data: ChatInputFormType) => {
-    if ((!data.message.trim() && files.length === 0 && !hasExternalAttachments) || disabled || isLoading) return
-    
-    // We handle the submission manually to allow clearing logic
-    if (files.length > 0) {
-        onSend(data.message, files as any)
-    } else {
-        onSend(data.message)
+    if ((!data.message.trim() && files.length === 0 && !hasExternalAttachments) || disabled || isLoading || sending) return
+
+    setSending(true)
+    setSendError(null)
+    try {
+      await onSend(data.message, files.length ? files : undefined)
+      form.reset()
+      setFiles([])
+      if (fileInputRef.current) fileInputRef.current.value = ""
+    } catch (error) {
+      setSendError(error instanceof Error ? error.message : "Message could not be sent. Please try again.")
+    } finally {
+      setSending(false)
     }
-    
-    // Reset form and file
-    form.reset()
-    setFiles([])
-    if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -84,6 +87,7 @@ export function ChatInput({
 
   return (
     <div className={cn("p-4 border-t bg-background", className)}>
+      {sendError && <p role="alert" className="mb-2 text-sm text-destructive">{sendError}</p>}
       {files.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-2 animate-in fade-in slide-in-from-bottom-2">
           {files.map((file, index) => (
@@ -121,7 +125,8 @@ export function ChatInput({
             size="icon"
             className="h-[40px] w-[40px] shrink-0"
             onClick={() => fileInputRef.current?.click()}
-            disabled={disabled || isLoading}
+            disabled={disabled || isLoading || sending}
+            aria-label="Attach files"
           >
             <Paperclip className="h-5 w-5 text-muted-foreground" />
           </Button>
@@ -137,7 +142,7 @@ export function ChatInput({
                     placeholder={placeholder}
                     onKeyDown={handleKeyDown}
                     className="min-h-[40px] max-h-[200px] resize-none py-3 bg-muted/50 focus:bg-background transition-colors"
-                    disabled={disabled || isLoading}
+                    disabled={disabled || isLoading || sending}
                     rows={1}
                     autoComplete="off"
                   />
@@ -148,11 +153,12 @@ export function ChatInput({
 
           <Button
             type="submit"
-            disabled={disabled || isLoading || (!message.trim() && files.length === 0 && !hasExternalAttachments)}
+            aria-label="Send message"
+            disabled={disabled || isLoading || sending || (!message.trim() && files.length === 0 && !hasExternalAttachments)}
             size="icon"
             className="h-[40px] w-[40px] shrink-0 transition-all duration-200"
           >
-            {isLoading ? (
+            {isLoading || sending ? (
                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
             ) : (
                <Send className="h-5 w-5 ml-0.5" />

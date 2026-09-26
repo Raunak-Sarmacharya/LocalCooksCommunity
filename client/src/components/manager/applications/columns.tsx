@@ -15,14 +15,14 @@ function StatusBadge({ application }: { application: Application }) {
     const hasStep2 = !!application.tier2_completed_at;
 
     if (status === "inReview") {
-        return <Badge variant="warning">{mt("awaitingAdminReview")}</Badge>;
+        return <Badge variant="warning">{mt("pendingReview")}</Badge>;
     }
     if (status === "approved") {
         if (tier === 2 && hasStep2) {
             return <Badge variant="warning">{mt("step2Review")}</Badge>;
         }
         if (tier === 1) {
-            return <Badge variant="info">{mt("step1Done")}</Badge>;
+            return <Badge variant="info">{mt("awaitingChefSStep2")}</Badge>;
         }
         if (tier >= 3) {
             return <Badge variant="success">{mt("approved")}</Badge>;

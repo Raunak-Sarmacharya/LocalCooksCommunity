@@ -5,13 +5,22 @@ import { useFirebaseAuth } from "./use-auth";
 import { ct } from "@/i18n/chef-ns";
 
 // Types for kitchen applications
-interface KitchenApplicationWithLocation extends ChefKitchenApplication {
+export interface KitchenApplicationWithLocation extends ChefKitchenApplication {
   location: {
     id: number;
     name: string;
     address: string;
     logoUrl?: string;
     brandImageUrl?: string;
+    managerId?: number | null;
+    /**
+     * The manager's display name, resolved server-side.
+     *
+     * The chef's "message your kitchen manager" card names the person rather than
+     * the premises, and resolves it from the same place the chat thread does so the
+     * two can never disagree.
+     */
+    managerName?: string | null;
   } | null;
   /** The server's `locationListed` flag. `undefined` means it did not say — test `=== false`. */
   locationListed?: boolean;
@@ -448,14 +457,16 @@ export function useChefApprovedKitchens() {
 export function useChefKitchenApplicationsStatus() {
   const { applications, isLoading } = useChefKitchenApplications();
 
-  // Applications with approved status (Tier 1, 2, or 3)
-  const approvedCount = applications.filter(a => a.status === "approved").length;
-  // Tier 3: Fully approved = status approved AND current_tier >= 3
-  const fullyApprovedCount = applications.filter(a =>
+  // Access is approved only after the manager completes the document step.
+  const approvedCount = applications.filter(a =>
     a.status === "approved" && 
     ((a as any).current_tier ?? 1) >= 3
   ).length;
-  const pendingCount = applications.filter(a => ["inreview", "pending"].includes(a.status.toLowerCase())).length;
+  const fullyApprovedCount = approvedCount;
+  const pendingCount = applications.filter(a =>
+    ["inreview", "pending"].includes(a.status.toLowerCase()) ||
+    (a.status === "approved" && ((a as any).current_tier ?? 1) < 3)
+  ).length;
   const rejectedCount = applications.filter(a => a.status === "rejected").length;
 
   const hasAnyApproved = approvedCount > 0;

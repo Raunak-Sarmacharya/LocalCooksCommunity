@@ -5,7 +5,7 @@ import { useChefKitchenApplications, useChefKitchenApplicationForLocation } from
 import { useToast } from "@/hooks/use-toast";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion } from "framer-motion";
-import { AlertCircle, ArrowLeft, Building2, CalendarDays, Check, Clock, FileText, Info, Loader2, MapPin, Send, XCircle } from "lucide-react";
+import { AlertCircle, ArrowLeft, Building2, CalendarDays, Check, Clock, FileText, Loader2, MapPin, MessageCircle, Send, XCircle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type FieldErrors, useForm, useWatch } from "react-hook-form";
 import { useLocation } from "wouter";
@@ -16,11 +16,12 @@ import { useTranslation } from "react-i18next";
 import { tt } from "@/i18n/common-ns";
 import { DateField } from "@/components/ui/date-field";
 import { DocumentUploadField } from "./DocumentUploadField";
+import { ApplicationSubmissionSummary } from "./ApplicationSubmissionSummary";
 import {
   ApplicationProgress,
   type ProgressItem,
-  type ProgressItemState,
 } from "./ApplicationProgress";
+import { KitchenManagerContactCard } from "./KitchenManagerContactCard";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -40,6 +41,8 @@ import { Calendar as UICalendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import ChatPanel from "@/components/chat/ChatPanel";
 
 // Helper component for authenticated document links
 function AuthenticatedDocumentLink({ url, className, children }: { url: string | null | undefined; className?: string; children: React.ReactNode }) {
@@ -222,7 +225,7 @@ interface LocationInfo {
 interface KitchenApplicationFormProps {
   location: LocationInfo;
   globalApp?: any;
-  onSuccess?: () => void;
+  onSuccess?: (submittedTier: number) => void;
   onCancel?: () => void;
 }
 
@@ -301,7 +304,13 @@ function RequirementMarker({
 }) {
   const { t } = useTranslation("kitchen");
   if (isRequiredField(flag, defaultRequired)) {
-    return <span className="text-destructive">*</span>;
+    return (
+      <>
+        {/* The asterisk is decoration — screen readers need the word itself. */}
+        <span className="text-destructive" aria-hidden="true">*</span>
+        <span className="sr-only">{t("required", { defaultValue: "required" })}</span>
+      </>
+    );
   }
   return (
     <span className="ml-2 text-xs text-muted-foreground">
@@ -344,15 +353,40 @@ export default function KitchenApplicationForm({
   // unless we've reached the max tier (which is currently 2)
   // Also unlock Step 2 for the legacy buggy state: inReview + tier >= 2 (admin approve used to bump tier without setting approved).
   const dbTier = application?.current_tier ?? 1;
-  const effectiveTier =
-    (application?.status === 'approved' && dbTier < 2) ||
-    (application?.status === 'inReview' && dbTier >= 2 && !application?.tier2_completed_at)
+  const effectiveTier = application?.status === 'rejected' || application?.status === 'cancelled'
+    ? 1
+    : ((application?.status === 'approved' && dbTier < 2) ||
+       (application?.status === 'inReview' && dbTier >= 2 && !application?.tier2_completed_at))
       ? Math.max(dbTier, 2)
       : dbTier;
 
   // Use effectiveTier for all UI logic, but keep dbTier for submission logic if needed
   const currentTier = effectiveTier;
   const tierData = (application?.tier_data || {}) as Record<string, any>;
+
+  /**
+   * A stored expiry, formatted for display, or null when there is nothing to show.
+   *
+   * The expiry belongs to the document, so once one is on file the chef reads it
+   * here instead of being asked for it again — the picker only appears when they
+   * choose to replace the document (or when the stored one has no date at all, in
+   * which case asking is the only way to complete it).
+   */
+  const expiryLabel = (value?: string | null): string | null => {
+    if (!value || !Number.isFinite(Date.parse(value))) return null;
+    return t("expiresOn", { defaultValue: "Expires {date}", date: new Date(value).toLocaleDateString() });
+  };
+
+  /** One line describing where a stored document stands, shown on its row. */
+  const storedDocumentNote = (status?: string | null, expiry?: string | null): string => {
+    if (expiry && Number.isFinite(Date.parse(expiry)) && Date.parse(expiry) < Date.now() - 86400000) {
+      return "Expired — replace this document";
+    }
+    if (status === 'rejected') return "Needs a replacement";
+    if (status !== 'approved') return "Review pending";
+    return "Already uploaded with your request";
+  };
+
 
   // Fetch location requirements
   const { data: requirements, isLoading: isLoadingRequirements } = useQuery({
@@ -379,6 +413,14 @@ export default function KitchenApplicationForm({
   }, [application?.foodEstablishmentCertUrl]);
   // Tier 2 file uploads
   const [insuranceFile, setInsuranceFile] = useState<File | null>(null);
+  /**
+   * The insurance document has no column of its own — it lives on the tier payload.
+   * Read once here so the upload field, the progress rail and the submit validation
+   * all agree on whether one is already on file. Previously only the validation read
+   * it, so a returning chef saw an empty upload box for a document they had submitted.
+   */
+  const existingInsuranceUrl = (tierData.tierFiles as Record<string, any> | undefined)
+    ?.tier2_insurance_document as string | undefined;
   const [fileErrors, setFileErrors] = useState<{
     businessLicense?: string;
     insurance?: string;
@@ -386,6 +428,7 @@ export default function KitchenApplicationForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
+  const [managerChatOpen, setManagerChatOpen] = useState(false);
   
   // Custom field file uploads - map of field ID to File object
   const [customFieldFiles, setCustomFieldFiles] = useState<Record<string, File>>({});
@@ -409,6 +452,20 @@ export default function KitchenApplicationForm({
   const hasPhoneOnFile = Boolean(
     chefProfile?.phone || application?.phone || globalApp?.phone
   );
+
+  /*
+   * The custom questions for the tier actually being submitted — the ONE source for
+   * the schema, the defaults, the submit payload and the rendered form.
+   *
+   * These used to follow the SCHEMA BRANCH instead, which is selected by
+   * `currentTier >= 2 || !!globalApp`. A chef who already had an application for
+   * another kitchen therefore fell into the tier-2 branch while still filling in the
+   * request form: the tier-1 questions rendered, but they were absent from the schema,
+   * so a question the admin marked required could be submitted empty.
+   */
+  const customFieldsForTier: CustomField[] = currentTier >= 2
+    ? (Array.isArray(requirements?.tier2_custom_fields) ? requirements.tier2_custom_fields : [])
+    : (Array.isArray(requirements?.tier1_custom_fields) ? requirements.tier1_custom_fields : []);
 
   // Dynamic schema generation based on requirements
   const dynamicSchema = useMemo(() => {
@@ -457,9 +514,10 @@ export default function KitchenApplicationForm({
         experience: optionalText,
         businessDescription: z.string().optional(),
         foodHandlerCertExpiry: z.string().optional(),
-        foodEstablishmentCertExpiry: requirements.tier2_food_establishment_expiry_required
-          ? z.string().min(1, t("valFoodEstExpiryReq", { defaultValue: "Food establishment certificate expiry is required" }))
-          : z.string().optional(),
+        // Left permissive on purpose: whether a date is needed depends on whether
+        // a licence is on file, which the submit handler checks against live
+        // state. A schema rule here would demand a date with no licence.
+        foodEstablishmentCertExpiry: z.string().optional(),
         usageFrequency: optionalText,
         sessionDuration: optionalText,
         termsAgree: z.boolean().default(true).optional(),
@@ -470,8 +528,7 @@ export default function KitchenApplicationForm({
       };
 
       const customFieldsSchema: Record<string, z.ZodTypeAny> = {};
-      const tier2Fields = Array.isArray(requirements.tier2_custom_fields) ? requirements.tier2_custom_fields : [];
-      tier2Fields.forEach((field: CustomField) => {
+      customFieldsForTier.forEach((field: CustomField) => {
         if (field.required) {
           switch (field.type) {
             case 'text':
@@ -528,9 +585,8 @@ export default function KitchenApplicationForm({
         ? z.string().min(1, t("valBusinessDescReq", { defaultValue: "Business description is required" }))
         : z.string().optional(),
       foodHandlerCertExpiry: z.string().optional(),
-      foodEstablishmentCertExpiry: requirements.requireFoodEstablishmentExpiry
-        ? z.string().min(1, t("valFoodEstExpiryReq", { defaultValue: "Food establishment certificate expiry is required" }))
-        : z.string().optional(),
+      // Not part of this stage; the licence is a kitchen-document item.
+      foodEstablishmentCertExpiry: z.string().optional(),
       usageFrequency: optionalText,
       sessionDuration: optionalText,
       termsAgree: z.boolean().default(true).optional(),
@@ -538,15 +594,10 @@ export default function KitchenApplicationForm({
       kitchenExperienceDescription: z.string().optional(),
     };
 
-    // Merge custom fields based on tier
-    let fieldsToUse: CustomField[] = [];
-    if (currentTier === 1 && requirements.tier1_custom_fields && Array.isArray(requirements.tier1_custom_fields)) {
-      fieldsToUse = requirements.tier1_custom_fields;
-    }
-
-    // Add custom fields to schema
+    // Add custom fields to schema — the same set the UI renders, so a required
+    // question can never render without a rule that enforces it.
     const customFieldsSchema: Record<string, z.ZodTypeAny> = {};
-    fieldsToUse.forEach((field: CustomField) => {
+    customFieldsForTier.forEach((field: CustomField) => {
       if (field.required) {
         switch (field.type) {
           case 'text':
@@ -698,16 +749,8 @@ export default function KitchenApplicationForm({
       }
     }
 
-    // Add default values for custom fields that don't have existing data
-    // Use tier-specific fields based on current tier
-    let fieldsToUse: CustomField[] = [];
-    if (currentTier === 1 && requirements?.tier1_custom_fields && Array.isArray(requirements.tier1_custom_fields)) {
-      fieldsToUse = requirements.tier1_custom_fields;
-    } else if (currentTier >= 2 && requirements?.tier2_custom_fields && Array.isArray(requirements.tier2_custom_fields)) {
-      fieldsToUse = requirements.tier2_custom_fields;
-    }
-
-    fieldsToUse.forEach((field: CustomField) => {
+    // Default values for custom fields that have no answer yet.
+    customFieldsForTier.forEach((field: CustomField) => {
       const fieldKey = `custom_${field.id}`;
       if (defaults[fieldKey] === undefined) {
         if (field.type === 'checkbox') {
@@ -765,6 +808,8 @@ export default function KitchenApplicationForm({
 
   // Anchors + refs the progress list needs to jump to a field.
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
+  /** The form itself, so a failed submit can bring the blocking field into view. */
+  const formRef = useRef<HTMLFormElement | null>(null);
   //
   // The two Section-5 agreements are not `useWatch`ed (they are declared below the checklist, so
   // reading them there would be a read-before-declare), so their live value is mirrored here.
@@ -792,11 +837,6 @@ export default function KitchenApplicationForm({
    * always sends real booleans, but a missing key must fail OPEN (treated as required) rather than
    * silently marking a mandatory field optional.
    *
-   * The `requestToApply` row is intentionally NOT part of `requiredItems` — it is the submit action
-   * itself, so counting it would mean the bar could never reach 100% before you submit, which is
-   * exactly the "am I allowed to submit?" question this card exists to answer. It is attached to
-   * the optional group as a status row and flipped to `waiting` once the application exists.
-   *
    * A plain function rather than a `useMemo`: `watchedValues` from `useWatch` is a fresh object on
    * every render, so a memo here could never hit its cache and would only add indirection. The cost
    * of recomputing is a handful of array pushes.
@@ -821,7 +861,9 @@ export default function KitchenApplicationForm({
         });
       }
 
-      if (requirements?.tier2_food_establishment_expiry_required) {
+      // The expiry is part of the licence row: it is only asked for — and only
+      // tracked — when a licence is actually on file.
+      if (businessLicenseFile || existingBusinessLicenseUrl) {
         required.push({
           id: "foodEstablishmentExpiry",
           label: t("foodEstablishmentExpiryLabel", { defaultValue: "Food Establishment License Expiry Date" }),
@@ -833,7 +875,7 @@ export default function KitchenApplicationForm({
         required.push({
           id: "insurance",
           label: t("insuranceDocument", { defaultValue: "Insurance Document" }),
-          state: insuranceFile ? "done" : "todo",
+          state: insuranceFile || existingInsuranceUrl ? "done" : "todo",
         });
       }
 
@@ -861,10 +903,16 @@ export default function KitchenApplicationForm({
       certDayStart.setHours(0, 0, 0, 0);
       const certExpiryOk =
         !certAttached || (certExpiryRaw !== "" && new Date(certExpiryRaw) >= certDayStart);
+      /*
+       * `requireFoodSafetyUpload` is the KITCHEN's flag — it decides whether the
+       * upload is compulsory. The admin's `requireFoodHandlerCert` decides
+       * whether the chef is asked the certificate question at all, which is a
+       * request-phase concern and must not gate this step.
+       */
       const certOk =
-        (!requirements?.requireFoodHandlerCert || (foodSafetyAnswer === "yes" && certAttached)) &&
+        (!requirements?.requireFoodSafetyUpload || (foodSafetyAnswer === "yes" && certAttached)) &&
         certExpiryOk;
-      if (requirements?.requireFoodHandlerCert || certAttached) {
+      if (requirements?.requireFoodSafetyUpload || certAttached) {
         required.push({
           id: "foodSafetyCert",
           label: t("foodSafetyCertificate", { defaultValue: "Food safety certificate" }),
@@ -890,14 +938,6 @@ export default function KitchenApplicationForm({
       return {
         requiredItems: required,
         optionalItems: optional,
-        requestRow: {
-          id: "tier1",
-          label: t("progressRequestToApply", { defaultValue: "Request to apply" }),
-          hint: application?.tier2_completed_at
-            ? t("progressApproved", { defaultValue: "Approved" })
-            : t("progressUnderReview", { defaultValue: "With LocalCooks for review" }),
-          state: "waiting" as ProgressItemState,
-        } as ProgressItem,
         canSubmit: required.every((item) => item.state !== "todo"),
       };
     }
@@ -1034,19 +1074,11 @@ export default function KitchenApplicationForm({
     return {
       requiredItems: required,
       optionalItems: optional,
-      requestRow: {
-        id: "requestToApply",
-        label: t("requestToApply", { defaultValue: "Request to apply" }),
-        hint: hasApplication
-          ? t("progressUnderReview", { defaultValue: "With LocalCooks for review" })
-          : t("progressNotSubmitted", { defaultValue: "Sent when you submit this form" }),
-        state: hasApplication ? ("waiting" as ProgressItemState) : ("todo" as ProgressItemState),
-      } as ProgressItem,
       canSubmit: required.every((item) => item.state !== "todo"),
     };
   };
 
-  const { requiredItems, optionalItems, requestRow, canSubmit } = buildProgress();
+  const { requiredItems, optionalItems, canSubmit } = buildProgress();
 
   const requiredRemaining = requiredItems.filter((item) => item.state === "todo");
 
@@ -1064,22 +1096,22 @@ export default function KitchenApplicationForm({
   const phaseCaptions = (() => {
     if (currentTier >= 2) {
       return application?.tier2_completed_at
-        ? [t("progressDocsSubmitted", { defaultValue: "Submitted and awaiting the kitchen’s review." })]
+        ? [t("progressDocsSubmitted", { defaultValue: "With the kitchen for review." })]
         : [
-            t("progressDocsCaption", { defaultValue: "Documents this kitchen asks for before you can book." }),
-            t("progressDocsReviewLine", { defaultValue: "Your kitchen reviews these before you can book time." }),
+            t("progressDocsCaption", { defaultValue: "Documents this kitchen requires." }),
+            t("progressDocsReviewLine", { defaultValue: "Kitchen reviews them before you book." }),
           ];
     }
-    if (hasApplication) {
+    if (hasApplication && application?.status !== 'rejected' && application?.status !== 'cancelled') {
       return [
-        t("progressWaitingCaption", { defaultValue: "Your request is with LocalCooks. Nothing else is needed from you." }),
-        t("progressReviewWindow", { defaultValue: "Your request to apply gets reviewed within 24 hours." }),
+        t("progressWaitingCaption", { defaultValue: "With LocalCooks. Nothing needed from you." }),
+        t("progressReviewWindow", { defaultValue: "Reviewed within 24 hours." }),
       ];
     }
     if (requiredRemaining.length === 0) {
       return [
-        t("progressAllSetCaption", { defaultValue: "Everything required is filled in. You can send your request to apply." }),
-        t("progressReviewWindow", { defaultValue: "Your request to apply gets reviewed within 24 hours." }),
+        t("progressAllSetCaption", { defaultValue: "Everything required is filled in." }),
+        t("progressReviewWindow", { defaultValue: "Reviewed within 24 hours." }),
       ];
     }
     /*
@@ -1090,11 +1122,18 @@ export default function KitchenApplicationForm({
      * this line just has to say which ones they are.
      */
     return [
+      /*
+       * A COUNT, not the item names.
+       *
+       * The rail is 20rem, so joining even two labels wrapped this line onto a second
+       * row. The names are not lost: the checklist directly below lists every item with
+       * its state, which is a better answer than a comma-separated run of them.
+       */
       t("appProgressStillNeeded", {
-        defaultValue: "Still needed: {items}",
-        items: requiredRemaining.map((item) => item.label).join(", "),
+        defaultValue: "Still needed: {count, plural, one {# item} other {# items}}",
+        count: requiredRemaining.length,
       }),
-      t("progressReviewWindow", { defaultValue: "Your request to apply gets reviewed within 24 hours." }),
+      t("progressReviewWindow", { defaultValue: "Reviewed within 24 hours." }),
     ];
   })();
 
@@ -1147,6 +1186,30 @@ export default function KitchenApplicationForm({
   );
 
   /*
+   * The chef's route to the person reviewing their application.
+   *
+   * Lifted out of the tracker's `guidance` slot: it answers a different question
+   * from the checklist — the tracker says what is missing, this says who to talk
+   * to — and as a footnote under the list it was the easiest thing on the page to
+   * scroll past. It now sits ABOVE the tracker in the sticky rail, so on a form
+   * this long it is the one card that is always on screen.
+   *
+   * Shown for the whole of the second phase, submitted or not: while the review is
+   * pending the manager is exactly who the chef needs to reach.
+   */
+  const managerContact = currentTier >= 2 && application?.chat_conversation_id ? (
+    <KitchenManagerContactCard
+      managerName={application?.location?.managerName}
+      kitchenName={location.name}
+      address={location.address}
+      submitted={Boolean(application?.tier2_completed_at)}
+      requiresEstablishmentLicence={requirements?.tier2_food_establishment_cert_required === true}
+      licenceOnFile={Boolean(businessLicenseFile || existingBusinessLicenseUrl)}
+      onMessage={() => setManagerChatOpen(true)}
+    />
+  ) : null;
+
+  /*
    * The props both tracker instances share, so the wide and the rail copy can never drift apart.
    * Declared last on purpose: it depends on `phaseTitle`, `phaseCaptions` and `applicationActions`,
    * all of which are declared above. Reading any of them earlier would be a temporal-dead-zone
@@ -1160,7 +1223,6 @@ export default function KitchenApplicationForm({
     title: phaseTitle,
     items: requiredItems,
     optionalItems: optionalItems,
-    statusItem: requestRow,
     captions: phaseCaptions,
     footer:
       currentTier >= 2 && application?.tier2_completed_at
@@ -1220,7 +1282,11 @@ export default function KitchenApplicationForm({
         messages.push(t("uploadFoodEstLic", { defaultValue: "Upload your food establishment license" }));
       }
 
-      if (requirements?.tier2_insurance_document_required && !insuranceFile) {
+      // A document already on file satisfies the requirement; only a missing one
+      // blocks. The server accepts the stored file, so ignoring it here rejected
+      // resubmissions the API would have allowed. `existingInsuranceUrl` is read at
+      // component scope so the rail and the field use the same value.
+      if (requirements?.tier2_insurance_document_required && !insuranceFile && !existingInsuranceUrl) {
         nextFileErrors.insurance = t("valFieldReq", { defaultValue: "Insurance document is required", label: "Insurance" });
         messages.push(t("uploadInsurance", { defaultValue: "Upload your insurance document" }));
       }
@@ -1235,6 +1301,37 @@ export default function KitchenApplicationForm({
 
     setFileErrors(nextFileErrors);
     showValidationToast([...formMessages, ...fileMessages]);
+
+    /*
+     * Bring the blocking field into view.
+     *
+     * Every control already renders its own inline message, but this form is several
+     * screens long: a toast that only lists the problems leaves the chef hunting for
+     * the field, which is worst for the custom questions at the very bottom.
+     *
+     * `aria-invalid` is set by `FormControl`, so it points at the control itself.
+     * A custom question of type file gets no such attribute (the control is a
+     * `DocumentUploadField`), but its `FormMessage` still carries an
+     * `-form-item-message` id, so that is the fallback. Both selectors resolve in
+     * document order, so the topmost problem wins.
+     */
+    requestAnimationFrame(() => {
+      const form = formRef.current;
+      if (!form) return;
+
+      const fileFieldId = nextFileErrors.businessLicense
+        ? "#businessLicense"
+        : nextFileErrors.insurance
+          ? "#insuranceDoc"
+          : null;
+
+      const target =
+        form.querySelector<HTMLElement>('[aria-invalid="true"]') ??
+        form.querySelector<HTMLElement>('[id$="-form-item-message"]') ??
+        (fileFieldId ? form.querySelector<HTMLElement>(fileFieldId) : null);
+
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
   };
 
   const onSubmit = async (data: KitchenApplicationFormData) => {
@@ -1254,7 +1351,7 @@ export default function KitchenApplicationForm({
     // from the registration modal, so we must not block submission on missing
     // document uploads. These are collected later in Tier 2.
     if (currentTier >= 2) {
-      if (requirements?.requireFoodHandlerCert && (foodSafetyAnswer !== "yes" || (!foodHandlerFile && !existingFoodHandlerUrl))) {
+      if (requirements?.requireFoodSafetyUpload && (foodSafetyAnswer !== "yes" || (!foodHandlerFile && !existingFoodHandlerUrl))) {
         toast({
           title: t("missingDoc", { defaultValue: "Missing Document" }),
           description: t("uploadFoodSafetyLicense", { defaultValue: "Please upload your Food Safety License" }),
@@ -1292,7 +1389,11 @@ export default function KitchenApplicationForm({
     if (currentTier >= 2) {
       const { nextFileErrors, messages: missingMessages } = getStep2FileValidationErrors();
 
-      if (requirements?.tier2_food_establishment_expiry_required && !data.foodEstablishmentCertExpiry) {
+      // The expiry describes the licence, so it is required whenever one is on
+      // file — fresh upload or carried over from the request phase. The kitchen's
+      // single toggle decides whether the licence is compulsory, not its date.
+      const establishmentLicenceOnFile = Boolean(businessLicenseFile || existingBusinessLicenseUrl);
+      if (establishmentLicenceOnFile && !data.foodEstablishmentCertExpiry) {
         form.setError("foodEstablishmentCertExpiry", {
           type: "required",
           message: t("valFoodEstExpiryReq", { defaultValue: "Food establishment license expiry date is required" }),
@@ -1390,15 +1491,7 @@ export default function KitchenApplicationForm({
       // Custom fields data
       const customFieldsData: Record<string, any> = {};
 
-      // Use tier-specific fields based on current tier
-      let fieldsToUse: CustomField[] = [];
-      if (currentTier === 1 && requirements?.tier1_custom_fields && Array.isArray(requirements.tier1_custom_fields)) {
-        fieldsToUse = requirements.tier1_custom_fields;
-      } else if (currentTier >= 2 && requirements?.tier2_custom_fields && Array.isArray(requirements.tier2_custom_fields)) {
-        fieldsToUse = requirements.tier2_custom_fields;
-      }
-
-      fieldsToUse.forEach((field: CustomField) => {
+      customFieldsForTier.forEach((field: CustomField) => {
         const fieldKey = `custom_${field.id}`;
         const value = data[fieldKey as keyof typeof data];
 
@@ -1424,7 +1517,7 @@ export default function KitchenApplicationForm({
       });
       
       logger.info('[KitchenApplicationForm] Custom fields data:', {
-        fieldsToUse: fieldsToUse.map(f => ({ id: f.id, label: f.label, type: f.type })),
+        customFields: customFieldsForTier.map(f => ({ id: f.id, label: f.label, type: f.type })),
         customFieldsData,
         formValues: Object.keys(data).filter(k => k.startsWith('custom_')).map(k => ({ key: k, value: data[k as keyof typeof data] }))
       });
@@ -1464,7 +1557,8 @@ export default function KitchenApplicationForm({
       // Clear fallback data since they have successfully submitted
       window.localStorage.removeItem('fallbackRegistrationData');
 
-      setShowSuccess(true);
+      if (onSuccess) onSuccess(currentTier);
+      else setShowSuccess(true);
       refetch();
       refetchLocationApp();
 
@@ -1532,29 +1626,14 @@ export default function KitchenApplicationForm({
   // Success screen
   if (showSuccess) {
     return (
-      <div className="mx-auto max-w-xl">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="rounded-2xl border bg-card px-6 py-12 text-center shadow-sm"
-        >
-          <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 ring-8 ring-primary/5">
-            <Check className="h-7 w-7 text-primary" />
-          </div>
-          <h2 className="mb-3 text-2xl font-semibold tracking-tight">{t("applicationSubmitted", { defaultValue: "Application submitted" })}</h2>
-          <p className="mx-auto mb-8 max-w-md text-muted-foreground">
-            {t("applicationSubmittedDesc", { defaultValue: "Thank you! We\'ve received your kitchen application and will review it within 24 hours. Check your email for updates." })}
-          </p>
-
-          <Button
-            onClick={() => onSuccess ? onSuccess() : navigate("/dashboard")}
-            className="w-full"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            {t("backToDashboard", { defaultValue: "Back to Dashboard" })}
-          </Button>
-        </motion.div>
-      </div>
+      <ApplicationSubmissionSummary
+        kitchenName={location.name}
+        title={currentTier >= 2 ? "Documents submitted" : "Request submitted"}
+        description={currentTier >= 2 ? "Your kitchen documents are in review." : "Your request to apply is in review."}
+        nextStep={currentTier >= 2 ? "We’ll notify you when the kitchen makes a decision. You can track your application at any time." : "We’ll notify you when it’s time to upload the kitchen documents."}
+        actionLabel="View my applications"
+        onAction={() => navigate("/dashboard?view=kitchen-requests")}
+      />
     );
   }
 
@@ -1648,10 +1727,10 @@ export default function KitchenApplicationForm({
               </Button>
 
               <Button
-                onClick={() => navigate(`/dashboard?view=kitchen-applications`)}
+                onClick={() => navigate(`/dashboard?view=kitchen-requests`)}
                 className="flex-1"
               >
-                {t("bookKitchenBtn", { defaultValue: "Book a Kitchen" })}
+                {t("viewMyApplications", { defaultValue: "View my applications" })}
               </Button>
             </div>
           </CardContent>
@@ -1769,7 +1848,8 @@ export default function KitchenApplicationForm({
        * In normal flow, not sticky: this slot is full-width, so making it stick would need the
        * opaque full-bleed chrome that smeared in the rail. It scrolls away with the page.
        */}
-      <div className="lg:hidden">
+      <div className="space-y-4 lg:hidden">
+        {managerContact}
         <ApplicationProgress {...trackerProps} />
       </div>
 
@@ -1782,6 +1862,7 @@ export default function KitchenApplicationForm({
       <Form {...form}>
         <form
           id={FORM_ID}
+          ref={formRef}
           onSubmit={form.handleSubmit(async (data) => {
             await guard(() => onSubmit(data));
           }, handleInvalidSubmit)}
@@ -2074,6 +2155,11 @@ export default function KitchenApplicationForm({
                           id="initial-food-safety-upload"
                           accept=".pdf,.jpg,.jpeg,.png"
                           file={foodHandlerFile}
+                          existingName={existingFoodHandlerUrl ? t("foodSafetyLicense", { defaultValue: "Food safety certificate" }) : null}
+                          existingHint={t("currentFileKeptUnlessChanged", { defaultValue: "Your current file stays on record unless you choose another" })}
+                          existingExpiry={application?.foodSafetyLicenseExpiry}
+                          existingUrl={existingFoodHandlerUrl}
+                          existingVerified={application?.foodSafetyLicenseStatus === 'approved'}
                           label={t("chooseFile", { defaultValue: "Choose file" })}
                           hint={t("certificateFileHint", { defaultValue: "PDF, JPG or PNG \u00b7 up to 5 MB" })}
                           chooseLabel={t("chooseFile", { defaultValue: "Choose file" })}
@@ -2160,12 +2246,15 @@ export default function KitchenApplicationForm({
               {/* Custom Fields Section */}
               {(() => {
                 // Determine which fields to render based on tier
-                let fieldsToRender: CustomField[] = [];
-                if (currentTier === 1 && requirements?.tier1_custom_fields && Array.isArray(requirements.tier1_custom_fields)) {
-                  fieldsToRender = requirements.tier1_custom_fields;
-                } else if (requirements?.customFields && Array.isArray(requirements.customFields)) {
-                  fieldsToRender = requirements.customFields;
-                }
+                /*
+                 * Request-phase questions are admin-owned (`tier1_custom_fields`); the
+                 * kitchen-document ones belong to the kitchen (`tier2_custom_fields`).
+                 *
+                 * The legacy per-kitchen `customFields` column is written by NO UI, and it
+                 * rendered questions that had no schema entry — so a required one could be
+                 * submitted empty. It is no longer a source.
+                 */
+                const fieldsToRender: CustomField[] = customFieldsForTier;
 
                 if (fieldsToRender.length === 0) return null;
 
@@ -2392,7 +2481,7 @@ export default function KitchenApplicationForm({
                           <div>
                             <p className="font-medium">{t("docsSubmittedSuccessfully", { defaultValue: "Documents Submitted Successfully" })}</p>
                             <p className="text-sm text-muted-foreground mt-1">
-                              {t("documentsAwaitingManagerReview", { defaultValue: "Your documents have been submitted and are awaiting manager review." })}
+                              {t("kdInReview", { defaultValue: "In review" })}
                             </p>
                           </div>
                         </div>
@@ -2418,15 +2507,6 @@ export default function KitchenApplicationForm({
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      <div className="flex items-start gap-3 rounded-xl border bg-background p-4 text-sm">
-                        <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                        <div>
-                          <p className="font-medium text-foreground">{t("whatHappensNext", { defaultValue: "What happens next" })}</p>
-                          <p className="mt-0.5 leading-5 text-muted-foreground">Coordinate with the kitchen manager in Local Cooks messages to obtain your Food Establishment Licence for this premises. Upload it here with your other kitchen documents, then submit for manager review.</p>
-                          {application?.chat_conversation_id && <a className="mt-2 inline-block font-medium text-primary underline" href={`/dashboard?view=messages&conversation=${encodeURIComponent(application.chat_conversation_id)}`}>Message the kitchen manager</a>}
-                        </div>
-                      </div>
-
                       {needsPhoneInForm && (
                         <FormField
                           control={form.control}
@@ -2460,17 +2540,19 @@ export default function KitchenApplicationForm({
                       <div className="grid gap-4 sm:grid-cols-2 items-start">
                       {/* The answer and document from the initial request carry into this step. */}
                       <div className="rounded-xl border p-4 sm:col-span-2">
-                        <div>
+                        {/* Question and answer share one line — the pills never need their own row.
+                            Same shape as the request-phase question above. */}
+                        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
                           <div className="min-w-0">
                             <Label className="block text-sm font-medium">
-                              Food safety certificate <RequirementMarker flag={requirements?.requireFoodHandlerCert} defaultRequired={true} />
+                              Food safety certificate <RequirementMarker flag={requirements?.requireFoodSafetyUpload} defaultRequired={true} />
                             </Label>
                             <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
-                              {isRequiredField(requirements?.requireFoodHandlerCert, true) ? 'This kitchen asks for a current certificate and its expiry date.' : 'You can share a certificate if you have one. Any document from your first request stays on file.'}
+                              {isRequiredField(requirements?.requireFoodSafetyUpload, true) ? 'This kitchen asks for a current certificate and its expiry date.' : 'You can share a certificate if you have one. Any document from your first request stays on file.'}
                             </p>
                           </div>
                           <YesNoChoice
-                            className="my-3"
+                            className="shrink-0"
                             ariaLabel="step2-food-safety-answer"
                             value={foodSafetyAnswer}
                             onChange={(answer) => {
@@ -2481,33 +2563,24 @@ export default function KitchenApplicationForm({
                             noLabel={t("optionNo", { defaultValue: "No" })}
                           />
                         </div>
-                        {foodSafetyAnswer === 'yes' && <>
+                        {/* The answer's follow-on fields sit below a divider, the same rhythm the
+                            request-phase block uses. Without it the document card hugged the
+                            Yes/No pills and the whole group read as one cramped block. */}
+                        {foodSafetyAnswer === 'yes' && <div className="mt-4 border-t pt-4">
 
-                        {existingFoodHandlerUrl && !foodHandlerFile && (
-                          <div className="mb-3 flex flex-wrap items-start gap-3 rounded-xl border border-border bg-card p-3">
-                            <Check className="h-5 w-5 text-primary" />
-                            <div className="min-w-0 flex-1">
-                              <p className="text-sm font-medium">{t("foodSafetyLicense", { defaultValue: "Food Safety License" })}</p>
-                              <p className="text-xs text-muted-foreground">Already uploaded with your request</p>
-                              {(application?.foodSafetyLicenseStatus !== 'approved' || (application?.foodSafetyLicenseExpiry && Date.parse(application.foodSafetyLicenseExpiry) < Date.now() - 86400000)) && <p className="text-xs text-muted-foreground">{application?.foodSafetyLicenseExpiry && Date.parse(application.foodSafetyLicenseExpiry) < Date.now() - 86400000 ? 'Expired — replace this certificate' : application?.foodSafetyLicenseStatus === 'rejected' ? 'Needs a replacement' : 'Review pending'}</p>}
-                              <a
-                                href={existingFoodHandlerUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs text-primary hover:underline"
-                              >
-                                {t("viewLicense", { defaultValue: "View license" })}
-                              </a>
-                            </div>
-                            <VerifiedDocumentChip status={application?.foodSafetyLicenseStatus} url={existingFoodHandlerUrl} expiry={application?.foodSafetyLicenseExpiry} />
-                          </div>
-                        )}
-
+                        {/* The field renders the stored row itself — name, status, expiry,
+                            view link and the Replace action all inside one item, the way
+                            Carbon's uploaded-file element owns its own actions. */}
                         <DocumentUploadField
                           id="step2-foodSafetyLicense"
                           accept=".pdf,.jpg,.jpeg,.png"
                           file={foodHandlerFile}
                           existingName={existingFoodHandlerUrl ? t("foodSafetyLicense", { defaultValue: "Food Safety License" }) : null}
+                          existingNote={storedDocumentNote(application?.foodSafetyLicenseStatus, application?.foodSafetyLicenseExpiry)}
+                          existingExpiry={application?.foodSafetyLicenseExpiry}
+                          existingUrl={existingFoodHandlerUrl}
+                          existingTrailing={<VerifiedDocumentChip status={application?.foodSafetyLicenseStatus} url={existingFoodHandlerUrl} expiry={application?.foodSafetyLicenseExpiry} />}
+                          existingVerified={application?.foodSafetyLicenseStatus === 'approved'}
                           label={t("clickToUploadLicense", { defaultValue: "Click to upload license" })}
                           hint={t("fileFormatMax5MB", { defaultValue: "PDF, JPG, PNG (max 5MB)" })}
                           existingHint={t("currentFileKeptUnlessChanged", { defaultValue: "Your current file stays on record unless you choose another" })}
@@ -2518,7 +2591,7 @@ export default function KitchenApplicationForm({
                           removeLabel={t("removeFile", { defaultValue: "Remove file" })}
                         />
 
-                      {(foodHandlerFile || existingFoodHandlerUrl) && <FormField
+                      {(foodHandlerFile || (existingFoodHandlerUrl && !application?.foodSafetyLicenseExpiry)) && <FormField
                         control={form.control}
                         name="foodHandlerCertExpiry"
                         render={({ field }) => (
@@ -2537,7 +2610,7 @@ export default function KitchenApplicationForm({
                           </FormItem>
                         )}
                       />}
-                      </>}
+                      </div>}
                       </div>
 
                       {/* Food Establishment License/Permit */}
@@ -2547,34 +2620,19 @@ export default function KitchenApplicationForm({
                             <RequirementMarker flag={requirements?.tier2_food_establishment_cert_required} defaultRequired={true} />
                           </Label>
                           <p className="mt-0.5 mb-3 text-xs leading-5 text-muted-foreground">
-                            Upload your Food Establishment Licence for this premises. If you are still obtaining it, coordinate with the kitchen manager in messages and return here when it is ready.
+                            Upload your Food Establishment Licence for this premises. If you are still obtaining it, coordinate with the kitchen manager and return here when it is ready.
                           </p>
-
-                          {/* Show existing file if available */}
-                          {existingBusinessLicenseUrl && !businessLicenseFile && (
-                            <div className="mb-3 flex flex-wrap items-start gap-3 rounded-xl border border-border bg-card p-3">
-                              <Check className="h-5 w-5 text-primary" />
-                              <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium">{t("businessLicense", { defaultValue: "Business License" })}</p>
-                                <p className="text-xs text-muted-foreground">{t("documentAlreadyOnFile", { defaultValue: "Document already on file" })}</p>
-                                <a
-                                  href={existingBusinessLicenseUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-xs text-primary hover:underline"
-                                >
-                                  {t("viewLicense", { defaultValue: "View license" })}
-                                </a>
-                              </div>
-                              <VerifiedDocumentChip status={application?.foodEstablishmentCertStatus} url={existingBusinessLicenseUrl} expiry={application?.foodEstablishmentCertExpiry} />
-                            </div>
-                          )}
 
                           <DocumentUploadField
                             id="businessLicense"
                             accept=".pdf,.jpg,.jpeg,.png"
                             file={businessLicenseFile}
                             existingName={existingBusinessLicenseUrl ? t("businessLicense", { defaultValue: "Business License" }) : null}
+                            existingNote={storedDocumentNote(application?.foodEstablishmentCertStatus, application?.foodEstablishmentCertExpiry)}
+                            existingExpiry={application?.foodEstablishmentCertExpiry}
+                            existingUrl={existingBusinessLicenseUrl}
+                            existingTrailing={<VerifiedDocumentChip status={application?.foodEstablishmentCertStatus} url={existingBusinessLicenseUrl} expiry={application?.foodEstablishmentCertExpiry} />}
+                            existingVerified={application?.foodEstablishmentCertStatus === 'approved'}
                             label={t("clickToUploadLicense", { defaultValue: "Click to upload license" })}
                             hint={t("fileFormatMax5MB", { defaultValue: "PDF, JPG, PNG (max 5MB)" })}
                             existingHint={t("currentFileKeptUnlessChanged", { defaultValue: "Your current file stays on record unless you choose another" })}
@@ -2590,7 +2648,10 @@ export default function KitchenApplicationForm({
                             <p className="text-sm font-medium text-destructive mt-2">{fileErrors.businessLicense}</p>
                           )}
 
-                          {/* Expiry belongs with the licence it describes, not in a card of its own. */}
+                          {/* The expiry belongs with the licence it describes, and is
+                              only asked for once one is on file. That coupling is what
+                              makes this ONE requirement instead of two switches. */}
+                          {(businessLicenseFile || (existingBusinessLicenseUrl && !application?.foodEstablishmentCertExpiry)) && (
                           <div className="mt-3 border-t pt-3">
                             <FormField
                               control={form.control}
@@ -2599,7 +2660,7 @@ export default function KitchenApplicationForm({
                                 <FormItem>
                                   <FormLabel className="text-sm font-medium">
                                     {t("foodEstablishmentExpiryLabel", { defaultValue: "Food Establishment License Expiry Date" })}{" "}
-                                    <RequirementMarker flag={requirements?.tier2_food_establishment_expiry_required} defaultRequired={false} />
+                                    <RequirementMarker flag defaultRequired={false} />
                                   </FormLabel>
                                   <FormControl>
                                     <KitchenDocumentDatePicker
@@ -2608,15 +2669,14 @@ export default function KitchenApplicationForm({
                                     />
                                   </FormControl>
                                   <p className="text-xs text-muted-foreground">
-                                    {requirements?.tier2_food_establishment_expiry_required
-                                      ? t("enterFoodEstExpiry", { defaultValue: "Enter the expiry date for your food establishment license" })
-                                      : t("enterFoodEstExpiryOptional", { defaultValue: "Optional - Enter if you have a food establishment license" })}
+                                    {t("enterFoodEstExpiry", { defaultValue: "Enter the expiry date for your food establishment license" })}
                                   </p>
                                   <FormMessage />
                                 </FormItem>
                               )}
                             />
                           </div>
+                          )}
                         </div>
 
                       {/* Insurance Document */}
@@ -2632,6 +2692,10 @@ export default function KitchenApplicationForm({
                             id="insuranceDoc"
                             accept=".pdf,.jpg,.jpeg,.png"
                             file={insuranceFile}
+                            existingName={existingInsuranceUrl ? t("insuranceDocument", { defaultValue: "Insurance Document" }) : null}
+                            existingNote={t("documentAlreadyOnFile", { defaultValue: "Document already on file" })}
+                            existingHint={t("currentFileKeptUnlessChanged", { defaultValue: "Your current file stays on record unless you choose another" })}
+                            existingUrl={existingInsuranceUrl}
                             label={t("clickToUploadInsurance", { defaultValue: "Click to upload insurance document" })}
                             hint={t("fileFormatMax10MB", { defaultValue: "PDF, JPG, PNG (max 10MB)" })}
                             chooseLabel={t("chooseFile", { defaultValue: "Choose file" })}
@@ -2997,12 +3061,24 @@ export default function KitchenApplicationForm({
        *
        * Hidden under `lg` on purpose: two columns at tablet width leave the form too narrow
        * to read, and stacking the rail would push every field another screen down.
+       *
+       * The manager-contact card goes FIRST. The rail is a single sticky column, so anything
+       * below the fold of a tall rail cannot be reached while scrolling — and the one card
+       * that unblocks a stuck application must never be the one that is out of view.
        */}
-      <aside className="hidden min-w-0 lg:sticky lg:top-6 lg:block">
+      <aside className="hidden min-w-0 space-y-4 lg:sticky lg:top-6 lg:block">
+        {managerContact}
         <ApplicationProgress {...trackerProps} />
       </aside>
 
       </div>
+
+      <Dialog open={managerChatOpen} onOpenChange={setManagerChatOpen}>
+        <DialogContent showCloseButton={false} className="flex h-[85vh] max-w-5xl flex-col overflow-hidden p-0">
+          <div className="flex items-center gap-2 border-b p-4 text-sm font-semibold"><MessageCircle className="size-4 text-primary" />{location.name} · Kitchen manager</div>
+          {application?.chat_conversation_id && <div className="min-h-0 flex-1"><ChatPanel conversationId={application.chat_conversation_id} applicationId={application.id} canBook={application.status === 'approved' && (application.current_tier ?? 1) >= 3 && !!application.tier2_completed_at} chefId={application.chefId} managerId={application.location?.managerId || 0} locationId={location.id} locationName={location.name} onClose={() => setManagerChatOpen(false)} embedded /></div>}
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={discardOpen} onOpenChange={setDiscardOpen}>
         <AlertDialogContent>

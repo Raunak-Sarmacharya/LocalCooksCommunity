@@ -11,8 +11,8 @@ describe("phaseTransitionEvent", () => {
     expect(phaseTransitionEvent(2, 3)).toBe("TIER2_COMPLETE");
   });
 
-  it("treats legacy jumps to tier 3+ as ready to book", () => {
-    expect(phaseTransitionEvent(1, 3)).toBe("TIER2_COMPLETE");
+  it("does not mark a Step 1 jump as ready to book", () => {
+    expect(phaseTransitionEvent(1, 3)).toBeNull();
     expect(phaseTransitionEvent(2, 4)).toBe("TIER2_COMPLETE");
   });
 
@@ -34,8 +34,8 @@ describe("generateKitchenCoordinationSubmittedManagerEmail", () => {
     });
 
     expect(email.to).toBe("manager@example.com");
-    expect(email.subject).toContain("Kitchen Coordination Ready for Review");
+    expect(email.subject).toContain("Chef Application Requirements Ready for Review");
     expect(email.text).toContain("Test Kitchen");
-    expect(email.html).toContain("Review Kitchen Coordination");
+    expect(email.html).toContain("Review Chef Application Requirements");
   });
 });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getKitchenDocumentApprovalPlan } from "./KitchenDocumentApprovalDialog";
 
-const requirements = { requireFoodHandlerCert: true, tier2_food_establishment_cert_required: true };
+const requirements = { requireFoodSafetyUpload: true, tier2_food_establishment_cert_required: true };
 
 describe("kitchen document approval plan", () => {
   it("offers combined verification only for uploaded documents awaiting review", () => {
@@ -10,6 +10,8 @@ describe("kitchen document approval plan", () => {
       foodSafetyLicenseExpiry: "2099-12-31",
       foodSafetyLicenseStatus: "pending",
       foodEstablishmentCertUrl: "/establishment.pdf",
+      // The expiry belongs to the licence, so a licence on file carries one.
+      foodEstablishmentCertExpiry: "2099-12-31",
       foodEstablishmentCertStatus: "approved",
     }, requirements);
     expect(plan.issues).toEqual([]);
@@ -34,7 +36,7 @@ describe("kitchen document approval plan", () => {
       foodSafetyLicenseUrl: "/safety.pdf",
       foodSafetyLicenseExpiry: "2099-12-31",
       foodSafetyLicenseStatus: "rejected",
-    }, { requireFoodHandlerCert: true });
+    }, { requireFoodSafetyUpload: true });
     expect(plan.toVerify).toEqual([]);
     expect(plan.issues).toContain("Food Safety Certificate: a replacement is needed before approval.");
   });

@@ -3,7 +3,9 @@ import { Router, Request, Response } from 'express';
 import { upload, uploadToBlob } from '../../fileUpload';
 import { requireFirebaseAuthWithUser, requireManager, requireAdmin } from '../../firebase-auth-middleware';
 import { db } from '../../db';
-import { chefLocationAccess, insertChefKitchenApplicationSchema, updateApplicationTierSchema, users } from '@shared/schema';
+import { chefKitchenApplications, chefLocationAccess, insertChefKitchenApplicationSchema, updateApplicationTierSchema, platformSettings, users } from '@shared/schema';
+import { applyTier1Requirements, STEP1_REQUIREMENTS_SETTING_KEY } from '@shared/application-requirements';
+import { findMissingRequiredCustomFields } from '../../domains/applications/tier-validation';
 import { fromZodError } from 'zod-validation-error';
 // Import Domain Services
 import { chefApplicationService } from '../../domains/applications/chef-application.service';
@@ -15,7 +17,8 @@ import { KitchenService } from '../../domains/kitchens/kitchen.service';
 import { ApplicationRepository } from '../../domains/applications/application.repository';
 import { ApplicationService } from '../../domains/applications/application.service';
 
-import { initializeConversation, sendSystemNotification, notifyTierTransition } from '../../chat-service';
+import { getAdminDb, initializeConversation, sendSystemNotification, notifyTierTransition } from '../../chat-service';
+import { FieldValue } from 'firebase-admin/firestore';
 import { and, eq, isNotNull, ne, inArray } from 'drizzle-orm';
 import { notificationService } from '../../services/notification.service';
 import { getChefPhone } from '../../phone-utils';
@@ -29,7 +32,8 @@ import {
     generateKitchenApplicationStep2ReceivedChefEmail,
     generateKitchenApplicationSubmittedChefEmail,
     generateKitchenApplicationApprovedEmail,
-    generateKitchenApplicationRejectedEmail
+    generateKitchenApplicationRejectedEmail,
+    getDashboardUrl
 } from '../../email';
 
 const router = Router();
@@ -520,11 +524,13 @@ router.post('/firebase/chef/kitchen-applications',
                     }
                 }
 
-                if (requirements.tier2_food_establishment_expiry_required) {
-                    const hasFoodEstablishmentExpiry = req.body.foodEstablishmentCertExpiry || businessInfo.foodEstablishmentCertExpiry || existingApp?.foodEstablishmentCertExpiry;
-                    if (!hasFoodEstablishmentExpiry) {
-                        return rejectStep2('Food establishment license expiry date is required with kitchen documents', 'foodEstablishmentCertExpiry');
-                    }
+                // The expiry describes the licence, so it is required whenever a
+                // licence is on file. The kitchen's single toggle decides whether
+                // the licence is compulsory — not whether its date is.
+                const hasFoodEstablishmentExpiry = req.body.foodEstablishmentCertExpiry || businessInfo.foodEstablishmentCertExpiry || existingApp?.foodEstablishmentCertExpiry;
+                const foodEstablishmentCertOnFile = foodEstablishmentCertUrl || existingApp?.foodEstablishmentCertUrl;
+                if (foodEstablishmentCertOnFile && !hasFoodEstablishmentExpiry) {
+                    return rejectStep2('Food establishment license expiry date is required with kitchen documents', 'foodEstablishmentCertExpiry');
                 }
 
                 if (requirements.tier2_insurance_document_required) {
@@ -540,6 +546,50 @@ router.post('/firebase/chef/kitchen-applications',
                     if (!kitchenExperienceDesc || kitchenExperienceDesc.trim() === '') {
                         return rejectStep2('Kitchen Experience Description is required with kitchen documents', 'kitchenExperienceDescription');
                     }
+                }
+            }
+
+            /*
+             * Required custom questions, for whichever stage is being submitted.
+             *
+             * The request phase is owned by Local Cooks admins, so its questions are
+             * overlaid from platform_settings — the same place the chef's form reads
+             * them — instead of the per-kitchen row. The kitchen-document stage is the
+             * kitchen's own row. The client blocks these too, but a browser check is
+             * not a rule: a direct POST must not slip a required answer past.
+             */
+            {
+                let effectiveRequirements = requirements as unknown as Record<string, unknown>;
+                if (currentTier === 1) {
+                    const [adminStep1] = await db
+                        .select({ value: platformSettings.value })
+                        .from(platformSettings)
+                        .where(eq(platformSettings.key, STEP1_REQUIREMENTS_SETTING_KEY))
+                        .limit(1);
+                    if (adminStep1?.value) {
+                        try {
+                            effectiveRequirements = applyTier1Requirements(effectiveRequirements, JSON.parse(adminStep1.value));
+                        } catch {
+                            logger.error('Invalid JSON in step1_requirements; validating against the per-kitchen row');
+                        }
+                    }
+                }
+                const customQuestionSource = currentTier === 2
+                    ? (effectiveRequirements as any).tier2_custom_fields
+                    : (effectiveRequirements as any).tier1_custom_fields;
+                const missingCustom = findMissingRequiredCustomFields(customQuestionSource, customFieldsData, tierFileUrls);
+                if (missingCustom.length > 0) {
+                    const message = `Required information is missing: ${missingCustom.map((q) => q.label).join(', ')}`;
+                    logger.info(`❌ Custom-field validation failed: ${message}`);
+                    return res.status(400).json({
+                        error: 'Validation error',
+                        message,
+                        details: missingCustom.map((q) => ({
+                            code: 'custom',
+                            message: `${q.label} is required`,
+                            path: [`custom_${q.id}`],
+                        })),
+                    });
                 }
             }
 
@@ -602,6 +652,31 @@ router.post('/firebase/chef/kitchen-applications',
 
             logger.info(`✅ Kitchen application created/updated: Chef ${req.neonUser!.id} → Location ${parsedData.data.locationId}, ID: ${application.id}`);
 
+            if (currentTierValue === 2) {
+                try {
+                    const conversationId = application.chat_conversation_id || await initializeConversation({ id: application.id, chefId: application.chefId, locationId: application.locationId });
+                    if (conversationId) await sendSystemNotification(conversationId, 'TIER3_SUBMITTED');
+                } catch (chatError) { logger.error('Error announcing kitchen document submission in chat:', chatError); }
+            }
+
+            try {
+                const isInitialRequest = currentTierValue === 1;
+                await notificationService.createForChef({
+                    chefId: req.neonUser!.id,
+                    type: 'application_pending',
+                    priority: 'normal',
+                    title: isInitialRequest ? 'Kitchen request received' : 'Kitchen documents received',
+                    message: isInitialRequest
+                        ? `Your request to apply to ${location.name || 'the kitchen'} was received. Local Cooks will review it.`
+                        : `Your kitchen documents for ${location.name || 'the kitchen'} were received. The kitchen manager will review them.`,
+                    metadata: { applicationId: application.id, locationId: location.id, workflow: 'kitchen', step: currentTierValue },
+                    actionUrl: '/dashboard?view=kitchen-requests',
+                    actionLabel: 'View kitchen application',
+                });
+            } catch (notificationError) {
+                logger.error('Error creating kitchen application receipt notification:', notificationError);
+            }
+
             // Step 1 is reviewed by LocalCooks admins (not the kitchen manager). Notify
             // every admin in-app and by email, matching the seller-application fan-out
             // while keeping the two application workflows fully independent.
@@ -650,7 +725,7 @@ router.post('/firebase/chef/kitchen-applications',
 
             if (currentTierValue === 2) {
                 try {
-                    const admins = await db.select({ id: users.id })
+                    const admins = await db.select({ id: users.id, email: users.username })
                         .from(users)
                         .where(eq(users.role, 'admin'));
                     for (const admin of admins) {
@@ -659,10 +734,15 @@ router.post('/firebase/chef/kitchen-applications',
                             type: 'application_new',
                             priority: 'normal',
                             title: 'Kitchen documents ready for review',
-                            message: `${formData.fullName || 'A chef'} submitted Kitchen Coordination documents for ${location.name || 'a kitchen'}.`,
+                            message: `${formData.fullName || 'A chef'} submitted their Chef Application Requirements for ${location.name || 'a kitchen'}.`,
                             metadata: { applicationId: application.id, chefId: req.neonUser!.id, locationId: location.id, workflow: 'kitchen', step: 2 },
                             actionUrl: '/admin?section=kitchen-applications-step1',
                             actionLabel: 'Review documents',
+                        });
+                        if (admin.email) await sendEmail({
+                            to: admin.email,
+                            subject: 'Kitchen documents ready for review - Local Cooks',
+                            text: `${formData.fullName || 'A chef'} submitted kitchen documents for ${location.name || 'a kitchen'}. Review them in the admin kitchen applications queue: ${getDashboardUrl('admin')}?section=kitchen-applications-step1`,
                         });
                     }
                 } catch (adminNotificationError) {
@@ -794,7 +874,23 @@ router.get('/firebase/chef/kitchen-applications', requireFirebaseAuthWithUser, a
                     chefId: application.chefId,
                     locationId: application.locationId,
                 });
-                if (conversationId) application.chat_conversation_id = conversationId;
+                if (conversationId) {
+                    if (!application.chat_conversation_id && (application.current_tier ?? 1) < 3) {
+                        try {
+                            await notificationService.createForChef({
+                                chefId: application.chefId,
+                                type: 'application_approved',
+                                priority: 'high',
+                                title: 'Chat with your kitchen manager is ready',
+                                message: 'You can now message your kitchen manager about your kitchen application.',
+                                metadata: { applicationId: application.id, locationId: application.locationId, conversationId, workflow: 'kitchen' },
+                                actionUrl: `/dashboard?view=messages&conversation=${encodeURIComponent(conversationId)}`,
+                                actionLabel: 'Message manager',
+                            });
+                        } catch (notificationError) { logger.error('Error notifying chef of newly available chat:', notificationError); }
+                    }
+                    application.chat_conversation_id = conversationId;
+                }
             }));
 
         // The chef sees one row per conversation, and every conversation is keyed
@@ -803,13 +899,13 @@ router.get('/firebase/chef/kitchen-applications', requireFirebaseAuthWithUser, a
         // of them — so a chef working with two kitchens could not tell the threads
         // apart. Resolved once per DISTINCT manager rather than per application,
         // since a manager usually owns several locations.
-        const managerIds = [
-            ...new Set(
+        const managerIds = Array.from(
+            new Set(
                 applications
                     .map((application) => application.location?.managerId)
                     .filter((id): id is number => typeof id === 'number' && id > 0),
             ),
-        ];
+        );
         const managerNames = new Map<number, string>();
         await Promise.all(managerIds.map(async (id) => {
             managerNames.set(id, await getUserDisplayName(id, 'manager'));
@@ -856,7 +952,23 @@ router.get('/firebase/chef/kitchen-applications/location/:locationId', requireFi
                 chefId: application.chefId,
                 locationId: application.locationId,
             });
-            if (conversationId) application.chat_conversation_id = conversationId;
+            if (conversationId) {
+                if (!application.chat_conversation_id && (application.current_tier ?? 1) < 3) {
+                    try {
+                        await notificationService.createForChef({
+                            chefId: application.chefId,
+                            type: 'application_approved',
+                            priority: 'high',
+                            title: 'Chat with your kitchen manager is ready',
+                            message: 'You can now message your kitchen manager about your kitchen application.',
+                            metadata: { applicationId: application.id, locationId: application.locationId, conversationId, workflow: 'kitchen' },
+                            actionUrl: `/dashboard?view=messages&conversation=${encodeURIComponent(conversationId)}`,
+                            actionLabel: 'Message manager',
+                        });
+                    } catch (notificationError) { logger.error('Error notifying chef of newly available chat:', notificationError); }
+                }
+                application.chat_conversation_id = conversationId;
+            }
         }
 
         // Get location details (simple fetch if needed, but existing logic fetched it)
@@ -868,6 +980,17 @@ router.get('/firebase/chef/kitchen-applications/location/:locationId', requireFi
         // Enterprise 3-Tier System: canBook = Tier 3 (current_tier >= 3)
         const currentTier = (application as any).current_tier ?? 1;
 
+        /*
+         * Resolve the manager's display name.
+         *
+         * The chef's "message your kitchen manager" card names the person, not just
+         * the premises — a chef working across several kitchens has to know who they
+         * are about to write to. Same resolver the chef's application list uses, so
+         * the name in the card matches the name in the chat thread.
+         */
+        const managerId = (location as any)?.managerId as number | undefined;
+        const managerName = managerId ? await getUserDisplayName(managerId, 'manager') : null;
+
         res.json({
             ...application,
             hasApplication: true,
@@ -877,6 +1000,7 @@ router.get('/firebase/chef/kitchen-applications/location/:locationId', requireFi
                 name: (location as any).name,
                 address: (location as any).address,
                 managerId: (location as any).managerId,
+                managerName,
             } : null,
         });
     } catch (error) {
@@ -1060,12 +1184,12 @@ router.patch('/firebase/admin/kitchen-applications/:id/verify-documents', requir
             return res.status(400).json({ error: 'The certificate needs a current expiry date before it can be verified.' });
         }
         if (foodEstablishmentCertStatus && (!application.tier2_completed_at || !application.foodEstablishmentCertUrl)) {
-            return res.status(400).json({ error: 'Kitchen Coordination documents must be submitted before review.' });
+            return res.status(400).json({ error: 'Chef Application Requirements must be submitted before review.' });
         }
         if (foodEstablishmentCertStatus === 'approved' && application.foodEstablishmentCertExpiry && Date.parse(application.foodEstablishmentCertExpiry) < Date.now() - 86400000) {
             return res.status(400).json({ error: 'The Food Establishment Licence has expired.' });
         }
-        const updated = await chefApplicationService.updateApplicationDocuments({ id: applicationId, foodSafetyLicenseStatus, foodEstablishmentCertStatus });
+        const updated = await chefApplicationService.updateApplicationDocuments({ id: applicationId, foodSafetyLicenseStatus, foodEstablishmentCertStatus, verifiedBy: 'local_cooks' });
         if (updated.chat_conversation_id && (foodSafetyLicenseStatus === 'approved' || foodEstablishmentCertStatus === 'approved')) {
             await sendSystemNotification(updated.chat_conversation_id, 'DOCUMENT_VERIFIED', {
                 documentName: foodSafetyLicenseStatus === 'approved' ? 'Food Safety Certificate' : 'Food Establishment Licence',
@@ -1108,7 +1232,7 @@ router.patch('/firebase/admin/kitchen-applications/:id/status', requireFirebaseA
         }
         if (finalApproval) {
             if (status !== 'approved' || Number(req.body.current_tier) !== 3 || previousTier !== 2 || !applicationBeforeUpdate.tier2_completed_at) {
-                return res.status(400).json({ error: 'Kitchen Coordination documents must be submitted before final approval.' });
+                return res.status(400).json({ error: 'Chef Application Requirements must be submitted before final approval.' });
             }
             const { tierValidationService } = await import('../../domains/applications/tier-validation');
             const requirements = await locationService.getLocationRequirementsWithDefaults(applicationBeforeUpdate.locationId);
@@ -1120,7 +1244,7 @@ router.patch('/firebase/admin/kitchen-applications/:id/status', requireFirebaseA
                 return res.status(400).json({ error: 'Required kitchen documents are incomplete or awaiting approval.', missingRequirements: validation.missingRequirements });
             }
             if (Object.keys(documentUpdates).length) {
-                await chefApplicationService.updateApplicationDocuments({ id: applicationId, ...documentUpdates });
+                await chefApplicationService.updateApplicationDocuments({ id: applicationId, ...documentUpdates, verifiedBy: 'local_cooks' });
             }
         }
 
@@ -1251,7 +1375,7 @@ router.patch('/firebase/admin/kitchen-applications/:id/status', requireFirebaseA
                         title: conversationId && initialApproval ? 'Chat with your chef is ready' : 'Application cleared by Local Cooks',
                         message: conversationId && initialApproval
                             ? `${applicationBeforeUpdate.fullName || 'A chef'} is approved to continue with ${location.name || 'your kitchen'}. Message them to coordinate their Food Establishment Licence before they submit kitchen documents.`
-                            : `${applicationBeforeUpdate.fullName || 'A chef'} can now submit Kitchen Coordination documents for ${location.name || 'your kitchen'}.`,
+                            : `${applicationBeforeUpdate.fullName || 'A chef'} can now submit their Chef Application Requirements for ${location.name || 'your kitchen'}.`,
                         metadata: {
                             applicationId: applicationBeforeUpdate.id,
                             chefId: applicationBeforeUpdate.chefId,
@@ -1331,6 +1455,69 @@ router.patch('/firebase/admin/kitchen-applications/:id/status', requireFirebaseA
     }
 });
 
+// Local Cooks chat is server mediated: Firestore client rules only admit the
+// chef and kitchen manager to a conversation.
+router.get('/firebase/admin/chat/applications/:applicationId/conversation', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const applicationId = Number(req.params.applicationId);
+        if (!Number.isInteger(applicationId) || applicationId <= 0) return res.status(400).json({ error: 'Invalid application' });
+        const application = await chefApplicationService.getApplicationById(applicationId);
+        if (!application) return res.status(404).json({ error: 'Application not found' });
+        const conversationId = application.chat_conversation_id || await initializeConversation(application);
+        if (!conversationId) return res.status(409).json({ error: 'Chat is unavailable for this application' });
+        const snapshot = await (await getAdminDb()).collection('conversations').doc(conversationId).get();
+        if (!snapshot.exists) return res.status(404).json({ error: 'Conversation not found' });
+        res.json({ id: snapshot.id, ...snapshot.data() });
+    } catch (error) {
+        logger.error('Failed to open Local Cooks chat:', error);
+        res.status(500).json({ error: 'Failed to open chat' });
+    }
+});
+
+router.get('/firebase/admin/chat/conversations/:conversationId/messages', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const conversation = (await getAdminDb()).collection('conversations').doc(req.params.conversationId);
+        if (!(await conversation.get()).exists) return res.status(404).json({ error: 'Conversation not found' });
+        const snapshot = await conversation.collection('messages').orderBy('createdAt', 'desc').limit(50).get();
+        res.json(snapshot.docs.reverse().map(doc => ({ id: doc.id, ...doc.data(), createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || null })));
+    } catch (error) {
+        logger.error('Failed to load Local Cooks chat:', error);
+        res.status(500).json({ error: 'Failed to load chat' });
+    }
+});
+
+router.post('/firebase/admin/chat/conversations/:conversationId/messages', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const { content, fileUrl, fileName } = req.body || {};
+        if (typeof content !== 'string' || content.length > 10000 || (fileUrl != null && typeof fileUrl !== 'string') || (fileName != null && typeof fileName !== 'string') || (!content.trim() && !fileUrl)) {
+            return res.status(400).json({ error: 'Invalid message' });
+        }
+        const adminDb = await getAdminDb();
+        const conversation = adminDb.collection('conversations').doc(req.params.conversationId);
+        const existing = await conversation.get();
+        if (!existing.exists || existing.data()?.unavailable === true) return res.status(409).json({ error: 'Conversation is unavailable' });
+        const message = await conversation.collection('messages').add({
+            senderId: req.neonUser!.id,
+            senderRole: 'admin',
+            content: content.trim(),
+            type: fileUrl ? 'file' : 'text',
+            fileUrl: fileUrl || null,
+            fileName: fileName || null,
+            createdAt: FieldValue.serverTimestamp(),
+            readAt: null,
+        });
+        await conversation.update({
+            lastMessageAt: FieldValue.serverTimestamp(),
+            lastMessageText: fileUrl ? (fileName || 'Attachment') : content.trim().slice(0, 240),
+            unreadChefCount: FieldValue.increment(1),
+        });
+        res.status(201).json({ id: message.id });
+    } catch (error) {
+        logger.error('Failed to send Local Cooks chat message:', error);
+        res.status(500).json({ error: 'Failed to send message' });
+    }
+});
+
 // =============================================================================
 // 👨‍🍳 MANAGER KITCHEN APPLICATIONS - Review Chef Applications
 // =============================================================================
@@ -1359,14 +1546,14 @@ router.patch('/firebase/admin/kitchen-applications/:id/status', requireFirebaseA
  */
 router.post('/firebase/chat/participant-status', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
     try {
-        const raw = Array.isArray(req.body?.userIds) ? req.body.userIds : [];
-        const userIds = [
-            ...new Set(
+        const raw: unknown[] = Array.isArray(req.body?.userIds) ? req.body.userIds : [];
+        const userIds = Array.from(
+            new Set(
                 raw
                     .map((value: unknown) => Number(value))
                     .filter((value: number) => Number.isInteger(value) && value > 0),
             ),
-        ];
+        );
 
         if (userIds.length === 0) {
             return res.json({ existing: [] });
@@ -1426,6 +1613,51 @@ router.get('/manager/kitchen-applications/location/:locationId', requireFirebase
 });
 
 /**
+ * 🔥 Resolve the location an application belongs to (Firebase Auth)
+ * GET /api/manager/kitchen-applications/:id/location
+ *
+ * Chat conversations carry their own `locationId`, and a stale or dangling one
+ * there was trusted blindly: the facility-documents panel then queried a
+ * location the manager doesn't own, got a 403, and rendered "Failed to load
+ * documents" for a chef whose application sat on a perfectly valid location.
+ *
+ * This resolves the location from the APPLICATION instead — and deliberately
+ * without the tier filter the list endpoints apply, because a manager is
+ * entitled to the kitchen's facility documents whenever the chef has an
+ * application here, no matter which tier that application is on.
+ */
+router.get('/manager/kitchen-applications/:id/location', requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const user = req.neonUser!;
+        const applicationId = parseInt(req.params.id);
+
+        if (isNaN(applicationId)) {
+            return res.status(400).json({ error: 'Invalid application ID' });
+        }
+
+        const [application] = await db
+            .select({ locationId: chefKitchenApplications.locationId })
+            .from(chefKitchenApplications)
+            .where(eq(chefKitchenApplications.id, applicationId))
+            .limit(1);
+
+        if (!application?.locationId) {
+            return res.status(404).json({ error: 'Application not found' });
+        }
+
+        const location = await locationService.getLocationById(application.locationId);
+        if (!location || location.managerId !== user.id) {
+            return res.status(403).json({ error: 'Access denied to this application' });
+        }
+
+        return res.json({ locationId: application.locationId });
+    } catch (error) {
+        logger.error('Error resolving application location:', error);
+        return res.status(500).json({ error: 'Failed to resolve application location' });
+    }
+});
+
+/**
  * 🔥 Review Kitchen Application (Approve/Reject) (Firebase Auth)
  * PATCH /api/manager/kitchen-applications/:id/status
  */
@@ -1459,17 +1691,17 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
             return res.status(403).json({ error: 'Access denied to this application' });
         }
         if ((application.current_tier ?? 1) < 2) {
-            return res.status(403).json({ error: 'Kitchen Coordination documents are not ready for manager review.' });
+            return res.status(403).json({ error: 'Chef Application Requirements are not ready for manager review.' });
         }
 
         // Only Global Admins can approve Step 1 (current_tier === 1)
         if (application.current_tier === 1) {
-            return res.status(403).json({ error: 'Kitchen Coordination must be submitted before the manager can review this application.' });
+            return res.status(403).json({ error: 'Chef Application Requirements must be submitted before the manager can review this application.' });
         }
 
         if (req.body.current_tier !== undefined) {
             if ((application.current_tier ?? 1) !== 2) {
-                return res.status(409).json({ error: 'Kitchen Coordination is not awaiting final approval.' });
+                return res.status(409).json({ error: 'Chef Application Requirements are not awaiting final approval.' });
             }
             if (status !== 'approved' || Number(req.body.current_tier) !== 3 || !application.tier2_completed_at) {
                 return res.status(400).json({ error: 'Kitchen documents must be submitted before final approval.' });
@@ -1484,7 +1716,7 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
                 return res.status(400).json({ error: 'Required kitchen documents are incomplete or awaiting approval.', missingRequirements: validation.missingRequirements });
             }
             if (Object.keys(documentUpdates).length) {
-                await chefApplicationService.updateApplicationDocuments({ id: applicationId, ...documentUpdates });
+                await chefApplicationService.updateApplicationDocuments({ id: applicationId, ...documentUpdates, verifiedBy: 'manager' });
             }
         } else if (req.body.verify_documents !== undefined) {
             return res.status(400).json({ error: 'Documents can only be verified with final kitchen approval.' });
@@ -1511,20 +1743,8 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
 
         logger.info(`✅ Application ${applicationId} ${status} by Manager ${user.id}`);
 
-        // Create in-app notification for application approval
+        // Notify the chef about approval; the manager already sees the result of their own action.
         if (status === 'approved' && updatedApplication) {
-            try {
-                await notificationService.notifyApplicationApproved({
-                    managerId: user.id,
-                    locationId: application.locationId,
-                    applicationId: application.id,
-                    chefName: application.fullName || 'Chef',
-                    chefEmail: application.email || ''
-                });
-            } catch (notifError) {
-                logger.error("Error creating application approval notification:", notifError);
-            }
-
             // Send email to chef about approval — tier-aware
             try {
                 if (application.email) {
@@ -1730,10 +1950,10 @@ router.patch('/manager/kitchen-applications/:id/verify-documents', requireFireba
             return res.status(403).json({ error: 'Access denied to this application' });
         }
         if ((application.current_tier ?? 1) < 2 || !application.tier2_completed_at) {
-            return res.status(403).json({ error: 'Kitchen Coordination documents must be submitted before manager review.' });
+            return res.status(403).json({ error: 'Chef Application Requirements must be submitted before manager review.' });
         }
         // Update document statuses
-        const updateData: any = { id: applicationId };
+        const updateData: any = { id: applicationId, verifiedBy: 'manager' };
         if (foodSafetyLicenseStatus && !application.foodSafetyLicenseUrl) {
             return res.status(400).json({ error: 'No food safety certificate is on file.' });
         }
@@ -1820,7 +2040,7 @@ router.patch('/manager/kitchen-applications/:id/tier', requireFirebaseAuthWithUs
         }
 
         if ((application.current_tier ?? 1) < 2) {
-            return res.status(403).json({ error: 'Kitchen Coordination is not ready for manager review.' });
+            return res.status(403).json({ error: 'Chef Application Requirements are not ready for manager review.' });
         }
 
         if (parsed.data.current_tier >= 3) {

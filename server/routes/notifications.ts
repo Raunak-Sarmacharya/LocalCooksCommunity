@@ -6,7 +6,7 @@
  * and real-time unread count support.
  */
 
-import { Router, Request, Response } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import { eq, and, desc, count, sql, isNull, or, lte } from "drizzle-orm";
 import { db } from "../db";
 import { requireFirebaseAuthWithUser, requireManager } from "../firebase-auth-middleware";
@@ -14,6 +14,11 @@ import { logger } from "../logger";
 import { errorResponse } from "../api-response";
 
 const router = Router();
+
+function requireNotificationOwner(req: Request, res: Response, next: NextFunction) {
+  if (req.neonUser?.role === 'admin') return next();
+  return requireManager(req, res, next);
+}
 
 // ===================================
 // NOTIFICATION TYPES & INTERFACES
@@ -291,7 +296,7 @@ async function cleanupOldNotifications(daysOld: number = 30) {
  * GET /api/manager/notifications
  * Get notifications for the authenticated manager
  */
-router.get("/", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+router.get("/", requireFirebaseAuthWithUser, requireNotificationOwner, async (req: Request, res: Response) => {
   try {
     const managerId = req.neonUser!.id;
     const { page, limit, filter, type, locationId } = req.query;
@@ -315,7 +320,7 @@ router.get("/", requireFirebaseAuthWithUser, requireManager, async (req: Request
  * GET /api/manager/notifications/unread-count
  * Get unread notification count
  */
-router.get("/unread-count", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+router.get("/unread-count", requireFirebaseAuthWithUser, requireNotificationOwner, async (req: Request, res: Response) => {
   try {
     const managerId = req.neonUser!.id;
     const { locationId } = req.query;
@@ -336,7 +341,7 @@ router.get("/unread-count", requireFirebaseAuthWithUser, requireManager, async (
  * POST /api/manager/notifications/mark-read
  * Mark specific notifications as read
  */
-router.post("/mark-read", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+router.post("/mark-read", requireFirebaseAuthWithUser, requireNotificationOwner, async (req: Request, res: Response) => {
   try {
     const managerId = req.neonUser!.id;
     const { notificationIds } = req.body;
@@ -357,7 +362,7 @@ router.post("/mark-read", requireFirebaseAuthWithUser, requireManager, async (re
  * POST /api/manager/notifications/mark-all-read
  * Mark all notifications as read
  */
-router.post("/mark-all-read", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+router.post("/mark-all-read", requireFirebaseAuthWithUser, requireNotificationOwner, async (req: Request, res: Response) => {
   try {
     const managerId = req.neonUser!.id;
     const { locationId } = req.body;
@@ -377,7 +382,7 @@ router.post("/mark-all-read", requireFirebaseAuthWithUser, requireManager, async
  * POST /api/manager/notifications/archive
  * Archive specific notifications
  */
-router.post("/archive", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+router.post("/archive", requireFirebaseAuthWithUser, requireNotificationOwner, async (req: Request, res: Response) => {
   try {
     const managerId = req.neonUser!.id;
     const { notificationIds } = req.body;
@@ -398,7 +403,7 @@ router.post("/archive", requireFirebaseAuthWithUser, requireManager, async (req:
  * POST /api/manager/notifications/unarchive
  * Unarchive specific notifications
  */
-router.post("/unarchive", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+router.post("/unarchive", requireFirebaseAuthWithUser, requireNotificationOwner, async (req: Request, res: Response) => {
   try {
     const managerId = req.neonUser!.id;
     const { notificationIds } = req.body;
@@ -421,6 +426,7 @@ router.post("/unarchive", requireFirebaseAuthWithUser, requireManager, async (re
  * Called by the client after a message is sent in the chat
  */
 router.post("/message-received", requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+  if (req.baseUrl.startsWith('/api/admin/')) return res.status(404).json({ error: 'Not found' });
   try {
     const { managerId, locationId, senderName, messagePreview, conversationId } = req.body;
 
@@ -457,7 +463,7 @@ router.post("/message-received", requireFirebaseAuthWithUser, async (req: Reques
  * DELETE /api/manager/notifications/:id
  * Delete a specific notification (permanently)
  */
-router.delete("/:id", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+router.delete("/:id", requireFirebaseAuthWithUser, requireNotificationOwner, async (req: Request, res: Response) => {
   try {
     const managerId = req.neonUser!.id;
     const notificationId = parseInt(req.params.id);

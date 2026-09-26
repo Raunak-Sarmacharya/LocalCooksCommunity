@@ -4,6 +4,7 @@ import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, BreadcrumbS
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Search } from "lucide-react";
 import type { AdminSection } from "./AdminSidebar";
+import { AdminNotificationCenter } from "./AdminNotificationCenter";
 
 interface AdminHeaderProps {
   activeSection: AdminSection;
@@ -59,6 +60,7 @@ export function AdminHeader({ activeSection, onRefresh, isRefreshing, onSearchCl
         </BreadcrumbList>
       </Breadcrumb>
       <div className="ml-auto flex items-center gap-2">
+        <AdminNotificationCenter />
         {onSearchClick && (
           <Button
             variant="outline"

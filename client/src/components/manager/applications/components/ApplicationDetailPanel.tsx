@@ -36,7 +36,10 @@ interface LocationRequirements {
     }>;
     tier2_insurance_document_required?: boolean;
     tier2_food_establishment_cert_required?: boolean;
+    /** The admin's request-phase question flag (not used for tier-2 gating). */
     requireFoodHandlerCert?: boolean;
+    /** The kitchen's tier-2 upload flag, served by the public requirements endpoint. */
+    requireFoodSafetyUpload?: boolean;
 }
 
 interface ApplicationDetailPanelProps {
@@ -110,7 +113,10 @@ export function ApplicationDetailPanel({
     const tierFiles = (tierData.tierFiles || {}) as Record<string, any>;
     const insuranceUrl = tierFiles.tier2_insurance_document;
     const insuranceRequired = locationRequirements?.tier2_insurance_document_required;
-    const licenseRequired = locationRequirements?.requireFoodHandlerCert;
+    // The KITCHEN's flag: whether this kitchen makes the certificate upload
+    // compulsory. It does not control visibility — a document carried over from
+    // the request phase is always shown so the manager can review it.
+    const licenseRequired = locationRequirements?.requireFoodSafetyUpload;
 
     const isExpired = (value?: string | null) => {
         if (!value) return false;
@@ -119,10 +125,10 @@ export function ApplicationDetailPanel({
     };
 
     // Human copy for the current verification state of a document.
-    const reviewNoteFor = (status: DocumentVerificationStatus, expiry?: string | null): string | null => {
+    const reviewNoteFor = (status: DocumentVerificationStatus, expiry?: string | null, verifiedBy?: string): string | null => {
         if (!status) return null;
         if (isExpired(expiry)) return mt("documentExpiredNeedsReplacement");
-        if (status === 'approved') return mt("documentVerifiedNote");
+        if (status === 'approved') return verifiedBy === 'local_cooks' ? mt("documentVerifiedByLocalCooks") : verifiedBy === 'manager' ? mt("documentVerifiedNote") : mt("documentVerifiedGeneric");
         if (status === 'rejected') return mt("documentRejectedNote");
         return mt("documentPendingNote");
     };
@@ -176,13 +182,13 @@ export function ApplicationDetailPanel({
 
     // A compact status keeps the chef and document actions in focus.
     const StatusIndicator = () => {
-        const label = isPending ? mt("awaitingAdminApproval")
+        const label = isPending ? mt("pendingReview")
             : isStep2NeedsReview ? mt("step2AwaitingReview")
             : isFullyApproved ? mt("fullyApproved")
-            : application.status === 'approved' && tier === 1 ? mt("awaitingChefSStep2")
+            : application.status === 'approved' && tier < 3 && !application.tier2_completed_at ? mt("awaitingChefSStep2")
             : application.status === 'rejected' ? mt("rejected") : null;
         if (!label) return null;
-        return <span className="inline-flex items-center gap-2 rounded-full border border-border bg-muted/30 px-3 py-1 text-xs font-medium text-foreground">
+        return <span title={application.status === 'approved' && tier < 3 && !application.tier2_completed_at ? mt("chefDocumentsNeeded") : undefined} className="inline-flex items-center gap-2 rounded-full border border-border bg-muted/30 px-3 py-1 text-xs font-medium text-foreground">
             {isFullyApproved ? <CheckCircle className="h-3.5 w-3.5 text-primary" /> : <Clock className="h-3.5 w-3.5 text-muted-foreground" />}
             {label}
         </span>;
@@ -341,7 +347,7 @@ export function ApplicationDetailPanel({
                                         url: application.foodSafetyLicenseUrl,
                                         status: application.foodSafetyLicenseStatus,
                                         expiry: application.foodSafetyLicenseExpiry,
-                                        reviewNote: reviewNoteFor(application.foodSafetyLicenseStatus, application.foodSafetyLicenseExpiry),
+                                        reviewNote: reviewNoteFor(application.foodSafetyLicenseStatus, application.foodSafetyLicenseExpiry, tierData.documentVerification?.foodSafetyLicense),
                                         reviewField: isStep2NeedsReview ? 'foodSafetyLicenseStatus' : undefined,
                                     })}
                                 />
@@ -429,7 +435,7 @@ export function ApplicationDetailPanel({
                                                 url: application.foodEstablishmentCertUrl,
                                                 status: application.foodEstablishmentCertStatus,
                                                 expiry: application.foodEstablishmentCertExpiry,
-                                                reviewNote: reviewNoteFor(application.foodEstablishmentCertStatus, application.foodEstablishmentCertExpiry),
+                                                reviewNote: reviewNoteFor(application.foodEstablishmentCertStatus, application.foodEstablishmentCertExpiry, tierData.documentVerification?.foodEstablishmentCert),
                                                 reviewField: isStep2NeedsReview ? 'foodEstablishmentCertStatus' : undefined,
                                             })}
                                         />
@@ -469,7 +475,7 @@ export function ApplicationDetailPanel({
                     {isStep2NeedsReview && (
                         <div className="mb-4">
                             <label className="mb-2 block text-sm font-medium text-foreground">
-                                {mt("feedbackLabel")} {mt("feedbackOptional")}
+                                {mt("feedbackRequiredForRejection")}
                             </label>
                             <Textarea
                                 value={reviewFeedback}
@@ -484,21 +490,28 @@ export function ApplicationDetailPanel({
                     <div className="flex flex-wrap items-center justify-end gap-3">
                         {isPending && (
                             <div className="flex-1 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-                                {mt("awaitingAdminStep1Review", {
-                                    defaultValue:
-                                        "Awaiting Local Cooks review of this request to apply. You can review the application once the chef submits Kitchen Coordination documents.",
-                                })}
+                                The chef’s request is being reviewed. You can review the application after the chef uploads the kitchen documents.
                             </div>
                         )}
 
                         {isStep2NeedsReview && (
-                            <StatusButton
-                                onClick={() => { setActiveAction('approveTier2'); onApproveTier2(); }}
-                                status={activeAction === 'approveTier2' && isUpdating ? "loading" : "idle"}
-                                disabled={isUpdating && activeAction !== 'approveTier2'}
-                                className="min-w-44"
-                                labels={{ idle: mt("approveStep2"), loading: mt("approving"), success: mt("approvedSuccess") }}
-                            />
+                            <>
+                                <StatusButton
+                                    variant="outline"
+                                    onClick={() => { setActiveAction('reject'); onReject(); }}
+                                    status={activeAction === 'reject' && isUpdating ? "loading" : "idle"}
+                                    disabled={isUpdating && activeAction !== 'reject'}
+                                    className="border-destructive/30 text-destructive hover:bg-destructive/5"
+                                    labels={{ idle: mt("reject"), loading: mt("saving"), success: mt("rejected") }}
+                                />
+                                <StatusButton
+                                    onClick={() => { setActiveAction('approveTier2'); onApproveTier2(); }}
+                                    status={activeAction === 'approveTier2' && isUpdating ? "loading" : "idle"}
+                                    disabled={isUpdating && activeAction !== 'approveTier2'}
+                                    className="min-w-44"
+                                    labels={{ idle: mt("approveStep2"), loading: mt("approving"), success: mt("approvedSuccess") }}
+                                />
+                            </>
                         )}
 
                         {isFullyApproved && (
@@ -516,6 +529,7 @@ export function ApplicationDetailPanel({
 
             {/* Document viewer — the single place where a manager reviews a document */}
             <DocumentViewerDialog
+                applicationId={application.id}
                 open={openDocument !== null}
                 onOpenChange={(next) => { if (!next) setOpenDocument(null); }}
                 title={openDocument?.title ?? ''}
@@ -533,7 +547,6 @@ export function ApplicationDetailPanel({
                     needsReplacement: mt("needsAReplacement"),
                     expired: mt("licenseExpired"),
                     verify: mt("verifyDocument"),
-                    requestReplacement: mt("requestReplacement"),
                     openInNewTab: mt("openInNewTab"),
                     close: mt("close"),
                     loading: mt("loadingDocument"),

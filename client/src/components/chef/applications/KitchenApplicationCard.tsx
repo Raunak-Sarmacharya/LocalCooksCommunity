@@ -1,12 +1,10 @@
-import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { InfoChip } from "@/components/chef/info-chip";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Building, CheckCircle, Clock, FileText, MapPin, ArrowRight, User, Mail, Phone, FileCheck, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import { ChefKitchenApplication } from "@shared/schema";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
@@ -17,6 +15,7 @@ import { TruncatedText } from "@/components/common/TruncatedText";
 import { getKitchenDisplayStatus, hasStep2BeenSubmitted } from "./status";
 import { KitchenStatusChip, bookNowIcon as BookNowIcon } from "./status-icons";
 import { SmartImage } from "@/components/ui/smart-image";
+import "./kitchen-application-details.css";
 
 interface KitchenApplicationWithLocation extends ChefKitchenApplication {
   location: {
@@ -35,14 +34,16 @@ interface KitchenApplicationCardProps {
   onDiscoverKitchens: () => void;
 }
 
-function KitchenApplicationDetails({
+export function KitchenApplicationDetails({
   app,
   display,
   onBookKitchen,
+  compact = false,
 }: {
   app: KitchenApplicationWithLocation;
   display: ReturnType<typeof getKitchenDisplayStatus>;
   onBookKitchen: KitchenApplicationCardProps["onBookKitchen"];
+  compact?: boolean;
 }) {
   const { t, i18n } = useTranslation("chef");
   const currentStep = (app as any).current_tier ?? 1;
@@ -51,9 +52,28 @@ function KitchenApplicationDetails({
   const step2Submitted = hasStep2BeenSubmitted(app);
   const hasStep2Data = Object.keys(step2Data).length > 0 || (app as any).tier2_completed_at;
 
+  /*
+   * Step-2 uploads that are stored in `tier_data.tierFiles` instead of a column —
+   * the insurance document is the one that exists today. The chef uploaded these,
+   * so their own details view has to show them; it previously rendered only the
+   * two certificate columns and silently omitted everything in tierFiles.
+   */
+  const tierFiles = Object.entries((tierData.tierFiles || {}) as Record<string, unknown>)
+    .filter(([, url]) => typeof url === "string" && url.length > 0) as [string, string][];
+
+  /**
+   * A readable name for a tier-file key. The insurance document is the only one the
+   * UI names; anything else is humanised from the key so a newly added tier file is
+   * legible rather than a raw identifier.
+   */
+  const tierFileLabel = (key: string): string =>
+    key === "tier2_insurance_document"
+      ? t("apptabInsuranceDocument", { defaultValue: "Insurance document" })
+      : key.replace(/^tier\d+_/, "").replaceAll("_", " ");
+
   return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-3">
+    <div className={cn("space-y-5", compact && "kitchen-application-detail-compact")}>
+      {!compact && <div className="grid grid-cols-2 gap-3">
         <div className="rounded-lg bg-muted/30 p-2">
           <p className="text-xs uppercase text-muted-foreground">{t("apptabApplicationId", "Application ID")}</p>
           <p className="text-sm font-medium">#{app.id}</p>
@@ -70,11 +90,11 @@ function KitchenApplicationDetails({
         </div>
         <div className="rounded-lg bg-muted/30 p-2">
           <p className="text-xs uppercase text-muted-foreground">{t("apptabStatus", "Status")}</p>
-          <p className="text-sm font-medium capitalize">{app.status}</p>
+          <p className="text-sm font-medium">{display.label}</p>
         </div>
-      </div>
+      </div>}
 
-      {app.status === "approved" && (
+      {!compact && app.status === "approved" && (
         <div className="space-y-2">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             {t("apptabProgress", "Progress")}
@@ -99,7 +119,7 @@ function KitchenApplicationDetails({
         </div>
       )}
 
-      <Separator className="bg-border/50" />
+      {!compact && <Separator className="bg-border/50" />}
 
       <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -115,7 +135,7 @@ function KitchenApplicationDetails({
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             {t("apptabPersonalInformation", "Personal Information")}
           </p>
-          <div className="grid grid-cols-1 gap-3">
+          <div className={cn("grid grid-cols-1 gap-3", compact && "compact-personal-details")}>
             <div className="flex items-center gap-2 rounded-lg bg-muted/20 p-2">
               <User className="h-4 w-4 text-muted-foreground" />
               <div>
@@ -145,7 +165,7 @@ function KitchenApplicationDetails({
           {(() => {
             const businessInfo = parseBusinessInfo(app.businessDescription);
             return (
-              <div className="space-y-3">
+              <div className={cn("space-y-3", compact && "compact-business-details")}>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="rounded-lg bg-muted/20 p-2">
                     <p className="text-xs uppercase text-muted-foreground">{t("apptabKitchenPreference", "Kitchen Preference")}</p>
@@ -278,6 +298,15 @@ function KitchenApplicationDetails({
                 <div className="mt-2"><SecureDocumentLink url={app.foodEstablishmentCertUrl} fileName="Food Establishment Licence" label={t("apptabView", "View")} /></div>
               </div>
             )}
+
+            {tierFiles.map(([key, url]) => (
+              <div key={key} className="rounded-xl border border-border bg-card p-3">
+                <p className="text-sm font-medium capitalize">{tierFileLabel(key)}</p>
+                <div className="mt-2">
+                  <SecureDocumentLink url={url} fileName={tierFileLabel(key)} label={t("apptabView", "View")} />
+                </div>
+              </div>
+            ))}
 
             {hasStep2Data ? (
               <div className="space-y-3">
@@ -432,7 +461,7 @@ function KitchenApplicationDetails({
         {app.status === "approved" && currentStep < 3 &&
           (step2Submitted ? (
             <InfoChip variant="outline" icon={<FileCheck className="h-3 w-3" />}>
-              {t("documentsAwaitingManagerReview", "Documents submitted — awaiting manager review")}
+              {t("kdInReview", "In review")}
             </InfoChip>
           ) : (
             <Button variant="outline" size="sm" asChild>
@@ -460,8 +489,23 @@ export default function KitchenApplicationCard({
   kitchenImageUrl,
   onBookKitchen,
 }: KitchenApplicationCardProps) {
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  /*
+   * "View details" opens the My Kitchen Applications tab, where the application
+   * details already live. A second copy of them in a Sheet would only drift.
+   */
+  const [, navigate] = useLocation();
   const { t } = useTranslation("chef");
+
+  /*
+   * The dashboard switches tabs from `popstate`, but wouter's `navigate()` is a
+   * pushState on the SAME pathname (/dashboard) — only the `?view=` changes, so the
+   * dashboard's [location] effect never re-runs and the tab would stay where it was
+   * while the address bar said otherwise. Firing a popstate makes it actually switch.
+   */
+  const openKitchenApplications = () => {
+    navigate("/dashboard?view=kitchen-requests");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
 
   const imageUrl = kitchenImageUrl || app.location?.brandImageUrl;
   const display = getKitchenDisplayStatus(app, t);
@@ -502,7 +546,7 @@ export default function KitchenApplicationCard({
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => setDetailsOpen(true)}
+                onClick={openKitchenApplications}
               >
                 <Eye />
                 {t("apptabViewDetails")}
@@ -539,45 +583,6 @@ export default function KitchenApplicationCard({
           </div>
         </div>
       </Card>
-
-      <Sheet open={detailsOpen} onOpenChange={setDetailsOpen}>
-        <SheetContent className="flex w-full flex-col overflow-y-auto sm:max-w-xl">
-          <SheetHeader className="pr-8 text-left">
-            <div className="flex items-start gap-3">
-              {imageUrl ? (
-                <div className="h-11 w-11 shrink-0 overflow-hidden rounded-xl border">
-                  <SmartImage
-                    src={getR2ProxyUrl(imageUrl)}
-                    alt={kitchenName}
-                    className="h-full w-full object-cover"
-                  />
-                </div>
-              ) : (
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-muted">
-                  <Building className="h-5 w-5 text-muted-foreground" />
-                </div>
-              )}
-              <div className="min-w-0 space-y-1">
-                <SheetTitle className="flex flex-wrap items-center gap-2">
-                  <TruncatedText className="truncate">{kitchenName}</TruncatedText>
-                  <KitchenStatusChip display={display} />
-                </SheetTitle>
-                <SheetDescription className="flex items-center gap-1">
-                  <MapPin className="h-3 w-3 shrink-0" />
-                  <TruncatedText className="truncate">
-                    {app.location?.address || t("apptabAddressNotAvailable")}
-                  </TruncatedText>
-                </SheetDescription>
-              </div>
-            </div>
-          </SheetHeader>
-          <KitchenApplicationDetails
-            app={app}
-            display={display}
-            onBookKitchen={onBookKitchen}
-          />
-        </SheetContent>
-      </Sheet>
     </>
   );
 }

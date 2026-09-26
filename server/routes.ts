@@ -1251,6 +1251,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Manager notifications routes
   app.use("/api/manager/notifications", (await import("./routes/notifications")).default);
+  app.use("/api/admin/notifications", (await import("./routes/notifications")).default);
 
   // ===================================
   // KITCHEN BOOKING SYSTEM - CHEF ROUTES

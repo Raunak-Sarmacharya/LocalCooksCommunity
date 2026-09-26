@@ -342,7 +342,8 @@ export class ChefApplicationService {
                 .leftJoin(locations, eq(chefKitchenApplications.locationId, locations.id))
                 .where(and(
                     eq(chefKitchenApplications.chefId, chefId),
-                    eq(chefKitchenApplications.status, 'approved')
+                    eq(chefKitchenApplications.status, 'approved'),
+                    gte(chefKitchenApplications.current_tier, 3)
                 ));
 
             // Transform to flat structure matching frontend expectations
@@ -475,7 +476,18 @@ export class ChefApplicationService {
                     .set({
                         ...(data as any),
                         status: newStatus,
-                        ...(shouldClearFeedback && { feedback: null }),
+                        ...(shouldClearFeedback && {
+                            feedback: null,
+                            reviewedBy: null,
+                            reviewedAt: null,
+                            current_tier: 1,
+                            tier1_completed_at: null,
+                            tier2_completed_at: null,
+                            tier_data: {},
+                            foodEstablishmentCertUrl: null,
+                            foodEstablishmentCertStatus: null,
+                            foodEstablishmentCertExpiry: null,
+                        }),
                         updatedAt: new Date()
                     })
                     .where(eq(chefKitchenApplications.id, existing.id))
@@ -544,8 +556,14 @@ export class ChefApplicationService {
         foodEstablishmentCertUrl?: string;
         foodSafetyLicenseStatus?: "pending" | "approved" | "rejected";
         foodEstablishmentCertStatus?: "pending" | "approved" | "rejected";
+        verifiedBy?: "local_cooks" | "manager";
     }): Promise<ChefKitchenApplication> {
         try {
+            const current = data.verifiedBy ? await this.getApplicationById(data.id) : undefined;
+            const tierData = (current?.tier_data || {}) as Record<string, any>;
+            const documentVerification = { ...(tierData.documentVerification || {}) };
+            if (data.foodSafetyLicenseStatus) documentVerification.foodSafetyLicense = data.verifiedBy;
+            if (data.foodEstablishmentCertStatus) documentVerification.foodEstablishmentCert = data.verifiedBy;
             const [updated] = await db
                 .update(chefKitchenApplications)
                 .set({
@@ -554,6 +572,7 @@ export class ChefApplicationService {
                     ...((data.foodEstablishmentCertUrl) && { foodEstablishmentCertUrl: data.foodEstablishmentCertUrl }),
                     ...(data.foodSafetyLicenseStatus && { foodSafetyLicenseStatus: data.foodSafetyLicenseStatus }),
                     ...(data.foodEstablishmentCertStatus && { foodEstablishmentCertStatus: data.foodEstablishmentCertStatus }),
+                    ...(data.verifiedBy && { tier_data: { ...tierData, documentVerification } }),
                     updatedAt: new Date()
                 })
                 .where(eq(chefKitchenApplications.id, data.id))

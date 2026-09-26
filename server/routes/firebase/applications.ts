@@ -22,8 +22,8 @@ import { CreateApplicationDTO } from '../../domains/applications/application.typ
 import { DomainError } from '../../shared/errors/domain-error';
 import { normalizePhoneForStorage } from '../../phone-utils';
 import { db } from '../../db';
-import { locations } from '@shared/schema';
-import { eq } from 'drizzle-orm';
+import { locations, users } from '@shared/schema';
+import { eq, and, isNotNull, ne } from 'drizzle-orm';
 import { notificationService } from '../../services/notification.service';
 import {
     sendEmail,
@@ -31,9 +31,34 @@ import {
     generateApplicationWithoutDocumentsEmail,
     generateStatusChangeEmail,
     generateNewSellerApplicationAdminEmail,
+    getSubdomainUrl,
 } from '../../email';
 
 const router = Router();
+
+async function notifyAdminsAboutSellerDocuments(application: { id: number; fullName: string | null; email: string | null }) {
+    const admins = await db.select({ id: users.id, email: users.username }).from(users)
+        .where(and(eq(users.role, 'admin'), isNotNull(users.username), ne(users.username, '')));
+    for (const admin of admins) {
+        try {
+            await notificationService.createForManager({
+                managerId: admin.id,
+                type: 'application_new',
+                priority: 'high',
+                title: 'Seller documents ready for review',
+                message: `${application.fullName || 'A chef'} uploaded seller application documents.`,
+                metadata: { applicationId: application.id, workflow: 'seller' },
+                actionUrl: '/admin?section=applications',
+                actionLabel: 'Review documents',
+            });
+            await sendEmail({
+                to: admin.email,
+                subject: 'Seller documents ready for review - Local Cooks',
+                text: `${application.fullName || 'A chef'} uploaded seller application documents. Review the application: ${getSubdomainUrl('admin')}/admin?section=applications`,
+            });
+        } catch (error) { logger.error('Error notifying admin about seller documents:', error); }
+    }
+}
 
 /**
  * POST /api/firebase/applications
@@ -149,6 +174,16 @@ router.post('/firebase/applications',
             // Send email notification
             await sendApplicationEmail(application);
 
+            try {
+                await notificationService.notifySellerApplicationSubmitted({
+                    chefId: userId,
+                    applicationId: application.id,
+                    hasDocuments: !!(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl),
+                });
+            } catch (notificationError) {
+                logger.error('Error creating seller application receipt notification:', notificationError);
+            }
+
             if (req.body.intendedLocationId) {
                 try {
                     const locationId = parseInt(req.body.intendedLocationId, 10);
@@ -173,21 +208,19 @@ router.post('/firebase/applications',
 
         // Send admin notification email about new seller application
         try {
-            const { users } = await import('@shared/schema');
-            const { eq: eqOp, isNotNull, ne, and: andOp } = await import('drizzle-orm');
-            const { db } = await import('../../db');
-            const adminUsers = await db
-                .select({ username: users.username })
-                .from(users)
-                .where(
-                    andOp(
-                        eqOp(users.role, 'admin'),
+                const adminUsers = await db
+                    .select({ id: users.id, username: users.username })
+                    .from(users)
+                    .where(
+                    and(
+                        eq(users.role, 'admin'),
                         isNotNull(users.username),
                         ne(users.username, '')
                     )
                 );
             const hasDocuments = !!(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl);
             for (const admin of adminUsers) {
+                await notificationService.createForManager({ managerId: admin.id, type: 'application_new', priority: 'high', title: 'Seller application awaiting review', message: `${application.fullName || 'A chef'} submitted a seller application.`, metadata: { applicationId: application.id, workflow: 'seller' }, actionUrl: '/admin?section=applications', actionLabel: 'Review application' });
                 if (admin.username) {
                     const adminEmail = generateNewSellerApplicationAdminEmail({
                         adminEmail: admin.username,
@@ -318,6 +351,14 @@ router.patch('/firebase/applications/:id/documents',
                 foodEstablishmentCertUrl: updatedApplication.foodEstablishmentCertUrl
             });
 
+            try {
+                await notificationService.createForChef({ chefId: userId, type: 'application_pending', priority: 'normal', title: 'Seller documents received', message: 'Your seller application documents were received and will be reviewed.', metadata: { applicationId, workflow: 'seller' }, actionUrl: '/dashboard?view=applications', actionLabel: 'View application' });
+            } catch (notificationError) { logger.error('Error creating seller document receipt:', notificationError); }
+
+            try {
+                await notifyAdminsAboutSellerDocuments({ id: updatedApplication.id, fullName: updatedApplication.fullName, email: updatedApplication.email });
+            } catch (notificationError) { logger.error('Error notifying admins about seller documents:', notificationError); }
+
             res.json(updatedApplication);
 
         } catch (error) {
@@ -360,6 +401,18 @@ router.patch('/firebase/applications/:id/cancel',
             const updatedApplication = await applicationService.cancelApplication(applicationId, userId);
 
             logger.info('✅ Application cancelled:', { id: updatedApplication.id });
+            try {
+                await notificationService.createForChef({ chefId: userId, type: 'application_rejected', priority: 'normal', title: 'Seller application cancelled', message: 'Your seller application was cancelled.', metadata: { applicationId: updatedApplication.id, workflow: 'seller' }, actionUrl: '/dashboard?view=applications', actionLabel: 'View application' });
+            } catch (notificationError) { logger.error('Error creating seller cancellation notification:', notificationError); }
+            try {
+                const admins = await db.select({ id: users.id, email: users.username }).from(users).where(and(eq(users.role, 'admin'), isNotNull(users.username), ne(users.username, '')));
+                for (const admin of admins) {
+                    try {
+                        await notificationService.createForManager({ managerId: admin.id, type: 'application_rejected', priority: 'normal', title: 'Seller application cancelled', message: `${updatedApplication.fullName || 'A chef'} cancelled their seller application.`, metadata: { applicationId, workflow: 'seller' }, actionUrl: '/admin?section=applications', actionLabel: 'View application' });
+                        await sendEmail({ to: admin.email, subject: 'Seller application cancelled - Local Cooks', text: `${updatedApplication.fullName || 'A chef'} cancelled their seller application. View the application: ${getSubdomainUrl('admin')}/admin?section=applications` });
+                    } catch (adminError) { logger.error('Error notifying admin about seller cancellation:', adminError); }
+                }
+            } catch (adminError) { logger.error('Error loading admins for seller cancellation:', adminError); }
 
             // Send cancellation email
             try {

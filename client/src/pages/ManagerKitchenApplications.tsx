@@ -362,7 +362,7 @@ function ManagerKitchenApplicationsContentLegacy({
       setReviewFeedback("");
     } catch (error: any) {
       toast({ title: mt("error"),
-        description: error.message || "Failed to approve Kitchen Coordination",
+        description: error.message || "Failed to approve Chef Application Requirements",
         variant: "destructive",
       });
     }
@@ -563,7 +563,7 @@ function ManagerKitchenApplicationsContentLegacy({
           </TabsTrigger>
           <TabsTrigger value="awaiting-tier2" className="gap-2">
             <Clock className="h-4 w-4" />
-            Awaiting Kitchen Coordination ({awaitingStep2Count})
+            Awaiting application ({awaitingStep2Count})
           </TabsTrigger>
           <TabsTrigger value="approved" className="gap-2">
             <CheckCircle className="h-4 w-4" />
@@ -908,7 +908,7 @@ function ManagerKitchenApplicationsContentLegacy({
                               <p className="text-xs text-gray-500">
                                 {selectedApplication.foodEstablishmentCertExpiry
                                   ? `Expires: ${new Date(selectedApplication.foodEstablishmentCertExpiry).toLocaleDateString()}`
-                                  : 'Kitchen Coordination requirement'}
+                                  : 'Chef Application Requirements requirement'}
                               </p>
                             </div>
                           </div>

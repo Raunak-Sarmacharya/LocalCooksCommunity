@@ -101,7 +101,7 @@ export default function PendingSellerJourneySubmitter() {
     <LoadingOverlay
       isVisible={transitioning}
       message="Submitting your application…"
-      submessage="Your account is ready. We’re securely saving your application before opening My Application."
+      submessage="Your account is ready. We’re securely saving your application before opening My Applications."
       type="verifying"
     />
   );

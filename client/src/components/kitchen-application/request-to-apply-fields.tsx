@@ -203,9 +203,13 @@ export function RequestToApplyFields({
 
           {certificateFile && (
             <div className="space-y-1.5 rounded-lg border border-border bg-background p-3">
+              {/* This block only renders once a file is chosen, and the server
+                  rejects an upload without a date — so the date is required here,
+                  never "(Optional)". */}
               <label htmlFor="request-food-safety-expiry" className="block text-sm font-medium text-foreground">
-                {t("foodSafetyLicenseExpiryLabel", "Certificate expiry date")} *{" "}
-                <span className="font-normal text-muted-foreground">{t("optional", "(Optional)")}</span>
+                {t("foodSafetyLicenseExpiryLabel", "Certificate expiry date")}{" "}
+                <span className="text-destructive" aria-hidden="true">*</span>
+                <span className="sr-only">{t("required", "required")}</span>
               </label>
               <DateField
                 id="request-food-safety-expiry"

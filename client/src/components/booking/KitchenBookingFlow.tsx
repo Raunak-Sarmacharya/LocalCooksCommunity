@@ -1094,13 +1094,10 @@ export default function KitchenBookingFlow({
     return stepOrder[idx + delta] ?? null;
   };
 
-  // Get booking time range helper
-  const getBookingTimeRange = () => {
-    if (selectedSlots.length === 0) return '';
-    const sortedSlots = bookingRateMode === 'daily' ? selectedSlots : sortSelectedSlots(selectedSlots);
-    return bookingVisitBlocks(sortedSlots.map(startTime => ({ startTime, endTime: addHour(startTime) })))
-      .map(block => `${formatTime(block.startTime)} - ${formatTime(block.endTime)}`).join(', ');
-  };
+  const orderedSelectedSlots = bookingRateMode === 'daily' ? selectedSlots : sortSelectedSlots(selectedSlots);
+  const bookingTimeBlocks = bookingVisitBlocks(
+    orderedSelectedSlots.map(startTime => ({ startTime, endTime: addHour(startTime) }))
+  ).map(block => `${formatTime(block.startTime)} - ${formatTime(block.endTime)}`);
 
   // Redirect to Stripe Checkout
   const redirectToStripeCheckout = async () => {
@@ -1796,7 +1793,7 @@ export default function KitchenBookingFlow({
                   <p className="text-sm font-medium text-muted-foreground">
                     {t("sheetBookingTimeLabel", "Booking Time")}
                   </p>
-                  <p className="text-sm font-semibold text-gray-900">{getBookingTimeRange()}</p>
+                  <p className="text-sm font-semibold text-gray-900">{bookingTimeBlocks.join(', ')}</p>
                   <p className="mt-0.5 text-sm text-muted-foreground">
                     {t("sheetHoursCount", {
                       count: selectedSlots.length,
@@ -1971,8 +1968,21 @@ export default function KitchenBookingFlow({
                       <p className="text-sm font-medium text-muted-foreground">
                         {t("sheetTimeLabel", "Time")}
                       </p>
-                      <p className="line-clamp-2 text-sm font-medium leading-snug text-gray-900">
-                        {selectedSlots.map(formatSlotRange).join(", ")}
+                      <p className="text-sm font-medium leading-snug text-gray-900">
+                        {bookingTimeBlocks.slice(0, 2).join(", ")}
+                        {bookingTimeBlocks.length > 2 && (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <button type="button" className="ml-1 font-semibold text-[#F51042] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F51042]" aria-label={t("sheetShowAllTimeSlots", "Show all selected time slots")}>…</button>
+                            </PopoverTrigger>
+                            <PopoverContent align="start" className="w-64 max-w-[calc(100vw-2rem)]">
+                              <p className="mb-2 text-sm font-semibold">{t("sheetBookingTimeLabel", "Booking Time")}</p>
+                              <ul className="max-h-56 space-y-1 overflow-y-auto text-sm">
+                                {orderedSelectedSlots.map((slot) => <li key={slot}>{formatSlotRange(slot)}</li>)}
+                              </ul>
+                            </PopoverContent>
+                          </Popover>
+                        )}
                       </p>
                     </div>
                   </div>

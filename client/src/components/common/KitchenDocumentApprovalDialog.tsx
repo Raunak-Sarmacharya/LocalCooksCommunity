@@ -14,7 +14,8 @@ type DocumentState = {
 };
 
 type KitchenRequirements = {
-  requireFoodHandlerCert?: boolean;
+  /** The kitchen's own tier-2 flag: is the certificate upload compulsory? */
+  requireFoodSafetyUpload?: boolean;
   tier2_food_establishment_cert_required?: boolean;
 } | null | undefined;
 
@@ -22,8 +23,10 @@ export function getKitchenDocumentApprovalPlan(application: DocumentState, requi
   const toVerify: { field: KitchenDocumentField; label: string }[] = [];
   const issues: string[] = [];
   const documents = [
-    { label: "Food Safety Certificate", field: "foodSafetyLicenseStatus" as const, url: application.foodSafetyLicenseUrl, expiry: application.foodSafetyLicenseExpiry, status: application.foodSafetyLicenseStatus, required: requirements?.requireFoodHandlerCert, needsExpiry: true },
-    { label: "Food Establishment Licence", field: "foodEstablishmentCertStatus" as const, url: application.foodEstablishmentCertUrl, expiry: application.foodEstablishmentCertExpiry, status: application.foodEstablishmentCertStatus, required: requirements?.tier2_food_establishment_cert_required, needsExpiry: false },
+    // `needsExpiry` is true for both: the expiry describes the document, so a
+    // document on file without one is incomplete rather than merely optional.
+    { label: "Food Safety Certificate", field: "foodSafetyLicenseStatus" as const, url: application.foodSafetyLicenseUrl, expiry: application.foodSafetyLicenseExpiry, status: application.foodSafetyLicenseStatus, required: requirements?.requireFoodSafetyUpload, needsExpiry: true },
+    { label: "Food Establishment Licence", field: "foodEstablishmentCertStatus" as const, url: application.foodEstablishmentCertUrl, expiry: application.foodEstablishmentCertExpiry, status: application.foodEstablishmentCertStatus, required: requirements?.tier2_food_establishment_cert_required, needsExpiry: true },
   ];
   for (const document of documents) {
     if (!document.url) {

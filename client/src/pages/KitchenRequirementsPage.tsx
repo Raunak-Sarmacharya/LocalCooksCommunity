@@ -195,7 +195,10 @@ export default function KitchenRequirementsPage() {
         const items = [
             t("personalInformation", "Personal Information"),
             (requirements.requireBusinessName || requirements.requireBusinessType) && t("businessInformation", "Business Information"),
-            // Food handler upload is collected in Step 2 after request-to-apply approval
+            // The certificate QUESTION belongs to the request phase and is set
+            // platform-wide by Local Cooks; only the upload it asks about is
+            // collected later with the kitchen.
+            requirements.requireFoodHandlerCert && t("foodSafetyCertifications", "Food Safety & Certifications"),
             requirements.tier1_years_experience_required && t("professionalExperience", "Professional Experience"),
             ...(Array.isArray(requirements.tier1_custom_fields)
                 ? requirements.tier1_custom_fields
@@ -209,9 +212,10 @@ export default function KitchenRequirementsPage() {
     const getStep2Items = () => {
         if (!requirements) return [];
         const items = [
-            requirements.requireFoodHandlerCert && t("foodSafetyLicense", "Food Safety Certificate") + " + " + t("foodSafetyLicenseExpiry", "Expiry Date"),
-            requirements.tier2_food_establishment_cert_required && t("foodEstablishmentCertificate", "Food Establishment Certificate"),
-            requirements.tier2_food_establishment_expiry_required && t("foodEstablishmentExpiry", "Food Establishment License Expiry"),
+            // Each document is ONE ask: the expiry is collected with the document
+            // it describes, never as a separate requirement.
+            requirements.requireFoodSafetyUpload && t("foodSafetyLicense", "Food Safety Certificate") + " + " + t("foodSafetyLicenseExpiry", "Expiry Date"),
+            requirements.tier2_food_establishment_cert_required && t("foodEstablishmentCertificate", "Food Establishment Certificate") + " + " + t("foodEstablishmentExpiry", "Food Establishment License Expiry"),
             (requirements.tier2_insurance_document_required || requirements.tier2_insurance_minimum_amount > 0) &&
             t("insuranceDocument", "Insurance Document") + (requirements.tier2_insurance_minimum_amount > 0 ? t("minAmount", { defaultValue: " (min ${amount})", amount: requirements.tier2_insurance_minimum_amount }) : ''),
             requirements.tier2_kitchen_experience_required && t("kitchenExperienceDescription", "Kitchen Experience Description"),
@@ -375,7 +379,7 @@ export default function KitchenRequirementsPage() {
                                 2
                             </div>
                             <div>
-                                <CardTitle className="text-lg">{t("kitchenCoordination", "Kitchen Coordination")}</CardTitle>
+                                <CardTitle className="text-lg">{t("kitchenCoordination", "Chef Application Requirements")}</CardTitle>
                                 <CardDescription className="text-xs">
                                     {t("requiredBeforeBookingShifts", "Required before booking shifts")}
                                 </CardDescription>
@@ -406,7 +410,7 @@ export default function KitchenRequirementsPage() {
                         <>
                             <h3 className="text-xl font-semibold mb-2">{t("step1CompleteTimeForStep2", "Request to apply approved — next up: kitchen documents")}</h3>
                             <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                                {t("initialApplicationApprovedSubmitStep2", "Your initial application was approved. Submit your Kitchen Coordination documents to unlock full kitchen access.")}
+                                {t("initialApplicationApprovedSubmitStep2", "Your initial request was approved. Submit your Chef Application Requirements to unlock full kitchen access.")}
                             </p>
                             <div className="flex gap-4 justify-center">
                                 <Button 

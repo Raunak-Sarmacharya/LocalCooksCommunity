@@ -436,7 +436,7 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
             {/* Selected Date Details */}
             {selectedDate && (
                 <Card className="animate-in fade-in slide-in-from-bottom-5 duration-300">
-                    <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-4 gap-4">
+                    <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-4 sm:space-y-0 pb-4 gap-4">
                         <CardTitle className="text-lg leading-tight">
                             Bookings for {selectedDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                         </CardTitle>

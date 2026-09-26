@@ -3,9 +3,12 @@ import { logger } from "../logger";
 import { Router, Request, Response } from 'express';
 import { requireFirebaseAuthWithUser, requireManager } from '../firebase-auth-middleware';
 import { normalizeImageUrl } from './utils';
-import { updateLocationRequirementsSchema } from '@shared/schema';
+import { updateLocationRequirementsSchema, platformSettings } from '@shared/schema';
 import { licenseAllowsBookings } from '@shared/kitchen-license';
+import { applyTier1Requirements, STEP1_REQUIREMENTS_SETTING_KEY } from '@shared/application-requirements';
 import { fromZodError } from 'zod-validation-error';
+import { db } from '../db';
+import { eq } from 'drizzle-orm';
 
 
 // Import Domain Services
@@ -434,8 +437,49 @@ router.get('/public/locations/:locationId/requirements', async (req: Request, re
             return res.status(400).json({ error: 'Invalid location ID' });
         }
 
-        const requirements = await locationService.getLocationRequirementsWithDefaults(locationId);
-        res.json(requirements);
+        const locationRequirements = await locationService.getLocationRequirementsWithDefaults(locationId);
+
+        /*
+         * The request-to-apply half of the application is platform-wide and owned
+         * by Local Cooks admins, so it is overlaid from `platform_settings` here.
+         *
+         * Before this, the admin's requirements page saved its toggles to that
+         * key and nothing ever read them — tier 1 silently used the per-kitchen
+         * defaults, so every admin toggle appeared to do nothing.
+         */
+        let adminSettings: unknown = null;
+        const [adminStep1] = await db
+            .select({ value: platformSettings.value })
+            .from(platformSettings)
+            .where(eq(platformSettings.key, STEP1_REQUIREMENTS_SETTING_KEY))
+            .limit(1);
+
+        if (adminStep1?.value) {
+            try {
+                adminSettings = JSON.parse(adminStep1.value);
+            } catch {
+                // A corrupt row must not take the chef's form down with it.
+                logger.error('Invalid JSON in step1_requirements; falling back to per-kitchen values');
+            }
+        }
+
+        const requirements = applyTier1Requirements(
+            locationRequirements as unknown as Record<string, unknown>,
+            adminSettings,
+        );
+
+        res.json({
+            ...requirements,
+            /*
+             * The kitchen's tier-2 upload flag, under a name that cannot be
+             * confused with the admin's question flag above. Both originate from
+             * a column/key called `requireFoodHandlerCert`, but they answer
+             * different questions: the admin decides whether the chef is *asked*
+             * about certification, the kitchen decides whether the *upload* is
+             * compulsory.
+             */
+            requireFoodSafetyUpload: locationRequirements.requireFoodHandlerCert === true,
+        });
     } catch (error) {
         logger.error('Error getting location requirements:', error);
         res.status(500).json({ error: 'Failed to get requirements' });

@@ -20,7 +20,6 @@ import { useLocation } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import KitchenAuthShowcase from "@/components/auth/KitchenAuthShowcase";
 import AuthLoadingScreen from "@/components/auth/AuthLoadingScreen";
-import { isMissingProfileError } from "@/lib/login-challenge";
 import { clearLastAccount, getLastAccount, type LastAccount } from "@/lib/last-account";
 import { useMeasuredHeight } from "@/hooks/use-measured-height";
 import { useAuthTransition } from "@/components/auth/AuthTransition";
@@ -37,7 +36,7 @@ export default function ManagerLogin() {
 
   // Managers now use Firebase authentication (like chefs)
   const [location, setLocation] = useLocation();
-  const { user, loading, authPhase, refreshUserData, signInWithGoogle, updateUserVerification, discardPendingGoogleRegistration } = useFirebaseAuth();
+  const { user, loading, authPhase, refreshUserData, authenticateWithGoogle, updateUserVerification, discardPendingGoogleRegistration } = useFirebaseAuth();
   const { begin: beginHandoff, end: endHandoff } = useAuthTransition();
   const queryClient = useQueryClient();
   // Read once, synchronously, so the card can be the first thing painted. This
@@ -79,7 +78,7 @@ export default function ManagerLogin() {
     () => arrivalParams.get("message") === "password-reset-success",
   );
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
-  // Covers the gap after Google's account picker returns: signInWithGoogle sets
+  // Covers the gap after Google's account picker returns: auth state can settle
   // authPhase back to `ready` before finishAuthentication can raise the handoff,
   // which is the "auth form flashes for a few seconds" report.
   const [googleAuthPending, setGoogleAuthPending] = useState(false);
@@ -350,37 +349,18 @@ export default function ManagerLogin() {
     // (which ignores the gate timeout), and finishAuthentication raises the
     // handoff only once, right before it navigates.
     setGoogleAuthPending(true);
-    setHasAttemptedLogin(true);
     try {
-      // Sign-IN, never registration. This used to pass `true`, which sent every
-      // "Continue with Google" through the provisioning branch: picking a Google
-      // account with no LocalCooks profile silently CREATED a manager account —
-      // an irreversible action inferred from a sign-in attempt, and the classic
-      // "silent identity forking" failure, where the user ends up operating
-      // across two accounts and their saved work appears to vanish.
-      //
-      // With `false`, an unknown account throws `createMissingProfileError`,
-      // which AuthFlow already catches and turns into the explicit register step
-      // with the address pre-filled. Registration still happens — but the visitor
-      // sees "Create your account", fills the form, and accepts the terms before
-      // anything is provisioned. That is the Airbnb shape: sign in by default,
-      // sign up on purpose.
-      await signInWithGoogle(false);
+      const identity = await authenticateWithGoogle();
+      if (!identity.existing) {
+        // Keep the Google session so the shared register form can lock the
+        // verified email and collect name and phone before creating an account.
+        setAuthStep("register");
+        return;
+      }
       await finishAuthentication();
     } catch (error: unknown) {
       endHandoff();
       setHasAttemptedLogin(false);
-
-      // An unknown Google account must reach the explicit register step, and
-      // AuthFlow owns that routing. Re-throwing is what lets it — this catch used
-      // to swallow EVERY error, so the missing-profile branch was unreachable
-      // from this page: the alert fired, nothing navigated, and the visitor was
-      // left on whatever step they started from.
-      if (isMissingProfileError(error)) {
-        const attempted = (error as { email?: unknown }).email;
-        if (typeof attempted === "string") setAttemptedIdentifier(attempted);
-        throw error;
-      }
 
       const message = error instanceof Error ? error.message : String(error);
       if (!message.includes("popup-closed-by-user") && !message.includes("cancelled")) {

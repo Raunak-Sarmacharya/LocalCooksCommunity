@@ -24,7 +24,11 @@ import {
     generateChefAllDocumentsApprovedEmail,
     generateDocumentStatusChangeEmail,
     generateNewSellerApplicationAdminEmail,
+    getDashboardUrl,
 } from "../email";
+import { users } from '@shared/schema';
+import { db } from '../db';
+import { and, eq, isNotNull, ne } from 'drizzle-orm';
 import { normalizePhoneForStorage, stripCountryCode } from "../phone-utils";
 import { requireFirebaseAuthWithUser } from "../firebase-auth-middleware";
 import { notificationService } from "../services/notification.service";
@@ -186,6 +190,16 @@ router.post("/",
                 hasDocuments: !!(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl)
             });
 
+            try {
+                if (application.userId) await notificationService.notifySellerApplicationSubmitted({
+                    chefId: application.userId,
+                    applicationId: application.id,
+                    hasDocuments: !!(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl),
+                });
+            } catch (notificationError) {
+                logger.error('Error creating seller application receipt notification:', notificationError);
+            }
+
             // Send appropriate email notification for new application
             try {
                 if (application.email) {
@@ -224,7 +238,7 @@ router.post("/",
                 const { eq: eqOp, isNotNull, ne, and: andOp } = await import('drizzle-orm');
                 const { db } = await import('../db');
                 const adminUsers = await db
-                    .select({ username: users.username })
+                    .select({ id: users.id, username: users.username })
                     .from(users)
                     .where(
                         andOp(
@@ -235,6 +249,7 @@ router.post("/",
                     );
                 const hasDocuments = !!(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl);
                 for (const admin of adminUsers) {
+                    await notificationService.createForManager({ managerId: admin.id, type: 'application_new', priority: 'high', title: 'Seller application awaiting review', message: `${application.fullName || 'A chef'} submitted a seller application.`, metadata: { applicationId: application.id, workflow: 'seller' }, actionUrl: '/admin?section=applications', actionLabel: 'Review application' });
                     if (admin.username) {
                         const adminEmail = generateNewSellerApplicationAdminEmail({
                             adminEmail: admin.username,
@@ -462,11 +477,31 @@ router.patch("/:id/status", async (req: Request, res: Response) => {
         }
 
         // Update the application status via Service
+        const previousApplication = await appService.getApplicationById(id);
         const updatedApplication = await appService.updateStatus(id, parsedData.data.status);
+
+        if (updatedApplication.userId && previousApplication.status !== updatedApplication.status &&
+            (updatedApplication.status === 'approved' || updatedApplication.status === 'rejected')) {
+            try {
+                await notificationService.notifySellerApplicationDecision({
+                    chefId: updatedApplication.userId,
+                    applicationId: updatedApplication.id,
+                    status: updatedApplication.status,
+                });
+            } catch (notificationError) {
+                logger.error('Error creating seller application decision notification:', notificationError);
+            }
+        }
+
+        if (updatedApplication.userId && previousApplication.status !== updatedApplication.status && updatedApplication.status === 'inReview') {
+            try {
+                await notificationService.createForChef({ chefId: updatedApplication.userId, type: 'application_pending', priority: 'normal', title: 'Seller application under review', message: 'Local Cooks is reviewing your seller application.', metadata: { applicationId: updatedApplication.id, workflow: 'seller' }, actionUrl: '/dashboard?view=applications', actionLabel: 'View application' });
+            } catch (notificationError) { logger.error('Error creating seller review notification:', notificationError); }
+        }
 
         // Send email notification about status change
         try {
-            if (updatedApplication.email) {
+            if (updatedApplication.email && updatedApplication.status !== 'inReview') {
                 const emailContent = generateStatusChangeEmail({
                     fullName: updatedApplication.fullName || "Applicant",
                     email: updatedApplication.email,
@@ -510,6 +545,18 @@ router.patch("/:id/cancel", async (req: Request, res: Response) => {
 
         // Use ApplicationService to cancel (it handles ownership check)
         const updatedApplication = await appService.cancelApplication(id, userId);
+        try {
+            await notificationService.createForChef({ chefId: userId, type: 'application_rejected', priority: 'normal', title: 'Seller application cancelled', message: 'Your seller application was cancelled.', metadata: { applicationId: updatedApplication.id, workflow: 'seller' }, actionUrl: '/dashboard?view=applications', actionLabel: 'View application' });
+        } catch (notificationError) { logger.error('Error creating seller cancellation notification:', notificationError); }
+        try {
+            const admins = await db.select({ id: users.id, email: users.username }).from(users).where(and(eq(users.role, 'admin'), isNotNull(users.username), ne(users.username, '')));
+            for (const admin of admins) {
+                try {
+                    await notificationService.createForManager({ managerId: admin.id, type: 'application_rejected', priority: 'normal', title: 'Seller application cancelled', message: `${updatedApplication.fullName || 'A chef'} cancelled their seller application.`, metadata: { applicationId: updatedApplication.id, workflow: 'seller' }, actionUrl: '/admin?section=applications', actionLabel: 'View application' });
+                    await sendEmail({ to: admin.email, subject: 'Seller application cancelled - Local Cooks', text: `${updatedApplication.fullName || 'A chef'} cancelled their seller application. View the application: ${getDashboardUrl('admin')}?section=applications` });
+                } catch (adminError) { logger.error('Error notifying admin about seller cancellation:', adminError); }
+            }
+        } catch (adminError) { logger.error('Error loading admins for seller cancellation:', adminError); }
 
         // Send email notification about application cancellation
         try {
@@ -612,6 +659,25 @@ router.patch("/:id/document-verification", async (req: Request, res: Response) =
             }
         } catch (emailError) {
             logger.error("Error sending individual document status email:", emailError);
+        }
+
+        if ((parsedData.data.foodSafetyLicenseStatus === 'rejected' || parsedData.data.foodEstablishmentCertStatus === 'rejected') && updatedApplication.userId) {
+            try {
+                await notificationService.notifySellerDocumentRejected({
+                    chefId: updatedApplication.userId,
+                    applicationId: updatedApplication.id,
+                    documentName: parsedData.data.foodSafetyLicenseStatus === 'rejected' ? 'Food Safety License' : 'Food Establishment Certificate',
+                    feedback: updatedApplication.documentsAdminFeedback || undefined,
+                });
+            } catch (notificationError) {
+                logger.error('Error creating seller document rejection notification:', notificationError);
+            }
+        }
+        if ((parsedData.data.foodSafetyLicenseStatus === 'approved' || parsedData.data.foodEstablishmentCertStatus === 'approved') && updatedApplication.userId) {
+            try {
+                const documentName = parsedData.data.foodSafetyLicenseStatus === 'approved' ? 'Food Safety License' : 'Food Establishment Certificate';
+                await notificationService.createForChef({ chefId: updatedApplication.userId, type: 'application_approved', priority: 'normal', title: `${documentName} approved`, message: `Your ${documentName} was approved.`, metadata: { applicationId: updatedApplication.id, workflow: 'seller' }, actionUrl: '/dashboard?view=applications', actionLabel: 'View application' });
+            } catch (notificationError) { logger.error('Error creating seller document approval notification:', notificationError); }
         }
 
         // Check if both documents are approved, then update user verification status

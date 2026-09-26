@@ -768,7 +768,7 @@ export default function ApplicantDashboard() {
 
   const kitchenApplicationsTabContent = (
     <MyKitchensTabContent
-      kitchenApplications={typedKitchenApplications}
+      kitchenApplications={typedKitchenApplications.filter((app) => app.status === "approved" && (app.current_tier ?? 1) >= 3)}
       publicKitchens={publicKitchens}
       chefId={chefId}
       onSetActiveTab={setActiveTab}
@@ -792,6 +792,11 @@ export default function ApplicantDashboard() {
   const discoverKitchensTabContent = (
     <KitchenDiscovery
       defaultTab={activeTab === "viewings" ? "tours" : activeTab === "kitchen-requests" ? "applications" : "discover"}
+      onOpenChat={(app) => {
+        setChatApplication(app);
+        setChatConversationId(app.chat_conversation_id || null);
+        setShowChatDialog(true);
+      }}
     />
   );
 
@@ -940,7 +945,7 @@ export default function ApplicantDashboard() {
       return [
         ...baseBreadcrumbs,
         { label: t("shellKitchens"), onClick: () => setActiveTab("discover-kitchens") },
-        { label: t(activeTab === 'viewings' ? "shellKitchenTours" : activeTab === 'kitchen-requests' ? "shellKitchenApplications" : "shellDiscoverKitchens"), navId: activeTab },
+        { label: t(activeTab === 'viewings' ? "shellKitchenTours" : activeTab === 'kitchen-requests' ? "shellMyKitchenApplications" : "shellDiscoverKitchens"), navId: activeTab },
       ];
     }
 
@@ -1122,6 +1127,7 @@ export default function ApplicantDashboard() {
                 <ChatPanel
                   conversationId={chatConversationId}
                   applicationId={chatApplication.id}
+                  canBook={chatApplication.status === 'approved' && (chatApplication.current_tier ?? 1) >= 3 && !!chatApplication.tier2_completed_at}
                   chefId={chefId}
                   managerId={chatApplication.location?.managerId || 0}
                   locationId={chatApplication.locationId}

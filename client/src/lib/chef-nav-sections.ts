@@ -60,7 +60,7 @@ export const chefNavSections: ChefNavSection[] = [
       {
         id: "discover-kitchens", labelKey: "shellKitchens", icon: "mdi:office-building-outline",
         children: [
-          { id: "kitchen-requests", labelKey: "shellKitchenApplications", icon: "mdi:file-document-outline" },
+          { id: "kitchen-requests", labelKey: "shellMyKitchenApplications", icon: "mdi:file-document-outline" },
           { id: "kitchen-applications", labelKey: "shellApprovedKitchens", icon: "mdi:check-circle-outline" },
           { id: "viewings", labelKey: "shellKitchenTours", icon: "mdi:eye-outline" },
         ],

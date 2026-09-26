@@ -10,6 +10,7 @@ import FacilityDocumentsPanel from './FacilityDocumentsPanel';
 import { MessageThreadSkeleton } from './ConversationItemSkeleton';
 import { useChat } from "@/hooks/use-chat";
 import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
+import { uploadChatFile } from "@/services/chat-service";
 import { Timestamp } from "firebase/firestore";
 
 // Authenticated file link component for chat attachments
@@ -48,7 +49,8 @@ import { Separator } from "@/components/ui/separator";
 
 interface ChatPanelProps {
   conversationId: string;
-  applicationId?: number; // Kept for prop compatibility but unused
+  applicationId?: number;
+  canBook?: boolean;
   chefId: number;
   managerId: number;
   locationId: number;
@@ -72,6 +74,14 @@ interface ChatPanelProps {
   unavailable?: boolean;
   /** Which side is gone — lets the notice name the right party. */
   unavailableRole?: 'chef' | 'manager' | 'admin' | 'user';
+  /**
+   * True while we are still verifying whether the other participant's account
+   * exists. Rendering the thread before that answer arrives showed "this chef's
+   * account was deleted" on open and then replaced it with the real
+   * conversation, so the thread and composer are held behind a skeleton until
+   * the question is actually settled.
+   */
+  availabilityPending?: boolean;
   onClose?: () => void;
   onUnreadCountUpdate?: () => void;
   embedded?: boolean;
@@ -79,6 +89,8 @@ interface ChatPanelProps {
 
 export default function ChatPanel({
   conversationId,
+  applicationId,
+  canBook = false,
   chefId,
   managerId,
   locationId,
@@ -89,6 +101,7 @@ export default function ChatPanel({
   viewerRole,
   unavailable = false,
   unavailableRole,
+  availabilityPending = false,
   onClose,
   onUnreadCountUpdate,
   embedded = false,
@@ -108,6 +121,7 @@ export default function ChatPanel({
     handleSendMessage,
     isManager,
     isAdmin,
+    role,
     error,
   } = useChat({
     conversationId,
@@ -125,12 +139,13 @@ export default function ChatPanel({
     // create a message nobody can ever read.
     if (unavailable) return;
     try {
-      // 1. Send text message first if exists
-      if (content.trim()) {
-        await handleSendMessage(content);
-      }
+      // Finish every upload before publishing any messages. A rejected file
+      // should leave the entire draft in the composer for correction or retry.
+      const uploadedFiles = await Promise.all((files || []).map(async (file) => ({
+        name: file.name,
+        url: await uploadChatFile(conversationId, file),
+      })));
 
-      // 2. Send attached facility documents
       if (attachedFacilityDocuments.length > 0) {
         for (const doc of attachedFacilityDocuments) {
           // Send as a file message with URL
@@ -139,14 +154,11 @@ export default function ChatPanel({
         setAttachedFacilityDocuments([]);
       }
 
-      // 3. Send uploaded files
-      if (files && files.length > 0) {
-        for (const file of files) {
-          await handleSendMessage('', file);
-        }
-      }
+      for (const file of uploadedFiles) await handleSendMessage('', file);
+      if (content.trim()) await handleSendMessage(content);
     } catch (error) {
       logger.error('Failed to send message:', error);
+      throw error;
     }
   };
 
@@ -235,10 +247,12 @@ export default function ChatPanel({
       <ChatMessageList scrollRef={messagesEndRef} className="px-4 py-6">
         {messages.map((message) => {
           if (message.senderRole === 'system') {
+            const systemMessage = normalizeChatSystemMessage(message.content, canBook);
+            if (!systemMessage) return null;
             return (
               <div key={message.id} className="flex justify-center my-4">
                 <span className="text-xs text-muted-foreground bg-muted/50 px-3 py-1 rounded-full border">
-                  {normalizeChatSystemMessage(message.content)}
+                  {systemMessage}
                 </span>
               </div>
             );
@@ -289,7 +303,7 @@ export default function ChatPanel({
       {renderHeader()}
 
       <div className="flex-1 overflow-hidden relative bg-muted/20">
-        {isLoading ? (
+        {isLoading || availabilityPending ? (
           <MessageThreadSkeleton count={6} />
         ) : (
           renderMessages()
@@ -300,16 +314,17 @@ export default function ChatPanel({
         {/* Attaching facility documents is pointless once the thread is dormant,
             and the pending-attachment chip row would dangle. Both are hidden
             behind the same read-only state rather than the composer alone. */}
-        {!unavailable && isManager && (
+        {!unavailable && !availabilityPending && isManager && (
           <div className="border-b bg-muted/10">
             <FacilityDocumentsPanel
               locationId={locationId}
+              applicationId={applicationId}
               onAttachDocuments={handleAttachFacilityDocuments}
             />
           </div>
         )}
 
-        {!unavailable && attachedFacilityDocuments.length > 0 && (
+        {!unavailable && !availabilityPending && attachedFacilityDocuments.length > 0 && (
           <div className="px-4 py-2 bg-muted/30 border-b flex flex-wrap gap-2 animate-in fade-in slide-in-from-bottom-2">
             {attachedFacilityDocuments.map((doc, index) => (
               <div key={index} className="flex items-center gap-2 bg-background border px-2 py-1 rounded-md text-sm shadow-sm">
@@ -325,7 +340,14 @@ export default function ChatPanel({
           </div>
         )}
 
-        {unavailable ? (
+        {availabilityPending ? (
+          // Availability is still being verified — claiming the account was
+          // deleted here is exactly the bug this replaces: the notice flashed on
+          // open and then vanished once the check came back.
+          <div className="px-4 py-5" aria-busy="true">
+            <div className="h-9 w-full rounded-md bg-muted animate-pulse" />
+          </div>
+        ) : unavailable ? (
           // A notice, not a disabled input: a greyed-out box invites the user to
           // keep trying, and never explains why nothing happens.
           <div className="px-4 py-5 flex items-start gap-3 bg-muted/30" role="note">
@@ -347,6 +369,7 @@ export default function ChatPanel({
           <ChatInput
             onSend={onSend}
             isLoading={isSending}
+            disabled={!role}
             hasExternalAttachments={attachedFacilityDocuments.length > 0}
             className="border-0 shadow-none bg-background pb-6"
             placeholder={t("chatMessagePlaceholder", { name: getPartnerName() })}

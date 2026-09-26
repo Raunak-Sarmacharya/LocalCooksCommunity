@@ -4,7 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { ChatAvatar } from "@/components/ui/chat/chat-avatar";
 import { Conversation } from "@/services/chat-service";
 import { Timestamp } from "firebase/firestore";
-import { CheckCircle, Clock, MessageCircle } from "lucide-react";
+import { Archive, ArchiveRestore, CheckCircle, Clock } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
 
 export type ApplicationStatus = 'inReview' | 'step1_approved' | 'step2_review' | 'fully_approved' | 'rejected' | 'unknown';
@@ -22,6 +23,9 @@ interface ConversationItemProps {
    * the caller can combine the stored flag with a live liveness check.
    */
   unavailable?: boolean;
+  archived?: boolean;
+  archiveBusy?: boolean;
+  onToggleArchive?: () => void;
 }
 
 export function ConversationItem({
@@ -32,7 +36,10 @@ export function ConversationItem({
   partnerLocation,
   applicationStatus = 'unknown',
   viewerRole,
-  unavailable = false
+  unavailable = false,
+  archived = false,
+  archiveBusy = false,
+  onToggleArchive,
 }: ConversationItemProps) {
   const { t } = useTranslation('chef');
   const lastMessageDate = conversation.lastMessageAt instanceof Date
@@ -69,7 +76,9 @@ export function ConversationItem({
     switch (applicationStatus) {
       case 'step1_approved':
         return {
-          label: t('chatStep1Approved'),
+          // Same state, opposite job. The chef has something to do; the manager is
+          // waiting on them. One shared label told both sides the wrong thing.
+          label: viewerRole === 'manager' ? t('chatAwaitingApplication') : t('chatStep1Approved'),
           icon: Clock,
           className: 'bg-blue-50 text-blue-700 border-blue-200'
         };
@@ -99,10 +108,11 @@ export function ConversationItem({
   const statusBadge = getStatusBadge();
 
   return (
+    <div className="relative">
     <button
       onClick={onClick}
       className={cn(
-        "w-full flex flex-col gap-2 p-3 rounded-lg transition-all text-left",
+        "w-full flex flex-col gap-2 p-3 pr-10 rounded-lg transition-all text-left",
         "hover:bg-accent hover:text-accent-foreground",
         isSelected ? "bg-accent text-accent-foreground" : "bg-background"
       )}
@@ -140,7 +150,7 @@ export function ConversationItem({
           </div>
           
           <div className="col-span-4 flex flex-col items-end justify-between py-0.5">
-            <span className="text-xs text-muted-foreground whitespace-nowrap">
+            <span className="text-xs text-muted-foreground whitespace-nowrap mr-2">
               {relativeTime}
             </span>
             {unreadCount > 0 && (
@@ -153,26 +163,38 @@ export function ConversationItem({
       </div>
 
       {/* Application Status Badge - Enterprise indicator */}
-      {statusBadge && (
+      {unavailable && (
+        <div className="ml-11"><Badge variant="outline" className="bg-muted text-muted-foreground border-border font-normal text-xs">{t('chatInactive', 'Inactive')}</Badge></div>
+      )}
+      {statusBadge && !unavailable && (
         <div className="flex items-center gap-1.5 ml-11">
           <Badge 
             variant="outline" 
             className={cn(
-              "text-xs px-2 py-0.5 font-medium flex items-center gap-1",
+              "text-xs px-2 py-0.5 font-medium flex items-center gap-1 whitespace-nowrap",
               statusBadge.className
             )}
           >
-            <statusBadge.icon className="h-3 w-3" />
+            <statusBadge.icon className="h-3 w-3 shrink-0" />
             {statusBadge.label}
           </Badge>
-          {applicationStatus === 'step1_approved' && (
-            <span className="text-xs text-muted-foreground flex items-center gap-1">
-              <MessageCircle className="h-3 w-3" />
-              {t("chatEnabled")}
-            </span>
-          )}
         </div>
       )}
     </button>
+    {onToggleArchive && !unavailable && (
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        disabled={archiveBusy}
+        onClick={onToggleArchive}
+        aria-label={archived ? t('chatRestore', 'Restore chat') : t('chatArchive', 'Archive chat')}
+        title={archived ? t('chatRestore', 'Restore chat') : t('chatArchive', 'Archive chat')}
+        className="absolute right-1.5 top-1.5 size-7 text-muted-foreground hover:text-foreground"
+      >
+        {archived ? <ArchiveRestore className="size-4" /> : <Archive className="size-4" />}
+      </Button>
+    )}
+    </div>
   );
 }

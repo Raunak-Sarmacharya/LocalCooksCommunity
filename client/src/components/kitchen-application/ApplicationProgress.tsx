@@ -56,10 +56,16 @@ interface ApplicationProgressProps {
    *
    * An array, not one string: the copy here does two genuinely different jobs (what is left, and
    * what happens after), and running them together into a single blob made both unreadable.
+   *
+   * ONE LINE EACH — keep every entry under roughly 45 characters. This card lives in a `20rem`
+   * rail, so anything longer wraps, and a caption that spills onto a second line stops reading as a
+   * status line and starts reading as a paragraph. Anything that genuinely needs more room belongs
+   * in `items`, which has the width and marks each entry.
    */
   captions?: string[];
   /** Rendered as a `Note`-style footnote below the list (the "already sent and approved" note). */
   footer?: string;
+  guidance?: ReactNode;
   /** Cancel + Submit. Lives on the bar so the actions never scroll out of reach. */
   actions?: ReactNode;
   /** Extra classes for the wrapper — the host decides the offset. */
@@ -103,6 +109,7 @@ export function ApplicationProgress({
   optionalLabel,
   captions,
   footer,
+  guidance,
   actions,
   className,
 }: ApplicationProgressProps) {
@@ -225,6 +232,8 @@ export function ApplicationProgress({
               </li>
             </ul>
           ) : null}
+
+          {guidance ? <div className="mt-3 border-t pt-3">{guidance}</div> : null}
 
           {footer ? (
             <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">{footer}</p>

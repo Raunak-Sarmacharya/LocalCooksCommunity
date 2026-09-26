@@ -5,7 +5,8 @@ import { AlertCircle, MessageCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { auth } from "@/lib/firebase";
-import { getAllConversations, getLiveChatParticipants, type Conversation } from "@/services/chat-service";
+import { getAllConversations, getLiveChatParticipants, setConversationArchived, type Conversation } from "@/services/chat-service";
+import { useToast } from "@/hooks/use-toast";
 import ChatPanel from './ChatPanel';
 import { ConversationList } from "./ConversationList";
 import { ConversationListSkeleton } from "./ConversationItemSkeleton";
@@ -43,10 +44,19 @@ interface UnifiedChatViewProps {
   userId: number;
   role: 'chef' | 'manager';
   initialConversationId?: string | null;
+  /**
+   * Hide the conversation sidebar. Set when the chat was opened *for* one
+   * specific application — a row action on the chef-application table. The
+   * viewer asked to see that chef, so a list of every other thread is noise
+   * that also invites them to navigate away from the one they came for.
+   */
+  hideConversationList?: boolean;
 }
 
-export default function UnifiedChatView({ userId, role, initialConversationId }: UnifiedChatViewProps) {
+export default function UnifiedChatView({ userId, role, initialConversationId, hideConversationList = false }: UnifiedChatViewProps) {
   const { t } = useTranslation('chef');
+  const { toast } = useToast();
+  const [archiveBusyId, setArchiveBusyId] = useState<string | null>(null);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [applicationDetails, setApplicationDetails] = useState<Record<number, ApplicationDetails>>({});
   const [locationNames, setLocationNames] = useState<Record<number, string>>({});
@@ -105,6 +115,16 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
    * fetch can never be the thing that reveals the deletion.
    */
   const [deletedParticipantIds, setDeletedParticipantIds] = useState<Set<number>>(new Set());
+  const [participantStatus, setParticipantStatus] = useState<{ checked: Set<number>; live: Set<number> } | null>(null);
+  /**
+   * Whether the reconciliation below has finished. Until it has, we cannot say
+   * whether a participant exists, and the conversation's own `unavailable` flag
+   * is not trustworthy on its own — it is stamped at delete time and several
+   * threads carry a stale `true` while their chef is perfectly alive. Rendering
+   * the thread before the answer lands flashed "this chef's account was deleted"
+   * on every open and then corrected itself.
+   */
+  const [participantsResolved, setParticipantsResolved] = useState(false);
 
   useEffect(() => {
     if (conversations.length === 0) return;
@@ -113,13 +133,24 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
 
     const reconcileParticipants = async () => {
       const participantIds = conversations.flatMap((c) => [c.chefId, c.managerId]);
-      const live = await getLiveChatParticipants(participantIds);
+      let live: Set<number> | null = null;
+      try {
+        live = await getLiveChatParticipants(participantIds);
+      } catch (error) {
+        logger.error('Chat participant reconciliation failed:', error);
+      }
       // null means "could not tell" — leave the threads alone rather than
       // disabling every chat because one request failed.
-      if (cancelled || !live) return;
-      setDeletedParticipantIds(
-        new Set(participantIds.filter((id) => !live.has(id))),
-      );
+      if (cancelled) return;
+      if (live) {
+        setParticipantStatus({ checked: new Set(participantIds), live });
+        setDeletedParticipantIds(
+          new Set(participantIds.filter((id) => !live.has(id))),
+        );
+      }
+      // Resolved either way: on a failed lookup the threads fall back to the
+      // server's delete-time stamp instead of skeletoning forever.
+      setParticipantsResolved(true);
     };
 
     reconcileParticipants();
@@ -131,21 +162,22 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
   /** True when one participant no longer has an account. */
   const isConversationUnavailable = useCallback(
     (c: Conversation) =>
-      c.unavailable === true ||
-      deletedParticipantIds.has(c.chefId) ||
-      deletedParticipantIds.has(c.managerId),
-    [deletedParticipantIds],
+      participantStatus?.checked.has(c.chefId) && participantStatus.checked.has(c.managerId)
+        ? !participantStatus.live.has(c.chefId) || !participantStatus.live.has(c.managerId)
+        : c.unavailable === true || deletedParticipantIds.has(c.chefId) || deletedParticipantIds.has(c.managerId),
+    [deletedParticipantIds, participantStatus],
   );
 
   /** Which side is gone, preferring the server's stamp when present. */
   const getUnavailableRole = useCallback(
     (c: Conversation): 'chef' | 'manager' | 'admin' | 'user' | undefined => {
-      if (c.unavailableRole === 'chef' || c.unavailableRole === 'manager') return c.unavailableRole;
       if (deletedParticipantIds.has(c.chefId)) return 'chef';
       if (deletedParticipantIds.has(c.managerId)) return 'manager';
+      if (participantStatus?.live.has(c.chefId) && participantStatus?.live.has(c.managerId)) return undefined;
+      if (c.unavailableRole === 'chef' || c.unavailableRole === 'manager') return c.unavailableRole;
       return c.unavailableRole;
     },
-    [deletedParticipantIds],
+    [deletedParticipantIds, participantStatus],
   );
 
   // Fetch application details
@@ -266,6 +298,19 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
     setIsMobileListVisible(false);
   };
 
+  const handleToggleArchive = async (conversation: Conversation, archived: boolean) => {
+    setArchiveBusyId(conversation.id);
+    try {
+      await setConversationArchived(conversation.id, role, archived);
+      await refetch();
+    } catch (error) {
+      logger.error('Could not update chat archive:', error);
+      toast({ title: t('chatArchiveFailed', 'Could not update this chat'), variant: 'destructive' });
+    } finally {
+      setArchiveBusyId(null);
+    }
+  };
+
   // Helpers
   const getPartnerNameLabel = (c: Conversation) => {
     if (role === 'manager') {
@@ -333,16 +378,21 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
     // place rather than flashing a centred spinner and reflowing.
     return (
       <Card className="w-full h-full min-h-[500px] border shadow-sm overflow-hidden flex bg-background">
-        <div className="w-full md:w-80 border-r bg-muted/10 flex flex-col">
-          <div className="p-4 border-b space-y-4">
-            <div className="h-6 w-28 rounded bg-muted animate-pulse" />
-            <div className="h-9 w-full rounded-md bg-muted/70 animate-pulse" />
+        {!hideConversationList && (
+          <div className="w-full md:w-80 border-r bg-muted/10 flex flex-col">
+            <div className="p-4 border-b space-y-4">
+              <div className="h-6 w-28 rounded bg-muted animate-pulse" />
+              <div className="h-9 w-full rounded-md bg-muted/70 animate-pulse" />
+            </div>
+            <div className="p-3">
+              <ConversationListSkeleton count={5} />
+            </div>
           </div>
-          <div className="p-3">
-            <ConversationListSkeleton count={5} />
-          </div>
-        </div>
-        <div className="hidden md:flex flex-1 flex-col items-center justify-center gap-4 bg-background">
+        )}
+        <div className={cn(
+          "flex-1 flex-col items-center justify-center gap-4 bg-background",
+          hideConversationList ? "flex" : "hidden md:flex",
+        )}>
           <div className="h-16 w-16 rounded-full bg-muted animate-pulse" />
           <div className="h-4 w-40 rounded bg-muted animate-pulse" />
           <div className="h-3 w-56 rounded bg-muted/70 animate-pulse" />
@@ -371,32 +421,38 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
   return (
     <Card className="w-full h-full min-h-[500px] border shadow-sm overflow-hidden flex bg-background">
       {/* Sidebar List */}
-      <div className={cn(
-        "w-full md:w-80 border-r flex-col bg-muted/10",
-        isMobileListVisible ? "flex" : "hidden md:flex"
-      )}>
-        <ConversationList
-          conversations={visibleConversations}
-          selectedId={selectedConversation?.id}
-          onSelect={handleSelectConversation}
-          getPartnerName={getPartnerNameLabel}
-          getPartnerLocation={getPartnerLocation}
-          getApplicationStatus={getApplicationStatus}
-          viewerRole={role}
-          isLoading={isListLoading}
-          isConversationUnavailable={isConversationUnavailable}
-        />
-      </div>
+      {!hideConversationList && (
+        <div className={cn(
+          "w-full md:w-80 border-r flex-col bg-muted/10",
+          isMobileListVisible ? "flex" : "hidden md:flex"
+        )}>
+          <ConversationList
+            conversations={visibleConversations}
+            selectedId={selectedConversation?.id}
+            onSelect={handleSelectConversation}
+            getPartnerName={getPartnerNameLabel}
+            getPartnerLocation={getPartnerLocation}
+            getApplicationStatus={getApplicationStatus}
+            viewerRole={role}
+            isLoading={isListLoading}
+            isConversationUnavailable={isConversationUnavailable}
+            onToggleArchive={handleToggleArchive}
+            archiveBusyId={archiveBusyId}
+          />
+        </div>
+      )}
 
       {/* Main Chat Area */}
       <div className={cn(
         "flex-1 flex flex-col bg-background",
-        !isMobileListVisible ? "flex" : "hidden md:flex"
+        hideConversationList || !isMobileListVisible ? "flex" : "hidden md:flex"
       )}>
         {selectedConversation ? (
           <ChatPanel
             key={selectedConversation.id}
             conversationId={selectedConversation.id}
+            applicationId={selectedConversation.applicationId}
+            canBook={applicationDetails[selectedConversation.applicationId]?.status === 'approved' && (applicationDetails[selectedConversation.applicationId]?.current_tier ?? 1) >= 3 && !!applicationDetails[selectedConversation.applicationId]?.tier2_completed_at}
             chefId={selectedConversation.chefId}
             managerId={selectedConversation.managerId}
             locationId={selectedConversation.locationId}
@@ -408,6 +464,9 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
             // history stays readable; the composer is replaced by a notice.
             unavailable={isConversationUnavailable(selectedConversation)}
             unavailableRole={getUnavailableRole(selectedConversation)}
+            // Hold the thread behind a skeleton until we actually know whether
+            // the other participant still has an account.
+            availabilityPending={!participantsResolved}
             onUnreadCountUpdate={handleUnreadCountUpdate}
             embedded={true}
           />

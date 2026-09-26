@@ -592,9 +592,9 @@ export default function KitchenComparisonPage() {
                 </div>
               </FadeInSection>
 
-              {/* Below lg this docks flush under the fixed 64px header; on desktop it scrolls
-                  away with the hero and the compact search in the header takes over. */}
-              <div ref={searchSentinelRef} className="sticky top-[var(--header-height)] z-30 mb-8 lg:static">
+              {/* The search stays in the page flow at every size. On desktop, the compact
+                  search in the header takes over after this card scrolls past. */}
+              <div ref={searchSentinelRef} className="mb-8">
                 <div className="rounded-2xl border border-[#2C2C2C]/8 bg-white p-3 shadow-[0_8px_30px_rgba(44,44,44,0.08)] sm:p-4">
                   <div className="relative">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B6B6B]" />

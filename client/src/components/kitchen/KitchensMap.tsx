@@ -293,7 +293,7 @@ export default function KitchensMap({
 
   // Reflect the page's hover state on the pills.
   useEffect(() => {
-    for (const [locationId, marker] of markerLayersRef.current) {
+    for (const [locationId, marker] of Array.from(markerLayersRef.current)) {
       const markerData = markersRef.current.find((m) => m.locationId === locationId);
       if (!markerData) continue;
       const hovered = hoveredLocationId === locationId;

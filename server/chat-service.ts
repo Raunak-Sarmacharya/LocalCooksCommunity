@@ -10,7 +10,7 @@ let adminDb: FirebaseFirestore.Firestore | null = null;
 /**
  * Initialize Firebase Admin for server-side chat operations
  */
-async function getAdminDb() {
+export async function getAdminDb() {
   if (!adminDb) {
     const app = initializeFirebaseAdmin();
     if (!app) {
@@ -134,29 +134,28 @@ export async function sendSystemNotification(
     switch (eventType) {
       // New flow: request to apply → admin approves (chat opens) → kitchen coordination docs → manager approves booking
       case 'TIER1_APPROVED':
-        content = `Request to apply approved: Chat with your kitchen manager is now open. Upload your kitchen coordination documents to continue.`;
+        content = 'Request to apply approved. Chat is open, and kitchen documents can be submitted next.';
         break;
       case 'TIER1_REJECTED':
-        content = `Request to apply was not approved: ${data?.reason || 'Your application did not meet the requirements.'}`;
+        content = `Request to apply was not approved. ${data?.reason || 'The request did not meet the requirements.'}`;
         break;
       case 'TIER2_COMPLETE':
-        content = `Kitchen coordination complete: You're approved to book this kitchen.`;
+        content = "You're approved to book this kitchen.";
         break;
       case 'TIER3_SUBMITTED':
-        content = `Kitchen coordination submitted: Your documents are with the kitchen manager for review.`;
+        content = 'Kitchen documents submitted for review.';
         break;
       case 'TIER4_APPROVED':
-        // Legacy event name; same outcome as kitchen coordination complete
-        content = `Kitchen coordination complete: You're approved to book this kitchen.`;
+        content = "You're approved to book this kitchen.";
         break;
       case 'DOCUMENT_UPLOADED':
-        content = `Document uploaded: ${data?.fileName || 'A document'} has been uploaded for review.`;
+        content = `${data?.fileName || 'A document'} was uploaded for review.`;
         break;
       case 'DOCUMENT_VERIFIED':
-        content = `Document verified: ${data?.documentName || 'Your document'} has been verified.`;
+        content = `${data?.documentName || 'Document'} approved.`;
         break;
       case 'STATUS_CHANGED':
-        content = `Status changed: Application status updated to ${data?.status || 'new status'}.`;
+        content = `Application status: ${data?.status || 'updated'}.`;
         break;
       default:
         content = data?.message || 'System notification';
@@ -285,8 +284,7 @@ export async function deleteConversation(conversationId: string): Promise<void> 
  */
 export function phaseTransitionEvent(fromTier: number, toTier: number): string | null {
   if (toTier === 2 && fromTier === 1) return 'TIER1_APPROVED';
-  if (toTier >= 3 && fromTier < 3) return 'TIER2_COMPLETE';
-  if (toTier === 4) return 'TIER4_APPROVED';
+  if (toTier >= 3 && fromTier >= 2 && fromTier < 3) return 'TIER2_COMPLETE';
   return null;
 }
 
@@ -330,6 +328,11 @@ export async function notifyTierTransition(
     }
 
     const eventType = phaseTransitionEvent(fromTier, toTier);
+    if (eventType === 'TIER2_COMPLETE' &&
+        (application.status !== 'approved' || (application.current_tier ?? 1) < 3 || !application.tier2_completed_at)) {
+      logger.warn('Skipping booking approval chat message before kitchen documents and final approval', { applicationId });
+      return;
+    }
     if (eventType && conversationId) {
       await sendSystemNotification(conversationId, eventType, { reason });
     }

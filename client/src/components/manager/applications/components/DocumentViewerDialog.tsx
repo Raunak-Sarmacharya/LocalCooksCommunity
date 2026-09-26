@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { StatusButton } from "@/components/ui/status-button";
 import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
+import { auth } from "@/lib/firebase";
 import {
     AlertTriangle,
     Check,
@@ -18,16 +19,16 @@ import {
     ExternalLink,
     FileText,
     Loader2,
-    X,
 } from "@/components/ui/manager-icons";
 import { cn } from "@/lib/utils";
 
 export type DocumentVerificationField = "foodSafetyLicenseStatus" | "foodEstablishmentCertStatus";
 export type DocumentVerificationStatus = "pending" | "approved" | "rejected" | null | undefined;
 
-type PendingAction = "approve" | "reject" | null;
+type PendingAction = "approve" | null;
 
 interface DocumentViewerDialogProps {
+    applicationId: number;
     open: boolean;
     onOpenChange: (open: boolean) => void;
     title: string;
@@ -39,8 +40,7 @@ interface DocumentViewerDialogProps {
     /** Review outcome copy for the current status, when actionable. */
     reviewNote?: string | null;
     /**
-     * When provided, the dialog lets a manager verify the document or request a
-     * replacement. Omit it for read-only documents (e.g. insurance certificate).
+     * When provided, the dialog lets a manager verify the document.
      */
     reviewField?: DocumentVerificationField;
     onVerify?: (field: DocumentVerificationField, status: "approved" | "rejected") => void;
@@ -51,7 +51,6 @@ interface DocumentViewerDialogProps {
         needsReplacement: string;
         expired: string;
         verify: string;
-        requestReplacement: string;
         openInNewTab: string;
         close: string;
         loading: string;
@@ -79,6 +78,7 @@ function resolveKind(url: string | null | undefined): "image" | "pdf" | "other" 
 }
 
 export function DocumentViewerDialog({
+    applicationId,
     open,
     onOpenChange,
     title,
@@ -91,7 +91,10 @@ export function DocumentViewerDialog({
     onVerify,
     labels,
 }: DocumentViewerDialogProps) {
-    const { url: signedUrl, isLoading, error } = usePresignedDocumentUrl(url);
+    const { url: signedUrl } = usePresignedDocumentUrl(url);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [previewLoading, setPreviewLoading] = useState(false);
+    const [previewError, setPreviewError] = useState(false);
     const [assetFailed, setAssetFailed] = useState(false);
     const [pendingAction, setPendingAction] = useState<PendingAction>(null);
 
@@ -100,6 +103,36 @@ export function DocumentViewerDialog({
         if (!open) setPendingAction(null);
         setAssetFailed(false);
     }, [open, url]);
+
+    useEffect(() => {
+        if (!open || !url) return;
+        let cancelled = false;
+        let objectUrl: string | null = null;
+        setPreviewUrl(null);
+        setPreviewError(false);
+        setPreviewLoading(true);
+        (async () => {
+            try {
+                const token = await auth.currentUser?.getIdToken();
+                if (!token) throw new Error("Not authenticated");
+                const response = await fetch(`/api/files/kitchen-application/${applicationId}/preview?url=${encodeURIComponent(url)}`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                    credentials: "include",
+                });
+                if (!response.ok) throw new Error("Preview unavailable");
+                objectUrl = URL.createObjectURL(await response.blob());
+                if (!cancelled) setPreviewUrl(objectUrl);
+            } catch {
+                if (!cancelled) setPreviewError(true);
+            } finally {
+                if (!cancelled) setPreviewLoading(false);
+            }
+        })();
+        return () => {
+            cancelled = true;
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+        };
+    }, [open, url, applicationId]);
 
     const kind = useMemo(() => resolveKind(url), [url]);
     const expired = isExpired(expiry);
@@ -114,10 +147,10 @@ export function DocumentViewerDialog({
         return null;
     })();
 
-    const handleReview = (next: "approved" | "rejected") => {
+    const handleReview = () => {
         if (!reviewField || !onVerify) return;
-        setPendingAction(next === "approved" ? "approve" : "reject");
-        onVerify(reviewField, next);
+        setPendingAction("approve");
+        onVerify(reviewField, "approved");
     };
 
     const openInNewTab = () => {
@@ -185,12 +218,12 @@ export function DocumentViewerDialog({
                             icon={<FileText className="h-6 w-6 text-muted-foreground" />}
                             text={labels.loadFailed}
                         />
-                    ) : isLoading ? (
+                    ) : previewLoading ? (
                         <Placeholder
                             icon={<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />}
                             text={labels.loading}
                         />
-                    ) : error || assetFailed ? (
+                    ) : previewError || assetFailed || !previewUrl ? (
                         <Placeholder
                             icon={<AlertTriangle className="h-6 w-6 text-destructive" />}
                             text={labels.loadFailed}
@@ -203,29 +236,17 @@ export function DocumentViewerDialog({
                         />
                     ) : kind === "image" ? (
                         <img
-                            src={signedUrl || url}
+                            src={previewUrl}
                             alt={title}
                             onError={() => setAssetFailed(true)}
                             className="mx-auto max-h-[62vh] w-auto max-w-full rounded-xl border border-border bg-card object-contain shadow-sm"
                         />
                     ) : kind === "pdf" ? (
-                        <object
-                            data={signedUrl || url}
-                            type="application/pdf"
+                        <iframe
+                            src={previewUrl}
+                            title={title}
                             className="h-[62vh] w-full rounded-xl border border-border bg-card shadow-sm"
-                            aria-label={title}
-                        >
-                            <Placeholder
-                                icon={<FileText className="h-6 w-6 text-muted-foreground" />}
-                                text={labels.loadFailed}
-                                action={
-                                    <Button variant="ghost" size="sm" onClick={openInNewTab} className="gap-2 border border-border hover:bg-muted">
-                                        <ExternalLink className="h-3.5 w-3.5" />
-                                        {labels.openInNewTab}
-                                    </Button>
-                                }
-                            />
-                        </object>
+                        />
                     ) : (
                         <Placeholder
                             icon={<FileText className="h-6 w-6 text-muted-foreground" />}
@@ -272,21 +293,6 @@ export function DocumentViewerDialog({
 
                         {canReview ? (
                             <>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleReview("rejected")}
-                                    disabled={isBusy || status === "rejected"}
-                                    className="gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                >
-                                    {pendingAction === "reject" ? (
-                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                    ) : (
-                                        <X className="h-3.5 w-3.5" />
-                                    )}
-                                    {labels.requestReplacement}
-                                </Button>
-
                                 {expired ? (
                                     <span className="inline-flex h-9 items-center gap-1.5 rounded-full border border-destructive/25 bg-destructive/10 px-3 text-xs font-medium text-destructive">
                                         <AlertTriangle className="h-3.5 w-3.5" />
@@ -295,7 +301,7 @@ export function DocumentViewerDialog({
                                 ) : (
                                     <StatusButton
                                         size="sm"
-                                        onClick={() => handleReview("approved")}
+                                        onClick={handleReview}
                                         status={pendingAction === "approve" ? "loading" : "idle"}
                                         disabled={isBusy || status === "approved"}
                                         labels={{

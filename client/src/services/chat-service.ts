@@ -1,5 +1,5 @@
 import { logger } from "@/lib/logger";
-import { collection, doc, addDoc, updateDoc, getDoc, getDocs, query, where, orderBy, limit, onSnapshot, Timestamp, serverTimestamp, QuerySnapshot, DocumentData } from "firebase/firestore";
+import { collection, doc, addDoc, updateDoc, getDoc, getDocs, query, where, orderBy, limit, onSnapshot, Timestamp, serverTimestamp, deleteField, QuerySnapshot, DocumentData } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 /**
@@ -48,6 +48,15 @@ export interface Conversation {
   unavailableReason?: 'account_deleted';
   unavailableRole?: 'chef' | 'manager' | 'admin' | 'user';
   unavailableAt?: Timestamp | Date;
+  archivedChefAt?: Timestamp | Date;
+  archivedManagerAt?: Timestamp | Date;
+}
+
+export async function setConversationArchived(conversationId: string, role: 'chef' | 'manager', archived: boolean): Promise<void> {
+  const field = role === 'chef' ? 'archivedChefAt' : 'archivedManagerAt';
+  await updateDoc(doc(db, 'conversations', conversationId), {
+    [field]: archived ? serverTimestamp() : deleteField(),
+  });
 }
 
 /**
@@ -240,8 +249,10 @@ export async function sendMessage(
     // have incremented the wrong counter and left the chef unaware of the reply.
     if (senderRole === 'chef') {
       updateData.unreadManagerCount = (conversation.unreadManagerCount || 0) + 1;
+      updateData.archivedManagerAt = deleteField();
     } else {
       updateData.unreadChefCount = (conversation.unreadChefCount || 0) + 1;
+      updateData.archivedChefAt = deleteField();
     }
 
     // Self-healing: Update managerId or chefId if missing/incorrect on the conversation
@@ -454,15 +465,50 @@ export async function uploadChatFile(
     });
 
     if (!response.ok) {
-      throw new Error('Failed to upload file');
+      const data = await response.json().catch(() => null);
+      throw new Error(data?.details || data?.error || 'Failed to upload file');
     }
 
     const data = await response.json();
+    if (typeof data?.url !== 'string' || !data.url) throw new Error('Upload completed without a file URL');
     return data.url;
   } catch (error) {
     logger.error('Error uploading chat file:', error);
     throw error;
   }
+}
+
+async function adminChatRequest(path: string, init?: RequestInit) {
+  const { auth } = await import('@/lib/firebase');
+  const token = await auth.currentUser?.getIdToken();
+  if (!token) throw new Error('Not authenticated');
+  const response = await fetch(`/api/firebase/admin/chat/${path}`, {
+    ...init,
+    credentials: 'include',
+    headers: { Authorization: `Bearer ${token}`, ...(init?.body ? { 'Content-Type': 'application/json' } : {}) },
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(data?.error || 'Chat request failed');
+  return data;
+}
+
+export async function getAdminConversationForApplication(applicationId: number): Promise<Conversation> {
+  return adminChatRequest(`applications/${applicationId}/conversation`);
+}
+
+export async function getAdminChatMessages(conversationId: string): Promise<ChatMessage[]> {
+  const messages = await adminChatRequest(`conversations/${encodeURIComponent(conversationId)}/messages`);
+  return messages.map((message: ChatMessage) => ({
+    ...message,
+    createdAt: new Date(message.createdAt as unknown as string),
+  }));
+}
+
+export async function sendAdminChatMessage(conversationId: string, content: string, fileUrl?: string, fileName?: string) {
+  return adminChatRequest(`conversations/${encodeURIComponent(conversationId)}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ content, fileUrl, fileName }),
+  });
 }
 
 /**
@@ -529,6 +575,8 @@ export async function getAllConversations(
         unavailableReason: data.unavailableReason,
         unavailableRole: data.unavailableRole,
         unavailableAt: data.unavailableAt?.toDate?.() ?? undefined,
+        archivedChefAt: data.archivedChefAt?.toDate?.() ?? undefined,
+        archivedManagerAt: data.archivedManagerAt?.toDate?.() ?? undefined,
       });
     });
 
@@ -646,7 +694,7 @@ export async function getUnreadCount(
  * "we could not tell" and avoid disabling threads on a transient error.
  */
 export async function getLiveChatParticipants(userIds: number[]): Promise<Set<number> | null> {
-  const unique = [...new Set(userIds.filter((id) => Number.isInteger(id) && id > 0))];
+  const unique = Array.from(new Set(userIds.filter((id) => Number.isInteger(id) && id > 0)));
   if (unique.length === 0) return new Set();
 
   try {

@@ -92,7 +92,7 @@ export function RequirementsStepTwo({
                       isRequired ? "text-foreground" : "text-muted-foreground",
                     )}
                   >
-                    {isRequired ? mt("required") : mt("notRequired")}
+                    {isRequired ? mt("required") : mt("optional")}
                   </span>
                   <Switch
                     id={controlId}
@@ -115,7 +115,7 @@ export function RequirementsStepTwo({
               {' '}We strongly recommend keeping this document in the chef application.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {pendingDisable && <a href={COMPLIANCE_HELP[pendingDisable as typeof SAFETY_KEY | typeof ESTABLISHMENT_KEY].url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary underline">Read the Newfoundland and Labrador guidance</a>}
+          {pendingDisable && <a href={COMPLIANCE_HELP[pendingDisable as typeof SAFETY_KEY | typeof ESTABLISHMENT_KEY].url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary underline">Read the Newfoundland and Labrador government website</a>}
           <AlertDialogFooter>
             <AlertDialogCancel>Keep requirement</AlertDialogCancel>
             <AlertDialogAction onClick={() => { if (pendingDisable) handleConfirmedDisable(pendingDisable); }}>Turn off</AlertDialogAction>

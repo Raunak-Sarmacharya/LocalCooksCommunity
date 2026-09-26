@@ -61,7 +61,7 @@ interface CreateInAppNotificationParams {
 /**
  * Create an in-app notification in Neon (manager_notifications or chef_notifications).
  */
-async function createInAppNotification(params: CreateInAppNotificationParams): Promise<number | null> {
+async function createInAppNotification(params: CreateInAppNotificationParams): Promise<number> {
   const {
     userId,
     target,
@@ -102,7 +102,7 @@ async function createInAppNotification(params: CreateInAppNotificationParams): P
     return notificationId;
   } catch (error) {
     logger.error("Error creating notification:", error);
-    return null;
+    throw error;
   }
 }
 
@@ -145,7 +145,7 @@ async function notificationExists(messageId: string, conversationId: string): Pr
     return result.rows.length > 0;
   } catch (error) {
     logger.error("Error checking notification existence:", error);
-    return false; // Proceed with creation on error
+    throw error;
   }
 }
 
@@ -167,6 +167,7 @@ export const onNewChatMessage = onDocumentCreated(
     memory: "256MiB",
     timeoutSeconds: 30,
     maxInstances: 10,
+    retry: true,
   },
   async (event: FirestoreEvent<QueryDocumentSnapshot | undefined, { conversationId: string; messageId: string }>) => {
     const snap = event.data;

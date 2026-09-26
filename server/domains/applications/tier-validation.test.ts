@@ -14,6 +14,9 @@ const submitted = {
   foodSafetyLicenseUrl: 'https://example.test/safety.pdf',
   foodSafetyLicenseExpiry: '2027-09-24',
   foodEstablishmentCertUrl: 'https://example.test/establishment.pdf',
+  // The expiry describes the licence, so a licence on file carries one — a
+  // licence without a date is an incomplete document, not an optional detail.
+  foodEstablishmentCertExpiry: '2027-09-24',
   foodSafetyLicenseStatus: 'pending',
   foodEstablishmentCertStatus: 'approved',
 } as Application;

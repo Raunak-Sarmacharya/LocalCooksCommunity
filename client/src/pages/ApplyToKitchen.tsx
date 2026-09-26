@@ -1,10 +1,11 @@
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { chefDashboardHref } from "@/lib/chef-dashboard-nav";
 import KitchenApplicationForm from "@/components/kitchen-application/KitchenApplicationForm";
+import { ApplicationSubmissionSummary } from "@/components/kitchen-application/ApplicationSubmissionSummary";
 import { useGlobalMyApplications, useChefKitchenApplicationForLocation } from "@/hooks/use-chef-kitchen-applications";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
-import { Building2, Loader2, ClipboardList } from "lucide-react";
+import { Building2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -46,6 +47,7 @@ export default function ApplyToKitchen() {
     catch { return "plan"; }
   });
   const [activeView, setActiveView] = useState("discover-kitchens");
+  const [submittedTier, setSubmittedTier] = useState<number | null>(null);
   const { t } = useTranslation("kitchen");
   // Start at the request form even when arriving with a saved date choice.
   useEffect(() => {
@@ -115,6 +117,7 @@ export default function ApplyToKitchen() {
   const isAwaitingReview = applicationProgress?.actionKind === "wait" &&
     (locationApplication?.current_tier ?? 1) < 3;
   const step2Submitted = locationApplication ? hasStep2BeenSubmitted(locationApplication) : false;
+  const documentsSubmitted = step2Submitted || (submittedTier !== null && submittedTier >= 2);
 
   const isLoading = authLoading || locationLoading || kitchensLoading || (!!user && locationAppLoading);
 
@@ -156,52 +159,24 @@ export default function ApplyToKitchen() {
       animate={{ opacity: 1, y: 0 }}
       className="space-y-6"
     >
-      {isAwaitingReview ? (
-        <Card className="shadow-none border-dashed border-2">
-          <CardContent className="p-12 flex flex-col items-center justify-center text-center">
-            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-6">
-              <ClipboardList className="h-8 w-8 text-primary" />
-            </div>
-            <h2 className="text-2xl font-bold text-foreground mb-2">
-              {step2Submitted ? "Kitchen documents under review" : "Your request is in progress"}
-            </h2>
-            <p className="text-muted-foreground max-w-md">
-              {step2Submitted
-                ? "Your kitchen documents are being reviewed. We’ll notify you when you can book."
-                : "Local Cooks is reviewing your request to apply. You don’t need to submit it again; we’ll notify you when you can continue."}
-            </p>
-            <div className="mt-6 text-sm text-muted-foreground">
-              {t("statusLabel", "Status")}:{" "}
-              <span className="font-semibold text-foreground">
-                {applicationProgress?.label || t("kdInReview", "In review")}
-              </span>
-            </div>
-            <Button
-              className="mt-8"
-              onClick={() => navigate("/dashboard?view=kitchen-applications")}
-            >
-              {t("backToDashboard")}
-            </Button>
-          </CardContent>
-        </Card>
+      {isAwaitingReview || submittedTier !== null ? (
+        <ApplicationSubmissionSummary
+          kitchenName={selectedKitchen?.name || location?.name || "Kitchen application"}
+          title={documentsSubmitted ? "Documents in review" : "Request in review"}
+          description={documentsSubmitted ? "Your kitchen documents were submitted." : "Your request to apply was submitted."}
+          nextStep={documentsSubmitted ? "We’ll notify you when the kitchen makes a decision. You can track your application at any time." : "We’ll notify you when it’s time to upload the kitchen documents."}
+          actionLabel="View my applications"
+          onAction={() => navigate("/dashboard?view=kitchen-requests")}
+        />
       ) : (
         <>
       {/* Application Form */}
       <KitchenApplicationForm
         location={location!}
         globalApp={globalApp}
-        onSuccess={() => {
+        onSuccess={(tier) => {
           try { localStorage.removeItem(progressKey); sessionStorage.removeItem(progressKey); } catch { /* storage unavailable */ }
-          let hasIntent = false;
-          try {
-            hasIntent = !!kitchenId && !!(localStorage.getItem(`kitchen_dates_${kitchenId}`) || sessionStorage.getItem(`kitchen_dates_${kitchenId}`));
-          } catch(e) {}
-
-          if (hasIntent && locationId) {
-            navigate(`/kitchen-preview/${locationId}`);
-          } else {
-            navigate("/dashboard?view=kitchen-applications");
-          }
+          setSubmittedTier(tier);
         }}
         onCancel={() => navigate(`/kitchen-requirements/${locationId}`)}
       />

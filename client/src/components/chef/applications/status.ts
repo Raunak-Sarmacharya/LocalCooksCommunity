@@ -185,17 +185,17 @@ function resolveApplicationDisplay(
     // Treat that as Step 2 unlocked so chefs aren't stuck behind a "waiting" screen.
     if (tier >= 2 && !step2Submitted) {
       return {
-        label: tr("kdAwaitingDocuments", "Awaiting kitchen documents"),
+        label: tr("kdAwaitingDocuments", "Action required"),
         tone: "warning",
         step: 2,
         stepCaption: tr("kdCompleteStep2", "Submit kitchen documents"),
-        actionLabel: tr("kdContinue", "Continue"),
+        actionLabel: tr("kdUploadDocuments", "Continue application"),
         actionKind: "complete-step",
       };
     }
 
     return {
-      label: tr("kdAwaitingAdminReview", "Awaiting admin review"),
+      label: tr("kdInReview", "In review"),
       tone: "progress",
       step: 1,
       stepCaption: tr("kdStep1Of3", "Request to apply"),
@@ -217,7 +217,7 @@ function resolveApplicationDisplay(
 
   if (status === "approved" && step2Submitted) {
     return {
-      label: tr("kdDocumentsAwaitingReview", "Kitchen documents awaiting review"),
+      label: tr("kdInReview", "In review"),
       tone: "progress",
       step: 2,
       stepCaption: tr("kdStep2Of3Submitted", "Kitchen documents submitted"),
@@ -228,22 +228,22 @@ function resolveApplicationDisplay(
 
   if (status === "approved" && (tier === 2 || tier === 1) && !step2Submitted) {
     return {
-      label: tr("kdAwaitingDocuments", "Awaiting kitchen documents"),
+      label: tr("kdAwaitingDocuments", "Action required"),
       tone: "warning",
       step: 2,
       stepCaption: tr("kdCompleteStep2", "Submit kitchen documents"),
-      actionLabel: tr("kdContinue", "Continue"),
+      actionLabel: tr("kdUploadDocuments", "Continue application"),
       actionKind: "complete-step",
     };
   }
 
   if (status === "approved") {
     return {
-      label: tr("kdAwaitingDocuments", "Awaiting kitchen documents"),
+      label: tr("kdAwaitingDocuments", "Action required"),
       tone: "progress",
       step: 1,
       stepCaption: tr("kdContinueToStep2", "Continue"),
-      actionLabel: tr("kdContinue", "Continue"),
+      actionLabel: tr("kdUploadDocuments", "Continue application"),
       actionKind: "complete-step",
     };
   }

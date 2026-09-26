@@ -847,8 +847,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: googleUser.email,
         createdIdentity: getAdditionalUserInfo(result)?.isNewUser === true,
       });
-    } else if (pendingGoogleRegistration()?.uid === googleUser.uid) {
-      clearPendingGoogleRegistration();
+    } else {
+      if (pendingGoogleRegistration()?.uid === googleUser.uid) clearPendingGoogleRegistration();
+      await rememberAuthMethod(googleUser.email, 'google', googleUser.displayName);
     }
 
     return {

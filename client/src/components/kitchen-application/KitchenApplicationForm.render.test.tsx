@@ -344,20 +344,23 @@ describe("rail items are reachable from the form", () => {
   });
 
   it("tracks the tier 2 food safety certificate that submit blocks on", () => {
-    // Rendered in tier 2 AND enforced by `requireFoodHandlerCert`, yet the rail had no row for it,
-    // which let the bar read "ready" on a form the submit handler would reject.
+    // Rendered in tier 2 AND enforced by the kitchen's `requireFoodSafetyUpload`, yet the rail had no
+    // row for it, which let the bar read "ready" on a form the submit handler would reject.
+    //
+    // The kitchen's upload flag drives this step; the admin's `requireFoodHandlerCert` only decides
+    // whether the chef is asked the certificate question during the request phase.
     //
     // Asserted as a DIFFERENCE, because the form always renders the label once: the extra matches
     // when the flag is on are the two tracker instances adding the row.
     state.application = { current_tier: 2, status: "approved", fullName: "Test Chef" };
     state.hasApplication = true;
 
-    state.requirements = { ...FULL_REQUIREMENTS, requireFoodHandlerCert: false };
+    state.requirements = { ...FULL_REQUIREMENTS, requireFoodSafetyUpload: false };
     const { unmount } = render(<KitchenApplicationForm location={location} />);
     const without = screen.getAllByText(/Food safety certificate/).length;
     unmount();
 
-    state.requirements = { ...FULL_REQUIREMENTS, requireFoodHandlerCert: true };
+    state.requirements = { ...FULL_REQUIREMENTS, requireFoodSafetyUpload: true };
     render(<KitchenApplicationForm location={location} />);
     const withFlag = screen.getAllByText(/Food safety certificate/).length;
 
@@ -377,16 +380,19 @@ describe("rail items are reachable from the form", () => {
   });
 });
 describe("requirement-driven labelling", () => {
-  it("names the outstanding items instead of telling the chef to look above", () => {
+  it("counts the outstanding items instead of repeating their names", () => {
     render(<KitchenApplicationForm location={location} />);
 
     // The generic instruction is gone...
     expect(screen.queryByText(/Fill in the required items above/i)).toBeNull();
-    // ...replaced by the actual outstanding items, exactly ONCE per tracker instance (the wide block
-    // and the rail). A count of 4 would mean the old footer copy is still being rendered too.
+    // ...replaced by a COUNT, exactly ONCE per tracker instance (the wide block and the rail).
+    // Naming the items here joined them into a line that wrapped onto a second row in the 20rem
+    // rail; the checklist below is what names them, with a state icon each. A count of 4 would
+    // mean the old footer copy is still being rendered too.
     const stillNeeded = screen.getAllByText(/^Still needed:/);
     expect(stillNeeded).toHaveLength(2);
-    expect(stillNeeded[0].textContent).toMatch(/Still needed: .+/);
+    // The item names must NOT be back in the caption.
+    expect(stillNeeded[0].textContent).not.toMatch(/Food Establishment|Insurance|Food safety/i);
   });
 
   it("marks Business Name with a required asterisk when the kitchen requires it", () => {

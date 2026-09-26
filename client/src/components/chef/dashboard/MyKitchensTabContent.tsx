@@ -48,10 +48,10 @@ export default function MyKitchensTabContent({
   return (
     <div className="space-y-8">
       <ChefPageHeader
-        title={t("apptabMyKitchensTitle", "My kitchens")}
+        title={t("apptabMyKitchensTitle", "Approved kitchens")}
         description={t(
           "apptabMyKitchensDesc",
-          "Commercial kitchens you’ve applied to. Book when a kitchen is fully approved."
+          "Kitchens where your application is fully approved."
         )}
       />
 
@@ -103,8 +103,13 @@ export default function MyKitchensTabContent({
               <Button
                 variant="outline"
                 className={outlineActionClass}
+                /*
+                 * "View details" is about the APPLICATION, not the kitchen advert, so it
+                 * opens the My Kitchen Applications tab. The card click still opens the
+                 * public preview — that is a different action and stays untouched.
+                 */
                 onClick={() => {
-                  window.location.href = previewHref;
+                  onSetActiveTab("kitchen-requests");
                 }}
       >
         <Icon icon="mdi:eye-outline" className="size-4" aria-hidden />

@@ -258,6 +258,7 @@ export default function ManagerKitchenApplications({
             <ChatPanel
               conversationId={chatConversationId}
               applicationId={chatApplication.id}
+              canBook={chatApplication.status === 'approved' && (chatApplication.current_tier ?? 1) >= 3 && !!chatApplication.tier2_completed_at}
               chefId={chatApplication.chefId}
               managerId={managerId!}
               locationId={chatApplication.locationId}

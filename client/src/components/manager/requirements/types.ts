@@ -91,8 +91,10 @@ export const STEP1_FIELD_GROUPS: FieldGroupConfig[] = [
     title: 'Food Safety Certification',
     description: 'Required certifications for food handling',
     fields: [
-      { key: 'requireFoodHandlerCert', label: 'Food Handler Certificate', description: 'Proof of food safety certification', recommended: true },
-      { key: 'requireFoodHandlerExpiry', label: 'Certificate Expiry Date', description: 'When certification expires' },
+      // Only the QUESTION is a request-phase concern. The expiry is collected
+      // with the certificate itself whenever one is uploaded, so a switch for it
+      // could only ever contradict that rule.
+      { key: 'requireFoodHandlerCert', label: 'Food Safety Certificate', description: 'Ask the chef whether they hold a certificate', recommended: true },
     ]
   },
   {
@@ -124,16 +126,11 @@ export const STEP2_BUILT_IN_FIELDS: FieldGroupConfig[] = [
         description: 'Certificate and expiry date are collected together',
         recommended: true,
       },
-      { 
-        key: 'tier2_food_establishment_cert_required', 
-        label: 'Food Establishment License', 
-        description: 'Official food establishment permit/license',
-        recommended: true 
-      },
-      { 
-        key: 'tier2_food_establishment_expiry_required', 
-        label: 'License Expiry Date', 
-        description: 'When the establishment license expires' 
+      {
+        key: 'tier2_food_establishment_cert_required',
+        label: 'Food Establishment License',
+        description: 'Licence and expiry date are collected together',
+        recommended: true
       },
     ]
   },

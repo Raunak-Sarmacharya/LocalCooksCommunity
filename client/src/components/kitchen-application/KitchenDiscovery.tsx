@@ -1,12 +1,13 @@
-import { useChefKitchenApplicationsStatus } from "@/hooks/use-chef-kitchen-applications";
+import { useChefKitchenApplicationsStatus, type KitchenApplicationWithLocation } from "@/hooks/use-chef-kitchen-applications";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Building2, Check, Calendar, Clock, Plus, Search } from "lucide-react";
+import { Building2, Check, Calendar, CalendarDays, ChevronDown, FileText, MapPin, MessageCircle, Plus, Search } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Icon } from "@iconify/react";
 import { Link, useLocation } from "wouter";
 import ChefViewingsList from "@/components/chef/ChefViewingsList";
+import { KitchenApplicationDetails } from "@/components/chef/applications/KitchenApplicationCard";
 import { ChefPageHeader, InfoChip } from "@/components/chef/ui";
 import { getKitchenDisplayStatus, kitchenLocationId } from "@/components/chef/applications/status";
 import { KitchenStatusChip, acceptingRequestsIcon as AcceptingRequestsIcon, bookNowIcon as BookNowIcon } from "@/components/chef/applications/status-icons";
@@ -15,9 +16,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
-import { TruncatedText } from "@/components/common/TruncatedText";
 import { chefDashboardHref } from "@/lib/chef-dashboard-nav";
-import { groupKitchensByLocation, kitchenPreviewPath } from "@/lib/discover-location-groups";
+import { kitchenPreviewPath } from "@/lib/discover-location-groups";
 import { chefOutlineCtaClass, chefPrimaryCtaClass } from "@/lib/chef-cta";
 import { cn } from "@/lib/utils";
 import { tt } from "@/i18n/common-ns";
@@ -89,16 +89,19 @@ const kitchenCardDetailsClass = cn(
 interface KitchenDiscoveryProps {
   compact?: boolean;
   defaultTab?: string;
+  onOpenChat?: (app: KitchenApplicationWithLocation) => void;
 }
 
 export default function KitchenDiscovery({
   compact = false,
   defaultTab = "discover",
+  onOpenChat,
 }: KitchenDiscoveryProps) {
   const { t, i18n } = useTranslation("kitchen");
   const { t: tChef } = useTranslation("chef");
   const [, navigate] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
+  const [expandedApplicationId, setExpandedApplicationId] = useState<number | null>(null);
   const activeTab = defaultTab;
 
   const handleBookClick = (locationId: number, locationSlug?: string | null) => {
@@ -127,11 +130,6 @@ export default function KitchenDiscovery({
 
   const isLoading = applicationsLoading || kitchensLoading;
 
-  const pendingApplications = useMemo(
-    () => applications.filter((app) => ["inreview", "pending"].includes(app.status.toLowerCase())),
-    [applications]
-  );
-
   const applicationByLocationId = useMemo(() => {
     const map = new Map<number, (typeof applications)[number]>();
     for (const app of applications) {
@@ -153,11 +151,6 @@ export default function KitchenDiscovery({
       kitchen.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       kitchen.locationName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       kitchen.address.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const discoverLocationCards = useMemo(
-    () => groupKitchensByLocation(filteredAvailableKitchens),
-    [filteredAvailableKitchens]
   );
 
   const kitchenStatusTone = (status: string) =>
@@ -253,7 +246,7 @@ export default function KitchenDiscovery({
   return (
     <div className="space-y-6">
       <ChefPageHeader
-        title={activeTab === "tours" ? tChef("tourListTitle", "Your kitchen tours") : activeTab === "applications" ? tChef("shellKitchenApplications", "My Applications") : t("applyFlowDiscoverKitchensTitle", "Discover kitchens")}
+        title={activeTab === "tours" ? tChef("tourListTitle", "Your kitchen tours") : activeTab === "applications" ? tChef("shellMyKitchenApplications", "My Kitchen Applications") : t("applyFlowDiscoverKitchensTitle", "Discover kitchens")}
         description={activeTab === "tours" ? tChef("tourListIntroBody", "Review your tours, visit details and requests in one place.") : activeTab === "applications" ? t("applyFlowMyApplicationsDesc", "Track your kitchen applications.") : t("applyFlowDiscoverKitchensDesc", "Apply first. Booking opens after approval.")}
       />
 
@@ -269,7 +262,7 @@ export default function KitchenDiscovery({
             />
           </div>
 
-          {discoverLocationCards.length === 0 ? (
+          {filteredAvailableKitchens.length === 0 ? (
             <Card className="border-dashed border-2 bg-muted/5">
               <CardContent className="py-16 text-center">
                 <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-4">
@@ -312,17 +305,16 @@ export default function KitchenDiscovery({
               animate="visible"
               className="grid auto-rows-fr grid-cols-1 items-stretch gap-6 md:grid-cols-2 xl:grid-cols-3"
             >
-              {discoverLocationCards.map((card) => {
-                const kitchen = card.displayKitchen;
-                const application = applicationByLocationId.get(card.locationId);
+              {filteredAvailableKitchens.map((kitchen) => {
+                const application = applicationByLocationId.get(kitchen.locationId);
                 const display = application ? getKitchenDisplayStatus(application, tChef) : null;
                 const showBook = display?.actionKind === "book";
-                const previewHref = kitchenPreviewPath(card.locationId, card.locationSlug);
+                const previewHref = `${kitchenPreviewPath(kitchen.locationId, kitchen.locationSlug)}?kitchenId=${kitchen.id}`;
                 const openPreview = () => navigate(previewHref);
 
                 const overlayChip = display ? (
                   <KitchenStatusChip display={display} />
-                ) : card.canAcceptBookings ? (
+                ) : kitchen.canAcceptBookings ? (
                   <InfoChip tone="success" icon={<AcceptingRequestsIcon />}>
                     {t("applyFlowAcceptingBookings", "Accepting Requests")}
                   </InfoChip>
@@ -333,15 +325,15 @@ export default function KitchenDiscovery({
                 );
 
                 return (
-                  <motion.div key={card.locationId} variants={itemVariants} className="h-full">
+                  <motion.div key={kitchen.id} variants={itemVariants} className="h-full">
                     <KitchenGridCard
-                      title={card.locationName}
-                      address={card.address}
+                      title={kitchen.name}
+                      address={kitchen.address}
                       imageUrl={kitchen.imageUrl}
-                      hourlyRateCents={card.hourlyRate}
-                      dailyRateCents={card.dailyRate}
-                      equipmentSummary={card.equipmentSummary}
-                      storageSummary={card.storageSummary}
+                      hourlyRateCents={kitchen.hourlyRate}
+                      dailyRateCents={kitchen.dailyRate}
+                      equipmentSummary={kitchen.equipmentSummary}
+                      storageSummary={kitchen.storageSummary}
                       overlayChip={overlayChip}
                       onCardClick={openPreview}
                       actionRows={1}
@@ -349,9 +341,7 @@ export default function KitchenDiscovery({
                         showBook ? (
                           <Button
                             className={kitchenCardBookClass}
-                            onClick={() =>
-                              handleBookClick(card.locationId, card.locationSlug)
-                            }
+                            onClick={openPreview}
                           >
                             <BookNowIcon className="mr-1.5 h-4 w-4" />
                             {t("applyFlowBookButton", "Book")}
@@ -376,126 +366,54 @@ export default function KitchenDiscovery({
         </TabsContent>
 
         <TabsContent value="applications" className="space-y-4">
-          {pendingApplications.length === 0 ? (
-            <div className="text-center py-12 bg-muted/50 rounded-lg">
-              <Clock className="h-12 w-12 text-muted-foreground/40 mx-auto mb-3" />
-              <p className="text-muted-foreground font-medium">
-                {t("applyFlowNoPendingApplications", "No pending applications")}
-              </p>
-              <p className="text-sm text-muted-foreground/70 mt-1">
-                {t("applyFlowApplyToGetStarted", "Apply to a kitchen to get started")}
-              </p>
-              <Button className={chefPrimaryCtaClass("mt-4")} onClick={() => navigate(chefDashboardHref("discover-kitchens"))}>
-                <Plus className="mr-2 h-4 w-4" />
-                {t("applyFlowExploreKitchensButton", "Discover Kitchens")}
-              </Button>
+          {applications.length === 0 ? (
+            <div className="rounded-2xl border border-dashed bg-card px-6 py-12 text-center">
+              <FileText className="mx-auto size-7 text-muted-foreground" />
+              <h2 className="mt-4 text-lg font-semibold">No kitchen applications yet</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Explore kitchens and request access when you find the right space.</p>
+              <Button className={chefPrimaryCtaClass("mt-5")} onClick={() => navigate(chefDashboardHref("discover-kitchens"))}>Discover kitchens</Button>
             </div>
           ) : (
-            <motion.div
-              variants={containerVariants}
-              initial="hidden"
-              animate="visible"
-              className="space-y-3"
-            >
-              {pendingApplications.map((app) => {
-                return (
-                  <motion.div key={app.id} variants={itemVariants}>
-                    <Card className="shadow-none">
-                      <CardContent className="p-4">
-                        <div className="flex items-center gap-4">
-                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-muted">
-                            <Building2 className="h-6 w-6 text-muted-foreground" />
+            <div className="space-y-3">
+              {[...applications]
+                .sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime() || b.id - a.id)
+                .map((app) => {
+                  const display = getKitchenDisplayStatus(app, tChef);
+                  const open = expandedApplicationId === app.id;
+                  const slug = publicKitchens?.find((k) => k.locationId === app.locationId)?.locationSlug;
+                  return (
+                    <article key={app.id} className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-shadow hover:shadow-md">
+                      <div className="p-4 sm:p-5">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium text-muted-foreground">APPLICATION-{app.id}</p>
+                            <h3 className="mt-1 text-lg font-semibold tracking-tight text-foreground">{app.location?.name || t("applyFlowUnknownLocation", "Kitchen")}</h3>
                           </div>
-
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h3 className="font-semibold">
-                                {app.location?.name ||
-                                  t("applyFlowUnknownLocation", "Unknown Location")}
-                              </h3>
-                              <InfoChip tone={kitchenStatusTone(app.status)}>
-                                {kitchenStatusLabel(app.status)}
-                              </InfoChip>
-                            </div>
-                            <TruncatedText
-                              as="p"
-                              className="text-sm text-muted-foreground truncate"
-                            >
-                              {app.location?.address ||
-                                t("applyFlowAddressNotAvailable", "Address not available")}
-                            </TruncatedText>
-                            <p className="text-xs text-muted-foreground/70 mt-1">
-                              {t("applyFlowAppliedDateLabel", {
-                                date: new Date(app.createdAt).toLocaleDateString(i18n.language),
-                                defaultValue: "Applied: {date}",
-                              })}
-                            </p>
-                          </div>
-
-                          <div className="flex gap-2">
-                            {(app.current_tier ?? 1) >= 3 && (
-                              <Button
-                                size="sm"
-                                className={chefPrimaryCtaClass()}
-                                onClick={() =>
-                                  handleBookClick(
-                                    app.locationId,
-                                    publicKitchens?.find((k) => k.locationId === app.locationId)
-                                      ?.locationSlug
-                                  )
-                                }
-                              >
-                                <BookNowIcon className="mr-2 h-4 w-4" />
-                                {t("applyFlowBookButton", "Book")}
-                              </Button>
-                            )}
-                            {app.status === "approved" && (app.current_tier ?? 1) < 3 && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled
-                                className={cn(
-                                  chefOutlineCtaClass(),
-                                  "cursor-not-allowed border border-gray-200"
-                                )}
-                              >
-                                {t("applyFlowCompleteTiersToBook", "Complete tiers to book")}
-                              </Button>
-                            )}
-                            {(app.status === "rejected" || app.status === "cancelled") && (
-                              <Link href={`/apply-kitchen/${app.locationId}`}>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className={cn(
-                                    chefOutlineCtaClass(),
-                                    "border border-gray-200 bg-white text-gray-900 hover:bg-gray-50 hover:text-gray-900"
-                                  )}
-                                >
-                                  {t("applyFlowReapplyButton", "Re-apply")}
-                                </Button>
-                              </Link>
-                            )}
-                          </div>
+                          <KitchenStatusChip display={display} />
                         </div>
-
-                        {app.feedback && app.status === "rejected" && (
-                          <div className="mt-3 rounded-xl border border-destructive/30 px-3 py-2 text-sm">
-                            <strong className="font-medium">
-                              {t("applyFlowFeedbackLabel", "Feedback:")}
-                            </strong>{" "}
-                            <span className="text-muted-foreground">{app.feedback}</span>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                );
-              })}
-            </motion.div>
+                        <div className="mt-4 grid gap-2 text-sm text-foreground sm:grid-cols-2 lg:grid-cols-3">
+                          <p className="flex items-start gap-2"><CalendarDays className="mt-0.5 size-4 shrink-0 text-muted-foreground" /><span>Submitted {new Date(app.createdAt).toLocaleDateString(i18n.language)}</span></p>
+                          <p className="flex items-start gap-2"><FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" /><span>{display.stepCaption}</span></p>
+                          {app.location?.address && <p className="flex items-start gap-2"><MapPin className="mt-0.5 size-4 shrink-0 text-muted-foreground" /><span className="line-clamp-2">{app.location.address}</span></p>}
+                        </div>
+                        <div className="mt-4 flex flex-wrap items-center gap-2 border-t pt-4">
+                          {display.actionKind === "book" && <Button size="sm" className={chefPrimaryCtaClass()} onClick={() => handleBookClick(app.locationId, slug)}><BookNowIcon className="mr-1.5 size-4" />{t("applyFlowBookButton", "Book kitchen")}</Button>}
+                          {display.actionKind === "complete-step" && <Button size="sm" asChild><Link href={`/kitchen-requirements/${app.locationId}`}>{display.actionLabel}</Link></Button>}
+                          {app.chat_conversation_id && onOpenChat && <Button size="sm" variant="outline" onClick={() => onOpenChat(app)}><MessageCircle className="mr-1.5 size-4" />{tChef("openChat", "Open chat")}</Button>}
+                          {display.actionKind === "discover" && <Button size="sm" variant="outline" asChild><Link href={`/apply-kitchen/${app.locationId}`}>{t("applyFlowReapplyButton", "Apply again")}</Link></Button>}
+                          <Button variant="ghost" size="sm" className="ml-auto h-9 gap-1 text-muted-foreground" aria-expanded={open} aria-controls={`kitchen-application-details-${app.id}`} onClick={() => setExpandedApplicationId(open ? null : app.id)}>
+                            {open ? tChef("tourHideDetails", "Hide details") : tChef("apptabViewDetails", "View details")}
+                            <ChevronDown className={cn("size-4", open && "rotate-180")} />
+                          </Button>
+                        </div>
+                      </div>
+                      {open && <div id={`kitchen-application-details-${app.id}`} className="border-t bg-muted/20 p-4 sm:p-5"><KitchenApplicationDetails app={app} display={display} onBookKitchen={(id) => handleBookClick(id, slug)} compact /></div>}
+                    </article>
+                  );
+                })}
+            </div>
           )}
         </TabsContent>
-
         <TabsContent value="approved" className="space-y-4">
           {approvedCount === 0 ? (
             <div className="text-center py-12 bg-muted/50 rounded-lg">
@@ -518,7 +436,7 @@ export default function KitchenDiscovery({
               className="grid gap-4 md:grid-cols-2"
             >
               {applications
-                .filter((a) => a.status === "approved")
+                .filter((a) => a.status === "approved" && (a.current_tier ?? 1) >= 3)
                 .map((app) => (
                   <motion.div key={app.id} variants={itemVariants}>
                     <Card className="shadow-none">

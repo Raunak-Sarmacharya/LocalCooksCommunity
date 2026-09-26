@@ -2,7 +2,7 @@ import { logger } from "@/lib/logger";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFirebaseAuth } from "@/hooks/use-auth";
-import { getMessages, sendMessage, subscribeToMessages, markAsRead, uploadChatFile, type ChatMessage } from "@/services/chat-service";
+import { getMessages, getAdminChatMessages, sendAdminChatMessage, sendMessage, subscribeToMessages, markAsRead, uploadChatFile, type ChatMessage } from "@/services/chat-service";
 
 interface UseChatOptions {
   conversationId: string;
@@ -82,13 +82,13 @@ export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate
     const loadMessages = async () => {
       try {
         setError(null);
-        const initialMessages = await getMessages(conversationId);
+        const initialMessages = isAdmin ? await getAdminChatMessages(conversationId) : await getMessages(conversationId);
         if (mounted) {
           setMessages(initialMessages);
           setIsLoading(false);
         }
 
-        if (role) {
+        if (role && !isAdmin) {
           await markAsRead(conversationId, currentUserId, role);
           queryClient.invalidateQueries({ queryKey: ['unread-counts'] });
           if (onUnreadCountUpdateRef.current) onUnreadCountUpdateRef.current();
@@ -107,11 +107,11 @@ export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate
     return () => {
       mounted = false;
     };
-  }, [conversationId, currentUserId, isChef, isManager, queryClient]);
+  }, [conversationId, currentUserId, isChef, isManager, isAdmin, queryClient]);
 
   // Subscribe to new messages
   useEffect(() => {
-    if (!conversationId) return;
+    if (!conversationId || isAdmin) return;
 
     const unsubscribe = subscribeToMessages(
       conversationId,
@@ -130,11 +130,19 @@ export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate
     );
 
     return () => unsubscribe();
-  }, [conversationId, currentUserId, role]);
+  }, [conversationId, currentUserId, role, isAdmin]);
+
+  useEffect(() => {
+    if (!conversationId || !isAdmin) return;
+    const refresh = () => getAdminChatMessages(conversationId).then(setMessages).catch((error) => logger.error('Admin chat refresh failed:', error));
+    const interval = window.setInterval(refresh, 3000);
+    return () => window.clearInterval(interval);
+  }, [conversationId, isAdmin]);
 
   const handleSendMessage = useCallback(async (content: string, file?: File | { name: string; url: string }) => {
     if (!content.trim() && !file) return;
     if (!currentUserId) throw new Error('User not authenticated');
+    if (!role) throw new Error('Chat is still connecting. Please try again.');
 
     setIsSending(true);
     try {
@@ -156,15 +164,12 @@ export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate
         ? `Attached file: ${fileName}`
         : content;
 
-      await sendMessage(
-        conversationId,
-        currentUserId,
-        role ?? 'chef',
-        messageContent,
-        file ? 'file' : 'text',
-        fileUrl,
-        fileName
-      );
+      if (isAdmin) {
+        await sendAdminChatMessage(conversationId, messageContent, fileUrl, fileName);
+        setMessages(await getAdminChatMessages(conversationId));
+      } else {
+        await sendMessage(conversationId, currentUserId, role, messageContent, file ? 'file' : 'text', fileUrl, fileName);
+      }
 
       // No need to setMessages manually as subscription will catch it
       // But we could optimistically update here if desired
@@ -174,7 +179,7 @@ export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate
     } finally {
       setIsSending(false);
     }
-  }, [conversationId, currentUserId, role]);
+  }, [conversationId, currentUserId, role, isAdmin]);
 
   return {
     messages,

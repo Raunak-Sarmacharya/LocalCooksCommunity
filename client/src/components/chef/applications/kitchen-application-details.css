@@ -1,0 +1,44 @@
+/* The inline Kitchens view has its own compact rhythm; the My Applications sheet stays as-is. */
+.kitchen-application-detail-compact > * + * {
+  margin-top: 14px;
+}
+
+.kitchen-application-detail-compact .space-y-3 > * + * {
+  margin-top: 8px;
+}
+
+.kitchen-application-detail-compact .grid {
+  gap: 8px 20px;
+}
+
+.kitchen-application-detail-compact [class*="rounded-lg"][class*="bg-muted/20"][class*="p-2"] {
+  background: transparent;
+  padding: 2px 0;
+}
+
+@media (min-width: 640px) {
+  .kitchen-application-detail-compact .compact-personal-details {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .kitchen-application-detail-compact .compact-business-details {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 20px;
+  }
+
+  .kitchen-application-detail-compact .compact-business-details > .grid {
+    display: contents;
+  }
+
+  .kitchen-application-detail-compact .compact-business-details > [class*="rounded-lg"] {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (min-width: 1024px) {
+  .kitchen-application-detail-compact .compact-personal-details,
+  .kitchen-application-detail-compact .compact-business-details {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

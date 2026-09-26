@@ -248,6 +248,7 @@ export function registerSecurityMiddleware(app: Express): void {
         ],
         frameSrc: [
           "'self'",
+          "blob:", // Authenticated document previews use a local blob URL.
           "https://js.stripe.com",
           "https://hooks.stripe.com",
           ...TIDIO_CSP.frameSrc,

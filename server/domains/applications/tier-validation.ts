@@ -31,6 +31,71 @@ export interface CustomFieldValue {
     isFile: boolean;
 }
 
+/**
+ * A custom question, as stored on the requirements row.
+ */
+export interface CustomQuestion {
+    id: string;
+    label: string;
+    type: string;
+    required?: boolean;
+    options?: string[] | null;
+}
+
+/**
+ * Whether a stored answer satisfies a custom question.
+ *
+ * ONE rule, shared by the submit route and the tier-validation service. When the two
+ * disagreed, the browser blocked something the API allowed — or, as actually happened,
+ * neither blocked it and a required answer was stored empty.
+ *
+ * Answers are keyed by the question's id, and a file question stores the uploaded URL
+ * in place of an answer.
+ */
+export function isCustomAnswerFilled(
+    question: CustomQuestion,
+    answers: Record<string, unknown> | null | undefined,
+    fileUrls?: Record<string, unknown> | null | undefined,
+): boolean {
+    const value = answers ? answers[question.id] : undefined;
+
+    // A checkbox GROUP is an array of the chosen options; a lone checkbox is a single
+    // confirmation, so only a tick satisfies it.
+    if (question.type === 'checkbox') {
+        if (question.options && question.options.length > 0) {
+            return Array.isArray(value) && value.length > 0;
+        }
+        return value === true;
+    }
+
+    if (question.type === 'file' || question.type === 'cloudflare_upload') {
+        if (typeof value === 'string' && value.trim() !== '') return true;
+        const stored = fileUrls ? fileUrls[question.id] : undefined;
+        return typeof stored === 'string' && stored !== '';
+    }
+
+    if (value === undefined || value === null) return false;
+    if (typeof value === 'string') return value.trim() !== '';
+    if (Array.isArray(value)) return value.length > 0;
+    // Numbers count, including 0 — zero is an answer.
+    return true;
+}
+
+/**
+ * The required custom questions that have no answer, in configured order. Returns the
+ * questions themselves so each caller can phrase its own message.
+ */
+export function findMissingRequiredCustomFields(
+    questions: ReadonlyArray<CustomQuestion> | null | undefined,
+    answers: Record<string, unknown> | null | undefined,
+    fileUrls?: Record<string, unknown> | null | undefined,
+): CustomQuestion[] {
+    if (!Array.isArray(questions) || questions.length === 0) return [];
+    return questions.filter(
+        (question) => question.required && !isCustomAnswerFilled(question, answers, fileUrls),
+    );
+}
+
 export class TierValidationService {
 
     /**
@@ -68,7 +133,10 @@ export class TierValidationService {
                 if (!application.foodEstablishmentCertUrl || application.foodEstablishmentCertStatus !== 'approved') {
                     missing.push("Food Establishment Licence must be uploaded and approved");
                 }
-                if (requirements.tier2_food_establishment_expiry_required && !application.foodEstablishmentCertExpiry) {
+                // The expiry describes the licence, so a licence on file without one
+                // is incomplete. The kitchen's single toggle governs whether the
+                // licence itself is compulsory.
+                if (!application.foodEstablishmentCertExpiry) {
                     missing.push("Food Establishment Certificate expiry date is required");
                 }
             }
@@ -124,17 +192,11 @@ export class TierValidationService {
         const customData = (application.customFieldsData as Record<string, any>) || {};
         const tierData = this.getTierData(application);
 
-        for (const field of fields) {
-            if (field.required) {
-                const value = customData[field.id];
-                // File uploads might also be in tierFiles with field.id as key
-                const fileValue = tierData.tierFiles?.[field.id];
-
-                if (!this.hasValidValue(value) && !fileValue) {
-                    missing.push(`Missing required field: ${field.label}`);
-                }
-            }
-        }
+        missing.push(
+            ...findMissingRequiredCustomFields(fields, customData, tierData.tierFiles).map(
+                (question) => `Missing required field: ${question.label}`,
+            ),
+        );
     }
 
     /**
@@ -152,31 +214,13 @@ export class TierValidationService {
         // Tier 2 custom fields are stored in tier_data.tier2_custom_fields_data
         const tier2CustomData = tierData.tier2_custom_fields_data || {};
 
-        for (const field of fields) {
-            if (field.required) {
-                const value = tier2CustomData[field.id];
-                // File uploads are stored in tierFiles with field.id as key
-                const fileValue = tierData.tierFiles?.[field.id];
-
-                if (!this.hasValidValue(value) && !fileValue) {
-                    missing.push(`Missing required field: ${field.label}`);
-                }
-            }
-        }
+        missing.push(
+            ...findMissingRequiredCustomFields(fields, tier2CustomData, tierData.tierFiles).map(
+                (question) => `Missing required field: ${question.label}`,
+            ),
+        );
     }
 
-    /**
-     * Check if a value is considered "filled" for validation purposes
-     * Handles different field types: strings, numbers, booleans, arrays
-     */
-    private hasValidValue(value: any): boolean {
-        if (value === undefined || value === null) return false;
-        if (typeof value === 'string' && value.trim() === '') return false;
-        if (Array.isArray(value) && value.length === 0) return false;
-        // For booleans, we consider `false` as a valid value (user explicitly unchecked)
-        // But for required checkboxes, the form validation should handle requiring `true`
-        return true;
-    }
 }
 
 export const tierValidationService = new TierValidationService();

@@ -237,6 +237,9 @@ export default function OverviewTabContent({
   const firstBookableKitchen = kitchenDisplays.find(
     ({ display }) => display.actionKind === "book"
   )?.app;
+  const hasApprovedKitchen = kitchenApplications.some(
+    (app) => app.status === "approved" && (app.current_tier ?? 1) >= 3
+  );
   const openKitchenPreview = (locationId: number) => navigate(`/kitchen-preview/${locationId}`);
 
   const upcomingBookings = useMemo(() => {
@@ -258,9 +261,7 @@ export default function OverviewTabContent({
   const kitchenHint = useMemo(() => {
     const actionNeeded = kitchenDisplays.filter((item) => item.display.tone === "warning").length;
     const inReview = kitchenDisplays.filter((item) => item.display.tone === "progress").length;
-    if (actionNeeded > 0) {
-      return actionNeeded === 1 ? t("ovKitchenNeedsYouOne") : t("ovKitchenNeedsYou", { count: actionNeeded });
-    }
+    
     if (inReview > 0) {
       return inReview === 1 ? t("ovWaitingReviewOne") : t("ovWaitingReview", { count: inReview });
     }
@@ -408,7 +409,7 @@ export default function OverviewTabContent({
           tone={kitchenSummaryTone(kitchenSummary)}
           onClick={() => firstBookableKitchen
             ? openKitchenPreview(firstBookableKitchen.locationId)
-            : onSetActiveTab(kitchenApplications.length > 0 ? "kitchen-applications" : "discover-kitchens")}
+            : onSetActiveTab(hasApprovedKitchen ? "kitchen-applications" : kitchenApplications.length > 0 ? "kitchen-requests" : "discover-kitchens")}
         />
         <StatCard
           label={t("ovStatKitchenTours", "Kitchen Tours")}
@@ -628,7 +629,9 @@ export default function OverviewTabContent({
                       ? openKitchenPreview(app.locationId)
                       : display.actionKind === "complete-step"
                         ? navigate(`/kitchen-requirements/${app.locationId}`)
-                        : onSetActiveTab("kitchen-applications")}
+                        : onSetActiveTab(app.status === "approved" && (app.current_tier ?? 1) >= 3
+                          ? "kitchen-applications"
+                          : "kitchen-requests")}
                   >
                     <div className="min-w-0 flex-1">
                       <TruncatedText as="p" className="truncate text-sm font-medium">

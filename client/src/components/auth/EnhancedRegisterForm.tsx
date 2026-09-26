@@ -125,7 +125,7 @@ const itemVariants = {
 export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, onRegistrationStart, onRegistrationComplete, onRegistrationError, onSwitchToLogin, forceApplying, hideApplyingToggle, reviewAfterRegistration, onPreviousStep, accountType = 'chef', showTermsInline = false, initialTermsAccepted = false, animateEntrance = true, initialEmail }: EnhancedRegisterFormProps) {
   const { t } = useTranslation("auth");
   const registerSchema = useRegisterSchema();
-  const { user: authUser, signup, signInWithGoogle, authenticateWithGoogle, syncUserWithBackend, loading, error, updateUserVerification, refreshUserData } = useFirebaseAuth();
+  const { user: authUser, signup, authenticateWithGoogle, syncUserWithBackend, loading, error, updateUserVerification, refreshUserData } = useFirebaseAuth();
   const [authState, setAuthState] = useState<AuthState>('idle');
   const [formError, setFormError] = useState<string | null>(null);
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
@@ -742,11 +742,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
         initial={animateEntrance ? "hidden" : false}
         animate="visible"
       >
-        {googleProfile ? (
-          <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-            Google connected as <strong>{googleProfile.email}</strong>. Add your phone number below to finish creating your account.
-          </div>
-        ) : <motion.div variants={itemVariants} className="mb-6">
+        {!googleProfile && <motion.div variants={itemVariants} className="mb-6">
           <TooltipProvider delayDuration={0}>
             <Tooltip open={showTermsInline && !acceptedTerms ? undefined : false}>
               <TooltipTrigger asChild>

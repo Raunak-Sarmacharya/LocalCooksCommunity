@@ -6,7 +6,7 @@ describe("getKitchenDisplayStatus", () => {
     const display = getKitchenDisplayStatus({ status: "inReview", current_tier: 1 });
     expect(display.actionKind).toBe("wait");
     expect(display.step).toBe(1);
-    expect(display.label).toBe("Awaiting admin review");
+    expect(display.label).toBe("In review");
   });
 
   it.each(["new", "pending"])("keeps an existing %s request in progress", (status) => {
@@ -19,7 +19,8 @@ describe("getKitchenDisplayStatus", () => {
     const display = getKitchenDisplayStatus({ status: "approved", current_tier: 1 });
     expect(display.actionKind).toBe("complete-step");
     expect(display.step).toBe(2);
-    expect(display.label).toBe("Awaiting kitchen documents");
+    expect(display.label).toBe("Action required");
+    expect(display.actionLabel).toBe("Continue application");
   });
 
   it("unlocks Step 2 for legacy buggy inReview + tier >= 2", () => {
@@ -35,7 +36,7 @@ describe("getKitchenDisplayStatus", () => {
       tier2_completed_at: new Date().toISOString(),
     });
     expect(display.actionKind).toBe("wait");
-    expect(display.label).toBe("Kitchen documents awaiting review");
+    expect(display.label).toBe("In review");
     expect(hasStep2BeenSubmitted({
       status: "approved",
       current_tier: 2,

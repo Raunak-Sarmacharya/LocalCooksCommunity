@@ -5,7 +5,7 @@ import { Loader2, Shield } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import ChatPanel from "@/components/chat/ChatPanel";
-import { getConversationForApplication, createConversation, getLiveChatParticipants } from "@/services/chat-service";
+import { getAdminConversationForApplication, getLiveChatParticipants } from "@/services/chat-service";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -175,69 +175,28 @@ export function AdminKitchenApplicationsStep1Section({
     }
     setChatLocationName(locationName || null);
 
-    // Get or create conversation
-    let conversationId = application.chat_conversation_id;
-    // Read alongside the id so the panel knows up-front whether the thread is
-    // dormant (participant deleted) and must open read-only.
-    let conversationUnavailable = false;
-    let conversationUnavailableRole: 'chef' | 'manager' | 'admin' | 'user' | undefined;
-    if (!conversationId) {
-      try {
-        // Try to get existing conversation
-        const existing = await getConversationForApplication(application.id);
-        if (existing) {
-          conversationId = existing.id;
-          conversationUnavailable = existing.unavailable === true;
-          conversationUnavailableRole = existing.unavailableRole;
-        } else {
-          if (!resolvedManagerId) {
-            // A brand-new conversation is keyed to the manager who owns the
-            // kitchen. Creating one without them would mint a thread nobody can
-            // legitimately belong to, so fail loudly rather than write it wrong.
-            toast({
-              title: "Error",
-              description: "This kitchen has no manager assigned, so a conversation can't be started yet.",
-              variant: "destructive",
-            });
-            setChatApplication(null);
-            setChatManagerId(null);
-            return;
-          }
-          // Create new conversation, keyed to the KITCHEN's manager — not the
-          // admin who happens to be opening it.
-          conversationId = await createConversation(
-            application.id,
-            application.chefId,
-            resolvedManagerId,
-            application.locationId
-          );
-        }
-      } catch (error) {
-        logger.error('Error initializing chat:', error);
-        toast({
-          title: "Error",
-          description: "Failed to open chat. Please try again.",
-          variant: "destructive",
-        });
-        return;
-      }
+    let conversation;
+    try {
+      conversation = await getAdminConversationForApplication(application.id);
+    } catch (error) {
+      logger.error('Error opening chat:', error);
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to open chat. Please try again.", variant: "destructive" });
+      return;
     }
+    let conversationUnavailable = conversation.unavailable === true;
+    let conversationUnavailableRole = conversation.unavailableRole;
+    setChatManagerId(conversation.managerId);
 
     // Reconcile against who actually still has an account. The stored flag only
     // covers deletions after it shipped, so a thread orphaned earlier would
     // otherwise open as if it were live.
-    const liveParticipants = await getLiveChatParticipants([application.chefId, resolvedManagerId ?? 0]);
+    const liveParticipants = await getLiveChatParticipants([conversation.chefId, conversation.managerId]);
     if (liveParticipants) {
-      if (!liveParticipants.has(application.chefId)) {
-        conversationUnavailable = true;
-        conversationUnavailableRole = 'chef';
-      } else if (resolvedManagerId && !liveParticipants.has(resolvedManagerId)) {
-        conversationUnavailable = true;
-        conversationUnavailableRole = 'manager';
-      }
+      conversationUnavailable = !liveParticipants.has(conversation.chefId) || !liveParticipants.has(conversation.managerId);
+      conversationUnavailableRole = !liveParticipants.has(conversation.chefId) ? 'chef' : !liveParticipants.has(conversation.managerId) ? 'manager' : undefined;
     }
 
-    setChatConversationId(conversationId);
+    setChatConversationId(conversation.id);
     setChatUnavailable(conversationUnavailable);
     setChatUnavailableRole(conversationUnavailableRole);
     setShowChatDialog(true);
@@ -276,7 +235,7 @@ export function AdminKitchenApplicationsStep1Section({
           verifyDocuments: verifyFields,
         });
         toast({
-          title: "Kitchen Coordination approved",
+          title: "Chef Application Requirements approved",
           description: "The chef can now book this kitchen.",
         });
       } else {
@@ -354,7 +313,7 @@ export function AdminKitchenApplicationsStep1Section({
     if (!stage) return;
 
     const label = stage === "step2"
-      ? `Approve Kitchen Coordination for ${application.fullName}? They will be able to book this kitchen.`
+      ? `Approve Chef Application Requirements for ${application.fullName}? They will be able to book this kitchen.`
       : `Approve ${application.fullName}'s request to apply? They will be able to upload kitchen documents.`;
     if (stage === "step1" && !window.confirm(label)) return;
 
@@ -557,6 +516,7 @@ export function AdminKitchenApplicationsStep1Section({
             <ChatPanel
               conversationId={chatConversationId}
               applicationId={chatApplication.id}
+              canBook={chatApplication.status === 'approved' && (chatApplication.current_tier ?? 1) >= 3 && !!chatApplication.tier2_completed_at}
               chefId={chatApplication.chefId}
               // The kitchen's real manager, NOT the admin viewing it. The panel
               // needs this identity to distinguish "who else is in this thread"
@@ -667,14 +627,14 @@ export function AdminKitchenApplicationsStep1Section({
                 <p className="mb-2 text-sm font-semibold">
                   Documents
                   {resolveApprovalStage(selectedApplication) === "step2" && (
-                    <span className="ml-2 font-normal text-muted-foreground">Kitchen Coordination</span>
+                    <span className="ml-2 font-normal text-muted-foreground">Chef Application Requirements</span>
                   )}
                 </p>
                 {renderDocumentReview(selectedApplication)}
 
                 {resolveApprovalStage(selectedApplication) === "step2" && (
                   <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                    Approving now moves this chef to Kitchen Coordination and lets them book the kitchen.
+                    Approving now moves this chef to the Chef Application Requirements step and lets them book the kitchen.
                   </p>
                 )}
               </div>
@@ -705,7 +665,7 @@ export function AdminKitchenApplicationsStep1Section({
                 {updateApplicationStatus.isPending
                   ? "Processing..."
                   : resolveApprovalStage(selectedApplication) === "step2"
-                    ? "Approve Kitchen Coordination"
+                    ? "Approve Chef Application Requirements"
                     : "Approve"}
               </Button>
             )}
@@ -735,7 +695,7 @@ export function AdminKitchenApplicationsStep1Section({
                     disabled={verifyDocuments.isPending || updateApplicationStatus.isPending}
                     onClick={() => handleApprove(documentsApplication, "step2")}
                   >
-                    {updateApplicationStatus.isPending ? "Processing..." : "Approve Kitchen Coordination"}
+                    {updateApplicationStatus.isPending ? "Processing..." : "Approve Chef Application Requirements"}
                   </Button>
                 </div>
               )}
