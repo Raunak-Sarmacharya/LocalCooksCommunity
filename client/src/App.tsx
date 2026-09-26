@@ -41,7 +41,6 @@ import ChefLanding from "@/pages/ChefLanding";
 import KitchenLanding from "@/pages/KitchenLanding";
 import AdminLanding from "@/pages/AdminLanding";
 import CookieConsentBanner from "@/components/legal/CookieConsentBanner";
-import PendingSellerJourneySubmitter from "@/components/application/PendingSellerJourneySubmitter";
 // Eager-load the primary manager shell. In development, a stale Vite/HMR
 // module graph can otherwise strand authenticated managers behind a failed
 // dynamic import even though the dashboard and its dependencies compile.
@@ -419,7 +418,6 @@ function App() {
             <DocumentLocaleSync />
             <LocaleProfileSync />
             <CustomAlertsProvider>
-              <PendingSellerJourneySubmitter />
               <AuthModalProvider>
                 <TooltipProvider>
                   <RadixBodyCleanupProvider>

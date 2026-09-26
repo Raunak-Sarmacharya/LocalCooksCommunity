@@ -2,13 +2,13 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import KitchenJourneyAuth from "./KitchenJourneyAuth";
 import { kitchenJourneyEmailKey } from "@/lib/kitchen-journey-email";
-import { isMissingProfileError } from "@/lib/login-challenge";
 import { setGoogleRegistrationActive } from "@/lib/pending-google-registration";
 
 const authState = vi.hoisted(() => ({
   user: null as null | { email: string; is_verified: boolean },
   loading: false,
   authenticateWithGoogle: vi.fn(),
+  refreshUserData: vi.fn(),
 }));
 
 vi.mock("@/hooks/use-auth", () => ({
@@ -16,16 +16,23 @@ vi.mock("@/hooks/use-auth", () => ({
     ...authState,
     authenticateWithGoogle: authState.authenticateWithGoogle,
     updateUserVerification: vi.fn(),
-    refreshUserData: vi.fn(),
+    refreshUserData: authState.refreshUserData,
     discardPendingGoogleRegistration: vi.fn(),
   }),
 }));
 vi.mock("@/lib/firebase", () => ({ auth: { currentUser: null } }));
 vi.mock("./AuthFlow", () => ({
-  default: ({ initialIdentifier, onGoogleSignIn }: { initialIdentifier: string; onGoogleSignIn: () => Promise<void> }) => (
-    <div data-testid="auth-flow">{initialIdentifier}<button onClick={() => void onGoogleSignIn().catch((error) => {
-      if (isMissingProfileError(error)) document.body.dataset.googleRegistration = "ready";
-    })}>Continue with Google</button></div>
+  default: ({ initialIdentifier, step, onGoogleSignIn, registerProps }: {
+    initialIdentifier: string;
+    step: string;
+    onGoogleSignIn: () => Promise<void>;
+    registerProps: { onRegistrationStart: () => void };
+  }) => (
+    <div data-testid="auth-flow" data-step={step}>
+      {initialIdentifier}
+      <button onClick={() => void onGoogleSignIn()}>Continue with Google</button>
+      <button onClick={registerProps.onRegistrationStart}>Begin registration</button>
+    </div>
   ),
 }));
 
@@ -36,7 +43,7 @@ describe("KitchenJourneyAuth verification return", () => {
     authState.user = null;
     authState.loading = false;
     authState.authenticateWithGoogle.mockReset();
-    delete document.body.dataset.googleRegistration;
+    authState.refreshUserData.mockReset();
     setGoogleRegistrationActive(null);
     window.history.replaceState({}, "", "/request-tour/42?kitchenId=17");
   });
@@ -83,8 +90,20 @@ describe("KitchenJourneyAuth verification return", () => {
       fireEvent.click(screen.getByRole("button", { name: "Continue with Google" }));
 
       await waitFor(() => expect(authState.authenticateWithGoogle).toHaveBeenCalledTimes(1));
-      await waitFor(() => expect(document.body.dataset.googleRegistration).toBe("ready"));
+      await waitFor(() => expect(screen.getByTestId("auth-flow")).toHaveAttribute("data-step", "register"));
       expect(window.location.pathname + window.location.search).toBe(path);
     },
   );
+
+  it("keeps the account form mounted while email registration is in progress", () => {
+    window.history.replaceState({}, "", "/?journey=seller");
+    const view = render(<KitchenJourneyAuth title="Continue your seller journey" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Begin registration" }));
+    authState.loading = true;
+    view.rerender(<KitchenJourneyAuth title="Continue your seller journey" />);
+
+    expect(screen.getByTestId("auth-flow")).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: /restoring your account/i })).not.toBeInTheDocument();
+  });
 });

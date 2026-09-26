@@ -1,0 +1,54 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Seller Journey - Manual Submit",
+    "quality_profile": "showcase",
+    "output": "docs/seller-journey-manual-submit.html"
+  },
+  "lanes": [
+    { "id": "chef", "label": "Chef / Visitor" },
+    { "id": "account", "label": "Account Creation" },
+    { "id": "verification", "label": "Verification Gate" },
+    { "id": "application", "label": "Application Submit" }
+  ],
+  "phases": [
+    { "id": "plan", "label": "Plan the journey", "fromCol": 0, "toCol": 1 },
+    { "id": "account", "label": "Create account", "fromCol": 2, "toCol": 3 },
+    { "id": "gate", "label": "Verify", "fromCol": 4, "toCol": 4, "variant": "emphasis" },
+    { "id": "submit", "label": "Review + submit", "fromCol": 5, "toCol": 7 }
+  ],
+  "mainPath": ["open_dialog", "pick_pref", "auth_flow", "draft_persist", "verify_gate", "review_step", "api_submit"],
+  "nodes": [
+    { "id": "open_dialog", "lane": "chef", "col": 0, "type": "frontend", "label": "Open Seller Journey", "sublabel": "?journey=seller", "width": 118 },
+    { "id": "pick_pref", "lane": "chef", "col": 1, "type": "frontend", "label": "Kitchen + terms", "sublabel": "draft saved locally", "width": 116 },
+    { "id": "auth_flow", "lane": "account", "col": 2, "type": "frontend", "label": "Sign up / sign in", "sublabel": "email - Google - phone", "width": 122 },
+    { "id": "draft_persist", "lane": "account", "col": 3, "type": "database", "label": "Draft survives", "sublabel": "localStorage - 7 day TTL", "width": 130 },
+    { "id": "verify_gate", "lane": "verification", "col": 4, "type": "security", "label": "Verify email", "sublabel": "Firebase claim AND is_verified", "width": 142 },
+    { "id": "missing_phone", "lane": "application", "col": 4, "type": "frontend", "label": "Add a phone number", "sublabel": "profile, then return", "width": 128 },
+    { "id": "review_step", "lane": "application", "col": 5, "type": "frontend", "label": "Review your application", "sublabel": "no network call", "width": 138 },
+    { "id": "existing_guard", "lane": "application", "col": 6, "type": "security", "label": "Active app guard", "sublabel": "GET /applications/my", "width": 128 },
+    { "id": "api_submit", "lane": "application", "col": 7, "type": "backend", "label": "Submit application", "sublabel": "POST /api/firebase/applications", "width": 150 },
+    { "id": "dashboard_result", "lane": "chef", "col": 7, "type": "messagebus", "label": "My Applications", "sublabel": "journey=submitted toast", "width": 128 }
+  ],
+  "edges": [
+    { "id": "open_pick", "from": "open_dialog", "to": "pick_pref" },
+    { "id": "pick_auth", "from": "pick_pref", "to": "auth_flow", "label": "Continue to secure account", "variant": "emphasis" },
+    { "id": "auth_draft", "from": "auth_flow", "to": "draft_persist", "label": "draft written before signup" },
+    { "id": "draft_verify", "from": "draft_persist", "to": "verify_gate", "label": "email signup" },
+    { "id": "draft_review", "from": "draft_persist", "to": "review_step", "label": "Google: pre-verified", "variant": "dashed" },
+    { "id": "verify_review", "from": "verify_gate", "to": "review_step", "label": "I verified my email", "variant": "emphasis" },
+    { "id": "draft_phone", "from": "draft_persist", "to": "missing_phone", "label": "verified, no phone", "variant": "dashed" },
+    { "id": "phone_review", "from": "missing_phone", "to": "review_step", "label": "phone on profile" },
+    { "id": "review_guard", "from": "review_step", "to": "existing_guard", "label": "Submit application clicked", "variant": "security" },
+    { "id": "guard_submit", "from": "existing_guard", "to": "api_submit", "label": "no active application" },
+    { "id": "submit_result", "from": "api_submit", "to": "dashboard_result", "label": "draft cleared", "variant": "emphasis" },
+    { "id": "guard_result", "from": "existing_guard", "to": "dashboard_result", "label": "already active", "variant": "dashed" },
+    { "id": "result_open", "from": "dashboard_result", "to": "open_dialog", "label": "draft still pending", "variant": "dashed", "role": "return" }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "No submit before consent", "items": ["Nothing is POSTed while the chef is only signing up", "The review screen makes zero network calls", "The draft is only cleared after a 2xx response"] },
+    { "dot": "cyan", "title": "Both entry paths converge", "items": ["Email: verify link returns to /?journey=seller&verified=true", "Google: server records is_verified from the token claim", "Both land on the same review screen"] },
+    { "dot": "amber", "title": "Leftover from the auto-submit era", "items": ["PendingSellerJourneySubmitter.tsx is unmounted but still on disk", "pending-seller-journey-guard.ts + its test are now unreferenced", "ManagerLogin still calls clearSellerJourneyDraft for the removed global"] }
+  ]
+}

@@ -7,7 +7,6 @@ import AuthFlow, { type AuthFlowStep } from "./AuthFlow";
 import { Button } from "@/components/ui/button";
 import { kitchenJourneyEmailKey } from "@/lib/kitchen-journey-email";
 import { getAuthIntent } from "@/lib/auth-intent";
-import { createMissingProfileError, isMissingProfileError } from "@/lib/login-challenge";
 import { isPendingGoogleRegistration, setGoogleRegistrationActive } from "@/lib/pending-google-registration";
 
 export function useKitchenJourneyEmailVerified() {
@@ -24,6 +23,7 @@ export default function KitchenJourneyAuth({ title, description = "Use your Loca
     isPendingGoogleRegistration(auth.currentUser?.uid) ? "register" : "identifier"
   );
   const [googleRegistrationStarted, setGoogleRegistrationStarted] = useState(false);
+  const [registrationInProgress, setRegistrationInProgress] = useState(false);
   const pendingEmailKey = kitchenJourneyEmailKey(window.location.pathname, window.location.search);
   const [unverifiedEmail, setUnverifiedEmail] = useState(() => {
     try {
@@ -42,7 +42,7 @@ export default function KitchenJourneyAuth({ title, description = "Use your Loca
   const [error, setError] = useState("");
   const verified = useKitchenJourneyEmailVerified();
   const email = user?.email || unverifiedEmail;
-  const awaitingVerification = !!email && !verified && !googleRegistrationStarted && !isPendingGoogleRegistration(auth.currentUser?.uid);
+  const awaitingVerification = !!email && !verified && !googleRegistrationStarted && !registrationInProgress && !isPendingGoogleRegistration(auth.currentUser?.uid);
 
   useEffect(() => () => setGoogleRegistrationActive(null), []);
 
@@ -104,7 +104,7 @@ export default function KitchenJourneyAuth({ title, description = "Use your Loca
       <h2 className="mt-2 text-2xl font-semibold tracking-tight">{title}</h2>
       <p className="mt-2 text-sm text-muted-foreground">{description}</p>
       <div className="mt-8 max-w-xl [&_.max-w-md]:max-w-xl [&_.mx-auto]:mx-0">
-        {loading ? (
+        {loading && step !== "register" && !googleRegistrationStarted && !registrationInProgress ? (
           <p className="text-sm text-muted-foreground" role="status">Restoring your account…</p>
         ) : awaitingVerification && !signInAfterVerification ? (
           <div className="space-y-4 rounded-2xl border bg-muted/30 p-5">
@@ -126,7 +126,10 @@ export default function KitchenJourneyAuth({ title, description = "Use your Loca
             key={signInAfterVerification ? "resume-after-verification" : "account"}
             step={step}
             initialIdentifier={unverifiedEmail || initialEmail}
-            onStepChange={setStep}
+            onStepChange={(nextStep) => {
+              setStep(nextStep);
+              if (nextStep !== "register") setGoogleRegistrationStarted(false);
+            }}
             portal="chef"
             loginProps={{ onSuccess: async () => { await refreshUserData({ forceToken: true }); } }}
             registerProps={{
@@ -134,10 +137,17 @@ export default function KitchenJourneyAuth({ title, description = "Use your Loca
               initialTermsAccepted,
               hideApplyingToggle: true,
               animateEntrance: false,
+              onRegistrationStart: () => setRegistrationInProgress(true),
               onRegistrationComplete: async (registeredEmail) => {
-                rememberUnverifiedEmail(registeredEmail);
-                await refreshUserData({ forceToken: true });
+                try {
+                  rememberUnverifiedEmail(registeredEmail);
+                  await refreshUserData({ forceToken: true });
+                } finally {
+                  setRegistrationInProgress(false);
+                  setGoogleRegistrationStarted(false);
+                }
               },
+              onRegistrationError: () => setRegistrationInProgress(false),
               onSuccess: async () => { await refreshUserData({ forceToken: true }); },
             }}
             onUnverifiedAccount={rememberUnverifiedEmail}
@@ -150,12 +160,13 @@ export default function KitchenJourneyAuth({ title, description = "Use your Loca
                   // The register form collects the required phone before provisioning.
                   // Keep the in-flight identity alive until that form claims it.
                   setGoogleRegistrationActive(auth.currentUser?.uid ?? null);
-                  throw createMissingProfileError(identity.email);
+                  setStep("register");
+                  return;
                 }
                 setGoogleRegistrationStarted(false);
                 await refreshUserData({ forceToken: false });
               } catch (googleError) {
-                if (!isMissingProfileError(googleError)) setGoogleRegistrationStarted(false);
+                setGoogleRegistrationStarted(false);
                 throw googleError;
               }
             }}

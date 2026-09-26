@@ -4,7 +4,7 @@ import EnhancedRegisterForm from "./EnhancedRegisterForm";
 import { markPendingGoogleRegistration, setGoogleRegistrationActive } from "@/lib/pending-google-registration";
 
 const { currentUser, syncUserWithBackend } = vi.hoisted(() => ({
-  currentUser: { uid: "google-user", email: "chef@example.com", displayName: "Google Chef" },
+  currentUser: { uid: "google-user", email: "chef@example.com", displayName: "Google Chef", reload: vi.fn() },
   syncUserWithBackend: vi.fn(),
 }));
 
@@ -14,6 +14,10 @@ vi.mock("@/hooks/use-auth", () => ({
 }));
 vi.mock("@/components/ui/custom-alerts", () => ({
   useCustomAlerts: () => ({ showAlert: vi.fn() }),
+}));
+vi.mock("firebase/auth", async (importOriginal) => ({
+  ...await importOriginal<typeof import("firebase/auth")>(),
+  updateProfile: vi.fn(),
 }));
 
 describe("Google registration details", () => {
@@ -47,5 +51,17 @@ describe("Google registration details", () => {
 
     await waitFor(() => expect(screen.getByText("Phone number is required")).toBeInTheDocument());
     expect(syncUserWithBackend).not.toHaveBeenCalled();
+  });
+
+  it("submits the locked Google email with a valid phone", async () => {
+    syncUserWithBackend.mockResolvedValue(true);
+    render(<EnhancedRegisterForm animateEntrance={false} />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: /phone number/i }), {
+      target: { value: "4165551234" },
+    });
+    fireEvent.submit(screen.getByRole("button", { name: /create account/i }).closest("form")!);
+
+    await waitFor(() => expect(syncUserWithBackend).toHaveBeenCalled());
   });
 });

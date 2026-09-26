@@ -4,6 +4,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Keep toast hierarchy and contrast consistent across dev and production. */
+.toaster [data-sonner-toast][data-styled="true"] [data-title] {
+  font-weight: 600;
+}
+
+.toaster [data-sonner-toast][data-styled="true"] [data-description] {
+  color: hsl(var(--muted-foreground));
+  font-weight: 400;
+}
+
 @layer utilities {
   .scrollbar-none {
     -ms-overflow-style: none;

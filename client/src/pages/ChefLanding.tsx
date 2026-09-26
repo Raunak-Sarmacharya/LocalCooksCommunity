@@ -2048,7 +2048,10 @@ export default function ChefLanding() {
   const handleGetStarted = () => {
     if (user) {
       if (landingDashboardPath(user) === "/dashboard" && getSellerJourneyDraft()) {
-        window.location.assign("/?journey=seller");
+        const url = new URL(window.location.href);
+        url.searchParams.set("journey", "seller");
+        window.history.replaceState(window.history.state, "", url);
+        setSellerJourneyOpen(true);
         return;
       }
       navigate(landingDashboardPath(user) === "/dashboard" ? "/dashboard?view=applications" : landingDashboardPath(user));

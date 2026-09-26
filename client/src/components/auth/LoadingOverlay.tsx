@@ -1,4 +1,5 @@
 import { createPortal } from "react-dom";
+import type { ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { CheckCircle, Loader2 } from "lucide-react";
 
@@ -7,6 +8,14 @@ interface LoadingOverlayProps {
   message?: string;
   submessage?: string;
   type?: 'loading' | 'success' | 'verifying';
+  /**
+   * Controls rendered under the submessage.
+   *
+   * Additive and optional: every existing caller renders the informational
+   * overlay unchanged. It exists for a terminal state that hands the user
+   * somewhere, which cannot be expressed with message/submessage alone.
+   */
+  actions?: ReactNode;
 }
 
 const overlayVariants = {
@@ -39,7 +48,8 @@ export default function LoadingOverlay({
   isVisible, 
   message = "Signing you in...", 
   submessage = "Please wait while we verify your credentials securely.",
-  type = 'loading'
+  type = 'loading',
+  actions
 }: LoadingOverlayProps) {
   const renderIcon = () => {
     switch (type) {
@@ -109,6 +119,10 @@ export default function LoadingOverlay({
             >
               {submessage}
             </motion.p>
+
+            {actions ? (
+              <div className="mt-6 flex w-full flex-col items-stretch gap-2">{actions}</div>
+            ) : null}
             
           </motion.div>
         </motion.div>
