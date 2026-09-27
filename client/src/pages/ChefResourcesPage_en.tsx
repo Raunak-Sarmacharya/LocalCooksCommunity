@@ -482,7 +482,7 @@ export default function ChefResourcesPage_en() {
       <MobileNav onNavigate={scrollToSection} />
 
       {/* Main layout — left sidebar + content */}
-      <div className="container mx-auto max-w-7xl px-4 sm:px-6 pt-24 sm:pt-28">
+      <div className="container mx-auto max-w-7xl px-4 sm:px-6 pt-[calc(var(--header-total)_+_2rem)] sm:pt-[calc(var(--header-total)_+_3rem)]">
         <div className="flex gap-0 lg:gap-10">
           {/* Desktop Sidebar — sticky left nav */}
           <aside className="hidden lg:block w-56 xl:w-60 flex-shrink-0">

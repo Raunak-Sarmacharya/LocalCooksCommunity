@@ -120,6 +120,10 @@
 
   /* Layout Variables */
   --header-height: 64px;
+  /* The bar PLUS the OS status-bar inset it carries on edge-to-edge phones (Android 15+ /
+     Chrome 135+, iOS notch). Offsets that must clear the rendered bar use this; it equals
+     --header-height everywhere env() has no inset. */
+  --header-total: calc(var(--header-height) + env(safe-area-inset-top, 0px));
 
   /* Enhanced Animation Variables */
   --auth-primary-blue: #4285f4;
@@ -1357,4 +1361,16 @@ input[type="number"] {
 .kc-popup-chevron {
   color: #9A9A9A;
   flex-shrink: 0;
+}
+
+/* ===== Real-device system bars (Android 15+/Chrome 135+ edge-to-edge, iOS notch) =====
+   Chrome on Android now draws pages edge-to-edge: as the browser's address bar hides on
+   scroll, the fixed header is painted up into the OS status-bar area, which made the top
+   bar "grow and look weird" on real phones while desktop emulation (no system bars) never
+   showed it. Reserving the OS inset keeps the header content below the status bar with the
+   background extending behind it, exactly like a native app. env() resolves to 0 on every
+   browser that has no inset, so this is a no-op on desktop, iOS Safari without
+   viewport-fit=cover, and older Android. The class already sits on both app headers. */
+.mobile-safe-area {
+  padding-top: env(safe-area-inset-top, 0px);
 }

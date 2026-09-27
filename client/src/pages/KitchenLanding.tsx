@@ -432,7 +432,7 @@ export default function KitchenLanding() {
             }} />
           </div>
 
-          <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-20 sm:pt-24 md:pt-28 pb-12 sm:pb-14 md:pb-16 relative z-10">
+          <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-[calc(var(--header-total)_+_1rem)] sm:pt-[calc(var(--header-total)_+_2rem)] md:pt-[calc(var(--header-total)_+_3rem)] pb-12 sm:pb-14 md:pb-16 relative z-10">
 
 
             <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 items-center min-h-[calc(100vh-200px)]">

@@ -553,7 +553,7 @@ export default function KitchenComparisonPage() {
         }
       />
 
-      <main className="relative z-10 flex-1 pb-16 pt-[calc(var(--header-height)+2.5rem)]">
+      <main className="relative z-10 flex-1 pb-16 pt-[calc(var(--header-total)_+_2.5rem)]">
         <div className="container mx-auto max-w-7xl px-4 sm:px-6">
           {/* No items-start: the aside must STRETCH to the row's height or the sticky map has
               zero travel room and scrolls away with the page (the "stagnant map" bug). */}
@@ -703,13 +703,13 @@ export default function KitchenComparisonPage() {
                 hover-synced with the cards; clicking a pill previews the kitchens there. */}
             {isLoading ? (
               <aside className="hidden lg:block lg:w-[42%] lg:shrink-0 xl:w-[40%]">
-                <div className="sticky top-[calc(var(--header-height)+1rem)] h-[calc(100vh-var(--header-height)-2rem)]">
+                <div className="sticky top-[calc(var(--header-total)_+_1rem)] h-[calc(100vh_-_var(--header-total)_-_2rem)]">
                   <MapPanelSkeleton />
                 </div>
               </aside>
             ) : showMap ? (
               <aside className="hidden lg:block lg:w-[42%] lg:shrink-0 xl:w-[40%]">
-                <div className="sticky top-[calc(var(--header-height)+1rem)] h-[calc(100vh-var(--header-height)-2rem)]">
+                <div className="sticky top-[calc(var(--header-total)_+_1rem)] h-[calc(100vh_-_var(--header-total)_-_2rem)]">
                   <motion.div
                     initial={{ opacity: 0, scale: 0.98 }}
                     animate={{ opacity: 1, scale: 1 }}
@@ -736,7 +736,7 @@ export default function KitchenComparisonPage() {
         <button
           type="button"
           onClick={() => setMobileMapOpen(true)}
-          className="fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-full bg-[#2C2C2C] px-5 py-3 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(44,44,44,0.35)] transition-transform duration-200 hover:scale-[1.04] lg:hidden"
+          className="fixed bottom-[calc(1.5rem_+_env(safe-area-inset-bottom,0px))] left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-full bg-[#2C2C2C] px-5 py-3 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(44,44,44,0.35)] transition-transform duration-200 hover:scale-[1.04] lg:hidden"
         >
           <MapIcon className="h-4 w-4" />
           {t("mapLabel", "Map")}
@@ -750,7 +750,7 @@ export default function KitchenComparisonPage() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 24 }}
             transition={{ duration: 0.25, ease: [0.25, 0.46, 0.45, 0.94] }}
-            className="fixed inset-0 z-[70] flex flex-col bg-white lg:hidden"
+            className="fixed inset-0 z-[70] flex flex-col bg-white pt-[env(safe-area-inset-top,0px)] lg:hidden"
           >
             <div className="flex items-center justify-between border-b border-[#2C2C2C]/8 px-4 py-3">
               <span className="text-sm font-semibold text-[#1A1A1A]">{t("mapLabel", "Map")}</span>

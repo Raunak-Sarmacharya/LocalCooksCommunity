@@ -1731,7 +1731,7 @@ export function ChefHero({
 
       <div
         data-hero-content
-        className="relative z-10 mx-auto w-full max-w-7xl px-4 pb-20 pt-[calc(var(--header-height)+2.5rem)] sm:px-6 sm:pb-24 sm:pt-[calc(var(--header-height)+3rem)] lg:px-8 lg:pb-28 lg:pt-[calc(var(--header-height)+3.5rem)]"
+        className="relative z-10 mx-auto w-full max-w-7xl px-4 pb-20 pt-[calc(var(--header-total)_+_2.5rem)] sm:px-6 sm:pb-24 sm:pt-[calc(var(--header-total)_+_3rem)] lg:px-8 lg:pb-28 lg:pt-[calc(var(--header-total)_+_3.5rem)]"
       >
         {/* ── Heading block ─────────────────────────────────────────────────────── */}
         <div className="mx-auto max-w-4xl text-center">

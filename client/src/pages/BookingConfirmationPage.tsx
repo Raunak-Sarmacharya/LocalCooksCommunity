@@ -480,7 +480,7 @@ export default function BookingConfirmationPage() {
     return (
       <div className="min-h-screen bg-gray-50">
         <Header />
-        <main className="flex-1 pt-24 pb-8">
+        <main className="flex-1 pt-[calc(var(--header-total)_+_2rem)] pb-8">
           <div className="max-w-4xl mx-auto px-4">
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <div className="text-center">
@@ -505,7 +505,7 @@ export default function BookingConfirmationPage() {
     return (
       <div className="min-h-screen bg-gray-50">
         <Header />
-        <main className="flex-1 pt-24 pb-8">
+        <main className="flex-1 pt-[calc(var(--header-total)_+_2rem)] pb-8">
           <div className="max-w-4xl mx-auto px-4">
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <div className="text-center">
@@ -522,7 +522,7 @@ export default function BookingConfirmationPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Header />
-      <main className="flex-1 pt-24 pb-8">
+      <main className="flex-1 pt-[calc(var(--header-total)_+_2rem)] pb-8">
         <div className="max-w-2xl mx-auto px-4">
           <div className="bg-white rounded-xl shadow-2xl w-full p-6" data-testid="booking-confirmation">
             <div className="flex items-center justify-between mb-6">

@@ -156,7 +156,7 @@ export default function Success() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
-      <main className="flex-grow pt-24 md:pt-28 pb-12 md:pb-16">
+      <main className="flex-grow pt-[calc(var(--header-total)_+_2rem)] md:pt-[calc(var(--header-total)_+_3rem)] pb-12 md:pb-16">
         <div className="container mx-auto max-w-5xl space-y-8 px-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>

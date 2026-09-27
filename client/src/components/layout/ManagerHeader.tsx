@@ -57,7 +57,7 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
   });
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 mobile-safe-area h-[var(--header-height)] border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="fixed top-0 left-0 right-0 z-50 mobile-safe-area min-h-[var(--header-total)] border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex items-center w-full relative" style={{ minHeight: '100%' }}>
         <div
           className="hidden lg:flex absolute left-0 items-center justify-center pointer-events-none"

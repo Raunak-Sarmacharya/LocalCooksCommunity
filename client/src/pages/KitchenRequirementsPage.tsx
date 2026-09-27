@@ -520,7 +520,7 @@ export default function KitchenRequirementsPage() {
     return (
         <div className="min-h-screen flex flex-col bg-gray-50">
             <Header />
-            <main className="flex-1 pt-20 sm:pt-24 lg:pt-28 pb-12">
+            <main className="flex-1 pt-[calc(var(--header-total)_+_1rem)] sm:pt-[calc(var(--header-total)_+_2rem)] lg:pt-[calc(var(--header-total)_+_3rem)] pb-12">
                 <div className="container mx-auto px-4 max-w-4xl">
                     {getContent()}
                 </div>

@@ -33,7 +33,7 @@ export default function Privacy() {
         ]}
       />
       <Header />
-      <main className="flex-grow pt-28 pb-16">
+      <main className="flex-grow pt-[calc(var(--header-total)_+_3rem)] pb-16">
         <motion.div
           className="container mx-auto px-4 max-w-4xl"
           initial={{ opacity: 0, y: 20 }}

@@ -93,7 +93,7 @@ export default function AdminLanding() {
       <Header />
       <main className="flex-grow">
         {/* Admin-Specific Hero Section */}
-        <GradientHero variant="cream" className="pt-28 pb-12 md:pt-36 md:pb-20 px-4 relative overflow-hidden">
+        <GradientHero variant="cream" className="pt-[calc(var(--header-total)_+_3rem)] pb-12 md:pt-[calc(var(--header-total)_+_5rem)] md:pb-20 px-4 relative overflow-hidden">
           {/* Enhanced background decorative elements */}
           <div className="absolute inset-0 opacity-5 pointer-events-none">
             <div className="absolute top-20 left-10 w-96 h-96 bg-brand-primary rounded-full blur-3xl"></div>

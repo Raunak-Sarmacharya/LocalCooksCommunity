@@ -19,7 +19,7 @@ export default function KitchenJourneyLayout({ eyebrow, title, description, onBa
   return (
     <div className={inChefShell ? "bg-background rounded-[1.75rem]" : "min-h-screen bg-background"}>
       {!inChefShell && <Header />}
-      <main className={inChefShell ? "mx-auto max-w-7xl px-4 pb-12 pt-4 sm:px-6 sm:pt-6 lg:px-10" : "mx-auto max-w-7xl px-4 pb-20 pt-24 sm:px-6 sm:pt-28 lg:px-10"}>
+      <main className={inChefShell ? "mx-auto max-w-7xl px-4 pb-12 pt-4 sm:px-6 sm:pt-6 lg:px-10" : "mx-auto max-w-7xl px-4 pb-20 pt-[calc(var(--header-total)_+_2rem)] sm:px-6 sm:pt-[calc(var(--header-total)_+_3rem)] lg:px-10"}>
         <header className="relative isolate overflow-hidden rounded-[1.75rem] border border-primary/10 bg-gradient-to-br from-[#fff0f4] via-white to-[#fff9fa]">
           {imageUrl && <img src={imageUrl} alt="" className="absolute inset-y-0 right-0 hidden h-full w-[38%] object-cover lg:block" />}
           <div className={imageUrl ? "absolute inset-0 hidden bg-gradient-to-r from-[#fff0f4] via-white to-transparent lg:block" : "absolute -right-16 -top-24 h-80 w-80 rounded-full bg-primary/10 blur-3xl"} aria-hidden />

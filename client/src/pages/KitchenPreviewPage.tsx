@@ -2923,6 +2923,11 @@ function KitchenDetailsSection({
 function headerOffsetPx(chefChrome: boolean, staticSiteHeader: boolean) {
   if (chefChrome) return 64;
   if (staticSiteHeader) return 0;
+  // Measure the RENDERED bar: on edge-to-edge phones (Android 15+/Chrome 135+, iOS notch)
+  // the fixed header also carries the OS status-bar inset via `mobile-safe-area`, which the
+  // 64px CSS var cannot express. Fall back to the var when the header is not in the DOM yet.
+  const measured = document.querySelector("header")?.getBoundingClientRect().height;
+  if (measured && measured > 0) return Math.round(measured);
   const raw = getComputedStyle(document.documentElement).getPropertyValue("--header-height").trim();
   const n = parseFloat(raw);
   return Number.isFinite(n) ? n : 96;
@@ -4040,7 +4045,7 @@ export default function KitchenPreviewPage() {
             positionClass={
               staticSiteHeader
                 ? "top-0 left-0 right-0"
-                : "top-[var(--header-height)] left-0 right-0"
+                : "top-[var(--header-total)] left-0 right-0"
             }
             contentClassName="mx-auto w-full max-w-7xl px-4 sm:px-6"
             links={[
@@ -4224,14 +4229,14 @@ export default function KitchenPreviewPage() {
               useChefChrome
                 ? "top-20"
                 : isAuthenticated
-                  ? "top-[calc(var(--header-height)+1rem)]"
+                  ? "top-[calc(var(--header-total)_+_1rem)]"
                   : staticSiteHeader
                     ? photosInView
                       ? "top-4"
                       : "top-16"
                     : photosInView
-                      ? "top-[calc(var(--header-height)+1rem)]"
-                      : "top-[calc(var(--header-height)+3.5rem)]"
+                      ? "top-[calc(var(--header-total)_+_1rem)]"
+                      : "top-[calc(var(--header-total)_+_3.5rem)]"
             )}
           >
             <div className="w-full min-w-0 space-y-3">
@@ -4448,7 +4453,7 @@ export default function KitchenPreviewPage() {
       {/* `hideHowItWorks` matches the other chef public pages - this one has no `how-it-works`
           section, so the item could only navigate back to the landing page. */}
       <Header hideHowItWorks position={staticSiteHeader ? "static" : "fixed"} />
-      <main className={cn("flex-1 pb-8 sm:pb-12 lg:pb-12", !staticSiteHeader && "pt-[var(--header-height)]")}>
+      <main className={cn("flex-1 pb-8 sm:pb-12 lg:pb-12", !staticSiteHeader && "pt-[var(--header-total)]")}>
         <div className="container mx-auto px-4 sm:px-6 max-w-7xl py-6 sm:py-8">
           {mainContent(locationData)}
         </div>

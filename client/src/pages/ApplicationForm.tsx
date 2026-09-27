@@ -209,7 +209,7 @@ export default function ApplicationForm() {
     return (
       <div className="min-h-screen flex flex-col bg-light-gray">
         <Header />
-        <main className="flex-grow pt-28 pb-16">
+        <main className="flex-grow pt-[calc(var(--header-total)_+_3rem)] pb-16">
           <motion.div
             className="container mx-auto px-4 max-w-2xl"
             initial={{ opacity: 0, y: 20 }}
@@ -248,7 +248,7 @@ export default function ApplicationForm() {
         />
         <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
         <Header />
-        <main className="relative z-10 flex-grow pb-10 pt-20 sm:pt-24">
+        <main className="relative z-10 flex-grow pb-10 pt-[calc(var(--header-total)_+_1rem)] sm:pt-[calc(var(--header-total)_+_2rem)]">
           {isLoading ? (
             <div role="status" className="container mx-auto px-4 sm:px-6 flex min-h-[50vh] flex-col items-center justify-center py-8 sm:py-12">
               <div className="relative flex h-16 w-16 items-center justify-center">
