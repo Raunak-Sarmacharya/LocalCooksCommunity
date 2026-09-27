@@ -578,16 +578,21 @@ export default function KitchenComparisonPage() {
               {/* Page hero */}
               <FadeInSection>
                 <div className="mb-6 max-w-2xl sm:mb-8">
-                  <h1 className="mb-3 text-3xl font-bold leading-tight text-[#1A1A1A] sm:text-4xl">
-                    {t("findYour", "Find your")}{" "}
+                  {/* The heading is two fragments so the gradient styles only the tail. The accent
+                      differs per locale (en "near you", fr "cuisines", uk "поблизу") because the
+                      literal French translation of the whole phrase is ~654px and wraps at every
+                      width. text-2xl below `sm` (was text-3xl): at 30px the longer heading no
+                      longer fits one line on phone widths. */}
+                  <h1 className="mb-3 text-2xl font-bold leading-tight text-[#1A1A1A] sm:text-4xl">
+                    {t("discoverHeadingPlain", "Discover kitchens")}{" "}
                     <span className="relative inline-block">
                       <span className="bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A] bg-clip-text text-transparent">
-                        {t("kitchenWord", "kitchen")}
+                        {t("discoverHeadingAccent", "near you")}
                       </span>
                     </span>
                   </h1>
                   <p className="max-w-xl text-sm leading-relaxed text-[#6B6B6B] sm:text-base">
-                    {t("browseKitchensHeroDesc", "Browse certified commercial kitchens in St. John's. Explore spaces freely and sign in when you are ready to book.")}
+                    {t("browseKitchensHeroDesc", "Browse certified commercial kitchens. Explore spaces freely and sign in when you are ready to book.")}
                   </p>
                 </div>
               </FadeInSection>

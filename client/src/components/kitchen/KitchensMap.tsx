@@ -272,16 +272,18 @@ export default function KitchensMap({
       });
       marker.on("mouseover", () => onHoverRef.current(markerData.locationId));
       marker.on("mouseout", () => onHoverRef.current(null));
-      marker.on("click", () => {
-        marker
-          .bindPopup(buildPopupHtml(markerData, popupLabelsRef.current), {
-            className: "kc-map-popup",
-            offset: [0, -6],
-            maxWidth: 280,
-            minWidth: 240,
-            closeButton: false,
-          })
-          .openPopup();
+      // Bind ONCE and let Leaflet open/close it on click. `bindPopup` registers Leaflet's own
+      // `click: _openPopup` toggle on the FIRST call, so calling it from a click handler of our
+      // own left the marker with two click listeners: ours opened the popup, Leaflet's saw it
+      // already open and closed it again - the pill went dead from its second click onward.
+      // Passing a FUNCTION keeps the content fresh (Leaflet re-evaluates it on every open), which
+      // is why the labels are read here rather than baked into a string at bind time.
+      marker.bindPopup(() => buildPopupHtml(markerData, popupLabelsRef.current), {
+        className: "kc-map-popup",
+        offset: [0, -6],
+        maxWidth: 280,
+        minWidth: 240,
+        closeButton: false,
       });
       marker.addTo(layer);
       markerLayersRef.current.set(markerData.locationId, marker);
