@@ -221,11 +221,17 @@ export interface ResolvedRequirement {
 const BUILT_IN_DOC_ROWS = STEP2_BUILT_IN_FIELDS.flatMap((group) => group.fields);
 
 /**
- * The built-in document requirements, resolved against a saved row.
+ * The built-in document requirements, in the wizard's own order.
  *
- * A switch that is OFF is not "not requested" in the abstract — it means the chef will
- * NOT be asked for it, so it is reported as optional rather than dropped. Dropping it
- * left the manager unable to confirm what they had turned off.
+ * This is the one the REVIEW reads, and it returns exactly what `RequirementsStepTwo` puts on
+ * screen: the same four rows, in the same order, with `required` carrying each switch's state.
+ *
+ * It deliberately does NOT group them. The wizard renders ONE flat list under a single card —
+ * the `title` on each `STEP2_BUILT_IN_FIELDS` group (Licensing & Compliance, Insurance &
+ * Liability, Experience & Background) is never displayed, and is not even read on that path,
+ * because the component flattens the groups into `FIELD_ROWS`. Headings invented for the
+ * review would be structure the manager never saw while configuring, which is what this
+ * review was already wrong about once.
  */
 export function resolveDocumentRequirements(
   requirements: Partial<LocationRequirements> | null | undefined,
@@ -239,9 +245,12 @@ export function resolveDocumentRequirements(
 }
 
 /**
- * The food-safety row appears in BOTH step-1 and step-2 field lists (it is asked as a
- * question in one and collected as a document in the other). De-duplicating on the key
- * here keeps the review showing one row per decision, which is what the wizard does.
+ * The built-in document requirements, de-duplicated on key.
+ *
+ * The food-safety row appears in BOTH the step-1 and step-2 field lists (asked as a question
+ * in one, collected as a document in the other). Kept for callers that combine both lists;
+ * the requirements review reads `resolveDocumentRequirements` directly, since that list is
+ * what the wizard renders and it has no duplicate to remove.
  */
 export function resolveDocumentRequirementsUnique(
   requirements: Partial<LocationRequirements> | null | undefined,
@@ -257,8 +266,12 @@ export function resolveDocumentRequirementsUnique(
 /**
  * The applicant questions, resolved against a saved row.
  *
- * Read from `STEP1_FIELD_GROUPS` — the same list the wizard's first pane renders — so the
- * review names exactly the fields the manager was shown.
+ * NOTE: the requirements REVIEW no longer reads this. `STEP1_FIELD_GROUPS` is the platform's
+ * standard application, owned by an admin and set in `PlatformRequirementsSection` — the
+ * onboarding wizard never renders it, so reporting these to a manager named switches they
+ * had never seen and could not change (2026-09-26). Kept because the admin screen and any
+ * future "what will a chef be asked for" view legitimately want the whole picture; do NOT
+ * feed it to a manager-facing recap without checking they can act on it.
  */
 export function resolveApplicantRequirements(
   requirements: Partial<LocationRequirements> | null | undefined,

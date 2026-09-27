@@ -293,6 +293,7 @@ export default function CreateKitchenStep() {
     registerStepSave,
     saveAndExit,
     isSubmitting,
+    kitchensLoaded,
   } = useManagerOnboarding();
 
   const { data: ctxData, setData, showCreate, setShowCreate, isCreating } = kitchenForm;
@@ -318,10 +319,12 @@ export default function CreateKitchenStep() {
   const [editSnapshot, setEditSnapshot] = useState<string | null>(null);
   /** Which of the three parts is showing. Part 0 owns the kitchen itself. */
   const { activePart, isSummary, editPart, goToPart, goNext, goBack } = useStepParts({
-    // `kitchens.length > 0` is both the completeness signal and the readiness one: it only
-    // becomes true once the fetch has landed, so there is nothing to wait for separately.
+    // A kitchen existing is what completes this step — but it is NOT the same question as
+    // "has the fetch landed", and passing it for both made the review open on the very render
+    // where part one saved (see below). `kitchensLoaded` is the fetch having returned; the two
+    // are deliberately different signals.
     isComplete: kitchens.length > 0,
-    isReady: kitchens.length > 0,
+    isReady: Boolean(kitchensLoaded),
     partCount: PART_COUNT,
   });
   // Continuing to a shorter part used to leave you mid-page.

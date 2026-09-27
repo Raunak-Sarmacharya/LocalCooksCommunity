@@ -16,13 +16,13 @@ import {
   equipmentListings,
   kitchens,
   kitchenViewingSettings,
-  locationRequirements,
   storageListings,
   users,
 } from "@shared/schema";
 import { licenseAllowsBookings } from "@shared/kitchen-license";
 import {
   buildListingChecklist,
+  hasAnyApplicationRequirement,
   type ListingChecklist,
   type ListingReadinessInput,
 } from "@shared/kitchen-listing-readiness";
@@ -89,16 +89,23 @@ export async function buildKitchenReadiness(
     ? await locationService.getLocationById(kitchen.locationId).catch(() => null)
     : null;
 
-  const [availability, requirementsRow, viewingSettings, equipmentRows, storageRows] =
+  const [availability, requirements, viewingSettings, equipmentRows, storageRows] =
     await Promise.all([
     kitchenService.getKitchenAvailability(kitchenId).catch(() => []),
+    /*
+     * The requirements WITH their defaults, through the service that owns them.
+     *
+     * This used to be a second, partial query (`select { id }`) whose LENGTH was the answer to
+     * "is the application configured" — which made an untouched kitchen look unconfigured and
+     * blocked its publishing. Reading it through the service is also what keeps this in step
+     * with the chef-facing application, which resolves the same defaults at every entry point.
+     * A failure reads as `null`, which the rule below treats as "no asks saved".
+     */
     location
-      ? db
-          .select({ id: locationRequirements.id })
-          .from(locationRequirements)
-          .where(eq(locationRequirements.locationId, location.id))
-          .limit(1)
-      : Promise.resolve([]),
+      ? locationService
+          .getLocationRequirementsWithDefaults(location.id)
+          .catch(() => null)
+      : Promise.resolve(null),
       db
         .select({ isActive: kitchenViewingSettings.isActive })
         .from(kitchenViewingSettings)
@@ -157,7 +164,13 @@ export async function buildKitchenReadiness(
     hasAvailability: availabilityDayCount > 0,
     hasCoverPhoto: isNonEmptyText(kitchen.imageUrl),
     stripeConnected,
-    hasApplicationRequirements: requirementsRow.length > 0,
+    /*
+     * "At least one ask is ON", not "a row exists" — see the field's note in the shared module.
+     * `getLocationRequirementsWithDefaults` fills in the platform defaults when nothing is
+     * saved, so an untouched kitchen passes on the defaults; only a row with every ask switched
+     * off fails.
+     */
+    hasApplicationRequirements: hasAnyApplicationRequirement(requirements),
     hasGalleryImages: galleryImages.length > 0,
     hasTerms: isNonEmptyText(location?.kitchenTermsUrl),
     toursEnabled: Boolean(viewingSettings[0]?.isActive),
@@ -185,7 +198,7 @@ export async function buildKitchenReadiness(
       availabilityDayCount,
       licenseStatus: location?.kitchenLicenseStatus ?? "not_uploaded",
       stripeAccountId,
-      hasApplicationRequirements: requirementsRow.length > 0,
+      hasApplicationRequirements: hasAnyApplicationRequirement(requirements),
       termsUploadedAt: location?.kitchenTermsUploadedAt ?? null,
       toursEnabled: Boolean(viewingSettings[0]?.isActive),
       cancellationPolicyHours: location?.cancellationPolicyHours ?? 24,

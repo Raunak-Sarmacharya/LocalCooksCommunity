@@ -83,9 +83,9 @@ export function RequirementsStepTwo({
 
             return (
               <SettingsRow key={field.key} id={controlId} label={field.label} hint={hint}
+                badge={complianceHelp && <Badge variant="secondary" className="text-[10px] font-medium">Compliance</Badge>}
                 help={complianceHelp && <span>{complianceHelp.text} <a href={complianceHelp.url} target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline">{complianceHelp.link}</a></span>}>
                 <div className="flex items-center gap-3">
-                  {complianceHelp && <Badge variant="secondary" className="text-[10px] font-medium">Compliance</Badge>}
                   <span
                     className={cn(
                       "text-xs font-medium",

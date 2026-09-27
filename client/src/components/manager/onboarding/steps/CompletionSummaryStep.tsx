@@ -37,8 +37,8 @@ export default function CompletionSummaryStep() {
         kitchens,
         setIsOpen,
         isStripeOnboardingComplete,
-        hasAvailability,
-        hasRequirements,
+        isAvailabilityComplete,
+        isRequirementsComplete,
         storageForm,
         equipmentForm,
         goToStep,
@@ -71,22 +71,33 @@ export default function CompletionSummaryStep() {
         });
 
         // 3. Availability
+        //
+        // Reads `isAvailabilityComplete`, the SHARED rule — not `hasAvailability`, which only
+        // answers "is there a real open day". Reading the data flag alone made this row say
+        // "incomplete" for a manager whose rail had just ticked the step, so the summary
+        // contradicted the sidebar on the same screen (2026-09-26).
         items.push({
             id: "availability",
             label: mt("onboardingAvailability"),
-            status: hasAvailability ? 'complete' : 'incomplete',
+            status: isAvailabilityComplete ? 'complete' : 'incomplete',
             isRequired: true,
-            description: hasAvailability ? mt("onboardingScheduleConfigured") : mt("onboardingSetOperatingHours"),
+            description: isAvailabilityComplete ? mt("onboardingScheduleConfigured") : mt("onboardingSetOperatingHours"),
             stepId: 'availability'
         });
 
         // 4. Application Requirements
+        //
+        // Reads `isRequirementsComplete`, the SHARED rule — not `hasRequirements`, which only
+        // answers "is a row saved". The availability row above was fixed for exactly this
+        // reason and this one was left behind: the step ships with the defaults pre-filled, so
+        // a manager who accepted them writes no row, and the row below said "incomplete" for
+        // someone whose rail had already ticked the step (2026-09-26).
         items.push({
             id: "requirements",
             label: mt("onboardingChefRequirements"),
-            status: hasRequirements ? 'complete' : 'incomplete',
+            status: isRequirementsComplete ? 'complete' : 'incomplete',
             isRequired: true,
-            description: hasRequirements ? mt("onboardingApplicationFieldsSet") : mt("onboardingConfigureApplicationFields"),
+            description: isRequirementsComplete ? mt("onboardingApplicationFieldsSet") : mt("onboardingConfigureApplicationFields"),
             stepId: 'application-requirements'
         });
 
@@ -145,7 +156,7 @@ export default function CompletionSummaryStep() {
         });
 
         return items;
-    }, [selectedLocation, kitchens, hasAvailability, hasRequirements, isStripeOnboardingComplete, storageForm, equipmentForm]);
+    }, [selectedLocation, kitchens, isAvailabilityComplete, isRequirementsComplete, isStripeOnboardingComplete, storageForm, equipmentForm]);
 
     // Calculate readiness - License pending counts as "done" for onboarding completion
     const requiredItems = setupItems.filter(item => item.isRequired);

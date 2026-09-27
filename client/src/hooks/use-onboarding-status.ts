@@ -70,16 +70,45 @@ export function buildManagerSetupSteps(status: {
     isProfileComplete?: boolean;
     hasUploadedLicense: boolean;
     hasKitchens: boolean;
-    hasAvailability: boolean;
-    hasRequirements: boolean;
+    /**
+     * Whether the availability step is BEHIND the manager — not whether an open day exists.
+     *
+     * The row is labelled "Set your availability & booking policies" and sits under Getting
+     * started beside kitchen / requirements / payments, so it is a PROGRESS row: the manager
+     * has been through the step, accepted the pre-filled policies, and is done with it. Its
+     * two halves are the schedule AND the policies, and most managers take the policies as
+     * given — so a row that only counted open days told them to set availability they had
+     * already dealt with, and sent them back into the step they had finished (2026-09-26).
+     *
+     * `hasOpenDays` below is the OTHER question — "is there anything to book?" — and it is
+     * the one the publish/booking gate asks. Keep them apart: one flag cannot answer both.
+     */
+    availabilityStepDone: boolean;
+    /**
+     * Whether the Requirements step is BEHIND the manager — not whether a saved row exists.
+     *
+     * Same distinction as `availabilityStepDone` above, for the same reason. The step ships
+     * with the platform defaults already filled in, so the common path is a manager who reads
+     * them, changes nothing, and moves on — and no row is ever written. `hasRequirements` means
+     * "a `location_requirements` row exists (`id > 0`)", so reading it alone kept this row
+     * `complete: false` on the dashboard banner ("Your next setup step — Chef requirements")
+     * after the manager had finished the step AND the wizard's own rail had ticked it
+     * (2026-09-26).
+     *
+     * The two ways in are the same two as the context's `isRequirementsStepBehindUs`: a saved
+     * row, or the step's completion in the durable record — which the engine POSTs when the
+     * manager leaves the step's review. Keep this and that predicate in step; they answer one
+     * question and a third spelling of it is what caused the bug.
+     */
+    requirementsStepDone: boolean;
     isStripeComplete: boolean;
 }): ManagerSetupStep[] {
     return [
         { id: 'profile', labelKey: 'managerSetupStepProfile', complete: status.isProfileComplete ?? true },
         { id: 'license', labelKey: 'managerSetupStepLicense', complete: status.hasUploadedLicense },
         { id: 'kitchen', labelKey: 'managerSetupStepKitchen', complete: status.hasKitchens },
-        { id: 'availability', labelKey: 'managerSetupStepAvailability', complete: status.hasAvailability },
-        { id: 'requirements', labelKey: 'managerSetupStepRequirements', complete: status.hasRequirements },
+        { id: 'availability', labelKey: 'managerSetupStepAvailability', complete: status.availabilityStepDone },
+        { id: 'requirements', labelKey: 'managerSetupStepRequirements', complete: status.requirementsStepDone },
         { id: 'payments', labelKey: 'managerSetupStepPayments', complete: status.isStripeComplete },
     ];
 }
@@ -305,6 +334,34 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
 
     const hasAvailability = shouldSkipDetailedQueries ? true : !!availabilityData;
 
+    /*
+     * Whether the availability step is BEHIND the manager — the progress question, which is
+     * NOT the same as `hasAvailability` ("is there an open day to book?").
+     *
+     * The durable record is the authority: the engine POSTs the step's completion when the
+     * manager leaves its review, and `/api/user/profile` returns it as
+     * `managerOnboardingStepsCompleted`. Both spellings are read because the wizard's own
+     * context reads the snake_case one, which the profile endpoint does not actually send —
+     * so at least one of these two readers is wrong, and guessing which would be the third
+     * time this codebase has shipped a definition of a fact that nothing can satisfy.
+     *
+     * `hasAvailability` is kept in the OR: a manager who set a real schedule but whose session
+     * predates the durable write is still plainly done with the step.
+     */
+    const completedStepMap =
+        (userData?.managerOnboardingStepsCompleted as Record<string, boolean> | undefined) ??
+        (userData?.manager_onboarding_steps_completed as Record<string, boolean> | undefined) ??
+        {};
+    /*
+     * A location-scoped key counts for ANY location, not just the selected one — the wizard
+     * writes `availability_location_<id>` and the manager may have since switched. The pattern
+     * is the same one the wizard's own normaliser uses, so the two cannot drift.
+     */
+    const availabilityStepDone =
+        Object.entries(completedStepMap).some(
+            ([key, done]) => !!done && /^availability(?:_location_\d+)?$/.test(key),
+        ) || hasAvailability;
+
     // 5. Fetch Requirements Status
     // SKIP when onboarding is complete
     const { data: requirementsData, isLoading: isLoadingRequirements } = useQuery({
@@ -324,6 +381,21 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
     });
 
     const hasRequirements = shouldSkipDetailedQueries ? true : !!(requirementsData && Number(requirementsData.id) > 0);
+
+    /*
+     * The other half of the Requirements question, derived the same way as `availabilityStepDone`.
+     *
+     * `hasRequirements` is "a row was saved". The step is also DONE when the manager reached its
+     * review and accepted the pre-filled defaults, which writes no row — the engine records that
+     * in `managerOnboardingStepsCompleted` instead. Reading only the row flag is what kept the
+     * dashboard's setup banner offering "Chef requirements" after the step was finished and its
+     * rail was ticked (2026-09-26). Same regex shape as the availability key above, so the two
+     * derivations cannot drift apart.
+     */
+    const requirementsStepDone =
+        Object.entries(completedStepMap).some(
+            ([key, done]) => !!done && /^application-requirements(?:_location_\d+)?$/.test(key),
+        ) || hasRequirements;
 
     // --- Logic ---
 
@@ -358,20 +430,36 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
         isProfileComplete: hasVerifiedEmail(firebaseUser, userData),
         hasUploadedLicense: shouldSkipDetailedQueries || hasUploadedLicense,
         hasKitchens: shouldSkipDetailedQueries || hasKitchens,
-        hasAvailability,
-        hasRequirements,
+        availabilityStepDone: shouldSkipDetailedQueries || availabilityStepDone,
+        requirementsStepDone: shouldSkipDetailedQueries || requirementsStepDone,
         isStripeComplete,
     });
 
-    // Onboarding Complete = All steps done with license UPLOADED (not necessarily approved)
-    // When DB flag is set, trust it (manager already completed all required steps)
+    /*
+     * Onboarding Complete = every step the wizard asks for has been done, with the licence
+     * UPLOADED (not necessarily approved).
+     *
+     * The availability term is the STEP being behind the manager, not an open day existing. It
+     * used to be `hasAvailability`, which made this disagree with the wizard: the wizard let the
+     * manager finish by accepting the pre-filled policies without a schedule, ticked the step,
+     * and then this said onboarding was incomplete — the dashboard banner kept offering a step
+     * that was already finished, and the manager could loop (2026-09-26). Same defect shape as
+     * the Stripe connected/initiated split, one layer further out.
+     *
+     * `isReadyForBookings` below still reads `hasAvailability`, because THAT question really is
+     * "is there anything to book" — a kitchen with no hours cannot take a booking.
+     *
+     * The requirements term follows the same rule for the same reason: `requirementsStepDone`
+     * (a saved row OR the step's completion in the durable record), never `hasRequirements`,
+     * which demands a row a manager who accepted the defaults never writes.
+     */
     const isOnboardingComplete = shouldSkipDetailedQueries 
         ? true 
         : (isStripeComplete &&
            hasUploadedLicense && // Just needs to be uploaded
            hasKitchens &&
-           hasAvailability &&
-           hasRequirements);
+           availabilityStepDone &&
+           requirementsStepDone);
 
     // Ready for Bookings = Can accept bookings (license must be APPROVED)
     // Even when onboarding is complete, license approval determines booking readiness

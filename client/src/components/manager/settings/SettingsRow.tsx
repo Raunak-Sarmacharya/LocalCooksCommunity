@@ -98,6 +98,13 @@ interface SettingsRowProps {
   required?: boolean;
   /** One short line of context. Omit when the label already says it. */
   hint?: string;
+  /**
+   * A short tag that belongs with the field name rather than with the control —
+   * e.g. a "Compliance" marker on a row that carries regulatory weight. Rendered
+   * inline after the label and after the ⓘ, so the marker travels with the name
+   * it qualifies instead of reading as part of the value on the right.
+   */
+  badge?: ReactNode;
   /** Longer explanation, revealed from the ⓘ next to the label. */
   help?: ReactNode;
   /**
@@ -149,6 +156,7 @@ export function SettingsRow({
   label,
   required = false,
   hint,
+  badge,
   help,
   advisory,
   layout = "inline",
@@ -174,6 +182,7 @@ export function SettingsRow({
           ) : null}
         </Label>
         {help ? <RowHelp label={label}>{help}</RowHelp> : null}
+        {badge}
       </div>
       {locked ? (
         <p className="mt-0.5 flex items-start gap-1 text-xs text-muted-foreground">

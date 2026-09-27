@@ -15,8 +15,8 @@ describe("buildManagerSetupSteps", () => {
       isProfileComplete: false,
       hasUploadedLicense: true,
       hasKitchens: true,
-      hasAvailability: false,
-      hasRequirements: false,
+      availabilityStepDone: false,
+      requirementsStepDone: false,
       isStripeComplete: false,
     });
 
@@ -132,8 +132,8 @@ describe("shouldShowSidebarGuidance", () => {
       isProfileComplete: true,
       hasUploadedLicense: false,
       hasKitchens: false,
-      hasAvailability: false,
-      hasRequirements: false,
+      availabilityStepDone: false,
+      requirementsStepDone: false,
       isStripeComplete: false,
       ...overrides,
     });
@@ -141,8 +141,8 @@ describe("shouldShowSidebarGuidance", () => {
   const allDone = {
     hasUploadedLicense: true,
     hasKitchens: true,
-    hasAvailability: true,
-    hasRequirements: true,
+    availabilityStepDone: true,
+    requirementsStepDone: true,
     isStripeComplete: true,
   } as const;
 

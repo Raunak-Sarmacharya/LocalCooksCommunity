@@ -72,7 +72,7 @@ const AvailabilityStep = () => {
         refreshAvailability,
         refreshLocation,
         hasAvailability,
-        availabilityStepCompleted,
+        isAvailabilityComplete,
         setAvailabilityStepCompleted,
         availabilityLoaded,
         hasUnsavedChanges,
@@ -86,10 +86,14 @@ const AvailabilityStep = () => {
     /**
      * A finished Availability step opens on its review.
      *
-     * `isComplete` is `hasAvailability || availabilityStepCompleted`: a real schedule means the
-     * step is done, and so does having been through it — the second is how a manager who accepts
-     * the (already-defaulted) booking policies and moves on gets the step ticked, rather than
-     * being kept in a permanently-incomplete step for work they chose to do from the dashboard.
+     * `isComplete` is the SHARED `isAvailabilityComplete`: a real schedule means the step is
+     * done, and so does having been through it — the second is how a manager who accepts the
+     * (already-defaulted) booking policies and moves on gets the step ticked, rather than being
+     * kept in a permanently-incomplete step for work they chose to do from the dashboard.
+     *
+     * Read from the context rather than re-spelling `hasAvailability || availabilityStepCompleted`
+     * here: that expression was written out in three readers and one of them (the setup summary)
+     * drifted to the stricter half, which is how the rail ticked while the summary did not.
      *
      * `availabilityLoaded` — not `hasAvailability` — is the readiness signal: the flag is false
      * until the fetch lands, so deciding on it would open every revisit at part 0 and never reach
@@ -97,7 +101,7 @@ const AvailabilityStep = () => {
      * manager onto the review before they have seen the policies.
      */
     const { activePart, isSummary, editPart, goNext, goBack } = useStepParts({
-        isComplete: Boolean(hasAvailability) || Boolean(availabilityStepCompleted),
+        isComplete: Boolean(isAvailabilityComplete),
         isReady: Boolean(availabilityLoaded),
         partCount: PART_COUNT,
     });

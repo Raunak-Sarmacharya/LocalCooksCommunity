@@ -5,9 +5,8 @@ import { CheckCircle, ClipboardList } from "@/components/ui/manager-icons";
 import { ApplicationRequirementsWizard } from "@/components/manager/requirements";
 import type { ApplicationRequirementsWizardHandle } from "@/components/manager/requirements";
 import {
-  resolveApplicantRequirements,
   resolveCustomRequirements,
-  resolveDocumentRequirementsUnique,
+  resolveDocumentRequirements,
   type LocationRequirements,
   type ResolvedRequirement,
 } from "@/components/manager/requirements/types";
@@ -88,70 +87,64 @@ export default function ApplicationRequirementsStep() {
   }, [isSummary, selectedLocationId]);
 
   /**
-   * The manager's decisions, by NAME.
+   * The manager's decisions, exactly as the wizard showed them.
    *
    * Counts ("3 of 13 required") told the manager how many switches they had left on, which
    * is not a thing anyone can check — they came here to see what a chef will be asked for.
-   * These are read off the very field lists the wizard renders (see `types.ts`), so the
-   * review cannot describe a different form from the one that produced it.
+   * So the rows are read off the very field list the wizard renders (see `types.ts`), in the
+   * same order, one row per switch. Intentional structure the wizard did not display — group
+   * headings, or a Required/Optional split of a list the manager saw as one — would be a
+   * second interpretation of the pane, which is what this screen got wrong before.
    *
-   * A switch that is OFF is reported as OPTIONAL rather than dropped: it is still a decision
+   * The applicant-information section is deliberately NOT here. Those fields are the
+   * platform's standard application questions, owned by Local Cooks and set by an admin —
+   * the onboarding wizard never renders them, so listing them here named thirteen switches
+   * the manager had never seen and could not change. The heading's `meta` line says what
+   * happens to them instead: one sentence, not a list.
+   *
+   * A switch that is OFF is reported as Optional rather than dropped: it is still a decision
    * the manager made, and leaving it out would hide what they turned off.
    */
   const requirementSections = useMemo(() => {
-    const toGroups = (rows: ResolvedRequirement[]) => {
-      const required = rows.filter((row) => row.required);
-      const optional = rows.filter((row) => !row.required);
-      const toRow = (row: ResolvedRequirement) => ({
-        key: row.key,
-        label: row.label,
-        value: row.description ?? "",
-        // The name is the information here; the description annotates it.
-        emphasis: "label" as const,
-      });
-      return [
-        {
-          key: "required",
-          title: mt("requirementsSummaryRequired"),
-          count: required.length,
-          // An empty required list is a FACT worth stating, not a gap: "every field here is
-          // optional" is a very different contract from "this section is broken".
-          rows: required.length > 0
-            ? required.map(toRow)
-            : [{ key: "none-required", value: mt("requirementsSummaryNothingRequired") }],
-        },
-        {
-          key: "optional",
-          title: mt("requirementsSummaryOptional"),
-          count: optional.length,
-          rows: optional.length > 0
-            ? optional.map(toRow)
-            : [{ key: "none-optional", value: mt("requirementsSummaryNothingOptional") }],
-        },
-      ];
-    };
+    const toRow = (row: ResolvedRequirement) => ({
+      key: row.key,
+      label: row.label,
+      // The name is the information here; the state is the annotation on the trailing edge.
+      value: row.description ?? "",
+      emphasis: "label" as const,
+      /*
+       * Every row carries its own state.
+       *
+       * The wizard shows a Required/Optional word on every switch row, so the review does the
+       * same and the two screens read alike. Splitting into "Required" and "Optional"
+       * sub-groups instead would re-order the list into a shape the manager never saw, and
+       * the reason to come here is to check the list they DID see.
+       */
+      tag: row.required ? mt("requirementsSummaryRequired") : mt("requirementsSummaryOptional"),
+      tagStrong: row.required,
+    });
+
+    const customRows = resolveCustomRequirements(saved);
 
     return [
       {
-        key: "info",
-        title: mt("requirementsSummaryInfo"),
-        groups: toGroups(saved ? resolveApplicantRequirements(saved) : []),
-      },
-      {
         key: "documents",
-        title: mt("requirementsSummaryDocuments"),
-        groups: toGroups(resolveDocumentRequirementsUnique(saved)),
+        // The wizard's own card title, verbatim, so the review's heading is the string the
+        // manager configured under rather than a second name for the same list.
+        title: mt("step2Documents"),
+        // The ONE Edit for this single-pane step. It lives here, on the heading of the list it
+        // opens, rather than on the page title above: the button acts on the requirements list,
+        // so it belongs on that list's own row. `heading` below therefore carries NO part —
+        // a part reachable from two controls is the defect `StepSummary` exists to prevent.
+        part: 0,
+        rows: resolveDocumentRequirements(saved).map(toRow),
       },
       {
         key: "custom",
         title: mt("requirementsSummaryCustom"),
-        groups: (() => {
-          const rows = resolveCustomRequirements(saved);
-          if (rows.length === 0) {
-            return [{ key: "none", title: "", rows: [{ key: "no-custom", value: mt("requirementsSummaryNoCustom") }] }];
-          }
-          return toGroups(rows);
-        })(),
+        rows: customRows.length > 0
+          ? customRows.map(toRow)
+          : [{ key: "no-custom", value: mt("requirementsSummaryNoCustom") }],
       },
     ];
   }, [saved]);
@@ -243,17 +236,27 @@ export default function ApplicationRequirementsStep() {
       )}
 
       {/*
-       * The review. The wizard is one pane, so its rows carry no Edit of their own — three
-       * buttons that all open the same form would be three ways to say one thing. The
-       * heading carries the single action instead.
+       * The review. The wizard is one pane, so its rows carry no Edit of their own — four
+       * buttons that all open the same form would be four ways to say one thing.
        *
-       * Each section splits into Required and Optional, and the SPLIT is the marking: a
-       * per-row "Required" pill under a heading that already says Required is six
-       * repetitions of a fact already stated. Marking everything marks nothing.
+       * The single Edit sits on the "Chef Application Requirements" section row, right-aligned
+       * above the list it opens. It used to sit on the page title, which put the action on the
+       * heading of the whole screen rather than on the thing it acts on — and the title's
+       * explanatory line beside it pushed the button onto a second, left-aligned line.
+       *
+       * `heading` deliberately carries NO `part`: `StepSummary` will not let one part be
+       * reachable from two controls.
+       *
+       * The `meta` slot takes the one fact that does NOT belong in a list: the standard
+       * applicant details and agreements are collected for every application and are not the
+       * manager's to configure.
        */}
       {isSummary && (
         <StepSummary
-          heading={{ title: mt("requirementsSummaryHeading"), part: 0 }}
+          heading={{
+            title: mt("requirementsSummaryHeading"),
+            meta: mt("requirementsSummaryAlsoCollected"),
+          }}
           sections={requirementSections}
           onEdit={editPart}
           noteTitle={mt("requirementsRecapTitle")}
@@ -269,7 +272,17 @@ export default function ApplicationRequirementsStep() {
         showBack={!isSummary && !isFirstStep}
         hasUnsavedWork={wizardDirty}
         nextLabel={wizardDirty ? mt("saveAndContinue") : tt("continue")}
-        isNextDisabled={!isSummary && !hasRequirements && !wizardDirty}
+        /*
+         * Never blocked.
+         *
+         * This pane shows the requirements a kitchen starts with — the platform defaults the
+         * endpoint already returns. A manager who reads them and changes nothing has made a
+         * decision, and there is nothing to save for the review to be truthful: the review
+         * reads the same endpoint the wizard does. Gating on `hasRequirements` demanded a
+         * saved row (`id > 0`), so accepting the defaults left Continue disabled forever with
+         * no visible reason. The wizard still auto-saves real edits on the way through.
+         */
+        isNextDisabled={false}
         isLoading={isSaving}
         isSavingAndExiting={isSubmitting}
       />

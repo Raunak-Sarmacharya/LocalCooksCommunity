@@ -149,8 +149,36 @@ interface ManagerOnboardingContextType {
    * state itself: overloading `hasAvailability` would let the kitchen check un-tick the step.
    */
   availabilityStepCompleted?: boolean;
+  /**
+   * THE availability rule, in one place: "this step is behind you".
+   *
+   * True when a real open day exists OR the manager has been through the step and reached its
+   * review — a schedule is ONE way to be done with it, accepting the pre-filled policies is
+   * another, and that is the way most managers take.
+   *
+   * **Every surface reads THIS, never `hasAvailability` on its own.** The rule used to be
+   * spelled out separately in three readers — the rail tick, the step's own `isComplete`, and
+   * the setup summary — and the summary was left on the stricter `hasAvailability`-only
+   * version. So a manager who skipped the schedule saw the rail tick, completed onboarding,
+   * and was then told by the summary AND the dashboard banner that availability was still
+   * missing (2026-09-26). Two definitions of one fact; one of them was wrong.
+   */
+  isAvailabilityComplete?: boolean;
   /** Mark the Availability & policies step done without a schedule. Called on reaching its review. */
   setAvailabilityStepCompleted?: (completed: boolean) => void;
+  /**
+   * Whether the Requirements step is behind the manager.
+   *
+   * **Every surface reads THIS, never `hasRequirements` on its own** — the same rule the
+   * availability flag above carries, and it had to be learned twice. `hasRequirements` means
+   * "a `location_requirements` row exists"; the step ships pre-filled, so a manager who accepts
+   * the defaults writes no row and the flag stays false forever. The setup-complete page and
+   * the dashboard banner both read the raw flag and kept asking for a finished step.
+   *
+   * The rule is `isRequirementsStepBehindUs` (exported above): a saved row OR the step's
+   * completion in the durable record.
+   */
+  isRequirementsComplete?: boolean;
   /**
    * Whether the availability check has actually returned.
    *
@@ -159,6 +187,18 @@ interface ManagerOnboardingContextType {
    * a flag that has not been read yet.
    */
   availabilityLoaded?: boolean;
+  /**
+   * Whether the kitchen fetch has actually returned — separately from whether a kitchen exists.
+   *
+   * `kitchens.length > 0` answers BOTH "the fetch has landed" and "there is a kitchen", which
+   * is why the kitchen step used it for its readiness signal as well as its completeness one.
+   * Those are not the same question: a manager with no kitchen, whose fetch has returned
+   * nothing, is loaded-but-empty, and a manager who has just saved part one of the kitchen step
+   * is complete-in-the-same-commit-they-loaded. Collapsing them made the step's review open on
+   * the render where part one saved, before a competing `goToPart(1)` pulled the manager back —
+   * a visible flash (2026-09-26). Pass THIS as the step's readiness signal.
+   */
+  kitchensLoaded?: boolean;
   refreshAvailability?: () => Promise<void>; // [NEW] Trigger refresh after saving availability
   /**
    * Re-read the LOCATION after a write that changes it.
@@ -293,6 +333,62 @@ interface ManagerOnboardingContextType {
 }
 
 const ManagerOnboardingContext = createContext<ManagerOnboardingContextType | undefined>(undefined);
+
+/**
+ * THE availability rule: "is this step behind you?", in one place.
+ *
+ * Three ways in, one meaning out. A real open day is one answer; having been through the step
+ * and reached its review is another (accepting the pre-filled booking policies is how most
+ * managers finish it); and the DURABLE record of that visit is the third, so the answer
+ * survives the context remounting — which it does on the redirect that follows the payment
+ * step, and which is what made the rail tick vanish while the manager was mid-wizard.
+ *
+ * This is for ONBOARDING progress, not bookability. A kitchen with no opening hours still
+ * cannot be listed (`listingReq_availability` is "Opening hours"), and that gate reads the
+ * data flag, not this.
+ *
+ * Exported and pure because this rule was spelled out in three separate readers and one of
+ * them drifted: the setup summary kept the `hasAvailability`-only version, so a manager who
+ * skipped the schedule saw the rail tick, then a summary and a dashboard banner both saying
+ * availability was still missing (2026-09-26).
+ */
+export function isAvailabilityStepBehindUs(input: {
+  hasAvailability?: boolean;
+  availabilityStepCompleted?: boolean;
+  dbCompletedSteps?: Record<string, boolean>;
+}): boolean {
+  return Boolean(
+    input.hasAvailability ||
+      input.availabilityStepCompleted ||
+      input.dbCompletedSteps?.['availability'],
+  );
+}
+
+/**
+ * Whether the Requirements step is behind the manager.
+ *
+ * Two ways in, one meaning out. A saved `location_requirements` row is the obvious one; the
+ * other is that the manager reached the step's REVIEW and accepted what it showed them.
+ *
+ * The review IS the decision. This pane ships with the platform defaults already filled in,
+ * so the common case is a manager who reads them, changes nothing, and moves on — and for
+ * them no row is ever written. `hasRequirements` means "a row exists" (`id > 0`), which is
+ * why reading it alone left the sidebar unticked and the dashboard banner still asking for a
+ * step that had been completed, the same loop `isAvailabilityStepBehindUs` above was written
+ * to end.
+ *
+ * What it does NOT mean: that the manager has customised anything. Nothing downstream reads
+ * this as a claim about the requirements' CONTENT; the chef-facing application reads the
+ * saved row (or the defaults) directly.
+ */
+export function isRequirementsStepBehindUs(input: {
+  hasRequirements?: boolean;
+  dbCompletedSteps?: Record<string, boolean>;
+}): boolean {
+  return Boolean(
+    input.hasRequirements || input.dbCompletedSteps?.['application-requirements'],
+  );
+}
 
 /**
  * The two Stripe facts, derived in ONE place from the status endpoint's payload.
@@ -483,10 +579,56 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     resolveStripeState(stripeConnectStatus);
   const [dbCompletedSteps, setDbCompletedSteps] = useState<Record<string, boolean>>({});
 
+  /**
+   * THE availability rule — see the context type for the full note.
+   *
+   * Derived here (after `dbCompletedSteps`, which it reads) so the rail tick, the step's own
+   * "open on the review" decision and the setup summary cannot disagree. They did: the summary
+   * was left reading `hasAvailability` alone, so a manager who skipped the schedule got a tick,
+   * finished onboarding, and was then told by the summary AND the dashboard that availability
+   * was still missing.
+   *
+   * The third term is the DURABLE one. `availabilityStepCompleted` is React state, so it dies
+   * with the context — and the context remounts on the redirect that follows the payment step.
+   * The manager saw the tick, went to payment, came back, and the tick had vanished, so the
+   * step demanded the review all over again. The engine already POSTs the step's completion to
+   * `/api/manager/onboarding/step` when the manager leaves the review, so `dbCompletedSteps`
+   * holds it — reading it back is what makes "this step is behind you" outlast the component
+   * that recorded it.
+   */
+  const isAvailabilityComplete = isAvailabilityStepBehindUs({
+    hasAvailability,
+    availabilityStepCompleted,
+    dbCompletedSteps,
+  });
+
+  /*
+   * The same three-signal shape, for the step after Availability.
+   *
+   * Declared here rather than inline at the checklist row so the rule has exactly one owner:
+   * the rail tick, the stepper and anything added later all read this value, instead of each
+   * re-deriving "is requirements done" from `hasRequirements` and drifting.
+   */
+  const isRequirementsComplete = isRequirementsStepBehindUs({
+    hasRequirements,
+    dbCompletedSteps,
+  });
+
   // Normalize legacy numeric step keys to string format for UI consumption
   useEffect(() => {
-    if (userData?.manager_onboarding_steps_completed) {
-      const rawSteps = userData.manager_onboarding_steps_completed as Record<string, boolean>;
+    /*
+     * The field is `managerOnboardingStepsCompleted` — camelCase, because Drizzle names the
+     * column that way and `/api/user/profile` spreads the row straight out (`...safeUser`). The
+     * snake_case spelling read here never matched anything, so this effect did nothing and
+     * `dbCompletedSteps` stayed empty for the whole session. That is the mechanism behind "the
+     * tick was there, and then it was gone": the step's completion was only ever held in React
+     * state, and a remount (the redirect after the payment step does exactly that) lost it.
+     *
+     * Both spellings are accepted so a future shape change cannot silently empty this again.
+     */
+    const rawSteps = (userData?.managerOnboardingStepsCompleted ??
+      userData?.manager_onboarding_steps_completed) as Record<string, boolean> | undefined;
+    if (rawSteps) {
       const normalized: Record<string, boolean> = {};
 
       for (const [key, value] of Object.entries(rawSteps)) {
@@ -586,9 +728,11 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       result['create-kitchen'] = true;
     }
 
-    // Application Requirements is complete if location_requirements record exists
-    // This is DATA-DRIVEN - must be saved via the Save button
-    if (hasRequirements) {
+    // Application Requirements is done if a `location_requirements` row exists, OR the
+    // manager has been through the step and reached its review. The rule lives in
+    // `isRequirementsStepBehindUs` above — this surface must not restate it, or the next
+    // surface will restate it differently.
+    if (isRequirementsComplete) {
       result['application-requirements'] = true;
     }
 
@@ -605,8 +749,12 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
      * answers "is there anything to book", and that is what the dashboard's Getting Started
      * checklist and the publish readiness gate read — a manager who skips the schedule will
      * still be told, where it matters, that the kitchen has no hours yet.
+     *
+     * The RULE lives in `isAvailabilityComplete` (declared above), which every surface reads —
+     * this line used to be the only place that knew it, so the summary kept the stricter
+     * `hasAvailability`-only version and contradicted the rail.
      */
-    if (hasAvailability || availabilityStepCompleted) {
+    if (isAvailabilityComplete) {
       result['availability'] = true;
     }
 
@@ -639,7 +787,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
 
     return result;
   }, [locations, selectedLocationId, kitchens.length,
-    hasRequirements, hasAvailability, availabilityStepCompleted, isStripeOnboardingComplete,
+    isRequirementsComplete, isAvailabilityComplete, isStripeOnboardingComplete,
     dbCompletedSteps, isAddingLocation]);
 
   // Build visible steps: show all steps, but skip welcome if returning user with location
@@ -2009,9 +2157,12 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     isStripeOnboardingComplete,
     isStripeConnected,
     hasAvailability,
+    isAvailabilityComplete,
     availabilityStepCompleted,
     setAvailabilityStepCompleted,
+    isRequirementsComplete,
     availabilityLoaded,
+    kitchensLoaded,
     refreshAvailability: async () => {
       // The same LOCATION-scoped rule as the check above. A save can therefore only ever turn the
       // step ON — which is the point: finishing a step must not be undone by a later kitchen.

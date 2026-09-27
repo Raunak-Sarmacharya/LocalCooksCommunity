@@ -113,10 +113,15 @@ interface StepSummaryProps {
     /** Optional hero — the kitchen recap puts its photo collage here. */
     media?: ReactNode;
     /**
-     * Optional headline block above the groups, for a record with a name. It carries its
-     * own Edit, so the part it names must not also appear as a section.
+     * Optional headline block above the groups, for a record with a name.
+     *
+     * It MAY carry the Edit (`part`), and when it does the part it names must not also appear
+     * as a section. Omit `part` to leave the action to the section that owns the list — the
+     * requirements review does this, so its one Edit sits on the heading of the list it opens
+     * rather than on the screen's own title. Same rule as `StepSummarySection.part`, and it is
+     * optional for the same reason.
      */
-    heading?: { title: string; meta?: ReactNode; part: number };
+    heading?: { title: string; meta?: ReactNode; part?: number };
     sections: StepSummarySectionInput[];
     onEdit: (part: number) => void;
     noteTitle: string;
@@ -143,7 +148,9 @@ export function StepSummary({ media, heading, sections, onEdit, noteTitle, noteB
                             <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm">{heading.meta}</div>
                         ) : null}
                     </div>
-                    <EditButton label={heading.title} part={heading.part} onEdit={onEdit} />
+                    {heading.part !== undefined ? (
+                        <EditButton label={heading.title} part={heading.part} onEdit={onEdit} />
+                    ) : null}
                 </div>
             ) : null}
 

@@ -22,7 +22,10 @@ interface StepPartsOptions {
  *
  * 1. **A finished step opens on its review.** A manager coming back to a step they have
  *    already done should see what they set, not the first form again. The decision is
- *    taken ONCE, when the data behind it has loaded.
+ *    taken ONCE, when the data behind it has loaded — so a caller MUST pass a readiness
+ *    signal that is separate from its completeness signal. A caller that passes the same
+ *    expression for both declares "loaded" and "done" in the same commit, and the review
+ *    opens the instant its first part saves.
  *
  * 2. **Continue walks forward, and the review is last.** From the last working part it
  *    always goes to the review; the review is the only screen that moves the wizard on.

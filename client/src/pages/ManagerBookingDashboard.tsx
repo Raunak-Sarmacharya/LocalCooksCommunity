@@ -30,6 +30,7 @@ import ManagerLocationsPage from "@/components/manager/ManagerLocationsPage";
 import ManagerRevenueDashboard from "./ManagerRevenueDashboard";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
 import LocationRequirementsSettings from "@/components/manager/LocationRequirementsSettings";
+import type { ApplicationRequirementsWizardHandle } from "@/components/manager/requirements";
 import { LicenseSettings, BookingRulesSettings, LocationSettings, KitchensManagement, KitchenListingReview, FacilityDocsSettings, CheckinCheckoutSettings, StorageCheckinCheckoutSettings } from "@/components/manager/settings";
 import type { BookingPoliciesHandle, CheckinCheckoutHandle, KitchensHandle } from "@/components/manager/settings";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
@@ -215,6 +216,10 @@ export default function ManagerBookingDashboard() {
   const bypassCheckinCheckoutGuard = useRef(false);
   const [checkinCheckoutDirty, setCheckinCheckoutDirty] = useState(false);
   const [pendingCheckinCheckoutView, setPendingCheckinCheckoutView] = useState<ViewType | null>(null);
+  const requirementsRef = useRef<ApplicationRequirementsWizardHandle>(null);
+  const bypassRequirementsGuard = useRef(false);
+  const [requirementsDirty, setRequirementsDirty] = useState(false);
+  const [pendingRequirementsView, setPendingRequirementsView] = useState<ViewType | null>(null);
 
   // Handle locationId from URL for direct navigation (e.g., returning from setup, notification links)
   useEffect(() => {
@@ -355,6 +360,10 @@ export default function ManagerBookingDashboard() {
       setPendingCheckinCheckoutView(view);
       return;
     }
+    if (activeView === 'application-requirements' && requirementsDirty && !bypassRequirementsGuard.current) {
+      setPendingRequirementsView(view);
+      return;
+    }
     // A manager completes onboarding steps from the pages the sidebar links to — upload the
     // license, add a kitchen, set availability, connect Stripe — and none of that remounts
     // `useOnboardingStatus`, so `refetchOnMount` alone would never notice. Re-reading here
@@ -447,6 +456,34 @@ export default function ManagerBookingDashboard() {
     checkinCheckoutRef.current?.save();
     setIsSavingBeforeLeave(false);
     continueFromCheckinCheckout(pendingCheckinCheckoutView);
+  };
+
+  const continueFromRequirements = (view: ViewType) => {
+    bypassRequirementsGuard.current = true;
+    setRequirementsDirty(false);
+    setPendingRequirementsView(null);
+    handleViewChange(view);
+    bypassRequirementsGuard.current = false;
+  };
+
+  /**
+   * The requirements handle resolves `void` and *rejects* on failure, unlike the
+   * `saveAllChanges(): Promise<boolean>` handles the other pages expose. Bridge
+   * the two here rather than in the wizard, so the shared handle contract stays
+   * in one shape and each page keeps its own semantics.
+   */
+  const saveAndLeaveRequirements = async () => {
+    if (!pendingRequirementsView) return;
+    setIsSavingBeforeLeave(true);
+    let saved = false;
+    try {
+      await requirementsRef.current?.save();
+      saved = true;
+    } catch {
+      saved = false;
+    }
+    setIsSavingBeforeLeave(false);
+    if (saved) continueFromRequirements(pendingRequirementsView);
   };
 
   const kitchenChildLabel: Partial<Record<ViewType, string>> = {
@@ -1175,7 +1212,9 @@ export default function ManagerBookingDashboard() {
         <div className="space-y-6">
           <ChefPageHeader title={mt("navApplicationRequirements")} description={mt("configureWhatInformationChefsNeedToProvideWhenApplyingToYour")} />
           <LocationRequirementsSettings
+            ref={requirementsRef}
             locationId={selectedLocation.id}
+            onDirtyChange={setRequirementsDirty}
           />
         </div>
       )}
@@ -1266,6 +1305,15 @@ export default function ManagerBookingDashboard() {
         isSaving={isSavingBeforeLeave}
         onDiscard={() => pendingCheckinCheckoutView && continueFromCheckinCheckout(pendingCheckinCheckoutView)}
         onSave={saveAndLeaveCheckinCheckout}
+      />
+
+      <UnsavedChangesDialog
+        open={pendingRequirementsView !== null}
+        onOpenChange={(open) => !open && setPendingRequirementsView(null)}
+        description={mt("applicationRequirementsUnsavedChangesDescription")}
+        isSaving={isSavingBeforeLeave}
+        onDiscard={() => pendingRequirementsView && continueFromRequirements(pendingRequirementsView)}
+        onSave={saveAndLeaveRequirements}
       />
 
     </DashboardLayout>
