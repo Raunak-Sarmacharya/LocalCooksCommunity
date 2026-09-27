@@ -122,3 +122,74 @@ describe("useStepParts — the 'open on review' decision", () => {
         expect(result.current.activePart).toBe(3);
     });
 });
+
+/**
+ * `resumePart` — the part the record still owes, and why it outranks `isComplete`.
+ *
+ * The reported bug: a manager filled in part 1 of the Business step, pressed "Save & exit", and
+ * came back to the step's REVIEW — a report of a step that was not done, reading "Not set" for
+ * the two parts they had never seen, with a live Continue that walked them past both.
+ *
+ * The flag that caused it is a per-STEP answer, and it is not wrong about the step; it is simply
+ * not the question a returning manager is asking. `resumePart` is.
+ */
+describe("useStepParts — the resume point", () => {
+    it("opens the part the record still owes, not the review, when the step is flagged complete", () => {
+        const { result, rerender } = renderHook(
+            ({ ready }: { ready: boolean }) =>
+                useStepParts({ isComplete: true, isReady: ready, partCount: 3, resumePart: 1 }),
+            { initialProps: { ready: false } },
+        );
+
+        // Nothing is decided before the data behind the answer has loaded.
+        expect(result.current.activePart).toBe(0);
+
+        rerender({ ready: true });
+        expect(result.current.activePart).toBe(1);
+        expect(result.current.isSummary).toBe(false);
+    });
+
+    it("still opens the review when the record owes nothing", () => {
+        const { result, rerender } = renderHook(
+            ({ ready }: { ready: boolean }) =>
+                useStepParts({ isComplete: true, isReady: ready, partCount: 3, resumePart: null }),
+            { initialProps: { ready: false } },
+        );
+        rerender({ ready: true });
+
+        expect(result.current.activePart).toBe(3);
+        expect(result.current.isSummary).toBe(true);
+    });
+
+    it("resumes at a later part even when the step is not flagged complete at all", () => {
+        /*
+         * The flag is not the only way to be part-way through: a step can be incomplete and still
+         * have its first two parts saved. Opening part 0 there asks the manager to redo work the
+         * record already holds.
+         */
+        const { result, rerender } = renderHook(
+            ({ ready }: { ready: boolean }) =>
+                useStepParts({ isComplete: false, isReady: ready, partCount: 3, resumePart: 2 }),
+            { initialProps: { ready: false } },
+        );
+        rerender({ ready: true });
+
+        expect(result.current.activePart).toBe(2);
+    });
+
+    it("leaves a step with nothing to resume exactly as it was", () => {
+        /*
+         * `resumePart` is optional on purpose: the kitchen listing, availability and requirements
+         * steps have no required part after the first, so they pass nothing and must behave as
+         * they always did. `undefined` means "nothing owed" — the same as `null`.
+         */
+        const { result, rerender } = renderHook(
+            ({ ready }: { ready: boolean }) =>
+                useStepParts({ isComplete: true, isReady: ready, partCount: 3 }),
+            { initialProps: { ready: false } },
+        );
+        rerender({ ready: true });
+
+        expect(result.current.activePart).toBe(3);
+    });
+});

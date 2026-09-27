@@ -535,8 +535,20 @@ const AvailabilityStep = () => {
                     isSaving ||
                     isSubmitting ||
                     // Part A needs a kitchen to schedule against; part B works off
-                    // the location, which part A already required. The review is never
-                    // gated — it is only reachable once both parts have been saved.
+                    // the location, which part A already required.
+                    //
+                    // The review is deliberately NOT gated — and not because it is unreachable.
+                    // Leaving the step records it (`dbCompletedSteps`), so a manager who exits
+                    // from part A can come back to the review without ever seeing part B. That
+                    // is fine here, and the old comment claiming otherwise was the reason nobody
+                    // checked: nothing on this step is REQUIRED. The week is optional and the
+                    // booking policies arrive pre-filled, so a review that lets them through is
+                    // letting nothing important past.
+                    //
+                    // A kitchen with no opening hours is caught where it matters — the listing
+                    // gate's "Opening hours" — rather than by blocking the manager mid-wizard.
+                    // The wizard's job is to get them through; the publish check is where the
+                    // hard requirement lives.
                     (!isSummary && activePart === 0 && !selectedKitchenId)
                 }
                 isLoading={isSaving}

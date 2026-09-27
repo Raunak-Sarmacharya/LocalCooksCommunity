@@ -30,6 +30,7 @@ export default function ApplicationRequirementsStep() {
     handleBack,
     isFirstStep,
     hasRequirements,
+    isRequirementsComplete,
     requirementsLoaded,
     refreshRequirements,
     setUnsavedChanges,
@@ -46,11 +47,20 @@ export default function ApplicationRequirementsStep() {
   const wizardRef = useRef<ApplicationRequirementsWizardHandle>(null);
 
   /**
-   * A finished Requirements step opens on its review. `requirementsLoaded` — not
-   * `hasRequirements` — is the readiness signal: the flag is false until the fetch lands.
+   * A finished Requirements step opens on its review.
+   *
+   * `requirementsLoaded` — not the completeness flag — is the readiness signal: completeness is
+   * false until the fetch lands, so deciding on it would open every revisit at the form.
+   *
+   * Completeness is `isRequirementsComplete`, the rule the rail, the checklist and the summary all
+   * read: a saved row OR having reached this review. Keying on `hasRequirements` alone — "a row
+   * exists" — was this step disagreeing with every other surface about one fact. The pane ships
+   * with the platform defaults already filled in, so the common case is a manager who reads them,
+   * changes nothing and moves on, and for them no row is ever written: the rail showed the step
+   * ticked while the step itself reopened the form they had just accepted.
    */
   const { isSummary, editPart, goNext, goBack } = useStepParts({
-    isComplete: Boolean(hasRequirements),
+    isComplete: Boolean(isRequirementsComplete),
     isReady: Boolean(requirementsLoaded),
     partCount: PART_COUNT,
   });

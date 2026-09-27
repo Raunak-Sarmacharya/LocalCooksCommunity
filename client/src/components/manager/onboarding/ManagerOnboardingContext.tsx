@@ -321,7 +321,14 @@ interface ManagerOnboardingContextType {
    * failure so the caller keeps them on the part they were editing.
    */
   saveLocationFull: () => Promise<boolean>;
-  createKitchen: () => Promise<void>;
+  /**
+   * Create the manager's kitchen. Resolves TRUE only when it exists afterwards.
+   *
+   * The kitchen step's Continue is a create-and-advance, so the caller has to be able to tell
+   * success from failure — see the note on the implementation. Resolving false means the manager
+   * stays on the form with what they typed.
+   */
+  createKitchen: () => Promise<boolean>;
   uploadLicense: () => Promise<string | null>;
   startNewLocation: () => void;
   
@@ -953,11 +960,31 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       setLocationName(loc.name || "");
       setLocationAddress(loc.address || "");
       setLocationLogoUrl(loc.logoUrl || loc.logo_url || "");
-      setNotificationEmail(loc.notificationEmail || loc.notification_email || "");
-      setNotificationPhone(loc.notificationPhone || loc.notification_phone || "");
+      /*
+       * The ACCOUNT is the fallback when the record is silent — not `""`.
+       *
+       * The contact email belongs to the account (the field in the step is locked and read-only)
+       * and the contact phone describes the MANAGER, so a location whose row never stored them
+       * must still open with the values the manager registered with. Writing `""` here CLOBBERED
+       * the two prefill effects above: they run earlier in the same commit, so this was the last
+       * writer and it won — and the phone effect could not recover, because its own dependency
+       * (`contactPhone`) had not changed from its point of view.
+       *
+       * What that cost: resuming the Business step with a location whose row carries no contact
+       * details opened the contact part with a blank READ-ONLY email, so Continue was disabled
+       * ("Add a contact email…") with no field to add it in. A dead end.
+       *
+       * The notification targets follow the contact details everywhere else (see
+       * `LocationStep.partFields`), so they take the same fallback rather than seeding a form
+       * that would write one value and display another.
+       */
+      const accountEmail = firebaseUser?.email || "";
+      const accountPhone = firebaseUser?.phoneNumber || "";
+      setNotificationEmail(loc.notificationEmail || loc.notification_email || accountEmail);
+      setNotificationPhone(loc.notificationPhone || loc.notification_phone || accountPhone);
       // Contact fields
-      setContactEmail(loc.contactEmail || loc.contact_email || "");
-      setContactPhone(loc.contactPhone || loc.contact_phone || "");
+      setContactEmail(loc.contactEmail || loc.contact_email || accountEmail);
+      setContactPhone(loc.contactPhone || loc.contact_phone || accountPhone);
       setPreferredContactMethod(loc.preferredContactMethod || loc.preferred_contact_method || "email");
 
       // [ENTERPRISE FIX] Initialize uploaded URLs from existing location data
@@ -997,7 +1024,8 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         licenseExpiry: existingLicenseExpiry
       });
     }
-  }, [isLoadingLocations, hasExistingLocation, locations, selectedLocationId, isAddingLocation]);
+  }, [isLoadingLocations, hasExistingLocation, locations, selectedLocationId, isAddingLocation,
+    firebaseUser?.email, firebaseUser?.phoneNumber]);
 
   // [ENTERPRISE FIX] Sync uploaded URLs from selectedLocation whenever location data changes
   // This ensures the form state reflects persisted data when user returns to setup page
@@ -1831,8 +1859,32 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     }
   };
 
-  const createKitchen = async () => {
-    if (!selectedLocationId) return;
+  /**
+   * Create the kitchen, and REPORT whether it happened.
+   *
+   * It used to return nothing and swallow every failure into a toast, which the caller could not
+   * tell apart from success — so the step advanced to Equipment either way. With no kitchen, that
+   * part renders "No kitchen selected"; and Back from it lands on the step's EMPTY STATE, because
+   * the create form had been closed (its flag cleared) while `kitchens` was still empty. The
+   * manager was left on a dead end whose only offer was to create the kitchen they had just
+   * finished describing, with nothing on screen saying what went wrong.
+   *
+   * Same shape as `persistLocation`: do the work, return a boolean, and let the CALLER decide
+   * whether it may move on. The toast is not a return value.
+   */
+  const createKitchen = async (): Promise<boolean> => {
+    /*
+     * Not a silent `return`. Every later step needs a kitchen, so this is a real failure and the
+     * manager has to hear about it — the previous bare return looked exactly like success.
+     */
+    if (!selectedLocationId) {
+      toast({
+        title: mt("error"),
+        description: mt("pleaseCreateALocationFirst"),
+        variant: "destructive",
+      });
+      return false;
+    }
     setCreatingKitchen(true);
     try {
       const token = await auth.currentUser?.getIdToken();
@@ -1847,7 +1899,21 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
           description: kitchenFormData.description,
           imageUrl: kitchenFormData.imageUrl || undefined,
           features: kitchenFormData.features,
-          hourlyRate: Math.round(parseFloat(kitchenFormData.hourlyRate) * 100),
+          /*
+           * A blank hourly rate must go as `undefined`, not as a computed NaN.
+           *
+           * `parseFloat('')` is NaN, `Math.round(NaN)` is NaN, and `JSON.stringify` turns NaN into
+           * `null` — which the endpoint rejects ("Hourly rate must be nonnegative integer cents"),
+           * because `null !== undefined`. So a kitchen priced ONLY by the day could not be created
+           * at all: the manager set a daily rate, and the request carried a broken hourly one.
+           *
+           * The listing gate accepts either rate (`listingReq_rate` is "Hourly or daily rate"), so
+           * sending no hourly rate is a real answer, not a missing one — exactly how `dailyRate`
+           * below already behaves.
+           */
+          hourlyRate: kitchenFormData.hourlyRate.trim() === ''
+            ? undefined
+            : Math.round(parseFloat(kitchenFormData.hourlyRate) * 100),
           // Optional: a kitchen can be priced hourly, daily, or both.
           dailyRate: kitchenFormData.dailyRate.trim() === ''
             ? undefined
@@ -1870,8 +1936,10 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       await trackStepCompletion(currentStep?.id || 'create-kitchen');
       toast({ title: mt("success"), description: mt("kitchenCreated2") });
       // next(); // [FIX] Do not auto-advance. Let user click Next to avoid race conditions with checks.
+      return true;
     } catch (e: any) {
       toast({ title: mt("error"), description: e.message, variant: "destructive" });
+      return false;
     } finally {
       setCreatingKitchen(false);
     }
@@ -2303,6 +2371,35 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
 
         const stepId = currentStep?.id;
         logger.info('[Onboarding] Save & Exit from step:', stepId);
+
+        /*
+         * WRITE THE PART THE MANAGER IS ON, BEFORE LEAVING.
+         *
+         * This is the button's own promise. `OnboardingNavigationFooter` names it "Save & exit"
+         * exactly while `hasUnsavedWork` is true, and this function used to answer that by
+         * writing only the step record and navigating — so everything typed into the part was
+         * silently dropped. A manager who filled in the contact details, pressed "Save & exit"
+         * and came back found an empty form for a step the wizard now called done.
+         *
+         * The step registers the callback for precisely this (`registerStepSave`), and Back,
+         * Skip and jump-to-step already go through it via `guardLeave`. The exit was the one
+         * path that did not.
+         *
+         * A failed save does NOT navigate. The step has already told the manager why, and
+         * leaving would discard work they believe was written — the opposite of what the label
+         * just offered. The `catch` below still navigates, because a throw here is not the step
+         * reporting a problem; it is the exit itself failing, and trapping the manager in the
+         * wizard is worse.
+         */
+        if (hasUnsavedChanges && stepSaveRef.current) {
+          setIsSubmitting(true);
+          try {
+            const saved = await stepSaveRef.current();
+            if (!saved) return;
+          } finally {
+            setIsSubmitting(false);
+          }
+        }
 
         /*
          * The step record is written even when the step holds nothing — do not "optimise" this away.

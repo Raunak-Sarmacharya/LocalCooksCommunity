@@ -12,6 +12,24 @@ interface StepPartsOptions {
     isReady: boolean;
     /** How many working parts the step has, not counting the review. */
     partCount: number;
+    /**
+     * The first part the RECORD still needs, or `null` when every required part is on it.
+     *
+     * `isComplete` answers a per-STEP question — "is this step behind the manager". A multi-part
+     * step can be flagged complete while a required part was never filled in: leaving the step
+     * from a part records the step as done (see the note on `saveAndExit`). This is the per-PART
+     * answer, and it WINS — a step that is complete but has an unfinished required part opens on
+     * that part, not on its review.
+     *
+     * Read it from the stored record, never from the live form: the form is seeded a commit
+     * later, so a resume point derived from it would send a returning manager to part 0 of a step
+     * they had already filled in. It must also be settled by the same commit that flips `isReady`,
+     * because the decision latches.
+     *
+     * Omit it for a step whose parts after the first are optional. `undefined` means "nothing
+     * left to do", which is exactly the previous behaviour.
+     */
+    resumePart?: number | null;
 }
 
 /**
@@ -19,6 +37,12 @@ interface StepPartsOptions {
  *
  * Three things, in one place because four steps need the same three and four copies
  * would drift:
+ *
+ * 0. **A step with an unfinished required part opens on THAT part, not on its review.** Coming
+ *    back to a half-filled step and being shown a review of it is the confusing case: the review
+ *    reports the parts that ARE saved and reads "Not set" for the rest, while its Continue is
+ *    the way forward — so it looks finished and lets the manager past work they never did. The
+ *    caller says which part is still owed (`resumePart`), read from the stored record.
  *
  * 1. **A finished step opens on its review.** A manager coming back to a step they have
  *    already done should see what they set, not the first form again. The decision is
@@ -40,7 +64,7 @@ interface StepPartsOptions {
  * The review is always `partCount` — one past the last working part — so the progress
  * dots, which count `partCount`, keep reading "n of n" on it.
  */
-export function useStepParts({ isComplete, isReady, partCount }: StepPartsOptions) {
+export function useStepParts({ isComplete, isReady, partCount, resumePart }: StepPartsOptions) {
     const SUMMARY_PART = partCount;
 
     const [activePart, setActivePart] = useState(0);
@@ -51,8 +75,14 @@ export function useStepParts({ isComplete, isReady, partCount }: StepPartsOption
     useEffect(() => {
         if (decided.current || !isReady) return;
         decided.current = true;
+        // An unfinished required part outranks the step's own completeness: it is the thing the
+        // manager still has to do, and the review is a report of a step that is done.
+        if (resumePart != null) {
+            setActivePart(resumePart);
+            return;
+        }
         if (isComplete) setActivePart(SUMMARY_PART);
-    }, [isComplete, isReady, SUMMARY_PART]);
+    }, [isComplete, isReady, SUMMARY_PART, resumePart]);
 
     /** Open a part from the review. Continue and Back come back to the review. */
     const editPart = useCallback((part: number) => {

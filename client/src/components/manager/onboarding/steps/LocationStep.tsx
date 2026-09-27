@@ -80,14 +80,16 @@ function DocumentRow({
  */
 const PART_COUNT = 3;
 
-/**
- * The screen after the last part — the review, on its own, so a manager coming back to a
- * step they have already finished sees what they set instead of the first form again.
+/*
+ * The screen after the last part — the review, on its own, so a manager coming back to a step
+ * they have already finished sees what they set instead of the first form again.
  *
- * Not a fourth PART: the work is three things, so the dots stay at three. It is the
- * kitchen listing step's shape, applied here so the two steps close the same way.
+ * Not a fourth PART: the work is three things, so the dots stay at three. It is the kitchen
+ * listing step's shape, applied here so the two steps close the same way. Its index is
+ * `useStepParts`' own `partCount`, and this file no longer names it — the footer gate asks
+ * "does the RECORD still owe a part" (`recordResumePart`) rather than "is this the review".
  */
-const SUMMARY_PART = PART_COUNT;
+
 /** The part that owns the licence and the terms. Its save is the full-record one. */
 const DOCUMENTS_PART = 2;
 
@@ -125,14 +127,46 @@ export default function LocationStep() {
 
   const [isSavingPart, setIsSavingPart] = useState(false);
   /**
+   * Which part the STORED RECORD still needs — the resume point.
+   *
+   * `completedSteps['location']` answers a per-STEP question, and it can be true while a part is
+   * still empty: leaving the step from part 1 records the step as done (see `saveAndExit`). So
+   * the step's own review is only the right screen once every required part is on the record —
+   * otherwise a returning manager is shown a review that reads "Not set" for two of its three
+   * groups, with a live Continue that walks them past work they never did.
+   *
+   * Read from the record, never the live form. The form is seeded a commit after the location
+   * arrives, and this is settled by the same commit that flips `isReady`, because the decision
+   * latches. Same rule the review below follows, and for the same reason.
+   *
+   * One requirement the record cannot answer is the phone PROOF — that lives on the account
+   * (`users.phone_number` + Firebase), not on the location. It needs no case here: part 1 cannot
+   * have been SAVED without it, because its own Continue gate refuses to leave without it.
+   */
+  const recordResumePart = useMemo((): number | null => {
+    const loc: any = selectedLocation;
+    if (!loc) return 0;
+    if (!(loc.name && loc.address && (loc.logoUrl || loc.logo_url))) return 0;
+    if (!loc.contactEmail) return 1;
+    const licence = loc.kitchenLicenseUrl || loc.kitchen_license_url;
+    const expiry = loc.kitchenLicenseExpiry || loc.kitchen_license_expiry;
+    if (!licence || !expiry) return DOCUMENTS_PART;
+    return null;
+  }, [selectedLocation]);
+
+  /**
    * A finished Business step opens on its review, not on the first form. `selectedLocation`
    * is the readiness signal: completeness is derived from the fetched location, so before
    * it arrives every step looks unfinished.
+   *
+   * A step that is flagged complete but still owes a required part opens on that part instead —
+   * see `recordResumePart`.
    */
   const { activePart, isSummary, editPart, goNext, goBack } = useStepParts({
     isComplete: Boolean(completedSteps['location']),
     isReady: Boolean(selectedLocation),
     partCount: PART_COUNT,
+    resumePart: recordResumePart,
   });
   /**
    * Whether a stored document is being swapped out. Mirrors the Booking Policies
@@ -363,8 +397,32 @@ export default function LocationStep() {
     setUnsavedChanges(isPartDirty);
   }, [isPartDirty, setUnsavedChanges]);
 
-  // Let the guard's "Save changes" persist the part the manager is on. Parts 0 and 1 save
-  // as a draft; the documents part writes the whole record, exactly as its own Continue does.
+  /**
+   * Let the guard's "Save changes" — and now the footer's "Save & exit" — persist the part the
+   * manager is on. Parts 0 and 1 save as a draft; the documents part writes the whole record,
+   * exactly as its own Continue does.
+   *
+   * **Re-registered on every render, deliberately: no dependency array.**
+   *
+   * The registered save is a closure over THIS render's `saveLocationFull`, which reads the whole
+   * form out of its own render scope. A dependency list can only re-register when the values it
+   * names change, and this one named `documentsDirty` — a BOOLEAN over two independent facts.
+   * Upload the licence and it goes false → true; set the expiry date and it stays true, so nothing
+   * re-registers and the save keeps the expiry the form held when the upload finished: `""`.
+   *
+   * That is not theoretical. "Save & exit" then PUT `kitchenLicenseUrl` with NO
+   * `kitchenLicenseExpiry`, the server refused it — *"A license expiry date is required when
+   * uploading a kitchen license"* (`server/routes/manager.ts`) — and the manager was told to enter
+   * a date they had already entered. The save on Continue never had this, because it calls
+   * `saveLocationFull` directly from the current render; only the registered one was stale, and
+   * the exit button is what started using it.
+   *
+   * `CreateKitchenStep` names its fields in the deps to dodge the same trap. Naming them here would
+   * mean listing every value `persistLocation` reads — `locationName`, `contactEmail`,
+   * `selectedLocationId`, the licence pair, the terms pair — from a different file, and keeping
+   * that list in step with it forever. Re-registering each render cannot drift. It assigns a ref
+   * and nothing else, so it costs nothing and cannot loop.
+   */
   useEffect(() => {
     registerStepSave(async () => {
       if (!isPartDirty) return true;
@@ -373,8 +431,7 @@ export default function LocationStep() {
         : saveLocationDraft(partFields[activePart]);
     });
     return () => registerStepSave(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [registerStepSave, activePart, isPartDirty, partSignature, documentsDirty]);
+  });
 
   /** Which part is still missing something required. */
   const partIsValid = (part: number): boolean => {
@@ -842,10 +899,24 @@ export default function LocationStep() {
          * the earlier parts and forgotten on the one that actually submits the
          * licence — the rule lived in two places and only one of them had it.
          *
-         * The review is never gated: it is only reachable once the step is complete.
+         * The review is gated as well. It used to be exempt, on the stated grounds that "it is
+         * only reachable once the step is complete" — which is false whenever the step was
+         * flagged complete from a part rather than from this screen. An ungated review is a Skip
+         * button wearing a summary's clothes: the manager reads "here is what you set", presses
+         * Continue, and the wizard moves on without the licence. So the invariant is enforced
+         * rather than assumed. `recordResumePart` is what names the missing part, and it is the
+         * same source the resume point reads — the two cannot disagree.
          */
-        isNextDisabled={isSubmitting || isSavingPart || (activePart < SUMMARY_PART && !partIsValid(activePart))}
-        incompleteReason={!isSummary && !partIsValid(activePart) ? partIncompleteReason(activePart) : undefined}
+        isNextDisabled={
+          isSubmitting ||
+          isSavingPart ||
+          (isSummary ? recordResumePart !== null : !partIsValid(activePart))
+        }
+        incompleteReason={
+          isSummary
+            ? recordResumePart !== null ? partIncompleteReason(recordResumePart) : undefined
+            : !partIsValid(activePart) ? partIncompleteReason(activePart) : undefined
+        }
       />
     </div>
   );

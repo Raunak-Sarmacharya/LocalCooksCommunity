@@ -2,11 +2,8 @@ import React, { useCallback, useState, useEffect, useRef } from "react";
 import { mt } from "@/i18n/manager";
 import { tt } from "@/i18n/common-ns";
 import {
-  Plus,
   Image as ImageIcon,
 } from "@/components/ui/manager-icons";
-import { Button } from "@/components/ui/button";
-import { StatusButton } from "@/components/ui/status-button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { CARD_RADIUS, Card, CardContent } from "@/components/ui/card";
@@ -102,14 +99,31 @@ function ListingSummary({
         part: 0,
         meta: (
           <>
-            <span className={cn("tabular-nums font-bold", hourly ? "text-[#F51042]" : "text-muted-foreground")}>
-              {hourly ? `${hourly}/hr` : mt("notSet")}
-            </span>
+            {/*
+              * The rate the kitchen actually has.
+              *
+              * The hourly used to be printed unconditionally with the daily only appended, so a
+              * daily-only kitchen — which the listing gate accepts, since `listingReq_rate` is
+              * "Hourly or daily rate" — read "Not set · $150.00/day": its own price, next to the
+              * word for not having one. Whichever rate exists is the rate; when both exist the
+              * hourly leads, because that is the default booking mode.
+              */}
+            {hourly ? (
+              <span className="tabular-nums font-bold text-[#F51042]">{hourly}/hr</span>
+            ) : null}
+            {hourly && daily ? (
+              <span className="text-muted-foreground/50" aria-hidden>·</span>
+            ) : null}
             {daily ? (
-              <>
-                <span className="text-muted-foreground/50" aria-hidden>·</span>
-                <span className="tabular-nums font-medium text-foreground">{daily}/day</span>
-              </>
+              <span className={cn(
+                "tabular-nums",
+                hourly ? "font-medium text-foreground" : "font-bold text-[#F51042]",
+              )}>
+                {daily}/day
+              </span>
+            ) : null}
+            {!hourly && !daily ? (
+              <span className="text-muted-foreground">{mt("notSet")}</span>
             ) : null}
             <span className="text-muted-foreground/50" aria-hidden>·</span>
             <span className="inline-flex items-center gap-1 text-muted-foreground">
@@ -417,12 +431,6 @@ export default function CreateKitchenStep() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePart, kitchens]);
 
-  const closeForm = () => {
-    setEditingKitchenId(null);
-    setEditSnapshot(null);
-    setShowCreate(false);
-  };
-
   // Flush local state to context and then create. Create-only: edits are saved
   // from inside the card, never from this form.
   const handleCreate = () => {
@@ -448,11 +456,34 @@ export default function CreateKitchenStep() {
    * saved, which is how a completed step was allowed to become invalid. One rule set for both
    * modes; the create button carries the same expression inline.
    */
+  /**
+   * A rate the listing gate would actually accept.
+   *
+   * `> 0`, not "something was typed": the gate reads the rates through `positiveNumber`, so a
+   * kitchen saved at 0.00 has no rate as far as publishing and checkout are concerned. Letting the
+   * form through on a typed zero would put it back out of step with the gate — which is the whole
+   * thing this pair of fields was wrong about.
+   */
+  const isRateSet = (value: string) => {
+    const parsed = parseFloat(value);
+    return !isNaN(parsed) && parsed > 0;
+  };
+
+  /**
+   * The rate requirement, which is ONE answer with two forms.
+   *
+   * The listing gate accepts an hourly OR a daily rate — its own checklist label is
+   * `listingReq_rate`: "Hourly or daily rate" — and `booking.service` refuses a booking in a mode
+   * the kitchen does not offer. This form used to demand the hourly specifically, so a manager who
+   * charges by the day could not leave part 1 at all.
+   */
+  const hasARate = isRateSet(localHourlyRate) || isRateSet(localDailyRate);
+
   const editIsValid =
     Boolean(localName.trim()) &&
     Boolean(localDescription.trim()) &&
     Boolean(localImageUrl) &&
-    Boolean(localHourlyRate) &&
+    hasARate &&
     parseInt(localMinHours, 10) >= 1;
 
   /** Save edits to a kitchen created earlier in this flow — no dashboard hop. */
@@ -601,7 +632,7 @@ export default function CreateKitchenStep() {
    */
   const formHasContent =
     (editingKitchenId !== null && isEditDirty) ||
-    (showCreate && Boolean(
+    (!hasKitchen && Boolean(
       localName.trim() ||
       localDescription.trim() ||
       localHourlyRate ||
@@ -615,10 +646,21 @@ export default function CreateKitchenStep() {
   }, [formHasContent, setUnsavedChanges]);
 
   useEffect(() => {
-    // Only an existing kitchen can be saved from here; a half-filled create form
-    // is discarded, not saved, so the dialog offers Cancel / Discard for it.
+    /*
+     * Only an existing kitchen can be saved from here.
+     *
+     * A half-filled create form is DISCARDED, not saved — there is no record to write it to — and
+     * that is what this returns `true` for. `true` means "nothing left to persist", which is not
+     * the same as a failure:
+     *
+     *  - `saveAndLeave` treats a missing callback as "just leave", so `true` gives the leave dialog
+     *    the same answer for a create form.
+     *  - `saveAndExit` refuses to navigate when the save reports failure. With `false` here, "Exit
+     *    setup" on a half-filled create form did nothing at all — the manager could not leave the
+     *    step.
+     */
     registerStepSave(async () => {
-      if (editingKitchenId === null) return false;
+      if (editingKitchenId === null) return true;
       return handleSaveEdit();
     });
     return () => registerStepSave(null);
@@ -644,19 +686,26 @@ export default function CreateKitchenStep() {
   // ambiguous — the kitchen was already made, so "Continue" read as "did that work?" — and
   // it left the manager staring at a form they had finished. Creating it is the answer, so
   // the step moves to what goes in the kitchen.
+  //
+  // **But only if it was actually created.** This used to advance unconditionally, which sent the
+  // manager to Equipment with no kitchen — where the part renders "No kitchen selected" — and
+  // Back from there landed on the step's empty state, because `setShowCreate(false)` had closed
+  // the form they had just filled in. Two screens deep in a dead end, with the reason for the
+  // failure only in a toast that had already faded.
+  //
+  // `createKitchen` now reports success, so a failure keeps the manager ON the form with what they
+  // typed, and the toast explains why. That is the same "stay put rather than advance on a failed
+  // write" rule the Business step's Save & exit follows.
   useEffect(() => {
     if (!pendingCreateRef.current) return;
     pendingCreateRef.current = false;
     void (async () => {
-      try {
-        await createKitchen();
-        // Clear the create flag: a create form holding anything counts as unsaved work, so
-        // leaving it set would report changes that no longer exist.
-        setShowCreate(false);
-        goToPart(1);
-      } catch {
-        // `createKitchen` raises its own toast; staying on the form is the honest response.
-      }
+      const created = await createKitchen();
+      if (!created) return;
+      // Clear the create flag: a create form holding anything counts as unsaved work, so
+      // leaving it set would report changes that no longer exist.
+      setShowCreate(false);
+      goToPart(1);
     })();
   }, [ctxData]);
 
@@ -671,6 +720,33 @@ export default function CreateKitchenStep() {
     imageUrl: localImageUrl,
     features: localFeatures,
   };
+
+  /**
+   * Part 0 with no kitchen yet: the form IS a create form, so its action is Create.
+   *
+   * Keyed on the kitchen, not on `showCreate`. The flag says "the create form was asked for" and
+   * the dashboard sets it too; whether there is a record to write to is the question the primary
+   * action actually turns on.
+   */
+  const isCreateMode = activePart === 0 && !hasKitchen;
+
+  /**
+   * The create form's gate, in one place.
+   *
+   * These are the fields the in-card "Create & continue" used to check inline. Moving the action
+   * into the footer without moving the RULE would have left the footer gating on "is there a
+   * kitchen" — permanently false in create mode — so the button could never have been pressed.
+   *
+   * `hasARate` rather than an hourly rate: see its note. This is the same rule `editIsValid` uses,
+   * so creating and editing a kitchen cannot disagree about what is required.
+   */
+  const createIsValid =
+    Boolean(data.name.trim()) &&
+    Boolean(data.description.trim()) &&
+    Boolean(data.imageUrl) &&
+    hasARate &&
+    // 1 is the floor — see the minimum-hours field.
+    parseInt(data.minimumBookingHours, 10) >= 1;
 
   return (
     <div ref={scrollRef} className="space-y-6 animate-in fade-in duration-500">
@@ -715,31 +791,19 @@ export default function CreateKitchenStep() {
        * added — and the form below is what this part is: the fields, editable, with the
        * footer's Save & continue when anything changed.
        */}
-      {/* Empty State - Enterprise Design */}
-      {kitchens.length === 0 && !showCreate && (
-        <Card className={cn(
-          "border-2 border-dashed border-border bg-muted/20",
-          CARD_RADIUS,
-        )}>
-          <CardContent className="py-14 text-center">
-            <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#F3F1EF] ring-1 ring-[#2C2C2C]/[0.06]">
-              <ImageIcon className="h-6 w-6 text-muted-foreground" />
-            </div>
-            <h3 className="mb-2 text-lg font-bold text-[#1A1A1A]">{mt("createYourKitchenSpace")}</h3>
-            <p className="mx-auto mb-6 max-w-sm text-sm leading-relaxed text-muted-foreground">{mt("setUpYourFirstKitchenToStartReceivingBookingRequestsFromChef")}</p>
-            <Button onClick={() => setShowCreate(true)} size="lg">
-              <Plus className="mr-2 h-4 w-4" />{mt("createKitchenSpace")}</Button>
-          </CardContent>
-        </Card>
-      )}
-
       {/*
-       * The form is this part, open either because the manager asked to create one or
-       * because a kitchen already exists and this is where its details live. Coming back
-       * to it from the summary's Edit lands here, pre-filled, with the footer offering
-       * "Save & continue" the moment anything changes.
+       * The form IS this part — there is no empty state in front of it any more.
+       *
+       * A dashed card with a big "Create Kitchen Space" button used to stand here while
+       * `kitchens.length === 0 && !showCreate`. It put a button where the work is: a manager
+       * told to describe their kitchen met a call-to-action that only opened the form behind it
+       * — and, because this file also suppressed the shared footer while that card was up, no
+       * Back and no way out of the step either.
+       *
+       * Opening on an empty form is the honest screen. The fields are the step, and the footer's
+       * primary says what will happen to them: "Create & continue" while there is no kitchen yet,
+       * "Continue" (or "Save & continue") once there is.
        */}
-      {(showCreate || hasKitchen) && (
         <Card className={cn(
           "animate-in fade-in zoom-in-95 border-0 duration-200 shadow-[0_8px_30px_rgba(44,44,44,0.07)] ring-1 ring-[#2C2C2C]/[0.05]",
           CARD_RADIUS,
@@ -805,7 +869,19 @@ export default function CreateKitchenStep() {
               </div>
             </SettingsRow>
 
-            <SettingsRow id="kitchen-rate" label={mt("hourlyRateCAD")} required>
+            {/*
+              * Two ways to give one required answer.
+              *
+              * Neither row carries the required asterisk, because neither is required on its own —
+              * the PAIR is, and the legend's asterisk would say "set both". The rule is stated
+              * once, on the first row, and the second row carries a short version of it so it
+              * stands alone for anyone who reads the fields out of order.
+              */}
+            <SettingsRow
+              id="kitchen-rate"
+              label={mt("hourlyRateCAD")}
+              hint={mt("kitchenRateRuleHint")}
+            >
               <CurrencyInput
                 id="kitchen-rate"
                 value={data.hourlyRate}
@@ -815,7 +891,11 @@ export default function CreateKitchenStep() {
               />
             </SettingsRow>
 
-            <SettingsRow id="kitchen-daily-rate" label={mt("dailyRateCAD")}>
+            <SettingsRow
+              id="kitchen-daily-rate"
+              label={mt("dailyRateCAD")}
+              hint={mt("kitchenRateDailyHint")}
+            >
               <CurrencyInput
                 id="kitchen-daily-rate"
                 value={data.dailyRate}
@@ -851,39 +931,7 @@ export default function CreateKitchenStep() {
               />
             </SettingsRow>
           </CardContent>
-
-            {/*
-              * Create-mode actions only. Once the kitchen exists this form is an editor,
-             * and the footer owns the save — one action surface, and it already reads
-             * "Save & continue" the moment anything changed.
-             */}
-            {!hasKitchen && (
-              <div className="flex gap-3 border-t border-border p-4">
-                <StatusButton
-                  status={isCreating ? "loading" : "idle"}
-                  onClick={handleCreate}
-                  disabled={
-                    !data.name.trim() ||
-                    !data.description.trim() ||
-                    !data.imageUrl ||
-                    !data.hourlyRate ||
-                    // 1 is the floor — see the field above.
-                    !(parseInt(data.minimumBookingHours, 10) >= 1)
-                  }
-                  className="flex-1"
-                  labels={{ idle: mt("createKitchenAndContinue"), loading: mt("creating"), success: mt("created") }}
-                />
-                <Button
-                  variant="outline"
-                  onClick={closeForm}
-                  disabled={isCreating}
-                  className="text-muted-foreground"
-                >{mt("cancel")}</Button>
-              </div>
-            )}
         </Card>
-      )}
-
         </>
       )}
 
@@ -927,37 +975,60 @@ export default function CreateKitchenStep() {
       )}
 
       {/*
-       * Navigation Footer. Hidden only while part 0's create form is open — that form
-       * has its own Create / Cancel pair, and two footers would compete.
+       * Navigation Footer — on every screen of this step, including part 0's create form.
+       *
+       * It used to be suppressed while that form was open, because the form carried its own
+       * Create / Cancel pair and "two footers would compete". What that produced was a screen with
+       * a different navigation from every other step in the wizard — no Back, no way out — and a
+       * primary sitting inside a card instead of in the footer. The competition was real; the
+       * answer was to stop having two, not to hide the shared one.
+       *
+       * The primary is one button that says what it will do: Create while there is no kitchen,
+       * Save & continue when the editor holds changes, Continue otherwise.
        */}
-      {!(activePart === 0 && showCreate) && (
-        <OnboardingNavigationFooter
-          onNext={() => void handlePartContinue()}
-          onBack={() => void handlePartBack()}
-          onSaveAndExit={() => void saveAndExit()}
-          /* No Back on the review: each group's Edit already opens the part it names, and
-             the kitchen's own heading Edit opens part 1. */
-          showBack={!isSummary && (!isFirstStep || activePart > 0)}
-          // The label has to match what the button does — part 0 saves the editor first.
-          nextLabel={activePart === 0 && isEditDirty ? mt("saveAndContinue") : tt("continue")}
-          // The exit action only promises a save when there is one to make.
-          hasUnsavedWork={formHasContent}
-          // Only part 0 can block: parts 2 and 3 are optional by design, so an empty
-          // inventory is a valid answer rather than an unfinished one.
-          isNextDisabled={
-            isSavingEdit ||
-            (activePart === 0 && kitchens.length === 0) ||
+      <OnboardingNavigationFooter
+        onNext={() => void (isCreateMode ? handleCreate() : handlePartContinue())}
+        onBack={() => void handlePartBack()}
+        onSaveAndExit={() => void saveAndExit()}
+        /* No Back on the review: each group's Edit already opens the part it names, and
+           the kitchen's own heading Edit opens part 1. */
+        showBack={!isSummary && (!isFirstStep || activePart > 0)}
+        // The label has to match what the button does — part 0 saves the editor first.
+        nextLabel={
+          isCreateMode
+            ? mt("createKitchenAndContinue")
+            : activePart === 0 && isEditDirty ? mt("saveAndContinue") : tt("continue")
+        }
+        /*
+         * Nothing to save in create mode, and the label must not imply otherwise: there is no
+         * record yet, so "Save & exit" would promise a write that cannot happen. "Exit setup"
+         * tells the truth, and the wizard's leave dialog still warns about the typed values on
+         * any in-app navigation.
+         */
+        hasUnsavedWork={isCreateMode ? false : formHasContent}
+        /*
+         * Only part 0 can block: parts 2 and 3 are optional by design, so an empty inventory is
+         * a valid answer rather than an unfinished one.
+         */
+        isNextDisabled={
+          isSavingEdit ||
+          isCreating ||
+          (isCreateMode
+            ? !createIsValid
             // Only a form the manager has CHANGED into an invalid state blocks. A gap that was
             // already there when the editor opened has nothing to save, so it blocks nothing.
-            (activePart === 0 && isEditDirty && !editIsValid)
-          }
-          incompleteReason={
-            activePart === 0 && isEditDirty && !editIsValid ? mt("kitchenPartListingIncomplete") : undefined
-          }
-          isLoading={isSavingEdit}
-          isSavingAndExiting={isSubmitting}
-        />
-      )}
+            : (activePart === 0 && isEditDirty && !editIsValid))
+        }
+        incompleteReason={
+          isCreateMode
+            ? (!createIsValid ? mt("kitchenPartListingIncomplete") : undefined)
+            : (activePart === 0 && isEditDirty && !editIsValid
+              ? mt("kitchenPartListingIncomplete")
+              : undefined)
+        }
+        isLoading={isSavingEdit || isCreating}
+        isSavingAndExiting={isSubmitting}
+      />
     </div>
   );
 }

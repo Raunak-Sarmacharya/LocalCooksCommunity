@@ -118,7 +118,10 @@ vi.mock("../ManagerOnboardingContext", () => ({
         uploadedUrl: null,
         uploadFile: vi.fn(),
       },
-      // A licence and terms already on file — the state the reported bug was hit in.
+      // A licence and terms already on file, WITH an expiry — i.e. a COMPLETE record, which is
+      // what the base state has to be: the step opens where the record says, so an incomplete
+      // base would send every case that expects part 0 to the part that is still owed instead.
+      // Cases that need something missing override it through `h.record` / `h.license`.
       selectedLocation: {
         id: 1,
         name: form.name,
@@ -133,8 +136,9 @@ vi.mock("../ManagerOnboardingContext", () => ({
         // Pulled apart from the form only when a case asks for it.
         ...h.record,
       },
-      // Nothing is finished here, so the step opens on part 0 — the walk the Continue
-      // clicks below assume. A finished step opens on its review instead.
+      // The step opens wherever the RECORD says, so a case that wants to start at part 0 needs a
+      // record with nothing left owing; a case that wants the review needs the same thing plus
+      // the step flagged complete.
       completedSteps: h.completed,
       handleNext: vi.fn(),
       handleBack: vi.fn(),
@@ -154,7 +158,10 @@ import LocationStep from "./LocationStep";
 beforeEach(() => {
   h.form = {};
   h.account = { phoneNumber: "", phoneVerified: false };
-  h.license = { expiryDate: "" };
+  // The licence carries a date by default: it is what makes the base record complete, and a
+  // complete record is what lets a case start at part 0. Cases about the missing date set it to
+  // "" themselves.
+  h.license = { expiryDate: "2027-03-01" };
   h.record = {};
   h.completed = {};
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }));
@@ -230,10 +237,78 @@ describe("Business step — the review", () => {
     h.form = { name: "A draft that was never saved" };
     h.record = { name: "Harbour Kitchen" };
     h.completed = { location: true };
+    /*
+     * The record has to be COMPLETE for the review to be the screen this case lands on. A step
+     * that is flagged complete but still owes a required part opens on that part instead — see
+     * the "where it opens" block below. The base fixture supplies the licence expiry that makes
+     * it complete; `h.record` deliberately does not remove it.
+     */
     render(<LocationStep />);
 
     expect(screen.getByText("Harbour Kitchen")).toBeInTheDocument();
     expect(screen.queryByText("A draft that was never saved")).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Where a returning manager lands inside the step.
+ *
+ * The reported bug: fill in part 1 of the Business step, press "Save & exit", come back — and the
+ * step opens on its REVIEW. That review reports the parts that are saved and reads "Not set" for
+ * the ones that were never opened, and its Continue is the way forward, so it both looks finished
+ * and lets the manager past work they never did.
+ *
+ * `completedSteps['location']` was never wrong about the STEP — it was simply not the question.
+ * The step's own parts are, so the resume point reads the record.
+ */
+describe("Business step — where it opens", () => {
+  const headOf = (key: string) => screen.queryByText(key) !== null;
+
+  it("opens the part the record still owes, not the review, when the step is flagged complete", () => {
+    h.completed = { location: true };
+    // Part 1 saved (name, address, logo); contact details and the licence never were.
+    h.record = { contactEmail: "", kitchenLicenseUrl: null, kitchenLicenseExpiry: null };
+    render(<LocationStep />);
+
+    expect(headOf("businessPartContactTitle")).toBe(true);
+    expect(headOf("businessSummaryTitle")).toBe(false);
+  });
+
+  it("opens the documents part when only the licence is missing", () => {
+    h.completed = { location: true };
+    h.record = { kitchenLicenseUrl: null, kitchenLicenseExpiry: null };
+    render(<LocationStep />);
+
+    expect(headOf("businessPartDocumentsTitle")).toBe(true);
+    expect(headOf("businessSummaryTitle")).toBe(false);
+  });
+
+  it("opens the review once the record owes nothing", () => {
+    h.completed = { location: true };
+    h.license = { expiryDate: "2027-03-01" };
+    render(<LocationStep />);
+
+    expect(headOf("businessSummaryTitle")).toBe(true);
+  });
+
+  it("will not let the review be a way past a required part", () => {
+    /*
+     * Defence in depth. With the rule above this is unreachable — but the review used to be
+     * exempt from the gate on the stated grounds that "it is only reachable once the step is
+     * complete", which was false whenever the step was flagged complete from a part. Removing the
+     * licence from the record while the review is open is the cheapest way to ask the gate a
+     * question it must answer: an ungated review is a Skip button wearing a summary's clothes.
+     */
+    h.completed = { location: true };
+    h.license = { expiryDate: "2027-03-01" };
+    const { rerender } = render(<LocationStep />);
+    expect(headOf("businessSummaryTitle")).toBe(true);
+    expect(continueButton()).toBeEnabled();
+
+    h.record = { kitchenLicenseUrl: null, kitchenLicenseExpiry: null };
+    rerender(<LocationStep />);
+
+    expect(continueButton()).toBeDisabled();
   });
 });
 
@@ -242,6 +317,7 @@ describe("Business step — documents part", () => {
   // been entered, and Continue was live — so a licence nobody can review or warn about
   // could be submitted.
   it("holds the manager when a licence is on file with no expiry date", () => {
+    h.license = { expiryDate: "" };
     render(<LocationStep />);
     goToPart2();
 
@@ -249,6 +325,7 @@ describe("Business step — documents part", () => {
   });
 
   it("lets them continue once the licence carries an expiry date", () => {
+    h.license = { expiryDate: "" };
     const { rerender } = render(<LocationStep />);
     goToPart2();
     expect(continueButton()).toBeDisabled();
